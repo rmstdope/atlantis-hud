@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
-import type { RegionPreview, ReportRegion, ReportUnit } from "@atlantis/core-client";
+import type { RegionPreview, ReportRegion, ReportUnit, UnitSilver } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { DEFAULT_COLUMN_SHARES, UNIT_COLUMNS, type UnitColumn } from "../unitTable";
@@ -165,9 +165,11 @@ describe("the structure column", () => {
     const markup = draw(inStructures([unit({ unitId: "902", name: "Scout", structureId: null })]));
 
     expect(markup).not.toContain("Wavecrest");
-    // The structure cell renders with nothing in it at all. It is the second-to-last cell now that
-    // the Long order column sits after it, so the match runs up to that cell rather than to </tr>.
-    expect(markup).toMatch(/<td[^>]*><\/td><td[^>]*>(<span class="text-danger">—<\/span>)?<\/td><\/tr>/);
+    // The structure cell renders with nothing in it at all. Long order and then Silver sit after
+    // it (ah-1wcw.1), so the match runs through those two cells rather than to </tr> directly.
+    expect(markup).toMatch(
+      /<td[^>]*><\/td><td[^>]*>(<span class="text-danger">—<\/span>)?<\/td><td[^>]*><\/td><\/tr>/
+    );
   });
 
   it("the tooltip gives the whole label, and what the orders changed beneath it", () => {
@@ -503,5 +505,84 @@ describe("a skill's study points in the units-in-hex list (ah-ded4)", () => {
 
     expect(markup).not.toContain("(undefined)");
     expect(markup).not.toContain("NaN");
+  });
+});
+
+/**
+ * The Silver column (`ah-1wcw.1`).
+ *
+ * Markup only, which is the whole of what this package can see: the column's states table in the
+ * bead's plan is the contract, and each row of it is a test here.
+ */
+describe("the Silver column", () => {
+  const forecast = (overrides: Partial<UnitSilver> = {}): UnitSilver => ({
+    unitId: "1",
+    regionId: "1:6,52",
+    held: 0,
+    income: 0,
+    expense: 0,
+    atMonthEnd: 0,
+    doubt: null,
+    ...overrides
+  });
+
+  function drawSilver(
+    silver: UnitSilver | null,
+    warned: string[] = []
+  ): string {
+    const only = unit({ unitId: "1", own: true });
+    return renderToStaticMarkup(
+      <UnitTableDock
+        hex={hex({ region: region({ units: [only] }), ownUnitCount: 1 })}
+        getSilver={() => silver}
+        silverWarnings={new Set(warned)}
+        onSelectUnit={() => {}}
+      />
+    );
+  }
+
+  it("a_unit_in_credit_shows_its_figure_in_default_ink", () => {
+    const markup = drawSilver(forecast({ atMonthEnd: 800 }));
+    expect(markup).toContain(">800<");
+    expect(markup).not.toContain("text-danger\">800");
+  });
+
+  it("a_unit_that_runs_out_shows_a_red_figure", () => {
+    const markup = drawSilver(forecast({ atMonthEnd: -140 }));
+    expect(markup).toContain("-140");
+    expect(markup).toContain("text-danger");
+  });
+
+  it("a_unit_that_runs_out_shows_a_red_warned_figure", () => {
+    const markup = drawSilver(forecast({ atMonthEnd: -140 }), ["1"]);
+    expect(markup).toContain("unit-silver-1");
+    expect(markup).toContain("⚠");
+    expect(markup).toContain("-140");
+  });
+
+  it("a_warned_unit_in_credit_still_shows_the_warning", () => {
+    const markup = drawSilver(forecast({ atMonthEnd: 44 }), ["1"]);
+    expect(markup).toContain("unit-silver-1");
+    expect(markup).toContain("⚠");
+    expect(markup).toContain("44");
+  });
+
+  it("a_month_that_cannot_be_priced_shows_a_question_mark", () => {
+    const markup = drawSilver(
+      forecast({ income: null, atMonthEnd: null, doubt: "unknown-tax-base" })
+    );
+    expect(markup).toContain("?");
+    expect(markup).not.toContain("unit-silver-1");
+  });
+
+  it("a_unit_with_no_forecast_shows_nothing", () => {
+    const markup = drawSilver(null);
+    expect(markup).not.toContain("unit-silver-1");
+    expect(markup).not.toContain("⚠");
+  });
+
+  it("only_a_warned_cell_is_a_button", () => {
+    expect(drawSilver(forecast({ atMonthEnd: -140 }))).not.toContain("unit-silver-1");
+    expect(drawSilver(forecast({ atMonthEnd: -140 }), ["1"])).toContain("unit-silver-1");
   });
 });

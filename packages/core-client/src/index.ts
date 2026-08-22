@@ -39,6 +39,8 @@ export type { ParsedReport } from "./generated/ParsedReport";
 export type { OrderDiagnosticSeverity } from "./generated/OrderDiagnosticSeverity";
 export type { OrderDiagnostic } from "./generated/OrderDiagnostic";
 export type { OrderValidationResult } from "./generated/OrderValidationResult";
+export type { UnitSilver } from "./generated/UnitSilver";
+export type { SilverDoubt } from "./generated/SilverDoubt";
 
 export {
   aBattle,

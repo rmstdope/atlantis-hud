@@ -1,4 +1,4 @@
-import type { ReportUnit } from "@atlantis/core-client";
+import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
 import { aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import { HOVER_DELAY_MS, placeTooltip, summariseUnit } from "./unitTooltip";
@@ -133,5 +133,97 @@ describe("a skill's study points in the unit tooltip (ah-ded4)", () => {
     );
 
     expect(summary.skills).toEqual([{ label: "mining MINI", value: "0 (0)" }]);
+  });
+});
+
+/**
+ * The Silver section (`ah-1wcw.1`).
+ *
+ * Every string the hover shows is decided here rather than in the component, because
+ * `packages/shared` has no jsdom and a component test could never read them back.
+ */
+describe("the silver section", () => {
+  const forecast = (overrides: Partial<UnitSilver> = {}): UnitSilver => ({
+    unitId: "1",
+    regionId: "1:6,52",
+    held: 60,
+    income: 0,
+    expense: 200,
+    atMonthEnd: -140,
+    doubt: null,
+    ...overrides
+  });
+
+  it("the_silver_section_says_what_made_the_number", () => {
+    const summary = summariseUnit(aReportUnit({ unitId: "1" }), forecast(), true);
+
+    expect(summary.silver?.rows).toEqual([
+      { label: "Held now", value: "60" },
+      { label: "In", value: "0" },
+      { label: "Out", value: "200" },
+      { label: "At month end", value: "-140" }
+    ]);
+  });
+
+  it("a_unit_with_no_forecast_has_no_section", () => {
+    expect(summariseUnit(aReportUnit({ unitId: "1" }), null).silver).toBeNull();
+  });
+
+  it("a_doubted_row_shows_a_question_mark_in_place_of_its_figure", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ income: null, atMonthEnd: null, doubt: "unknown-tax-base" })
+    );
+
+    expect(summary.silver?.rows).toEqual([
+      { label: "Held now", value: "60" },
+      { label: "In", value: "?" },
+      { label: "Out", value: "200" },
+      { label: "At month end", value: "?" }
+    ]);
+  });
+
+  it("says_when_shared_silver_covers_the_shortfall", () => {
+    const summary = summariseUnit(aReportUnit({ unitId: "1" }), forecast(), false);
+    expect(summary.silver?.note).toBe("Shared silver in this hex covers the shortfall.");
+  });
+
+  it("says_why_each_doubt_could_not_be_priced", () => {
+    const note = (doubt: UnitSilver["doubt"]) =>
+      summariseUnit(aReportUnit({ unitId: "1" }), forecast({ atMonthEnd: null, doubt })).silver
+        ?.note;
+
+    expect(note("unknown-tax-base")).toBe("The report never said what this region's tax base is.");
+    expect(note("unpriced-skill")).toBe("The ruleset does not say what studying this skill costs.");
+    expect(note("estimated-men")).toBe(
+      "This unit's headcount is an estimate, so its month cannot be priced."
+    );
+  });
+
+  it("says_why_a_warning_can_sit_on_a_positive_figure", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ income: 200, expense: 0, atMonthEnd: 260 }),
+      true
+    );
+    expect(summary.silver?.note).toBe(
+      "Wages arrive at the end of the month, too late to pay for this month's orders."
+    );
+  });
+
+  it("says_when_nothing_the_unit_does_moves_silver", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ income: 0, expense: 0, atMonthEnd: 60 })
+    );
+    expect(summary.silver?.note).toBe("Nothing this unit is ordered to do moves silver.");
+  });
+
+  it("says_nothing_when_there_is_nothing_to_explain", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ income: 400, expense: 100, atMonthEnd: 360 })
+    );
+    expect(summary.silver?.note).toBeNull();
   });
 });

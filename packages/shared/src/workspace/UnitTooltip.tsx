@@ -1,4 +1,4 @@
-import type { ReportUnit } from "@atlantis/core-client";
+import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
 import { useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { placeTooltip, summariseUnit, type Point } from "../unitTooltip";
@@ -16,7 +16,19 @@ import { Absent, Row, Section } from "./primitives";
  * happens in a layout effect, which the browser runs before it draws, so there is no frame in
  * which the tooltip is somewhere else.
  */
-export function UnitTooltip({ unit, at }: { unit: ReportUnit; at: Point }) {
+export function UnitTooltip({
+  unit,
+  at,
+  silver = null,
+  warned = false
+}: {
+  unit: ReportUnit;
+  at: Point;
+  /** This unit's silver forecast, where it has one. `ah-1wcw.1`. */
+  silver?: UnitSilver | null;
+  /** Whether this unit carries the `not-enough-silver` finding, which the note explains. */
+  warned?: boolean;
+}) {
   // The node is held as state rather than a ref so the effect below runs once it exists.
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   const [placed, setPlaced] = useState<{ left: number; top: number } | null>(null);
@@ -34,7 +46,7 @@ export function UnitTooltip({ unit, at }: { unit: ReportUnit; at: Point }) {
     );
   }, [node, at, unit.unitId]);
 
-  const summary = summariseUnit(unit);
+  const summary = summariseUnit(unit, silver, warned);
 
   return createPortal(
     <div
@@ -71,6 +83,17 @@ export function UnitTooltip({ unit, at }: { unit: ReportUnit; at: Point }) {
           summary.items.map((item) => <Row key={item.label} label={item.label} value={item.value} />)
         )}
       </Section>
+
+      {summary.silver ? (
+        <Section title="Silver">
+          {summary.silver.rows.map((row) => (
+            <Row key={row.label} label={row.label} value={row.value} />
+          ))}
+          {summary.silver.note ? (
+            <p className="m-0 mt-1 text-pane-sm text-ink-dim">{summary.silver.note}</p>
+          ) : null}
+        </Section>
+      ) : null}
     </div>,
     document.body
   );

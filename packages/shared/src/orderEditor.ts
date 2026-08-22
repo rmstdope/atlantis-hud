@@ -1,4 +1,4 @@
-import type { OrderDiagnostic, OrderValidationResult } from "@atlantis/core-client";
+import type { OrderDiagnostic, OrderValidationResult, UnitSilver } from "@atlantis/core-client";
 import { findUnitBlocks } from "./ordersDocument";
 
 export type OrderValidationSummary = {
@@ -49,7 +49,17 @@ export function offendingText(text: string, diagnostic: OrderDiagnostic): string
   return slice.length > 0 && !coversTheWholeLine ? slice : null;
 }
 
-export function summarizeOrderValidation(result: OrderValidationResult): OrderValidationSummary {
+/**
+ * Counts a validation result's diagnostics.
+ *
+ * Takes only the field it reads rather than the whole {@link OrderValidationResult}, so a caller
+ * with a list of diagnostics and no forecast beside them - the per-unit slice `OrdersPanel` builds,
+ * and {@link ValidatedOrders} itself - can be counted without inventing a silver list it has not
+ * got (`ah-1wcw.1`).
+ */
+export function summarizeOrderValidation(result: {
+  diagnostics: OrderDiagnostic[];
+}): OrderValidationSummary {
   const errorCount = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
   const warningCount = result.diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
   return {
@@ -117,7 +127,12 @@ export type OrdersOrigin = "editor" | "external";
  * Reading line 5 of a document that has since gained a line at the top points at someone else's
  * orders - and the whole purpose of showing a unit its own problems is to stop exactly that.
  */
-export type ValidatedOrders = { text: string; diagnostics: OrderDiagnostic[] };
+export type ValidatedOrders = {
+  text: string;
+  diagnostics: OrderDiagnostic[];
+  /** Each own unit's silver forecast for that same text. `ah-1wcw.1`. */
+  silver: UnitSilver[];
+};
 
 /**
  * The diagnostics belonging to one unit, numbered from the top of that unit's block.

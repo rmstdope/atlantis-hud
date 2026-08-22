@@ -21,7 +21,7 @@ const draw = (
       externalRevision={0}
       ownFactionName="your faction"
       onChange={() => {}}
-      validated={{ text: "", diagnostics: [] }}
+      validated={{ text: "", diagnostics: [], silver: [] }}
       save={{ kind: "clean" }}
       commands={[]}
       orderVocabulary={[]}

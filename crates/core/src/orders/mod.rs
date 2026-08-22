@@ -17,6 +17,7 @@ pub mod intents;
 pub mod lexer;
 pub mod parser;
 pub mod semantics;
+pub mod silver;
 pub mod standing;
 #[cfg(test)]
 mod standing_agreement;
@@ -61,20 +62,22 @@ pub fn validate_turn(
     options: semantics::CheckOptions,
 ) -> OrderValidationResult {
     let mut diagnostics = parser::validate_against(source, ruleset).diagnostics;
+    let mut silver = Vec::new();
 
     if let Some(report) = report {
-        diagnostics.extend(
-            semantics::check_turn(report, source, ruleset, options)
-                .into_iter()
-                .map(into_diagnostic),
-        );
+        let review = semantics::review_turn(report, source, ruleset, options);
+        silver = review.silver;
+        diagnostics.extend(review.findings.into_iter().map(into_diagnostic));
     }
 
     // Line order across the whole document, as the panel has always shown them. What belongs to a
     // hex rather than to a line goes last, where it cannot push a line diagnostic out of place.
     diagnostics.sort_by_key(|diagnostic| (diagnostic.line_start.is_none(), diagnostic.line_start));
 
-    OrderValidationResult { diagnostics }
+    OrderValidationResult {
+        diagnostics,
+        silver,
+    }
 }
 
 /// Every semantic finding is a warning: see [`semantics`] for why blocking is reserved for syntax.

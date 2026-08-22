@@ -41,7 +41,10 @@ pub fn validate_against(source: &str, ruleset: Option<&Ruleset>) -> OrderValidat
     // that order, and so does anyone reading it.
     diagnostics.sort_by_key(|diagnostic| diagnostic.line_start);
 
-    OrderValidationResult { diagnostics }
+    OrderValidationResult {
+        diagnostics,
+        silver: Vec::new(),
+    }
 }
 
 /// The state a document accumulates as it is read.

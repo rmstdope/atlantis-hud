@@ -4082,3 +4082,41 @@ test("clicking a hex row selects that hex, and a unit row selects that unit", as
   await expect(page.getByTestId("faction-dossier")).toHaveCount(0);
   await expect(page.getByTestId("panel-region")).toContainText("(10,50)");
 });
+
+/**
+ * The Silver column (`ah-1wcw.1`), on the real turn.
+ *
+ * What is walkable here is the column existing, carrying real figures for our own units and none
+ * for anyone else's, and sorting on them. The warned cell - the one that is a button and jumps to
+ * the unit - cannot be reached from this fixture: every one of faction 95's units is `sharing`, so
+ * `not-enough-silver` is anchored to the hex and names no unit, which is the plan's own
+ * measurement (17 red, 0 warned). Its markup is pinned in `UnitTableDock.test.tsx` instead.
+ */
+test("the silver column forecasts our own units and sorts on the figure", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "@study obse");
+
+  const header = page.getByTestId("panel-units").locator("thead th").last();
+  await expect(header).toContainText("Silver");
+
+  // Our own unit reads a figure; a foreign one, whose orders we cannot see, reads nothing. The
+  // table windows its rows, so the foreign one is filtered into view rather than scrolled to.
+  const cellOf = (unitId: string) =>
+    page.getByTestId(`unit-row-${unitId}`).locator("td").last();
+  await expect(cellOf(OWN_UNIT)).toHaveText(/^-?\d+$/);
+
+  const filter = page.getByTestId("panel-units").getByLabel("Filter units");
+  await filter.fill(FOREIGN_UNIT);
+  await expect(cellOf(FOREIGN_UNIT)).toHaveText("");
+  await filter.fill("");
+
+  // Sorting ascending puts the lowest forecast first, and every figure on screen is in order.
+  await header.getByRole("button", { name: "Silver", exact: true }).click();
+  const figures = (await page.locator("[data-testid^='unit-row-'] td:last-child").allInnerTexts())
+    .filter((text) => /^-?\d+$/.test(text))
+    .map(Number);
+  expect(figures.length).toBeGreaterThan(0);
+  expect([...figures].sort((left, right) => left - right)).toEqual(figures);
+});

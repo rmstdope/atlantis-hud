@@ -31,7 +31,14 @@ export function rowHeightAt(interfaceSize: number): number {
 }
 
 /** Which column the table is ordered by. Skills and Items are summaries, so they do not sort. */
-export type SortColumn = "unitId" | "name" | "faction" | "men" | "structure" | "longOrder";
+export type SortColumn =
+  | "unitId"
+  | "name"
+  | "faction"
+  | "men"
+  | "structure"
+  | "longOrder"
+  | "silver";
 
 /**
  * The table's columns, in the order they are drawn.
@@ -48,7 +55,8 @@ export const UNIT_COLUMNS = [
   "skills",
   "items",
   "structure",
-  "longOrder"
+  "longOrder",
+  "silver"
 ] as const;
 
 export type UnitColumn = (typeof UNIT_COLUMNS)[number];
@@ -68,7 +76,8 @@ export const COLUMN_LABELS: Partial<Record<UnitColumn, string>> = {
   skills: "Skills",
   items: "Items",
   structure: "Structure",
-  longOrder: "Long order"
+  longOrder: "Long order",
+  silver: "Silver"
 };
 
 export type SortState = {
@@ -173,7 +182,8 @@ function valueOf(
   unit: ReportUnit,
   column: SortColumn,
   structures: ReadonlyMap<string, StructureInfo>,
-  longOrders: ReadonlyMap<string, string | null>
+  longOrders: ReadonlyMap<string, string | null>,
+  silver: ReadonlyMap<string, number | null>
 ): number | string | null {
   switch (column) {
     case "unitId":
@@ -188,6 +198,10 @@ function valueOf(
       return structureKey(unit.structureId, structures);
     case "longOrder":
       return longOrderKey(longOrders.get(unit.unitId) ?? null);
+    // A forecast that could not be priced, and a foreign unit that has none at all, are both null
+    // - which `compareValues` already sorts last in either direction, so neither needs a sentinel.
+    case "silver":
+      return silver.get(unit.unitId) ?? null;
   }
 }
 
@@ -259,7 +273,9 @@ export function sortUnits(
   sort: SortState,
   structures: readonly StructureInfo[] = [],
   /** Each own unit's month-long order, for the column that sorts on it. */
-  longOrders: ReadonlyMap<string, string | null> = new Map()
+  longOrders: ReadonlyMap<string, string | null> = new Map(),
+  /** Each own unit's forecast silver at month end, for the column that sorts on it. `ah-1wcw.1`. */
+  silver: ReadonlyMap<string, number | null> = new Map()
 ): ReportUnit[] {
   const direction = sort.direction === "asc" ? 1 : -1;
   const byId = indexById(structures);
@@ -270,8 +286,8 @@ export function sortUnits(
     }
 
     const outcome = compareValues(
-      valueOf(left, sort.column, byId, longOrders),
-      valueOf(right, sort.column, byId, longOrders)
+      valueOf(left, sort.column, byId, longOrders, silver),
+      valueOf(right, sort.column, byId, longOrders, silver)
     );
     return "settled" in outcome ? outcome.settled : outcome.compare * direction;
   });
@@ -297,11 +313,13 @@ export type ColumnShares = Partial<Record<UnitColumn, number>>;
 
 /**
  * The shipped shape, as shares: exactly the widths the table renders today, taken at a nominal
- * 1344px table - own 24, unitId 64, name 208, faction 192, men 64, skills 220, items 220,
- * structure 208, longOrder 144. A player who never drags must see no difference at all, so these
- * are a restatement of the Tailwind width classes they replace rather than a new choice.
+ * 1440px table - own 24, unitId 64, name 208, faction 192, men 64, skills 220, items 220,
+ * structure 208, longOrder 144, silver 96. A player who never drags must see no difference at all,
+ * so these are a restatement of the Tailwind width classes they replace rather than a new choice -
+ * and `silver` (ah-1wcw.1) widened the nominal table by its own 96 rather than taking width from
+ * any of the nine that were here before it.
  */
-const NOMINAL_TABLE_PX = 1344;
+const NOMINAL_TABLE_PX = 1440;
 
 export const DEFAULT_COLUMN_SHARES: Record<UnitColumn, number> = {
   own: 24 / NOMINAL_TABLE_PX,
@@ -312,7 +330,8 @@ export const DEFAULT_COLUMN_SHARES: Record<UnitColumn, number> = {
   skills: 220 / NOMINAL_TABLE_PX,
   items: 220 / NOMINAL_TABLE_PX,
   structure: 208 / NOMINAL_TABLE_PX,
-  longOrder: 144 / NOMINAL_TABLE_PX
+  longOrder: 144 / NOMINAL_TABLE_PX,
+  silver: 96 / NOMINAL_TABLE_PX
 };
 
 /**

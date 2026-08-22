@@ -275,7 +275,8 @@ describe("ColumnReorderHandle keyboard handling", () => {
       "skills",
       "items",
       "structure",
-      "longOrder"
+      "longOrder",
+      "silver"
     ]);
     expect(press("name", "ArrowLeft")).toEqual([
       "own",
@@ -286,10 +287,12 @@ describe("ColumnReorderHandle keyboard handling", () => {
       "skills",
       "items",
       "structure",
-      "longOrder"
+      "longOrder",
+      "silver"
     ]);
     expect(press("unitId", "ArrowLeft")).toBe("unasked");
-    expect(press("longOrder", "ArrowRight")).toBe("unasked");
+    // The rightmost column, whichever it is, has nowhere to move to - `silver` since ah-1wcw.1.
+    expect(press("silver", "ArrowRight")).toBe("unasked");
     expect(press("name", "Tab")).toBe("unasked");
   });
 });

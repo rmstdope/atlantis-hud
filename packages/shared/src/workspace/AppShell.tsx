@@ -327,7 +327,7 @@ export function AppShell({
   );
   const [status, setStatus] = useState<StatusLine | null>(null);
   const [busy, setBusy] = useState(false);
-  const [validated, setValidated] = useState<ValidatedOrders>({ text: "", diagnostics: [] });
+  const [validated, setValidated] = useState<ValidatedOrders>({ text: "", diagnostics: [], silver: [] });
   const [save, setSave] = useState<SaveState>({ kind: "clean" });
   // The planner takes the report as text, which keeps the call stateless: there is no session to
   // invalidate when a new turn arrives. The text is also the key the core remembers its last parse
@@ -2059,7 +2059,7 @@ export function AppShell({
   // leave the panel pointing at lines that moved several keystrokes ago.
   useEffect(() => {
     if (!ordersDocument) {
-      setValidated({ text: "", diagnostics: [] });
+      setValidated({ text: "", diagnostics: [], silver: [] });
       return undefined;
     }
 
@@ -2076,7 +2076,11 @@ export function AppShell({
         })
         .then((result) => {
           if (!cancelled) {
-            setValidated({ text: ordersDocument, diagnostics: result.diagnostics });
+            setValidated({
+              text: ordersDocument,
+              diagnostics: result.diagnostics,
+              silver: result.silver ?? []
+            });
           }
         })
         // A validation that will not run leaves the last one standing rather than replacing it with
@@ -2101,6 +2105,39 @@ export function AppShell({
    * headings would read as two separate problems.
    */
   const problemsByHex = useMemo(() => findingsByHex(validated.diagnostics), [validated]);
+
+  /**
+   * Each own unit's silver forecast, by id (`ah-1wcw.1`).
+   *
+   * Through a `Map` rather than a scan of the list, because the units table asks this once per
+   * visible row and again for whichever row the pointer rests on.
+   */
+  const silverByUnit = useMemo(
+    () => new Map(validated.silver.map((entry) => [entry.unitId, entry])),
+    [validated.silver]
+  );
+  const getSilver = useCallback(
+    (unitId: string) => silverByUnit.get(unitId) ?? null,
+    [silverByUnit]
+  );
+
+  /**
+   * The units the shortfall check actually names (`ah-1wcw.1`).
+   *
+   * A hex whose units share is reported against the hex and names no unit, so nothing here
+   * carries a warning - which is deliberate: blaming one of several would be as wrong in the
+   * table as it is in the Problems panel.
+   */
+  const silverWarnings = useMemo(
+    () =>
+      new Set(
+        validated.diagnostics
+          .filter((diagnostic) => diagnostic.code === "not-enough-silver")
+          .map((diagnostic) => diagnostic.unitId)
+          .filter((unitId): unitId is string => unitId !== null)
+      ),
+    [validated.diagnostics]
+  );
 
   /**
    * Every trade route worth making across the known map, for the header's Trade chip (ah-1j5.2).
@@ -3377,6 +3414,9 @@ export function AppShell({
               hex={hex}
               preview={hexPreview}
               getLongOrder={getLongOrder}
+              getSilver={getSilver}
+              silverWarnings={silverWarnings}
+              onSelectUnit={(unitId) => goToUnit(unitId, null)}
               renderFactionName={(factionId, label) => (
                 <button
                   type="button"

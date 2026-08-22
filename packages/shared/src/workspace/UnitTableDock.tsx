@@ -1,4 +1,4 @@
-import type { RegionPreview, ReportUnit } from "@atlantis/core-client";
+import type { RegionPreview, ReportUnit, UnitSilver } from "@atlantis/core-client";
 import {
   Fragment,
   useEffect,
@@ -36,7 +36,7 @@ import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { ColumnReorderHandle } from "./ColumnReorderHandle";
 import { ColumnSplitter } from "./ColumnSplitter";
-import { Absent } from "./primitives";
+import { Absent, SeverityMark, UNIT_LINK_CLASS } from "./primitives";
 import { UnitTooltip } from "./UnitTooltip";
 
 /** Rows built beyond each edge of the viewport, so a flick of the wheel does not show a gap. */
@@ -55,7 +55,8 @@ const SORTABLE_COLUMNS: ReadonlySet<UnitColumn> = new Set<UnitColumn>([
   "faction",
   "men",
   "structure",
-  "longOrder"
+  "longOrder",
+  "silver"
 ]);
 
 /**
@@ -74,6 +75,9 @@ export function UnitTableDock({
   hex,
   preview = null,
   getLongOrder,
+  getSilver,
+  silverWarnings,
+  onSelectUnit,
   renderFactionName
 }: {
   hex: HexNode | null;
@@ -81,6 +85,12 @@ export function UnitTableDock({
   preview?: RegionPreview | null;
   /** The month-long order a unit's live orders carry, for the Long order column. */
   getLongOrder?: (unitId: string) => string | null;
+  /** Each own unit's silver forecast, or null where there is none. `ah-1wcw.1`. */
+  getSilver?: (unitId: string) => UnitSilver | null;
+  /** The unit-anchored `not-enough-silver` findings, by unit id. */
+  silverWarnings?: ReadonlySet<string>;
+  /** Selects a unit and opens its orders. Absent means the cell is not clickable. */
+  onSelectUnit?: (unitId: string) => void;
   /**
    * Wraps a foreign faction's name so it can open that faction's dossier beside the row clicked
    * (ah-bu2c). Left off, the name prints as it always did.
@@ -135,9 +145,20 @@ export function UnitTableDock({
     }
     return new Map(units.filter((entry) => entry.own).map((entry) => [entry.unitId, getLongOrder(entry.unitId)]));
   }, [units, sort.column, getLongOrder]);
+  // Same bargain as `longOrders` above: built only when the table actually sorts on it.
+  const silverByUnit = useMemo(() => {
+    if (sort.column !== "silver" || !getSilver) {
+      return new Map<string, number | null>();
+    }
+    return new Map(
+      units
+        .filter((entry) => entry.own)
+        .map((entry) => [entry.unitId, getSilver(entry.unitId)?.atMonthEnd ?? null])
+    );
+  }, [units, sort.column, getSilver]);
   const visible = useMemo(
-    () => sortUnits(filterUnits(units, filter, structures), sort, structures, longOrders),
-    [units, filter, sort, structures, longOrders]
+    () => sortUnits(filterUnits(units, filter, structures), sort, structures, longOrders, silverByUnit),
+    [units, filter, sort, structures, longOrders, silverByUnit]
   );
   const selectedIndex = useMemo(
     () => visible.findIndex((unit) => unit.unitId === selectedUnitId),
@@ -474,6 +495,9 @@ export function UnitTableDock({
                   selected={unit.unitId === selectedUnitId}
                   onSelect={() => selectUnit(unit.unitId)}
                   getLongOrder={getLongOrder}
+                  getSilver={getSilver}
+                  silverWarnings={silverWarnings}
+                  onSelectUnit={onSelectUnit}
                   renderFactionName={renderFactionName}
                   onKeyDown={onRowKeyDown}
                   onPointerRest={restOn}
@@ -487,7 +511,14 @@ export function UnitTableDock({
             </tbody>
           </table>
           </div>
-          {hovered ? <UnitTooltip unit={hovered.unit} at={hovered.at} /> : null}
+          {hovered ? (
+            <UnitTooltip
+              unit={hovered.unit}
+              at={hovered.at}
+              silver={hovered.unit.own ? (getSilver?.(hovered.unit.unitId) ?? null) : null}
+              warned={silverWarnings?.has(hovered.unit.unitId) ?? false}
+            />
+          ) : null}
         </div>
       )}
     </CollapsiblePanel>
@@ -659,6 +690,9 @@ function UnitRow({
   onPointerAt,
   onPointerGone,
   getLongOrder,
+  getSilver,
+  silverWarnings,
+  onSelectUnit,
   renderFactionName
 }: {
   unit: PreviewedUnit;
@@ -681,6 +715,12 @@ function UnitRow({
   onPointerGone: () => void;
   /** The month-long order this unit's live orders carry, where it is one of ours. */
   getLongOrder?: (unitId: string) => string | null;
+  /** This unit's silver forecast, where it is one of ours. `ah-1wcw.1`. */
+  getSilver?: (unitId: string) => UnitSilver | null;
+  /** The unit-anchored `not-enough-silver` findings, by unit id. */
+  silverWarnings?: ReadonlySet<string>;
+  /** Selects a unit and opens its orders. */
+  onSelectUnit?: (unitId: string) => void;
   /** Wraps a foreign faction's name so it can open that faction's dossier (ah-bu2c). */
   renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
 }) {
@@ -701,6 +741,13 @@ function UnitRow({
   const departing = unit.previewStatus === "departing";
   // Only for our own units: there is nothing of anybody else's orders to read.
   const longOrder = unit.own ? (getLongOrder?.(unit.unitId) ?? null) : null;
+  // Only our own units have a month to price; `getSilver` returns null for everyone else anyway,
+  // and the cell is empty either way.
+  const silver = unit.own ? (getSilver?.(unit.unitId) ?? null) : null;
+  // The `not-enough-silver` finding, matched on the unit alone. In a hex whose units share, that
+  // finding is anchored to the hex and names no unit, and blaming one of several would be as
+  // wrong there as it is in the Problems panel - so there is deliberately no fallback to the hex.
+  const warned = silver !== null && (silverWarnings?.has(unit.unitId) ?? false);
 
   /**
    * Every cell, keyed the same way the header's dispatch is, so reordering the columns never means
@@ -803,6 +850,32 @@ function UnitRow({
       <Td className="truncate" title={longOrder ?? undefined}>
         {unit.own ? (longOrder ?? <span className="text-danger">—</span>) : ""}
       </Td>
+    ),
+    // What this unit is expected to hold when the month ends (ah-1wcw.1). Red is this unit,
+    // counted alone, ending below zero; ⚠ is the existing `not-enough-silver` finding, which
+    // pools across the hex's sharing units. The two mean different things on purpose, so a ⚠ on
+    // a positive figure is not a contradiction - the hover explains it.
+    silver: (
+      <Td className={`text-right tabular-nums${silverIsRed(silver) ? " text-danger" : ""}`}>
+        {silver === null ? (
+          ""
+        ) : warned ? (
+          <button
+            type="button"
+            data-testid={`unit-silver-${unit.unitId}`}
+            onClick={() => onSelectUnit?.(unit.unitId)}
+            className={`inline-flex items-center gap-0.5 ${UNIT_LINK_CLASS}`}
+          >
+            <span className="sr-only">unit {unit.unitId} </span>
+            <SeverityMark severity="warning" />
+            {silverFigure(silver)}
+          </button>
+        ) : (
+          <span className={silverIsDim(silver) ? "text-ink-dim" : undefined}>
+            {silverFigure(silver)}
+          </span>
+        )}
+      </Td>
     )
   };
 
@@ -862,4 +935,24 @@ function Td({
       {children}
     </td>
   );
+}
+
+/**
+ * What the Silver cell prints: the figure, or `?` for a month that could not be priced.
+ *
+ * Never a number that might be wrong - see `orders::silver` in the core, which is where the
+ * decision that a doubted term poisons the whole side is made.
+ */
+function silverFigure(silver: UnitSilver): string {
+  return silver.atMonthEnd === null ? "?" : String(silver.atMonthEnd);
+}
+
+/** Whether the figure is this unit, counted on its own, ending below zero. */
+function silverIsRed(silver: UnitSilver | null): boolean {
+  return silver !== null && silver.atMonthEnd !== null && silver.atMonthEnd < 0;
+}
+
+/** A `?` and a plain `0` both read dim: neither is a number to act on. */
+function silverIsDim(silver: UnitSilver): boolean {
+  return silver.atMonthEnd === null || silver.atMonthEnd === 0;
 }

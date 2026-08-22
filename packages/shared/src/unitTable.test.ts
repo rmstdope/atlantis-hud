@@ -7,6 +7,7 @@ import {
   rowHeightAt,
   sortUnits,
   windowRange,
+  COLUMN_LABELS,
   COLUMN_MIN_PX,
   DEFAULT_COLUMN_SHARES,
   UNIT_COLUMNS,
@@ -529,7 +530,8 @@ describe("dragColumnOrder", () => {
       "skills",
       "items",
       "structure",
-      "longOrder"
+      "longOrder",
+      "silver"
     ]);
     expect(dragColumnOrder(order, "name", 205, widthPxOf)).toEqual([
       "own",
@@ -540,7 +542,8 @@ describe("dragColumnOrder", () => {
       "skills",
       "items",
       "structure",
-      "longOrder"
+      "longOrder",
+      "silver"
     ]);
   });
 
@@ -554,7 +557,8 @@ describe("dragColumnOrder", () => {
       "skills",
       "items",
       "structure",
-      "longOrder"
+      "longOrder",
+      "silver"
     ]);
   });
 
@@ -599,5 +603,44 @@ describe("dropBoundaryX", () => {
     const order = [...UNIT_COLUMNS] as UnitColumn[];
     const farLeft = ["name", ...order.filter((column) => column !== "name")] as UnitColumn[];
     expect(dropBoundaryX(order, farLeft, "name", widthPxOf)).toBe(0);
+  });
+});
+
+describe("the Silver column (ah-1wcw.1)", () => {
+  it("the_table_has_a_silver_column", () => {
+    expect(UNIT_COLUMNS[UNIT_COLUMNS.length - 1]).toBe("silver");
+    expect(COLUMN_LABELS.silver).toBe("Silver");
+    const total = Object.values(DEFAULT_COLUMN_SHARES).reduce((sum, share) => sum + share, 0);
+    expect(total).toBeCloseTo(1, 10);
+  });
+
+  it("sorts_by_silver_with_unknown_forecasts_last", () => {
+    const units = [
+      { ...aReportUnit({ unitId: "1", own: true }) },
+      { ...aReportUnit({ unitId: "2", own: true }) },
+      { ...aReportUnit({ unitId: "3", own: true }) }
+    ];
+    const silver = new Map<string, number | null>([
+      ["1", 50],
+      ["2", null],
+      ["3", -140]
+    ]);
+    const ascending = sortUnits(
+      units,
+      { column: "silver", direction: "asc", groupOwnFirst: false },
+      [],
+      new Map(),
+      silver
+    ).map((unit) => unit.unitId);
+    expect(ascending).toEqual(["3", "1", "2"]);
+
+    const descending = sortUnits(
+      units,
+      { column: "silver", direction: "desc", groupOwnFirst: false },
+      [],
+      new Map(),
+      silver
+    ).map((unit) => unit.unitId);
+    expect(descending).toEqual(["1", "3", "2"]);
   });
 });

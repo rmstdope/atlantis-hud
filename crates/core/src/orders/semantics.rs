@@ -26,6 +26,7 @@ use crate::movement::mode::{
 };
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
+use crate::orders::silver::{forecast_unit, parse_wage_centis, RegionWages, UnitSilver};
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
 
@@ -208,6 +209,29 @@ pub fn check_turn(
     ruleset: Option<&Ruleset>,
     options: CheckOptions,
 ) -> Vec<Finding> {
+    review_turn(report, source, ruleset, options).findings
+}
+
+/// A whole turn read once: everything wrong with it, and what its units' months cost.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TurnReview {
+    pub findings: Vec<Finding>,
+    /// One entry per own unit the report shows, whether or not it has orders. `ah-1wcw.1`.
+    pub silver: Vec<UnitSilver>,
+}
+
+/// Checks a whole turn's orders against the report they were written for, and forecasts each
+/// unit's silver in the same pass.
+///
+/// One walk rather than two: this runs on every keystroke once typing settles, and the hexes and
+/// their own units have already been read here by the time the forecast wants them.
+#[must_use]
+pub fn review_turn(
+    report: &ParsedReport,
+    source: &str,
+    ruleset: Option<&Ruleset>,
+    options: CheckOptions,
+) -> TurnReview {
     let ordered = OrderedUnits::read(source);
     // `validate_turn` runs this on every keystroke once typing settles, so the lookup is built only
     // when the check that reads it is actually enabled - skipping a walk of every region and unit
@@ -219,9 +243,11 @@ pub fn check_turn(
         BTreeMap::new()
     };
     let mut findings = Vec::new();
+    let mut silver = Vec::new();
 
     for region in &report.regions {
         let hex = Hex::read(region, &ordered);
+        forecast_hex(&hex, ruleset, &mut silver);
         if hex.units.is_empty() {
             continue;
         }
@@ -255,7 +281,30 @@ pub fn check_turn(
     // line afterwards, so these findings land beside the per-hex ones rather than after them.
     check_faction(report, &ordered, ruleset, &options, &mut findings);
 
-    findings
+    TurnReview { findings, silver }
+}
+
+/// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
+/// already filtered them out, so their cell is blank for free.
+fn forecast_hex(hex: &Hex<'_>, ruleset: Option<&Ruleset>, into: &mut Vec<UnitSilver>) {
+    let region = RegionWages {
+        tax_base: hex.region.tax_base,
+        wage_centis: parse_wage_centis(hex.region.wages.as_deref()),
+        max_wages: hex.region.max_wages,
+    };
+
+    for ordered in &hex.units {
+        into.push(forecast_unit(
+            &ordered.unit.unit_id,
+            &hex.region.region_id,
+            ordered.holding(SILVER),
+            ordered.unit.men,
+            ordered.unit.men_estimated,
+            region,
+            ordered.intents,
+            ruleset,
+        ));
+    }
 }
 
 /// Whether this order consumes the unit's month.
@@ -2701,6 +2750,36 @@ mod tests {
 
     fn ruleset() -> Ruleset {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
+    }
+
+    /// `ah-1wcw.1`: the forecast rides out beside the findings, for own units only, and
+    /// `check_turn` still answers exactly what it always did.
+    #[test]
+    fn a_review_forecasts_every_own_unit() {
+        let mut mine = unit("1234");
+        mine.men = 8;
+        let mut theirs = unit("9999");
+        theirs.own = false;
+        let report = ParsedReport {
+            regions: vec![ReportRegion {
+                tax_base: Some(100_000),
+                ..region(vec![mine, theirs])
+            }],
+            ..Default::default()
+        };
+        let source = "unit 1234\n  tax\n";
+
+        let review = review_turn(&report, source, None, CheckOptions::default());
+
+        assert_eq!(review.silver.len(), 1, "{:?}", review.silver);
+        let forecast = &review.silver[0];
+        assert_eq!(forecast.unit_id, "1234");
+        assert_eq!(forecast.income, Some(400));
+        assert_eq!(
+            review.findings,
+            check_turn(&report, source, None, CheckOptions::default()),
+            "check_turn is the same answer it always was"
+        );
     }
 
     // --- fixtures ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@
 //! written by a person playing the game and accepted by the server, so every line in it is correct
 //! by construction. Anything this parser has to say about it is something the parser got wrong.
 
-use atlantis_hud_core::orders::semantics::{check_turn, CheckOptions, Finding};
+use atlantis_hud_core::orders::semantics::{check_turn, review_turn, CheckOptions, Finding};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full, ParsedReport};
 use atlantis_hud_core::validate_orders;
@@ -343,4 +343,34 @@ fn the_broad_guard_check_is_the_noisy_one_the_setting_holds_back() {
         hexes_with_our_units > 1,
         "only {hexes_with_our_units} hexes to speak about"
     );
+}
+
+/// `ah-1wcw.1`: every own unit in the committed turn gets a forecast, and no foreign one does -
+/// and the finding counts are **unchanged**, which is this bead's claim that it adds no warning.
+#[test]
+fn the_committed_turn_forecasts_every_own_unit_and_none_of_the_others() {
+    let report = classified();
+    let review = review_turn(
+        &report,
+        &template(),
+        Some(&ruleset()),
+        CheckOptions::default(),
+    );
+
+    let own: Vec<&str> = report
+        .regions
+        .iter()
+        .flat_map(|region| &region.units)
+        .filter(|unit| unit.own)
+        .map(|unit| unit.unit_id.as_str())
+        .collect();
+    assert_eq!(own.len(), 27, "the committed turn's own units: {own:?}");
+
+    let forecast: Vec<&str> = review
+        .silver
+        .iter()
+        .map(|entry| entry.unit_id.as_str())
+        .collect();
+    assert_eq!(forecast, own);
+    assert_eq!(counts(&review.findings), expected_counts());
 }
