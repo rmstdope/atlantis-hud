@@ -43,6 +43,11 @@ packages/browser-core/src/wasm/
 # on a fresh clone and silently revert the fleet to cerebro's own names. This repository ships no
 # such file - it wants the built-in fleet - but the path must stay trackable for one to be added.
 !.claude/cerebro-roster
+# The traps this project has already paid for, read by plan-bead and implement-bead before work
+# starts (ah-qled.10.5). Tracked for the same reason: a trap the whole team has paid for is a fact
+# every clone needs, and an ignored copy would vanish on a fresh clone and let each new machine pay
+# for it again.
+!.claude/cerebro-traps.md
 
 # Cerebro's own bookkeeping - agent state files, stop flags and the agents' worktrees. Live
 # machine state, never part of the project (ah-v82).
