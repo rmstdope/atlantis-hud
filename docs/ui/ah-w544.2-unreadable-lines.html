@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unreadable report lines (ah-w544.2) — chosen: header chip, widest definition, kind column</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:20px 0 6px; }
+  .app { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; line-height:1.45; }
+  .win { border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  .apphdr { display:flex; align-items:center; gap:12px; padding:0 10px; min-height:30px; flex-wrap:wrap;
+            background:var(--panel); border-bottom:1px solid var(--edge); white-space:nowrap; }
+  .apphdr .soft { color:var(--ink-soft); }
+  .apphdr .val { color:var(--ink); }
+  .apphdr .push { margin-left:auto; display:flex; gap:12px; align-items:center; }
+  .chip { border:1px solid var(--edge); background:var(--raised); border-radius:3px; padding:0 7px; color:var(--ink-soft); font-size:11px; display:inline-block; }
+  .chip .caret { color:var(--ink-dim); margin-left:4px; }
+  .chip.warnc { border-color:var(--warn); color:var(--warn); }
+  .chip.focus { outline:2px solid var(--select); outline-offset:1px; }
+  .status.sr { color:transparent; position:relative; }
+  .status.sr::after { content:"(sr-only: “" attr(data-text) "”)"; position:absolute; left:0; color:var(--ink-dim); font-size:10.5px; font-style:italic; white-space:nowrap; }
+  .mapbg { height:46px; background: repeating-linear-gradient(60deg, #141b23 0 9px, #151d25 9px 18px), var(--ground); }
+  .drop { background:var(--panel); border-bottom:1px solid var(--edge); padding:9px 10px 11px; }
+  .drop h4 { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; font-weight:normal; margin-bottom:7px; display:flex; align-items:center; gap:8px; }
+  .drop h4 .x { margin-left:auto; color:var(--ink-dim); }
+  .lines { display:grid; gap:6px; max-height:150px; overflow:auto; }
+  .lineitem { display:grid; grid-template-columns:74px 62px 1fr; gap:9px; align-items:start; }
+  .lineitem.stacked { grid-template-columns:1fr; gap:3px; }
+  .lineitem.stacked .meta { display:flex; gap:9px; align-items:baseline; }
+  .lineno { color:var(--ink-dim); font:11px/1.5 'SF Mono',Menlo,Consolas,monospace; text-align:right; padding-top:1px; }
+  .stacked .lineno { text-align:left; }
+  .kind { font:10px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:.9px; text-transform:uppercase; color:var(--ink-dim); padding-top:1px; }
+  .kind.region { color:var(--danger); }
+  .linetext { font:11px/1.5 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); background:var(--ground); border:1px solid var(--edge-soft); border-left:2px solid var(--warn); border-radius:3px; padding:2px 6px; white-space:pre-wrap; word-break:break-all; }
+  .linetext.big { border-left-color:var(--danger); }
+  .costnote { display:block; color:var(--danger); font:10.5px/1.5 'Helvetica Neue',Arial,sans-serif; letter-spacing:.3px; margin-top:3px; }
+  .drop .foot { color:var(--ink-dim); font-size:11px; margin-top:9px; font-style:italic; display:flex; align-items:center; gap:10px; }
+  .btn { border:1px solid var(--edge); background:var(--raised); border-radius:3px; padding:2px 9px; color:var(--ink-soft); font-size:11px; display:inline-block; font-style:normal; }
+  .narrow { max-width:400px; }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:6px 0; max-width:94ch; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+  pre.clip { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:9px; white-space:pre; }
+  .modal { background:var(--panel); border:1px solid var(--edge); border-radius:8px; max-width:460px; padding:14px; margin-top:10px; }
+  .modal h4 { font-size:14px; margin-bottom:6px; }
+  .modal p, .modal li { color:var(--ink-soft); font-size:12px; }
+  .modal ul { margin:8px 0 0 18px; }
+  .modal .warnline { color:var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-w544.2</span> — saying that a line of the turn report could not be read</h1>
+  <p><strong>Decided 2026-08-22, over four rounds.</strong> A turn report line the parser cannot read is dropped today with no
+  trace at all, and <code>ParsedReport</code> carries no error channel — so a player simply does not see one of their own units
+  and has no way to know. This page is the agreed surface for saying so. It is the second half of epic <code>ah-w544</code>;
+  the first half, <code>ah-w544.1</code>, removes the commonest cause.</p>
+  <p><strong>The decisions:</strong> a header chip that drops a panel (not a status line, not a banner);
+  the <em>widest</em> definition of unreadable, region blocks included; a kind column with the cost of a lost hex spelled out;
+  line ranges; no cap; a <code>Copy all</code> shaped for pasting into a bug report; rebuilt from the loaded report rather than
+  stored or dismissed.</p>
+</header>
+
+<main>
+<section>
+  <h2 class="rule"><em>Chosen</em> the chip, and the panel it opens</h2>
+  <p>The chip sits with the other header chips and is <strong>absent entirely</strong> when there is nothing to say — which is
+  every healthy report. Amber always, whatever is in the list: its job is to get the panel opened, and the panel does the
+  explaining.</p>
+  <div class="app"><div class="win">
+    <div class="apphdr">
+      <span class="soft">Game <span class="chip">Borg <span class="caret">▾</span></span></span>
+      <span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span>
+      <span class="status sr" data-text="11 regions · 42 units"></span>
+      <span class="chip">2 events<span class="caret">▾</span></span>
+      <span class="chip warnc">6 unreadable<span class="caret">▾</span></span>
+      <span class="push"><span class="chip">Import</span></span>
+    </div>
+    <div class="drop">
+      <h4>Lines that could not be read <span class="x">✕</span></h4>
+      <div class="lines">
+        <div class="lineitem"><span class="lineno">998–999</span><span class="kind region">Region</span><span class="linetext big">mountain (,53) in Liou'ecpu, contains Rihead [city], 7922 peasants (hill dwarves), $4753.<span class="costnote">The whole hex was lost — 34 further lines, including 9 units.</span></span></div>
+        <div class="lineitem"><span class="lineno">412</span><span class="kind">Unit</span><span class="linetext">* Smiley :( (100), Wanderers (29), 10 humans [HUMN].</span></div>
+        <div class="lineitem"><span class="lineno">1077</span><span class="kind">Unit</span><span class="linetext">- ?? (), Wanderers (29).</span></div>
+        <div class="lineitem"><span class="lineno">1512</span><span class="kind">Structure</span><span class="linetext">+ Ruin [0] : closed.</span></div>
+        <div class="lineitem"><span class="lineno">86</span><span class="kind">Attitude</span><span class="linetext">Hostile : ?? (), Creatures (2).</span></div>
+        <div class="lineitem"><span class="lineno">2244</span><span class="kind">Battle</span><span class="linetext">?? (, on guard, 12 orcs [ORC].</span></div>
+      </div>
+      <p class="foot">None of this reached the map. <span class="btn">Copy all</span></p>
+    </div>
+    <div class="mapbg"></div>
+  </div></div>
+</section>
+
+<section>
+  <h2 class="rule"><em>States</em> what it looks like when it is not six tidy rows</h2>
+
+  <div class="lab">Nothing unreadable — every healthy report, and the case that must cost nothing</div>
+  <div class="app"><div class="win">
+    <div class="apphdr">
+      <span class="soft">Game <span class="chip">Borg <span class="caret">▾</span></span></span>
+      <span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span>
+      <span class="status sr" data-text="11 regions · 42 units"></span>
+      <span class="chip">2 events<span class="caret">▾</span></span>
+      <span class="push"><span class="chip">Import</span></span>
+    </div>
+    <div class="mapbg"></div>
+  </div></div>
+  <div class="absent">No chip. There is no empty state for the panel, because the panel cannot be opened.</div>
+
+  <div class="lab">Exactly one — the singular, and the only wording that changes with count</div>
+  <div class="app"><div class="win">
+    <div class="apphdr"><span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span><span class="chip warnc">1 unreadable<span class="caret">▾</span></span><span class="push"><span class="chip">Import</span></span></div>
+    <div class="drop">
+      <h4>Lines that could not be read <span class="x">✕</span></h4>
+      <div class="lines"><div class="lineitem"><span class="lineno">412</span><span class="kind">Unit</span><span class="linetext">* Smiley :( (100), Wanderers (29), 10 humans [HUMN].</span></div></div>
+      <p class="foot">None of this reached the map. <span class="btn">Copy all</span></p>
+    </div>
+    <div class="mapbg"></div>
+  </div></div>
+  <div class="absent">The heading stays plural — it names the panel, not its contents. The footer is count-independent, which is part of why that wording was chosen.</div>
+
+  <div class="lab">Many — the panel scrolls, and nothing is capped or truncated</div>
+  <div class="app"><div class="win">
+    <div class="apphdr"><span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span><span class="chip warnc">213 unreadable<span class="caret">▾</span></span><span class="push"><span class="chip">Import</span></span></div>
+    <div class="drop">
+      <h4>Lines that could not be read <span class="x">✕</span></h4>
+      <div class="lines">
+        <div class="lineitem"><span class="lineno">412</span><span class="kind">Unit</span><span class="linetext">* Smiley :( (100), Wanderers (29), 10 humans [HUMN].</span></div>
+        <div class="lineitem"><span class="lineno">414</span><span class="kind">Unit</span><span class="linetext">- ?? (), Wanderers (29).</span></div>
+        <div class="lineitem"><span class="lineno">418</span><span class="kind">Structure</span><span class="linetext">+ Ruin [0] : closed.</span></div>
+        <div class="lineitem"><span class="lineno">431</span><span class="kind">Unit</span><span class="linetext">* &lt;garbled&gt; (77 (12), 3 orcs [ORC].</span></div>
+        <div class="lineitem"><span class="lineno">442</span><span class="kind">Unit</span><span class="linetext">- Unit ( ), , , .</span></div>
+        <div class="lineitem"><span class="lineno">455</span><span class="kind">Unit</span><span class="linetext">* Nameless (, Wanderers (29).</span></div>
+        <div class="lineitem"><span class="lineno">467</span><span class="kind">Unit</span><span class="linetext">- (12), Wanderers (29), 4 orcs [ORC].</span></div>
+      </div>
+      <p class="foot">None of this reached the map. <span class="btn">Copy all</span></p>
+    </div>
+    <div class="mapbg"></div>
+  </div></div>
+
+  <div class="lab">A very long line — wrapped, never truncated</div>
+  <div class="app"><div class="win"><div class="drop">
+    <h4>Lines that could not be read <span class="x">✕</span></h4>
+    <div class="lines"><div class="lineitem"><span class="lineno">903–905</span><span class="kind">Unit</span><span class="linetext">* Expeditionary Force of the Northern Reaches, Third Column, Under Banner (44127 , The Grand Alliance of Free Peoples and Sundry Allies (29), avoiding, behind, revealing faction, 240 hill dwarves [HDWA], 240 swords [SWOR], 120 chain armor [CLAR], 3200 silver [SILV].</span></div></div>
+    <p class="foot">None of this reached the map. <span class="btn">Copy all</span></p>
+  </div></div></div>
+  <div class="absent">No ellipsis anywhere: the entire point of the panel is that you can read what the parser could not. The range <code>903–905</code> is a record the game wrapped across three lines of the file.</div>
+
+  <div class="lab">Narrow window — the row stacks below ~520px so the raw text keeps full width</div>
+  <div class="app narrow"><div class="win">
+    <div class="apphdr">
+      <span class="soft">Game <span class="chip">Borg <span class="caret">▾</span></span></span>
+      <span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span>
+      <span class="chip">2 events<span class="caret">▾</span></span>
+      <span class="chip warnc">6 unreadable<span class="caret">▾</span></span>
+      <span class="push"><span class="chip">Import</span></span>
+    </div>
+    <div class="drop"><h4>Lines that could not be read <span class="x">✕</span></h4>
+      <div class="lines">
+        <div class="lineitem stacked">
+          <div class="meta"><span class="lineno">998–999</span><span class="kind region">Region</span></div>
+          <span class="linetext big">mountain (,53) in Liou'ecpu, contains Rihead [city], 7922 peasants (hill dwarves), $4753.<span class="costnote">The whole hex was lost — 34 further lines, including 9 units.</span></span>
+        </div>
+        <div class="lineitem stacked">
+          <div class="meta"><span class="lineno">412</span><span class="kind">Unit</span></div>
+          <span class="linetext">* Smiley :( (100), Wanderers (29), 10 humans [HUMN].</span>
+        </div>
+      </div>
+      <p class="foot">None of this reached the map. <span class="btn">Copy all</span></p>
+    </div>
+    <div class="mapbg"></div>
+  </div></div>
+  <div class="absent">The header already wraps as one unit; the chip joins that wrap and needs no special handling.</div>
+
+  <div class="lab">Focus on the chip</div>
+  <div class="app"><div class="win">
+    <div class="apphdr"><span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span><span class="chip">2 events<span class="caret">▾</span></span><span class="chip warnc focus">6 unreadable<span class="caret">▾</span></span><span class="push"><span class="chip">Import</span></span></div>
+    <div class="mapbg"></div>
+  </div></div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Strings</em> every one, verbatim</h2>
+  <p>These ship exactly as written. Nothing here is a paraphrase.</p>
+  <table class="q">
+    <tr><th>Where</th><th>Text</th></tr>
+    <tr><td>Chip, any count</td><td class="k">{n} unreadable</td></tr>
+    <tr><td>Chip, accessible name</td><td class="k">{n} lines could not be read</td></tr>
+    <tr><td>Chip, accessible name, n = 1</td><td class="k">1 line could not be read</td></tr>
+    <tr><td>Panel heading</td><td class="k">Lines that could not be read</td></tr>
+    <tr><td>Panel footer</td><td class="k">None of this reached the map.</td></tr>
+    <tr><td>Kind labels</td><td class="k">Region · Unit · Structure · Battle · Attitude</td></tr>
+    <tr><td>Cost note on a lost hex</td><td class="k">The whole hex was lost — {m} further lines, including {u} units.</td></tr>
+    <tr><td>Cost note, m = 1</td><td class="k">The whole hex was lost — 1 further line, including {u} units.</td></tr>
+    <tr><td>Cost note, u = 1</td><td class="k">The whole hex was lost — {m} further lines, including 1 unit.</td></tr>
+    <tr><td>Copy button, at rest</td><td class="k">Copy all</td></tr>
+    <tr><td>Copy button, for 2s after</td><td class="k">Copied</td></tr>
+    <tr><td>Batch import dialog, extra bullet</td><td class="k">{n} lines across {f} of these reports could not be read.</td></tr>
+  </table>
+  <div class="absent">The panel heading is plural whatever the count: it names the panel, not its contents. The footer is
+  count-independent by design — that is why <code>None of this reached the map.</code> was chosen over round 1's
+  <code>Nothing on these lines reached the map.</code>, which understated a lost hex.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>The clipboard</em> shaped to paste into a bug report</h2>
+  <pre class="clip">6 lines of neworigins-g8-f73-t71.rep could not be read:
+
+  region   998-999: mountain (,53) in Liou'ecpu, contains Rihead [city], 7922 peasants (hill dwarves), $4753.
+                    (the whole hex was lost - 34 further lines, including 9 units)
+  unit         412: * Smiley :( (100), Wanderers (29), 10 humans [HUMN].
+  unit        1077: - ?? (), Wanderers (29).
+  structure   1512: + Ruin [0] : closed.
+  attitude      86: Hostile : ?? (), Creatures (2).
+  battle      2244: ?? (, on guard, 12 orcs [ORC].</pre>
+  <div class="absent">ASCII throughout — a plain hyphen in the range and in the cost note, not the en dash the panel uses.
+  A maintainer reading a pasted block has no panel to look at, so the kind stays in the clipboard whatever the panel shows.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Batch import</em> one extra bullet, and nothing else</h2>
+  <p>The chip only ever describes the turn on screen. A multi-file import carries its total in the existing summary dialog.</p>
+  <div class="modal">
+    <h4>5 reports imported</h4>
+    <p>Turns 68 to 72 for Borg (73). Now showing turn 72.</p>
+    <ul>
+      <li>2 turns were already stored and were merged.</li>
+      <li class="warnline">6 lines across 2 of these reports could not be read.</li>
+    </ul>
+  </div>
+  <div class="absent">No pointer to where: you find them by switching to that turn, which follows from the chip belonging to
+  the loaded report. The bullet is omitted entirely when the batch had none.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Keyboard and focus</em></h2>
+  <p>The chip behaves exactly as the events chip beside it. Where the two disagree, the events chip wins.</p>
+  <table class="q">
+    <tr><th>Behaviour</th><th>Agreed</th></tr>
+    <tr><td>Tab order</td><td>A real button in the header's natural order, immediately after the events chip.</td></tr>
+    <tr><td>Open</td><td><code>Enter</code> or <code>Space</code>. Focus moves to the panel heading.</td></tr>
+    <tr><td>Close</td><td><code>Escape</code>, the ✕, or a click outside. Focus returns to the chip in every case.</td></tr>
+    <tr><td>Shortcut</td><td>None. The header has no single-key shortcuts today and this does not introduce the first.</td></tr>
+    <tr><td>Copy all</td><td>In the panel's tab order after the list; label becomes <code>Copied</code> for two seconds.</td></tr>
+    <tr><td>Persistence</td><td>None. The chip is rebuilt from the loaded report, follows a turn switch, returns on reload, and cannot be dismissed.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Rejected</em> and why, so nobody re-opens them</h2>
+  <table class="q">
+    <tr><th>Considered</th><th>Rejected because</th></tr>
+    <tr><td>Status line + modal</td><td>The status line is one shared channel; the next message overwrites it and there is then no way back to the list. A modal also interrupts to report something the player cannot act on.</td></tr>
+    <tr><td>Inline banner under the header</td><td>Steals map height, its dismissal is one-way, and it would be a third notice pattern in the same 100px of header.</td></tr>
+    <tr><td>Only marker lines (<code>*</code>/<code>-</code>/<code>+</code>)</td><td>Misses a whole lost hex, which is the largest silent loss there is.</td></tr>
+    <tr><td>A cap on the list</td><td>A truncated list is a second lie about the same report.</td></tr>
+    <tr><td>Grouping by file after a batch</td><td>The chip would mean two different things depending on how you last loaded, and it needs storage outliving the load.</td></tr>
+    <tr><td>A red chip when a hex was lost</td><td>A longer chip in a header that already wraps, plus a second string with plural forms. The panel explains; the chip only invites.</td></tr>
+    <tr><td>Dropping the kind column when narrow</td><td>Hides information at exactly the width where the raw text is hardest to read.</td></tr>
+    <tr><td>Making the chip dismissable</td><td>Then the dismissal has to be remembered somewhere, and a dismissed loss is a silent loss again.</td></tr>
+  </table>
+</section>
+</main>
+</body>
+</html>
