@@ -11,7 +11,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::scan::{is_none_list, parse_money, split_top_level, split_trailing_id};
+use super::scan::{
+    is_none_list, parse_money, split_leading_id, split_top_level, split_trailing_id,
+};
 use super::unwrap::LogicalLine;
 
 /// Months in the order the game advances through them.
@@ -205,10 +207,10 @@ fn parse_faction_status_entry(body: &str) -> Option<FactionStatusEntry> {
 /// Reads one `Declared Attitudes:` line, such as `Hostile : Creatures (2), ... .` or
 /// `Unfriendly : none.`.
 ///
-/// A comma is only top level between entries, as elsewhere in this module (see [`parse_faction`]),
-/// so a faction name that itself contained a top-level comma would be split — no such name has been
-/// seen in a real report. An entry that does not end in `Name (id)` is dropped tolerantly rather
-/// than failing the whole line, matching this parser's general contract.
+/// Entries are read left to right by [`split_leading_id`], so a faction name containing a top-level
+/// comma — `Smith, Jones (29)` — is kept whole rather than split at the comma. Text that does not
+/// contain a further `Name (id)` is dropped tolerantly rather than failing the whole line, matching
+/// this parser's general contract.
 fn parse_attitude_level(body: &str) -> Option<AttitudeLevel> {
     let (attitude, rest) = body.split_once(':')?;
     let rest = rest.trim();
@@ -216,11 +218,15 @@ fn parse_attitude_level(body: &str) -> Option<AttitudeLevel> {
     let factions = if is_none_list(rest) {
         Vec::new()
     } else {
-        split_top_level(rest.trim_end_matches('.'), ',')
-            .into_iter()
-            .filter_map(|entry| split_trailing_id(&entry))
-            .map(|(name, id)| FactionRef { name, id })
-            .collect()
+        let mut entries = Vec::new();
+        let mut remaining = rest.trim_end_matches('.');
+        // Greedy from the left: each entry ends in its own `(id)`, so a name carrying a top-level
+        // comma is kept whole. The slice shrinks past a `)` on every pass, so this terminates.
+        while let Some((name, id, after)) = split_leading_id(remaining) {
+            entries.push(FactionRef { name, id });
+            remaining = after;
+        }
+        entries
     };
 
     Some(AttitudeLevel {
@@ -418,6 +424,24 @@ mod tests {
             .find(|line| line.body().starts_with("Hostile"))
             .expect("a single logical Hostile line");
         assert!(hostile.text.contains("Heirs of the Sun (90)"));
+    }
+
+    #[test]
+    fn reads_an_attitude_entry_whose_faction_name_contains_a_comma() {
+        let level = parse_attitude_level("Hostile : Smith, Jones (29), Creatures (2).")
+            .expect("attitude line should parse");
+
+        assert_eq!(
+            level
+                .factions
+                .iter()
+                .map(|f| (f.name.as_str(), f.id.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("Smith, Jones", "29"), ("Creatures", "2")]
+        );
+
+        let empty = parse_attitude_level("Unfriendly : none.").expect("attitude line should parse");
+        assert!(empty.factions.is_empty());
     }
 
     #[test]

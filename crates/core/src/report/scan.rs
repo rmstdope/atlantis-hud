@@ -41,6 +41,91 @@ pub fn split_top_level(input: &str, separator: char) -> Vec<String> {
     parts
 }
 
+/// Reads a leading `Name (id)` from `input`, where the name may itself contain top-level commas.
+///
+/// Scans for the first parenthesised group at bracket depth zero whose contents are all ASCII
+/// digits; everything before it is the name. `Ranger (scout) Bob (100)` therefore yields
+/// `("Ranger (scout) Bob", "100")`, and `Smith, Jones (100), Wanderers (29)` yields
+/// `("Smith, Jones", "100")` with the remainder trimmed down to `"Wanderers (29)"`.
+///
+/// The third element is what follows the closing `)`, with leading whitespace and one leading
+/// separator comma removed, so a caller can keep walking or compute a byte offset with
+/// `input.len() - rest.len()`. `input` is scanned exactly as given - never trimmed here - so that
+/// offset arithmetic stays correct.
+///
+/// `None` when no top-level `(digits)` group exists, which is what every caller already treats as
+/// an unreadable line.
+#[must_use]
+pub fn split_leading_id(input: &str) -> Option<(String, String, &str)> {
+    let mut depth = 0i32;
+    let mut candidate_open: Option<usize> = None;
+
+    for (index, character) in input.char_indices() {
+        match character {
+            '(' => {
+                if depth <= 0 {
+                    candidate_open = Some(index);
+                }
+                depth += 1;
+            }
+            '[' => depth += 1,
+            ')' | ']' => {
+                depth -= 1;
+                if depth <= 0 {
+                    if let Some(open) = candidate_open.take() {
+                        if character == ')' {
+                            let id = &input[open + 1..index];
+                            if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
+                                let name = input[..open].trim().to_string();
+                                let rest = input[index + 1..]
+                                    .trim_start()
+                                    .strip_prefix(',')
+                                    .unwrap_or_else(|| input[index + 1..].trim_start())
+                                    .trim_start();
+                                return Some((name, id.to_string(), rest));
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+/// The next top-level field of `input` (trimmed) and what follows it, past one separator.
+///
+/// The slice-returning counterpart of [`split_top_level`], for callers that consume fields one at a
+/// time and need the untouched remainder rather than a rebuilt list.
+///
+/// `None` when `input` is empty or all whitespace.
+#[must_use]
+pub fn next_top_level_field(input: &str, separator: char) -> Option<(&str, &str)> {
+    let mut depth = 0i32;
+
+    for (index, character) in input.char_indices() {
+        match character {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth -= 1,
+            _ if character == separator && depth <= 0 => {
+                let field = input[..index].trim();
+                let rest = input[index + character.len_utf8()..].trim_start();
+                return Some((field, rest));
+            }
+            _ => {}
+        }
+    }
+
+    let field = input.trim();
+    if field.is_empty() {
+        None
+    } else {
+        Some((field, ""))
+    }
+}
+
 /// Reads a trailing parenthesised number, as in `Borg TNG (95)`, returning the name and the number.
 #[must_use]
 pub fn split_trailing_id(input: &str) -> Option<(String, String)> {
@@ -201,6 +286,32 @@ mod tests {
     fn keeps_a_parenthesised_race_with_its_field() {
         let parts = split_top_level("12051 peasants (hill dwarves), $33983", ',');
         assert_eq!(parts, vec!["12051 peasants (hill dwarves)", "$33983"]);
+    }
+
+    #[test]
+    fn reads_a_leading_identifier_past_commas_in_the_name() {
+        assert_eq!(
+            split_leading_id("Smith, Jones (100), Wanderers (29)"),
+            Some((
+                "Smith, Jones".to_string(),
+                "100".to_string(),
+                "Wanderers (29)"
+            ))
+        );
+        assert_eq!(
+            split_leading_id("Ranger (scout) Bob (100), x"),
+            Some(("Ranger (scout) Bob".to_string(), "100".to_string(), "x"))
+        );
+        assert_eq!(split_leading_id("Ranger (scout)"), None);
+    }
+
+    #[test]
+    fn walks_top_level_fields_one_at_a_time() {
+        assert_eq!(
+            next_top_level_field("a, b (1), c", ','),
+            Some(("a", "b (1), c"))
+        );
+        assert_eq!(next_top_level_field("  ", ','), None);
     }
 
     #[test]

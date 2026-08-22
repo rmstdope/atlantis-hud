@@ -11,7 +11,9 @@
 //! Foreign units are usually terser, and may conceal their faction entirely.
 
 use super::model::{ItemAmount, ReportUnit, Skill};
-use super::scan::{parse_item_amount, parse_skill, split_top_level, split_trailing_id};
+use super::scan::{
+    next_top_level_field, parse_item_amount, parse_skill, split_leading_id, split_top_level,
+};
 
 /// Flags the game prints for a unit. Anything else in that position is treated as an item.
 const KNOWN_FLAGS: &[&str] = &[
@@ -122,12 +124,7 @@ pub fn parse_unit(
         .unwrap_or(body);
 
     let (head, sections) = split_sections(without_marker);
-    let mut fields = split_top_level(&head, ',');
-    if fields.is_empty() {
-        return None;
-    }
-
-    let (name, unit_id) = split_trailing_id(&fields.remove(0))?;
+    let (name, unit_id, mut rest) = split_leading_id(&head)?;
 
     let mut unit = ReportUnit {
         unit_id,
@@ -148,28 +145,37 @@ pub fn parse_unit(
         structure_id: structure_id.map(str::to_string),
     };
 
-    for field in fields {
-        if let Some(flag) = matching_flag(&field) {
+    // Fields are walked one at a time rather than split up front, because a faction name may
+    // itself contain a top-level comma - so the identifier has to be found before the split.
+    while let Some((field, after)) = next_top_level_field(rest, ',') {
+        if let Some(flag) = matching_flag(field) {
             if flag == "on guard" || flag == "guarding" {
                 unit.on_guard = true;
             }
             unit.flags.push(flag.to_string());
+            rest = after;
             continue;
         }
 
         // The faction is the only other field shaped `Something (number)`, and it appears before
-        // the items. A concealed faction simply leaves it out.
+        // the items. A concealed faction simply leaves it out. The scan runs over the whole
+        // remainder so a comma inside the faction's name is kept; a candidate carrying a `[` is
+        // an item or a skill, and rejecting it is what stops the greedy scan running away.
         if unit.faction_id.is_none() && unit.items.is_empty() {
-            if let Some((faction_name, faction_id)) = split_trailing_id(&field) {
-                unit.faction_name = Some(faction_name);
-                unit.faction_id = Some(faction_id);
-                continue;
+            if let Some((faction_name, faction_id, after_faction)) = split_leading_id(rest) {
+                if !faction_name.contains('[') {
+                    unit.faction_name = Some(faction_name);
+                    unit.faction_id = Some(faction_id);
+                    rest = after_faction;
+                    continue;
+                }
             }
         }
 
-        if let Some(item) = parse_item_amount(&field) {
+        if let Some(item) = parse_item_amount(field) {
             unit.items.push(item);
         }
+        rest = after;
     }
 
     for (label, value) in sections {
@@ -257,6 +263,93 @@ mod tests {
         assert_eq!(unit.faction_name.as_deref(), Some("Wanderers"));
         assert_eq!(unit.items.len(), 1);
         assert_eq!(unit.men, 1);
+    }
+
+    #[test]
+    fn keeps_a_unit_whose_name_contains_a_comma() {
+        let unit = parse_unit(
+            "* Smith, Jones (100), Wanderers (29), behind, 10 humans [HUMN].",
+            true,
+            "1:7,53",
+            None,
+        )
+        .expect("unit should parse");
+
+        assert_eq!(unit.name, "Smith, Jones");
+        assert_eq!(unit.unit_id, "100");
+        assert_eq!(unit.faction_name.as_deref(), Some("Wanderers"));
+        assert_eq!(unit.men, 10);
+    }
+
+    #[test]
+    fn keeps_a_faction_whose_name_contains_a_comma() {
+        let unit = parse_unit(
+            "- Unit (5812), Wanderers, Inc (83), avoiding, hill dwarf [HDWA].",
+            false,
+            "1:7,53",
+            None,
+        )
+        .expect("unit should parse");
+
+        assert_eq!(unit.faction_name.as_deref(), Some("Wanderers, Inc"));
+        assert_eq!(unit.faction_id.as_deref(), Some("83"));
+        assert_eq!(unit.flags, vec!["avoiding".to_string()]);
+        assert_eq!(unit.items.len(), 1);
+    }
+
+    #[test]
+    fn reads_names_containing_other_punctuation() {
+        // The colon row is safe because `split_sections` only cuts at `. <Label>:` for a label in
+        // its closed set, and `Note:` is not one - see the module comment on SECTION_LABELS.
+        let cases = [
+            (
+                "- Advanced Carpentry Inc. (13762), Wanderers (29), 1 leader [LEAD].",
+                "Advanced Carpentry Inc.",
+                "13762",
+            ),
+            (
+                "- -= [0] =- (7323), Wanderers (29), 1 leader [LEAD].",
+                "-= [0] =-",
+                "7323",
+            ),
+            (
+                "- Ranger (scout) (7323), Wanderers (29), 1 leader [LEAD].",
+                "Ranger (scout)",
+                "7323",
+            ),
+            (
+                "- Smiley :) (100), Wanderers (29), 1 leader [LEAD].",
+                "Smiley :)",
+                "100",
+            ),
+            (
+                "- Note: Bob (100), Wanderers (29), 1 leader [LEAD].",
+                "Note: Bob",
+                "100",
+            ),
+            (
+                "- Bob; Jones (100), Wanderers (29), 1 leader [LEAD].",
+                "Bob; Jones",
+                "100",
+            ),
+            (
+                "- Bob's & Co (100), Wanderers (29), 1 leader [LEAD].",
+                "Bob's & Co",
+                "100",
+            ),
+            (
+                "- Sea\tWolf (100), Wanderers (29), 1 leader [LEAD].",
+                "Sea\tWolf",
+                "100",
+            ),
+        ];
+
+        for (line, expected_name, expected_id) in cases {
+            let unit = parse_unit(line, false, "1:7,53", None)
+                .unwrap_or_else(|| panic!("should parse: {line}"));
+            assert_eq!(unit.name, expected_name, "name from: {line}");
+            assert_eq!(unit.unit_id, expected_id, "id from: {line}");
+        }
     }
 
     #[test]
