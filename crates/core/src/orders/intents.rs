@@ -50,9 +50,14 @@ pub enum Intent {
     Pillage,
     Work,
     Entertain,
-    /// `WITHDRAW`, whose price the ruleset does not carry. Recorded so a check can decline to
-    /// judge a unit that spends money we cannot count.
-    Withdraw,
+    /// `WITHDRAW [number] <item>`, drawing goods against the faction's unclaimed silver.
+    ///
+    /// Carried in full since `ah-1wcw.6`; it was a bare variant while the ruleset held no
+    /// withdrawal prices and nothing could be done with the arguments.
+    Withdraw {
+        count: i64,
+        item: String,
+    },
     /// An order that takes the whole month and that no check reads any further.
     ///
     /// Occupying the month is the whole of what these say, and it is enough: a unit already
@@ -361,7 +366,19 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         "PILLAGE" if arguments.is_empty() => Some(Intent::Pillage),
         "WORK" if arguments.is_empty() => Some(Intent::Work),
         "ENTERTAIN" if arguments.is_empty() => Some(Intent::Entertain),
-        "WITHDRAW" => Some(Intent::Withdraw),
+        // The grammar gives WITHDRAW no `ALL` form, unlike BUY and SELL: `[number] [item]` or a
+        // bare `[item]`, which withdraws one.
+        "WITHDRAW" => match arguments {
+            [count, item] if count.kind == TokenKind::Number => Some(Intent::Withdraw {
+                count: count.text.parse().ok()?,
+                item: item.text.clone(),
+            }),
+            [item] if item.kind != TokenKind::Number => Some(Intent::Withdraw {
+                count: 1,
+                item: item.text.clone(),
+            }),
+            _ => None,
+        },
         // "This is a full month order." Nothing here reads them further; what matters is that the
         // unit's month is spoken for.
         "PRODUCE" => Some(Intent::MonthLong("PRODUCE")),
@@ -793,13 +810,22 @@ mod tests {
         assert_eq!(intents("unit 5\nENTERTAIN\n"), vec![Intent::Entertain]);
     }
 
-    /// The ruleset carries no withdrawal prices, so this is recorded as spending that cannot be
-    /// counted rather than as spending of nothing.
+    /// The grammar's forms are `[Number, Item]` and `[Item]`, so a bare item withdraws one.
     #[test]
-    fn a_withdrawal_is_recorded_even_though_its_price_is_unknown() {
+    fn a_withdrawal_carries_what_it_withdraws() {
         assert_eq!(
-            intents("unit 5\nWITHDRAW 10 grain\n"),
-            vec![Intent::Withdraw]
+            intents("unit 5\nWITHDRAW 5 stone\n"),
+            vec![Intent::Withdraw {
+                count: 5,
+                item: "stone".to_string()
+            }]
+        );
+        assert_eq!(
+            intents("unit 5\nWITHDRAW iron\n"),
+            vec![Intent::Withdraw {
+                count: 1,
+                item: "iron".to_string()
+            }]
         );
     }
 
