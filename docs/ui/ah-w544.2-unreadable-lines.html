@@ -214,6 +214,8 @@
     <tr><td>Copy button, at rest</td><td class="k">Copy all</td></tr>
     <tr><td>Copy button, for 2s after</td><td class="k">Copied</td></tr>
     <tr><td>Batch import dialog, extra bullet</td><td class="k">{n} lines across {f} of these reports could not be read.</td></tr>
+    <tr><td>Clipboard, first line</td><td class="k">{n} lines of turn {t}, {faction}, could not be read:</td></tr>
+    <tr><td>Clipboard, first line, n = 1</td><td class="k">1 line of turn {t}, {faction}, could not be read:</td></tr>
   </table>
   <div class="absent">The panel heading is plural whatever the count: it names the panel, not its contents. The footer is
   count-independent by design — that is why <code>None of this reached the map.</code> was chosen over round 1's
@@ -222,7 +224,7 @@
 
 <section>
   <h2 class="rule"><em>The clipboard</em> shaped to paste into a bug report</h2>
-  <pre class="clip">6 lines of neworigins-g8-f73-t71.rep could not be read:
+  <pre class="clip">6 lines of turn 71, Borg (73), could not be read:
 
   attitude      86: Hostile : ?? (), Creatures (2).
   unit         412: * Smiley :( (100), Wanderers (29), 10 humans [HUMN].
@@ -232,7 +234,9 @@
   structure   1512: + Ruin [0] : closed.
   battle      2244: ?? (, on guard, 12 orcs [ORC].</pre>
   <div class="absent">ASCII throughout — a plain hyphen in the range and in the cost note, not the en dash the panel uses.
-  A maintainer reading a pasted block has no panel to look at, so the kind stays in the clipboard whatever the panel shows.</div>
+  A maintainer reading a pasted block has no panel to look at, so the kind stays in the clipboard whatever the panel shows.
+  The first line names <strong>the turn, never the file</strong>: the chip is rebuilt from the loaded report, and a turn
+  restored from storage after a reload has no filename left to name. One form, always true.</div>
 </section>
 
 <section>
