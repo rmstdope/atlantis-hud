@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Showing a skill's study points (bead ah-ded4)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1120px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; }
+  h2.sec { margin-top:32px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.bad { border-left-color:var(--danger); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  table.ui { border-collapse:collapse; font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; width:100%; background:var(--raised); border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  table.ui th { background:var(--panel); color:var(--brass); font-weight:normal; font-size:10px; letter-spacing:.08em; text-transform:uppercase; text-align:left; padding:4px 7px; }
+  table.ui td { padding:3px 7px; border-top:1px solid var(--edge-soft); color:var(--ink-soft); }
+  table.ui td.n { color:var(--ink); }
+  .kv { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:8px 10px; }
+  .kv div { display:flex; gap:10px; padding:1px 0; }
+  .kv .k { color:var(--ink-dim); min-width:5em; }
+  .kv .v { color:var(--ink); }
+  table.cmp { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } table.cmp th,table.cmp td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--edge-soft); } table.cmp th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+  .mono { font-family:'SF Mono',Menlo,monospace; color:var(--ink); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Showing a skill's study points &mdash; <span>proposals</span> (bead ah-ded4)</h1>
+  <p>Your words: <i>&ldquo;it would be great to see the details of a skill in a unit's skill list as well as in the unit in hex. currently you only have e.g. &lsquo;mini 2&rsquo;, but there is a big difference between mini2 (90) and mini2 (150). So I would add the (xxx).&rdquo;</i></p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;1 &nbsp;One fact, four spellings <small>all verified on main</small></h2>
+  <table class="cmp">
+    <tr><th>Where</th><th>Renders</th><th>Source</th></tr>
+    <tr><td><b>Units in hex</b></td><td class="mono">MINI 2</td><td><code>UnitTableDock.tsx:687</code> &mdash; <code>`${skill.tag} ${skill.level}`</code></td></tr>
+    <tr><td><b>Unit pane</b></td><td class="mono">MINI &nbsp; 2 &middot; 90</td><td><code>UnitPanel.tsx:137</code> &mdash; <code>`${skill.level} &middot; ${skill.points}`</code></td></tr>
+    <tr><td><b>Turn diff</b></td><td class="mono">mining 2 (90)</td><td><code>turnDiff.ts:99</code></td></tr>
+    <tr><td><b>The game's own report</b></td><td class="mono">observation [OBSE] 2 (90)</td><td>the <code>.rep</code> file itself</td></tr>
+  </table>
+  <div class="banner"><b>The unit pane already shows the points</b> &mdash; as <code>2 &middot; 90</code>. So either you did not notice it, or <b>the middot does not read as the same fact</b> as the <code>(90)</code> the report uses. Worth knowing, because it makes this bead smaller than it looks and turns it into a question about consistency.</div>
+
+  <h2 class="sec">&sect;2 &nbsp;Units in hex &mdash; the surface genuinely missing it</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> <code>MINI 2 (90)</code></h3>
+      <table class="ui">
+        <tr><th>Unit</th><th>Skills</th></tr>
+        <tr><td class="n">Miners (12531)</td><td class="n">MINI 2 (90), OBSE 1 (30)</td></tr>
+        <tr><td class="n">Dwarven Miners (14355)</td><td class="n">MINI 2 (150)</td></tr>
+      </table>
+      <ul class="notes">
+        <li><b>Exactly what you asked for</b>, and it matches the report's own notation and the turn diff's.</li>
+        <li>The two Miners rows now visibly differ &mdash; which is the whole point.</li>
+        <li class="con">The column grows; a unit with four skills gets noticeably wider.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>B</em> <code>MINI 2</code>, points on hover</h3>
+      <table class="ui">
+        <tr><th>Unit</th><th>Skills</th></tr>
+        <tr><td class="n">Miners (12531)</td><td class="n">MINI 2, OBSE 1</td></tr>
+        <tr><td class="n">Dwarven Miners (14355)</td><td class="n">MINI 2 <span style="color:var(--brass)">&#9662;</span></td></tr>
+      </table>
+      <ul class="notes">
+        <li>The column stays exactly as wide as it is today.</li>
+        <li class="con"><b>Two units reading <code>MINI 2</code> still look identical</b> until you hover each one &mdash; which is the problem you reported.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;3 &nbsp;The unit pane &mdash; does the middot become parentheses?</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>C</em> All three agree on <code>(points)</code></h3>
+      <div class="kv">
+        <div><span class="k">MINI</span><span class="v">2 (90)</span></div>
+        <div><span class="k">OBSE</span><span class="v">1 (30)</span></div>
+      </div>
+      <ul class="notes">
+        <li><b>One spelling everywhere</b> &mdash; hex list, unit pane, turn diff &mdash; and it is the one the game itself uses.</li>
+        <li>A number you learn to read in one place reads the same in all of them.</li>
+        <li class="con">Changes a surface you did not complain about.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>D</em> Leave the middot alone</h3>
+      <div class="kv">
+        <div><span class="k">MINI</span><span class="v">2 &middot; 90</span></div>
+        <div><span class="k">OBSE</span><span class="v">1 &middot; 30</span></div>
+      </div>
+      <ul class="notes">
+        <li>Smallest possible diff; only the surface you reported changes.</li>
+        <li>The pane is a label/value list, where a middot separator is idiomatic.</li>
+        <li class="con"><b>Three spellings of one fact survive</b>, and the pane keeps the one that does not match the report.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="banner bad"><b>There is a real question underneath &sect;3.</b> If <code>2 &middot; 90</code> failed to tell you what <code>(90)</code> would have told you, that is evidence the middot form is not doing its job &mdash; and the fix is consistency rather than an extra number. If you simply had not looked at the pane, then <b>D</b> is the honest answer and this bead is one line in one file.</div>
+
+</main>
+</body>
+</html>
