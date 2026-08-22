@@ -27,6 +27,8 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
       messagesPanel={null}
       problemCount={0}
       problemsPanel={null}
+      unreadableCount={0}
+      unreadablePanel={null}
       tradeCount={0}
       tradePanel={null}
       battleCount={0}

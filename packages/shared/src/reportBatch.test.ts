@@ -20,7 +20,7 @@ const file = (
     : turnNumber === null
       ? { ok: false, reason: REPORT_NAMES_NO_TURN }
       : { ok: true }
-): BatchCandidate => ({ fileName, factionId, turnNumber, usable });
+): BatchCandidate => ({ fileName, factionId, turnNumber, usable, unreadableCount: 0 });
 
 const borg = (turnNumber: number | null, name = `f95-t${turnNumber}.rep`) =>
   file(name, "95", turnNumber);
@@ -108,9 +108,9 @@ describe("planning a batch of reports", () => {
     const plan = planReportBatch(viewer("95"), [borg(71), borg(69), borg(70)]);
 
     expect(plan.steps).toEqual([
-      { kind: "import", index: 1, fileName: "f95-t69.rep", turnNumber: 69 },
-      { kind: "import", index: 2, fileName: "f95-t70.rep", turnNumber: 70 },
-      { kind: "import", index: 0, fileName: "f95-t71.rep", turnNumber: 71 }
+      { kind: "import", index: 1, fileName: "f95-t69.rep", turnNumber: 69, unreadableCount: 0 },
+      { kind: "import", index: 2, fileName: "f95-t70.rep", turnNumber: 70, unreadableCount: 0 },
+      { kind: "import", index: 0, fileName: "f95-t71.rep", turnNumber: 71, unreadableCount: 0 }
     ]);
     expect(plan.skipped).toEqual([]);
   });
@@ -135,8 +135,8 @@ describe("planning a batch of reports", () => {
     const plan = planReportBatch(viewer("95"), [borg(71), ally(71)]);
 
     expect(plan.steps).toEqual([
-      { kind: "import", index: 0, fileName: "f95-t71.rep", turnNumber: 71 },
-      { kind: "merge", index: 1, fileName: "f73-t71.rep", turnNumber: 71 }
+      { kind: "import", index: 0, fileName: "f95-t71.rep", turnNumber: 71, unreadableCount: 0 },
+      { kind: "merge", index: 1, fileName: "f73-t71.rep", turnNumber: 71, unreadableCount: 0 }
     ]);
   });
 
@@ -162,9 +162,9 @@ describe("planning a batch of reports", () => {
     const plan = planReportBatch(viewer("95"), [borg(70), borg(71), ally(69)]);
 
     expect(plan.steps).toEqual([
-      { kind: "merge", index: 2, fileName: "f73-t69.rep", turnNumber: 69 },
-      { kind: "import", index: 0, fileName: "f95-t70.rep", turnNumber: 70 },
-      { kind: "import", index: 1, fileName: "f95-t71.rep", turnNumber: 71 }
+      { kind: "merge", index: 2, fileName: "f73-t69.rep", turnNumber: 69, unreadableCount: 0 },
+      { kind: "import", index: 0, fileName: "f95-t70.rep", turnNumber: 70, unreadableCount: 0 },
+      { kind: "import", index: 1, fileName: "f95-t71.rep", turnNumber: 71, unreadableCount: 0 }
     ]);
   });
 
@@ -172,7 +172,7 @@ describe("planning a batch of reports", () => {
     const plan = planReportBatch(viewer("95"), [borg(71), ally(72)]);
 
     expect(plan.steps).toEqual([
-      { kind: "import", index: 0, fileName: "f95-t71.rep", turnNumber: 71 }
+      { kind: "import", index: 0, fileName: "f95-t71.rep", turnNumber: 71, unreadableCount: 0 }
     ]);
     expect(plan.skipped).toEqual([
       { index: 1, fileName: "f73-t72.rep", reason: "turn 72 is newer than your own turn 71" }
@@ -184,7 +184,7 @@ describe("planning a batch of reports", () => {
     const plan = planReportBatch(viewer("95", 71), [ally(71), ally(72)]);
 
     expect(plan.steps).toEqual([
-      { kind: "merge", index: 0, fileName: "f73-t71.rep", turnNumber: 71 }
+      { kind: "merge", index: 0, fileName: "f73-t71.rep", turnNumber: 71, unreadableCount: 0 }
     ]);
     expect(plan.skipped).toEqual([
       { index: 1, fileName: "f73-t72.rep", reason: "turn 72 is newer than your own turn 71" }
@@ -200,8 +200,8 @@ describe("planning a batch of reports", () => {
     const plan = planReportBatch(viewer("95", 71), [borg(60), ally(71)]);
 
     expect(plan.steps).toEqual([
-      { kind: "import", index: 0, fileName: "f95-t60.rep", turnNumber: 60 },
-      { kind: "merge", index: 1, fileName: "f73-t71.rep", turnNumber: 71 }
+      { kind: "import", index: 0, fileName: "f95-t60.rep", turnNumber: 60, unreadableCount: 0 },
+      { kind: "merge", index: 1, fileName: "f73-t71.rep", turnNumber: 71, unreadableCount: 0 }
     ]);
     expect(plan.skipped).toEqual([]);
     // Still the batch's own newest turn that ends up on screen, not the ally's.
@@ -307,8 +307,8 @@ describe("planning a batch of reports", () => {
     const plan = planReportBatch(viewer("95"), [borg(71, "turn.rep"), borg(69, "turn.rep")]);
 
     expect(plan.steps).toEqual([
-      { kind: "import", index: 1, fileName: "turn.rep", turnNumber: 69 },
-      { kind: "import", index: 0, fileName: "turn.rep", turnNumber: 71 }
+      { kind: "import", index: 1, fileName: "turn.rep", turnNumber: 69, unreadableCount: 0 },
+      { kind: "import", index: 0, fileName: "turn.rep", turnNumber: 71, unreadableCount: 0 }
     ]);
   });
 

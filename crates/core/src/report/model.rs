@@ -237,6 +237,43 @@ pub fn region_label(terrain: &str, x: i32, y: i32, province: &str) -> String {
     format!("{terrain} ({x},{y}) in {province}")
 }
 
+/// What kind of record the parser failed to read. Fixed set; the shell renders one word per case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub enum UnreadableKind {
+    Region,
+    Unit,
+    Structure,
+    Battle,
+    Attitude,
+}
+
+/// What a rejected region block took with it. Only ever `Some` for [`UnreadableKind::Region`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct LostBlock {
+    /// Source lines after the block's own header line.
+    pub further_lines: usize,
+    /// How many of those carried a unit marker (`*` or `-`).
+    pub units: usize,
+}
+
+/// One record the parser could not read, kept verbatim so the player can see what was lost.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct UnreadableLine {
+    pub kind: UnreadableKind,
+    /// 1-based source line numbers, from `LogicalLine`. Equal when the record did not wrap.
+    pub line_start: usize,
+    pub line_end: usize,
+    /// The joined logical line, exactly as the parser saw it.
+    pub text: String,
+    pub lost: Option<LostBlock>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

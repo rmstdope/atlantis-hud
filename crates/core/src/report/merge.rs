@@ -357,6 +357,7 @@ mod tests {
             regions,
             battles: Vec::new(),
             orders_template: None,
+            unreadable_lines: Vec::new(),
         }
     }
 

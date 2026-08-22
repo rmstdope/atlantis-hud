@@ -4,6 +4,7 @@ import type { MapLevel } from "../hexMapModel";
 import { SURFACE_LEVEL } from "../hexMapModel";
 import { useWorkspaceStore } from "../workspaceStore";
 import { describeTurnMessages } from "../turnMessages";
+import { unreadableChipLabel, unreadableChipName } from "../unreadableLines";
 import { ExportMenu } from "./ExportMenu";
 import { ChipPopover } from "./popover";
 import type { StatusLine, StatusTone } from "./shellStatus";
@@ -34,6 +35,7 @@ export type HeaderPopoverId =
   | "faction"
   | "messages"
   | "problems"
+  | "unreadable"
   | "trade"
   | "export";
 
@@ -95,6 +97,9 @@ type AppHeaderProps = {
    */
   problemCount: number;
   problemsPanel: ReactNode;
+  /** How many lines of the loaded report the parser could not read. */
+  unreadableCount: number;
+  unreadablePanel: ReactNode;
   /**
    * How many trade routes the known map currently offers, counted in rows as shown - a folded
    * circuit counts once. Unlike every other counted chip here, this one is shown at zero too (the
@@ -199,6 +204,8 @@ export function AppHeader({
   messagesPanel,
   problemCount,
   problemsPanel,
+  unreadableCount,
+  unreadablePanel,
   tradeCount,
   tradePanel,
   battleCount,
@@ -503,6 +510,35 @@ export function AppHeader({
           >
             <span aria-hidden>⚠ </span>
             {problemCount} problem{problemCount === 1 ? "" : "s"}
+            <span aria-hidden className="ml-1 text-ink-dim">
+              ▾
+            </span>
+          </button>
+        </ChipPopover>
+      ) : null}
+
+      {/*
+        What the parser could not read at all. Amber whatever is in the list, including a lost hex:
+        the chip's job is to get the panel opened, and the panel is what explains. Absent when the
+        report was read completely, which is the only "off" this needs.
+      */}
+      {unreadableCount > 0 ? (
+        <ChipPopover
+          open={openPopover === "unreadable"}
+          onDismiss={close}
+          panel={unreadablePanel}
+        >
+          <button
+            type="button"
+            data-testid="unreadable-chip"
+            aria-haspopup="dialog"
+            aria-expanded={openPopover === "unreadable"}
+            aria-label={unreadableChipName(unreadableCount)}
+            onClick={() => toggle("unreadable")}
+            className="rounded border border-warn px-2 py-0.5 text-warn"
+          >
+            <span aria-hidden>⚠ </span>
+            {unreadableChipLabel(unreadableCount)}
             <span aria-hidden className="ml-1 text-ink-dim">
               ▾
             </span>

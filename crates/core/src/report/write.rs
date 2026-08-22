@@ -447,7 +447,7 @@ mod tests {
 
     fn region_of(source: &str) -> ReportRegion {
         let lines = unwrap_lines(source);
-        parse_region_block(&lines[0], &lines[1..]).expect("fixture should parse")
+        parse_region_block(&lines[0], &lines[1..], &mut Vec::new()).expect("fixture should parse")
     }
 
     /// Writes a region and reads it back, which is the whole contract of this module.

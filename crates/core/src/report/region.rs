@@ -16,7 +16,9 @@
 //!   - Eastern Watch (14353), on guard, Elder Tree Forests (32), 120 hill dwarves [HDWA].
 //! ```
 
-use super::model::{Exit, ItemAmount, MarketItem, ReportRegion, Structure};
+use super::model::{
+    Exit, ItemAmount, MarketItem, ReportRegion, Structure, UnreadableKind, UnreadableLine,
+};
 use super::scan::{
     is_none_list, parse_coordinate, parse_item_amount, parse_market_item, parse_money,
     parse_settlement, split_top_level,
@@ -219,7 +221,25 @@ fn parse_product_list(value: &str) -> Vec<ItemAmount> {
 /// Units nested under a structure keep that structure's identifier, which is what lets the unit
 /// table present the region as the flattened tree it really is.
 #[must_use]
-pub fn parse_region_block(header: &LogicalLine, rest: &[LogicalLine]) -> Option<ReportRegion> {
+/// A record kept verbatim from the line the parser could not read.
+///
+/// `line.text` rather than `line.body()`: the marker is part of what the player has to recognise
+/// when they go and look at the report.
+pub(crate) fn unread(line: &LogicalLine, kind: UnreadableKind) -> UnreadableLine {
+    UnreadableLine {
+        kind,
+        line_start: line.line_start,
+        line_end: line.line_end,
+        text: line.text.clone(),
+        lost: None,
+    }
+}
+
+pub fn parse_region_block(
+    header: &LogicalLine,
+    rest: &[LogicalLine],
+    unreadable: &mut Vec<UnreadableLine>,
+) -> Option<ReportRegion> {
     let mut region = parse_region_header(header.body())?;
     let region_id = region.region_id.clone();
     let mut current_structure: Option<String> = None;
@@ -239,9 +259,12 @@ pub fn parse_region_block(header: &LogicalLine, rest: &[LogicalLine]) -> Option<
 
         match line.marker() {
             Some('+') => {
-                if let Some(structure) = parse_structure(body) {
-                    current_structure = Some(structure.structure_id.clone());
-                    region.structures.push(structure);
+                match parse_structure(body) {
+                    Some(structure) => {
+                        current_structure = Some(structure.structure_id.clone());
+                        region.structures.push(structure);
+                    }
+                    None => unreadable.push(unread(line, UnreadableKind::Structure)),
                 }
                 in_exits = false;
                 continue;
@@ -251,13 +274,14 @@ pub fn parse_region_block(header: &LogicalLine, rest: &[LogicalLine]) -> Option<
                 if line.indent == 0 {
                     current_structure = None;
                 }
-                if let Some(unit) = parse_unit(
+                match parse_unit(
                     body,
                     marker == '*',
                     &region_id,
                     current_structure.as_deref(),
                 ) {
-                    region.units.push(unit);
+                    Some(unit) => region.units.push(unit),
+                    None => unreadable.push(unread(line, UnreadableKind::Unit)),
                 }
                 in_exits = false;
                 continue;
@@ -283,6 +307,48 @@ pub fn parse_region_block(header: &LogicalLine, rest: &[LogicalLine]) -> Option<
 mod tests {
     use super::*;
     use crate::report::unwrap::unwrap_lines;
+
+    #[test]
+    fn records_a_unit_line_it_could_not_read() {
+        let source = concat!(
+            "mountain (7,53) in Inhead.\n",
+            "* Seven of Eight (18642), Borg (73), leader [LEAD].\n",
+            "* Nameless scout, 1 leader [LEAD].\n",
+        );
+
+        let lines = unwrap_lines(source);
+        let mut unreadable = Vec::new();
+        let region = parse_region_block(&lines[0], &lines[1..], &mut unreadable)
+            .expect("region should parse");
+
+        assert_eq!(region.units.len(), 1);
+        assert_eq!(unreadable.len(), 1);
+        assert_eq!(unreadable[0].kind, UnreadableKind::Unit);
+        assert_eq!(unreadable[0].text, "* Nameless scout, 1 leader [LEAD].");
+        assert_eq!(unreadable[0].line_start, 3);
+        assert_eq!(unreadable[0].line_end, 3);
+        assert_eq!(unreadable[0].lost, None);
+    }
+
+    #[test]
+    fn records_a_structure_line_it_could_not_read() {
+        let source = concat!(
+            "mountain (7,53) in Inhead.\n",
+            "+ Cartographers HQ [1] : Fort.\n",
+            "+ Nameless shaft.\n",
+        );
+
+        let lines = unwrap_lines(source);
+        let mut unreadable = Vec::new();
+        let region = parse_region_block(&lines[0], &lines[1..], &mut unreadable)
+            .expect("region should parse");
+
+        assert_eq!(region.structures.len(), 1);
+        assert_eq!(unreadable.len(), 1);
+        assert_eq!(unreadable[0].kind, UnreadableKind::Structure);
+        assert_eq!(unreadable[0].text, "+ Nameless shaft.");
+        assert_eq!(unreadable[0].lost, None);
+    }
 
     #[test]
     fn reads_a_settled_region_header() {
@@ -396,7 +462,8 @@ mod tests {
         );
 
         let lines = unwrap_lines(source);
-        let region = parse_region_block(&lines[0], &lines[1..]).expect("region should parse");
+        let region = parse_region_block(&lines[0], &lines[1..], &mut Vec::new())
+            .expect("region should parse");
 
         assert_eq!(region.wages.as_deref(), Some("$24.1"));
         assert_eq!(region.max_wages, Some(6796));

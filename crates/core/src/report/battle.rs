@@ -41,6 +41,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::model::{UnreadableKind, UnreadableLine};
+use super::region::unread;
 use super::scan::{
     next_top_level_field, parse_coordinate, split_leading_id, split_top_level, split_trailing_id,
 };
@@ -167,7 +169,7 @@ fn opens_a_battle(line: &LogicalLine) -> bool {
 /// A report with no such section, or none of its own, yields an empty list. Nothing here can fail
 /// the parse.
 #[must_use]
-pub fn parse_battles(lines: &[LogicalLine]) -> Vec<Battle> {
+pub fn parse_battles(lines: &[LogicalLine], unreadable: &mut Vec<UnreadableLine>) -> Vec<Battle> {
     let Some(section_start) = lines
         .iter()
         .position(|line| line.body().trim_end_matches(':') == "Battles during turn")
@@ -197,7 +199,7 @@ pub fn parse_battles(lines: &[LogicalLine]) -> Vec<Battle> {
                 .get(position + 1)
                 .copied()
                 .unwrap_or(section.len());
-            parse_one_battle(&section[start..end])
+            parse_one_battle(&section[start..end], unreadable)
         })
         .collect()
 }
@@ -214,7 +216,7 @@ enum Phase {
     TotalCasualties,
 }
 
-fn parse_one_battle(lines: &[LogicalLine]) -> Battle {
+fn parse_one_battle(lines: &[LogicalLine], unreadable: &mut Vec<UnreadableLine>) -> Battle {
     let headline_line = &lines[0];
     let parsed_headline = parse_headline(headline_line.body());
 
@@ -308,16 +310,14 @@ fn parse_one_battle(lines: &[LogicalLine]) -> Battle {
         }
 
         match phase {
-            Phase::Attackers => {
-                if let Some(unit) = parse_battle_unit(body) {
-                    battle.attackers.push(unit);
-                }
-            }
-            Phase::Defenders => {
-                if let Some(unit) = parse_battle_unit(body) {
-                    battle.defenders.push(unit);
-                }
-            }
+            Phase::Attackers => match parse_battle_unit(body) {
+                Some(unit) => battle.attackers.push(unit),
+                None => unreadable.push(unread(line, UnreadableKind::Battle)),
+            },
+            Phase::Defenders => match parse_battle_unit(body) {
+                Some(unit) => battle.defenders.push(unit),
+                None => unreadable.push(unread(line, UnreadableKind::Battle)),
+            },
             Phase::Round => {
                 if let Some(round) = current_round.as_mut() {
                     if let Some(casualty) = parse_casualty_line(body) {
@@ -504,7 +504,28 @@ mod tests {
     use crate::report::unwrap::unwrap_lines;
 
     fn battles(source: &str) -> Vec<Battle> {
-        parse_battles(&unwrap_lines(source))
+        parse_battles(&unwrap_lines(source), &mut Vec::new())
+    }
+
+    #[test]
+    fn records_a_roster_line_it_could_not_read() {
+        let source = concat!(
+            "Battles during turn:\n",
+            "Borg (73) attacks Wanderers (83) in mountain (7,53) in Inhead!\n",
+            "Attackers:\n",
+            "Seven of Eight (18642), Borg (73), behind, 10 leaders [LEAD].\n",
+            "Nameless attacker, 10 leaders [LEAD].\n",
+        );
+
+        let mut unreadable = Vec::new();
+        let battles = parse_battles(&unwrap_lines(source), &mut unreadable);
+
+        assert_eq!(battles.len(), 1);
+        assert_eq!(battles[0].attackers.len(), 1);
+        assert_eq!(unreadable.len(), 1);
+        assert_eq!(unreadable[0].kind, UnreadableKind::Battle);
+        assert_eq!(unreadable[0].text, "Nameless attacker, 10 leaders [LEAD].");
+        assert_eq!(unreadable[0].lost, None);
     }
 
     #[test]

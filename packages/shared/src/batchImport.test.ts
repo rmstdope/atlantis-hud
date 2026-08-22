@@ -10,7 +10,8 @@ import { REPORT_NAMES_NO_FACTION, REPORT_NAMES_NO_TURN } from "./reportLoadDecis
  * report behind it, derived here from the identity so a fixture cannot forget the judgement.
  */
 function candidate(
-  fields: Omit<BatchCandidate, "usable"> & Partial<Pick<BatchCandidate, "usable">>
+  fields: Omit<BatchCandidate, "usable" | "unreadableCount"> &
+    Partial<Pick<BatchCandidate, "usable" | "unreadableCount">>
 ): BatchCandidate {
   const usable: BatchCandidate["usable"] =
     fields.usable ??
@@ -19,7 +20,7 @@ function candidate(
       : fields.turnNumber === null
         ? { ok: false, reason: REPORT_NAMES_NO_TURN }
         : { ok: true });
-  return { ...fields, usable };
+  return { unreadableCount: 0, ...fields, usable };
 }
 
 // One region, because a report with nothing in it is refused outright (ah-sgn.1) and these fixtures

@@ -11,6 +11,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::model::{UnreadableKind, UnreadableLine};
+use super::region::unread;
 use super::scan::{
     is_none_list, parse_money, split_leading_id, split_top_level, split_trailing_id,
 };
@@ -211,10 +213,11 @@ fn parse_faction_status_entry(body: &str) -> Option<FactionStatusEntry> {
 /// comma — `Smith, Jones (29)` — is kept whole rather than split at the comma. Text that does not
 /// contain a further `Name (id)` is dropped tolerantly rather than failing the whole line, matching
 /// this parser's general contract.
-fn parse_attitude_level(body: &str) -> Option<AttitudeLevel> {
+fn parse_attitude_level(body: &str) -> Option<(AttitudeLevel, bool)> {
     let (attitude, rest) = body.split_once(':')?;
     let rest = rest.trim();
 
+    let mut remainder_unread = false;
     let factions = if is_none_list(rest) {
         Vec::new()
     } else {
@@ -226,13 +229,21 @@ fn parse_attitude_level(body: &str) -> Option<AttitudeLevel> {
             entries.push(FactionRef { name, id });
             remaining = after;
         }
+        // Whatever the greedy loop could not consume is precisely the part that names no faction.
+        remainder_unread = !remaining
+            .trim()
+            .trim_matches(|c| c == '.' || c == ',')
+            .is_empty();
         entries
     };
 
-    Some(AttitudeLevel {
-        attitude: attitude.trim().to_string(),
-        factions,
-    })
+    Some((
+        AttitudeLevel {
+            attitude: attitude.trim().to_string(),
+            factions,
+        },
+        remainder_unread,
+    ))
 }
 
 /// Parses the preamble of a report.
@@ -240,7 +251,7 @@ fn parse_attitude_level(body: &str) -> Option<AttitudeLevel> {
 /// Everything is optional. A report missing a section simply leaves those fields empty rather than
 /// failing, in keeping with the parser's tolerant contract.
 #[must_use]
-pub fn parse_header(lines: &[LogicalLine]) -> ReportHeader {
+pub fn parse_header(lines: &[LogicalLine], unreadable: &mut Vec<UnreadableLine>) -> ReportHeader {
     let mut header = ReportHeader::default();
     let mut section = Section::None;
     let mut expecting_faction = false;
@@ -329,8 +340,11 @@ pub fn parse_header(lines: &[LogicalLine]) -> ReportHeader {
                 None => header.faction_status.unparsed.push(body.to_string()),
             },
             Section::Attitudes => {
-                if let Some(level) = parse_attitude_level(body) {
+                if let Some((level, remainder_unread)) = parse_attitude_level(body) {
                     header.attitudes.levels.push(level);
+                    if remainder_unread {
+                        unreadable.push(unread(line, UnreadableKind::Attitude));
+                    }
                 }
             }
             Section::None => {}
@@ -345,6 +359,10 @@ mod tests {
     use super::*;
     use crate::report::unwrap::unwrap_lines;
 
+    fn parse_header_of(source: &str) -> ReportHeader {
+        parse_header(&unwrap_lines(source), &mut Vec::new())
+    }
+
     #[test]
     fn derives_the_turn_number_from_the_printed_date() {
         // A game starts in February of Year 1.
@@ -355,15 +373,48 @@ mod tests {
     }
 
     #[test]
+    fn records_an_attitude_entry_it_could_not_read() {
+        let source = concat!(
+            "Declared Attitudes (default Neutral):\n",
+            "Friendly : Wanderers (83), a faction whose name lost its number.\n",
+        );
+
+        let mut unreadable = Vec::new();
+        let header = parse_header(&unwrap_lines(source), &mut unreadable);
+
+        assert_eq!(header.attitudes.levels.len(), 1);
+        assert_eq!(header.attitudes.levels[0].factions.len(), 1);
+        assert_eq!(unreadable.len(), 1);
+        assert_eq!(unreadable[0].kind, UnreadableKind::Attitude);
+        assert_eq!(unreadable[0].line_start, 2);
+        assert_eq!(unreadable[0].lost, None);
+    }
+
+    #[test]
+    fn an_attitude_line_the_parser_read_whole_records_nothing() {
+        let mut unreadable = Vec::new();
+        let header = parse_header(
+            &unwrap_lines(concat!(
+                "Declared Attitudes (default Neutral):\n",
+                "Friendly : Wanderers (83), Smith, Jones (29).\n",
+            )),
+            &mut unreadable,
+        );
+
+        assert_eq!(header.attitudes.levels[0].factions.len(), 2);
+        assert!(unreadable.is_empty());
+    }
+
+    #[test]
     fn reads_the_faction_and_date() {
-        let header = parse_header(&unwrap_lines(concat!(
+        let header = parse_header_of(concat!(
             "Atlantis Report For:\n",
             "Borg TNG (95) (Magic 5)\n",
             "December, Year 6\n",
             "\n",
             "Atlantis Engine Version: 5.2.5 (beta)\n",
             "NewOrigins, Version: 3.0.0 (beta)\n",
-        )));
+        ));
 
         assert_eq!(header.faction_name.as_deref(), Some("Borg TNG"));
         assert_eq!(header.faction_id.as_deref(), Some("95"));
@@ -378,11 +429,11 @@ mod tests {
 
     #[test]
     fn reads_multiple_faction_types() {
-        let header = parse_header(&unwrap_lines(concat!(
+        let header = parse_header_of(concat!(
             "Atlantis Report For:\n",
             "Borg (73) (Martial 1, Magic 1)\n",
             "February, Year 1\n",
-        )));
+        ));
 
         assert_eq!(header.faction_types, vec!["Martial 1", "Magic 1"]);
         assert_eq!(header.turn_number, Some(1));
@@ -390,7 +441,7 @@ mod tests {
 
     #[test]
     fn collects_errors_and_events_separately() {
-        let header = parse_header(&unwrap_lines(concat!(
+        let header = parse_header_of(concat!(
             "Errors during turn:\n",
             "Unit (1387): BUY: Unit attempted to buy more than it could afford.\n",
             "Unit (1387): STUDY: Not enough funds.\n",
@@ -399,7 +450,7 @@ mod tests {
             "Times reward of 200 silver.\n",
             "\n",
             "Unclaimed silver: 4935.\n",
-        )));
+        ));
 
         assert_eq!(header.errors.len(), 2);
         assert_eq!(header.events.len(), 1);
@@ -428,7 +479,7 @@ mod tests {
 
     #[test]
     fn reads_an_attitude_entry_whose_faction_name_contains_a_comma() {
-        let level = parse_attitude_level("Hostile : Smith, Jones (29), Creatures (2).")
+        let (level, _) = parse_attitude_level("Hostile : Smith, Jones (29), Creatures (2).")
             .expect("attitude line should parse");
 
         assert_eq!(
@@ -440,20 +491,21 @@ mod tests {
             vec![("Smith, Jones", "29"), ("Creatures", "2")]
         );
 
-        let empty = parse_attitude_level("Unfriendly : none.").expect("attitude line should parse");
+        let (empty, _) =
+            parse_attitude_level("Unfriendly : none.").expect("attitude line should parse");
         assert!(empty.factions.is_empty());
     }
 
     #[test]
     fn reads_the_declared_attitudes() {
-        let header = parse_header(&unwrap_lines(concat!(
+        let header = parse_header_of(concat!(
             "Declared Attitudes (default Neutral):\n",
             "Hostile : Creatures (2).\n",
             "Unfriendly : none.\n",
             "Neutral : none.\n",
             "Friendly : none.\n",
             "Ally : Borg TNG (95).\n",
-        )));
+        ));
 
         assert_eq!(
             header.attitudes.default_attitude.as_deref(),
@@ -480,10 +532,10 @@ mod tests {
 
     #[test]
     fn reads_an_attitude_level_of_none_as_an_empty_list() {
-        let header = parse_header(&unwrap_lines(concat!(
+        let header = parse_header_of(concat!(
             "Declared Attitudes (default Unfriendly):\n",
             "Hostile : none.\n",
-        )));
+        ));
 
         assert_eq!(header.attitudes.levels.len(), 1);
         assert_eq!(header.attitudes.levels[0].attitude, "Hostile");
@@ -492,13 +544,13 @@ mod tests {
 
     #[test]
     fn reads_the_faction_status_as_used_of_maximum() {
-        let header = parse_header(&unwrap_lines(concat!(
+        let header = parse_header_of(concat!(
             "Faction Status:\n",
             "Regions: 3 (10)\n",
             "Quartermasters: 0 (0)\n",
             "Mages: 6 (6)\n",
             "Apprentices: 0 (15)\n",
-        )));
+        ));
 
         assert_eq!(header.faction_status.entries.len(), 4);
         assert_eq!(
@@ -522,11 +574,11 @@ mod tests {
 
     #[test]
     fn does_not_care_what_the_status_keys_are_called() {
-        let header = parse_header(&unwrap_lines(concat!(
+        let header = parse_header_of(concat!(
             "Faction Status:\n",
             "Tax Regions: 3 (10)\n",
             "Trade Regions: 1 (4)\n",
-        )));
+        ));
 
         assert_eq!(header.faction_status.entries[0].label, "Tax Regions");
         assert_eq!(header.faction_status.entries[1].label, "Trade Regions");
@@ -534,12 +586,12 @@ mod tests {
 
     #[test]
     fn keeps_a_status_line_it_does_not_understand() {
-        let header = parse_header(&unwrap_lines(concat!(
+        let header = parse_header_of(concat!(
             "Faction Status:\n",
             "Regions: 3 (10)\n",
             "A line the parser has never seen before.\n",
             "Mages: 6 (6)\n",
-        )));
+        ));
 
         assert_eq!(header.faction_status.entries.len(), 2);
         assert_eq!(
@@ -550,11 +602,11 @@ mod tests {
 
     #[test]
     fn parses_a_report_with_neither_block() {
-        let header = parse_header(&unwrap_lines(concat!(
+        let header = parse_header_of(concat!(
             "Atlantis Report For:\n",
             "Borg TNG (95) (Magic 5)\n",
             "December, Year 6\n",
-        )));
+        ));
 
         assert!(header.faction_status.entries.is_empty());
         assert!(header.faction_status.unparsed.is_empty());
@@ -565,11 +617,11 @@ mod tests {
 
     #[test]
     fn does_not_swallow_the_unclaimed_silver_line() {
-        let header = parse_header(&unwrap_lines(concat!(
+        let header = parse_header_of(concat!(
             "Faction Status:\n",
             "Regions: 3 (10)\n",
             "Unclaimed silver: 6038.\n",
-        )));
+        ));
 
         assert_eq!(header.unclaimed_silver, Some(6038));
         assert!(header

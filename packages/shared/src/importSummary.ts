@@ -72,6 +72,9 @@ export function importSummaryCopy(summary: ImportSummary): ImportSummaryCopy {
   const imported = steps.filter((step) => step.kind === "import").length;
   const merged = steps.filter((step) => step.kind === "merge").length;
 
+  const unreadableTotal = steps.reduce((total, step) => total + step.unreadableCount, 0);
+  const unreadableFiles = steps.filter((step) => step.unreadableCount > 0).length;
+
   const sentences: string[] = [];
 
   if (imported > 0) {
@@ -106,7 +109,18 @@ export function importSummaryCopy(summary: ImportSummary): ImportSummaryCopy {
       ...skipped.map((skip) => ({
         index: skip.index,
         text: `${skip.fileName} — skipped: ${skip.reason}`
-      }))
+      })),
+      // This bullet belongs to no one file, so it takes an index no file can have. Entries are
+      // keyed by index because a filename is not an identity (two directories, one name).
+      ...(unreadableTotal > 0
+        ? [
+            {
+              index: -1,
+              // "of these reports" stays plural at one: it names the set, not the file.
+              text: `${count(unreadableTotal, "line")} across ${unreadableFiles} of these reports could not be read.`
+            }
+          ]
+        : [])
     ]
   };
 }

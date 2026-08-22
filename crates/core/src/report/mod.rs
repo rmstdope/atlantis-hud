@@ -25,7 +25,7 @@ pub use composition::{classify_units, Classification};
 
 use battle::parse_battles;
 use header::{parse_header, ReportHeader};
-use model::ReportRegion;
+use model::{LostBlock, ReportRegion, UnreadableKind, UnreadableLine};
 use orders::{extract_orders_template, OrdersTemplate};
 use region::{parse_region_block, parse_region_header};
 use unwrap::{unwrap_lines, LogicalLine};
@@ -46,6 +46,8 @@ pub struct ParsedReport {
     pub battles: Vec<Battle>,
     /// The orders document for the coming turn, when the report carries one.
     pub orders_template: Option<OrdersTemplate>,
+    /// Every record the parser could not read, in file order. Empty for a healthy report.
+    pub unreadable_lines: Vec<UnreadableLine>,
 }
 
 impl ParsedReport {
@@ -96,21 +98,117 @@ pub fn parse_report_full(source: &str) -> ParsedReport {
         .collect();
 
     let mut regions = Vec::new();
+    let mut unreadable: Vec<UnreadableLine> = Vec::new();
     for (position, &start) in starts.iter().enumerate() {
         let end = starts.get(position + 1).copied().unwrap_or(lines.len());
-        if let Some(region) = parse_region_block(&lines[start], &lines[start + 1..end]) {
-            regions.push(region);
+        match parse_region_block(&lines[start], &lines[start + 1..end], &mut unreadable) {
+            Some(region) => regions.push(region),
+            // Defensive: `opens_a_region` already requires `parse_region_header` to succeed, so a
+            // block that starts is a block that parses. Kept - and tested via `lost_region` - so a
+            // future loosening of either side cannot lose a whole hex silently.
+            None => unreadable.push(lost_region(&lines[start], &lines[start + 1..end])),
         }
     }
 
     // The preamble is everything before the first region block.
     let preamble_end = starts.first().copied().unwrap_or(lines.len());
 
+    let header = parse_header(&lines[..preamble_end], &mut unreadable);
+    // A second, independent pass over the same preamble slice - see the note on `ParsedReport`.
+    let battles = parse_battles(&lines[..preamble_end], &mut unreadable);
+
+    // File order: the preamble is parsed after the regions, so the records arrive out of sequence.
+    unreadable.sort_by_key(|entry| (entry.line_start, entry.line_end));
+
     ParsedReport {
-        header: parse_header(&lines[..preamble_end]),
+        header,
         regions,
-        // A second, independent pass over the same preamble slice - see the note on `ParsedReport`.
-        battles: parse_battles(&lines[..preamble_end]),
+        battles,
         orders_template: extract_orders_template(source),
+        unreadable_lines: unreadable,
+    }
+}
+
+/// The record for a region block the parser rejected outright, and what went down with it.
+fn lost_region(header: &LogicalLine, block: &[LogicalLine]) -> UnreadableLine {
+    UnreadableLine {
+        kind: UnreadableKind::Region,
+        line_start: header.line_start,
+        line_end: header.line_end,
+        text: header.text.clone(),
+        lost: Some(LostBlock {
+            further_lines: block
+                .last()
+                .map_or(0, |line| line.line_end.saturating_sub(header.line_end)),
+            units: block
+                .iter()
+                .filter(|line| matches!(line.marker(), Some('*' | '-')))
+                .count(),
+        }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use unwrap::unwrap_lines;
+
+    #[test]
+    fn an_unreadable_line_carries_its_range_kind_and_text() {
+        let lines = unwrap_lines(concat!(
+            "mountain (7,53) in Inhead, contains Tinsel [town]\n",
+            "  Wages: $12.\n",
+            "* Scout (1234), Borg (73), 1 leader.\n",
+            "- Someone (99), 1 man.\n",
+        ));
+
+        let entry = lost_region(&lines[0], &lines[1..]);
+
+        assert_eq!(entry.kind, UnreadableKind::Region);
+        assert_eq!(entry.line_start, 1);
+        assert_eq!(entry.line_end, 1);
+        assert_eq!(
+            entry.text,
+            "mountain (7,53) in Inhead, contains Tinsel [town]"
+        );
+        assert_eq!(
+            entry.lost,
+            Some(LostBlock {
+                further_lines: 3,
+                units: 2,
+            })
+        );
+    }
+
+    #[test]
+    fn lists_unreadable_records_in_file_order() {
+        let mut source = String::from("Declared Attitudes (default Neutral):\n");
+        source.push_str("Friendly : a faction whose name lost its number.\n");
+        // Pad the preamble so the region's bad unit sits well below the attitude line.
+        for _ in 0..20 {
+            source.push('\n');
+        }
+        source.push_str("mountain (7,53) in Inhead.\n");
+        source.push_str("* Nameless scout, 1 leader [LEAD].\n");
+
+        let parsed = parse_report_full(&source);
+
+        let kinds: Vec<UnreadableKind> = parsed
+            .unreadable_lines
+            .iter()
+            .map(|entry| entry.kind)
+            .collect();
+        assert_eq!(kinds, vec![UnreadableKind::Attitude, UnreadableKind::Unit]);
+        assert!(parsed.unreadable_lines[0].line_start < parsed.unreadable_lines[1].line_start);
+    }
+
+    #[test]
+    fn a_healthy_report_reports_nothing_unreadable() {
+        let parsed = parse_report_full(concat!(
+            "mountain (7,53) in Inhead, contains Tinsel [town]\n",
+            "  Wages: $12.\n",
+        ));
+
+        assert!(parsed.unreadable_lines.is_empty());
     }
 }

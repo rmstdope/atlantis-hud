@@ -2837,6 +2837,56 @@ test("a filter that matches nothing says so", async ({ page }) => {
 });
 
 /**
+ * A line the parser cannot read used to vanish without a trace: a player looking at a hex simply
+ * did not see one of their own units, and nothing anywhere said so.
+ *
+ * The damaged report is built here rather than committed as a fixture, so that
+ * `every_committed_report_is_read_completely` keeps meaning what it says - every real report is
+ * read whole - and the one deliberately broken line lives beside the test that needs it.
+ */
+const UNREADABLE_UNIT = "* Nameless scout, avoiding, behind, 1 leader [LEAD].";
+const DAMAGED_REPORT = REPORT.replace(
+  "* Drones (14451), Borg TNG (95), avoiding, behind, sharing, swimming",
+  UNREADABLE_UNIT
+);
+
+test("the header chip opens the lines that could not be read", async ({ page }) => {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, "Smoke game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-71-damaged.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(DAMAGED_REPORT, "utf8")
+  });
+  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+
+  const chip = page.getByTestId("unreadable-chip");
+  await expect(chip).toContainText("1 unreadable");
+  await expect(chip).toHaveAttribute("aria-label", "1 line could not be read");
+
+  await chip.click();
+
+  const panel = page.getByTestId("unreadable-lines");
+  await expect(panel).toBeVisible();
+  // The raw line, verbatim and untruncated: the whole point is that the player can read what the
+  // parser could not.
+  await expect(panel).toContainText(UNREADABLE_UNIT);
+  await expect(panel).toContainText("Unit");
+  await expect(panel).toContainText("None of this reached the map.");
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("unreadable-lines")).toHaveCount(0);
+});
+
+test("shows no chip for a report it read completely", async ({ page }) => {
+  await loadReport(page);
+
+  await expect(page.getByTestId("unreadable-chip")).toHaveCount(0);
+});
+
+/**
  * The turn's own account of itself, which the header used to count and never show.
  *
  * Turn 71 is one error and several hundred events, so this also exercises the case the panel was
