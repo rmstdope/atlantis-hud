@@ -38,7 +38,9 @@ export type Placement = { left: number; top: number };
 /**
  * Everything the summary says about a unit.
  *
- * Skills keep the report's order, which is the order they were learned in and the order the table
+ * Skills carry their study points as well as their level (ah-ded4), because the table's skills
+ * cell truncates into this tooltip by design and the level alone cannot tell two units apart.
+ * They keep the report's order, which is the order they were learned in and the order the table
  * shows. Items are ordered by holding, largest first, matching the unit panel: a tooltip that
  * ranked them differently from the panel would be read as a different list.
  */
@@ -47,7 +49,7 @@ export function summariseUnit(unit: ReportUnit): UnitSummary {
     title: `${unit.name} (${unit.unitId})`,
     skills: unit.skills.map((skill) => ({
       label: `${skill.name} ${skill.tag}`,
-      value: String(skill.level)
+      value: `${skill.level} (${skill.points})`
     })),
     items: [...unit.items]
       .sort((left, right) => right.amount - left.amount)

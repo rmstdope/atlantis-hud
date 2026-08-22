@@ -17,7 +17,7 @@ describe("summariseUnit", () => {
     expect(summariseUnit(unit()).title).toBe("Seven of Eight (18642)");
   });
 
-  it("lists every skill with its tag and level", () => {
+  it("lists every skill with its tag, level and study points", () => {
     const summary = summariseUnit(
       unit({
         skills: [
@@ -28,8 +28,8 @@ describe("summariseUnit", () => {
     );
 
     expect(summary.skills).toEqual([
-      { label: "observation OBSE", value: "3" },
-      { label: "stealth STEA", value: "1" }
+      { label: "observation OBSE", value: "3 (180)" },
+      { label: "stealth STEA", value: "1 (30)" }
     ]);
   });
 
@@ -113,5 +113,25 @@ describe("placeTooltip", () => {
   it("never places the tooltip above the top of the viewport", () => {
     const tall = { width: 200, height: 900 };
     expect(placeTooltip({ x: 100, y: 750 }, tall, viewport)).toEqual({ left: 112, top: 0 });
+  });
+});
+
+describe("a skill's study points in the unit tooltip (ah-ded4)", () => {
+  // The skills cell truncates *into* this tooltip by design, so the fallback must carry at least
+  // what the cell does — otherwise a many-skilled unit is worse off than before the points existed.
+  it("carries the level and the points, so a truncated cell can be recovered", () => {
+    const summary = summariseUnit(
+      unit({ skills: [{ name: "mining", tag: "MINI", level: 2, points: 90 }] })
+    );
+
+    expect(summary.skills).toEqual([{ label: "mining MINI", value: "2 (90)" }]);
+  });
+
+  it("renders (0) for a skill with no points yet", () => {
+    const summary = summariseUnit(
+      unit({ skills: [{ name: "mining", tag: "MINI", level: 0, points: 0 }] })
+    );
+
+    expect(summary.skills).toEqual([{ label: "mining MINI", value: "0 (0)" }]);
   });
 });

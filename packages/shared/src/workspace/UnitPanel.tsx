@@ -134,7 +134,7 @@ export function UnitPanel({
                   {skill.tag}
                 </>
               }
-              value={`${skill.level} · ${skill.points}`}
+              value={`${skill.level} (${skill.points})`}
             />
           ))
         )}
