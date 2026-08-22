@@ -41,7 +41,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::scan::{parse_coordinate, split_top_level, split_trailing_id};
+use super::scan::{
+    next_top_level_field, parse_coordinate, split_leading_id, split_top_level, split_trailing_id,
+};
 use super::unit::matching_flag;
 use super::unwrap::LogicalLine;
 
@@ -440,77 +442,45 @@ fn apply_location_tail(location: &str, result: &mut ParsedHeadline) {
     }
 }
 
-/// Like [`split_top_level`], but also returns the byte offset in `input` immediately after each
-/// field's trailing comma (or the end of the string, for the last field).
-///
-/// A roster line's item and skill body is kept verbatim rather than rebuilt from parsed tokens, so
-/// the caller needs to know exactly where in the original text the recognised leading fields end.
-fn top_level_fields_with_ends(input: &str) -> Vec<(String, usize)> {
-    let mut parts = Vec::new();
-    let mut current = String::new();
-    let mut depth = 0i32;
-
-    for (byte_index, character) in input.char_indices() {
-        match character {
-            '(' | '[' => {
-                depth += 1;
-                current.push(character);
-            }
-            ')' | ']' => {
-                depth -= 1;
-                current.push(character);
-            }
-            ',' if depth <= 0 => {
-                parts.push((
-                    current.trim().to_string(),
-                    byte_index + character.len_utf8(),
-                ));
-                current.clear();
-            }
-            _ => current.push(character),
-        }
-    }
-    if !current.trim().is_empty() {
-        parts.push((current.trim().to_string(), input.len()));
-    }
-
-    parts
-}
-
 /// Parses one roster line: name, id, faction where printed, flags, and everything after that kept
 /// verbatim as `body`. Not `unit::parse_unit`: a roster line's item list is not modelled here, only
 /// kept, and a roster line carries no ownership marker to strip.
 fn parse_battle_unit(line: &str) -> Option<BattleUnit> {
     let trimmed = line.trim().trim_end_matches('.');
-    let fields = top_level_fields_with_ends(trimmed);
-    let (name_field, mut body_start) = fields.first()?.clone();
-    let (name, id) = split_trailing_id(&name_field)?;
+    let (name, id, mut rest) = split_leading_id(trimmed)?;
 
     let mut faction = None;
     let mut flags = Vec::new();
 
-    for (field, end) in &fields[1..] {
+    // Fields are walked one at a time so a top-level comma inside a name is kept rather than
+    // treated as the separator; `rest` stays a subslice of `trimmed`, which is what keeps the
+    // `body_start` arithmetic below correct.
+    while let Some((field, after)) = next_top_level_field(rest, ',') {
         if let Some(flag) = matching_flag(field) {
             flags.push(flag.to_string());
-            body_start = *end;
+            rest = after;
             continue;
         }
-        // Matches `unit::parse_unit`'s own guard (`faction_id.is_none() && items.is_empty()`): a
-        // flag may precede the faction field, as in "City Guard (89), on guard, The Guardsmen
-        // (1), ...", so only whether the body has started - not whether a flag was seen - closes
-        // the window for recognising a faction.
+        // Matches `unit::parse_unit`'s own guard: a flag may precede the faction field, as in
+        // "City Guard (89), on guard, The Guardsmen (1), ...", so only whether the body has
+        // started - not whether a flag was seen - closes the window for recognising a faction. A
+        // candidate carrying a `[` is an item or a skill, not a faction.
         if faction.is_none() {
-            if let Some((faction_name, faction_id)) = split_trailing_id(field) {
-                faction = Some(Combatant {
-                    name: faction_name,
-                    id: faction_id,
-                });
-                body_start = *end;
-                continue;
+            if let Some((faction_name, faction_id, after_faction)) = split_leading_id(rest) {
+                if !faction_name.contains('[') {
+                    faction = Some(Combatant {
+                        name: faction_name,
+                        id: faction_id,
+                    });
+                    rest = after_faction;
+                    continue;
+                }
             }
         }
         break;
     }
+
+    let body_start = trimmed.len() - rest.len();
 
     let body = trimmed
         .get(body_start..)
@@ -535,6 +505,25 @@ mod tests {
 
     fn battles(source: &str) -> Vec<Battle> {
         parse_battles(&unwrap_lines(source))
+    }
+
+    #[test]
+    fn reads_a_roster_line_whose_name_contains_a_comma() {
+        let unit = parse_battle_unit(
+            "Smith, Jones (100), Wanderers, Inc (83), behind, 10 humans [HUMN], 5 swords [SWOR].",
+        )
+        .expect("roster line should parse");
+
+        assert_eq!(unit.name, "Smith, Jones");
+        assert_eq!(unit.id, "100");
+        assert_eq!(
+            unit.faction
+                .as_ref()
+                .map(|f| (f.name.as_str(), f.id.as_str())),
+            Some(("Wanderers, Inc", "83"))
+        );
+        assert_eq!(unit.flags, vec!["behind".to_string()]);
+        assert_eq!(unit.body, "10 humans [HUMN], 5 swords [SWOR]");
     }
 
     #[test]
