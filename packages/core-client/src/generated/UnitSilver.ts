@@ -24,4 +24,17 @@ atMonthEnd: number | null,
 /**
  * Why a term could not be priced, for the hover to explain. `None` when nothing was doubted.
  */
-doubt: SilverDoubt | null, };
+doubt: SilverDoubt | null, 
+/**
+ * What the doubt is *about*, where its sentence names something - the goods of an
+ * unidentifiable `SELL`, as the order itself wrote them. `None` for every other doubt.
+ */
+doubtSubject: string | null, 
+/**
+ * Silver counted into `income` because other units in this hex are ordered to give it.
+ */
+received: number, 
+/**
+ * Those givers, as `<name> (<id>)`, so the hover can name them.
+ */
+givers: Array<string>, };

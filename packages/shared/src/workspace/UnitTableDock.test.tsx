@@ -523,6 +523,9 @@ describe("the Silver column", () => {
     expense: 0,
     atMonthEnd: 0,
     doubt: null,
+    doubtSubject: null,
+    received: 0,
+    givers: [],
     ...overrides
   });
 
