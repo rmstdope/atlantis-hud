@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A consumer's own traps, and the CLAUDE.md cerebro requires</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --ink:#dbe3ec; --ink-soft:#a3b0c0;
+    --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:5em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  pre.f { background:#0b0f14; border:1px solid var(--edge); border-radius:6px; padding:11px 12px;
+          font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; line-height:1.75;
+          color:#c7d2de; white-space:pre-wrap; overflow-x:auto; margin:0; }
+  .f .h { color:var(--brass); } .f .d { color:var(--ink-dim); } .f .g { color:var(--ok); }
+  .f .n { color:var(--danger); } .f .w { color:var(--brass-bright); }
+  .warn { background:rgba(217,164,65,0.10); border:1px solid rgba(217,164,65,0.35); border-radius:8px;
+          padding:12px 14px; margin-top:14px; font-size:13.5px; }
+  .warn b { color:var(--brass); }
+</style>
+</head>
+<body>
+<header>
+  <h1>A consumer's own traps — <span>and the CLAUDE.md cerebro requires but does not ship</span></h1>
+  <p>Two things a project using this harness must supply and currently has nowhere to put.</p>
+  <p><b>Traps.</b> <code>implement-bead</code> and <code>plan-bead</code> each carry a block of
+  hard-won facts — WebKit returning <code>""</code> for clipped text, a PWA run failing after the
+  smoke suite rebuilds the bundle, <code>vite preview</code> without <code>--strictPort</code>. In a
+  shared submodule those are one project's scar tissue carried into every consumer's session.</p>
+  <p><b>A required document nobody ships.</b> cerebro <i>requires</i> the consumer to have written a
+  section called <b>"Four Eye Principle"</b> by that exact name — <code>implement-bead:18,25</code>,
+  <code>plan-bead:672</code>, <code>CLAUDE.md:127</code> — and offers no template for it.</p>
+
+  <div class="warn">
+    <b>One correction to the bead before deciding.</b> It says the traps blocks "should be
+    <b>empty</b> in cerebro". They should not: <b>most of what is there is already generic and
+    genuinely universal</b> — a leftover preview server serving a stale bundle, <code>--</code>
+    forwarded into a test runner and read as a filter, a CI wait against a conflicted head. Only two
+    entries are actually this project's (WebKit, and a job named <code>native</code>). Emptying the
+    block would throw away knowledge every consumer needs.
+  </div>
+</header>
+
+<main>
+
+<h3 class="sec">1 · Who decides what goes in the consumer's traps file</h3>
+<p>The prize here is that a retrospective's <b>"Prevent by"</b> finally has somewhere to land — today
+it goes into a file nobody reads again. <b>All 138 retrospectives in this repository have one</b>,
+which is exactly why the answer cannot be "all of them".</p>
+
+<div class="cards3">
+  <div class="card">
+    <h2><em>A</em>Forge proposes, in its sweep</h2>
+    <div class="concept">Forge already reads what merged and files beads for costs being paid. It
+    gains one more output: a proposed traps entry when a retrospective's "Prevent by" names something
+    the next agent could act on.</div>
+    <pre class="f"><span class="h">Forge, daily sweep</span>
+filed 2 refactoring beads
+<span class="w">proposed 1 trap:</span>
+  <span class="d">"A PWA run straight after the
+   smoke suite fails on timeouts
+   that look like a broken worker"</span>
+  <span class="d">from ah-1owr.3's Prevent by</span>
+<span class="g">accept? (navigator)</span></pre>
+    <ul class="notes">
+      <li>The one role that already reads retrospectives for exactly this</li>
+      <li>Curated by something that sees the whole corpus, not one bead</li>
+      <li>Nothing lands without you saying so</li>
+      <li class="con">Another thing Forge asks you about, on every sweep</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>The implementer appends its own</h2>
+    <div class="concept">An implementer that writes a "Prevent by" naming a trap adds it to the file
+    in the same PR. It is closest to the pain and knows whether it generalises.</div>
+    <pre class="f"><span class="h">implement-bead, at retrospective</span>
+<span class="d">If your Prevent by names something
+the NEXT agent should know before
+starting, add it to
+.claude/cerebro-traps.md
+in this PR.</span>
+<span class="g">reviewed with the rest of the diff</span></pre>
+    <ul class="notes">
+      <li>Written while the detail is fresh, by whoever paid for it</li>
+      <li>Goes through review like any other change</li>
+      <li class="con">138 retrospectives all have a "Prevent by" — most days this appends noise</li>
+      <li class="con">An implementer is the worst judge of whether its own pain generalises</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>C</em>Only ever by hand</h2>
+    <div class="concept">The file exists and is read; nothing writes to it automatically. You add an
+    entry when you decide something has been paid for often enough.</div>
+    <pre class="f"><span class="h">.claude/cerebro-traps.md</span>
+<span class="d"># Traps this project has paid for</span>
+
+- <span class="w">WebKit's driver</span> answers "" for
+  text it considers clipped …
+- <span class="w">The PWA run</span> after a smoke run …
+
+<span class="d">(edited by a person, when a person
+ decides it is worth it)</span></pre>
+    <ul class="notes">
+      <li>Every entry is there because somebody judged it worth an agent's attention</li>
+      <li>Nothing to build beyond the file and the read</li>
+      <li class="con">Depends entirely on you remembering, which is what the retrospective loop was meant to fix</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · What <code>templates/consumer-CLAUDE.md</code> actually says</h3>
+<p>cerebro requires a "Four Eye Principle" section by that name. A template can offer the
+<b>shape</b> and leave the policy to you, or it can offer cerebro's <b>opinion</b> and let you edit
+it down.</p>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>The shape, with the policy left to you</h2>
+    <div class="concept">Headings, and one sentence each saying what the section must answer. No
+    rules asserted.</div>
+    <pre class="f"><span class="h">## Four Eye Principle</span>
+
+<span class="d">&lt;Say what must happen before a change
+merges: who or what reviews it, what
+counts as a green gate, and which
+changes are exempt. The fleet reads
+this section by name and will refuse
+to merge without one.&gt;</span>
+
+<span class="h">## Work tracking</span>
+<span class="d">&lt;…&gt;</span></pre>
+    <ul class="notes">
+      <li>Never puts words in your mouth about your own review policy</li>
+      <li>Cannot go stale — it asserts nothing</li>
+      <li class="con">A blank to fill in is harder than an example to edit</li>
+      <li class="con">Two consumers will answer it in shapes the fleet reads differently</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>A working default, meant to be edited</h2>
+    <div class="concept">A complete, defensible policy the consumer can ship as-is or cut down —
+    this project's, generalised.</div>
+    <pre class="f"><span class="h">## Four Eye Principle</span>
+
+<span class="d">Nothing merges unreviewed and nothing
+merges red.</span>
+
+<span class="d">For a change built by an agent, an
+automated reviewer counts as the second
+pair of eyes when: one review is
+requested as the PR opens; every comment
+is answered; every check is green.</span>
+
+<span class="d">Everything else needs a person.</span></pre>
+    <ul class="notes">
+      <li>Works on day one, and reads as a real policy rather than a form</li>
+      <li>The fleet's expectations are visible instead of implied</li>
+      <li class="con">A default policy is one people adopt without deciding</li>
+      <li class="con">cerebro now has an opinion about review, which it can be wrong about</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <code>ah-qled.10.5</code>. The traps quoted are real, from
+  <code>skills/implement-bead/SKILL.md:676-695</code> and <code>skills/plan-bead/SKILL.md:878-886</code>.
+</footer>
+</body>
+</html>
