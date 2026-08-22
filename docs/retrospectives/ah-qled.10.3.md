@@ -2,7 +2,7 @@
 
 - **Implementer:** Rogue
 - **Date:** 2026-08-22
-- **PR:** #86 (cerebro), and the pin bump in atlantis-hud
+- **PR:** rmstdope/cerebro#86, and the pin bump in atlantis-hud
 
 ## The plan's own validation command cannot finish inside a default `Bash` call
 
