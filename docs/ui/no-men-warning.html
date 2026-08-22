@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The month-long warning on a unit with no men</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63;
+    --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:4.8em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  .pane { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+          font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; }
+  .pane .hd { display:flex; align-items:center; gap:8px; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  .pane .hd .t { color:var(--brass); } .pane .hd .h { color:var(--ink-dim); font-size:11.5px; }
+  .pane .bd { padding:9px 10px; }
+  ul.diag { list-style:none; display:grid; gap:5px; font-size:11.5px; }
+  ul.diag li { display:flex; gap:7px; align-items:baseline; color:var(--ink-soft); }
+  ul.diag li::before { content:"\25B8"; color:var(--warn); }
+  ul.diag li.gone { opacity:.32; text-decoration:line-through; }
+  ul.diag li.info::before { content:"\25CB"; color:var(--ink-dim); }
+  ul.diag b { color:var(--ink); font-weight:normal; }
+  .chip { display:inline-block; border:1px solid var(--edge); border-radius:10px; padding:0 7px;
+          color:var(--warn); font-size:11px; font-family:system-ui,sans-serif; }
+  .unit { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; color:#c7d2de;
+          background:#0b0f14; border:1px solid var(--edge); border-radius:4px; padding:8px 9px; line-height:1.7; }
+  .unit .m { color:var(--ok); } .unit .k { color:var(--brass-bright); } .unit .d { color:var(--ink-dim); }
+  .warnbox { background:rgba(217,164,65,0.10); border:1px solid rgba(217,164,65,0.35);
+             border-radius:8px; padding:12px 14px; margin-top:14px; font-size:13.5px; }
+  .warnbox b { color:var(--brass); }
+</style>
+</head>
+<body>
+<header>
+  <h1>The month-long warning — <span>on a unit with no men</span></h1>
+  <p>Your words: <i>"It'd be nice not to get the 'no month-long order' warning for units that have no
+  men left in them."</i> The warning is <b>"has no order that spends the month"</b>, shipped in
+  v0.10.0. A unit with no men cannot spend a month on anything, so there is no order you could add
+  that would satisfy it.</p>
+  <p><b>This amends a decision rather than fixing an oversight.</b> That bead's acceptance said
+  <i>"There are no exemptions: an empty block warns and a unit on GUARD warns."</i> So this is the
+  first exemption, asked for with a case in hand — and the old line is not binding.</p>
+
+  <div class="warnbox">
+    <b>One thing found in the code that neither of us had.</b> A unit's men are counted from its
+    man-type items, and the model carries a second flag beside the count:
+    <code>men_estimated</code>. When the ruleset does not recognise every item a unit holds, the
+    count is a guess. <b>An exemption on "men == 0" alone would silently hide a real unit</b> whose
+    only crime was carrying an item the ruleset has not been taught. Whichever option you pick, the
+    exemption will only fire when the count is known.
+  </div>
+</header>
+
+<h3 class="sec">1 · What "no men left" means</h3>
+<p>A unit at zero men may still hold silver, equipment or a mount — and may still be something you
+care about rather than a husk.</p>
+
+<div class="cards3">
+  <div class="card">
+    <h2><em>A</em>No men, whatever else it holds</h2>
+    <div class="concept">The exemption keys on the men count alone. A unit with 7500 silver and no
+    men is exempt, because it still cannot spend a month.</div>
+    <div class="unit"><span class="d">* Pack Train (1902), Borg TNG (95),</span><br>
+      <span class="k">7500 silver</span> [SILV], <span class="k">2 horses</span> [HORS].<br>
+      <span class="d">Weight: 100. Skills: none.</span><br>
+      <span class="m">&rarr; exempt</span></div>
+    <ul class="notes">
+      <li>Matches the reason exactly: no men, no month to spend</li>
+      <li>One number to test, and it is already on the model</li>
+      <li class="con">A unit holding 7500 silver goes quiet, and that may be worth a look</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>B</em>Empty of everything</h2>
+    <div class="concept">Exempt only a unit holding nothing at all — no men, no silver, no items. A
+    true husk.</div>
+    <div class="unit"><span class="d">* Remnant (1903), Borg TNG (95),</span><br>
+      <span class="d">Weight: 0. Skills: none.</span><br>
+      <span class="m">&rarr; exempt</span><br><br>
+      <span class="d">* Pack Train (1902) &hellip; 7500 silver</span><br>
+      <span style="color:var(--warn)">&rarr; still warns</span></div>
+    <ul class="notes">
+      <li>Nothing with anything in it ever goes quiet</li>
+      <li class="con">Does not answer the ask: a unit with silver and no men still cannot spend a month</li>
+      <li class="con">A husk is the case that matters least — it is the one you would not miss</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>C</em>No men, and nothing else to say</h2>
+    <div class="concept">Exempt a unit with no men <b>unless</b> it holds something a player would
+    act on — silver above a threshold, or equipment. Between the two.</div>
+    <div class="unit"><span class="d">* Remnant (1903)</span> &mdash; nothing<br><span class="m">&rarr; exempt</span><br>
+      <span class="d">* Pack Train (1902)</span> &mdash; 7500 silver<br><span style="color:var(--warn)">&rarr; warns</span><br>
+      <span class="d">* Husk (1904)</span> &mdash; 2 silver<br><span class="m">&rarr; exempt</span></div>
+    <ul class="notes">
+      <li>Quiet where it should be, loud where there is something to collect</li>
+      <li class="con">A threshold is a number nobody can defend, and it will be wrong for someone</li>
+      <li class="con">Two rules to explain instead of one</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · Does the unit vanish from the list, or change what it says?</h3>
+<p>You flagged this yourself in the filing: a unit that has lost all its men <b>may itself be
+news</b>, and suppressing the only line that mentions it could hide something worth knowing.</p>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>Silently skipped</h2>
+    <div class="concept">The check does not fire. The unit appears nowhere in the warnings, and the
+    count drops by one.</div>
+    <div class="pane">
+      <div class="hd"><span class="t">Problems</span><span class="h">this turn</span>
+        <span style="flex:1"></span><span class="chip">9 problems</span></div>
+      <div class="bd"><ul class="diag">
+        <li><b>unit 14451</b> has no order that spends the month</li>
+        <li class="gone"><b>unit 1902</b> has no order that spends the month</li>
+        <li><b>unit 13432</b> has no order that spends the month</li>
+      </ul></div>
+    </div>
+    <ul class="notes">
+      <li>Exactly what was asked for, and the list gets shorter</li>
+      <li>Nothing new to design, and the toggle still turns the whole check off</li>
+      <li class="con">A unit that lost its men this turn is now mentioned nowhere</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Says something true instead</h2>
+    <div class="concept">The unit keeps a line, but one that is not advice: it observes rather than
+    warns, and does not count towards the problems chip.</div>
+    <div class="pane">
+      <div class="hd"><span class="t">Problems</span><span class="h">this turn</span>
+        <span style="flex:1"></span><span class="chip">9 problems</span></div>
+      <div class="bd"><ul class="diag">
+        <li><b>unit 14451</b> has no order that spends the month</li>
+        <li class="info"><b>unit 1902</b> has no men left</li>
+        <li><b>unit 13432</b> has no order that spends the month</li>
+      </ul></div>
+    </div>
+    <ul class="notes">
+      <li>The unit is still visible, and the line says the thing that is actually true of it</li>
+      <li>Losing every man in a unit is news, and this is where you would see it</li>
+      <li class="con">A new kind of finding — an observation, not a problem — which nothing else has</li>
+      <li class="con">Every unit that has ever been emptied says this, for ever, not just the turn it happened</li>
+    </ul>
+  </div>
+</div>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <code>ah-udff</code>. The unit blocks are in the report's own format; units 14451
+  and 13432 are the two real ones <code>ah-dwk6</code> pins, and both have men — so neither is
+  affected by any option here.
+</footer>
+</body>
+</html>
