@@ -9,7 +9,7 @@
  * hands back what it changed and lets the caller apply it.
  */
 
-import type { CoreClient, GameManifest, OpenedGame } from "@atlantis/core-client";
+import type { CoreClient, GameManifest, MapShape, OpenedGame } from "@atlantis/core-client";
 import { backupAsCopy, backupGameIdentity } from "./gameBackup";
 import { gameAfterDelete, gameNameOf, newGameId, newGameManifest } from "./gameSession";
 import { rulesetById } from "./rulesets";
@@ -42,13 +42,21 @@ export async function openGame(client: GameClient, gameId: string, now: string):
   return { opened, games: await client.listGames() };
 }
 
+/**
+ * Creates a game the player has described.
+ *
+ * `map` is what they were asked for at creation, or `undefined` when they cleared the fields -
+ * which records nothing, so the ruleset's declared default is assumed and the settings dialog
+ * says as much.
+ */
 export async function createGame(
   client: GameClient,
   name: string,
   rulesetId: string,
-  now: string
+  now: string,
+  map?: MapShape
 ): Promise<GameActionOutcome> {
-  const opened = await client.createGame(newGameManifest(name, rulesetId, now, newGameId()));
+  const opened = await client.createGame(newGameManifest(name, rulesetId, now, newGameId(), map));
   return { opened, games: await client.listGames() };
 }
 

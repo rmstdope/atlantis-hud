@@ -1,3 +1,4 @@
+import type { MapShape } from "@atlantis/core-client";
 import type { GameManifest } from "@atlantis/core-client";
 import type { ChangeEvent } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -157,7 +158,7 @@ export function GamePicker({
   busy: boolean;
   error: string | null;
   onOpen: (gameId: string) => void;
-  onCreate: (name: string, rulesetId: string) => void;
+  onCreate: (name: string, rulesetId: string, map?: MapShape) => void;
   /** Resolves `null` when the game is gone, or the reason it is not. */
   onDelete: (gameId: string) => Promise<string | null>;
   /** Resolves `null` when the game has been emptied, or the reason it has not. */

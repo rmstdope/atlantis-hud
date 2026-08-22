@@ -1,3 +1,4 @@
+import type { MapShape } from "@atlantis/core-client";
 import type { ChangeEvent, ReactNode } from "react";
 import { useRef } from "react";
 import { GameForm } from "./GameForm";
@@ -21,7 +22,7 @@ export function GameGate({
 }: {
   busy: boolean;
   error: string | null;
-  onCreate: (name: string, rulesetId: string) => void;
+  onCreate: (name: string, rulesetId: string, map?: MapShape) => void;
   onImport: (file: File) => void;
   /**
    * Settings are reachable here too, before any game exists. Asking which version you are running,

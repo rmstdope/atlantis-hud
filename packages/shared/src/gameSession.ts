@@ -8,6 +8,7 @@
 
 import type { CoreClient, GameManifest, OpenedGame } from "@atlantis/core-client";
 import { rulesetById } from "./rulesets";
+import type { MapShape } from "@atlantis/core-client";
 
 /** The most recently opened game, or `null` when the player has none. */
 export function newestGame(games: GameManifest[]): GameManifest | null {
@@ -51,12 +52,18 @@ export function gameNameOf(raw: string): string {
  * picker, and a ruleset this build cannot serve would leave the planner with no movement numbers -
  * which the ruleset contract says must fail loudly rather than fall back to a value that is
  * confidently wrong.
+ *
+ * `map` is spread in only when given, so a game created without one has no such key at all. That
+ * absence is the record that nothing was stated, which is what lets Settings show the ruleset's
+ * default as *assumed* rather than as the player's word - a distinction a default written in here
+ * would destroy, and destroy irrecoverably.
  */
 export function newGameManifest(
   gameName: string,
   rulesetId: string,
   now: string,
-  gameId: string
+  gameId: string,
+  map?: MapShape
 ): GameManifest {
   const trimmed = gameNameOf(gameName);
   if (rulesetById(rulesetId) === null) {
@@ -65,7 +72,7 @@ export function newGameManifest(
 
   return {
     manifestVersion: 1,
-    metadata: { gameId, gameName: trimmed, rulesetId },
+    metadata: { gameId, gameName: trimmed, rulesetId, ...(map === undefined ? {} : { map }) },
     reportSources: [],
     createdAt: now,
     lastOpenedAt: now

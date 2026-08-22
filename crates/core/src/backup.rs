@@ -7,6 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::movement::graph::MapGeometry;
+
 use crate::report::sighting::{sighting_from_payload, RegionSighting};
 
 pub const GAME_BACKUP_FORMAT: &str = "atlantis-hud-game-backup";
@@ -32,6 +34,15 @@ pub struct GameMetadata {
     /// reopened (ah-do8.2).
     #[serde(default)]
     pub active_faction_id: Option<String>,
+    /// The map this game is played on, or `None` for a game that was never told one - which is
+    /// every game created before the app asked, and every backup restored from before it.
+    ///
+    /// The absence is the record that nothing was stated, so the ruleset's declared default is
+    /// only *assumed* and the settings dialog says so. `skip_serializing_if` keeps that true on
+    /// the way out as well: a `"map": null` written into an old game's manifest would be a claim
+    /// nobody made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map: Option<MapGeometry>,
 }
 
 /// Logical report source stored in the game manifest and database.
@@ -432,6 +443,7 @@ mod tests {
                 game_name: "Game One".to_string(),
                 ruleset_id: "newOrigins".to_string(),
                 active_faction_id: None,
+                map: None,
             },
             report_sources: vec![],
             created_at: "2026-01-01T00:00:00Z".to_string(),

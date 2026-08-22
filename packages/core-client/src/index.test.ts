@@ -82,6 +82,7 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     exportGame: vi.fn().mockResolvedValue("{}"),
     importGame: vi.fn().mockResolvedValue(openedGame),
     setGameRuleset: vi.fn().mockResolvedValue(gameManifest),
+    setGameMap: vi.fn().mockResolvedValue(gameManifest),
     setGameName: vi.fn().mockResolvedValue(gameManifest),
     setActiveFaction: vi.fn().mockResolvedValue(gameManifest),
     parseReport: vi.fn().mockResolvedValue(reportParseResult),
@@ -184,12 +185,12 @@ describe("core client tauri adapter contract", () => {
 
     const tauriClient = createCoreClient(createTauriAdapter(invoke));
 
-    const tauriSail = await tauriClient.planRoute("{}", "report", "[]", "crewed", "1:49,5");
+    const tauriSail = await tauriClient.planRoute("{}", "report", "[]", "crewed", "1:49,5", "");
     expect(tauriSail).toEqual(sailPlanPayload);
     expect(tauriSail.plan?.mode).toBe("sail");
     expect(tauriSail.problem).toBeNull();
 
-    const tauriRefusal = await tauriClient.planRoute("{}", "report", "[]", "undercrewed", "1:49,5");
+    const tauriRefusal = await tauriClient.planRoute("{}", "report", "[]", "undercrewed", "1:49,5", "");
     expect(tauriRefusal).toEqual(crewRefusalPayload);
     expect(tauriRefusal.plan).toBeNull();
     expect(tauriRefusal.problem).toEqual({ kind: "crewCannotSail", required: 4, available: 1 });

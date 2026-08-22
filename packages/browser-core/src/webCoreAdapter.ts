@@ -11,6 +11,7 @@ import type {
   CoreAdapter,
   EngineInfo,
   GameManifest,
+  MapShape,
   HexNoteRecord,
   KnownMap,
   MoveOrderTraceResponse,
@@ -63,14 +64,16 @@ export type CoreWasmModule = {
     rawReport: string,
     rememberedJson: string,
     unitId: string,
-    destination: string
+    destination: string,
+    mapJson: string
   ): RoutePlanResponse;
   trace_move_orders_state(
     rulesetJson: string,
     rawReport: string,
     rememberedJson: string,
     unitId: string,
-    ordersDocument: string
+    ordersDocument: string,
+    mapJson: string
   ): MoveOrderTraceResponse;
   export_map_state(rawReport: string, rememberedJson: string, requestJson: string): string;
   known_map_state(
@@ -82,9 +85,15 @@ export type CoreWasmModule = {
     rulesetJson: string,
     rawReport: string,
     rememberedJson: string,
-    ordersDocument: string
+    ordersDocument: string,
+    mapJson: string
   ): OrdersPreviewResponse;
-  trade_routes_state(rulesetJson: string, rawReport: string, rememberedJson: string): TradeRoute[];
+  trade_routes_state(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    mapJson: string
+  ): TradeRoute[];
   prepare_report_import_state(
     rawReport: string,
     confirmedFactionId: string,
@@ -414,19 +423,28 @@ export function createWebCoreAdapter(
       rawReport: string,
       rememberedJson: string,
       unitId: string,
-      destination: string
+      destination: string,
+      mapJson: string
     ) {
       // Straight through to the core: unlike the persistence entry points there is no browser
       // storage to stand in for a database. The report goes as text, which is what the core keys
       // its last parse on, so planning over the turn already on screen re-parses nothing.
-      return wasm.plan_route_state(rulesetJson, rawReport, rememberedJson, unitId, destination);
+      return wasm.plan_route_state(
+        rulesetJson,
+        rawReport,
+        rememberedJson,
+        unitId,
+        destination,
+        mapJson
+      );
     },
     async traceMoveOrders(
       rulesetJson: string,
       rawReport: string,
       rememberedJson: string,
       unitId: string,
-      ordersDocument: string
+      ordersDocument: string,
+      mapJson: string
     ) {
       // Straight through for the same reason planRoute is: no browser storage stands in. The whole
       // document goes, not one unit's block: a passenger's route is the hull's (ah-048).
@@ -435,7 +453,8 @@ export function createWebCoreAdapter(
         rawReport,
         rememberedJson,
         unitId,
-        ordersDocument
+        ordersDocument,
+        mapJson
       );
     },
     async exportMap(rawReport: string, rememberedJson: string, requestJson: string) {
@@ -451,14 +470,26 @@ export function createWebCoreAdapter(
       rulesetJson: string,
       rawReport: string,
       rememberedJson: string,
-      ordersDocument: string
+      ordersDocument: string,
+      mapJson: string
     ) {
       // Straight through as well: the preview is pure computation over the arguments.
-      return wasm.preview_orders_state(rulesetJson, rawReport, rememberedJson, ordersDocument);
+      return wasm.preview_orders_state(
+        rulesetJson,
+        rawReport,
+        rememberedJson,
+        ordersDocument,
+        mapJson
+      );
     },
-    async tradeRoutes(rulesetJson: string, rawReport: string, rememberedJson: string) {
+    async tradeRoutes(
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      mapJson: string
+    ) {
       // Straight through as well: finding routes is pure computation over the arguments.
-      return wasm.trade_routes_state(rulesetJson, rawReport, rememberedJson);
+      return wasm.trade_routes_state(rulesetJson, rawReport, rememberedJson, mapJson);
     },
     async validateOrders(
       rawOrders: string,
@@ -623,6 +654,27 @@ export function createWebCoreAdapter(
         ...(game.manifest as GameManifest),
         metadata: { ...(game.manifest as GameManifest).metadata, rulesetId }
       };
+      await store.putGame({ ...game, manifest });
+      return manifest;
+    },
+
+    async setGameMap(gameId: string, mapJson: string) {
+      const game = await store.getGame(gameId);
+      if (!game) {
+        throw new Error(`no game with id ${gameId}`);
+      }
+
+      // The registry's copy of the manifest is what every later open reads, as it is for the
+      // ruleset. An empty string removes the key rather than storing a null: absence is what tells
+      // the settings dialog the ruleset's default is only assumed, so it has to stay absence.
+      const previous = game.manifest as GameManifest;
+      const metadata = { ...previous.metadata };
+      if (mapJson === "") {
+        delete metadata.map;
+      } else {
+        metadata.map = JSON.parse(mapJson) as MapShape;
+      }
+      const manifest: GameManifest = { ...previous, metadata };
       await store.putGame({ ...game, manifest });
       return manifest;
     },

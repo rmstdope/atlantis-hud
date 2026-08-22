@@ -82,6 +82,18 @@ pub fn trade_routes(
     remembered: &[RememberedRegion],
     ruleset: &Ruleset,
 ) -> Vec<TradeRoute> {
+    trade_routes_on(report, remembered, ruleset, None)
+}
+
+/// The same, over a map whose shape is known, so a leg into unexplored country crosses the wrap
+/// seam correctly. `None` leaves the arithmetic exactly as it was.
+#[must_use]
+pub fn trade_routes_on(
+    report: &ParsedReport,
+    remembered: &[RememberedRegion],
+    ruleset: &Ruleset,
+    geometry: Option<crate::movement::graph::MapGeometry>,
+) -> Vec<TradeRoute> {
     let known = resolve_known_map(report, remembered);
     let markets: Vec<&KnownMapHex> = known
         .hexes
@@ -107,7 +119,7 @@ pub fn trade_routes(
 
     // Route searches are the expensive part, so they run once per folded pair below - never per
     // good, and never for a pair that turned out to carry nothing.
-    let map = MapKnowledge::from_remembered(report, remembered);
+    let map = MapKnowledge::from_remembered(report, remembered).with_geometry(geometry);
 
     let mut routes = Vec::new();
     for i in 0..markets.len() {
@@ -259,14 +271,34 @@ pub fn trade_routes_json(
     raw_report: &str,
     remembered_json: &str,
 ) -> Result<Vec<TradeRoute>, String> {
+    trade_routes_on_map(cache, ruleset_json, raw_report, remembered_json, "")
+}
+
+/// The same, over a map whose shape the game knows.
+///
+/// `map_json` as [`crate::movement::request::plan_on_map`]: the game's own dimensions, or empty
+/// for a game that never recorded any. A trade route's legs are planned the same way a movement is,
+/// so the seam matters here for the same reason.
+///
+/// # Errors
+///
+/// As [`trade_routes_json`], plus an error when the map shape cannot be read.
+pub fn trade_routes_on_map(
+    cache: &mut ReportCache,
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
+    map_json: &str,
+) -> Result<Vec<TradeRoute>, String> {
     let ruleset = cache
         .ruleset(ruleset_json)
         .map_err(|error| error.to_string())?;
     let remembered: Vec<RememberedRegion> = serde_json::from_str(remembered_json)
         .map_err(|error| format!("remembered regions could not be read: {error}"))?;
 
+    let geometry = crate::movement::graph::geometry_from_json(map_json)?;
     let report = cache.classified(raw_report, ruleset_json);
-    Ok(trade_routes(&report, &remembered, &ruleset))
+    Ok(trade_routes_on(&report, &remembered, &ruleset, geometry))
 }
 
 #[cfg(test)]

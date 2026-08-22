@@ -98,6 +98,32 @@ pub fn preview_orders_for_remembered_report(
     remembered_json: &str,
     orders_document: &str,
 ) -> Result<OrdersPreviewResponse, String> {
+    preview_orders_on_map(
+        cache,
+        ruleset_json,
+        raw_report,
+        remembered_json,
+        orders_document,
+        "",
+    )
+}
+
+/// The same, over a map whose shape the game knows.
+///
+/// `map_json` as [`crate::movement::request::plan_on_map`]: the game's own dimensions, or empty
+/// for a game that never recorded any, which leaves every preview exactly as it was.
+///
+/// # Errors
+///
+/// As [`preview_orders_for_remembered_report`], plus an error when the map shape cannot be read.
+pub fn preview_orders_on_map(
+    cache: &mut ReportCache,
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
+    orders_document: &str,
+    map_json: &str,
+) -> Result<OrdersPreviewResponse, String> {
     use crate::movement::graph::MapKnowledge;
     use crate::movement::trace::trace_move;
 
@@ -115,7 +141,8 @@ pub fn preview_orders_for_remembered_report(
 
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
-    let map = MapKnowledge::from_remembered(&report, &remembered);
+    let map = MapKnowledge::from_remembered(&report, &remembered)
+        .with_geometry(crate::movement::graph::geometry_from_json(map_json)?);
     // Where each unit stands once its own ENTER/LEAVE have run: `entry.unit` is already corrected
     // (see `Working::visit`), but the map and the aboard set it is compared against are the
     // report's, so the correction was thrown away one call later. `Working` applies the same

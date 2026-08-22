@@ -23,7 +23,7 @@ use atlantis_hud_core_persistence::{
     create_game, delete_game, delete_hex_note, export_game, import_game, insert_imported_turn,
     list_games, list_hex_notes, list_imported_turns, load_imported_turn, load_imported_turn_stamps,
     load_latest_imported_turn, load_merged_reports, load_order_draft, load_region_sightings,
-    open_game, preview_imported_turn, reset_game, set_active_faction, set_game_name,
+    open_game, preview_imported_turn, reset_game, set_active_faction, set_game_map, set_game_name,
     set_game_ruleset, upsert_hex_note, upsert_imported_turn, upsert_merged_report,
     upsert_order_draft, upsert_region_sightings, GameManifest, GameMetadata, HexNote,
     ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame,
@@ -41,6 +41,11 @@ pub struct GameMetadataDto {
     /// existed - hence `#[serde(default)]`, exactly as on `GameMetadata`.
     #[serde(default)]
     pub active_faction_id: Option<String>,
+    /// The map this game is played on, absent on a manifest written before the app asked - hence
+    /// `skip_serializing_if`, exactly as on `GameMetadata`: writing `null` into an old game's
+    /// manifest would turn "never said" into a claim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map: Option<atlantis_hud_core::movement::graph::MapGeometry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,6 +174,7 @@ impl From<GameMetadataDto> for GameMetadata {
             game_name: value.game_name,
             ruleset_id: value.ruleset_id,
             active_faction_id: value.active_faction_id,
+            map: value.map,
         }
     }
 }
@@ -201,6 +207,7 @@ impl From<GameMetadata> for GameMetadataDto {
             game_name: value.game_name,
             ruleset_id: value.ruleset_id,
             active_faction_id: value.active_faction_id,
+            map: value.map,
         }
     }
 }
@@ -954,15 +961,17 @@ pub mod commands {
         remembered_json: &str,
         unit_id: &str,
         destination: &str,
+        map_json: &str,
     ) -> Result<atlantis_hud_core::movement::request::RoutePlanResponse, String> {
         atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::movement::request::plan_for_remembered_report(
+            atlantis_hud_core::movement::request::plan_on_map(
                 cache,
                 ruleset_json,
                 raw_report,
                 remembered_json,
                 unit_id,
                 destination,
+                map_json,
             )
         })
     }
@@ -1041,15 +1050,17 @@ pub mod commands {
         remembered_json: &str,
         unit_id: &str,
         orders_document: &str,
+        map_json: &str,
     ) -> Result<atlantis_hud_core::movement::request::MoveOrderTraceResponse, String> {
         atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::movement::request::trace_orders_for_remembered_report(
+            atlantis_hud_core::movement::request::trace_orders_on_map(
                 cache,
                 ruleset_json,
                 raw_report,
                 remembered_json,
                 unit_id,
                 orders_document,
+                map_json,
             )
         })
     }
@@ -1067,14 +1078,16 @@ pub mod commands {
         raw_report: &str,
         remembered_json: &str,
         orders_document: &str,
+        map_json: &str,
     ) -> Result<atlantis_hud_core::orders::effects::OrdersPreviewResponse, String> {
         atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::orders::effects::preview_orders_for_remembered_report(
+            atlantis_hud_core::orders::effects::preview_orders_on_map(
                 cache,
                 ruleset_json,
                 raw_report,
                 remembered_json,
                 orders_document,
+                map_json,
             )
         })
     }
@@ -1096,13 +1109,15 @@ pub mod commands {
         ruleset_json: &str,
         raw_report: &str,
         remembered_json: &str,
+        map_json: &str,
     ) -> Result<Vec<atlantis_hud_core::trade::TradeRoute>, String> {
         atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::trade::trade_routes_json(
+            atlantis_hud_core::trade::trade_routes_on_map(
                 cache,
                 ruleset_json,
                 raw_report,
                 remembered_json,
+                map_json,
             )
         })
     }
@@ -1156,6 +1171,26 @@ pub fn command_set_game_ruleset(
     ruleset_id: &str,
 ) -> Result<GameManifestDto, String> {
     set_game_ruleset(Path::new(games_root), game_id, ruleset_id)
+        .map(GameManifestDto::from)
+        .map_err(|error| error.to_string())
+}
+
+/// Records the map a game is played on, returning the updated manifest.
+///
+/// `map_json` is the game's `{"width":..,"height":..,"wrapX":..,"wrapY":..}`, or empty to clear it
+/// - which puts the game back to assuming its ruleset's declared default.
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, when the map cannot be read, or when the
+/// change cannot be written.
+pub fn command_set_game_map(
+    games_root: &str,
+    game_id: &str,
+    map_json: &str,
+) -> Result<GameManifestDto, String> {
+    let map = atlantis_hud_core::movement::graph::geometry_from_json(map_json)?;
+    set_game_map(Path::new(games_root), game_id, map)
         .map(GameManifestDto::from)
         .map_err(|error| error.to_string())
 }
@@ -1322,9 +1357,14 @@ mod preview_orders_command_tests {
     fn previews_the_orders_it_is_handed() {
         let report = "Foo (1) Report\n\nplain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n";
 
-        let answer =
-            command_preview_orders(RULESET, report, "[]", "unit 900\nNAME UNIT \"Renamed\"\n")
-                .expect("the ruleset loads");
+        let answer = command_preview_orders(
+            RULESET,
+            report,
+            "[]",
+            "unit 900\nNAME UNIT \"Renamed\"\n",
+            "",
+        )
+        .expect("the ruleset loads");
 
         assert_eq!(answer.regions.len(), 1);
         assert_eq!(answer.regions[0].units[0].unit.name, "Renamed");
@@ -1371,6 +1411,7 @@ mod trace_move_orders_command_tests {
             &remembered,
             "900",
             "unit 900\nMOVE SE SE",
+            "",
         )
         .expect("the ruleset loads");
         let path = answer.path.expect("a traced path");
@@ -1389,8 +1430,9 @@ mod trace_move_orders_command_tests {
             corridor("plain", 1, 1, "  Southeast : plain (2,2) in Nowhere.")
         );
 
-        let answer = command_trace_move_orders(RULESET, &current, "[]", "900", "unit 900\nwork")
-            .expect("the ruleset loads");
+        let answer =
+            command_trace_move_orders(RULESET, &current, "[]", "900", "unit 900\nwork", "")
+                .expect("the ruleset loads");
         assert_eq!(answer.path, None);
     }
 }
@@ -1431,8 +1473,8 @@ mod plan_route_command_tests {
             serde_json::to_string(&far_side.regions[0]).expect("serializes")
         );
 
-        let alone =
-            command_plan_route(RULESET, &current, "[]", "900", "1:3,3").expect("the ruleset loads");
+        let alone = command_plan_route(RULESET, &current, "[]", "900", "1:3,3", "")
+            .expect("the ruleset loads");
         assert!(
             alone
                 .plan
@@ -1443,7 +1485,7 @@ mod plan_route_command_tests {
             "one report cannot describe that far, so part of the route is invented"
         );
 
-        let together = command_plan_route(RULESET, &current, &remembered, "900", "1:3,3")
+        let together = command_plan_route(RULESET, &current, &remembered, "900", "1:3,3", "")
             .expect("the ruleset loads");
         assert_eq!(
             together
@@ -1475,6 +1517,7 @@ mod test_support {
                 game_name: game_name.to_string(),
                 ruleset_id: "neworigins".to_string(),
                 active_faction_id: None,
+                map: None,
             },
             report_sources: Vec::new(),
             created_at: OPENED_AT.to_string(),

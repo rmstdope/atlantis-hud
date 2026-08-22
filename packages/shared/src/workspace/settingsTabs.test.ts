@@ -73,7 +73,54 @@ describe("per-game settings presentation", () => {
     expect(gameSettingsPresentation(game)).toEqual({
       kind: "ruleset",
       gameName: "Spring campaign",
-      rulesetId: "neworigins"
+      rulesetId: "neworigins",
+      map: { width: 72, height: 96, wrapX: true, wrapY: false },
+      mapStated: false
     });
+  });
+
+  it("shows an assumed map as assumed, for a game that never recorded one", () => {
+    // The navigator's choice: an old game adopts the ruleset's default rather than being
+    // interrupted for an answer, and this tab is where a player can find out that is what happened.
+    const game = {
+      gameId: "g1",
+      gameName: "Spring campaign",
+      databasePath: "idb://g1",
+      rulesetId: "neworigins"
+    };
+
+    const shown = gameSettingsPresentation(game);
+
+    expect(shown).toMatchObject({
+      map: { width: 72, height: 96, wrapX: true, wrapY: false },
+      mapStated: false
+    });
+  });
+
+  it("shows the game's own map as stated, once the player has said", () => {
+    // Editing a value writes it, which is what turns an assumption into a statement.
+    const game = {
+      gameId: "g1",
+      gameName: "Spring campaign",
+      databasePath: "idb://g1",
+      rulesetId: "neworigins",
+      map: { width: 40, height: 40, wrapX: true, wrapY: true }
+    };
+
+    expect(gameSettingsPresentation(game)).toMatchObject({
+      map: { width: 40, height: 40, wrapX: true, wrapY: true },
+      mapStated: true
+    });
+  });
+
+  it("shows no map at all when neither the game nor its ruleset has one", () => {
+    const game = {
+      gameId: "g1",
+      gameName: "Spring campaign",
+      databasePath: "idb://g1",
+      rulesetId: "some-other-variant"
+    };
+
+    expect(gameSettingsPresentation(game)).toMatchObject({ map: null, mapStated: false });
   });
 });

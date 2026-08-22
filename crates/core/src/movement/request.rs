@@ -73,6 +73,39 @@ pub fn plan_for_remembered_report(
     unit_id: &str,
     destination: &str,
 ) -> Result<RoutePlanResponse, String> {
+    plan_on_map(
+        cache,
+        ruleset_json,
+        raw_report,
+        remembered_json,
+        unit_id,
+        destination,
+        "",
+    )
+}
+
+/// The same, over a map whose shape the game knows.
+///
+/// `map_json` is the game's own `{"width":..,"height":..,"wrapX":..,"wrapY":..}`, or empty for a
+/// game that never recorded one. It is what lets a route into unexplored country cross the wrap
+/// seam correctly instead of walking off the map; empty leaves the arithmetic exactly as it was.
+///
+/// Separate from [`plan_for_remembered_report`] rather than an extra parameter on it, because the
+/// shape is a fact only a shell with a game open can supply - every other caller, the tests
+/// included, genuinely has none, and would have nothing to say but "no map".
+///
+/// # Errors
+///
+/// As [`plan_for_remembered_report`], plus an error when the map shape cannot be read.
+pub fn plan_on_map(
+    cache: &mut ReportCache,
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
+    unit_id: &str,
+    destination: &str,
+    map_json: &str,
+) -> Result<RoutePlanResponse, String> {
     use crate::movement::graph::MapKnowledge;
     use crate::movement::plan::{plan_route, RouteProblem};
     use crate::movement::risk::assess_route_for_mode;
@@ -89,8 +122,9 @@ pub fn plan_for_remembered_report(
         serde_json::from_str(remembered_json)
             .map_err(|error| format!("remembered regions could not be read: {error}"))?;
 
+    let geometry = crate::movement::graph::geometry_from_json(map_json)?;
     let report = cache.classified(raw_report, ruleset_json);
-    let map = MapKnowledge::from_remembered(&report, &remembered);
+    let map = MapKnowledge::from_remembered(&report, &remembered).with_geometry(geometry);
 
     let Some(unit) = report.units().find(|unit| unit.unit_id == unit_id).cloned() else {
         return Ok(RoutePlanResponse {
@@ -158,6 +192,34 @@ pub fn trace_orders_for_remembered_report(
     unit_id: &str,
     orders_document: &str,
 ) -> Result<MoveOrderTraceResponse, String> {
+    trace_orders_on_map(
+        cache,
+        ruleset_json,
+        raw_report,
+        remembered_json,
+        unit_id,
+        orders_document,
+        "",
+    )
+}
+
+/// The same, over a map whose shape the game knows.
+///
+/// `map_json` as [`plan_on_map`]: the game's own dimensions, or empty for a game that never
+/// recorded any, in which case the trace is drawn exactly as it was before the app asked.
+///
+/// # Errors
+///
+/// As [`trace_orders_for_remembered_report`], plus an error when the map shape cannot be read.
+pub fn trace_orders_on_map(
+    cache: &mut ReportCache,
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
+    unit_id: &str,
+    orders_document: &str,
+    map_json: &str,
+) -> Result<MoveOrderTraceResponse, String> {
     use crate::movement::fleet::{steps_followed_by, OrderedUnits};
     use crate::movement::graph::MapKnowledge;
     use crate::movement::trace::trace_move;
@@ -179,7 +241,8 @@ pub fn trace_orders_for_remembered_report(
         return Ok(MoveOrderTraceResponse { path: None });
     };
 
-    let map = MapKnowledge::from_remembered(&report, &remembered);
+    let map = MapKnowledge::from_remembered(&report, &remembered)
+        .with_geometry(crate::movement::graph::geometry_from_json(map_json)?);
     Ok(MoveOrderTraceResponse {
         path: trace_move(&map, &ruleset, &unit, steps, Some(&ordered)),
     })

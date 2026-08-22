@@ -101,13 +101,14 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       rawReport: string,
       rememberedJson: string,
       unitId: string,
-      destination: string
+      destination: string,
+      mapJson: string
     ) => ({
       plan: null,
       problem: { kind: "noKnownRoute" },
       risk: null,
       fullyModelled: false,
-      echoed: { rulesetJson, rawReport, rememberedJson, unitId, destination }
+      echoed: { rulesetJson, rawReport, rememberedJson, unitId, destination, mapJson }
     }),
     trace_move_orders_state: (
       rulesetJson: string,
@@ -1177,8 +1178,10 @@ describe("exporting and importing games", () => {
 
 describe("planning a route", () => {
   /**
-   * Planning is pure, so the adapter has nothing to do but pass the four arguments through in the
-   * right order. Getting that order wrong would plan somebody else's move, so it is worth pinning.
+   * Planning is pure, so the adapter has nothing to do but pass the arguments through in the right
+   * order. Getting that order wrong would plan somebody else's move, so it is worth pinning - and
+   * the map shape is pinned with them, because a shape that failed to arrive would draw the wrap
+   * seam wrong with nothing to show for it.
    */
   it("passes the request straight to the core, unshuffled", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
@@ -1188,7 +1191,8 @@ describe("planning a route", () => {
       "{report}",
       "[remembered]",
       "18642",
-      "1:7,51"
+      "1:7,51",
+      '{"width":72,"height":96,"wrapX":true,"wrapY":false}'
     )) as unknown as { echoed: Record<string, string> };
 
     expect(answer.echoed).toEqual({
@@ -1196,7 +1200,8 @@ describe("planning a route", () => {
       rawReport: "{report}",
       rememberedJson: "[remembered]",
       unitId: "18642",
-      destination: "1:7,51"
+      destination: "1:7,51",
+      mapJson: '{"width":72,"height":96,"wrapX":true,"wrapY":false}'
     });
   });
 });
@@ -1208,7 +1213,7 @@ describe("finding trade routes", () => {
   it("resolves to what the core found", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    const routes = await adapter.tradeRoutes("{ruleset}", "{report}", "[remembered]");
+    const routes = await adapter.tradeRoutes("{ruleset}", "{report}", "[remembered]", "");
 
     expect(routes).toEqual(FAKE_TRADE_ROUTES);
   });

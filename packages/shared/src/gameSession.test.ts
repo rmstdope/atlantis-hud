@@ -67,6 +67,29 @@ describe("creating a game", () => {
   it("refuses a ruleset the app does not ship, rather than falling back to one that is wrong", () => {
     expect(() => newGameManifest("A game", "atlantis-classic", NOW, "abc")).toThrow(/ruleset/u);
   });
+
+  it("records the map the player stated", () => {
+    const manifest = newGameManifest("A game", "neworigins", NOW, "abc", {
+      width: 64,
+      height: 64,
+      wrapX: true,
+      wrapY: true
+    });
+
+    expect(manifest.metadata.map).toEqual({ width: 64, height: 64, wrapX: true, wrapY: true });
+  });
+
+  it("omits the map entirely when nothing was stated, rather than writing the default in", () => {
+    // Absence is what tells Settings the values are only assumed, and it is not recoverable
+    // afterwards: a default written in here would be indistinguishable from a player's answer.
+    const manifest = newGameManifest("A game", "neworigins", NOW, "abc");
+
+    expect("map" in manifest.metadata).toBe(false);
+  });
+
+  it("does not bump the manifest version, because an optional field is the migration", () => {
+    expect(newGameManifest("A game", "neworigins", NOW, "abc").manifestVersion).toBe(1);
+  });
 });
 
 describe("the rule a game's name must obey", () => {

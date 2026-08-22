@@ -78,6 +78,25 @@ export type GameMetadata = {
    * no such key at all.
    */
   activeFactionId?: string | null;
+  /**
+   * The map this game is played on, when the player has said.
+   *
+   * Optional, and the absence carries meaning: a game whose manifest has no `map` was never told
+   * one, so the ruleset's declared default is only *assumed* for it - which is what Settings shows
+   * and what the core treats as "dimensions unknown". Writing a default in here would destroy that
+   * distinction permanently, so `newGameManifest` omits the key rather than filling it.
+   *
+   * No `manifestVersion` bump: an optional field an older manifest simply lacks is the migration.
+   */
+  map?: MapShape;
+};
+
+/** How far a map runs, and where it joins back onto itself. */
+export type MapShape = {
+  width: number;
+  height: number;
+  wrapX: boolean;
+  wrapY: boolean;
 };
 
 export type ReportSourceRef = {
@@ -520,6 +539,14 @@ export interface CoreAdapter {
   exportGame(gameId: string, exportedAt: string): Promise<string>;
   importGame(backupJson: string, openedAt: string): Promise<OpenedGame>;
   setGameRuleset(gameId: string, rulesetId: string): Promise<GameManifest>;
+  /**
+   * Records the map a game is played on, or clears it with `""`.
+   *
+   * Clearing puts the game back to *assuming* its ruleset's declared default, which is the state
+   * every game created before the app asked is already in; stating a value is what turns that
+   * assumption into the player's own word.
+   */
+  setGameMap(gameId: string, mapJson: string): Promise<GameManifest>;
   setGameName(gameId: string, gameName: string): Promise<GameManifest>;
   setActiveFaction(gameId: string, factionId: string): Promise<GameManifest>;
   parseReport(rawReport: string): Promise<ReportParseResult>;
@@ -580,12 +607,19 @@ export interface CoreAdapter {
     rawReport: string | null,
     unitId: string | null
   ): Promise<CaretCompletions>;
+  /**
+   * `mapJson` is the game's own map shape - `{"width":..,"height":..,"wrapX":..,"wrapY":..}` - or
+   * the empty string for a game that never recorded one. It is what lets a route into unexplored
+   * country cross the wrap seam correctly rather than walking off the map; empty leaves the
+   * arithmetic exactly as it was, because a guessed width would put a seam where there is none.
+   */
   planRoute(
     rulesetJson: string,
     rawReport: string,
     rememberedJson: string,
     unitId: string,
-    destination: string
+    destination: string,
+    mapJson: string
   ): Promise<RoutePlanResponse>;
   /**
    * Where a unit's written movement order takes it, for the map's route overlay.
@@ -600,7 +634,8 @@ export interface CoreAdapter {
     rawReport: string,
     rememberedJson: string,
     unitId: string,
-    ordersDocument: string
+    ordersDocument: string,
+    mapJson: string
   ): Promise<MoveOrderTraceResponse>;
   exportMap(rawReport: string, rememberedJson: string, requestJson: string): Promise<string>;
   knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string): Promise<KnownMap>;
@@ -608,10 +643,16 @@ export interface CoreAdapter {
     rulesetJson: string,
     rawReport: string,
     rememberedJson: string,
-    ordersDocument: string
+    ordersDocument: string,
+    mapJson: string
   ): Promise<OrdersPreviewResponse>;
   /** Every trade worth making in the map the faction has seen, best first. */
-  tradeRoutes(rulesetJson: string, rawReport: string, rememberedJson: string): Promise<TradeRoute[]>;
+  tradeRoutes(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    mapJson: string
+  ): Promise<TradeRoute[]>;
   loadRegionSightings(
     databasePath: string,
     gameId: string,

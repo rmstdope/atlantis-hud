@@ -326,15 +326,17 @@ pub fn plan_route_state(
     remembered_json: String,
     unit_id: String,
     destination: String,
+    map_json: String,
 ) -> Result<JsValue, JsValue> {
     let response = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::movement::request::plan_for_remembered_report(
+        atlantis_hud_core::movement::request::plan_on_map(
             cache,
             &ruleset_json,
             &raw_report,
             &remembered_json,
             &unit_id,
             &destination,
+            &map_json,
         )
     })
     .map_err(|error| JsValue::from_str(&error))?;
@@ -351,13 +353,15 @@ pub fn trade_routes_state(
     ruleset_json: String,
     raw_report: String,
     remembered_json: String,
+    map_json: String,
 ) -> Result<JsValue, JsValue> {
     let response = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::trade::trade_routes_json(
+        atlantis_hud_core::trade::trade_routes_on_map(
             cache,
             &ruleset_json,
             &raw_report,
             &remembered_json,
+            &map_json,
         )
     })
     .map_err(|error| JsValue::from_str(&error))?;
@@ -421,15 +425,17 @@ pub fn trace_move_orders_state(
     remembered_json: String,
     unit_id: String,
     orders_document: String,
+    map_json: String,
 ) -> Result<JsValue, JsValue> {
     let response = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::movement::request::trace_orders_for_remembered_report(
+        atlantis_hud_core::movement::request::trace_orders_on_map(
             cache,
             &ruleset_json,
             &raw_report,
             &remembered_json,
             &unit_id,
             &orders_document,
+            &map_json,
         )
     })
     .map_err(|error| JsValue::from_str(&error))?;
@@ -447,14 +453,16 @@ pub fn preview_orders_state(
     raw_report: String,
     remembered_json: String,
     orders_document: String,
+    map_json: String,
 ) -> Result<JsValue, JsValue> {
     let response = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::orders::effects::preview_orders_for_remembered_report(
+        atlantis_hud_core::orders::effects::preview_orders_on_map(
             cache,
             &ruleset_json,
             &raw_report,
             &remembered_json,
             &orders_document,
+            &map_json,
         )
     })
     .map_err(|error| JsValue::from_str(&error))?;

@@ -116,20 +116,92 @@ impl Direction {
     }
 }
 
+/// How far a map runs, and where it joins back onto itself.
+///
+/// The game server's world rather than the rules: the rules page never states a size, so this
+/// arrives from the game the player described rather than from a scrape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MapGeometry {
+    /// Columns, in coordinate space. A map 72 wide runs `x` from 0 to 71.
+    pub width: i32,
+    /// Rows, in coordinate space, counting the lattice's empty rows.
+    pub height: i32,
+    pub wrap_x: bool,
+    pub wrap_y: bool,
+}
+
+impl MapGeometry {
+    /// Brings a coordinate back onto the map, on whichever axes this map actually wraps.
+    ///
+    /// A dimension that is not positive is treated as unknown rather than as an error: a zero
+    /// width would otherwise divide by zero, and refusing outright would take away a route the
+    /// planner could still draw approximately.
+    #[must_use]
+    fn wrap(self, coordinate: Coordinate) -> Coordinate {
+        let x = if self.wrap_x && self.width > 0 {
+            coordinate.x.rem_euclid(self.width)
+        } else {
+            coordinate.x
+        };
+        let y = if self.wrap_y && self.height > 0 {
+            coordinate.y.rem_euclid(self.height)
+        } else {
+            coordinate.y
+        };
+        Coordinate {
+            x,
+            y,
+            z: coordinate.z,
+        }
+    }
+}
+
+/// Reads the map shape a shell passes across the boundary.
+///
+/// An empty string means the game never recorded one, which is the ordinary state for every game
+/// created before the app asked - so it is an answer rather than an error.
+///
+/// # Errors
+///
+/// Returns an error when the text is present but unreadable, rather than falling back to no
+/// wrapping: a shell sending malformed geometry has a defect worth hearing about, and a silent
+/// fallback would draw the seam wrong with nothing to say why.
+pub fn geometry_from_json(map_json: &str) -> Result<Option<MapGeometry>, String> {
+    if map_json.trim().is_empty() {
+        return Ok(None);
+    }
+    serde_json::from_str(map_json)
+        .map_err(|error| format!("the map shape could not be read: {error}"))
+}
+
 /// The coordinate a step lands on when the map itself cannot say.
 ///
 /// This is the arithmetic the module header warns against, kept as the deliberate exception: an
 /// order marching into unexplored country has no report-stated exit to follow, and drawing the
 /// intent roughly right everywhere except across the wrap seam beats drawing nothing. Callers must
 /// prefer a stated exit wherever one exists.
+///
+/// `geometry` is what the seam warning was about. Given the map's size, the step across the seam
+/// is exact rather than approximate; given `None` - a game that never recorded one, or a ruleset
+/// that declares no default - the arithmetic is exactly what it always was, because a guessed
+/// width would put a seam where the map has none.
+///
+/// **This improves the fallback, not the primary.** A stated exit is still the map's own word and
+/// still wins: a player-entered width can be wrong where a reported neighbour cannot.
 #[must_use]
-pub fn geometric_neighbour(from: Coordinate, direction: Direction) -> Coordinate {
+pub fn geometric_neighbour(
+    from: Coordinate,
+    direction: Direction,
+    geometry: Option<MapGeometry>,
+) -> Coordinate {
     let (dx, dy) = direction.offset();
-    Coordinate {
+    let stepped = Coordinate {
         x: from.x + dx,
         y: from.y + dy,
         z: from.z,
-    }
+    };
+    geometry.map_or(stepped, |map| map.wrap(stepped))
 }
 
 /// A hex the faction knows something about.
@@ -163,6 +235,14 @@ pub struct MapKnowledge {
     /// Exits held until every hex is in place, so adjacency can be resolved in either direction.
     #[serde(default, skip)]
     pending_exits: BTreeMap<String, Vec<crate::report::model::Exit>>,
+    /// The shape of the map these hexes sit on, when the game has been told one.
+    ///
+    /// It rides on the map rather than being passed beside it because every caller that computes a
+    /// neighbour already holds the map, and a second parameter threaded through each of them is a
+    /// second thing to forget. `None` means the game never said, and the arithmetic then behaves
+    /// exactly as it did before this field existed.
+    #[serde(default)]
+    geometry: Option<MapGeometry>,
 }
 
 /// Keys a hex the way the game writes one, so the map is stable and readable in a dump.
@@ -184,6 +264,31 @@ pub struct RememberedRegion {
 }
 
 impl MapKnowledge {
+    /// The same map, told what shape it is.
+    ///
+    /// Separate from the constructors so the resolution rules stay in one place and every entry
+    /// point gains the geometry the same way.
+    #[must_use]
+    pub fn with_geometry(mut self, geometry: Option<MapGeometry>) -> Self {
+        self.geometry = geometry;
+        self
+    }
+
+    /// The shape of this map, or `None` when the game never recorded one.
+    #[must_use]
+    pub fn geometry(&self) -> Option<MapGeometry> {
+        self.geometry
+    }
+
+    /// Where one step this way lands, using this map's own shape.
+    ///
+    /// The fallback for unexplored country only: callers still prefer a stated exit wherever one
+    /// exists, and this is the arithmetic they fall back to.
+    #[must_use]
+    pub fn geometric_neighbour(&self, from: Coordinate, direction: Direction) -> Coordinate {
+        geometric_neighbour(from, direction, self.geometry)
+    }
+
     /// Builds the map from one report.
     ///
     /// Visited regions are entered first and exits second, so a hex that is both - named by a
@@ -462,7 +567,7 @@ mod tests {
             Direction::Southwest,
             Direction::Northwest,
         ] {
-            let stepped = geometric_neighbour(from, direction);
+            let stepped = geometric_neighbour(from, direction, None);
             assert_eq!(
                 (stepped.x + stepped.y).rem_euclid(2),
                 0,
@@ -485,10 +590,110 @@ mod tests {
             Direction::Southwest,
             Direction::Northwest,
         ] {
-            let there = geometric_neighbour(from, direction);
-            let back = geometric_neighbour(there, direction.opposite());
+            let there = geometric_neighbour(from, direction, None);
+            let back = geometric_neighbour(there, direction.opposite(), None);
             assert_eq!(back, from, "{direction:?} then back drifted");
         }
+    }
+
+    /// The whole point of the bead: east of the last column is column 0, not a hex off the map.
+    #[test]
+    fn a_geometric_step_east_of_the_last_column_wraps_to_the_first() {
+        let map = MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: false,
+        };
+        let from = Coordinate { x: 71, y: 41, z: 1 };
+
+        let stepped = geometric_neighbour(from, Direction::Southeast, Some(map));
+
+        assert_eq!(stepped, Coordinate { x: 0, y: 42, z: 1 });
+    }
+
+    /// Unknown dimensions must behave exactly as they did before this existed, so every game
+    /// created before it - and every backup restored from before it - keeps working unchanged.
+    #[test]
+    fn a_geometric_step_with_unknown_dimensions_does_not_wrap() {
+        let from = Coordinate { x: 71, y: 41, z: 1 };
+
+        let stepped = geometric_neighbour(from, Direction::Southeast, None);
+
+        assert_eq!(stepped, Coordinate { x: 72, y: 42, z: 1 });
+    }
+
+    /// A map that runs east to west but not north to south must not wrap the axis it does not.
+    #[test]
+    fn a_geometric_step_off_the_last_row_does_not_wrap_unless_the_map_says_so() {
+        let map = MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: false,
+        };
+        let from = Coordinate { x: 4, y: 94, z: 1 };
+
+        let stepped = geometric_neighbour(from, Direction::South, Some(map));
+
+        assert_eq!(stepped, Coordinate { x: 4, y: 96, z: 1 });
+    }
+
+    /// `wrapY` is honoured, not merely recorded - a control that did nothing would be worse than
+    /// no control at all.
+    #[test]
+    fn a_geometric_step_off_the_last_row_wraps_when_the_map_wraps_north_to_south() {
+        let map = MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: true,
+        };
+        let from = Coordinate { x: 4, y: 94, z: 1 };
+
+        let stepped = geometric_neighbour(from, Direction::South, Some(map));
+
+        assert_eq!(stepped, Coordinate { x: 4, y: 0, z: 1 });
+    }
+
+    /// Wrapping must keep the lattice invariant `x + y` even, or a wrapped step lands on a hex the
+    /// game does not have.
+    #[test]
+    fn a_wrapped_step_stays_on_the_lattice() {
+        let map = MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: true,
+        };
+        for (from, direction) in [
+            (Coordinate { x: 71, y: 41, z: 1 }, Direction::Southeast),
+            (Coordinate { x: 0, y: 40, z: 1 }, Direction::Southwest),
+            (Coordinate { x: 4, y: 94, z: 1 }, Direction::South),
+            (Coordinate { x: 4, y: 0, z: 1 }, Direction::North),
+        ] {
+            let stepped = geometric_neighbour(from, direction, Some(map));
+            assert_eq!(
+                (stepped.x + stepped.y).rem_euclid(2),
+                0,
+                "{direction:?} from {from:?} left the lattice at {stepped:?}"
+            );
+        }
+    }
+
+    /// A map records its geometry when it is told one, and admits to none when it is not.
+    #[test]
+    fn a_map_carries_the_geometry_it_was_given() {
+        let map = MapKnowledge::default();
+        assert_eq!(map.geometry(), None);
+
+        let shape = MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: false,
+        };
+        assert_eq!(map.with_geometry(Some(shape)).geometry(), Some(shape));
     }
 
     #[test]

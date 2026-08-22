@@ -33,6 +33,8 @@ import {
 import { isOrdersFile, routeOrdersImport, type PendingOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
 import { rulesetById } from "../rulesets";
+import type { MapShape } from "@atlantis/core-client";
+import { mapShapeJson, mapShapeOfGame } from "../mapShape";
 import { ordersExportText } from "./ordersExport";
 import { deliverGameBackupExport, deliverMapExport, deliverOrdersExport } from "./exportActions";
 import {
@@ -522,6 +524,7 @@ export function AppShell({
   const closeGameInStore = useWorkspaceStore((state) => state.closeGame);
   const updateGameRulesetInStore = useWorkspaceStore((state) => state.updateGameRuleset);
   const updateGameNameInStore = useWorkspaceStore((state) => state.updateGameName);
+  const updateGameMapInStore = useWorkspaceStore((state) => state.updateGameMap);
 
   /**
    * What is owed to storage, and one write at a time.
@@ -552,6 +555,23 @@ export function AppShell({
   );
 
   const openGameId = game?.manifest.metadata.gameId ?? null;
+
+  /**
+   * The map this game is played on, as the core reads it.
+   *
+   * A game that recorded its own dimensions uses them; one that never did adopts the ruleset's
+   * declared default, and a ruleset that declares none yields the empty string, which is how the
+   * core hears "the game never said" and keeps computing neighbours exactly as it always did.
+   */
+  const mapJson = useMemo(
+    () =>
+      mapShapeJson(
+        game === null
+          ? null
+          : mapShapeOfGame(game.manifest.metadata.rulesetId, game.manifest.metadata.map).map
+      ),
+    [game?.manifest.metadata.rulesetId, game?.manifest.metadata.map]
+  );
 
   // Writes the whole map view whenever any part of it changes - level, hex or the map's own pan
   // and zoom, all held in one place by the store's `mapView` slice now (ah-ian). Guarded on a
@@ -1658,7 +1678,8 @@ export function AppShell({
           gameId: opened.manifest.metadata.gameId,
           gameName: opened.manifest.metadata.gameName,
           databasePath: opened.databasePath,
-          rulesetId: opened.manifest.metadata.rulesetId
+          rulesetId: opened.manifest.metadata.rulesetId,
+          map: opened.manifest.metadata.map
         },
         loadSavedView(opened.manifest.metadata.gameId)
       );
@@ -1691,6 +1712,30 @@ export function AppShell({
         closePopover("games");
       }),
     [client, enterGame, flush, runGameAction]
+  );
+
+  /**
+   * Records the map the open game is played on, from the per-game settings tab.
+   *
+   * `undefined` clears it, which puts the game back to assuming its ruleset's default - and stating
+   * a value is what turns that assumption into the player's own word.
+   */
+  const changeMap = useCallback(
+    (map: MapShape | undefined) => {
+      if (!game) {
+        return;
+      }
+      return runGameAction(async () => {
+        const manifest = await client.setGameMap(
+          game.manifest.metadata.gameId,
+          mapShapeJson(map ?? null)
+        );
+        setGame({ ...game, manifest });
+        updateGameMapInStore(map);
+        setGames(await client.listGames());
+      });
+    },
+    [client, game, runGameAction, updateGameMapInStore]
   );
 
   /**
@@ -1748,11 +1793,11 @@ export function AppShell({
   );
 
   const createGame = useCallback(
-    (name: string, rulesetId: string) =>
+    (name: string, rulesetId: string, map?: MapShape) =>
       runGameAction(async () => {
         await flush();
         const now = new Date().toISOString();
-        const outcome = await createGameAction(client, name, rulesetId, now);
+        const outcome = await createGameAction(client, name, rulesetId, now, map);
         enterGame(outcome.opened);
         setGames(outcome.games);
         closePopover("games");
@@ -1929,7 +1974,7 @@ export function AppShell({
     let cancelled = false;
     setPlanning(true);
     void client
-      .planRoute(ruleset.text, rawReport, rememberedJson, unit.unitId, destination)
+      .planRoute(ruleset.text, rawReport, rememberedJson, unit.unitId, destination, mapJson)
       .then((answer) => {
         if (!cancelled) {
           setRoute(answer);
@@ -1982,7 +2027,14 @@ export function AppShell({
     let cancelled = false;
     const timer = setTimeout(() => {
       void client
-        .traceMoveOrders(ruleset.text, rawReport, rememberedJson, unit.unitId, ordersDocument)
+        .traceMoveOrders(
+          ruleset.text,
+          rawReport,
+          rememberedJson,
+          unit.unitId,
+          ordersDocument,
+          mapJson
+        )
         .then((answer) => {
           if (!cancelled) {
             setOrderTrace(answer);
@@ -2194,7 +2246,7 @@ export function AppShell({
     }
     let cancelled = false;
     void client
-      .tradeRoutes(ruleset.text, rawReport, rememberedJson)
+      .tradeRoutes(ruleset.text, rawReport, rememberedJson, mapJson)
       .then((found) => {
         if (!cancelled) {
           setTradeRoutes(found);
@@ -2223,7 +2275,7 @@ export function AppShell({
     let cancelled = false;
     const timer = setTimeout(() => {
       void client
-        .previewOrders(ruleset.text, rawReport, rememberedJson, ordersDocument)
+        .previewOrders(ruleset.text, rawReport, rememberedJson, ordersDocument, mapJson)
         .then((answer) => {
           if (!cancelled) {
             setOrdersPreview(answer);
@@ -2829,6 +2881,7 @@ export function AppShell({
       busy={busy}
       error={gameError}
       onChangeRuleset={(rulesetId) => void changeRuleset(rulesetId)}
+      onChangeMap={(map) => void changeMap(map)}
       onDismiss={() => setSettingsOpen(false)}
     />
   );
@@ -2859,7 +2912,7 @@ export function AppShell({
       <GameGate
         busy={busy}
         error={gameError}
-        onCreate={(name, rulesetId) => void createGame(name, rulesetId)}
+        onCreate={(name, rulesetId, map) => void createGame(name, rulesetId, map)}
         onImport={(file) => void importGameBackup(file)}
         settingsOpen={settingsOpen}
         onToggleSettings={() => setSettingsOpen((open) => !open)}
@@ -2889,7 +2942,7 @@ export function AppShell({
             busy={busy}
             error={gameError}
             onOpen={(gameId) => void openGameById(gameId)}
-            onCreate={(name, rulesetId) => void createGame(name, rulesetId)}
+            onCreate={(name, rulesetId, map) => void createGame(name, rulesetId, map)}
             onDelete={deleteGame}
             onReset={resetGame}
             onExport={(gameId) => void exportGameBackup(gameId)}

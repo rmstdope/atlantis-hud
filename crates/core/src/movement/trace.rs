@@ -12,7 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::movement::graph::{geometric_neighbour, MapKnowledge};
+use crate::movement::graph::MapKnowledge;
 use crate::movement::mode::{fleet_of, fleet_sailing, mobility, Mobility};
 use crate::movement::orders::MoveStep;
 use crate::movement::plan::{
@@ -86,7 +86,7 @@ pub fn trace_move(
             .neighbours(position)
             .find(|(heading, _)| heading == direction)
             .map_or_else(
-                || geometric_neighbour(position, *direction),
+                || map.geometric_neighbour(position, *direction),
                 |(_, neighbour)| neighbour,
             );
         let next_terrain = map
@@ -139,7 +139,7 @@ pub fn trace_move(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::movement::graph::Direction;
+    use crate::movement::graph::{Direction, MapGeometry};
     use crate::movement::orders::parse_move;
     use crate::report::model::Coordinate;
     use crate::report::{parse_report_full, ParsedReport};
@@ -230,6 +230,52 @@ mod tests {
             path.steps.iter().map(|step| step.to).collect::<Vec<_>>(),
             vec![at(2, 2), at(3, 3)],
             "each unknown step lands on the adjacent lattice point"
+        );
+    }
+
+    /// Exact dimensions improve the fallback for unexplored country; they do not make arithmetic a
+    /// better authority than the report. A player-entered width can be wrong where a reported
+    /// neighbour cannot, so where the two disagree the report is still the map's own word.
+    #[test]
+    fn a_stated_exit_beats_the_arithmetic_even_when_the_map_shape_is_known() {
+        let text = concat!(
+            "Foo (1) Report\n\n",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  Southeast : plain (0,2) in Nowhere.\n\n",
+            "* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\n",
+            "plain (0,2) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  Northwest : plain (1,1) in Nowhere.\n\n",
+        );
+        let report = parse_report_full(text);
+        // A shape that wraps nothing at this coordinate: arithmetic alone would say (2,2), while
+        // the report says (0,2). The report has to win.
+        let map = MapKnowledge::from_report(&report).with_geometry(Some(MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: false,
+        }));
+        let unit = report
+            .units()
+            .find(|unit| unit.unit_id == "900")
+            .expect("the synthetic report carries the walker")
+            .clone();
+
+        let path = trace_move(
+            &map,
+            &ruleset(),
+            &unit,
+            &parse_move("MOVE SE").expect("a readable order"),
+            None,
+        )
+        .expect("an origin");
+
+        assert_eq!(
+            path.steps[0].to,
+            at(0, 2),
+            "the stated exit, not the computed one"
         );
     }
 

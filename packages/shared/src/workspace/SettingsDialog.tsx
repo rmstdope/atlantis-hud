@@ -1,3 +1,5 @@
+import type { MapShape } from "@atlantis/core-client";
+import { type MapDraft, mapFromDraft } from "../mapShape";
 import { useState } from "react";
 import type { AdvisoryCheckCode } from "@atlantis/core-client";
 import { useEscapeToDismiss } from "./dismissLayer";
@@ -41,6 +43,7 @@ export function SettingsDialog({
   busy,
   error,
   onChangeRuleset,
+  onChangeMap,
   onDismiss
 }: {
   platformLabel: string;
@@ -50,6 +53,7 @@ export function SettingsDialog({
   busy: boolean;
   error: string | null;
   onChangeRuleset: (rulesetId: string) => void;
+  onChangeMap: (map: MapShape | undefined) => void;
   onDismiss: () => void;
 }) {
   // Local rather than lifted: the dialog unmounts when closed, so every open lands on Global,
@@ -139,6 +143,7 @@ export function SettingsDialog({
               busy={busy}
               error={error}
               onChangeRuleset={onChangeRuleset}
+              onChangeMap={onChangeMap}
             />
           ) : null}
           {tab === "warnings" ? <WarningSettings /> : null}
@@ -630,12 +635,14 @@ function GameSettings({
   game,
   busy,
   error,
-  onChangeRuleset
+  onChangeRuleset,
+  onChangeMap
 }: {
   game: WorkspaceGame | null;
   busy: boolean;
   error: string | null;
   onChangeRuleset: (rulesetId: string) => void;
+  onChangeMap: (map: MapShape | undefined) => void;
 }) {
   const presentation = gameSettingsPresentation(game);
 
@@ -667,6 +674,12 @@ function GameSettings({
           ))}
         </select>
       </label>
+      <GameMapSettings
+        map={presentation.map}
+        stated={presentation.mapStated}
+        busy={busy}
+        onChangeMap={onChangeMap}
+      />
       {error ? (
         <span data-testid="settings-game-error" role="alert" className="text-danger">
           {error}
@@ -674,6 +687,135 @@ function GameSettings({
       ) : null}
     </div>
   );
+}
+
+/**
+ * The map the open game is played on, and whether anyone ever said so.
+ *
+ * A game created before the app asked adopts its ruleset's declared map rather than interrupting
+ * for an answer, so this is the one place a player can find out that is what happened - which is
+ * why an assumed map is labelled as assumed rather than shown as a fact. Editing any value writes
+ * all four, and that is what turns the assumption into a statement.
+ */
+function GameMapSettings({
+  map,
+  stated,
+  busy,
+  onChangeMap
+}: {
+  map: MapShape | null;
+  stated: boolean;
+  busy: boolean;
+  onChangeMap: (map: MapShape | undefined) => void;
+}) {
+  // Edited as text and committed on blur, through the same `mapFromDraft` the create form uses.
+  // Writing on every keystroke would store a half-typed "7" as a stated map seven hexes wide, and
+  // coercing a cleared field to zero would store a map no width at all - claimed, in both cases,
+  // as the player's own word. A cleared field means "I do not know", which records nothing and
+  // puts the game back to assuming its ruleset's default.
+  const [draft, setDraft] = useState<MapDraft>(() => draftOf(map));
+  // Keyed on the game's own values so switching games, or a change made elsewhere, refills the
+  // fields rather than leaving another game's numbers on screen.
+  const [shownFor, setShownFor] = useState(map);
+  if (shownFor !== map) {
+    setShownFor(map);
+    setDraft(draftOf(map));
+  }
+
+  const commit = (next: MapDraft) => onChangeMap(mapFromDraft(next) ?? undefined);
+
+  return (
+    <fieldset className="flex flex-col gap-2 rounded border border-edge p-2">
+      <legend className="px-1 text-ink-soft">Map</legend>
+      {map === null ? (
+        <p data-testid="settings-map-unknown" className="text-ink-soft">
+          Neither this game nor its ruleset names a map, so routes into unexplored country are
+          drawn without wrapping.
+        </p>
+      ) : (
+        <p
+          data-testid={stated ? "settings-map-stated" : "settings-map-assumed"}
+          className="text-ink-soft"
+        >
+          {stated
+            ? "These are this game's own values."
+            : "Assumed from the ruleset - nobody has confirmed them for this game. Editing one records it."}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <label className="flex flex-1 flex-col gap-1">
+          <span className="text-ink-soft">Width</span>
+          <input
+            data-testid="settings-map-width"
+            aria-label="map width"
+            inputMode="numeric"
+            value={draft.width}
+            disabled={busy}
+            onChange={(event) => setDraft({ ...draft, width: event.target.value })}
+            onBlur={() => commit(draft)}
+            className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+          />
+        </label>
+        <label className="flex flex-1 flex-col gap-1">
+          <span className="text-ink-soft">Height</span>
+          <input
+            data-testid="settings-map-height"
+            aria-label="map height"
+            inputMode="numeric"
+            value={draft.height}
+            disabled={busy}
+            onChange={(event) => setDraft({ ...draft, height: event.target.value })}
+            onBlur={() => commit(draft)}
+            className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+          />
+        </label>
+      </div>
+      <label className="flex items-center gap-2">
+        <input
+          data-testid="settings-map-wrap-x"
+          aria-label="wraps east to west"
+          type="checkbox"
+          checked={draft.wrapX}
+          disabled={busy}
+          onChange={(event) => {
+            const next = { ...draft, wrapX: event.target.checked };
+            setDraft(next);
+            // A checkbox has no half-typed state, so it commits at once rather than on blur.
+            commit(next);
+          }}
+        />
+        <span className="text-ink-soft">Wraps east to west</span>
+      </label>
+      <label className="flex items-center gap-2">
+        <input
+          data-testid="settings-map-wrap-y"
+          aria-label="wraps north to south"
+          type="checkbox"
+          checked={draft.wrapY}
+          disabled={busy}
+          onChange={(event) => {
+            const next = { ...draft, wrapY: event.target.checked };
+            setDraft(next);
+            commit(next);
+          }}
+        />
+        <span className="text-ink-soft">Wraps north to south</span>
+      </label>
+    </fieldset>
+  );
+}
+
+/** The four fields as text, for a game that may have no map at all. */
+function draftOf(map: MapShape | null): MapDraft {
+  if (map === null) {
+    return { width: "", height: "", wrapX: false, wrapY: false };
+  }
+  return {
+    width: String(map.width),
+    height: String(map.height),
+    wrapX: map.wrapX,
+    wrapY: map.wrapY
+  };
 }
 
 /**
