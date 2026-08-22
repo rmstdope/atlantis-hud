@@ -66,7 +66,11 @@ export function unreadableFactionLabel(header: ReportHeaderInfo): string | null 
 
 /** Width of the kind column in the clipboard block, sized to `structure`. */
 const CLIPBOARD_KIND_WIDTH = 9;
-/** Width of the line-range column, sized to a wrapped four-digit range. */
+/**
+ * Width of the line-range column: a single line number up to seven digits, or a wrapped range of
+ * three-digit numbers (`998-999`). A wider range than that overflows and pushes its own row's text
+ * right; the column is the mockup's, and a rare ragged row costs less than a wider one everywhere.
+ */
 const CLIPBOARD_RANGE_WIDTH = 7;
 /** Where the raw text starts, and where a cost note is indented to line up under it. */
 const CLIPBOARD_TEXT_COLUMN = 2 + CLIPBOARD_KIND_WIDTH + CLIPBOARD_RANGE_WIDTH + 2;
