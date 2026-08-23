@@ -400,6 +400,9 @@ jobs:
             release-artifacts/windows/*.exe
             release-artifacts/web/*.tar.gz
           generate_release_notes: true
+          # The "Installing" section below and README.md's "Getting Atlantis HUD" are a matched pair.
+          # Change both, or neither - the Gatekeeper story here is the same one a README reader needs,
+          # and it changes the day this build is notarized (ah-m0cj).
           body: |
             ## Installing
 

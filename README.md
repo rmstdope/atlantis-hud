@@ -2,6 +2,56 @@
 
 A frontend for Atlantis (PBEM) that can be deployed both as a web and as a desktop application.
 
+<!-- The install instructions here and the "Installing" section of the release-notes body in
+     .github/workflows/release.yml are a matched pair. Change both, or neither. -->
+
+## Getting Atlantis HUD
+
+You do not need to build anything. There are four ways to run it.
+
+### Use it in your browser
+
+Open **<https://atlantis-hud.kurelid.se>**. There is nothing to install and nothing to sign up for.
+
+Your games are kept by your browser, on that device — [Where your games are kept](#where-your-games-are-kept),
+just below, is worth two minutes before you start a long game.
+
+**If you use Safari, install it** — Share → Add to Home Screen, or Add to Dock. Safari deletes an
+uninstalled site's data after seven days without a visit, and a week between turns is perfectly
+ordinary in a play-by-email game.
+
+### Download the app
+
+Each release publishes a build for every platform on the
+[latest release page](https://github.com/rmstdope/atlantis-hud/releases/latest). The desktop app
+keeps each game as an ordinary file in your user folder, so your usual backups pick it up.
+
+**macOS** — download the `.dmg`, open it, and drag **Atlantis HUD** to Applications. There is one
+macOS download and it runs on both Apple Silicon and Intel Macs.
+
+This build is **not signed by Apple**, so macOS will refuse to open it the first time and say it is
+damaged. It is not. Clear the quarantine flag once:
+
+```
+xattr -dr com.apple.quarantine "/Applications/Atlantis HUD.app"
+```
+
+**Windows** — download the `.exe` installer and run it. Windows SmartScreen may warn that the
+application is from an unknown publisher. Click **More info** → **Run anyway** to proceed.
+
+**Linux** — download the `.AppImage`, mark it executable, and run it:
+
+```
+chmod +x Atlantis\ HUD_*.AppImage
+./Atlantis\ HUD_*.AppImage
+```
+
+### Host the web app yourself
+
+Download `atlantis-hud-web-v<version>.tar.gz` from the same page, unpack it, and serve the `site/`
+directory from the root of an HTTPS domain. The README inside covers the server requirements, with
+nginx and Apache samples.
+
 ## Where your games are kept
 
 Atlantis HUD has no server. Nothing you load or type is ever sent anywhere — your games stay on the
@@ -65,7 +115,12 @@ Your orders are saved as you type, a few seconds after you stop, so a crash cost
 sentence or so. And **deleting a game cannot be undone** — the app asks first, and says what will be
 lost, because there is no way back.
 
-## Requirements
+## Building from source
+
+Everything below is for working *on* Atlantis HUD. If you only want to play, the section above is
+all you need.
+
+### Requirements
 
 - Node.js 20+
 - pnpm 9+
@@ -82,7 +137,7 @@ WebAssembly build needs nothing but rustup on macOS, Linux and Windows alike. Th
 compiles SQLite through `rusqlite`, which uses the ordinary system compiler that Tauri already
 requires.
 
-## Install
+### Install
 
 ```bash
 git submodule update --init --recursive    # the agent harness lives in a submodule
