@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A unit fed from its own food (ah-p9z5) — chosen</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; margin-top:20px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:15px; display:flex; flex-direction:column; gap:10px; }
+  .card h3 { font-size:15.5px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .card h3 .recd { color:var(--ground); background:var(--brass); border-radius:3px; font:10px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px; text-transform:uppercase; padding:1px 5px; margin-left:6px; vertical-align:2px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; padding:0; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:16px 0 6px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; margin-top:12px; align-items:start; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .tipnote.none { color:var(--danger); font-style:normal; }
+  .cap { color:var(--ink-soft); font-size:12px; margin-top:6px; } .cap b { color:var(--ink); }
+  table.q { border-collapse:collapse; font-size:12.5px; margin-top:12px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:5px 9px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:10.5px; letter-spacing:1.1px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-p9z5</span> — a unit fed from its own food says nothing</h1>
+  <blockquote>"It is only the unit that do not possess the food, that states 'Faction food in this
+  hex covers {n} of this unit's upkeep.'. The other unit, the Granary, does not state that."</blockquote>
+  <p>Both units show <strong>0</strong> upkeep. The one that was <em>fed by a neighbour</em> explains
+  itself; the one that <em>supplied the food</em> does not. So a player learns the rule from the unit
+  that did not have the grain.</p>
+  <p>This is a gap in <code>ah-7cdt</code>'s plan rather than a defect in its code. That plan stated
+  the principle — <em>"an Upkeep of 0 on a unit with six men reads as a defect until something says
+  why"</em> — and then applied it only to the faction pool. The same reasoning applies to a unit
+  eating its own food, and that is the <strong>commoner</strong> case.</p>
+</header>
+
+<main>
+<section>
+  <h2 class="rule"><em>What you saw</em></h2>
+  <div class="tips">
+    <div>
+      <div class="tip">
+        <div class="sect">Silver</div>
+        <div class="rowset">
+          <div class="row"><span>Held now</span><span class="v">40</span></div>
+          <div class="row"><span>Upkeep</span><span class="v">0</span></div>
+          <div class="row total"><span>At month end</span><span class="v">40</span></div>
+        </div>
+        <div class="tipnote">Faction food in this hex covers 60 of this unit's upkeep.</div>
+      </div>
+      <div class="cap"><b>Scouts.</b> No grain of its own; fed by the Granary. Explains itself.</div>
+    </div>
+    <div>
+      <div class="tip">
+        <div class="sect">Silver</div>
+        <div class="rowset">
+          <div class="row"><span>Held now</span><span class="v">120</span></div>
+          <div class="row"><span>Upkeep</span><span class="v">0</span></div>
+          <div class="row total"><span>At month end</span><span class="v">120</span></div>
+        </div>
+        <div class="tipnote none">&mdash; nothing &mdash;</div>
+      </div>
+      <div class="cap"><b>The Granary.</b> Ate its own grain, so the faction pool was never consulted and the figure it explains is zero. Silent.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Chosen</em> the note follows the rules' own payment order</h2>
+  <p><strong>Decided 2026-08-23: B</strong>, own food first &mdash; and the navigator's reason is
+  better than the one this page argued for. The note order should mirror the order the game pays in,
+  not a judgement about which fact is harder to discover:</p>
+  <blockquote style="font-size:12.5px;line-height:1.7">
+  1. Food items the unit owns, if set CONSUME UNIT or CONSUME FACTION<br>
+  2. Food items from faction units in the same region, if set CONSUME FACTION<br>
+  3. Silver in the unit's possession<br>
+  4. Silver from other faction units in the same region<br>
+  5. Food items in the unit's possession<br>
+  6. Food items from faction units in the same region<br>
+  7. Unclaimed silver<br>
+  8. Silver from allied units in the same region<br>
+  9. Food items from allied units in the same region
+  </blockquote>
+  <p>Own food is step 1 and faction food is step 2, so a unit fed from both says the step that
+  actually fed it first. <strong>The accepted cost is that a unit already shipped changes what it
+  says</strong> in the mixed case &mdash; it will now name its own food where it named the hex's.</p>
+  <p>The panel shows <strong>one</strong> note — the first row of a table that matches. A unit owing
+  60 with one grain of its own takes 50 from that and 10 from the pool, so <em>both</em> lines would
+  apply. Today's table has the faction-food line and this bead adds a sibling; their order decides
+  which a player sees.</p>
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> Faction food wins</h3>
+      <div class="concept">The new own-food line goes <strong>after</strong> the existing one, so a unit fed from both says the neighbour part.</div>
+      <div class="tip">
+        <div class="sect">Silver</div>
+        <div class="rowset">
+          <div class="row"><span>Held now</span><span class="v">40</span></div>
+          <div class="row"><span>Upkeep</span><span class="v">0</span></div>
+          <div class="row total"><span>At month end</span><span class="v">40</span></div>
+        </div>
+        <div class="tipnote">Faction food in this hex covers 10 of this unit's upkeep.</div>
+      </div>
+      <ul class="notes">
+        <li>Faction food is the one part of the figure a <em>neighbour's</em> holdings move — the fact a reader cannot find by looking at this unit's own block.</li>
+        <li>Own food is visible in the unit's own items; faction food is not visible anywhere.</li>
+        <li>Existing behaviour is unchanged for every unit that already had a note.</li>
+        <li class="con">A unit says the smaller of its two numbers, which reads oddly if you know both.</li>
+      </ul>
+    </div>
+    <div class="card rec">
+      <h3><em>B</em> Own food wins<span class="recd">Chosen</span></h3>
+      <div class="concept">The new line goes <strong>before</strong> the existing one.</div>
+      <div class="tip">
+        <div class="sect">Silver</div>
+        <div class="rowset">
+          <div class="row"><span>Held now</span><span class="v">40</span></div>
+          <div class="row"><span>Upkeep</span><span class="v">0</span></div>
+          <div class="row total"><span>At month end</span><span class="v">40</span></div>
+        </div>
+        <div class="tipnote">This unit's own food covers 50 of its upkeep.</div>
+      </div>
+      <ul class="notes">
+        <li>Names the bigger contribution, and the one that happened first.</li>
+        <li class="con">Changes what an already-shipped unit says, for the mixed case.</li>
+        <li class="con">Hides the only fact a reader could not have worked out for themselves.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>C</em> Say both in one line</h3>
+      <div class="concept">A third string used only when both apply.</div>
+      <div class="tip">
+        <div class="sect">Silver</div>
+        <div class="rowset">
+          <div class="row"><span>Held now</span><span class="v">40</span></div>
+          <div class="row"><span>Upkeep</span><span class="v">0</span></div>
+          <div class="row total"><span>At month end</span><span class="v">40</span></div>
+        </div>
+        <div class="tipnote">Food covers this unit's upkeep — 50 its own, 10 from the hex.</div>
+      </div>
+      <ul class="notes">
+        <li>Complete: nothing is hidden and the arithmetic adds up on screen.</li>
+        <li class="con">A third string and a third branch, for a case that needs a unit with <em>some</em> but not enough food.</li>
+        <li class="con">Reads differently from every other note in the table, which all name one thing.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Chosen</em> the new line, verbatim</h2>
+  <p>It sits beside <code>Faction food in this hex covers {n} of this unit's upkeep.</code>, so it
+  should read as its sibling.</p>
+  <table class="q">
+    <tr><th>#</th><th>Line</th><th>Note</th></tr>
+    <tr><td><strong>2-i</strong></td><td class="k">This unit's own food covers {n} of its upkeep.</td><td><strong>Chosen.</strong> Closest mirror of the existing line — same shape, same order of ideas, with "own" doing the distinguishing work.</td></tr>
+    <tr><td><strong>2-ii</strong></td><td class="k">Food this unit carries covers {n} of its upkeep.</td><td>Avoids "own", which the existing line does not use either; slightly longer.</td></tr>
+    <tr><td><strong>2-iii</strong></td><td class="k">This unit eats its own food, covering {n} of its upkeep.</td><td>Says what happens rather than what is true. Warmer, and further from the sibling's voice.</td></tr>
+  </table>
+  <div class="absent">Both lines stay behind the <code>countUpkeep</code> setting, as the existing one
+  does: with the Upkeep row hidden there is nothing on show for either to explain.</div>
+</section>
+</main>
+</body>
+</html>
