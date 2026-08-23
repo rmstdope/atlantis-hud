@@ -898,19 +898,24 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   // hex CAST an enchant with no plate armor on hand (ah-dbb.2); and six Borg mages study force or
   // pattern above level 2 aboard a Cloudship, which seats no mages (ah-a2k.2). Since ah-dwk6 there
   // are two more: units 14451 and 13432 are given no orders at all (unit-does-nothing), and this
-  // test's own unit is a third, since a lone GIVE spends none of its month. Ten baseline plus the
-  // two this test introduces on its own unit.
+  // test's own unit is a third, since a lone GIVE spends none of its month. Since ah-1wcw.4 the
+  // silver check also counts each unit's monthly maintenance, and one more unit turns up short:
+  // 18642, alone in hex 1:7,53, is a leader owing $50 with neither silver nor food. Eleven
+  // baseline plus the two this test introduces on its own unit.
   const chip = page.getByTestId("problems-chip");
-  await expect(chip).toContainText("12 problems");
+  await expect(chip).toContainText("13 problems");
   await chip.click();
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
   await expect(page.getByTestId("problem-entry").first()).toContainText("⚠");
 
-  // Corrected, this hex's problems go away - "@work" both covers the shortfall and spends the
-  // month - leaving only the turn's ten baseline findings elsewhere.
+  // Corrected, the shortfall this test introduced goes away - "@work" both covers it and spends
+  // the month. What is left in this hex is not about these orders at all: since ah-1wcw.4 the
+  // silver check counts each unit's monthly maintenance, and this hex's units hold no silver to
+  // pay theirs. Wages do not help, since they are paid in the turn's last phase and fund nothing
+  // this month.
   await fillOrders(page, "@work");
-  await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("problems-chip")).toContainText("10 problems");
+  await expect(page.getByTestId("region-problems")).toContainText("upkeep");
+  await expect(page.getByTestId("problems-chip")).toContainText("12 problems");
 });
 
 /**
@@ -1014,7 +1019,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   // unaffected by the not-enough-silver toggle below - the chip counts them alongside the
   // shortfall this test introduces.
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("problems-chip")).toContainText("9 problems");
+  await expect(page.getByTestId("problems-chip")).toContainText("10 problems");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1030,7 +1035,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("problems-chip")).toContainText("9 problems");
+  await expect(page.getByTestId("problems-chip")).toContainText("10 problems");
 });
 
 /**
@@ -1171,11 +1176,15 @@ test("an order with the wrong argument is caught, and the offending word quoted"
   await expect(page.getByTestId("orders-diagnostic")).toHaveCount(0);
   await expect(page.getByTestId("orders-status")).toContainText("0 warnings");
 
-  // An order the unit can actually carry out leaves nothing to say at all, region panel included.
+  // An order the unit can actually carry out leaves this unit with nothing to say. The hex still
+  // has one thing to say, and it is not about these orders: since ah-1wcw.4 the silver check
+  // counts each unit's monthly maintenance, and unit 18642 here is a leader owing $50 with
+  // neither silver nor food to pay it - wages do not help, since they are paid in the turn's last
+  // phase and fund nothing this month.
   await fillOrders(page, "@work");
   await expect(page.getByTestId("orders-diagnostic")).toHaveCount(0);
   await expect(page.getByTestId("orders-status")).toContainText("0 warnings");
-  await expect(page.getByTestId("region-problems")).not.toBeVisible();
+  await expect(page.getByTestId("region-problems")).toContainText("upkeep");
 });
 
 test("a TURN block left open is reported against the unit that wrote it", async ({ page }) => {
