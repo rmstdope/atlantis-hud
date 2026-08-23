@@ -27,7 +27,7 @@ use crate::movement::mode::{
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::orders::silver::{
-    feed_from_faction_food, food_claim, forecast_unit, parse_wage_centis, unit_upkeep,
+    feed_from_faction_food, food_claim, forecast_unit, late_income, parse_wage_centis, unit_upkeep,
     FactionPurse, FoodClaim, Lookups, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
     SilverDoubt, UnitFacts, UnitSilver,
 };
@@ -821,7 +821,7 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
         }
     }
 
-    charge_upkeep(&mut ledger, hex);
+    charge_upkeep(&mut ledger, hex, ruleset);
 
     ledger
 }
@@ -833,7 +833,13 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
 /// setting either (`ah-1wcw.4`) - a display preference must not silently change which warnings
 /// fire, so the check always counts it. A unit whose headcount is a guess is charged nothing rather
 /// than a guess.
-fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
+///
+/// Silver the unit earns in the turn's last phase - wages, entertaining, Phantasmal Entertainment -
+/// arrives too late to pay for anything the orders spend but *is* in time for maintenance
+/// (`ah-uwa3`), so it is netted off the fee. Netted off rather than credited to the balance: a
+/// credit would leave the surplus where the orders could spend it, which is the very error this
+/// removes.
+fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>, ruleset: Option<&Ruleset>) {
     // Step 2 of the payment order needs every unit's step-1 leftovers before it can settle any of
     // them, so this is two passes over one set of facts rather than one pass - built once here,
     // because two copies of the same literal are two things to keep in step.
@@ -855,6 +861,13 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             receipts: &nothing,
         })
         .collect();
+
+    let region = RegionWages {
+        tax_base: hex.region.tax_base,
+        wage_centis: parse_wage_centis(hex.region.wages.as_deref()),
+        max_wages: hex.region.max_wages,
+        entertainment: hex.region.entertainment,
+    };
 
     // The check and the Silver column read one fact, so they settle the hex's faction-food pool
     // the same way: warning that a unit cannot pay a fee its faction-mates' grain already paid is
@@ -878,10 +891,16 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         if owed <= 0 {
             continue;
         }
-        *ledger
-            .balance
-            .entry((ordered.unit.unit_id.clone(), SILVER.to_string()))
-            .or_insert(0) -= owed;
+        // Only what the late earnings cannot cover reaches the balance. `ledger.upkeep` keeps the
+        // *full* fee: it is read only to word the finding ("orders and upkeep" against "orders"),
+        // and a unit whose wages cover its fee is still a unit with a fee.
+        let charged = (owed - late_income(facts, region, ruleset)).max(0);
+        if charged > 0 {
+            *ledger
+                .balance
+                .entry((ordered.unit.unit_id.clone(), SILVER.to_string()))
+                .or_insert(0) -= charged;
+        }
         ledger.upkeep.insert(ordered.unit.unit_id.clone(), owed);
     }
 }
@@ -4114,6 +4133,107 @@ mod tests {
         assert_eq!(
             codes(&check(vec![hex], "unit 5\nWORK\nSTUDY combat\n")),
             ["not-enough-silver"]
+        );
+    }
+
+    /// A unit made of leaders, which owe $50 each rather than $10, for the maintenance rules.
+    fn with_leaders(mut unit: ReportUnit, count: i64) -> ReportUnit {
+        unit.men = count;
+        unit.men_by_race = vec![ItemAmount {
+            amount: count,
+            name: "leader".to_string(),
+            tag: "LEAD".to_string(),
+        }];
+        unit
+    }
+
+    /// `ah-uwa3`: wages arrive in the turn's last phase, which is late for everything the orders
+    /// spend but in time for maintenance. A leader whose $50 fee its wages cover is not short.
+    #[test]
+    fn wages_pay_this_units_maintenance() {
+        let mut hex = region(vec![with_leaders(starving(unit("5")), 1)]);
+        hex.wages = Some("$120.0".to_string());
+        hex.max_wages = Some(300);
+
+        assert_eq!(
+            codes(&check(vec![hex], "unit 5\nWORK\n")),
+            [] as [&str; 0],
+            "$120 of wages covers the $50 fee"
+        );
+    }
+
+    /// The other side of the same rule: wages that fall short of the fee still warn.
+    #[test]
+    fn wages_that_do_not_cover_maintenance_still_warn() {
+        let mut hex = region(vec![with_leaders(starving(unit("5")), 4)]);
+        hex.wages = Some("$30.0".to_string());
+        hex.max_wages = Some(300);
+
+        assert_eq!(
+            codes(&check(vec![hex], "unit 5\nWORK\n")),
+            ["not-enough-silver"],
+            "$120 of wages against a $200 fee leaves $80 owing"
+        );
+    }
+
+    /// And the fix must not leak: wages still pay for nothing the orders spend.
+    #[test]
+    fn wages_still_cannot_pay_for_an_order() {
+        let mut hex = region(vec![with_men(with_silver(unit("5"), 0), 10)]);
+        hex.wages = Some("$12.0".to_string());
+        hex.max_wages = Some(300);
+
+        assert_eq!(
+            codes(&check(vec![hex], "unit 5\nWORK\nSTUDY combat\n")),
+            ["not-enough-silver"]
+        );
+    }
+
+    /// `ah-uwa3`: the column and the check, on one fixture, about the same unit.
+    ///
+    /// The two systems drifted apart for a whole epic because each had a test pinning its own
+    /// answer and nothing compared them. A unit buying on wages it cannot spend yet must be
+    /// *both* short in the column and warned about by the check.
+    #[test]
+    fn the_column_and_the_check_agree_about_a_purchase_funded_by_wages() {
+        let mut hex = region(vec![with_men(with_silver(unit("5"), 0), 10)]);
+        hex.wages = Some("$12.0".to_string());
+        hex.max_wages = Some(300);
+        hex.for_sale.push(MarketItem {
+            amount: 40,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 12,
+        });
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 5\nWORK\nBUY 5 horses\n",
+            Some(&ruleset()),
+            disabling(codes::UNIT_DOES_NOTHING),
+        );
+
+        let unit = review
+            .silver
+            .iter()
+            .find(|entry| entry.unit_id == "5")
+            .expect("the unit is forecast");
+        assert_eq!(unit.income, Some(120), "wages, all of them late");
+        assert_eq!(unit.late_income, Some(120));
+        assert_eq!(
+            unit.at_month_end,
+            Some(60),
+            "the month still ends in credit"
+        );
+        assert_eq!(
+            unit.short_for_orders,
+            Some(60),
+            "and none of it can reach the purchase"
+        );
+        assert_eq!(
+            codes(&review.findings),
+            ["not-enough-silver"],
+            "so the check must say so too"
         );
     }
 

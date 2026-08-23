@@ -904,10 +904,14 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   // are two more: units 14451 and 13432 are given no orders at all (unit-does-nothing), and this
   // test's own unit is a third, since a lone GIVE spends none of its month. Since ah-1wcw.4 the
   // silver check also counts each unit's monthly maintenance, and one more unit turns up short:
-  // 18642, alone in hex 1:7,53, is a leader owing $50 with neither silver nor food. Eleven
-  // baseline plus the two this test introduces on its own unit.
+  // 18642, alone in hex 1:7,53, is a leader owing $50 with neither silver nor food. Ten baseline
+  // plus the two this test introduces on its own unit.
+  //
+  // It was eleven baseline until ah-uwa3: unit 1688 owed $10 and orders "@work" in a hex paying
+  // $26.0, and wages arrive in the turn's last phase - in time for maintenance, if not for
+  // anything the orders spend. So its fee is covered and it is no longer short.
   const chip = page.getByTestId("problems-chip");
-  await expect(chip).toContainText("13 problems");
+  await expect(chip).toContainText("12 problems");
   await chip.click();
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
   await expect(page.getByTestId("problem-entry").first()).toContainText("⚠");
@@ -1022,8 +1026,11 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   // and six magic-study-outside-building for the Borg mages aboard a Cloudship, ah-a2k.2), all
   // unaffected by the not-enough-silver toggle below - the chip counts them alongside the
   // shortfall this test introduces.
+  //
+  // One fewer since ah-uwa3: unit 1688's $10 fee is covered by the wages its "@work" earns, which
+  // arrive in the turn's last phase - in time for maintenance, if not for what the orders spend.
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("problems-chip")).toContainText("10 problems");
+  await expect(page.getByTestId("problems-chip")).toContainText("9 problems");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1039,7 +1046,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("problems-chip")).toContainText("10 problems");
+  await expect(page.getByTestId("problems-chip")).toContainText("9 problems");
 });
 
 /**
