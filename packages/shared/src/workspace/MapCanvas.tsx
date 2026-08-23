@@ -832,7 +832,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     // The cursor goes wherever it is pointed, however far outside what the faction knows: the
     // coordinates an ally names can lie a long way off the ground anybody has walked, and the view
     // follows the cursor there so it is never lost.
-    const wanted = neighbour(from, event.key as ArrowKey);
+    const wanted = neighbour(from, event.key as ArrowKey, shape);
     setCursor(wanted);
     pendingFocusRef.current = cursorKeyOf(wanted);
     // The same insets every other path reads - this used to skip them (ah-t2i's "known
@@ -886,16 +886,25 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             "x",
             { ...view, tx: view.tx + size.width },
             size.width * 3,
-            COLUMN_LABEL_ROOM
+            COLUMN_LABEL_ROOM,
+            // The extent only names itself where the axis genuinely joins - `wrapSpans` carries the
+            // even-extent guard, so an odd width labels itself exactly as it does today.
+            spans.x === null ? null : (shape?.width ?? null)
           ),
-    [view, size]
+    [view, size, spans, shape]
   );
   const ticksY = useMemo(
     () =>
       size.height === 0
         ? []
-        : rulerTicks("y", { ...view, ty: view.ty + size.height }, size.height * 3, ROW_LABEL_ROOM),
-    [view, size]
+        : rulerTicks(
+            "y",
+            { ...view, ty: view.ty + size.height },
+            size.height * 3,
+            ROW_LABEL_ROOM,
+            spans.y === null ? null : (shape?.height ?? null)
+          ),
+    [view, size, spans, shape]
   );
 
   const riskByHex = useMemo(
@@ -1644,10 +1653,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           {ticksX.map((tick) => (
             <g key={tick.index} className="fill-ink-soft">
               <text x={tick.offset} y={13} textAnchor="middle" fontSize={10}>
-                {tick.index}
+                {tick.label}
               </text>
               <text x={tick.offset} y={size.height - 5} textAnchor="middle" fontSize={10}>
-                {tick.index}
+                {tick.label}
               </text>
             </g>
           ))}
@@ -1656,7 +1665,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           {ticksY.map((tick) => (
             <g key={tick.index} className="fill-ink-soft">
               <text x={4} y={tick.offset} dominantBaseline="middle" fontSize={10}>
-                {tick.index}
+                {tick.label}
               </text>
               <text
                 x={size.width - 4}
@@ -1665,7 +1674,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                 dominantBaseline="middle"
                 fontSize={10}
               >
-                {tick.index}
+                {tick.label}
               </text>
             </g>
           ))}

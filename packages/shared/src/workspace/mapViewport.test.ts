@@ -509,6 +509,49 @@ describe("wrapping", () => {
     expect(ghostShift(-9999, null, 1)).toBe(0);
   });
 
+  it("labels fold into the map's own range", () => {
+    const view: Viewport = { tx: 0, ty: 0, step: 0 };
+    const ticks = rulerTicks("x", view, 4000, 1, 72);
+    const past = ticks.find((tick) => tick.index === 72);
+    // The tick keeps its place in the panned range - it is a React key - and only its name folds.
+    expect(past?.index).toBe(72);
+    expect(past?.label).toBe(0);
+    expect(ticks.find((tick) => tick.index === 73)?.label).toBe(1);
+    expect(ticks.find((tick) => tick.index === 5)?.label).toBe(5);
+  });
+
+  it("labels west of the origin fold forwards", () => {
+    // `-1 % 72` is `-1` in JavaScript, and a ruler reading -1 where the map says 71 is the bug.
+    const view: Viewport = { tx: 300, ty: 0, step: 0 };
+    const ticks = rulerTicks("x", view, 800, 1, 72);
+    expect(ticks[0].index).toBeLessThan(0);
+    expect(ticks[0].label).toBe(((ticks[0].index % 72) + 72) % 72);
+    expect(ticks.every((tick) => tick.label >= 0 && tick.label < 72)).toBe(true);
+  });
+
+  it("labels are the index when the map does not repeat", () => {
+    const view: Viewport = { tx: 300, ty: 0, step: 0 };
+    for (const extent of [null, 0, undefined] as const) {
+      const ticks = rulerTicks("x", view, 800, 1, extent ?? null);
+      expect(ticks.every((tick) => tick.label === tick.index)).toBe(true);
+    }
+  });
+
+  it("stepping east from the last column arrives at the first", () => {
+    const cylinder = shape(72, 96, true, false);
+    expect(neighbour(at(71, 40), "ArrowRight", cylinder).x).toBe(0);
+    expect(neighbour(at(0, 40), "ArrowLeft", cylinder).x).toBe(71);
+  });
+
+  it("stepping is unchanged without a shape", () => {
+    expect(neighbour(at(7, 53), "ArrowRight")).toEqual(at(8, 52));
+    expect(neighbour(at(7, 53), "ArrowRight", null)).toEqual(at(8, 52));
+  });
+
+  it("an odd width does not fold", () => {
+    expect(neighbour(at(70, 40), "ArrowRight", shape(71, 96, true, false)).x).toBe(71);
+  });
+
   it("folding a coordinate matches the movement planner", () => {
     const cylinder = shape(72, 96, true, false);
     expect(foldCoordinate(at(72, 4), cylinder)).toEqual(at(0, 4));

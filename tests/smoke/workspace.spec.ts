@@ -3414,6 +3414,72 @@ test("panning west past the origin stays on the map", async ({ page }) => {
   }
 });
 
+/**
+ * ah-brgo.2: the keyboard cursor folds onto the map exactly as the movement planner does, so
+ * stepping east off the last column arrives at the first rather than at an x nobody has.
+ *
+ * A browser test because it is the one thing the unit tests cannot show: that the cursor lands on a
+ * hex that genuinely exists and can be focused. The arithmetic is pinned in `mapViewport.test.ts`.
+ */
+test("the arrow keys cross the seam", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await page.getByRole("button", { name: "hex 1:7,53", exact: true }).press("ArrowRight");
+
+  // East to the last column. Each press is one column east and one corner north, and the cursor is
+  // free to wander off what the faction knows on the way - hence `unexplored` rather than `hex`.
+  for (let step = 0; step < 63; step += 1) {
+    await page.locator("polygon:focus").press("ArrowRight");
+  }
+  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "unexplored 1:71,-11");
+
+  // One more, and without the fold this would read `unexplored 1:72,-12` - a hex the map does not hold.
+  await page.locator("polygon:focus").press("ArrowRight");
+  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "unexplored 1:0,-12");
+
+  // And back west across the seam the same way.
+  await page.locator("polygon:focus").press("ArrowLeft");
+  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "unexplored 1:71,-11");
+});
+
+/**
+ * ah-brgo.2: the ruler names the hexes the map actually holds, on both of its edges.
+ *
+ * Panned east past the seam the labels used to keep counting - 70, 71, 72, 73 - directly above a
+ * copy of hex 0, so the picture and the number disagreed in the same glance.
+ */
+test("the ruler folds its labels at the seam", async ({ page }) => {
+  await loadReport(page);
+  const period = await mapPeriod(page);
+  const before = await mapTx(page);
+
+  for (let sweep = 0; sweep < 40 && (await mapTx(page)) < before + period; sweep += 1) {
+    await panMap(page, 300);
+  }
+  expect(await mapTx(page)).toBeGreaterThan(before + period);
+
+  // Both edges of the ruler, read separately: it is easy to fold two of the four text nodes.
+  const edges = await page.getByTestId("map-ruler-x").evaluateAll((nodes) => {
+    const texts = Array.from(nodes[0].querySelectorAll("text"));
+    const byEdge = new Map<string, number[]>();
+    for (const text of texts) {
+      const edge = text.getAttribute("y") ?? "";
+      byEdge.set(edge, [...(byEdge.get(edge) ?? []), Number(text.textContent)]);
+    }
+    return Array.from(byEdge.values());
+  });
+
+  expect(edges).toHaveLength(2);
+  for (const labels of edges) {
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      expect(label).toBeGreaterThanOrEqual(0);
+      expect(label).toBeLessThan(72);
+    }
+  }
+  expect(edges[0]).toEqual(edges[1]);
+});
+
 test("the cursor may wander as far into the unexplored as it likes", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
