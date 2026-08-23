@@ -100,6 +100,13 @@ const CONSUMING_FACTION_FLAG: &str = "consuming faction's food";
 /// The two flags that say a unit is set to spend its food before its silver.
 const CONSUMING_FLAGS: [&str; 2] = ["consuming unit's food", CONSUMING_FACTION_FLAG];
 
+/// The flags the game prints for a unit that taxes every turn without an order.
+///
+/// Two spellings, both already in the report parser's `KNOWN_FLAGS`
+/// (`crates/core/src/report/unit.rs`): reports print `taxing`, and `autotax` is the order's own
+/// name. Match both, because the parser accepts both.
+const TAXING_FLAGS: [&str; 2] = ["taxing", "autotax"];
+
 /// What one unit's month is expected to do to its silver.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
@@ -663,6 +670,8 @@ pub fn forecast_unit(
 ) -> UnitSilver {
     let sale = lookups.sale;
     let own_food = own_food_pass(&facts);
+    // Kept before the destructure below, which does not name the field.
+    let unit_flags = facts.flags;
     let upkeep = own_food.as_ref().map(|pass| pass.owed_after_own_food);
     let own_food_covered = own_food.as_ref().map_or(0, |pass| pass.own_food_covered);
     let UnitFacts {
@@ -721,8 +730,6 @@ pub fn forecast_unit(
     let mut expense_doubt = None;
     let mut doubt_subject = None;
     let mut given_to_nobody = 0i64;
-    // Whether this block has already drawn its settled share of the region's tax base.
-    let mut tax_share_drawn = false;
     let mut withdrawing = false;
     // The first order in the block that actually moves silver out, which is what the hover names.
     // Recorded where `expense` grows rather than read off the intents: a `GIVE` of items and a
@@ -736,6 +743,46 @@ pub fn forecast_unit(
     // `BUY ALL` and `GIVE ... ALL SILV` spend what is left after every other term, so they cannot
     // be priced inside this pass. Collected in document order and applied below.
     let mut deferred: Vec<Deferred> = Vec::new();
+
+    // Whether this unit taxes at all is a property of the unit, not of one line in its block: the
+    // taxing flag makes it tax every turn with no `TAX` order, and a unit with both the flag and an
+    // order taxes once (`ah-fvzu`). Computed here, before the intent loop, so there is exactly one
+    // tax term - two computations of one number is how this column and the warning drifted apart
+    // before (`ah-abwx`, and the reason `ah-ycuj`'s corpus test exists).
+    //
+    // Placing it before the loop makes a tax doubt win over a later order's, whichever line the
+    // player typed first. Deliberate, and tested.
+    if taxes(unit_flags, intents) {
+        if region.pillaged {
+            // Zero, and never a doubt: a pillage empties the hex whatever the base was, so
+            // this collects nothing even where the base itself is unknown (`ah-cxxa`).
+            // This branch must stay *before* the settlement below, or a hex with no stated
+            // base raises `UnknownTaxBase`, and a contended one raises
+            // `ContestedRegionPool`, where the certain zero is the better answer.
+        } else {
+            match shares.tax {
+                // A unit nobody contends with, exactly as it was before the settlement
+                // existed.
+                PoolShare::Uncontended => match region.tax_base {
+                    Some(base) => {
+                        income = income.saturating_add(men.saturating_mul(TAX_PER_MAN).min(base))
+                    }
+                    None => income_doubt = income_doubt.or(Some(SilverDoubt::UnknownTaxBase)),
+                },
+                // Already capped by the settlement, and already no larger than this unit's
+                // ask. Drawn once however many times the block says `TAX`, because this term
+                // runs once per unit: the settlement counted the unit's men once, so drawing
+                // per line would promise the region's pool twice over - the very thing the
+                // split exists to stop.
+                PoolShare::Share(share) => income = income.saturating_add(share),
+                // Only income is doubted: this unit's own men are known, so what it spends
+                // is still exactly priceable - which separates this from `EstimatedMen`.
+                PoolShare::Unknowable => {
+                    income_doubt = income_doubt.or(Some(SilverDoubt::ContestedRegionPool))
+                }
+            }
+        }
+    }
 
     for placed in intents {
         match &placed.intent {
@@ -751,44 +798,10 @@ pub fn forecast_unit(
                     None => *amount,
                 });
             }
-            Intent::Tax => {
-                if region.pillaged {
-                    // Zero, and never a doubt: a pillage empties the hex whatever the base was, so
-                    // this collects nothing even where the base itself is unknown (`ah-cxxa`).
-                    // This branch must stay *before* the settlement below, or a hex with no stated
-                    // base raises `UnknownTaxBase`, and a contended one raises
-                    // `ContestedRegionPool`, where the certain zero is the better answer.
-                } else {
-                    match shares.tax {
-                        // A unit nobody contends with, exactly as it was before the settlement
-                        // existed.
-                        PoolShare::Uncontended => match region.tax_base {
-                            Some(base) => {
-                                income =
-                                    income.saturating_add(men.saturating_mul(TAX_PER_MAN).min(base))
-                            }
-                            None => {
-                                income_doubt = income_doubt.or(Some(SilverDoubt::UnknownTaxBase))
-                            }
-                        },
-                        // Already capped by the settlement, and already no larger than this unit's
-                        // ask. Drawn once however many times the block says `TAX`: the settlement
-                        // counted the unit's men once, so adding the share per line would promise
-                        // the region's pool twice over - the very thing the split exists to stop.
-                        PoolShare::Share(share) => {
-                            if !tax_share_drawn {
-                                tax_share_drawn = true;
-                                income = income.saturating_add(share);
-                            }
-                        }
-                        // Only income is doubted: this unit's own men are known, so what it spends
-                        // is still exactly priceable - which separates this from `EstimatedMen`.
-                        PoolShare::Unknowable => {
-                            income_doubt = income_doubt.or(Some(SilverDoubt::ContestedRegionPool))
-                        }
-                    }
-                }
-            }
+            // Priced once above, as a unit-level term rather than per line: a unit may tax by
+            // its flag with no `TAX` order at all, and one with both must be counted once
+            // (`ah-fvzu`).
+            Intent::Tax => {}
             // "The amount of money collected is equal to twice the available tax money." Mirrors
             // `semantics::apply`'s own arm exactly, down to the doubt: two surfaces reading one
             // order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj` exists).
@@ -1798,6 +1811,23 @@ pub fn pillage_threshold(tax_base: i64) -> i64 {
     (tax_base.max(0) + per_man - 1) / per_man
 }
 
+/// Whether this unit will tax this month - by an explicit `TAX` order, or because it carries the
+/// taxing flag, which taxes every turn without one (`ah-fvzu`).
+///
+/// **A predicate, not a count.** A unit carrying the flag *and* given a `TAX` this turn still
+/// taxes once, and this returns `true` for it exactly as for either alone.
+#[must_use]
+pub fn taxes(flags: &[String], intents: &[PlacedIntent]) -> bool {
+    intents
+        .iter()
+        .any(|placed| matches!(placed.intent, Intent::Tax))
+        || flags.iter().any(|flag| {
+            TAXING_FLAGS
+                .iter()
+                .any(|known| flag.eq_ignore_ascii_case(known))
+        })
+}
+
 /// Whether the unit is set to spend food on its maintenance, by either `consuming ...` flag.
 fn is_consuming(flags: &[String]) -> bool {
     flags.iter().any(|flag| {
@@ -2281,6 +2311,149 @@ mod tests {
     fn ruleset() -> Ruleset {
         Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
             .expect("the committed ruleset should be usable")
+    }
+
+    /// Flags as the report prints them, for the taxing-flag rules.
+    fn flags(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    #[test]
+    fn a_unit_with_a_tax_order_taxes() {
+        assert!(taxes(&[], &[placed(Intent::Tax)]));
+    }
+
+    #[test]
+    fn a_unit_with_the_taxing_flag_taxes() {
+        assert!(taxes(&flags(&["taxing"]), &[]));
+    }
+
+    #[test]
+    fn a_unit_with_the_autotax_spelling_taxes() {
+        assert!(taxes(&flags(&["autotax"]), &[]));
+        assert!(taxes(&flags(&["Taxing"]), &[]));
+    }
+
+    #[test]
+    fn a_unit_with_both_taxes_once() {
+        assert!(taxes(&flags(&["taxing"]), &[placed(Intent::Tax)]));
+    }
+
+    #[test]
+    fn a_unit_with_neither_does_not() {
+        assert!(!taxes(
+            &flags(&["on guard", "sharing"]),
+            &[placed(Intent::Work)]
+        ));
+    }
+
+    /// A forecast for a unit with report flags, and a settled share of its region's pools.
+    fn forecast_flagged(
+        men: i64,
+        region: RegionWages,
+        shares: PoolShares,
+        unit_flags: &[String],
+        intents: &[PlacedIntent],
+    ) -> UnitSilver {
+        let receipts = Receipts::default();
+        let mut unit_facts = facts(men, intents, &receipts);
+        unit_facts.flags = unit_flags;
+        forecast_unit(
+            unit_facts,
+            region,
+            shares,
+            FactionPurse::default(),
+            no_market(),
+            None,
+        )
+    }
+
+    /// The reported defect: 800 men set to tax every turn, no `TAX` line, shown earning nothing
+    /// (`ah-fvzu`).
+    #[test]
+    fn a_flagged_unit_earns_its_tax_without_an_order() {
+        let unit = forecast_flagged(
+            800,
+            taxable(Some(40_000)),
+            PoolShares::default(),
+            &flags(&["taxing"]),
+            &[],
+        );
+        assert_eq!(unit.income, Some(40_000));
+    }
+
+    /// The obvious wrong implementation - keep the intent arm, add a flag branch - doubles this.
+    #[test]
+    fn a_flagged_unit_with_a_tax_order_is_not_counted_twice() {
+        let unit = forecast_flagged(
+            800,
+            taxable(Some(40_000)),
+            PoolShares::default(),
+            &flags(&["taxing"]),
+            &[placed(Intent::Tax)],
+        );
+        assert_eq!(unit.income, Some(40_000));
+    }
+
+    #[test]
+    fn a_flagged_unit_is_capped_by_the_tax_base() {
+        let unit = forecast_flagged(
+            8,
+            taxable(Some(120)),
+            PoolShares::default(),
+            &flags(&["autotax"]),
+            &[],
+        );
+        assert_eq!(unit.income, Some(120));
+    }
+
+    #[test]
+    fn a_flagged_unit_in_a_pillaged_hex_earns_nothing() {
+        let region = RegionWages {
+            tax_base: Some(2500),
+            pillaged: true,
+            ..RegionWages::default()
+        };
+        let unit = forecast_flagged(30, region, PoolShares::default(), &flags(&["taxing"]), &[]);
+        assert_eq!(unit.income, Some(0));
+        assert_eq!(unit.doubt, None);
+    }
+
+    #[test]
+    fn a_flagged_unit_contends_for_the_pool_like_any_other() {
+        let shares = PoolShares {
+            tax: PoolShare::Share(500),
+            ..PoolShares::default()
+        };
+        let unit = forecast_flagged(30, taxable(Some(2500)), shares, &flags(&["taxing"]), &[]);
+        assert_eq!(unit.income, Some(500));
+    }
+
+    /// Lifting tax out of the intent loop makes the tax doubt win over a later order's, whichever
+    /// line the player typed first. Deliberate, and better than a sentence that depended on the
+    /// order of the block (`ah-fvzu`).
+    #[test]
+    fn a_taxing_doubt_no_longer_depends_on_which_line_came_first() {
+        let unknown_goods = |_item: &str| SaleAnswer::Unknown;
+        let priced = |intents: &[PlacedIntent]| {
+            let receipts = Receipts::default();
+            forecast_unit(
+                facts(8, intents, &receipts),
+                taxable(None),
+                PoolShares::default(),
+                FactionPurse::default(),
+                Lookups {
+                    sale: &unknown_goods,
+                    ..no_market()
+                },
+                None,
+            )
+            .doubt
+        };
+        let tax_first = priced(&[placed(Intent::Tax), selling("wibble", Amount::Exact(40))]);
+        let sell_first = priced(&[selling("wibble", Amount::Exact(40)), placed(Intent::Tax)]);
+        assert_eq!(tax_first, Some(SilverDoubt::UnknownTaxBase));
+        assert_eq!(sell_first, tax_first);
     }
 
     #[test]
