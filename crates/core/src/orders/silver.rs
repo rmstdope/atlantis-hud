@@ -1351,7 +1351,14 @@ fn skill_level(skills: &[Skill], tag: &str) -> i64 {
 fn moves_silver_per_man(placed: &PlacedIntent) -> bool {
     matches!(
         placed.intent,
-        Intent::Tax | Intent::Work | Intent::Study { .. } | Intent::Entertain
+        Intent::Tax
+            | Intent::Work
+            | Intent::Study { .. }
+            | Intent::Entertain
+            // PRODUCE is priced per man too - how many a unit makes is its headcount divided by
+            // the recipe's man-months - so a guessed headcount doubts it exactly as it doubts a
+            // TAX (`ah-19l2.2`).
+            | Intent::Produce { .. }
     )
 }
 

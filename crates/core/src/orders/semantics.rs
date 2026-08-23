@@ -660,7 +660,8 @@ fn spends_the_month(intent: &Intent) -> bool {
         | Intent::Entertain
         | Intent::Move { .. }
         | Intent::Sail { .. }
-        | Intent::Build { .. } => true,
+        | Intent::Build { .. }
+        | Intent::Produce { .. } => true,
 
         // CAST is NOT a full month order: "a mage may still MOVE, STUDY, or use any other month
         // long order". A bare CAST falls back to `MonthLong("CAST")`, so it has to be caught
@@ -1180,6 +1181,8 @@ fn apply(
     let who = &actor.unit.unit_id;
 
     match &placed.intent {
+        // Priced in a later increment of `ah-19l2.2`.
+        Intent::Produce { .. } => {}
         Intent::Give { to, what, amount } => {
             transfer(
                 ledger,
@@ -3433,7 +3436,9 @@ fn check_trade_regions(
         for unit in region.units.iter().filter(|unit| unit.own) {
             for placed in ordered.intents_of(&unit.unit_id) {
                 match &placed.intent {
-                    Intent::MonthLong("PRODUCE") => {
+                    // Both shapes a PRODUCE order can take: one naming what it makes
+                    // (`ah-19l2.2`) and one that named nothing readable.
+                    Intent::Produce { .. } | Intent::MonthLong("PRODUCE") => {
                         producing.insert(region_id);
                         let earlier = first_produce
                             .as_ref()

@@ -58,6 +58,12 @@ pub enum Intent {
         count: i64,
         item: String,
     },
+    /// `PRODUCE <item>`. Still a full month order; unlike the other month-long ones, what it
+    /// makes can cost silver and materials, so the item is carried rather than discarded
+    /// (`ah-19l2.2`). Resolved to a catalogue item by `semantics`, whose business that is.
+    Produce {
+        item: String,
+    },
     /// An order that takes the whole month and that no check reads any further.
     ///
     /// Occupying the month is the whole of what these say, and it is enough: a unit already
@@ -379,9 +385,16 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
             }),
             _ => None,
         },
-        // "This is a full month order." Nothing here reads them further; what matters is that the
-        // unit's month is spoken for.
-        "PRODUCE" => Some(Intent::MonthLong("PRODUCE")),
+        // A full month order, and the one whose argument is worth keeping: what it makes can cost
+        // silver and materials (`ah-19l2.2`). Read in the shape WITHDRAW uses just above. Any
+        // other form - no argument, or more than one token - stays a bare month-long order: the
+        // month is still spoken for and nothing can be priced.
+        "PRODUCE" => match arguments {
+            [item] if item.kind != TokenKind::Number => Some(Intent::Produce {
+                item: item.text.clone(),
+            }),
+            _ => Some(Intent::MonthLong("PRODUCE")),
+        },
         // The rules' enumerated list omits IDLE, but describes it as "do nothing for the entire
         // month" - so it spends the month, and a unit told to be idle is not a forgotten one.
         "IDLE" if arguments.is_empty() => Some(Intent::MonthLong("IDLE")),
@@ -826,6 +839,26 @@ mod tests {
                 count: 1,
                 item: "iron".to_string()
             }]
+        );
+    }
+
+    /// `PRODUCE <item>` carries what it makes, so it can be priced (`ah-19l2.2`); anything else
+    /// stays a bare month-long order, because nothing can be priced from it.
+    #[test]
+    fn reads_what_a_produce_order_makes() {
+        assert_eq!(
+            intents("unit 5\nPRODUCE catapult\n"),
+            vec![Intent::Produce {
+                item: "catapult".to_string()
+            }]
+        );
+        assert_eq!(
+            intents("unit 5\nPRODUCE\n"),
+            vec![Intent::MonthLong("PRODUCE")]
+        );
+        assert_eq!(
+            intents("unit 5\nPRODUCE 3 catapult\n"),
+            vec![Intent::MonthLong("PRODUCE")]
         );
     }
 
