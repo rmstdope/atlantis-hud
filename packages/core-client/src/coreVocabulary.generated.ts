@@ -29,7 +29,9 @@ export const ADVISORY_CHECK_CODES = [
   "build-without-skill",
   "claims-exceed-unclaimed",
   "upkeep-exceeds-unclaimed",
-  "taxed-a-pillaged-hex"
+  "taxed-a-pillaged-hex",
+  "produce-without-skill",
+  "produce-not-here"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
