@@ -360,10 +360,10 @@ pub fn forecast_unit(
                 }
             }
             Intent::Cast { spell, .. } => {
-                match ruleset
-                    .and_then(|ruleset| ruleset.find_skill(spell))
-                    .map(|skill| skill.tag.to_ascii_uppercase())
-                {
+                // Resolved once: this runs per keystroke, and `find_skill` walks the catalogue.
+                let spell = ruleset.and_then(|ruleset| ruleset.find_skill(spell));
+
+                match spell.map(|skill| skill.tag.to_ascii_uppercase()) {
                     Some(tag) if tag == PHANTASMAL_TAG => {
                         // Capped by the region's demand, but it does not *draw* on it: a hex with
                         // an entertainer and a phantasmal entertainer may forecast more than the
@@ -384,10 +384,7 @@ pub fn forecast_unit(
                 // move silver: item costs and the whole `transmute` map are another ledger's
                 // business. A spell the ruleset does not know, or knows no cost for, costs nothing
                 // and doubts nothing - which is the truth about most spells.
-                if let Some(cost) = ruleset
-                    .and_then(|ruleset| ruleset.find_skill(spell))
-                    .and_then(|skill| skill.cast.as_ref())
-                {
+                if let Some(cost) = spell.and_then(|skill| skill.cast.as_ref()) {
                     for input in &cost.costs {
                         if input.tag.eq_ignore_ascii_case(SILVER_TAG) {
                             expense = expense.saturating_add(input.amount);
