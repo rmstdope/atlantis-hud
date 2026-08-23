@@ -5006,10 +5006,17 @@ mod tests {
     /// (`ah-tdsi`).
     #[test]
     fn a_withdrawal_leaves_less_of_the_fund_for_upkeep() {
-        let regions = vec![region(vec![
-            unfed(unit("5")),
-            with_men(with_silver(starving(unit("7")), 0), 6),
-        ])];
+        // Separate hexes: since `ah-e66j` a faction-mate in the same hex lends its silver for
+        // maintenance, SHARE flag or not, and would pay this unit's fee before the fund was asked.
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![unfed(unit("5"))]),
+            region_at(
+                "1:8,54",
+                8,
+                54,
+                vec![with_men(with_silver(starving(unit("7")), 0), 6)],
+            ),
+        ];
 
         let findings: Vec<Finding> =
             check_with_purse(Some(14850), regions, "unit 5\nWITHDRAW 400 grain\n")
@@ -5030,11 +5037,17 @@ mod tests {
     /// Treating the unknown total as zero would leave the whole $8450 in play and silence this.
     #[test]
     fn an_unpriceable_withdrawal_leaves_the_upkeep_settlement_inactive() {
+        // Separate hexes, for the reason `a_withdrawal_leaves_less_of_the_fund_for_upkeep` gives.
         let starving_hex = || {
-            vec![region(vec![
-                unfed(unit("5")),
-                with_men(with_silver(starving(unit("7")), 0), 6),
-            ])]
+            vec![
+                region_at("1:7,53", 7, 53, vec![unfed(unit("5"))]),
+                region_at(
+                    "1:8,54",
+                    8,
+                    54,
+                    vec![with_men(with_silver(starving(unit("7")), 0), 6)],
+                ),
+            ]
         };
 
         assert_eq!(

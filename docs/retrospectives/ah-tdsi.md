@@ -38,3 +38,33 @@ per-agent tree size together already determine that number.
 ah-vkut, ah-uwa3, ah-qled.8, ah-1znc, ah-j0e, ah-o0d3, ah-8m0.3, ah-d00t, ah-kdgc, ah-8m0.2,
 ah-58n.1, ah-9lv, ah-vfq, ah-l2i.1, ah-9r0, ah-udff, ah-y3j1, ah-87he, ah-l2i.2, ah-qled.7.2 — and
 this file makes twenty-nine.
+
+## A cleanly-merged rebase left two new tests asserting behaviour the merged bead had just changed
+
+**What happened.** `ah-e66j` (automatic maintenance sharing) merged while this PR sat in review.
+The rebase conflicted only in three TypeScript fixture lists, all trivial; `crates/core/src/orders/semantics.rs`
+merged with no conflict at all. But `ah-e66j` had restructured its own upkeep tests in that file to
+put the two units in **separate hexes** — because a faction-mate in the same hex now lends its
+silver for maintenance whether or not anybody sets `SHARE`. My two new upkeep tests, written the
+day before against a single hex, were then testing a fixture where the starving unit is rescued by
+its neighbour and the fund is never asked, so both went red on a change git considered clean.
+
+**Why.** Established. Git merges by text; the two beads never touched the same lines. What changed
+was the *meaning* of a fixture shape both beads use, and the only record of that was a comment
+(`// Separate hexes, for the reason the test above gives`) on a sibling test twenty lines away.
+
+**Cost.** About 25 minutes, most of it spent chasing the wrong cause: a probe edit had left one
+test's purse at the value I was bisecting with, so two rounds of debugging measured a fixture I
+thought I had already fixed. One CI cycle, no wasted GitHub runs — the local gate caught it before
+the push.
+
+**Prevent by.** Running the project's fast gate after a rebase that pulls in a bead touching the
+same subsystem, rather than relying on CI, which `implement-bead`'s *Merging* section explicitly
+permits skipping for the `update-branch` path. That skip is right for a routine `BEHIND`; it is
+wrong when `git log HEAD..origin/main` names a bead in the same files, and the section could say so.
+Separately: when a probe edit changes a fixture value, revert it in the same command that runs the
+probe, so no later measurement is taken against it.
+
+**Seen before.** None found for the fixture-meaning half; the general "re-check the base branch
+before trusting a measurement" rule is in the `test-driven-development` skill and was what eventually
+found it.
