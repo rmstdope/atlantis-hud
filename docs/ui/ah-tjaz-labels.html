@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Three states, one set of labels (ah-tjaz)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head><body>
+<header>
+  <h1><span>ah-tjaz</span> — three states wearing the same labels</h1>
+  <p>When Psylocke fails a bead she asks you one question: <strong>is the plan wrong, or is the build
+  wrong?</strong> That answer decides who picks it up, and it is recorded by <em>removing</em>
+  <code>planned</code>, or not.</p>
+  <blockquote><b>build wrong</b> → <code>planned</code> stays → implementers<br>
+  <b>plan wrong</b> → <code>planned</code> removed → a planner revises the design</blockquote>
+  <p>That much works. The gap is downstream: <strong>an implementer that hands a bead back also
+  removes <code>planned</code></strong> — <code>skills/implement-bead</code>:323 and
+  <code>skills/beads-workflow</code>:96 both say to. So a bead you judged <em>build wrong</em> can
+  arrive at a planner wearing the labels of <em>plan wrong</em>, and the answer you gave is
+  overwritten by a recipe that never knew about it.</p>
+</header>
+<main>
+
+<section>
+  <h2 class="rule"><em>What happened</em> ah-t2pn.3, twice</h2>
+  <pre class="calc">Psylocke   failed it, you said BUILD wrong   -> planned kept, verification:failed
+Storm      picked it up, nothing to build   -> planned REMOVED, human added
+Xavier     P0 check returns it as PLAN wrong
+
+  correct action: leave it for Psylocke
+  the label rule's action: rewrite the plan, and the interview behind it</pre>
+  <div class="absent">Storm was right — an implementer that keeps re-claiming a bead with nothing to
+  build is a loop, and removing <code>planned</code> stops it. The recipe it followed is right too,
+  for the case it was written for. Nothing here is anyone's mistake; the labels simply cannot carry
+  three states.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Why the planner's rule is the fragile half</em></h2>
+  <p><code>agents/planner.md</code>:133 reads the state from an <strong>absence</strong>:</p>
+  <blockquote>A reopened bead that reaches you with its <code>planned</code> label removed (the plan
+  itself was judged wrong, not just the build) is a P0 with an existing design and a recorded failure
+  to read — amend it in place.</blockquote>
+  <p>An absence cannot say <em>why</em> it is absent. Every future reason to drop
+  <code>planned</code> will land in the planner's lap wearing this meaning.</p>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>&nbsp;</th></tr>
+    <tr><td class="k">A — say it positively</td><td>Psylocke adds a label when you answer
+      <b>plan wrong</b> — <code>plan:revise</code> — and the planner looks for <em>that</em>, not for
+      an absence. Removing <code>planned</code> then means only what it says: not ready for an
+      implementer. Every other reason to remove it becomes harmless.</td></tr>
+    <tr><td class="k">B — label the third state instead</td><td>The hand-back adds
+      <code>verification:ready</code> when there is nothing to build. The planner skips beads carrying
+      it. Fixes today's case; the next new reason to drop <code>planned</code> is a fresh
+      collision.</td></tr>
+    <tr><td class="k">C — no new label, change the rule</td><td>Tell planners that a removed
+      <code>planned</code> never means plan-wrong on its own, and the notes must be read. Costs
+      nothing to build, and puts a judgement call in the path of every reopened P0 for ever.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>The second half</em> the hand-back routes to the wrong role</h2>
+  <p>The same recipe adds <code>human</code>, which parks the bead in <strong>your</strong> queue. On
+  ah-t2pn.3 what it needed was Psylocke — <code>verification:failed</code> is what puts it on her
+  list. It was fixed by hand; nothing stops the next one.</p>
+  <table class="q">
+    <tr><td class="k">1 — no <code>human</code> when the bead is already failed</td><td>An implementer
+      handing back a <code>verification:failed</code> bead leaves it for Psylocke. You are not asked
+      about something no one needs you to decide.</td></tr>
+    <tr><td class="k">2 — keep <code>human</code> always</td><td>Every hand-back reaches you, which is
+      the safe default and how it works today — at the cost of a queue carrying items that route
+      themselves.</td></tr>
+  </table>
+</section>
+</main></body></html>
