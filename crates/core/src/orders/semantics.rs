@@ -28,10 +28,10 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::orders::silver::{
     feed_after_silver, feed_from_faction_food, food_claim, forecast_unit, late_income,
-    parse_wage_centis, plan_production, recipe_for, settle_unclaimed, unit_upkeep, FactionFoodPass,
-    FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, PurchaseAnswer, Receipts,
-    RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
-    FOOD_TAGS,
+    parse_wage_centis, plan_production, recipe_for, settle_unclaimed, split_pool, unit_upkeep,
+    FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, PoolShare,
+    PoolShares, PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, UnitFacts,
+    UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS, TAX_PER_MAN,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -45,9 +45,6 @@ const QUARTERMASTER_SKILL: &str = "quartermaster";
 
 /// The game's own currency tag.
 const SILVER: &str = "SILV";
-
-/// "Each taxing character collects $50."
-const TAX_PER_MAN: i64 = 50;
 
 /// "Each person can only teach up to 10 students in a month; additional students dilute the
 /// training."
@@ -367,6 +364,41 @@ struct Relief<'a> {
     settlement: &'a UpkeepSettlement,
 }
 
+/// One [`PoolShare`] per unit in `hex.units`, for the region's tax base.
+///
+/// [`PoolShare::Uncontended`] unless two or more own units in this hex are ordered to tax it: one
+/// taxer is exactly the uncontended case and keeps the arithmetic it always had, including its
+/// `UnknownTaxBase` doubt for a region that states no base.
+fn tax_shares_for(hex: &Hex<'_>, taxers: &[usize], tax_base: Option<i64>) -> Vec<PoolShare> {
+    let mut shares = vec![PoolShare::Uncontended; hex.units.len()];
+    // A region stating no base has no pool to divide, and one taxer is not contention: both keep
+    // the arithmetic - and, for the first, the `UnknownTaxBase` doubt - they always had.
+    let Some(base) = tax_base.filter(|_| taxers.len() > 1) else {
+        return shares;
+    };
+
+    // A guessed headcount is a guessed ask, so no taxer's share is a number - not even one whose
+    // own count is exact. A unit not drawing on the base is untouched.
+    if taxers
+        .iter()
+        .any(|index| hex.units[*index].unit.men_estimated)
+    {
+        for index in taxers {
+            shares[*index] = PoolShare::Unknowable;
+        }
+        return shares;
+    }
+
+    let wants: Vec<i64> = taxers
+        .iter()
+        .map(|index| hex.units[*index].unit.men.saturating_mul(TAX_PER_MAN))
+        .collect();
+    for (index, share) in taxers.iter().zip(split_pool(&wants, base)) {
+        shares[*index] = PoolShare::Share(share);
+    }
+    shares
+}
+
 /// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
 /// already filtered them out, so their cell is blank for free.
 fn forecast_hex(
@@ -391,12 +423,28 @@ fn forecast_hex(
     };
     let nothing = Receipts::default();
 
+    // A region's pools are shared, so who else in this hex draws on them has to be settled before
+    // any one unit can be priced against them (`ah-t2pn.1`).
+    let taxers: Vec<usize> = hex
+        .units
+        .iter()
+        .enumerate()
+        .filter(|(_, ordered)| {
+            ordered
+                .intents
+                .iter()
+                .any(|placed| matches!(placed.intent, Intent::Tax))
+        })
+        .map(|(index, _)| index)
+        .collect();
+    let tax_shares = tax_shares_for(hex, &taxers, hex.region.tax_base);
+
     // Step 2 of the payment order runs across the whole hex, so it needs every unit's step-1
     // leftovers before it can settle any of them. Gathered here, applied once the loop is done.
     let mut claims: Vec<FoodClaim> = Vec::with_capacity(hex.units.len());
     let start = into.len();
 
-    for ordered in &hex.units {
+    for (index, ordered) in hex.units.iter().enumerate() {
         // The market's answer depends on the item each SELL names, and resolving an item name is
         // this module's business - so the arithmetic is handed a closure rather than a value.
         let sale = |item: &str| match market_answer(&hex.region.wanted, item, hex, ordered, ruleset)
@@ -452,6 +500,9 @@ fn forecast_hex(
         into.push(forecast_unit(
             facts,
             region,
+            PoolShares {
+                tax: tax_shares[index],
+            },
             purse,
             Lookups {
                 sale: &sale,
@@ -3852,6 +3903,227 @@ mod tests {
 
     fn ruleset() -> Ruleset {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
+    }
+
+    /// `ah-t2pn.1`. A region's tax base is shared: two own units taxing one hex split it, and the
+    /// column shows what the game will actually pay rather than promising each of them all of it.
+    mod shared_tax_base {
+        use super::*;
+
+        fn taxer(id: &str, men: i64) -> ReportUnit {
+            let mut unit = unit(id);
+            unit.men = men;
+            unit
+        }
+
+        fn silver_of(review: &TurnReview, id: &str) -> UnitSilver {
+            review
+                .silver
+                .iter()
+                .find(|forecast| forecast.unit_id == id)
+                .cloned()
+                .unwrap_or_else(|| panic!("no forecast for {id}: {:?}", review.silver))
+        }
+
+        fn tax_review(base: Option<i64>, units: Vec<ReportUnit>, orders: &str) -> TurnReview {
+            let hex = ReportRegion {
+                tax_base: base,
+                ..region(units)
+            };
+            review_turn(
+                &report(vec![hex]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+        }
+
+        /// The regression net under everything below: one taxer is not contention, and its
+        /// arithmetic must not move a silver.
+        #[test]
+        fn a_lone_taxer_still_collects_against_the_whole_base() {
+            let big = tax_review(Some(2500), vec![taxer("2390", 50)], "unit 2390\nTAX\n");
+            assert_eq!(silver_of(&big, "2390").income, Some(2500));
+
+            let small = tax_review(Some(2500), vec![taxer("2390", 10)], "unit 2390\nTAX\n");
+            assert_eq!(silver_of(&small, "2390").income, Some(500));
+        }
+
+        /// The bead's headline: $2,500 of base, $3,000 of ask, and the two figures now add up to
+        /// no more than the region has.
+        #[test]
+        fn two_taxers_split_the_base_in_proportion_to_their_men() {
+            let review = tax_review(
+                Some(2500),
+                vec![taxer("2390", 10), taxer("2391", 50)],
+                "unit 2390\nTAX\nunit 2391\nTAX\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").income, Some(416));
+            assert_eq!(silver_of(&review, "2391").income, Some(2083));
+        }
+
+        #[test]
+        fn two_taxers_the_base_can_cover_are_not_divided() {
+            let review = tax_review(
+                Some(2500),
+                vec![taxer("2390", 10), taxer("2391", 20)],
+                "unit 2390\nTAX\nunit 2391\nTAX\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").income, Some(500));
+            assert_eq!(silver_of(&review, "2391").income, Some(1000));
+        }
+
+        #[test]
+        fn a_taxers_estimated_headcount_doubts_every_taxer_in_the_hex() {
+            let mut guessed = taxer("2391", 50);
+            guessed.men_estimated = true;
+            let review = tax_review(
+                Some(2500),
+                vec![taxer("2390", 10), guessed, taxer("2392", 5)],
+                "unit 2390\nTAX\nunit 2391\nTAX\nunit 2392\nMOVE N\n",
+            );
+
+            let exact_taxer = silver_of(&review, "2390");
+            assert_eq!(exact_taxer.doubt, Some(SilverDoubt::ContestedRegionPool));
+            assert_eq!(exact_taxer.income, None);
+            assert_eq!(exact_taxer.at_month_end, None);
+
+            // The guessed unit itself short-circuits earlier, on its own headcount: the wider
+            // doubt never reaches it, and that precedence is deliberate.
+            assert_eq!(
+                silver_of(&review, "2391").doubt,
+                Some(SilverDoubt::EstimatedMen)
+            );
+
+            let mover = silver_of(&review, "2392");
+            assert_eq!(mover.doubt, None, "a unit not taxing is not contending");
+            assert_eq!(mover.income, Some(0));
+        }
+
+        /// What separates this doubt from [`SilverDoubt::EstimatedMen`]'s whole-unit early
+        /// return: the unit's own men are known, so its spending is still a number.
+        #[test]
+        fn a_contested_pool_still_prices_what_the_unit_spends() {
+            let mut guessed = taxer("2391", 50);
+            guessed.men_estimated = true;
+            let hex = ReportRegion {
+                tax_base: Some(2500),
+                for_sale: vec![MarketItem {
+                    amount: 100,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 100,
+                }],
+                ..region(vec![with_silver(taxer("2390", 10), 5000), guessed])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nTAX\nBUY 2 grain\nunit 2391\nTAX\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let buyer = silver_of(&review, "2390");
+            assert_eq!(buyer.doubt, Some(SilverDoubt::ContestedRegionPool));
+            assert_eq!(buyer.income, None);
+            assert_eq!(buyer.expense, Some(200));
+        }
+
+        /// Absence of a base is not contention: the sentence the player already gets is the right
+        /// one, and a second doubt over the top of it would be a worse answer.
+        #[test]
+        fn two_taxers_in_a_region_with_no_stated_base_are_doubted_as_before() {
+            let review = tax_review(
+                None,
+                vec![taxer("2390", 10), taxer("2391", 50)],
+                "unit 2390\nTAX\nunit 2391\nTAX\n",
+            );
+
+            assert_eq!(
+                silver_of(&review, "2390").doubt,
+                Some(SilverDoubt::UnknownTaxBase)
+            );
+            assert_eq!(
+                silver_of(&review, "2391").doubt,
+                Some(SilverDoubt::UnknownTaxBase)
+            );
+        }
+
+        /// Different pools, no contention.
+        #[test]
+        fn a_taxer_and_a_worker_do_not_contend() {
+            let hex = ReportRegion {
+                tax_base: Some(2500),
+                wages: Some("$14.5".to_string()),
+                max_wages: Some(100),
+                ..region(vec![taxer("2390", 50), taxer("2391", 50)])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nTAX\nunit 2391\nWORK\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert_eq!(silver_of(&review, "2390").income, Some(2500));
+            assert_eq!(silver_of(&review, "2390").doubt, None);
+        }
+
+        /// `ah-t2pn.1` deliberately stops at `TAX`. These two say so, so the next implementer
+        /// sees the boundary was drawn rather than missed.
+        #[test]
+        fn working_is_still_never_divided() {
+            let hex = ReportRegion {
+                wages: Some("$10".to_string()),
+                max_wages: Some(300),
+                ..region(vec![taxer("2390", 50), taxer("2391", 50)])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nWORK\nunit 2391\nWORK\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert_eq!(silver_of(&review, "2390").late_income, Some(300));
+            assert_eq!(silver_of(&review, "2391").late_income, Some(300));
+        }
+
+        /// A block may say `TAX` twice; the settlement counted its men once, so it draws its
+        /// share once.
+        #[test]
+        fn a_block_that_taxes_twice_still_draws_one_share() {
+            let review = tax_review(
+                Some(2500),
+                vec![taxer("2390", 10), taxer("2391", 50)],
+                "unit 2390\nTAX\nTAX\nunit 2391\nTAX\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").income, Some(416));
+        }
+
+        #[test]
+        fn claiming_is_still_never_divided() {
+            let report = ParsedReport {
+                regions: vec![region(vec![taxer("2390", 1), taxer("2391", 1)])],
+                header: crate::report::header::ReportHeader {
+                    unclaimed_silver: Some(4935),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let review = review_turn(
+                &report,
+                "unit 2390\nCLAIM 4000\nunit 2391\nCLAIM 4000\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert_eq!(silver_of(&review, "2390").income, Some(4000));
+            assert_eq!(silver_of(&review, "2391").income, Some(4000));
+        }
     }
 
     /// `ah-1wcw.1`: the forecast rides out beside the findings, for own units only, and

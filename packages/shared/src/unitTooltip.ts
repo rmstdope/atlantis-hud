@@ -220,6 +220,9 @@ function silverNote(
   if (silver.doubt === "estimated-men") {
     return "This unit's headcount is an estimate, so its month cannot be priced.";
   }
+  if (silver.doubt === "contested-region-pool") {
+    return "Another of your units here draws on the same pool and its headcount is an estimate, so this unit's share cannot be worked out.";
+  }
   if (silver.doubt === "market-does-not-sell") {
     // The market's own name for the goods where anything knew one, and the order's own text
     // otherwise - the same posture `unknown-goods` above takes.
