@@ -529,6 +529,7 @@ describe("the Silver column", () => {
     givers: [],
     givenToNobody: 0,
     factionFoodCovered: 0,
+    ownFoodCovered: 0,
     ...overrides
   });
 

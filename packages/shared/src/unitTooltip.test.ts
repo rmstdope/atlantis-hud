@@ -157,6 +157,7 @@ describe("the silver section", () => {
     givers: [],
     givenToNobody: 0,
     factionFoodCovered: 0,
+    ownFoodCovered: 0,
     ...overrides
   });
 
@@ -203,6 +204,38 @@ describe("the silver section", () => {
     expect(contested.silver?.note).toBe(
       "There is not enough faction food here to feed every unit set to eat it."
     );
+  });
+
+  it("the_silver_section_says_when_a_units_own_food_fed_it", () => {
+    const fed = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 0, ownFoodCovered: 60 }),
+      true,
+      true
+    );
+    expect(fed.silver?.note).toBe("This unit's own food covers 60 of its upkeep.");
+  });
+
+  it("a_unit_fed_by_both_names_its_own_food_first", () => {
+    // The note follows the game's own maintenance payment order: own food is step 1, the hex's
+    // faction food step 2, so the step that actually fed it is named first (`ah-p9z5`).
+    const both = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 0, ownFoodCovered: 50, factionFoodCovered: 10 }),
+      true,
+      true
+    );
+    expect(both.silver?.note).toBe("This unit's own food covers 50 of its upkeep.");
+  });
+
+  it("neither_food_note_appears_when_upkeep_is_not_counted", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 0, ownFoodCovered: 50, factionFoodCovered: 10 }),
+      true
+    );
+    expect(summary.silver?.note ?? "").not.toContain("own food");
+    expect(summary.silver?.note ?? "").not.toContain("Faction food");
   });
 
   it("the_faction_food_note_survives_a_warned_unit", () => {

@@ -384,7 +384,8 @@ describe("silverShown", () => {
       received: 0,
       givers: [],
       givenToNobody: 0,
-      factionFoodCovered: 0
+      factionFoodCovered: 0,
+      ownFoodCovered: 0
     }) satisfies UnitSilver;
 
   it("subtracts upkeep only when the setting is on", () => {

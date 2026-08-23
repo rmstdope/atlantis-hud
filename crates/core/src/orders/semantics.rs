@@ -8943,6 +8943,46 @@ mod tests {
         // The hover's `covers {n}` line reads this, and nothing else in the core does.
         assert_eq!(forecast(&review, "2001").faction_food_covered, 60);
         assert_eq!(forecast(&review, "2000").faction_food_covered, 0);
+        // The quartermaster ate its own grain first, and the hover explains its zero from that
+        // (`ah-p9z5`).
+        assert_eq!(forecast(&review, "2000").own_food_covered, 0);
+        assert_eq!(forecast(&review, "2001").own_food_covered, 0);
+    }
+
+    /// A unit holding *some* food and drawing the rest from the hex records each separately, so
+    /// the hover can name the step that actually fed it (`ah-p9z5`).
+    #[test]
+    fn a_unit_fed_by_both_records_each_separately() {
+        let quartermaster = with_item(with_silver(starving(unit("2000")), 500), 6, "grain", "GRAI");
+        let mut eater = with_item(starving(unit("2001")), 1, "grain", "GRAI");
+        eater.flags = vec!["consuming faction's food".to_string()];
+        eater.men = 6;
+
+        let review = forecast_of(vec![quartermaster, eater]);
+
+        assert_eq!(forecast(&review, "2001").upkeep, Some(0));
+        assert_eq!(forecast(&review, "2001").own_food_covered, 50);
+        assert_eq!(forecast(&review, "2001").faction_food_covered, 10);
+    }
+
+    /// The case the navigator reported: the unit that supplied the grain is fed by its own food
+    /// and must have something to say about its zero too (`ah-p9z5`).
+    #[test]
+    fn the_unit_holding_the_grain_records_its_own_food() {
+        let mut granary = with_item(with_silver(starving(unit("2000")), 500), 6, "grain", "GRAI");
+        granary.flags = vec!["consuming faction's food".to_string()];
+        granary.men = 6;
+        let mut eater = starving(unit("2001"));
+        eater.flags = vec!["consuming faction's food".to_string()];
+        eater.men = 6;
+
+        let review = forecast_of(vec![granary, eater]);
+
+        assert_eq!(forecast(&review, "2000").upkeep, Some(0));
+        assert_eq!(forecast(&review, "2000").own_food_covered, 60);
+        assert_eq!(forecast(&review, "2000").faction_food_covered, 0);
+        assert_eq!(forecast(&review, "2001").faction_food_covered, 60);
+        assert_eq!(forecast(&review, "2001").own_food_covered, 0);
     }
 
     /// A hex with one eater and not enough grain: it eats what there is, and the hover says how
