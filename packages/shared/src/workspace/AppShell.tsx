@@ -239,13 +239,20 @@ export async function rulesetForLoad(
   // The settled state travels with the promise rather than being read back off the shell, because
   // the shell's copy is React state: it is still "loading" for the moment between the fetch
   // resolving and the render that records it, which is exactly the moment this resolves in.
-  const arrived = await Promise.race([
-    settled(),
-    new Promise<null>((resolve) => {
-      setTimeout(() => resolve(null), waitMs);
-    })
-  ]);
-  return arrived ?? rulesetNow();
+  let ceiling: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const arrived = await Promise.race([
+      settled(),
+      new Promise<null>((resolve) => {
+        ceiling = setTimeout(() => resolve(null), waitMs);
+      })
+    ]);
+    return arrived ?? rulesetNow();
+  } finally {
+    // Cleared on the ordinary path too, where the ruleset won the race: an uncleared ceiling is a
+    // no-op in a browser but keeps the event loop alive for five seconds in a test run.
+    clearTimeout(ceiling);
+  }
 }
 
 export function parserWaitingForRuleset(
