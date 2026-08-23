@@ -111,6 +111,7 @@ pub mod codes {
     pub const PRODUCE_NOT_HERE: Code = Code("produce-not-here");
     pub const REGION_POOL_OVERSUBSCRIBED: Code = Code("region-pool-oversubscribed");
     pub const PILLAGE_WITHOUT_MEN: Code = Code("pillage-without-men");
+    pub const TAXED_A_GUARDED_HEX: Code = Code("taxed-a-guarded-hex");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -119,7 +120,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 31] = [
+    pub const ALL: [Code; 32] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -151,6 +152,7 @@ pub mod codes {
         PRODUCE_NOT_HERE,
         REGION_POOL_OVERSUBSCRIBED,
         PILLAGE_WITHOUT_MEN,
+        TAXED_A_GUARDED_HEX,
     ];
 }
 
@@ -333,7 +335,15 @@ pub fn review_turn(
         check_region_pools(hex, &overruns, ruleset, &options, &mut findings);
         check_resources(hex, ledger, ruleset, &options, &mut findings);
         check_markets(hex, ruleset, &options, &mut findings);
-        check_pillaged_tax(hex, own_unit_pillages(hex), &options, &mut findings);
+        let pillaged = own_unit_pillages(hex);
+        check_pillaged_tax(hex, pillaged, &options, &mut findings);
+        check_guarded_tax(
+            hex,
+            foreign_unit_guards(hex),
+            pillaged,
+            &options,
+            &mut findings,
+        );
         check_pillage_men(hex, ruleset, &options, &mut findings);
         check_guard(hex, &options, &mut findings);
         check_teaching(hex, ruleset, &options, &mut findings);
@@ -1257,6 +1267,23 @@ struct Ledger<'a> {
     faction_food: FactionFoodPass,
 }
 
+/// Whether any *foreign* unit in this hex is on guard.
+///
+/// A guard blocks another faction's `TAX` unless the guarding faction has declared that faction
+/// Friendly - **its** declaration, not ours, which our report does not carry and never will
+/// (`ah-g7ts`). So this is deliberately a bare "is anyone guarding", with no reference to
+/// `header.attitudes`: that block states our attitudes toward them, which is the other direction
+/// and would answer a question nobody asked.
+///
+/// Foreign units are read from `hex.region.units` rather than `hex.units`, which `Hex::read` has
+/// already filtered down to our own.
+fn foreign_unit_guards(hex: &Hex<'_>) -> bool {
+    hex.region
+        .units
+        .iter()
+        .any(|unit| !unit.own && unit.on_guard)
+}
+
 /// Whether any own unit in this hex is ordered to pillage it.
 ///
 /// "PILLAGE comes before TAX, so a unit performing TAX will collect no money in that region that
@@ -1505,6 +1532,44 @@ fn check_pillaged_tax(
                 hex,
                 codes::TAXED_A_PILLAGED_HEX,
                 "a unit is pillaging this hex, so this TAX will collect nothing".to_string(),
+                Some(placed),
+            ));
+        }
+    }
+}
+
+/// Our units taxing or pillaging a hex a foreign unit is guarding.
+///
+/// One finding per affected order line, like its sibling `check_pillaged_tax`. It says **may**
+/// rather than **will**: whether the guard actually blocks us turns on that faction's declared
+/// attitude toward ours, which our report does not state (`ah-g7ts`).
+///
+/// On a `TAX` line in a hex one of our own units is also pillaging, `taxed-a-pillaged-hex` already
+/// says the money is certainly gone - so this weaker restatement is suppressed there. On a
+/// `PILLAGE` line both still fire: our own pillage does not stop our own pillager, but the guard
+/// may.
+fn check_guarded_tax(
+    hex: &Hex<'_>,
+    guarded: bool,
+    pillaged: bool,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !guarded || !options.emits(codes::TAXED_A_GUARDED_HEX) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        for placed in ordered.intents {
+            let order = match placed.intent {
+                Intent::Tax if !pillaged => "TAX",
+                Intent::Pillage => "PILLAGE",
+                _ => continue,
+            };
+            findings.push(ordered.finding(
+                hex,
+                codes::TAXED_A_GUARDED_HEX,
+                format!("a foreign unit is guarding this hex, so this {order} may collect nothing"),
                 Some(placed),
             ));
         }
@@ -6159,6 +6224,309 @@ mod tests {
             .find(|row| row.unit_id == "1")
             .expect("priced");
         assert_eq!(row.income, Some(5000), "the pillage still pays");
+    }
+
+    /// A foreign unit on guard, for the `taxed-a-guarded-hex` fixtures (`ah-g7ts`). Ownership is
+    /// the report's own marker, never inferred, so a fixture states it.
+    fn foreign_guard(id: &str) -> ReportUnit {
+        ReportUnit {
+            faction_id: Some("1".to_string()),
+            faction_name: Some("The Guardsmen".to_string()),
+            own: false,
+            on_guard: true,
+            ..unit(id)
+        }
+    }
+
+    /// A guarded hex with one of our units in it, its tax base big enough to pillage.
+    fn guarded_hex(own: Vec<ReportUnit>) -> ReportRegion {
+        let mut units = own;
+        units.push(foreign_guard("14"));
+        ReportRegion {
+            tax_base: Some(8963),
+            ..region(units)
+        }
+    }
+
+    #[test]
+    fn a_foreign_unit_on_guard_is_seen() {
+        let region = guarded_hex(vec![with_silver(unit("683"), 0)]);
+        let ordered = OrderedUnits::read("");
+        let hex = Hex::read(&region, &ordered);
+        assert!(
+            foreign_unit_guards(&hex),
+            "the foreign guard is visible from the hex"
+        );
+    }
+
+    #[test]
+    fn our_own_guard_is_not_a_foreign_guard() {
+        let mut ours = with_silver(unit("683"), 0);
+        ours.on_guard = true;
+        let region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![ours])
+        };
+        let ordered = OrderedUnits::read("");
+        let hex = Hex::read(&region, &ordered);
+        assert!(
+            !foreign_unit_guards(&hex),
+            "guarding our own hex is not somebody else guarding it"
+        );
+    }
+
+    #[test]
+    fn a_foreign_unit_not_on_guard_is_not_a_guard() {
+        let mut passer_by = foreign_guard("14");
+        passer_by.on_guard = false;
+        let region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![with_silver(unit("683"), 0), passer_by])
+        };
+        let ordered = OrderedUnits::read("");
+        let hex = Hex::read(&region, &ordered);
+        assert!(
+            !foreign_unit_guards(&hex),
+            "a foreigner merely standing there guards nothing"
+        );
+    }
+
+    #[test]
+    fn taxing_a_hex_a_foreigner_guards_is_flagged() {
+        let review = review_turn(
+            &report(vec![guarded_hex(vec![with_silver(unit("683"), 0)])]),
+            "unit 683\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::TAXED_A_GUARDED_HEX)
+            .collect();
+        assert_eq!(told.len(), 1, "one, on the TAX line: {told:?}");
+        assert_eq!(
+            told[0].message,
+            "a foreign unit is guarding this hex, so this TAX may collect nothing"
+        );
+        assert!(told[0].line.is_some(), "anchored on the order line");
+        assert_eq!(told[0].unit_id.as_deref(), Some("683"));
+    }
+
+    #[test]
+    fn an_unguarded_hex_says_nothing() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                tax_base: Some(8963),
+                ..region(vec![with_silver(unit("683"), 0)])
+            }]),
+            "unit 683\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !codes(&review.findings).contains(&codes::TAXED_A_GUARDED_HEX.as_str()),
+            "nothing to say: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    #[test]
+    fn pillaging_a_hex_a_foreigner_guards_is_flagged() {
+        let review = review_turn(
+            &report(vec![guarded_hex(vec![armed_to_pillage(
+                with_silver(unit("683"), 0),
+                8963,
+            )])]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::TAXED_A_GUARDED_HEX)
+            .collect();
+        assert_eq!(told.len(), 1, "one, on the PILLAGE line: {told:?}");
+        assert_eq!(
+            told[0].message,
+            "a foreign unit is guarding this hex, so this PILLAGE may collect nothing"
+        );
+    }
+
+    /// `ah-cxxa`'s finding is the stronger fact on a `TAX` line - the money is certainly gone -
+    /// so this bead's "may collect nothing" is not added beside it.
+    #[test]
+    fn a_pillaged_and_guarded_hex_warns_once_about_tax() {
+        let review = review_turn(
+            &report(vec![guarded_hex(vec![
+                armed_to_pillage(with_silver(unit("1"), 0), 8963),
+                with_silver(unit("2"), 0),
+            ])]),
+            "unit 1\nPILLAGE\n\nunit 2\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let on_the_tax_line: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.unit_id.as_deref() == Some("2"))
+            .map(|finding| finding.code.as_str())
+            .collect();
+        assert_eq!(
+            on_the_tax_line,
+            vec![codes::TAXED_A_PILLAGED_HEX.as_str()],
+            "the stronger warning alone"
+        );
+    }
+
+    #[test]
+    fn a_pillaged_and_guarded_hex_still_warns_the_pillager() {
+        let review = review_turn(
+            &report(vec![guarded_hex(vec![armed_to_pillage(
+                with_silver(unit("1"), 0),
+                8963,
+            )])]),
+            "unit 1\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TAXED_A_GUARDED_HEX
+                    && finding.unit_id.as_deref() == Some("1")),
+            "our own pillage does not stop our pillager, but the guard may: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// The navigator's decision: the column keeps its optimistic figure and the warning carries
+    /// the uncertainty (`ah-g7ts`).
+    #[test]
+    fn a_guarded_hex_does_not_change_what_tax_earns() {
+        let guarded = review_turn(
+            &report(vec![guarded_hex(vec![with_silver(unit("683"), 0)])]),
+            "unit 683\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let unguarded = review_turn(
+            &report(vec![ReportRegion {
+                tax_base: Some(8963),
+                ..region(vec![with_silver(unit("683"), 0)])
+            }]),
+            "unit 683\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let row = |review: &TurnReview| {
+            review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "683")
+                .map(|row| (row.income, row.doubt))
+                .expect("the taxer is priced")
+        };
+        assert_eq!(row(&guarded), row(&unguarded), "the figure does not move");
+    }
+
+    /// The rule's *"you"* is the guarding faction, whose attitude toward us our report does not
+    /// carry. `header.attitudes` states ours toward them, which is the other direction and must
+    /// not be consulted (`ah-g7ts`).
+    #[test]
+    fn the_attitudes_block_is_not_consulted() {
+        let regions = vec![guarded_hex(vec![with_silver(unit("683"), 0)])];
+        let without = review_turn(
+            &report(regions.clone()),
+            "unit 683\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let mut friendly = report(regions);
+        friendly.header.attitudes = crate::report::header::DeclaredAttitudes {
+            default_attitude: Some("Neutral".to_string()),
+            levels: vec![crate::report::header::AttitudeLevel {
+                attitude: "Friendly".to_string(),
+                factions: vec![crate::report::header::FactionRef {
+                    name: "The Guardsmen".to_string(),
+                    id: "1".to_string(),
+                }],
+            }],
+        };
+        let with = review_turn(
+            &friendly,
+            "unit 683\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let guarded = |review: &TurnReview| {
+            review
+                .findings
+                .iter()
+                .filter(|finding| finding.code == codes::TAXED_A_GUARDED_HEX)
+                .count()
+        };
+        assert_eq!(guarded(&without), 1);
+        assert_eq!(
+            guarded(&with),
+            1,
+            "declaring them Friendly is our direction, not theirs"
+        );
+    }
+
+    #[test]
+    fn a_hex_with_several_foreign_guards_warns_once_per_order_line() {
+        let mut region = guarded_hex(vec![with_silver(unit("683"), 0)]);
+        region.units.push(foreign_guard("15"));
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 683\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(
+            review
+                .findings
+                .iter()
+                .filter(|finding| finding.code == codes::TAXED_A_GUARDED_HEX)
+                .count(),
+            1,
+            "per order line, not per guard"
+        );
+    }
+
+    #[test]
+    fn a_unit_doing_neither_is_not_warned() {
+        let review = review_turn(
+            &report(vec![guarded_hex(vec![
+                with_silver(unit("683"), 0),
+                with_silver(unit("684"), 0),
+            ])]),
+            "unit 683\nTAX\n\nunit 684\nMOVE N\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TAXED_A_GUARDED_HEX
+                    && finding.unit_id.as_deref() == Some("684")),
+            "a mover is not taxing: {:?}",
+            codes(&review.findings)
+        );
     }
 
     /// `ah-t2pn.3`. A market's stock is shared: own units buying or selling the same goods in one
@@ -11912,6 +12280,16 @@ mod tests {
                     ..region(vec![with_men(unit("500"), 10), with_men(unit("700"), 50)])
                 }],
                 orders: "unit 500\nTAX\nunit 700\nTAX\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::TAXED_A_GUARDED_HEX,
+                regions: vec![ReportRegion {
+                    tax_base: Some(8963),
+                    ..region(vec![with_silver(unit("683"), 0), foreign_guard("14")])
+                }],
+                orders: "unit 683\nTAX\n",
                 allowance: None,
                 unclaimed: None,
             },

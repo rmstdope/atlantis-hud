@@ -137,7 +137,8 @@ describe("the Warnings settings tab", () => {
       "Upkeep the faction cannot pay",
       "Taxing a hex you are pillaging",
       "Pillaging without the men",
-      "Promised more than the region has"
+      "Promised more than the region has",
+      "Taxing a hex someone else guards"
     ];
     for (const title of titles) {
       expect(html).toContain(title);
@@ -154,6 +155,12 @@ describe("the Warnings settings tab", () => {
     // "region's" - the shipped string itself is the plain one.
     expect(html).toContain(
       "TAX orders in a hex where one of your own units is ordered to PILLAGE, which collects the region&#x27;s money first."
+    );
+
+    // A foreign guard may block the order outright, and the description is what says so
+    // (`ah-g7ts`).
+    expect(html).toContain(
+      "TAX and PILLAGE orders in a hex where another faction has a unit on guard, which can block them."
     );
 
     // A region's pools are shared, and the description is what says which of them this is about

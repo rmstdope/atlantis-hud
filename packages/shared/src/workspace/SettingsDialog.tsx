@@ -559,6 +559,12 @@ const WARNING_GROUPS: readonly {
           "TAX orders in a hex where one of your own units is ordered to PILLAGE, which collects the region's money first."
       },
       {
+        code: "taxed-a-guarded-hex",
+        title: "Taxing a hex someone else guards",
+        description:
+          "TAX and PILLAGE orders in a hex where another faction has a unit on guard, which can block them."
+      },
+      {
         code: "pillage-without-men",
         title: "Pillaging without the men",
         description:
