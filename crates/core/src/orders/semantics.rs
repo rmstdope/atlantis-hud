@@ -29,9 +29,9 @@ use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
     feed_after_silver, feed_from_faction_food, food_claim, forecast_unit, late_income,
     parse_wage_centis, plan_production, recipe_for, settle_unclaimed, split_pool, unit_upkeep,
-    FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, PoolShare,
-    PoolShares, PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, UnitFacts,
-    UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS, TAX_PER_MAN,
+    FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide,
+    PoolShare, PoolShares, PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt,
+    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS, TAX_PER_MAN,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -404,6 +404,94 @@ fn tax_shares_for(hex: &Hex<'_>, taxers: &[usize], tax_base: Option<i64>) -> Vec
     shares
 }
 
+/// Every own unit's claim on each of this hex's market lines, settled (`ah-t2pn.3`).
+///
+/// Keyed by canonical item tag **and side**: a unit selling horses and a unit buying horses draw
+/// on two different pools - the `Wanted` and `For Sale` lists - which the report prints as two
+/// lines. Each vector is index-aligned with `hex.units`, as the tax shares are and for the same
+/// reason: two units may carry the same id, and a map keyed by id would merge them.
+///
+/// [`PoolShare::Unknowable`] has no counterpart here. A market claim is counted in goods and does
+/// not multiply out by headcount, so a guessed headcount tells us nothing about it.
+fn market_shares_for(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+) -> BTreeMap<(String, MarketSide), Vec<i64>> {
+    let mut wants: BTreeMap<(String, MarketSide), Vec<i64>> = BTreeMap::new();
+
+    for (index, ordered) in hex.units.iter().enumerate() {
+        for placed in ordered.intents {
+            let (text, side) = match &placed.intent {
+                Intent::Sell { item, .. } => (item, MarketSide::Selling),
+                Intent::Buy { item, .. } => (item, MarketSide::Buying),
+                _ => continue,
+            };
+            let Some(tag) = resolve_item(text, hex, ordered, ruleset) else {
+                continue;
+            };
+            let tag = tag.to_ascii_uppercase();
+            let lines = match side {
+                MarketSide::Selling => &hex.region.wanted,
+                MarketSide::Buying => &hex.region.for_sale,
+            };
+            // A tag this market has no line for has no pool, so there is nothing to divide - and
+            // the goods are unsellable or unpriceable, which the arms already answer for.
+            let Some(pool) = lines
+                .iter()
+                .find(|line| line.tag.eq_ignore_ascii_case(&tag))
+                .map(|line| line.amount)
+            else {
+                continue;
+            };
+
+            let want = match (&placed.intent, side) {
+                // A unit cannot sell what it does not hold, so asking for more is not a larger
+                // claim on the market.
+                (Intent::Sell { amount, .. }, _) => {
+                    let holds = ordered.holding(&tag);
+                    match amount {
+                        Amount::Exact(count) => (*count).min(holds),
+                        Amount::All { except } => (holds - except).max(0),
+                    }
+                }
+                (Intent::Buy { amount, .. }, _) => match amount {
+                    Amount::Exact(count) => *count,
+                    // An unbounded order attempts to buy everything there is, so that is what it
+                    // contends for. What it can afford is not known until the deferred pass, which
+                    // runs after this settlement must.
+                    Amount::All { .. } => pool,
+                },
+                _ => continue,
+            };
+            if want <= 0 {
+                // A zero want is not a claim and takes no share.
+                continue;
+            }
+
+            let claims = wants
+                .entry((tag, side))
+                .or_insert_with(|| vec![0; hex.units.len()]);
+            claims[index] = claims[index].saturating_add(want);
+        }
+    }
+
+    wants
+        .into_iter()
+        .map(|((tag, side), claims)| {
+            let lines = match side {
+                MarketSide::Selling => &hex.region.wanted,
+                MarketSide::Buying => &hex.region.for_sale,
+            };
+            let pool = lines
+                .iter()
+                .find(|line| line.tag.eq_ignore_ascii_case(&tag))
+                .map_or(0, |line| line.amount);
+            let shares = split_pool(&claims, pool);
+            ((tag, side), shares)
+        })
+        .collect()
+}
+
 /// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
 /// already filtered them out, so their cell is blank for free.
 fn forecast_hex(
@@ -443,6 +531,10 @@ fn forecast_hex(
         .map(|(index, _)| index)
         .collect();
     let tax_shares = tax_shares_for(hex, &taxers, hex.region.tax_base);
+
+    // A market line is shared the same way, and the rules say so outright: oversupply and
+    // oversubscription split in proportion to what each unit tried to trade (`ah-t2pn.3`).
+    let market_shares = market_shares_for(hex, ruleset);
 
     // Step 2 of the payment order runs across the whole hex, so it needs every unit's step-1
     // leftovers before it can settle any of them. Gathered here, applied once the loop is done.
@@ -485,6 +577,16 @@ fn forecast_hex(
         // Resolving an item an order names is this module's business, and a gift of silver and a
         // priced withdrawal both need it.
         let item_tag = |text: &str| resolve_item(text, hex, ordered, ruleset);
+        // What this unit's own share of the settled market line is. `None` where nothing was
+        // settled - untraded goods, goods nothing could identify - and the arm then falls back to
+        // what the market line itself says.
+        let market_share = |text: &str, side: MarketSide| {
+            resolve_item(text, hex, ordered, ruleset).and_then(|tag| {
+                market_shares
+                    .get(&(tag.to_ascii_uppercase(), side))
+                    .map(|shares| shares[index])
+            })
+        };
         let name_of = |tag: &str| item_name(tag, hex, ruleset);
 
         let facts = UnitFacts {
@@ -514,6 +616,7 @@ fn forecast_hex(
                 purchase: &purchase,
                 item_tag: &item_tag,
                 item_name: &name_of,
+                market_share: &market_share,
             },
             ruleset,
         ));
@@ -4805,6 +4908,296 @@ mod tests {
             .find(|row| row.unit_id == "1")
             .expect("priced");
         assert_eq!(row.income, Some(5000), "the pillage still pays");
+    }
+
+    /// `ah-t2pn.3`. A market's stock is shared: own units buying or selling the same goods in one
+    /// hex split what the market will trade, in proportion to what each tried to trade - which is
+    /// the rules' own wording for this pool.
+    mod shared_market {
+        use super::*;
+
+        fn trader(id: &str, horses: i64, silver: i64) -> ReportUnit {
+            with_item(with_silver(unit(id), silver), horses, "horse", "HORS")
+        }
+
+        fn silver_of(review: &TurnReview, id: &str) -> UnitSilver {
+            review
+                .silver
+                .iter()
+                .find(|forecast| forecast.unit_id == id)
+                .cloned()
+                .unwrap_or_else(|| panic!("no forecast for {id}: {:?}", review.silver))
+        }
+
+        fn line(amount: i64, price: i64) -> MarketItem {
+            MarketItem {
+                amount,
+                name: "horse".to_string(),
+                tag: "HORS".to_string(),
+                price,
+            }
+        }
+
+        fn market_review(
+            wanted: Vec<MarketItem>,
+            for_sale: Vec<MarketItem>,
+            units: Vec<ReportUnit>,
+            orders: &str,
+        ) -> TurnReview {
+            let hex = ReportRegion {
+                wanted,
+                for_sale,
+                ..region(units)
+            };
+            review_turn(
+                &report(vec![hex]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+        }
+
+        /// The bead's headline for the selling side: 100 wanted, 120 offered, and the two figures
+        /// now add up to no more than the market will take.
+        #[test]
+        fn two_sellers_split_what_the_market_will_take() {
+            let review = market_review(
+                vec![line(100, 60)],
+                vec![],
+                vec![trader("2390", 60, 0), trader("2391", 60, 0)],
+                "unit 2390\nSELL 60 horse\nunit 2391\nSELL 60 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").income, Some(50 * 60));
+            assert_eq!(silver_of(&review, "2391").income, Some(50 * 60));
+        }
+
+        #[test]
+        fn two_sellers_the_market_can_take_from_are_not_divided() {
+            let review = market_review(
+                vec![line(100, 60)],
+                vec![],
+                vec![trader("2390", 30, 0), trader("2391", 30, 0)],
+                "unit 2390\nSELL 30 horse\nunit 2391\nSELL 30 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").income, Some(30 * 60));
+            assert_eq!(silver_of(&review, "2391").income, Some(30 * 60));
+        }
+
+        /// A unit cannot sell what it does not hold, so an order for more is not a larger claim
+        /// on the market and must not squeeze a faction-mate.
+        #[test]
+        fn a_sellers_claim_is_capped_by_what_it_holds() {
+            let review = market_review(
+                vec![line(110, 60)],
+                vec![],
+                vec![trader("2390", 10, 0), trader("2391", 100, 0)],
+                "unit 2390\nSELL 200 horse\nunit 2391\nSELL 100 horse\n",
+            );
+
+            // 10 + 100 is exactly what the line takes, so nothing is divided. Had the order for
+            // 200 counted as a claim for 200, the pair would have been squeezed to 36 and 73.
+            assert_eq!(silver_of(&review, "2390").income, Some(10 * 60));
+            assert_eq!(silver_of(&review, "2391").income, Some(100 * 60));
+        }
+
+        /// The second defect this bead fixes, and the navigator's decision of 2026-08-23: the
+        /// settlement applies whenever anyone trades, not only when two units contend, because
+        /// `split_pool` caps a lone claimant exactly as it caps five. Before this, the `BUY` arm
+        /// never consulted `market_has` for an exact amount and charged for all 200.
+        #[test]
+        fn a_buyer_asking_for_more_than_the_market_has_is_charged_for_what_it_gets() {
+            let review = market_review(
+                vec![],
+                vec![line(100, 60)],
+                vec![trader("2390", 0, 20_000)],
+                "unit 2390\nBUY 200 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").expense, Some(6000));
+        }
+
+        #[test]
+        fn two_buyers_split_what_the_market_has() {
+            let review = market_review(
+                vec![],
+                vec![line(100, 60)],
+                vec![trader("2390", 0, 20_000), trader("2391", 0, 20_000)],
+                "unit 2390\nBUY 60 horse\nunit 2391\nBUY 60 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").expense, Some(50 * 60));
+            assert_eq!(silver_of(&review, "2391").expense, Some(50 * 60));
+        }
+
+        /// An unbounded order attempts to buy everything there is, so that is what it contends
+        /// for - stated by the plan rather than derived, because what a `BUY ALL` can afford is
+        /// not known until after the settlement has run.
+        #[test]
+        fn a_buy_all_contends_for_everything_the_market_has() {
+            let review = market_review(
+                vec![],
+                vec![line(100, 60)],
+                vec![trader("2390", 0, 20_000), trader("2391", 0, 20_000)],
+                "unit 2390\nBUY ALL horse\nunit 2391\nBUY 50 horse\n",
+            );
+
+            // 100 wanted against 50: the exact buyer's share is 33, not its full 50.
+            assert_eq!(silver_of(&review, "2391").expense, Some(33 * 60));
+            let all = silver_of(&review, "2390").expense.expect("priced");
+            assert!(
+                all / 60 + 33 <= 100,
+                "the two together must buy no more than the line holds, got {}",
+                all / 60 + 33
+            );
+        }
+
+        /// The regression net under the case above: a lone `BUY ALL` still buys what it can
+        /// afford, up to the whole line, exactly as before.
+        #[test]
+        fn a_lone_buy_all_is_unchanged() {
+            let rich = market_review(
+                vec![],
+                vec![line(100, 60)],
+                vec![trader("2390", 0, 20_000)],
+                "unit 2390\nBUY ALL horse\n",
+            );
+            assert_eq!(silver_of(&rich, "2390").expense, Some(100 * 60));
+
+            let poor = market_review(
+                vec![],
+                vec![line(100, 60)],
+                vec![trader("2390", 0, 600)],
+                "unit 2390\nBUY ALL horse\n",
+            );
+            assert_eq!(silver_of(&poor, "2390").expense, Some(10 * 60));
+        }
+
+        #[test]
+        fn selling_horses_does_not_contend_with_selling_swords() {
+            let hex = ReportRegion {
+                wanted: vec![
+                    line(100, 60),
+                    MarketItem {
+                        amount: 100,
+                        name: "sword".to_string(),
+                        tag: "SWOR".to_string(),
+                        price: 30,
+                    },
+                ],
+                ..region(vec![
+                    trader("2390", 100, 0),
+                    with_item(with_silver(unit("2391"), 0), 100, "sword", "SWOR"),
+                ])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nSELL 100 horse\nunit 2391\nSELL 100 sword\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert_eq!(silver_of(&review, "2390").income, Some(100 * 60));
+            assert_eq!(silver_of(&review, "2391").income, Some(100 * 30));
+        }
+
+        /// The report prints two lines, so the two sides are two pools.
+        #[test]
+        fn buying_horses_does_not_contend_with_selling_horses() {
+            let review = market_review(
+                vec![line(100, 60)],
+                vec![line(100, 60)],
+                vec![trader("2390", 100, 0), trader("2391", 0, 20_000)],
+                "unit 2390\nSELL 100 horse\nunit 2391\nBUY 100 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").income, Some(100 * 60));
+            assert_eq!(silver_of(&review, "2391").expense, Some(100 * 60));
+        }
+
+        /// A market claim is counted in goods and does not multiply out by headcount, so a
+        /// guessed headcount tells us nothing about it - this is what stops `ah-t2pn.1`'s
+        /// `Unknowable` rule being copied here on autopilot.
+        #[test]
+        fn a_guessed_headcount_does_not_doubt_a_market_share() {
+            let mut guessed = trader("2391", 60, 0);
+            guessed.men_estimated = true;
+            let review = market_review(
+                vec![line(100, 60)],
+                vec![],
+                vec![trader("2390", 60, 0), guessed],
+                "unit 2390\nSELL 60 horse\nunit 2391\nSELL 60 horse\n",
+            );
+
+            let exact = silver_of(&review, "2390");
+            assert_eq!(exact.doubt, None);
+            assert_eq!(exact.income, Some(50 * 60));
+        }
+
+        /// Goods the market does not want still earn nothing, and are not doubted - the
+        /// settlement never sees a tag with no market line.
+        #[test]
+        fn goods_this_market_does_not_want_still_earn_nothing() {
+            let review = market_review(
+                vec![],
+                vec![],
+                vec![trader("2390", 60, 0), trader("2391", 60, 0)],
+                "unit 2390\nSELL 60 horse\nunit 2391\nSELL 60 horse\n",
+            );
+
+            for id in ["2390", "2391"] {
+                let row = silver_of(&review, id);
+                assert_eq!(row.income, Some(0), "{id}");
+                assert_eq!(row.doubt, None, "{id}");
+            }
+        }
+
+        /// Over several ask/pool combinations, what the two sellers are credited for never adds
+        /// up to more than the line will take.
+        #[test]
+        fn a_market_split_never_sells_more_than_the_line() {
+            for (pool, first, second) in [
+                (100, 60, 60),
+                (100, 10, 10),
+                (100, 1, 999),
+                (1, 1, 1),
+                (7, 3, 5),
+                (100, 100, 100),
+            ] {
+                let review = market_review(
+                    vec![line(pool, 60)],
+                    vec![],
+                    vec![trader("2390", first, 0), trader("2391", second, 0)],
+                    &format!("unit 2390\nSELL {first} horse\nunit 2391\nSELL {second} horse\n"),
+                );
+
+                let sold = silver_of(&review, "2390").income.expect("priced") / 60
+                    + silver_of(&review, "2391").income.expect("priced") / 60;
+                assert!(
+                    sold <= pool,
+                    "{first} + {second} into a line of {pool} sold {sold}"
+                );
+            }
+        }
+
+        #[test]
+        fn goods_nothing_could_identify_are_still_doubted() {
+            let review = market_review(
+                vec![line(100, 60)],
+                vec![],
+                vec![trader("2390", 60, 0), trader("2391", 60, 0)],
+                "unit 2390\nSELL 60 widget\nunit 2391\nSELL 60 widget\n",
+            );
+
+            for id in ["2390", "2391"] {
+                assert_eq!(
+                    silver_of(&review, id).doubt,
+                    Some(SilverDoubt::UnknownGoods),
+                    "{id}"
+                );
+            }
+        }
     }
 
     // --- fixtures ---------------------------------------------------------------------------
