@@ -378,9 +378,15 @@ pub struct PoolWants {
 #[must_use]
 pub fn pool_wants(facts: &UnitFacts<'_>, region: RegionWages) -> PoolWants {
     let mut wants = PoolWants::default();
+    // A unit-level term, like the tax term in [`forecast_unit`]: a unit taxes by its flag with no
+    // `TAX` order at all, and a flagged taxer contends for the region's base like any other - or
+    // every other taxer's share comes out too large (`ah-fvzu`, `ah-t2pn.1`).
+    if taxes(facts.flags, facts.intents) {
+        wants.tax = facts.men.saturating_mul(TAX_PER_MAN);
+    }
     for placed in facts.intents {
         match &placed.intent {
-            Intent::Tax => wants.tax = facts.men.saturating_mul(TAX_PER_MAN),
+            Intent::Tax => {}
             Intent::Work => {
                 wants.wages = facts.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
             }
