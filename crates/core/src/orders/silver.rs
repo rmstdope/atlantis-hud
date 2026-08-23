@@ -368,7 +368,7 @@ pub fn forecast_unit(
                 // pools. A purse the report does not state leaves only the limit unknown, not the
                 // amount, so the stated figure is counted and nothing is doubted.
                 income = income.saturating_add(match purse.unclaimed {
-                    Some(held) => (*amount).min(held),
+                    Some(available) => (*amount).min(available),
                     None => *amount,
                 });
             }
