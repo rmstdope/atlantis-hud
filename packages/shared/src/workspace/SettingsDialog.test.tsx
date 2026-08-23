@@ -136,6 +136,7 @@ describe("the Warnings settings tab", () => {
       "Claiming more than the faction has",
       "Upkeep the faction cannot pay",
       "Taxing a hex you are pillaging",
+      "Pillaging without the men",
       "Promised more than the region has"
     ];
     for (const title of titles) {

@@ -32,7 +32,8 @@ export const ADVISORY_CHECK_CODES = [
   "taxed-a-pillaged-hex",
   "produce-without-skill",
   "produce-not-here",
-  "region-pool-oversubscribed"
+  "region-pool-oversubscribed",
+  "pillage-without-men"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];

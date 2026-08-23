@@ -27,12 +27,12 @@ use crate::movement::mode::{
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
-    feed_after_silver, feed_from_faction_food, food_claim, forecast_unit, late_income,
-    parse_wage_centis, plan_production, pool_wants, recipe_for, settle_unclaimed, split_pool,
-    unit_upkeep, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim,
-    LateFoodRelief, Lookups, MarketSide, PoolOverrun, PoolShare, PoolShares, PoolWants,
-    PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver,
-    UpkeepClaim, UpkeepSettlement, FOOD_TAGS, TAX_PER_MAN,
+    combat_ready, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
+    late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants, recipe_for,
+    settle_unclaimed, split_pool, unit_upkeep, ContendedPool, FactionFoodPass, FactionPurse,
+    FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, PoolOverrun, PoolShare,
+    PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt,
+    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS, TAX_PER_MAN,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -110,6 +110,7 @@ pub mod codes {
     pub const PRODUCE_WITHOUT_SKILL: Code = Code("produce-without-skill");
     pub const PRODUCE_NOT_HERE: Code = Code("produce-not-here");
     pub const REGION_POOL_OVERSUBSCRIBED: Code = Code("region-pool-oversubscribed");
+    pub const PILLAGE_WITHOUT_MEN: Code = Code("pillage-without-men");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -118,7 +119,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 30] = [
+    pub const ALL: [Code; 31] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -149,6 +150,7 @@ pub mod codes {
         PRODUCE_WITHOUT_SKILL,
         PRODUCE_NOT_HERE,
         REGION_POOL_OVERSUBSCRIBED,
+        PILLAGE_WITHOUT_MEN,
     ];
 }
 
@@ -332,6 +334,7 @@ pub fn review_turn(
         check_resources(hex, ledger, ruleset, &options, &mut findings);
         check_markets(hex, ruleset, &options, &mut findings);
         check_pillaged_tax(hex, own_unit_pillages(hex), &options, &mut findings);
+        check_pillage_men(hex, ruleset, &options, &mut findings);
         check_guard(hex, &options, &mut findings);
         check_teaching(hex, ruleset, &options, &mut findings);
         check_building(hex, &options, &mut findings);
@@ -612,14 +615,30 @@ fn market_shares_for(
 ///
 /// One function rather than two identical literals: `forecast_hex` and `charge_upkeep` must settle
 /// the same pools from the same numbers, and two copies are two things to keep in step.
-fn region_wages(hex: &Hex<'_>) -> RegionWages {
+fn region_wages(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> RegionWages {
     RegionWages {
         tax_base: hex.region.tax_base,
         wage_centis: parse_wage_centis(hex.region.wages.as_deref()),
         max_wages: hex.region.max_wages,
         entertainment: hex.region.entertainment,
         pillaged: own_unit_pillages(hex),
+        combat_ready: combat_ready_in(hex, ruleset),
     }
+}
+
+/// Combat ready men this faction has in one hex, summed over its own units - foreign units are not
+/// in `hex.units` to begin with, since `Hex::read` has already filtered them out.
+///
+/// `None` when any own unit's headcount is a guess, or there is no ruleset: one guess is enough to
+/// make the threshold unanswerable, and it is unanswerable in the direction that matters - the
+/// estimate might be what carries the faction over it (`ah-1ad6.2`).
+fn combat_ready_in(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Option<i64> {
+    let nothing = Receipts::default();
+    let mut total = 0i64;
+    for facts in hex_facts(hex, &nothing) {
+        total = total.saturating_add(combat_ready(&facts, ruleset)?);
+    }
+    Some(total)
 }
 
 /// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
@@ -638,7 +657,7 @@ fn forecast_hex(
         food: food_relief,
         settlement,
     } = relief;
-    let region = region_wages(hex);
+    let region = region_wages(hex, ruleset);
     let nothing = Receipts::default();
 
     // A region's pools are shared, so who else in this hex draws on them has to be settled before
@@ -1287,9 +1306,20 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
     }
 
     let pillaged = own_unit_pillages(hex);
+    // Once per hex, not once per pillaging unit: `apply` runs per intent and this path runs per
+    // keystroke, so a city of forty units would otherwise rebuild the sum forty times.
+    let hex_combat_ready = combat_ready_in(hex, ruleset);
     for ordered in &hex.units {
         for placed in ordered.intents {
-            apply(&mut ledger, hex, ordered, placed, ruleset, pillaged);
+            apply(
+                &mut ledger,
+                hex,
+                ordered,
+                placed,
+                ruleset,
+                pillaged,
+                hex_combat_ready,
+            );
         }
     }
 
@@ -1341,7 +1371,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
 
     // The same settlement `forecast_hex` prices the column from: `WORK` and `ENTERTAIN` reach both
     // surfaces through one `late_income`, so two settlements would be two answers to one question.
-    let region = region_wages(hex);
+    let region = region_wages(hex, ledger.ruleset);
     let shares = pool_shares_for(hex, region).shares;
 
     // The check and the Silver column read one fact, so they settle the hex's faction-food pool
@@ -1508,6 +1538,9 @@ fn apply(
     // Whether an own unit is pillaging this hex - computed once per hex by the caller, because
     // this function runs for every placed intent of every unit (`ah-cxxa`).
     pillaged: bool,
+    // Combat ready men this faction has in this hex - computed once per hex by the caller for the
+    // same reason `pillaged` is: this path runs per intent, and per keystroke (`ah-1ad6.2`).
+    hex_combat_ready: Option<i64>,
 ) {
     let who = &actor.unit.unit_id;
 
@@ -1563,10 +1596,20 @@ fn apply(
                 );
             }
         }
-        Intent::Pillage => match hex.region.tax_base {
+        // Mirrors `silver::forecast_unit`'s own arm exactly, down to the doubt: two surfaces
+        // reading one order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj`
+        // exists).
+        Intent::Pillage => match (hex.region.tax_base, hex_combat_ready) {
             // "The amount of money collected is equal to twice the available tax money."
-            Some(base) => credit(ledger, who, SILVER, base.saturating_mul(2)),
-            None => {
+            (Some(base), Some(ready)) if ready >= pillage_threshold(base) => {
+                credit(ledger, who, SILVER, base.saturating_mul(2));
+            }
+            // Short of the threshold the order earns nothing, exactly - a certain zero, so the
+            // unit is not doubted.
+            (Some(_), Some(_)) => {}
+            // No tax base, or a guessed headcount in the hex: nothing can be credited or ruled
+            // out, so the unit's sums are not trusted.
+            (None, _) | (Some(_), None) => {
                 ledger.doubted.insert(who.clone());
             }
         },
@@ -3045,6 +3088,53 @@ fn check_build_skill(
             hex,
             codes::BUILD_WITHOUT_SKILL,
             format!("{verb} {article} {kind}: needs {skill} {required}, {shortfall}"),
+            Some(placed),
+        ));
+    }
+}
+
+/// A `PILLAGE` by a faction without the combat ready men the region needs (`ah-1ad6.2`).
+///
+/// One finding per pillaging unit, on that unit's `PILLAGE` line, rather than one per hex: the
+/// finding hangs on an order, and each pillaging unit wrote its own.
+///
+/// Silent where the tax base or the headcount is unknown. The Silver column already shows `?`
+/// there, and a mark would be a second and louder claim about something nobody knows.
+fn check_pillage_men(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::PILLAGE_WITHOUT_MEN) {
+        return;
+    }
+    let Some(tax_base) = hex.region.tax_base else {
+        return;
+    };
+    let Some(ready) = combat_ready_in(hex, ruleset) else {
+        return;
+    };
+    let needed = pillage_threshold(tax_base);
+    if ready >= needed {
+        return;
+    }
+
+    for ordered in &hex.units {
+        // One warning per unit, on the first PILLAGE in the block, as the BUILD checks do.
+        let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Pillage))
+        else {
+            continue;
+        };
+        findings.push(ordered.finding(
+            hex,
+            codes::PILLAGE_WITHOUT_MEN,
+            format!(
+                "cannot pillage here: needs {needed} combat ready men, this faction has {ready}"
+            ),
             Some(placed),
         ));
     }
@@ -4779,7 +4869,7 @@ mod tests {
             };
             let ordered = OrderedUnits::read(orders);
             let hex = Hex::read(&hex_region, &ordered);
-            pool_shares_for(&hex, region_wages(&hex)).overruns
+            pool_shares_for(&hex, region_wages(&hex, None)).overruns
         }
 
         /// `ah-t2pn.4`. The settlement says what it divided, so the sentence a player reads comes
@@ -5557,7 +5647,7 @@ mod tests {
                     tag: "GRAI".to_string(),
                     price: 100,
                 }],
-                ..region(vec![with_silver(unit("2390"), 0)])
+                ..region(vec![armed_to_pillage(with_silver(unit("2390"), 0), 2500)])
             };
             review_turn(
                 &report(vec![hex]),
@@ -5669,13 +5759,228 @@ mod tests {
         );
     }
 
+    /// The mark that says why the column shows nothing (`ah-1ad6.2`), one per pillaging unit
+    /// because the finding hangs on an order and each pillaging unit wrote its own.
+    #[test]
+    fn a_faction_without_the_men_is_told_so() {
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![with_silver(unit("683"), 0)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(told[0].unit_id.as_deref(), Some("683"));
+        assert_eq!(told[0].line, Some(2), "on the PILLAGE line");
+        assert_eq!(
+            told[0].message,
+            "cannot pillage here: needs 90 combat ready men, this faction has 0"
+        );
+    }
+
+    #[test]
+    fn a_faction_with_the_men_is_not_marked() {
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![armed_to_pillage(with_silver(unit("683"), 0), 8963)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN),
+            "{:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// Silence, not a mark: the column already shows `?`, and a mark would be a second and louder
+    /// claim about something unknown.
+    #[test]
+    fn an_unknown_tax_base_is_not_marked() {
+        let hex_region = ReportRegion {
+            tax_base: None,
+            ..region(vec![with_silver(unit("683"), 0)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN),
+            "{:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// The reported defect (`ah-1ad6.2`): *The Lost One (683)* - one leader in a hex whose tax base
+    /// is 8,963, which needs 90 combat ready men - was credited the full 17,926 by both surfaces.
+    #[test]
+    fn a_faction_without_the_men_earns_nothing_from_pillage() {
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![with_silver(unit("683"), 0)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "683")
+            .expect("priced");
+        assert_eq!(row.income, Some(0));
+        assert_eq!(row.doubt, None);
+    }
+
+    /// The navigator's decision: "the faction to have enough combat ready men in the region", so a
+    /// lone leader ordering `PILLAGE` beside a faction-mate of 90 armed men qualifies, and the
+    /// army need issue no order at all. The count is the hex's, never the pillaging unit's own.
+    #[test]
+    fn the_men_are_counted_across_the_hex_not_the_unit() {
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![
+                with_silver(unit("683"), 0),
+                armed_to_pillage(with_silver(unit("684"), 0), 8963),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "683")
+            .expect("priced");
+        assert_eq!(row.income, Some(17_926));
+        assert_eq!(row.doubt, None);
+    }
+
+    /// One guessed headcount anywhere in the hex makes the threshold unanswerable - the estimate
+    /// might be what carries the faction over it.
+    #[test]
+    fn a_guessed_headcount_in_the_hex_doubts_the_pillage() {
+        let mut guessed = armed_to_pillage(with_silver(unit("684"), 0), 8963);
+        guessed.men_estimated = true;
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![with_silver(unit("683"), 0), guessed])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "683")
+            .expect("priced");
+        assert_eq!(row.doubt, Some(SilverDoubt::EstimatedMen));
+        assert_eq!(row.income, None);
+    }
+
+    /// The pair is the point (`ah-abwx`, and the reason `ah-ycuj` exists): a faction short of the
+    /// men must be shown nothing by the column *and* charged nothing by the ledger, or the player
+    /// gets a silent `not-enough-silver` beside a column that promised the silver.
+    #[test]
+    fn the_ledger_and_the_column_agree_about_pillage() {
+        let spend = |units: Vec<ReportUnit>, orders: &str| {
+            let hex_region = ReportRegion {
+                tax_base: Some(8963),
+                for_sale: vec![MarketItem {
+                    amount: 100,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 100,
+                }],
+                ..region(units)
+            };
+            review_turn(
+                &report(vec![hex_region]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+        };
+
+        // Without the men the pillage buys nothing, so both surfaces say so.
+        let broke = spend(
+            vec![with_silver(unit("683"), 0)],
+            "unit 683\nPILLAGE\nBUY 10 grain\n",
+        );
+        assert_eq!(broke.silver[0].at_month_end, Some(-1000));
+        assert!(
+            broke
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+            "the warning fires too: {:?}",
+            codes(&broke.findings)
+        );
+
+        // With them, both surfaces credit the pillage and neither complains.
+        let paid = spend(
+            vec![armed_to_pillage(with_silver(unit("683"), 0), 8963)],
+            "unit 683\nPILLAGE\nBUY 10 grain\n",
+        );
+        assert!(
+            paid.silver[0].at_month_end.is_some_and(|end| end > 0),
+            "the column shows the pillage: {:?}",
+            paid.silver[0].at_month_end
+        );
+        assert!(
+            !paid
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+            "the warning stays quiet: {:?}",
+            codes(&paid.findings)
+        );
+    }
+
     /// The pillager collects; only taxers are emptied. This is the net under the predicate being
     /// applied to the wrong arm.
     #[test]
     fn the_pillager_itself_still_earns_twice_the_base() {
         let hex_region = ReportRegion {
             tax_base: Some(2500),
-            ..region(vec![with_silver(unit("1"), 0), with_silver(unit("2"), 0)])
+            ..region(vec![
+                armed_to_pillage(with_silver(unit("1"), 0), 2500),
+                with_silver(unit("2"), 0),
+            ])
         };
         let review = review_turn(
             &report(vec![hex_region]),
@@ -5831,7 +6136,7 @@ mod tests {
     fn a_unit_that_pillages_and_is_also_ordered_to_tax_is_still_told() {
         let hex_region = ReportRegion {
             tax_base: Some(2500),
-            ..region(vec![with_silver(unit("1"), 0)])
+            ..region(vec![armed_to_pillage(with_silver(unit("1"), 0), 2500)])
         };
         let review = review_turn(
             &report(vec![hex_region]),
@@ -6228,6 +6533,13 @@ mod tests {
             tag: tag.to_string(),
         });
         unit
+    }
+
+    /// Enough armed men to pillage a hex of this tax base - the threshold exactly, each with a
+    /// sword, which is a weapon anyone may wield (`ah-1ad6.2`).
+    fn armed_to_pillage(unit: ReportUnit, tax_base: i64) -> ReportUnit {
+        let men = pillage_threshold(tax_base);
+        with_item(with_men(unit, men), men, "sword", "SWOR")
     }
 
     fn with_men(mut unit: ReportUnit, men: i64) -> ReportUnit {
@@ -11600,6 +11912,16 @@ mod tests {
                     ..region(vec![with_men(unit("500"), 10), with_men(unit("700"), 50)])
                 }],
                 orders: "unit 500\nTAX\nunit 700\nTAX\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::PILLAGE_WITHOUT_MEN,
+                regions: vec![ReportRegion {
+                    tax_base: Some(8963),
+                    ..region(vec![unit("683")])
+                }],
+                orders: "unit 683\nPILLAGE\n",
                 allowance: None,
                 unclaimed: None,
             },

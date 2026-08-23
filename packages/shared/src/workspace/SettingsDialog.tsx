@@ -557,6 +557,12 @@ const WARNING_GROUPS: readonly {
         title: "Taxing a hex you are pillaging",
         description:
           "TAX orders in a hex where one of your own units is ordered to PILLAGE, which collects the region's money first."
+      },
+      {
+        code: "pillage-without-men",
+        title: "Pillaging without the men",
+        description:
+          "A PILLAGE order where the faction has too few combat ready men in the region to take the money."
       }
     ]
   },
