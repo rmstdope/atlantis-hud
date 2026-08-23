@@ -873,11 +873,16 @@ function UnitRow({
       </Td>
     ),
     // What this unit is expected to hold when the month ends (ah-1wcw.1). Red is this unit,
-    // counted alone, ending below zero; ⚠ is the existing `not-enough-silver` finding, which
-    // pools across the hex's sharing units. The two mean different things on purpose, so a ⚠ on
-    // a positive figure is not a contradiction - the hover explains it.
+    // counted alone, in trouble: ending below zero, or unable to pay for its own orders out of
+    // silver that reaches it in time (ah-uwa3). ⚠ is the existing `not-enough-silver` finding,
+    // which pools across the hex's sharing units. The two mean different things on purpose, so a ⚠
+    // on a positive figure is not a contradiction - the hover explains it.
     silver: (
-      <Td className={`text-right tabular-nums${silverIsRed(shownSilver) ? " text-danger" : ""}`}>
+      <Td
+        className={`text-right tabular-nums${
+          silverIsRed(shownSilver, silver) ? " text-danger" : ""
+        }`}
+      >
         {silver === null ? (
           ""
         ) : warned ? (
@@ -892,7 +897,13 @@ function UnitRow({
             {silverFigure(shownSilver)}
           </button>
         ) : (
-          <span className={silverIsDim(shownSilver) ? "text-ink-dim" : undefined}>
+          <span
+            className={
+              !silverIsRed(shownSilver, silver) && silverIsDim(shownSilver)
+                ? "text-ink-dim"
+                : undefined
+            }
+          >
             {silverFigure(shownSilver)}
           </span>
         )}
@@ -968,12 +979,22 @@ function silverFigure(shown: number | null): string {
   return shown === null ? "?" : String(shown);
 }
 
-/** Whether the figure is this unit, counted on its own, ending below zero. */
-function silverIsRed(shown: number | null): boolean {
-  return shown !== null && shown < 0;
+/**
+ * Whether something is wrong with this unit's money: it ends below zero, or its orders spend more
+ * than the silver reaching it in time can cover - a purchase the game will refuse even though the
+ * month ends in credit (`ah-uwa3`).
+ */
+function silverIsRed(shown: number | null, silver: UnitSilver | null): boolean {
+  if (shown !== null && shown < 0) return true;
+  return (silver?.shortForOrders ?? 0) > 0;
 }
 
-/** A `?` and a plain `0` both read dim: neither is a number to act on. */
+/**
+ * A `?` and a plain `0` both read dim: neither is a number to act on.
+ *
+ * Only reached for a figure that is not red - a `0` whose orders cannot be paid is a number to act
+ * on, so red wins over dim at the one call site (`ah-uwa3`).
+ */
 function silverIsDim(shown: number | null): boolean {
   return shown === null || shown === 0;
 }

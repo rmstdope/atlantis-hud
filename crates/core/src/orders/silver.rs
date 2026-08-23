@@ -81,6 +81,12 @@ pub struct UnitSilver {
     pub held: i64,
     /// What this month's orders are expected to earn. `None` when a term could not be priced.
     pub income: Option<i64>,
+    /// The part of `income` that arrives in the turn's last phase - wages, takings from
+    /// entertaining, and the Phantasmal Entertainment cast - and so can pay maintenance but
+    /// nothing this month's orders spend.
+    ///
+    /// Always `Some` where `income` is: it is a subset of the same sum, computed in the same pass.
+    pub late_income: Option<i64>,
     /// What this month's orders are expected to spend. `None` when a term could not be priced.
     pub expense: Option<i64>,
     /// `held + income - expense`, or `None` when either side is `None`.
@@ -89,6 +95,19 @@ pub struct UnitSilver {
     /// player sees is a setting (`ah-1wcw.4`), and computing both answers here means toggling it
     /// needs no round trip through the core.
     pub at_month_end: Option<i64>,
+    /// What this unit's orders spend that no silver reaching it *in time* can cover.
+    ///
+    /// `max(0, expense - (held + income - late_income))`. `Some(0)` means its orders are
+    /// affordable; anything positive means the game will refuse something, however healthy
+    /// `at_month_end` looks. Counted for this unit alone, like every other figure in this column -
+    /// the hex's shared purse is the advisory check's business (`ah-1wcw.1`).
+    pub short_for_orders: Option<i64>,
+    /// Which kind of order the shortfall bites on, for the sentence the hover shows - the first
+    /// spending order in the unit's block. `None` when `short_for_orders` is `Some(0)` or `None`.
+    ///
+    /// A tag rather than a word: how it is said is the interface's business, and the core has no
+    /// opinion about English.
+    pub short_on: Option<SilverSpender>,
     /// What this unit owes in maintenance this month, in silver, after any food it will spend on
     /// it. `None` when it cannot be priced - an estimated headcount, or a report that never said
     /// what the unit is made of.
@@ -115,6 +134,18 @@ pub struct UnitSilver {
     /// Silver this unit is ordered to give to nobody - `GIVE 0 ... SILV`, which destroys it. Part
     /// of `expense` like any other gift; carried separately only so the hover can say so.
     pub given_to_nobody: i64,
+}
+
+/// The kind of order a shortfall bites on, so the hover can name it (`ah-uwa3`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "kebab-case")]
+pub enum SilverSpender {
+    Buy,
+    Cast,
+    Study,
+    Give,
+    Withdraw,
 }
 
 /// Why a unit's month could not be priced. One variant per sentence the interface shows.
@@ -300,6 +331,47 @@ pub fn parse_wage_centis(wages: Option<&str>) -> Option<i64> {
     Some(whole.saturating_mul(100).saturating_add(centis))
 }
 
+/// What a unit's orders earn it in the turn's last phase - wages, entertaining, and Phantasmal
+/// Entertainment.
+///
+/// The one place that decides which earnings arrive too late to be spent. [`forecast_unit`] and
+/// `semantics::charge_upkeep` both read it, because two copies of this rule is exactly the drift
+/// that `ah-uwa3` was filed to remove.
+///
+/// Takes the ruleset because Phantasmal Entertainment is recognised by its catalogue tag, exactly
+/// as [`forecast_unit`] recognises it; a caller with no ruleset simply prices no spell.
+#[must_use]
+pub fn late_income(facts: &UnitFacts<'_>, region: RegionWages, ruleset: Option<&Ruleset>) -> i64 {
+    let mut late = 0i64;
+    for placed in facts.intents {
+        match &placed.intent {
+            Intent::Work => {
+                let earned = facts.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
+                late = late.saturating_add(earned.min(region.max_wages.unwrap_or(i64::MAX)));
+            }
+            Intent::Entertain => {
+                let earned = facts
+                    .men
+                    .saturating_mul(skill_level(facts.skills, ENTERTAIN_TAG))
+                    .saturating_mul(ENTERTAIN_PER_MAN_PER_LEVEL);
+                late = late.saturating_add(earned.min(region.entertainment.unwrap_or(0)));
+            }
+            Intent::Cast { spell, .. } => {
+                let tag = ruleset
+                    .and_then(|ruleset| ruleset.find_skill(spell))
+                    .map(|skill| skill.tag.to_ascii_uppercase());
+                if tag.as_deref() == Some(PHANTASMAL_TAG) {
+                    let earned = skill_level(facts.skills, PHANTASMAL_TAG)
+                        .saturating_mul(PHANTASMAL_PER_LEVEL);
+                    late = late.saturating_add(earned.min(region.entertainment.unwrap_or(0)));
+                }
+            }
+            _ => {}
+        }
+    }
+    late
+}
+
 /// What one unit's month does to its silver.
 ///
 /// `facts.intents` is the unit's orders exactly as [`super::semantics`] already holds them, so the
@@ -331,7 +403,6 @@ pub fn forecast_unit(
         held,
         men,
         men_estimated,
-        skills,
         intents,
         receipts,
         ..
@@ -345,8 +416,11 @@ pub fn forecast_unit(
             region_id: region_id.to_string(),
             held,
             income: None,
+            late_income: None,
             expense: None,
             at_month_end: None,
+            short_for_orders: None,
+            short_on: None,
             upkeep,
             doubt: Some(SilverDoubt::EstimatedMen),
             doubt_subject: None,
@@ -388,22 +462,9 @@ pub fn forecast_unit(
                 }
                 None => income_doubt = income_doubt.or(Some(SilverDoubt::UnknownTaxBase)),
             },
-            Intent::Work => {
-                // Rounded down: a forecast that overstates income is the dangerous direction. The
-                // cap is the region's whole pool, contended by factions we cannot see - capping one
-                // unit at it is honest, dividing it between them is not.
-                let earned = men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
-                income = income.saturating_add(earned.min(region.max_wages.unwrap_or(i64::MAX)));
-            }
-            Intent::Entertain => {
-                // Capped at the region's whole demand and never divided, exactly as `WORK` treats
-                // `max_wages`; a region that states no demand pays entertainers nothing, exactly as
-                // one that states no wage pays workers nothing.
-                let earned = men
-                    .saturating_mul(skill_level(skills, ENTERTAIN_TAG))
-                    .saturating_mul(ENTERTAIN_PER_MAN_PER_LEVEL);
-                income = income.saturating_add(earned.min(region.entertainment.unwrap_or(0)));
-            }
+            // `WORK` and `ENTERTAIN` earn nothing but late income, so [`late_income`] prices them
+            // both - once, for this function and for `semantics::charge_upkeep` alike.
+            Intent::Work | Intent::Entertain => {}
             Intent::Sell { item, amount } => match sale(item) {
                 SaleAnswer::Wanted {
                     price,
@@ -444,15 +505,9 @@ pub fn forecast_unit(
                 let spell = ruleset.and_then(|ruleset| ruleset.find_skill(spell));
 
                 match spell.map(|skill| skill.tag.to_ascii_uppercase()) {
-                    Some(tag) if tag == PHANTASMAL_TAG => {
-                        // Capped by the region's demand, but it does not *draw* on it: a hex with
-                        // an entertainer and a phantasmal entertainer may forecast more than the
-                        // region states in total, which is the decision rather than an oversight.
-                        let earned = skill_level(skills, PHANTASMAL_TAG)
-                            .saturating_mul(PHANTASMAL_PER_LEVEL);
-                        income =
-                            income.saturating_add(earned.min(region.entertainment.unwrap_or(0)));
-                    }
+                    // Phantasmal Entertainment earns late, like the two orders above, so
+                    // [`late_income`] prices it; what the cast *costs* is still charged below.
+                    Some(tag) if tag == PHANTASMAL_TAG => {}
                     Some(tag) if tag == EARTH_LORE_TAG => {
                         income_doubt = income_doubt.or(Some(SilverDoubt::UnpricedSpell))
                     }
@@ -528,11 +583,22 @@ pub fn forecast_unit(
         }
     }
 
+    // The three earnings that arrive in the turn's last phase, priced in one place so this
+    // function and the upkeep charge can never disagree about them (`ah-uwa3`).
+    let late = late_income(&facts, region, ruleset);
+    income = income.saturating_add(late);
+
     // Everything that spends what is *left*, in document order, against a running total that
     // already carries every other term. Skipped where a side is doubted: the total it would spend
     // against is not a number, and the side it feeds is `None` either way.
     if income_doubt.is_none() && expense_doubt.is_none() {
-        let mut running = held.saturating_add(income).saturating_sub(expense);
+        // What a deferred order can spend is what reaches the unit *in time* - `ah-1wcw.3` settled
+        // that `BUY ALL` spends what the unit can afford, and wages it earns this month cannot pay
+        // for anything this month's orders buy (`ah-uwa3`).
+        let mut running = held
+            .saturating_add(income)
+            .saturating_sub(late)
+            .saturating_sub(expense);
         for spend in &deferred {
             let spent = match spend {
                 Deferred::BuyAll { price, market_has } => {
@@ -559,10 +625,31 @@ pub fn forecast_unit(
     }
 
     let income = income_doubt.is_none().then_some(income);
+    let late_income = income.map(|_| late);
     let expense = expense_doubt.is_none().then_some(expense);
     let doubt = income_doubt.or(expense_doubt);
     let at_month_end = match (income, expense) {
         (Some(income), Some(expense)) => Some(held.saturating_add(income).saturating_sub(expense)),
+        _ => None,
+    };
+    // The first order in the block that spends anything, which is what the hover names. Read off
+    // the intents rather than tracked through the arithmetic: the shortfall is one number about
+    // the whole month, so no single term "owns" it, and the first spender is the one a reader
+    // looking down the block reaches first.
+    let short_on = intents.iter().find_map(|placed| match &placed.intent {
+        Intent::Buy { .. } => Some(SilverSpender::Buy),
+        Intent::Study { .. } => Some(SilverSpender::Study),
+        Intent::Withdraw { .. } => Some(SilverSpender::Withdraw),
+        Intent::Give { .. } => Some(SilverSpender::Give),
+        Intent::Cast { .. } => Some(SilverSpender::Cast),
+        _ => None,
+    });
+    let short_for_orders = match (income, expense) {
+        (Some(income), Some(expense)) => Some(
+            expense
+                .saturating_sub(held.saturating_add(income).saturating_sub(late))
+                .max(0),
+        ),
         _ => None,
     };
 
@@ -571,8 +658,11 @@ pub fn forecast_unit(
         region_id: region_id.to_string(),
         held,
         income,
+        late_income,
         expense,
         at_month_end,
+        short_for_orders,
+        short_on: short_on.filter(|_| short_for_orders.is_some_and(|short| short > 0)),
         upkeep,
         doubt,
         doubt_subject: doubt_subject.filter(|_| {
@@ -1204,6 +1294,149 @@ mod tests {
         assert_eq!(unit.income, None);
         assert_eq!(unit.expense, Some(0));
         assert_eq!(unit.at_month_end, None);
+    }
+
+    // --- when the silver lands ------------------------------------------------------------------
+
+    #[test]
+    fn a_working_unit_earns_late() {
+        let unit = forecast(10, paying("$12.0", None), &[placed(Intent::Work)]);
+        assert_eq!(unit.income, Some(120));
+        assert_eq!(unit.late_income, Some(120));
+    }
+
+    #[test]
+    fn an_entertainer_earns_late() {
+        let unit = entertaining(5, 2, Some(1000));
+        assert_eq!(unit.income, Some(300));
+        assert_eq!(unit.late_income, Some(300));
+    }
+
+    #[test]
+    fn phantasmal_entertainment_earns_late() {
+        let ruleset = ruleset();
+        let receipts = Receipts::default();
+        let intents = [placed(Intent::Cast {
+            spell: "phantasmal entertainment".to_string(),
+            arguments: Vec::new(),
+        })];
+        let skills = [skill("PHEN", 2)];
+        let unit = forecast_unit(
+            UnitFacts {
+                skills: &skills,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages {
+                entertainment: Some(10_000),
+                ..RegionWages::default()
+            },
+            no_market(),
+            Some(&ruleset),
+        );
+        assert_eq!(unit.income, Some(1200));
+        assert_eq!(unit.late_income, Some(1200));
+    }
+
+    #[test]
+    fn taxing_earns_in_time() {
+        let unit = forecast(8, taxable(Some(100_000)), &[placed(Intent::Tax)]);
+        assert_eq!(unit.income, Some(400));
+        assert_eq!(unit.late_income, Some(0));
+    }
+
+    #[test]
+    fn selling_earns_in_time() {
+        let receipts = Receipts::default();
+        let intents = [placed(Intent::Sell {
+            item: "grain".to_string(),
+            amount: Amount::Exact(3),
+        })];
+        let sale = |_item: &str| SaleAnswer::Wanted {
+            price: 10,
+            market_takes: 100,
+            unit_holds: 100,
+        };
+        let unit = forecast_unit(
+            facts(1, &intents, &receipts),
+            RegionWages::default(),
+            Lookups {
+                sale: &sale,
+                ..no_market()
+            },
+            None,
+        );
+        assert_eq!(unit.income, Some(30));
+        assert_eq!(unit.late_income, Some(0));
+    }
+
+    // --- what the orders cannot cover ------------------------------------------------------------
+
+    #[test]
+    fn wages_cannot_pay_for_a_purchase() {
+        let intents = vec![
+            placed(Intent::Work),
+            placed(Intent::Buy {
+                amount: Amount::Exact(5),
+                item: "grain".to_string(),
+            }),
+        ];
+        let unit = spending(0, &intents, paying("$120.0", None), &sells(12, 40), None);
+        assert_eq!(unit.at_month_end, Some(60));
+        assert_eq!(unit.short_for_orders, Some(60));
+    }
+
+    #[test]
+    fn silver_in_hand_pays_for_a_purchase() {
+        let intents = vec![
+            placed(Intent::Work),
+            placed(Intent::Buy {
+                amount: Amount::Exact(5),
+                item: "grain".to_string(),
+            }),
+        ];
+        let unit = spending(100, &intents, paying("$120.0", None), &sells(12, 40), None);
+        assert_eq!(unit.at_month_end, Some(160));
+        assert_eq!(unit.short_for_orders, Some(0));
+    }
+
+    #[test]
+    fn buying_all_spends_only_what_arrives_in_time() {
+        let intents = vec![
+            placed(Intent::Work),
+            placed(Intent::Buy {
+                amount: Amount::All { except: 0 },
+                item: "grain".to_string(),
+            }),
+        ];
+        let unit = spending(0, &intents, paying("$120.0", None), &sells(12, 40), None);
+        assert_eq!(unit.expense, Some(0));
+        assert_eq!(unit.short_for_orders, Some(0));
+    }
+
+    #[test]
+    fn a_shortfall_names_the_order_it_bites_on() {
+        let intents = vec![
+            placed(Intent::Work),
+            placed(Intent::Buy {
+                amount: Amount::Exact(5),
+                item: "grain".to_string(),
+            }),
+        ];
+        let unit = spending(0, &intents, paying("$120.0", None), &sells(12, 40), None);
+        assert_eq!(unit.short_on, Some(SilverSpender::Buy));
+    }
+
+    #[test]
+    fn a_unit_that_can_pay_names_no_order() {
+        let intents = vec![
+            placed(Intent::Work),
+            placed(Intent::Buy {
+                amount: Amount::Exact(5),
+                item: "grain".to_string(),
+            }),
+        ];
+        let unit = spending(100, &intents, paying("$120.0", None), &sells(12, 40), None);
+        assert_eq!(unit.short_on, None);
     }
 
     // --- entertaining -------------------------------------------------------------------------

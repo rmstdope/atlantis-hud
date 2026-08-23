@@ -40,18 +40,22 @@ use common::ruleset;
 /// - `study-at-maximum` (ah-1uj): unit 13402 is reported at combat [COMB] 5 (450) - the ruleset's
 ///   own maximum - and orders "@study comb" anyway, which is a real wasted month.
 /// - `not-enough-items` (ah-dbb.2): the enchant-armor mages are short plate armor between them.
-/// - `not-enough-silver` (ah-1wcw.4): the check now counts each unit's monthly maintenance, and
-///   two units cannot pay their own. Unit 18642, alone in `1:7,53`, is a leader owing $50 and
-///   holds neither silver nor food; unit 1688, alone in `1:15,63`, is a hill dwarf owing $10 and
-///   likewise holds nothing - and is flagged `consuming unit's food` with no food to consume.
-///   Both are real: their hexes hold no silver at all, so neither the hex's shared purse nor the
-///   game's own regional pooling of maintenance could cover them. The bead's plan predicted this
-///   table would not move, from a faction-wide $62,000 against $1,900 of upkeep; that sum is real
-///   but it is held in other hexes, and this check is per hex.
+/// - `not-enough-silver` (ah-1wcw.4): the check counts each unit's monthly maintenance, and one
+///   unit cannot pay its own. Unit 18642, alone in `1:7,53`, is a leader owing $50 and holds
+///   neither silver nor food, and its hex holds no silver at all - so neither the hex's shared
+///   purse nor the game's own regional pooling of maintenance could cover it. The faction-wide
+///   $62,000 against $1,900 of upkeep is real but held in other hexes, and this check is per hex.
+///
+///   This was **two** until `ah-uwa3`. Unit 1688, alone in `1:15,63`, is a hill dwarf owing $10
+///   that holds nothing - but it orders `@work` in a hex paying `$26.0`, and wages arrive in the
+///   turn's last phase, in time for maintenance if not for anything the orders spend. So its fee
+///   is covered and it is no longer short. `ah-uwa3`'s plan predicted this table would not move,
+///   reading the turn as having no order that could be affected; the turn's one `WORK` order is
+///   exactly the affected case, and the finding that went is the bug the bead was filed to fix.
 const EXPECTED: &[(&str, usize)] = &[
     ("magic-study-outside-building", 6),
     ("not-enough-items", 1),
-    ("not-enough-silver", 2),
+    ("not-enough-silver", 1),
     ("study-at-maximum", 1),
     ("unit-does-nothing", 2),
 ];
@@ -413,6 +417,67 @@ fn the_committed_turns_claims_are_counted() {
     assert_eq!(claimant.doubt, None);
 
     assert_eq!(counts(&review.findings), expected_counts());
+}
+
+/// `ah-uwa3`: the Silver column and the `not-enough-silver` check must agree about wages.
+///
+/// The two drifted to opposite wrong answers for a whole epic because each had a test pinning its
+/// own side and nothing asserted they agreed. This is that assertion. A unit whose orders spend
+/// more than the silver reaching it *in time* can cover must be warned about - by its own finding,
+/// or by a hex-level one for the purse its region shares.
+///
+/// **Unless the hex's purse covers it.** The column is per unit and the check pools across the hex
+/// (`ah-1wcw.1`, and `ah-uwa3` deliberately does not move that line), so a unit that spends its
+/// neighbours' silver is red in the column and silent in the check - and both are right. Unit 13401
+/// in the committed turn is exactly that: it studies on money its hex-mates hold. So the
+/// implication is asserted only where the whole hex is short, which is the case the two systems
+/// really do have to agree about.
+#[test]
+fn the_column_and_the_check_agree_about_wages() {
+    let review = review_turn(
+        &classified(),
+        &template(),
+        Some(&ruleset()),
+        CheckOptions::default(),
+    );
+
+    // What each hex has between its units, counting only silver that arrives in time to be spent.
+    let mut hex_spare: BTreeMap<&str, i64> = BTreeMap::new();
+    for entry in &review.silver {
+        let (Some(income), Some(expense), Some(late)) =
+            (entry.income, entry.expense, entry.late_income)
+        else {
+            continue;
+        };
+        *hex_spare.entry(entry.region_id.as_str()).or_insert(0) +=
+            entry.held + income - late - expense;
+    }
+
+    for entry in &review.silver {
+        let Some(short) = entry.short_for_orders else {
+            continue;
+        };
+        if short <= 0 {
+            continue;
+        }
+        // The shared purse covers it, so the check is right to stay silent (see above).
+        if hex_spare
+            .get(entry.region_id.as_str())
+            .is_some_and(|spare| *spare >= 0)
+        {
+            continue;
+        }
+        let warned = review.findings.iter().any(|finding| {
+            finding.code.as_str() == "not-enough-silver"
+                && (finding.unit_id.as_deref() == Some(entry.unit_id.as_str())
+                    || (finding.unit_id.is_none() && finding.region_id == entry.region_id))
+        });
+        assert!(
+            warned,
+            "unit {} is ${short} short for its orders and nothing warns about it: {:?}",
+            entry.unit_id, review.findings
+        );
+    }
 }
 
 /// `ah-1wcw.2`: the committed turn contains no `SELL`, no `ENTERTAIN`, no earning `CAST` and no

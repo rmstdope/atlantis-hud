@@ -102,8 +102,9 @@ function figure(amount: number | null): string {
 }
 
 /**
- * The Silver section's four rows and its one explaining line (`ah-1wcw.1`) - five while the Silver
- * column is counting upkeep (`ah-1wcw.4`).
+ * The Silver section's five rows and its one explaining line (`ah-1wcw.1`) - six while the Silver
+ * column is counting upkeep (`ah-1wcw.4`). `In` splits in two because silver that arrives in the
+ * turn's last phase cannot pay for anything this month's orders spend (`ah-uwa3`).
  *
  * At most one note, and the first that applies: a panel that stacks three explanations under one
  * small number explains nothing. The order is the order of how much the reader needs it.
@@ -116,7 +117,8 @@ function summariseSilver(
   const end = countUpkeep ? shownEnd(silver) : silver.atMonthEnd;
   const rows: TooltipEntry[] = [
     { label: "Held now", value: String(silver.held) },
-    { label: "In", value: figure(silver.income) },
+    { label: "In, in time", value: figure(inTime(silver)) },
+    { label: "In, too late", value: figure(silver.lateIncome) },
     { label: "Out", value: figure(silver.expense) },
     ...(countUpkeep ? [{ label: "Upkeep", value: figure(silver.upkeep) }] : []),
     { label: "At month end", value: figure(end) }
@@ -124,6 +126,26 @@ function summariseSilver(
 
   return { rows, note: silverNote(silver, warned, countUpkeep) };
 }
+
+/**
+ * The part of income that arrives in time to pay for what the orders spend - everything but wages,
+ * entertaining and Phantasmal Entertainment (`ah-uwa3`). `null` where income itself is unknown.
+ */
+function inTime(silver: UnitSilver): number | null {
+  if (silver.income === null || silver.lateIncome === null) {
+    return null;
+  }
+  return silver.income - silver.lateIncome;
+}
+
+/** How the hover names the order a shortfall bites on. */
+const SPENDS: Record<NonNullable<UnitSilver["shortOn"]>, string> = {
+  buy: "buys",
+  cast: "casts",
+  study: "studies",
+  give: "gives",
+  withdraw: "withdraws"
+};
 
 /** The month-end figure with upkeep taken off, or `null` where either term is unpriceable. */
 function shownEnd(silver: UnitSilver): number | null {
@@ -186,6 +208,14 @@ function silverNote(
   if (countUpkeep && silver.doubt === "contested-faction-food") {
     return "There is not enough faction food here to feed every unit set to eat it.";
   }
+  // The month can end in credit and the purchase still be refused, because wages reach the unit
+  // only in the turn's last phase (`ah-uwa3`). The one line that says so names both the amount and
+  // the order that fails, and comes before the two food notes: an order the game will refuse is
+  // worth more of the reader's attention than an upkeep that was quietly paid.
+  if (silver.shortForOrders !== null && silver.shortForOrders > 0) {
+    const spends = silver.shortOn ? ` when it ${SPENDS[silver.shortOn]}` : "";
+    return `Wages arrive too late to pay for this month's orders, so this unit is ${silver.shortForOrders} short${spends}.`;
+  }
   // The two food notes are ordered by the game's own maintenance payment order: a unit spends its
   // own food (step 1) before the hex's faction food (step 2), so a unit fed by both names the step
   // that actually fed it first (`ah-p9z5`).
@@ -196,11 +226,6 @@ function silverNote(
   // only row a *neighbour's* holdings move (`ah-7cdt`).
   if (countUpkeep && silver.factionFoodCovered > 0) {
     return `Faction food in this hex covers ${silver.factionFoodCovered} of this unit's upkeep.`;
-  }
-  // The column counts what WORK earns; `not-enough-silver` deliberately does not, because wages
-  // are paid in the turn's last phase. Both are true about different moments.
-  if (warned && end !== null && end >= 0) {
-    return "Wages arrive at the end of the month, too late to pay for this month's orders.";
   }
   // A gift is the one part of the figure that comes from somebody else's orders, so it is the one
   // part a reader cannot find by looking at this unit's own block.

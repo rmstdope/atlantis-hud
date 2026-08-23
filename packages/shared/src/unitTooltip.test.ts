@@ -148,8 +148,11 @@ describe("the silver section", () => {
     regionId: "1:6,52",
     held: 60,
     income: 0,
+    lateIncome: 0,
     expense: 200,
     atMonthEnd: -140,
+    shortForOrders: 0,
+    shortOn: null,
     upkeep: 50,
     doubt: null,
     doubtSubject: null,
@@ -166,7 +169,8 @@ describe("the silver section", () => {
 
     expect(summary.silver?.rows).toEqual([
       { label: "Held now", value: "60" },
-      { label: "In", value: "0" },
+      { label: "In, in time", value: "0" },
+      { label: "In, too late", value: "0" },
       { label: "Out", value: "200" },
       { label: "At month end", value: "-140" }
     ]);
@@ -177,7 +181,8 @@ describe("the silver section", () => {
 
     expect(counting.silver?.rows).toEqual([
       { label: "Held now", value: "60" },
-      { label: "In", value: "0" },
+      { label: "In, in time", value: "0" },
+      { label: "In, too late", value: "0" },
       { label: "Out", value: "200" },
       { label: "Upkeep", value: "50" },
       { label: "At month end", value: "-190" }
@@ -279,7 +284,8 @@ describe("the silver section", () => {
 
     expect(counting.silver?.rows).toEqual([
       { label: "Held now", value: "60" },
-      { label: "In", value: "0" },
+      { label: "In, in time", value: "0" },
+      { label: "In, too late", value: "0" },
       { label: "Out", value: "200" },
       { label: "Upkeep", value: "?" },
       { label: "At month end", value: "?" }
@@ -293,12 +299,19 @@ describe("the silver section", () => {
   it("a_doubted_row_shows_a_question_mark_in_place_of_its_figure", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
-      forecast({ income: null, atMonthEnd: null, doubt: "unknown-tax-base" })
+      // `lateIncome` is `null` wherever `income` is: the core computes it in the same pass.
+      forecast({
+        income: null,
+        lateIncome: null,
+        atMonthEnd: null,
+        doubt: "unknown-tax-base"
+      })
     );
 
     expect(summary.silver?.rows).toEqual([
       { label: "Held now", value: "60" },
-      { label: "In", value: "?" },
+      { label: "In, in time", value: "?" },
+      { label: "In, too late", value: "?" },
       { label: "Out", value: "200" },
       { label: "At month end", value: "?" }
     ]);
@@ -321,15 +334,44 @@ describe("the silver section", () => {
     );
   });
 
-  it("says_why_a_warning_can_sit_on_a_positive_figure", () => {
+  it("the_silver_section_separates_income_that_arrives_too_late", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        held: 0,
+        income: 120,
+        lateIncome: 120,
+        expense: 60,
+        atMonthEnd: 60,
+        shortForOrders: 60,
+        shortOn: "buy"
+      }),
+      true,
+      true
+    );
+
+    expect(summary.silver?.rows).toEqual([
+      { label: "Held now", value: "0" },
+      { label: "In, in time", value: "0" },
+      { label: "In, too late", value: "120" },
+      { label: "Out", value: "60" },
+      { label: "Upkeep", value: "50" },
+      { label: "At month end", value: "10" }
+    ]);
+    expect(summary.silver?.note).toBe(
+      "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys."
+    );
+  });
+
+  // `ah-uwa3` removed the old line about wages arriving at the end of the month; it is gone rather
+  // than unused, and quoting it here would put it back into the tree that acceptance greps.
+  it("a_warning_on_a_positive_figure_that_the_orders_can_pay_needs_no_line", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ income: 200, expense: 0, atMonthEnd: 260 }),
       true
     );
-    expect(summary.silver?.note).toBe(
-      "Wages arrive at the end of the month, too late to pay for this month's orders."
-    );
+    expect(summary.silver?.note).toBeNull();
   });
 
   it("says_when_nothing_the_unit_does_moves_silver", () => {

@@ -522,6 +522,9 @@ describe("the Silver column", () => {
     income: 0,
     expense: 0,
     atMonthEnd: 0,
+    lateIncome: 0,
+    shortForOrders: 0,
+    shortOn: null,
     upkeep: 0,
     doubt: null,
     doubtSubject: null,
@@ -565,6 +568,34 @@ describe("the Silver column", () => {
     expect(markup).toContain("unit-silver-1");
     expect(markup).toContain("⚠");
     expect(markup).toContain("-140");
+  });
+
+  it("a_unit_that_cannot_pay_for_its_orders_reads_red", () => {
+    const markup = drawSilver(
+      forecast({
+        income: 120,
+        lateIncome: 120,
+        expense: 60,
+        atMonthEnd: 60,
+        shortForOrders: 60
+      })
+    );
+    expect(markup).toContain("text-right tabular-nums text-danger");
+    expect(markup).toContain(">60<");
+  });
+
+  it("a_zero_that_cannot_pay_its_orders_is_red_not_dim", () => {
+    const markup = drawSilver(
+      forecast({
+        income: 60,
+        lateIncome: 60,
+        expense: 60,
+        atMonthEnd: 0,
+        shortForOrders: 60
+      })
+    );
+    expect(markup).toContain("text-right tabular-nums text-danger");
+    expect(markup).not.toContain('<span class="text-ink-dim">0</span>');
   });
 
   it("a_warned_unit_in_credit_still_shows_the_warning", () => {
