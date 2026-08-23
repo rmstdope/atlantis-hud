@@ -5,7 +5,8 @@ import { resetSettingsStore, useSettingsStore } from "../settingsStore";
 import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
 import { RULESETS } from "../rulesets";
 import { UNSUPPORTED_UPDATES } from "./appUpdate";
-import { About, GlobalSettings, WarningSettings } from "./SettingsDialog";
+import { mapCommitOf } from "../mapShape";
+import { About, GameMapSettings, GlobalSettings, WarningSettings } from "./SettingsDialog";
 
 /**
  * `renderToStaticMarkup` runs with no `window`, so React's server branch reads the store's
@@ -276,5 +277,44 @@ describe("About", () => {
     const markup = html();
     expect(markup).toContain('data-testid="about-issues-link"');
     expect(markup).not.toContain("<a ");
+  });
+});
+
+describe("a per-game map whose wrapping cannot be drawn", () => {
+  it("does not commit a map whose wrapping cannot be drawn", () => {
+    // This form has no Save button - numbers commit on blur and checkboxes at once - so the
+    // refusal is a guard on the commit itself: the game keeps the map it had.
+    expect(mapCommitOf({ width: "71", height: "96", wrapX: true, wrapY: false })).toBeNull();
+    expect(mapCommitOf({ width: "72", height: "95", wrapX: false, wrapY: true })).toBeNull();
+  });
+
+  it("commits again as soon as either field makes the pair valid", () => {
+    expect(mapCommitOf({ width: "72", height: "96", wrapX: true, wrapY: false })).toEqual({
+      store: { width: 72, height: 96, wrapX: true, wrapY: false }
+    });
+    expect(mapCommitOf({ width: "71", height: "96", wrapX: false, wrapY: false })).toEqual({
+      store: { width: 71, height: 96, wrapX: false, wrapY: false }
+    });
+  });
+
+  it("still records nothing for cleared fields", () => {
+    expect(mapCommitOf({ width: "", height: "", wrapX: true, wrapY: true })).toEqual({
+      store: undefined
+    });
+  });
+
+  it("shows the refusal beside the fields, keeping what was typed", () => {
+    const markup = renderToStaticMarkup(
+      <GameMapSettings
+        map={{ width: 71, height: 96, wrapX: true, wrapY: false }}
+        stated
+        busy={false}
+        onChangeMap={() => {}}
+      />
+    );
+
+    expect(markup).toContain('data-testid="settings-map-problem-x"');
+    expect(markup).toContain("A 71-wide map cannot wrap east-west");
+    expect(markup).toContain('value="71"');
   });
 });
