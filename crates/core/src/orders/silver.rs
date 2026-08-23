@@ -1849,7 +1849,7 @@ mod tests {
     }
 
     #[test]
-    fn a_unit_with_food_but_no_upkeep_owed_covers_nothing() {
+    fn a_unit_with_no_food_covers_nothing() {
         let men = [item(6, "MAN")];
         let flags = consuming();
         let unit = forecast_of(made_of(6, &men, &[], &flags));
