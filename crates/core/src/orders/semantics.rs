@@ -823,33 +823,14 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
 /// fire, so the check always counts it. A unit whose headcount is a guess is charged nothing rather
 /// than a guess.
 fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
-    // Step 2 of the payment order, exactly as `forecast_hex` runs it. The check and the Silver
-    // column read one fact, so they settle the hex's faction-food pool the same way: warning that
-    // a unit cannot pay a fee its faction-mates' grain already paid is two surfaces contradicting
-    // each other, which is what `ah-7cdt`'s verification found.
-    let claims: Vec<FoodClaim> = hex
+    // Step 2 of the payment order needs every unit's step-1 leftovers before it can settle any of
+    // them, so this is two passes over one set of facts rather than one pass - built once here,
+    // because two copies of the same literal are two things to keep in step.
+    let nothing = Receipts::default();
+    let facts: Vec<UnitFacts<'_>> = hex
         .units
         .iter()
-        .map(|ordered| {
-            food_claim(&UnitFacts {
-                unit_id: &ordered.unit.unit_id,
-                region_id: &hex.region.region_id,
-                held: ordered.holding(SILVER),
-                men: ordered.unit.men,
-                men_estimated: ordered.unit.men_estimated,
-                men_by_race: &ordered.unit.men_by_race,
-                items: &ordered.unit.items,
-                flags: &ordered.unit.flags,
-                skills: &ordered.unit.skills,
-                intents: ordered.intents,
-                receipts: &Receipts::default(),
-            })
-        })
-        .collect();
-    let settled = feed_from_faction_food(&claims);
-
-    for ordered in &hex.units {
-        let facts = UnitFacts {
+        .map(|ordered| UnitFacts {
             unit_id: &ordered.unit.unit_id,
             region_id: &hex.region.region_id,
             held: ordered.holding(SILVER),
@@ -860,8 +841,17 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             flags: &ordered.unit.flags,
             skills: &ordered.unit.skills,
             intents: ordered.intents,
-            receipts: &Receipts::default(),
-        };
+            receipts: &nothing,
+        })
+        .collect();
+
+    // The check and the Silver column read one fact, so they settle the hex's faction-food pool
+    // the same way: warning that a unit cannot pay a fee its faction-mates' grain already paid is
+    // two surfaces contradicting each other, which is what `ah-7cdt`'s verification found.
+    let claims: Vec<FoodClaim> = facts.iter().map(food_claim).collect();
+    let settled = feed_from_faction_food(&claims);
+
+    for (ordered, facts) in hex.units.iter().zip(&facts) {
         let owed = match settled.get(&ordered.unit.unit_id) {
             // The pool fed this unit: it owes what step 2 left it, not what step 1 did.
             Some(Some(left)) => *left,
@@ -869,7 +859,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             // told at all (the column shows `?`). Charging the undiscounted fee would warn about
             // a shortfall that may not exist, and this module does not produce false warnings.
             Some(None) => continue,
-            None => match unit_upkeep(&facts) {
+            None => match unit_upkeep(facts) {
                 Some(owed) => owed,
                 None => continue,
             },
