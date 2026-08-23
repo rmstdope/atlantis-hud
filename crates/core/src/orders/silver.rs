@@ -209,6 +209,22 @@ pub struct UnitSilver {
     /// withdraw $369 of grain reads as a defect until the hover says why. Carried as a flag rather
     /// than a sum because the sum is not this unit's to show and may not be priceable at all.
     pub withdrawing: bool,
+    /// How many of the item its `PRODUCE` order names this unit will make. `0` for a unit with no
+    /// such order, and for one whose men cannot make even one (`ah-19l2.2`).
+    pub produced: i64,
+    /// The item's name, as the ruleset or the report calls it, for the hover to say. `None` when
+    /// the unit produces nothing.
+    ///
+    /// A name and not a tag, unlike every other `*_tag` field here, and deliberately: the unit
+    /// does not hold the thing yet, so the interface cannot look its name up in the unit's own
+    /// items the way `ah-eacd`'s `nameOfHeldItem` does - it would render `CATP`.
+    pub produced_name: Option<String>,
+    /// How many its men alone would have made. Equal to `produced` unless `production_capped_by`
+    /// says something stopped it.
+    pub production_wanted: i64,
+    /// What stopped it making `production_wanted`, or `None` when nothing did. Drives the hover's
+    /// note and nothing else - the figures above are already the capped ones (`ah-19l2.2`).
+    pub production_capped_by: Option<ProductionCap>,
 }
 
 /// The kind of order a shortfall bites on, so the hover can name it (`ah-uwa3`).
@@ -217,6 +233,8 @@ pub struct UnitSilver {
 #[serde(rename_all = "kebab-case")]
 pub enum SilverSpender {
     Buy,
+    /// `PRODUCE` of something whose recipe costs silver (`ah-19l2.2`).
+    Produce,
     Cast,
     Study,
     Give,
@@ -242,6 +260,9 @@ pub enum SilverDoubt {
     /// `GIVE` of a whole class of goods, or of the unit itself: what leaves depends on classifying
     /// everything the unit holds, which is not modelled.
     GivesAWholeClass,
+    /// `PRODUCE` of something the ruleset prices nowhere - an unknown item, an item no skill
+    /// makes, a recipe stating alternatives rather than requirements, or no ruleset at all.
+    UnpricedProduction,
     /// More units are set to eat the hex's faction food than that food can feed, so which of them
     /// eats - and therefore what each pays - cannot be determined.
     ContestedFactionFood,
@@ -272,6 +293,9 @@ pub struct Lookups<'a> {
     pub purchase: &'a dyn Fn(&str) -> PurchaseAnswer,
     /// The canonical tag for an item an order names, or `None` for one nothing could identify.
     pub item_tag: &'a dyn Fn(&str) -> Option<String>,
+    /// The catalogue's name for a tag, for the one figure the interface cannot name itself: what
+    /// a unit is about to produce is not yet in its inventory (`ah-19l2.2`).
+    pub item_name: &'a dyn Fn(&str) -> String,
 }
 
 /// What this hex's market says about goods a unit is ordered to sell.
@@ -496,6 +520,10 @@ pub fn forecast_unit(
             unclaimed_contended: false,
             given_to_nobody: 0,
             withdrawing: false,
+            produced: 0,
+            produced_name: None,
+            production_wanted: 0,
+            production_capped_by: None,
         };
     }
 
@@ -514,6 +542,9 @@ pub fn forecast_unit(
     // reader at an order the game will not refuse. A deferred `BUY ALL` or `GIVE ALL SILV` is
     // considered only if no direct spender was found, since it spends what the others leave.
     let mut spent_on: Option<SilverSpender> = None;
+    // What a `PRODUCE` order will make, for the four fields the hover reads. Filled by the arm
+    // below; a unit with no such order leaves it at nothing.
+    let mut production: Option<(String, ProductionPlan)> = None;
     // `BUY ALL` and `GIVE ... ALL SILV` spend what is left after every other term, so they cannot
     // be priced inside this pass. Collected in document order and applied below.
     let mut deferred: Vec<Deferred> = Vec::new();
@@ -572,6 +603,30 @@ pub fn forecast_unit(
                     }
                 }
             },
+            // `PRODUCE` is priced from the recipe the ruleset scraped, through the same
+            // `plan_production` the ledger uses - one function, two callers, which is what keeps
+            // this column and the `not-enough-silver` warning from drifting apart (`ah-ycuj`).
+            Intent::Produce { item } => {
+                let recipe = (lookups.item_tag)(item)
+                    .and_then(|tag| recipe_for(ruleset, &tag))
+                    .and_then(|recipe| {
+                        plan_production(recipe, men, facts.items).map(|plan| (recipe, plan))
+                    });
+                match recipe {
+                    Some((recipe, plan)) => {
+                        expense = expense.saturating_add(plan.silver);
+                        if plan.silver > 0 {
+                            spent_on = spent_on.or(Some(SilverSpender::Produce));
+                        }
+                        production = Some(((lookups.item_name)(&recipe.tag), plan));
+                    }
+                    None => {
+                        expense_doubt =
+                            expense_doubt.or(Some(SilverDoubt::UnpricedProduction));
+                        doubt_subject = doubt_subject.or(Some(item.to_lowercase()));
+                    }
+                }
+            }
             Intent::Study { skill } => {
                 let cost = ruleset
                     .and_then(|ruleset| ruleset.find_skill(skill))
@@ -773,7 +828,9 @@ pub fn forecast_unit(
         doubt_subject: doubt_subject.filter(|_| {
             matches!(
                 doubt,
-                Some(SilverDoubt::UnknownGoods) | Some(SilverDoubt::MarketDoesNotSell)
+                Some(SilverDoubt::UnknownGoods)
+                    | Some(SilverDoubt::MarketDoesNotSell)
+                    | Some(SilverDoubt::UnpricedProduction)
             )
         }),
         received: receipts.silver,
@@ -789,6 +846,13 @@ pub fn forecast_unit(
         unclaimed_contended: false,
         given_to_nobody,
         withdrawing,
+        produced: production.as_ref().map_or(0, |(_, plan)| plan.made),
+        produced_name: production
+            .as_ref()
+            .filter(|(_, plan)| plan.made > 0)
+            .map(|(name, _)| name.clone()),
+        production_wanted: production.as_ref().map_or(0, |(_, plan)| plan.wanted),
+        production_capped_by: production.as_ref().and_then(|(_, plan)| plan.capped_by),
     }
 }
 
@@ -1362,6 +1426,21 @@ fn moves_silver_per_man(placed: &PlacedIntent) -> bool {
     )
 }
 
+/// The recipe that makes an item tag, from whichever skill produces it.
+///
+/// Shared by both surfaces for the same reason `plan_production` is: the column and the ledger
+/// must find the same recipe, or they price the same order differently. The unit's own skill is
+/// deliberately not consulted - a unit ordered to make what it cannot make is `ah-wbr9`'s business,
+/// not this module's.
+#[must_use]
+pub fn recipe_for<'a>(ruleset: Option<&'a Ruleset>, tag: &str) -> Option<&'a Production> {
+    ruleset?
+        .skills
+        .iter()
+        .flat_map(|(_, skill)| skill.produces.iter())
+        .find(|recipe| recipe.tag.eq_ignore_ascii_case(tag))
+}
+
 /// Which limit decided how many a unit produces, when it is not its men.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
@@ -1701,7 +1780,12 @@ mod tests {
             sale: &no_sales,
             purchase: &no_purchases,
             item_tag: &verbatim_tag,
+            item_name: &verbatim_name,
         }
+    }
+
+    fn verbatim_name(tag: &str) -> String {
+        tag.to_lowercase()
     }
 
     fn skill(tag: &str, level: u32) -> Skill {

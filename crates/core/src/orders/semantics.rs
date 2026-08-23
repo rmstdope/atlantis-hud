@@ -427,6 +427,7 @@ fn forecast_hex(
         // Resolving an item an order names is this module's business, and a gift of silver and a
         // priced withdrawal both need it.
         let item_tag = |text: &str| resolve_item(text, hex, ordered, ruleset);
+        let name_of = |tag: &str| item_name(tag, hex, ruleset);
 
         let facts = UnitFacts {
             unit_id: &ordered.unit.unit_id,
@@ -451,6 +452,7 @@ fn forecast_hex(
                 sale: &sale,
                 purchase: &purchase,
                 item_tag: &item_tag,
+                item_name: &name_of,
             },
             ruleset,
         ));
@@ -4761,6 +4763,93 @@ mod tests {
             vec![],
             "300 earned covers 280 spent"
         );
+    }
+
+    // --- what a production costs (`ah-19l2.2`) ------------------------------------------------
+
+    /// The forecast for one unit, with the committed ruleset behind it.
+    fn forecast_with_ruleset(regions: Vec<ReportRegion>, orders: &str) -> UnitSilver {
+        let review = review_turn(&report(regions), orders, Some(&ruleset()), CheckOptions::default());
+        review
+            .silver
+            .into_iter()
+            .next()
+            .expect("one own unit was forecast")
+    }
+
+    /// Unit 12881 `Carpenters` in miniature: ten carpenters with materials for two catapults and
+    /// silver for one.
+    fn carpenters(silver: i64, wood: i64) -> ReportUnit {
+        let unit = with_men(
+            with_item(
+                with_item(
+                    with_item(with_silver(unit("12881"), silver), wood, "wood", "WOOD"),
+                    999,
+                    "ironwood",
+                    "IRWD",
+                ),
+                999,
+                "furs",
+                "FUR",
+            ),
+            10,
+        );
+        with_skill(unit, "CARP", 5)
+    }
+
+    #[test]
+    fn a_producing_unit_spends_what_its_run_costs() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(3000, 9999)])],
+            "unit 12881\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(forecast.expense, Some(3000), "silver caps it at one catapult");
+        assert_eq!(forecast.produced, 1);
+        assert_eq!(forecast.produced_name.as_deref(), Some("catapult"));
+        assert_eq!(forecast.production_wanted, 2);
+        assert_eq!(
+            forecast.production_capped_by,
+            Some(crate::orders::silver::ProductionCap::Silver)
+        );
+    }
+
+    #[test]
+    fn a_production_at_full_rate_names_no_cap() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(100_000, 9999)])],
+            "unit 12881\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(forecast.expense, Some(6000));
+        assert_eq!(forecast.produced, 2);
+        assert_eq!(forecast.production_wanted, 2);
+        assert_eq!(forecast.production_capped_by, None);
+    }
+
+    #[test]
+    fn a_production_the_ruleset_cannot_price_is_doubted() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(100_000, 9999)])],
+            "unit 12881\nPRODUCE quicksilver\n",
+        );
+
+        assert_eq!(forecast.doubt, Some(SilverDoubt::UnpricedProduction));
+        assert_eq!(forecast.doubt_subject.as_deref(), Some("quicksilver"));
+        assert_eq!(forecast.expense, None);
+    }
+
+    /// Cooking states "any of grain, livestock and fish"; which the engine takes cannot be told,
+    /// so nothing is priced rather than all three being charged.
+    #[test]
+    fn a_recipe_of_alternatives_is_doubted_rather_than_guessed() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(100_000, 9999)])],
+            "unit 12881\nPRODUCE meals\n",
+        );
+
+        assert_eq!(forecast.doubt, Some(SilverDoubt::UnpricedProduction));
+        assert_eq!(forecast.expense, None);
     }
 
     // --- income the report cannot pin down --------------------------------------------------
