@@ -623,8 +623,9 @@ pub fn forecast_unit(
         }
     }
 
-    // The three earnings that arrive in the turn's last phase, priced in one place so this
-    // function and the upkeep charge can never disagree about them (`ah-uwa3`).
+    // The two earnings that arrive in the turn's last phase - wages and entertaining - priced in
+    // one place so this function and the upkeep charge can never disagree about them (`ah-uwa3`).
+    // Neither earning spell is among them any more (`ah-e77q`): both are priced above, in time.
     let late = late_income(&facts, region);
     income = income.saturating_add(late);
 
@@ -1649,7 +1650,15 @@ mod tests {
 
     #[test]
     fn earth_lore_rounds_down() {
-        // floor(2 x 1 x 14.5) = 29, which is the case a float would round to 30.
+        // floor(2 x 1 x 14.1) = floor(28.2) = 28. Rounding to nearest, or up, would say 29.
+        let unit = casting_for_wages("Earth_Lore", "EART", 1, "$14.1");
+        assert_eq!(unit.income, Some(28));
+    }
+
+    #[test]
+    fn earth_lore_does_not_lose_the_wage_s_fraction() {
+        // 2 x 1 x 1450 / 100 = 29. Dividing the wage down to whole silver first would say 28,
+        // which is what "multiply before dividing" buys.
         let unit = casting_for_wages("Earth_Lore", "EART", 1, "$14.5");
         assert_eq!(unit.income, Some(29));
     }
