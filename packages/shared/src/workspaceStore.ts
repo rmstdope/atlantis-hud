@@ -7,7 +7,7 @@
  * nothing could be linked to anything else. One store fixes that.
  */
 
-import type { MapShape } from "@atlantis/core-client";
+import type { MapShape, OpenedGame } from "@atlantis/core-client";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { allBadges, type BadgeName } from "./workspace/mapThemes/hexView";
@@ -65,6 +65,30 @@ export type WorkspaceGame = {
    */
   map?: MapShape;
 };
+
+/**
+ * The workspace's record of a game the core has just opened.
+ *
+ * One function rather than an object literal at each call site, because the two literals this
+ * replaces disagreed: the one behind `openGame` carried the map and the one handed to the settings
+ * dialog quietly left it out, so a game's own stated map read as absent and the per-game tab kept
+ * offering the ruleset's default, labelled *assumed*, however many times the player corrected it.
+ * Every field of `WorkspaceGame` but `map` is required, so only that one could go missing without
+ * the compiler noticing - which is the argument for there being a single place it is built.
+ *
+ * The map is spread in only when the manifest has one: absence has to survive as absence, since it
+ * is what makes the ruleset's default read as assumed rather than as this game's own word.
+ */
+export function workspaceGameOf(opened: OpenedGame): WorkspaceGame {
+  const { gameId, gameName, rulesetId, map } = opened.manifest.metadata;
+  return {
+    gameId,
+    gameName,
+    databasePath: opened.databasePath,
+    rulesetId,
+    ...(map === undefined ? {} : { map })
+  };
+}
 
 /**
  * What the planner is doing, if anything.

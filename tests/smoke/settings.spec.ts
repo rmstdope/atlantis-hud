@@ -427,3 +427,76 @@ test("the About tab names the variants and offers somewhere to report a bug", as
   await expect(issues).toBeVisible();
   await expect(issues).toHaveAccessibleName("project's issue page on GitHub");
 });
+
+/**
+ * The map a game is played on, corrected in Settings and read back.
+ *
+ * A walk rather than a unit test because the defect it pins was entirely in the wiring: the width
+ * was written to the manifest, the store was updated, and the dialog still showed the ruleset's
+ * default, because the shell handed the dialog a hand-built record that left the map out. Every
+ * unit test in the area passed throughout - they all called the pieces directly, and the piece
+ * nobody called was the one that was wrong.
+ */
+test("a corrected map size is still there when settings are reopened", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Map size game");
+
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-game").click();
+
+  // Created with the ruleset's declared map, so this game stated it: 72 x 96, east-west only.
+  await expect(page.getByTestId("settings-map-stated")).toBeVisible();
+  await expect(page.getByTestId("settings-map-width")).toHaveValue("72");
+
+  // One field at a time, each committed by its own blur. The wait between them is not politeness:
+  // a commit disables the fieldset for the length of the write, and text typed into a field while
+  // that is happening never reaches the form at all.
+  await page.getByTestId("settings-map-width").fill("40");
+  await page.getByTestId("settings-map-width").blur();
+  await expect(page.getByTestId("settings-map-width")).toBeEnabled();
+  await expect(page.getByTestId("settings-map-width")).toHaveValue("40");
+
+  await page.getByTestId("settings-map-height").fill("60");
+  await page.getByTestId("settings-map-height").blur();
+  await expect(page.getByTestId("settings-map-height")).toBeEnabled();
+  // The height's own write must survive the width's write coming back changed.
+  await expect(page.getByTestId("settings-map-height")).toHaveValue("60");
+
+  await page.getByTestId("settings-close").click();
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-game").click();
+
+  await expect(page.getByTestId("settings-map-width")).toHaveValue("40");
+  await expect(page.getByTestId("settings-map-height")).toHaveValue("60");
+  await expect(page.getByTestId("settings-map-stated")).toBeVisible();
+
+  // The same fields, in the narrower dialog: the fix for the create form's overflow was applied
+  // to both, so both are asserted. Measured on the panel, which is what would scroll sideways.
+  const overflow = await page
+    .getByTestId("settings-panel")
+    .evaluate((panel) => panel.scrollWidth - panel.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
+/**
+ * The create form's map fields fit the dialog they are in.
+ *
+ * A `flex-1` field whose input keeps its intrinsic width pushes its row wider than the panel, and
+ * the panel then scrolls sideways - which is what a player saw. Asserted as "the form is no wider
+ * than what contains it" rather than on any class, so the fix is free to be any fix.
+ */
+test("the create form's map fields do not overflow the gate", async ({ page }) => {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+
+  const overflow = await page.getByTestId("game-form").evaluate((form) => {
+    const parent = form.parentElement as HTMLElement;
+    return {
+      form: form.scrollWidth - form.clientWidth,
+      parent: parent.scrollWidth - parent.clientWidth
+    };
+  });
+
+  expect(overflow.form).toBeLessThanOrEqual(1);
+  expect(overflow.parent).toBeLessThanOrEqual(1);
+});

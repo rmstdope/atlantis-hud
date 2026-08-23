@@ -97,7 +97,7 @@ import {
   type GameActionOutcome
 } from "../gameActions";
 import type { BackupImportMode } from "../gameBackup";
-import { DEFAULT_LEVEL, useWorkspaceStore } from "../workspaceStore";
+import { DEFAULT_LEVEL, useWorkspaceStore, workspaceGameOf } from "../workspaceStore";
 import { useHexNotesStore } from "../hexNotesStore";
 import { useSettingsStore } from "../settingsStore";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
@@ -1676,16 +1676,7 @@ export function AppShell({
       // the reverse (ah-ian). The level is set whether or not one was saved: it is the only part
       // of the view the store keeps across a game switch, so a game with nothing saved would
       // otherwise open on whichever level the game before it was left on.
-      openGameInStore(
-        {
-          gameId: opened.manifest.metadata.gameId,
-          gameName: opened.manifest.metadata.gameName,
-          databasePath: opened.databasePath,
-          rulesetId: opened.manifest.metadata.rulesetId,
-          map: opened.manifest.metadata.map
-        },
-        loadSavedView(opened.manifest.metadata.gameId)
-      );
+      openGameInStore(workspaceGameOf(opened), loadSavedView(opened.manifest.metadata.gameId));
     },
     [clearPlan, openGameInStore]
   );
@@ -2911,16 +2902,7 @@ export function AppShell({
       platformLabel={platformLabel}
       appUpdate={appUpdate}
       openExternal={openExternal}
-      game={
-        game
-          ? {
-              gameId: game.manifest.metadata.gameId,
-              gameName: game.manifest.metadata.gameName,
-              databasePath: game.databasePath,
-              rulesetId: game.manifest.metadata.rulesetId
-            }
-          : null
-      }
+      game={game ? workspaceGameOf(game) : null}
       busy={busy}
       error={gameError}
       onChangeRuleset={(rulesetId) => void changeRuleset(rulesetId)}
