@@ -120,13 +120,14 @@
           <div class="row"><span>Held now</span><span class="v">40</span></div>
           <div class="row"><span>In</span><span class="v">0</span></div>
           <div class="row"><span>Out</span><span class="v">0</span></div>
-          <div class="row"><span>Upkeep</span><span class="v">10</span></div>
-          <div class="row total"><span>At month end</span><span class="v">30</span></div>
+          <div class="row"><span>Upkeep</span><span class="v">0</span></div>
+          <div class="row total"><span>At month end</span><span class="v">40</span></div>
         </div>
-        <div class="tipnote">Faction food in this hex covers 50 of this unit's upkeep.</div>
+        <div class="tipnote">Faction food in this hex covers 10 of this unit's upkeep.</div>
       </div>
-      <div class="cap"><b>Fed by a neighbour.</b> Owed 60, one food from the pool covers 50, and 10
-      is left to pay in silver. Without the note the Upkeep row would just look too small.</div>
+      <div class="cap"><b>Fed by a neighbour.</b> Owes 60. Its own grain covers 50 at step 1, and
+      one food from the pool covers the last 10 &mdash; so it pays <strong>nothing</strong> in
+      silver. Without the note, an Upkeep of 0 on a unit with six men would look like a bug.</div>
     </div>
     <div class="unit">
       <div class="tip">
@@ -156,8 +157,11 @@
     <tr><td>faction food covered some or all of the upkeep</td><td class="k">Faction food in this hex covers {n} of this unit's upkeep.</td></tr>
     <tr><td>the pool is short, so the figure is <code>?</code></td><td class="k">There is not enough faction food here to feed every unit set to eat it.</td></tr>
   </table>
-  <div class="absent"><code>{n}</code> is silver, not a count of items — the panel is in silver
-  throughout. Both lines join the shared "one note, first match wins" table settled in
+  <div class="absent"><code>{n}</code> is the silver that <em>faction</em> food covered, not the
+  unit's own and not a count of items — the panel is in silver throughout. Note that a unit the pool
+  feeds always ends at an Upkeep of <strong>0</strong>: the pool is all-or-nothing, so if it can
+  cover a unit at all it covers the whole remainder. That is precisely why the note earns its place —
+  a zero needs explaining. Both lines join the shared "one note, first match wins" table settled in
   <code>ah-1wcw.1</code>; the short-pool line is a doubt and therefore sorts with the doubts, above
   the informational lines.</div>
 </section>
