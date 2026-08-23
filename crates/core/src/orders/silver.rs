@@ -1523,7 +1523,7 @@ mod tests {
         let men = [item(1, "LEAD")];
         let mut facts = made_of(1, &men, &[], &[]);
         facts.held = 200;
-        let unit = forecast_unit(facts, RegionWages::default(), &no_sales, None);
+        let unit = forecast_unit(facts, RegionWages::default(), no_market(), None);
         assert_eq!(unit.upkeep, Some(50));
         assert_eq!(unit.expense, Some(0));
         assert_eq!(unit.at_month_end, Some(200));

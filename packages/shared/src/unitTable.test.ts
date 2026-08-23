@@ -382,7 +382,8 @@ describe("silverShown", () => {
       doubt: null,
       doubtSubject: null,
       received: 0,
-      givers: []
+      givers: [],
+      givenToNobody: 0
     }) satisfies UnitSilver;
 
   it("subtracts upkeep only when the setting is on", () => {
