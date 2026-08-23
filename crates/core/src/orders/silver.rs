@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::movement::rules::Ruleset;
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{Intent, PlacedIntent};
-use crate::report::model::Skill;
+use crate::report::model::{ItemAmount, Skill};
 
 /// "Each taxing character collects $50."
 const TAX_PER_MAN: i64 = 50;
@@ -46,6 +46,24 @@ const PHANTASMAL_TAG: &str = "PHEN";
 /// rule is never a number that might be wrong.
 const EARTH_LORE_TAG: &str = "EART";
 
+/// "This fee is generally 10 silver for a normal character, and 50 silver for a leader."
+const UPKEEP_PER_CHARACTER: i64 = 10;
+const UPKEEP_PER_LEADER: i64 = 50;
+
+/// "Units may substitute one unit of grain, livestock, fish or meals for each 50 silver (or
+/// fraction thereof) of maintenance owed. Food value for a fractional maintenance cost still
+/// consumes the entire unit of food."
+const SILVER_PER_FOOD: i64 = 50;
+
+/// The food items the rules name, by tag.
+const FOOD_TAGS: [&str; 4] = ["GRAI", "LIVE", "FISH", "MEAL"];
+
+/// The tag a leader carries in `men_by_race`.
+const LEADER_TAG: &str = "LEAD";
+
+/// The two flags that say a unit is set to spend its food before its silver.
+const CONSUMING_FLAGS: [&str; 2] = ["consuming unit's food", "consuming faction's food"];
+
 /// What one unit's month is expected to do to its silver.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
@@ -60,7 +78,15 @@ pub struct UnitSilver {
     /// What this month's orders are expected to spend. `None` when a term could not be priced.
     pub expense: Option<i64>,
     /// `held + income - expense`, or `None` when either side is `None`.
+    ///
+    /// **Never includes `upkeep`**, deliberately: whether maintenance counts toward the figure a
+    /// player sees is a setting (`ah-1wcw.4`), and computing both answers here means toggling it
+    /// needs no round trip through the core.
     pub at_month_end: Option<i64>,
+    /// What this unit owes in maintenance this month, in silver, after any food it will spend on
+    /// it. `None` when it cannot be priced - an estimated headcount, or a report that never said
+    /// what the unit is made of.
+    pub upkeep: Option<i64>,
     /// Why a term could not be priced, for the hover to explain. `None` when nothing was doubted.
     pub doubt: Option<SilverDoubt>,
     /// What the doubt is *about*, where its sentence names something - the goods of an
@@ -175,6 +201,14 @@ pub struct UnitFacts<'a> {
     pub held: i64,
     pub men: i64,
     pub men_estimated: bool,
+    /// The unit's people by race, which is what tells a leader from an ordinary character. Empty
+    /// where the report did not break the unit down, which means *all ordinary characters* - the
+    /// report saying nothing is not evidence of leaders.
+    pub men_by_race: &'a [ItemAmount],
+    /// Everything the unit carries, read here only for the food that pays maintenance.
+    pub items: &'a [ItemAmount],
+    /// The unit's report flags, read here only for the two `consuming ...` ones.
+    pub flags: &'a [String],
     /// The unit's own skills, which price entertaining and Phantasmal Entertainment.
     pub skills: &'a [Skill],
     pub intents: &'a [PlacedIntent],
@@ -259,6 +293,7 @@ pub fn forecast_unit(
     ruleset: Option<&Ruleset>,
 ) -> UnitSilver {
     let sale = lookups.sale;
+    let upkeep = unit_upkeep(&facts);
     let UnitFacts {
         unit_id,
         region_id,
@@ -268,6 +303,7 @@ pub fn forecast_unit(
         skills,
         intents,
         receipts,
+        ..
     } = facts;
 
     // A headcount that is a guess cannot multiply anything out, so it short-circuits both sides
@@ -280,6 +316,7 @@ pub fn forecast_unit(
             income: None,
             expense: None,
             at_month_end: None,
+            upkeep,
             doubt: Some(SilverDoubt::EstimatedMen),
             doubt_subject: None,
             received: 0,
@@ -493,6 +530,7 @@ pub fn forecast_unit(
         income,
         expense,
         at_month_end,
+        upkeep,
         doubt,
         doubt_subject: doubt_subject.filter(|_| {
             matches!(
@@ -513,6 +551,74 @@ enum Deferred {
     BuyAll { price: i64, market_has: i64 },
     /// `GIVE ... ALL SILV`, less any `EXCEPT` reserve.
     GiveAllSilver { except: i64, to_nobody: bool },
+}
+
+/// What one unit owes in maintenance this month, after any food it will spend on it.
+///
+/// Charged in full, and the figure may go negative once it is subtracted from a forecast: a unit
+/// that cannot pay its own upkeep is exactly what the column exists to show. Maintenance is pooled
+/// regionally by the game itself, with no `sharing` flag involved, so a per-unit figure is a little
+/// pessimistic - which is why the interface says a unit cannot pay *its own* upkeep rather than
+/// claiming anybody starves.
+///
+/// Models steps 1 and 3 of the rules' payment order - the unit's own food, then its own silver.
+/// Everything else in that order is regional or faction-wide, and `ah-1wcw.1` settled that this
+/// column counts each unit alone.
+///
+/// `None` for a headcount that is itself a guess: charge nothing rather than a guess.
+#[must_use]
+pub fn unit_upkeep(facts: &UnitFacts<'_>) -> Option<i64> {
+    if facts.men_estimated {
+        return None;
+    }
+
+    let leaders = facts
+        .men_by_race
+        .iter()
+        .filter(|entry| entry.tag.eq_ignore_ascii_case(LEADER_TAG))
+        .map(|entry| entry.amount)
+        .sum::<i64>();
+    // A unit the report never broke down is all ordinary characters, and a breakdown that names
+    // more leaders than men is not a reason to charge a negative headcount.
+    let leaders = leaders.clamp(0, facts.men);
+    let characters = facts.men - leaders;
+
+    let owed = leaders
+        .saturating_mul(UPKEEP_PER_LEADER)
+        .saturating_add(characters.saturating_mul(UPKEEP_PER_CHARACTER));
+
+    if owed <= 0 || !is_consuming(facts.flags) {
+        // Steps 3 before 5: a unit not set to consume spends its silver before its own food, and
+        // this column is about silver.
+        return Some(owed.max(0));
+    }
+
+    let held = facts
+        .items
+        .iter()
+        .filter(|entry| {
+            FOOD_TAGS
+                .iter()
+                .any(|tag| entry.tag.eq_ignore_ascii_case(tag))
+        })
+        .map(|entry| entry.amount.max(0))
+        .sum::<i64>();
+
+    // A fractional maintenance cost still consumes a whole unit of food, so the need rounds up.
+    let needed = (owed + SILVER_PER_FOOD - 1) / SILVER_PER_FOOD;
+    let used = held.min(needed);
+    let covered = used.saturating_mul(SILVER_PER_FOOD).min(owed);
+
+    Some(owed - covered)
+}
+
+/// Whether the unit is set to spend food on its maintenance, by either `consuming ...` flag.
+fn is_consuming(flags: &[String]) -> bool {
+    flags.iter().any(|flag| {
+        CONSUMING_FLAGS
+            .iter()
+            .any(|known| flag.eq_ignore_ascii_case(known))
+    })
 }
 
 /// The level a unit has in one skill, by tag, or 0 for a skill it does not have.
@@ -566,6 +672,9 @@ mod tests {
             held: 0,
             men,
             men_estimated: false,
+            men_by_race: &[],
+            items: &[],
+            flags: &[],
             skills: &[],
             intents,
             receipts,
@@ -1290,5 +1399,133 @@ mod tests {
         let unit = spending(500, &intents, RegionWages::default(), &no_purchases, None);
         assert_eq!(unit.expense, None);
         assert_eq!(unit.doubt, Some(SilverDoubt::UnpricedWithdrawal));
+    }
+    /// One shared empty [`Receipts`], so the helpers below can hand out a `'static` borrow
+    /// instead of every test declaring a local that has to outlive its facts.
+    fn no_receipts() -> &'static Receipts {
+        static NOTHING: std::sync::OnceLock<Receipts> = std::sync::OnceLock::new();
+        NOTHING.get_or_init(Receipts::default)
+    }
+
+    fn item(amount: i64, tag: &str) -> ItemAmount {
+        ItemAmount {
+            amount,
+            name: tag.to_lowercase(),
+            tag: tag.to_string(),
+        }
+    }
+
+    /// A unit described only by what it is made of, for the upkeep rules.
+    fn made_of<'a>(
+        men: i64,
+        men_by_race: &'a [ItemAmount],
+        items: &'a [ItemAmount],
+        flags: &'a [String],
+    ) -> UnitFacts<'a> {
+        UnitFacts {
+            unit_id: "1234",
+            region_id: "mountain (7,53)",
+            held: 0,
+            men,
+            men_estimated: false,
+            men_by_race,
+            items,
+            flags,
+            skills: &[],
+            intents: &[],
+            receipts: no_receipts(),
+        }
+    }
+
+    fn consuming() -> Vec<String> {
+        vec!["Consuming Unit's Food".to_string()]
+    }
+
+    #[test]
+    fn a_unit_of_ordinary_characters_owes_ten_each() {
+        let men = [item(6, "MAN")];
+        assert_eq!(unit_upkeep(&made_of(6, &men, &[], &[])), Some(60));
+    }
+
+    #[test]
+    fn a_leader_owes_fifty() {
+        let men = [item(1, "LEAD")];
+        assert_eq!(unit_upkeep(&made_of(1, &men, &[], &[])), Some(50));
+    }
+
+    #[test]
+    fn a_mixed_unit_owes_both() {
+        let men = [item(2, "LEAD"), item(5, "MAN")];
+        assert_eq!(unit_upkeep(&made_of(7, &men, &[], &[])), Some(150));
+    }
+
+    #[test]
+    fn a_unit_with_no_breakdown_is_all_ordinary_characters() {
+        assert_eq!(unit_upkeep(&made_of(4, &[], &[], &[])), Some(40));
+    }
+
+    #[test]
+    fn a_unit_whose_headcount_is_a_guess_has_no_upkeep() {
+        let mut facts = made_of(4, &[], &[], &[]);
+        facts.men_estimated = true;
+        assert_eq!(unit_upkeep(&facts), None);
+    }
+
+    #[test]
+    fn a_consuming_unit_pays_with_its_own_food_first() {
+        let men = [item(1, "LEAD")];
+        let food = [item(1, "GRAI")];
+        let flags = consuming();
+        assert_eq!(unit_upkeep(&made_of(1, &men, &food, &flags)), Some(0));
+    }
+
+    #[test]
+    fn a_unit_that_is_not_consuming_pays_silver_even_holding_food() {
+        let men = [item(1, "LEAD")];
+        let food = [item(1, "GRAI")];
+        assert_eq!(unit_upkeep(&made_of(1, &men, &food, &[])), Some(50));
+    }
+
+    #[test]
+    fn food_covers_fifty_a_time_rounding_up() {
+        let men = [item(1, "MAN")];
+        let food = [item(1, "GRAI")];
+        let flags = consuming();
+        assert_eq!(unit_upkeep(&made_of(1, &men, &food, &flags)), Some(0));
+    }
+
+    #[test]
+    fn food_runs_out_and_the_rest_is_silver() {
+        let men = [item(16, "LEAD")];
+        let food = [item(5, "GRAI")];
+        let flags = consuming();
+        assert_eq!(unit_upkeep(&made_of(16, &men, &food, &flags)), Some(550));
+    }
+
+    #[test]
+    fn only_the_four_food_items_the_rules_name_count() {
+        let men = [item(1, "LEAD")];
+        let not_food = [item(9, "IRON")];
+        let flags = consuming();
+        assert_eq!(unit_upkeep(&made_of(1, &men, &not_food, &flags)), Some(50));
+    }
+
+    #[test]
+    fn a_faction_food_consumer_spends_its_own_food_too() {
+        let men = [item(1, "LEAD")];
+        let food = [item(1, "MEAL")];
+        let flags = vec!["consuming faction's food".to_string()];
+        assert_eq!(unit_upkeep(&made_of(1, &men, &food, &flags)), Some(0));
+    }
+
+    #[test]
+    fn a_forecast_carries_upkeep_separately_from_expense() {
+        let men = [item(1, "LEAD")];
+        let mut facts = made_of(1, &men, &[], &[]);
+        facts.held = 200;
+        let unit = forecast_unit(facts, RegionWages::default(), no_market(), None);
+        assert_eq!(unit.upkeep, Some(50));
+        assert_eq!(unit.expense, Some(0));
+        assert_eq!(unit.at_month_end, Some(200));
     }
 }

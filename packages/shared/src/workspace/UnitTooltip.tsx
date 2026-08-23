@@ -1,6 +1,7 @@
 import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
 import { useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useSettingsStore } from "../settingsStore";
 import { placeTooltip, summariseUnit, type Point } from "../unitTooltip";
 import { Absent, Row, Section } from "./primitives";
 
@@ -46,7 +47,9 @@ export function UnitTooltip({
     );
   }, [node, at, unit.unitId]);
 
-  const summary = summariseUnit(unit, silver, warned);
+  // The Silver column's upkeep setting also decides the hover's fifth row (`ah-1wcw.4`).
+  const countUpkeep = useSettingsStore((state) => state.countUpkeep);
+  const summary = summariseUnit(unit, silver, warned, countUpkeep);
 
   return createPortal(
     <div

@@ -522,6 +522,7 @@ describe("the Silver column", () => {
     income: 0,
     expense: 0,
     atMonthEnd: 0,
+    upkeep: 0,
     doubt: null,
     doubtSubject: null,
     received: 0,

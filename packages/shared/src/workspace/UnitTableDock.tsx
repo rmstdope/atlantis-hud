@@ -24,6 +24,7 @@ import {
   COLUMN_LABELS,
   columnWidthStyle,
   orderOf,
+  silverShown,
   type ColumnOrder,
   type SortColumn,
   type SortState,
@@ -125,6 +126,7 @@ export function UnitTableDock({
   // `<thead>`, so table layout cannot touch it and the row height cannot move.
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const interfaceSize = useSettingsStore((state) => state.interfaceSize);
+  const countUpkeep = useSettingsStore((state) => state.countUpkeep);
   const rowHeight = rowHeightAt(interfaceSize);
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
@@ -165,9 +167,9 @@ export function UnitTableDock({
     return new Map(
       units
         .filter((entry) => entry.own)
-        .map((entry) => [entry.unitId, getSilver(entry.unitId)?.atMonthEnd ?? null])
+        .map((entry) => [entry.unitId, silverShown(getSilver(entry.unitId), countUpkeep)])
     );
-  }, [units, sort.column, getSilver]);
+  }, [units, sort.column, getSilver, countUpkeep]);
   const visible = useMemo(
     () => sortUnits(filterUnits(units, filter, structures), sort, structures, longOrders, silverByUnit),
     [units, filter, sort, structures, longOrders, silverByUnit]
@@ -509,6 +511,7 @@ export function UnitTableDock({
                   getLongOrder={getLongOrder}
                   getSilver={getSilver}
                   silverWarnings={silverWarnings}
+                  countUpkeep={countUpkeep}
                   onSelectUnit={onSelectUnit}
                   renderFactionName={renderFactionName}
                   onKeyDown={onRowKeyDown}
@@ -704,6 +707,7 @@ function UnitRow({
   getLongOrder,
   getSilver,
   silverWarnings,
+  countUpkeep,
   onSelectUnit,
   renderFactionName
 }: {
@@ -731,6 +735,8 @@ function UnitRow({
   getSilver?: (unitId: string) => UnitSilver | null;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
   silverWarnings?: ReadonlySet<string>;
+  /** Whether the Silver column charges each unit its monthly maintenance (`ah-1wcw.4`). */
+  countUpkeep: boolean;
   /** Selects a unit and opens its orders. */
   onSelectUnit?: (unitId: string) => void;
   /** Wraps a foreign faction's name so it can open that faction's dossier (ah-bu2c). */
@@ -760,6 +766,9 @@ function UnitRow({
   // finding is anchored to the hex and names no unit, and blaming one of several would be as
   // wrong there as it is in the Problems panel - so there is deliberately no fallback to the hex.
   const warned = silver !== null && (silverWarnings?.has(unit.unitId) ?? false);
+  // The setting decides whether maintenance comes off the figure (`ah-1wcw.4`); the core computes
+  // both answers, so switching it costs no round trip through the checks.
+  const shownSilver = silverShown(silver, countUpkeep);
 
   /**
    * Every cell, keyed the same way the header's dispatch is, so reordering the columns never means
@@ -868,7 +877,7 @@ function UnitRow({
     // pools across the hex's sharing units. The two mean different things on purpose, so a ⚠ on
     // a positive figure is not a contradiction - the hover explains it.
     silver: (
-      <Td className={`text-right tabular-nums${silverIsRed(silver) ? " text-danger" : ""}`}>
+      <Td className={`text-right tabular-nums${silverIsRed(shownSilver) ? " text-danger" : ""}`}>
         {silver === null ? (
           ""
         ) : warned ? (
@@ -880,11 +889,11 @@ function UnitRow({
           >
             <span className="sr-only">unit {unit.unitId} </span>
             <SeverityMark severity="warning" />
-            {silverFigure(silver)}
+            {silverFigure(shownSilver)}
           </button>
         ) : (
-          <span className={silverIsDim(silver) ? "text-ink-dim" : undefined}>
-            {silverFigure(silver)}
+          <span className={silverIsDim(shownSilver) ? "text-ink-dim" : undefined}>
+            {silverFigure(shownSilver)}
           </span>
         )}
       </Td>
@@ -955,16 +964,16 @@ function Td({
  * Never a number that might be wrong - see `orders::silver` in the core, which is where the
  * decision that a doubted term poisons the whole side is made.
  */
-function silverFigure(silver: UnitSilver): string {
-  return silver.atMonthEnd === null ? "?" : String(silver.atMonthEnd);
+function silverFigure(shown: number | null): string {
+  return shown === null ? "?" : String(shown);
 }
 
 /** Whether the figure is this unit, counted on its own, ending below zero. */
-function silverIsRed(silver: UnitSilver | null): boolean {
-  return silver !== null && silver.atMonthEnd !== null && silver.atMonthEnd < 0;
+function silverIsRed(shown: number | null): boolean {
+  return shown !== null && shown < 0;
 }
 
 /** A `?` and a plain `0` both read dim: neither is a number to act on. */
-function silverIsDim(silver: UnitSilver): boolean {
-  return silver.atMonthEnd === null || silver.atMonthEnd === 0;
+function silverIsDim(shown: number | null): boolean {
+  return shown === null || shown === 0;
 }

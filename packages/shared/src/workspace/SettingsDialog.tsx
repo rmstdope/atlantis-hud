@@ -214,6 +214,8 @@ export function GlobalSettings() {
   const setMovementPlanner = useSettingsStore((state) => state.setMovementPlanner);
   const orderOcd = useSettingsStore((state) => state.orderOcd);
   const setOrderOcd = useSettingsStore((state) => state.setOrderOcd);
+  const countUpkeep = useSettingsStore((state) => state.countUpkeep);
+  const setCountUpkeep = useSettingsStore((state) => state.setCountUpkeep);
   // A workspace preference rather than a setting, but this is where a player looks for "put it
   // back how it was" - and a table whose columns have been dragged into a bad shape needs a way
   // out that is not on the table itself (ah-1owr.2).
@@ -394,6 +396,14 @@ export function GlobalSettings() {
         testId="settings-order-ocd"
         checked={orderOcd}
         onChange={setOrderOcd}
+      />
+
+      <SettingToggle
+        title="Count upkeep in the Silver column"
+        description="Charge each unit its monthly maintenance - 10 silver a character, 50 a leader - paid with food first where the unit is set to consume it."
+        testId="settings-count-upkeep"
+        checked={countUpkeep}
+        onChange={setCountUpkeep}
       />
     </div>
   );

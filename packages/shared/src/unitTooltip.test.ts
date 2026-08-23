@@ -150,6 +150,7 @@ describe("the silver section", () => {
     income: 0,
     expense: 200,
     atMonthEnd: -140,
+    upkeep: 50,
     doubt: null,
     doubtSubject: null,
     received: 0,
@@ -166,6 +167,35 @@ describe("the silver section", () => {
       { label: "In", value: "0" },
       { label: "Out", value: "200" },
       { label: "At month end", value: "-140" }
+    ]);
+  });
+
+  it("the_silver_section_shows_an_upkeep_row_only_when_counting", () => {
+    const counting = summariseUnit(aReportUnit({ unitId: "1" }), forecast(), true, true);
+
+    expect(counting.silver?.rows).toEqual([
+      { label: "Held now", value: "60" },
+      { label: "In", value: "0" },
+      { label: "Out", value: "200" },
+      { label: "Upkeep", value: "50" },
+      { label: "At month end", value: "-190" }
+    ]);
+  });
+
+  it("an_upkeep_nothing_could_price_reads_as_a_question_mark", () => {
+    const counting = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: null }),
+      true,
+      true
+    );
+
+    expect(counting.silver?.rows).toEqual([
+      { label: "Held now", value: "60" },
+      { label: "In", value: "0" },
+      { label: "Out", value: "200" },
+      { label: "Upkeep", value: "?" },
+      { label: "At month end", value: "?" }
     ]);
   });
 
