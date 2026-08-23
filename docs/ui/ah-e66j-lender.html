@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The lender's side (ah-e66j) — round 2</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-e66j</span> — the lender's side, round 2</h1>
+  <p><strong>Settled:</strong> the fed unit's Upkeep figure drops, with a
+  <code>sharedSilverCovered</code> figure behind it; its hover says
+  &ldquo;A faction-mate's silver in this hex pays this unit's upkeep.&rdquo; while a
+  <code>SHARE</code>-flagged rescue keeps &ldquo;Shared silver in this hex covers the
+  shortfall.&rdquo;; and a hex that cannot cover everybody gets <strong>one</strong> hex-level
+  finding rather than a mark per unit.</p>
+  <p>Two things that follows from, both visible, neither settled.</p>
+</header>
+<main>
+<section>
+  <h2 class="rule"><em>Question 4</em> does the lender's row show the loan?</h2>
+  <p><b>Treasury</b> holds 1000 and owes 50. <b>Hodfarers</b> holds nothing and owes 60, and
+  Treasury's silver pays it. Nobody set <code>SHARE</code>.</p>
+
+  <div class="lab">Option A — the lender's row does not move</div>
+  <table class="t">
+    <tr><th>Unit</th><th>Silver</th><th>Month end</th><th>Upkeep</th><th>Hover</th></tr>
+    <tr><td>Hodfarers (1001)</td><td class="num">0</td><td class="num">0</td><td class="num good">0</td><td>A faction-mate's silver&hellip; pays this unit's upkeep.</td></tr>
+    <tr><td>Treasury (1002)</td><td class="num">1000</td><td class="num">1000</td><td class="num">50</td><td>—</td></tr>
+  </table>
+  <p class="cap"><b>Matches step 2 exactly.</b> A unit whose grain feeds a faction-mate shows
+  nothing on its own row today either — the <code>factionFoodCovered</code> figure lives only on the
+  unit that was fed. One rule for every neighbour-funded step. Cost: a player reading Treasury's
+  1000 is not told 60 of it is spoken for.</p>
+
+  <div class="lab">Option B — the lender's row says what it lent</div>
+  <table class="t">
+    <tr><th>Unit</th><th>Silver</th><th>Month end</th><th>Upkeep</th><th>Hover</th></tr>
+    <tr><td>Hodfarers (1001)</td><td class="num">0</td><td class="num">0</td><td class="num good">0</td><td>A faction-mate's silver&hellip; pays this unit's upkeep.</td></tr>
+    <tr><td>Treasury (1002)</td><td class="num">1000</td><td class="num">1000</td><td class="num">50</td><td>This unit's silver also pays 60 of another unit's upkeep in this hex.</td></tr>
+  </table>
+  <p class="cap"><b>Silver is more salient than grain</b> — a player looking at 1000 may be planning
+  to spend it, and 60 of it will be gone. Cost: it breaks the one-rule-per-step consistency above,
+  and in a hex where several units lend to several units, which lender paid which fee cannot be told
+  at all — so the sentence can only ever be a hex-wide total attributed arbitrarily.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Question 5</em> the hex-level sentence, in a hex with no SHARE flag</h2>
+  <p>The shipped sentence was written for a <code>SHARE</code> pool, which covers orders
+  <em>and</em> upkeep. Automatic sharing covers <strong>upkeep only</strong> — so in a hex where
+  nobody set <code>SHARE</code>, the pool that fell short paid no orders at all.</p>
+  <table class="q">
+    <tr><th>Option</th><th>The sentence</th><th></th></tr>
+    <tr><td class="k">A — say upkeep</td>
+        <td>the units in this hex are short $80 of <b>upkeep</b> between them: they can have $120
+        and their upkeep costs $200</td>
+        <td>Accurate about what fell short, and it tells the player that no order of theirs is at
+        risk — which is a different thing to do about it. A second sentence to keep in step.</td></tr>
+    <tr><td class="k">B — keep the shipped sentence</td>
+        <td>the units in this hex are short $80 between them: they can have $120 and their orders
+        and upkeep spend $200</td>
+        <td>One string. It names orders that did not spend anything, in a hex where orders were
+        never pooled.</td></tr>
+  </table>
+  <p class="cap"><b>Unchanged either way:</b> a hex holding one own unit and no neighbours — there
+  is nobody to lend, so that unit is warned exactly as it is today; and a hex that <em>does</em>
+  set <code>SHARE</code>, where orders pool as well and the shipped sentence is already right.</p>
+</section>
+</main>
+</body>
+</html>
