@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Coordinate } from "@atlantis/core-client";
+import type { Coordinate, MapShape } from "@atlantis/core-client";
 import { isValidCoordinate } from "../hexMapModel";
 import {
   accumulateWheel,
@@ -12,12 +12,15 @@ import {
   MIN_STEP,
   neighbour,
   PIXELS_PER_STEP,
+  foldCoordinate,
+  ghostShift,
   ROW_PITCH,
   rulerTicks,
   scaleOf,
   transformString,
   wheelPixels,
   worldOf,
+  wrapSpans,
   zoomAt,
   zoomBand,
   type Viewport
@@ -475,5 +478,48 @@ describe("which hex a point falls in", () => {
 
   it("answers on the level being looked at", () => {
     expect(coordinateAt(0, 0, ORIGIN, 3).z).toBe(3);
+  });
+});
+
+describe("wrapping", () => {
+  function shape(width: number, height: number, wrapX: boolean, wrapY: boolean): MapShape {
+    return { width, height, wrapX, wrapY };
+  }
+
+  it("spans repeat only when the map says so and the width is even", () => {
+    expect(wrapSpans(shape(72, 96, true, false))).toEqual({ x: 72 * COLUMN_PITCH, y: null });
+    expect(wrapSpans(shape(71, 96, true, false))).toEqual({ x: null, y: null });
+    expect(wrapSpans(shape(72, 96, false, true))).toEqual({ x: null, y: 96 * ROW_PITCH });
+    expect(wrapSpans(shape(72, 95, false, true))).toEqual({ x: null, y: null });
+    expect(wrapSpans(shape(0, 0, true, true))).toEqual({ x: null, y: null });
+    expect(wrapSpans(null)).toEqual({ x: null, y: null });
+  });
+
+  it("shifts the ghost copies to wherever the camera has got to", () => {
+    // The camera is left where it is, so at rest the copies sit either side of the world itself.
+    expect(ghostShift(0, 100, 1)).toBe(0);
+    expect(ghostShift(-40, 100, 1)).toBe(0);
+    // A world east, and the copies move a world with it - which is what keeps one of them under the
+    // pointer however far the drag goes.
+    expect(ghostShift(-120, 100, 1)).toBe(1);
+    expect(ghostShift(320, 100, 1)).toBe(-3);
+    // The period is in screen pixels, so the scale matters.
+    expect(ghostShift(-220, 100, 2)).toBe(1);
+    // An axis that does not repeat has no copies to shift.
+    expect(ghostShift(-9999, null, 1)).toBe(0);
+  });
+
+  it("folding a coordinate matches the movement planner", () => {
+    const cylinder = shape(72, 96, true, false);
+    expect(foldCoordinate(at(72, 4), cylinder)).toEqual(at(0, 4));
+    expect(foldCoordinate(at(-1, 4), cylinder)).toEqual(at(71, 4));
+    expect(foldCoordinate(at(5, 4), cylinder)).toEqual(at(5, 4));
+    // y does not wrap here, so it is left alone however far out it is.
+    expect(foldCoordinate(at(5, 200), cylinder).y).toBe(200);
+    expect(foldCoordinate(at(5, 200), shape(72, 96, false, true))).toEqual(at(5, 8));
+    expect(foldCoordinate(at(72, 4), null)).toEqual(at(72, 4));
+    // An odd width does not join, so nothing is folded onto it.
+    expect(foldCoordinate(at(72, 4), shape(71, 96, true, false))).toEqual(at(72, 4));
+    expect(foldCoordinate(at(3, 4, 2), cylinder).z).toBe(2);
   });
 });

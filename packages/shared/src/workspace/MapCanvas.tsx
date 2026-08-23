@@ -8,7 +8,8 @@ import {
   useRef,
   useState
 } from "react";
-import type { Coordinate, HexNoteRecord, HexRisk } from "@atlantis/core-client";
+import type { CSSProperties } from "react";
+import type { Coordinate, HexNoteRecord, HexRisk, MapShape } from "@atlantis/core-client";
 import { parseRegionId, regionIdOf, type HexMapModel, type HexNode } from "../hexMapModel";
 import { isMacPlatform } from "../shortcuts";
 import {
@@ -16,6 +17,8 @@ import {
   centreOn,
   coordinateAt,
   fitTo,
+  foldCoordinate,
+  ghostShift,
   HEX_RADIUS,
   isOffScreen,
   neighbour,
@@ -24,6 +27,7 @@ import {
   transformString,
   wheelPixels,
   worldOf,
+  wrapSpans,
   zoomAt,
   zoomBand,
   NO_INSETS,
@@ -122,6 +126,17 @@ const RISK_CLASSES: Record<string, string> = {
  * hex's ground, where the selection and focus rings on the same hexagon are chrome telling the
  * player where they are, and stay screen-constant along with the labels and the fog hairline.
  */
+/**
+ * What makes an interactive piece of the world stop being interactive inside a ghost copy.
+ *
+ * A `<use>` clones its content into a shadow tree, and a `pointer-events` **attribute** on the
+ * cloned element beats the `pointer-events="none"` inherited from the `<use>` itself - so a ghost
+ * hex or note pin would take the click a ghost must let fall through to the hit rect. A custom
+ * property inherits into the shadow tree and is what the clone resolves against, so the ghosts turn
+ * their own copies off by setting `--map-hit: none` and nothing else has to know.
+ */
+const GHOSTABLE_HIT: CSSProperties = { pointerEvents: "var(--map-hit, all)" as CSSProperties["pointerEvents"] };
+
 const ROUTE_CASING = radii(0.278);
 const ROUTE_LINE = radii(0.167);
 const RISK_OUTLINE = radii(0.111);
@@ -194,6 +209,13 @@ type MapCanvasProps = {
    * which is also what stands the gesture down.
    */
   onMarquee?: (rect: MapRect) => void;
+  /**
+   * The world's extent and where it joins back onto itself, or null when the game does not say.
+   *
+   * A map that wraps is drawn again either side of itself, so panning across the seam runs into the
+   * next copy rather than into emptiness.
+   */
+  shape?: MapShape | null;
 };
 
 /**
@@ -254,7 +276,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     route = null,
     arrow = null,
     routeRisk = [],
-    onMarquee
+    onMarquee,
+    shape = null
   },
   ref
 ) {
@@ -336,6 +359,65 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   );
 
   /**
+   * How far apart the world's repeats are, per axis - `null` on an axis that does not repeat.
+   *
+   * The camera is folded into the first repeat after every move, so it never leaves the central
+   * band and one ghost copy on each side is always enough, however far the player drags.
+   */
+  const spans = useMemo(() => wrapSpans(shape), [shape]);
+
+  /**
+   * Where to draw the world again: one repeat back, here and one repeat on, per axis that repeats.
+   *
+   * They are `<use>` elements rather than duplicated nodes, so nine of them cost nine DOM nodes
+   * rather than nine copies of every hex, road, note and ring. Which repeat each one actually
+   * stands at is written by `applyView` along with the transform, because it depends on where the
+   * camera has got to; the slot standing where the world itself is drawn hides, since drawing a
+   * second copy over the original would double every translucent pass.
+   */
+  const ghostSlots = useMemo(() => {
+    if (spans.x === null && spans.y === null) {
+      return [];
+    }
+    const xs = spans.x === null ? [0] : [-1, 0, 1];
+    const ys = spans.y === null ? [0] : [-1, 0, 1];
+    return xs.flatMap((mx) => ys.map((my) => ({ mx, my })));
+  }, [spans]);
+
+  /**
+   * Moves the world's copies to the repeats either side of wherever the camera is.
+   *
+   * Written by hand for the same reason the transform is: this runs on every frame of a drag, and
+   * it is two attributes on at most nine elements rather than a render of the whole world.
+   */
+  const placeGhosts = useCallback(
+    (view: Viewport) => {
+      const world = worldRef.current;
+      if (world === null || (spans.x === null && spans.y === null)) {
+        return;
+      }
+      const scale = scaleOf(view.step);
+      const shiftX = ghostShift(view.tx, spans.x, scale);
+      const shiftY = ghostShift(view.ty, spans.y, scale);
+      for (const ghost of world.querySelectorAll<SVGUseElement>(":scope > use")) {
+        const mx = Number(ghost.dataset.ghostX) + shiftX;
+        const my = Number(ghost.dataset.ghostY) + shiftY;
+        // The slot standing where the world itself is drawn would be a copy on top of the
+        // original, doubling every translucent pass. Written as the attribute React renders rather
+        // than as a style, so the markup only ever says one thing about whether a copy is drawn.
+        if (mx === 0 && my === 0) {
+          ghost.setAttribute("display", "none");
+        } else {
+          ghost.removeAttribute("display");
+        }
+        ghost.setAttribute("x", String(mx * (spans.x ?? 0)));
+        ghost.setAttribute("y", String(my * (spans.y ?? 0)));
+      }
+    },
+    [spans]
+  );
+
+  /**
    * Pushes the current view into the DOM.
    *
    * Called after every commit rather than only when the view changes, so a re-render that
@@ -345,11 +427,12 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     const current = viewRef.current;
     const transform = transformString(current);
     worldRef.current?.setAttribute("transform", transform);
+    placeGhosts(current);
     fogRef.current?.setAttribute("patternTransform", transform);
     rulerXRef.current?.setAttribute("transform", `translate(${current.tx.toFixed(2)},0)`);
     rulerYRef.current?.setAttribute("transform", `translate(0,${current.ty.toFixed(2)})`);
     rootRef.current?.style.setProperty("--map-scale", scaleOf(current.step).toFixed(4));
-  }, []);
+  }, [placeGhosts]);
 
   useLayoutEffect(() => {
     applyView();
@@ -382,7 +465,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     [applyView, commitMapView, level]
   );
 
-  /** Moves the view without re-rendering, which is what keeps a drag free. */
+  /**
+   * Moves the view without re-rendering, which is what keeps a drag free.
+   *
+   * The copies follow from inside `applyView`, so they move with every frame of a drag rather than
+   * only when the pointer is released - which is what stops a long gesture running off the end of
+   * them and showing emptiness until it settles.
+   */
   const slide = useCallback(
     (next: Viewport) => {
       viewRef.current = next;
@@ -1025,11 +1114,16 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
               return;
             }
             const bounds = event.currentTarget.getBoundingClientRect();
-            const coordinate = coordinateAt(
-              event.clientX - bounds.left,
-              event.clientY - bounds.top,
-              viewRef.current,
-              level
+            // Folded, so a click in a ghost copy selects the hex it is a copy of rather than one
+            // beyond the map's own range.
+            const coordinate = foldCoordinate(
+              coordinateAt(
+                event.clientX - bounds.left,
+                event.clientY - bounds.top,
+                viewRef.current,
+                level
+              ),
+              shape
             );
             // Ctrl+click is the recentre gesture on macOS - most webviews already deliver it as
             // `contextmenu` instead, but this is the belt to that suspender. Centres, never
@@ -1055,6 +1149,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
 
         {/* Transform is written by hand, never as a prop. See applyView. */}
         <g ref={worldRef} data-testid="map-world">
+          <g id="map-world-content">
           {/*
             Weakest knowledge first, so a hex the report describes in full is never painted
             underneath one a neighbour merely mentioned.
@@ -1318,7 +1413,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                 points={HEX_POINTS}
                 transform={translateOf(hex)}
                 fill="none"
-                pointerEvents="all"
+                style={GHOSTABLE_HIT}
                 className="cursor-pointer outline-none"
                 strokeWidth={2}
                 vectorEffect="non-scaling-stroke"
@@ -1405,7 +1500,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                       aria-expanded={isOpen}
                       data-testid="map-note-pin"
                       data-region-id={pin.regionId}
-                      pointerEvents="all"
+                      style={GHOSTABLE_HIT}
                       className="cursor-pointer"
                       onClick={(event) => {
                         event.stopPropagation();
@@ -1477,7 +1572,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                     {isOpen && (
                       <g
                         data-testid="map-note-tags"
-                        pointerEvents="all"
+                        style={GHOSTABLE_HIT}
                         onClick={(event) => event.stopPropagation()}
                       >
                         {noteTagLayout(pin.notes).map((tag) => (
@@ -1518,6 +1613,30 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
               })}
             </g>
           )}
+          </g>
+
+          {/*
+            The world drawn again either side of itself, so a map that joins back onto itself runs
+            continuously instead of ending. `<use>` clones the one drawn world at render time, so
+            these cost a node each rather than a copy of every pass above.
+
+            `pointerEvents="none"` matters: a click has to fall through to the hit rect, which folds
+            the coordinate it works out back onto the real map.
+          */}
+          {ghostSlots.map(({ mx, my }) => (
+            <use
+              key={`${mx},${my}`}
+              href="#map-world-content"
+              x={mx * (spans.x ?? 0)}
+              y={my * (spans.y ?? 0)}
+              data-ghost-x={mx}
+              data-ghost-y={my}
+              display={mx === 0 && my === 0 ? "none" : undefined}
+              pointerEvents="none"
+              style={{ "--map-hit": "none" } as CSSProperties}
+              data-testid="map-world-ghost"
+            />
+          ))}
         </g>
 
         {/* Rulers, pinned to the viewport so they never scroll away. */}

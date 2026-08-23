@@ -566,15 +566,19 @@ export function AppShell({
    * declared default, and a ruleset that declares none yields the empty string, which is how the
    * core hears "the game never said" and keeps computing neighbours exactly as it always did.
    */
-  const mapJson = useMemo(
+  const mapShape = useMemo(
     () =>
-      mapShapeJson(
-        game === null
-          ? null
-          : mapShapeOfGame(game.manifest.metadata.rulesetId, game.manifest.metadata.map).map
-      ),
+      game === null
+        ? null
+        : mapShapeOfGame(game.manifest.metadata.rulesetId, game.manifest.metadata.map).map,
     [game?.manifest.metadata.rulesetId, game?.manifest.metadata.map]
   );
+
+  /**
+   * The same shape as the core hears it. One source, two consumers: the map view reads the
+   * structured value above rather than parsing this back.
+   */
+  const mapJson = useMemo(() => mapShapeJson(mapShape), [mapShape]);
 
   // Writes the whole map view whenever any part of it changes - level, hex or the map's own pan
   // and zoom, all held in one place by the store's `mapView` slice now (ah-ian). Guarded on a
@@ -3214,6 +3218,9 @@ export function AppShell({
           // there is nothing to export a map of until one is loaded, and a dialog that opened
           // anyway could only refuse.
           onMarquee={parsed ? (rect) => openExport(rect) : undefined}
+          // So a map the game says wraps is drawn again either side of itself, and panning across
+          // the seam runs into the next copy rather than into emptiness.
+          shape={mapShape}
         />
 
         {/*

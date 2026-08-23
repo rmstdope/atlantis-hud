@@ -17,7 +17,7 @@
  *   arrow key undoes another. Two keys that both lead north would let focus drift with no way back.
  */
 
-import type { Coordinate } from "@atlantis/core-client";
+import type { Coordinate, MapShape } from "@atlantis/core-client";
 
 /** Radius of one hex in world units. The world is drawn at this size and then transformed. */
 export const HEX_RADIUS = 18;
@@ -347,4 +347,68 @@ export function rulerTicks(
     ticks.push({ index, offset: index * screenPitch });
   }
   return ticks;
+}
+
+/** How far apart the world's repeats are, per axis, in world units - `null` where it does not repeat. */
+export type WrapSpans = { x: number | null; y: number | null };
+
+/**
+ * How far apart the world's repeats are, in world units, per axis - `null` where that axis does not
+ * repeat.
+ *
+ * An axis repeats only when the game says it wraps AND the extent is **even**: the lattice holds
+ * only positions where `x + y` is even, so shifting by an odd width lands rows half a hex out and
+ * the two edges genuinely do not meet. A game saved before that combination is refused where it is
+ * entered may already carry it, so drawing no seam is the honest answer.
+ */
+export function wrapSpans(shape: MapShape | null | undefined): WrapSpans {
+  return {
+    x: repeats(shape?.wrapX, shape?.width) ? shape!.width * COLUMN_PITCH : null,
+    y: repeats(shape?.wrapY, shape?.height) ? shape!.height * ROW_PITCH : null
+  };
+}
+
+function repeats(wraps: boolean | undefined, extent: number | undefined): boolean {
+  return wraps === true && extent !== undefined && extent > 0 && extent % 2 === 0;
+}
+
+/**
+ * How many worlds the ghost copies are shifted by, so the three of them (one either side of the
+ * middle one) cover wherever the camera has got to.
+ *
+ * The camera itself is deliberately **not** folded. Folding it keeps the arithmetic in one repeat,
+ * but the world is drawn once and the ghosts are clones of it: a folded camera leaves the player
+ * looking at a clone while the real hexes, note pins and rings sit a world off screen, out of reach
+ * of the keyboard, an assistive technology and every existing test. Moving the copies instead costs
+ * one attribute write per ghost per frame and keeps what is on screen the thing it appears to be.
+ */
+export function ghostShift(translation: number, span: number | null, scale: number): number {
+  if (span === null) return 0;
+  const period = span * scale;
+  if (!(period > 0)) return 0;
+  // `|| 0` rather than a bare negation, so a translation inside the first repeat answers +0 rather
+  // than the -0 that reads as a different number to anything comparing exactly.
+  return -Math.round(translation / period) || 0;
+}
+
+/**
+ * A coordinate folded into the map's own range, on whichever axes repeat.
+ *
+ * Mirrors `MapGeometry::wrap` exactly: the view and the movement planner disagreeing about which
+ * hex `x = 72` is would be worse than either being wrong alone.
+ */
+export function foldCoordinate(coordinate: Coordinate, shape: MapShape | null | undefined): Coordinate {
+  return {
+    ...coordinate,
+    x: repeats(shape?.wrapX, shape?.width)
+      ? remEuclid(coordinate.x, shape!.width)
+      : coordinate.x,
+    y: repeats(shape?.wrapY, shape?.height)
+      ? remEuclid(coordinate.y, shape!.height)
+      : coordinate.y
+  };
+}
+
+function remEuclid(value: number, extent: number): number {
+  return ((value % extent) + extent) % extent;
 }
