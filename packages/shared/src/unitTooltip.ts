@@ -186,6 +186,12 @@ function silverNote(
   if (countUpkeep && silver.doubt === "contested-faction-food") {
     return "There is not enough faction food here to feed every unit set to eat it.";
   }
+  // The two food notes are ordered by the game's own maintenance payment order: a unit spends its
+  // own food (step 1) before the hex's faction food (step 2), so a unit fed by both names the step
+  // that actually fed it first (`ah-p9z5`).
+  if (countUpkeep && silver.ownFoodCovered > 0) {
+    return `This unit's own food covers ${silver.ownFoodCovered} of its upkeep.`;
+  }
   // An Upkeep of 0 on a unit with six men reads as a defect until something says why: this is the
   // only row a *neighbour's* holdings move (`ah-7cdt`).
   if (countUpkeep && silver.factionFoodCovered > 0) {

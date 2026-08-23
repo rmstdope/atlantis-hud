@@ -54,6 +54,15 @@ givers: Array<string>,
  */
 factionFoodCovered: number, 
 /**
+ * Silver of this unit's upkeep paid by food it holds itself, at step 1 of the payment order.
+ * `0` when the unit is not set to consume, holds no food, or owes nothing.
+ *
+ * Carried separately from `faction_food_covered` only so the hover can say which fed it: both
+ * leave `upkeep` at the same number, and a zero there reads as a defect until something says
+ * why (`ah-7cdt`, `ah-p9z5`).
+ */
+ownFoodCovered: number, 
+/**
  * Silver this unit is ordered to give to nobody - `GIVE 0 ... SILV`, which destroys it. Part
  * of `expense` like any other gift; carried separately only so the hover can say so.
  */

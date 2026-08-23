@@ -105,6 +105,13 @@ pub struct UnitSilver {
     /// Silver that faction food held by *other* units in this hex paid off, at step 2 of the
     /// payment order (`ah-7cdt`). `0` for every unit the pool did not feed, which is most of them.
     pub faction_food_covered: i64,
+    /// Silver of this unit's upkeep paid by food it holds itself, at step 1 of the payment order.
+    /// `0` when the unit is not set to consume, holds no food, or owes nothing.
+    ///
+    /// Carried separately from `faction_food_covered` only so the hover can say which fed it: both
+    /// leave `upkeep` at the same number, and a zero there reads as a defect until something says
+    /// why (`ah-7cdt`, `ah-p9z5`).
+    pub own_food_covered: i64,
     /// Silver this unit is ordered to give to nobody - `GIVE 0 ... SILV`, which destroys it. Part
     /// of `expense` like any other gift; carried separately only so the hover can say so.
     pub given_to_nobody: i64,
@@ -315,7 +322,9 @@ pub fn forecast_unit(
     ruleset: Option<&Ruleset>,
 ) -> UnitSilver {
     let sale = lookups.sale;
-    let upkeep = unit_upkeep(&facts);
+    let own_food = own_food_pass(&facts);
+    let upkeep = own_food.as_ref().map(|pass| pass.owed_after_own_food);
+    let own_food_covered = own_food.as_ref().map_or(0, |pass| pass.own_food_covered);
     let UnitFacts {
         unit_id,
         region_id,
@@ -344,6 +353,7 @@ pub fn forecast_unit(
             received: 0,
             givers: Vec::new(),
             faction_food_covered: 0,
+            own_food_covered: 0,
             given_to_nobody: 0,
         };
     }
@@ -574,6 +584,7 @@ pub fn forecast_unit(
         received: receipts.silver,
         givers: receipts.givers.clone(),
         faction_food_covered: 0,
+        own_food_covered,
         given_to_nobody,
     }
 }
@@ -609,6 +620,9 @@ pub fn unit_upkeep(facts: &UnitFacts<'_>) -> Option<i64> {
 struct OwnFoodPass {
     owed_after_own_food: i64,
     spare_food: i64,
+    /// What the unit's own food paid off, in silver. Recorded where step 1 actually happens, so
+    /// nothing re-derives it from `items` and `SILVER_PER_FOOD` and drifts from this.
+    own_food_covered: i64,
 }
 
 /// Step 1 of the maintenance payment order - the unit's own food - and what it leaves behind.
@@ -652,6 +666,7 @@ fn own_food_pass(facts: &UnitFacts<'_>) -> Option<OwnFoodPass> {
         return Some(OwnFoodPass {
             owed_after_own_food: owed,
             spare_food: held,
+            own_food_covered: 0,
         });
     }
 
@@ -663,6 +678,7 @@ fn own_food_pass(facts: &UnitFacts<'_>) -> Option<OwnFoodPass> {
     Some(OwnFoodPass {
         owed_after_own_food: owed - covered,
         spare_food: held - used,
+        own_food_covered: covered,
     })
 }
 
@@ -1791,6 +1807,65 @@ mod tests {
         assert_eq!(unit.upkeep, Some(50));
         assert_eq!(unit.expense, Some(0));
         assert_eq!(unit.at_month_end, Some(200));
+    }
+
+    fn forecast_of(facts: UnitFacts<'_>) -> UnitSilver {
+        forecast_unit(
+            facts,
+            RegionWages::default(),
+            FactionPurse::default(),
+            no_market(),
+            None,
+        )
+    }
+
+    #[test]
+    fn a_unit_fed_by_its_own_food_records_what_it_covered() {
+        let men = [item(6, "MAN")];
+        let food = [item(2, "GRAI")];
+        let flags = consuming();
+        let unit = forecast_of(made_of(6, &men, &food, &flags));
+        assert_eq!(unit.own_food_covered, 60);
+        assert_eq!(unit.faction_food_covered, 0);
+        assert_eq!(unit.upkeep, Some(0));
+    }
+
+    #[test]
+    fn a_unit_that_is_not_consuming_covers_nothing_with_food() {
+        let men = [item(6, "MAN")];
+        let food = [item(2, "GRAI")];
+        let unit = forecast_of(made_of(6, &men, &food, &[]));
+        assert_eq!(unit.own_food_covered, 0);
+        assert_eq!(unit.upkeep, Some(60));
+    }
+
+    #[test]
+    fn a_unit_owing_nothing_covers_nothing() {
+        let food = [item(2, "GRAI")];
+        let flags = consuming();
+        let unit = forecast_of(made_of(0, &[], &food, &flags));
+        assert_eq!(unit.own_food_covered, 0);
+        assert_eq!(unit.upkeep, Some(0));
+    }
+
+    #[test]
+    fn a_unit_with_no_food_covers_nothing() {
+        let men = [item(6, "MAN")];
+        let flags = consuming();
+        let unit = forecast_of(made_of(6, &men, &[], &flags));
+        assert_eq!(unit.own_food_covered, 0);
+        assert_eq!(unit.upkeep, Some(60));
+    }
+
+    #[test]
+    fn a_unit_whose_headcount_is_a_guess_covers_nothing() {
+        let men = [item(6, "MAN")];
+        let food = [item(2, "GRAI")];
+        let flags = consuming();
+        let mut facts = made_of(6, &men, &food, &flags);
+        facts.men_estimated = true;
+        let unit = forecast_of(facts);
+        assert_eq!(unit.own_food_covered, 0);
     }
 }
 
