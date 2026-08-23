@@ -91,6 +91,32 @@ factionFoodCovered: number,
  */
 ownFoodCovered: number, 
 /**
+ * Food of this unit's own that step 5 makes it eat because its silver ran out, in items.
+ *
+ * Distinct from `own_food_covered`'s step-1 food, which the `CONSUME` flag *chose*: this is
+ * stock the game takes as a last resort, and the hover says so in a different sentence
+ * (`ah-eacd`). Its silver value is inside `own_food_covered` like any other food payment.
+ */
+forcedOwnFood: number, 
+/**
+ * That food's item tag, when this unit's larder holds one kind of food and only one. `None`
+ * when it holds several: which items the engine eats then cannot be told, so the hover counts
+ * them instead of naming them (`ah-eacd`).
+ */
+forcedOwnFoodTag: string | null, 
+/**
+ * Faction food in this hex that step 6 eats on this unit's behalf, in items. Counted and never
+ * named: the pool is other units' inventory, and which items it gives up is not this unit's to
+ * say. Its silver value is inside `faction_food_covered`.
+ */
+forcedFactionFood: number, 
+/**
+ * Whether a remaining pool too small to feed every claimant might have fed this unit at step
+ * 6. Suppresses the not-enough-silver warning and drives the hover's note, and **never changes
+ * a figure**: the `upkeep` on show is what step 5 left, pessimistically (`ah-eacd`).
+ */
+foodContended: boolean, 
+/**
  * Silver of this unit's upkeep paid by the faction's unclaimed fund, at step 7 of the payment
  * order. `0` for every unit the fund did not reach - which is every unit whenever the fund
  * cannot reach them all, because then which one it fed cannot be told.

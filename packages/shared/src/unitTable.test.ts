@@ -390,7 +390,11 @@ describe("silverShown", () => {
       factionFoodCovered: 0,
       ownFoodCovered: 0,
       unclaimedCovered: 0,
-      unclaimedContended: false
+      unclaimedContended: false,
+      forcedOwnFood: 0,
+      forcedOwnFoodTag: null,
+      forcedFactionFood: 0,
+      foodContended: false
     }) satisfies UnitSilver;
 
   it("subtracts upkeep only when the setting is on", () => {

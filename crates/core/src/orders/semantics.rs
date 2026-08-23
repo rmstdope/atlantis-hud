@@ -27,9 +27,10 @@ use crate::movement::mode::{
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::orders::silver::{
-    feed_from_faction_food, food_claim, forecast_unit, late_income, parse_wage_centis,
-    settle_unclaimed, unit_upkeep, FactionPurse, FoodClaim, Lookups, PurchaseAnswer, Receipts,
-    RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
+    feed_after_silver, feed_from_faction_food, food_claim, forecast_unit, late_income,
+    parse_wage_centis, settle_unclaimed, unit_upkeep, FactionFoodPass, FactionPurse, FoodClaim,
+    LateFoodClaim, LateFoodRelief, Lookups, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
+    SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -281,6 +282,9 @@ pub fn review_turn(
         })
         .collect();
 
+    // Steps 5 and 6 come before step 7 in the payment order, and `upkeep_claims` reads the relief
+    // they leave, so this must run first.
+    let food_relief = feed_from_food_after_silver(&mut hexes);
     let claims = upkeep_claims(&hexes);
     // `CLAIM` resolves during the month and maintenance is settled at its end, so this month's
     // claims come off the fund before step 7 ever sees it (`ah-fjty`).
@@ -291,7 +295,15 @@ pub fn review_turn(
     apply_relief(&mut hexes, &settlement);
 
     for (hex, ledger) in &hexes {
-        forecast_hex(hex, &receipts, purse, ruleset, &settlement, &mut silver);
+        forecast_hex(
+            hex,
+            &receipts,
+            purse,
+            ruleset,
+            &settlement,
+            &food_relief,
+            &mut silver,
+        );
         if hex.units.is_empty() {
             continue;
         }
@@ -336,6 +348,7 @@ fn forecast_hex(
     purse: FactionPurse,
     ruleset: Option<&Ruleset>,
     settlement: &UpkeepSettlement,
+    food_relief: &BTreeMap<String, LateFoodRelief>,
     into: &mut Vec<UnitSilver>,
 ) {
     let region = RegionWages {
@@ -419,7 +432,7 @@ fn forecast_hex(
     // One claim was pushed per unit, in the same loop that pushed its forecast, so the two are
     // index-aligned - which is also what keeps two units sharing an id from being confused for one
     // another, as a lookup by id could not.
-    let settled = feed_from_faction_food(&claims);
+    let settled = feed_from_faction_food(&claims).settled;
     for (claim, forecast) in claims.iter().zip(into[start..].iter_mut()) {
         let Some(upkeep) = settled.get(&claim.unit_id).copied() else {
             continue;
@@ -437,6 +450,28 @@ fn forecast_hex(
             // still exactly known, and `at_month_end` never counted upkeep to begin with.
             forecast.doubt = forecast.doubt.or(Some(SilverDoubt::ContestedFactionFood));
         }
+    }
+
+    // Steps 5 and 6, decided per hex before this one was priced and only applied here.
+    //
+    // The walk is positional over `hex.units` but the lookup is by id, so - unlike the food pass
+    // above - two report units sharing an id are conflated here. That is exactly what
+    // `Ledger.balance` already does with such a pair, so this adds no hazard it does not have.
+    for (ordered, forecast) in hex.units.iter().zip(into[start..].iter_mut()) {
+        let Some(owed) = forecast.upkeep else {
+            // A doubted fee stays doubted: food cannot settle a number nothing knows.
+            continue;
+        };
+        let Some(relief) = food_relief.get(&ordered.unit.unit_id) else {
+            continue;
+        };
+        forecast.food_contended = relief.contended;
+        forecast.own_food_covered += relief.own_covered;
+        forecast.faction_food_covered += relief.faction_covered;
+        forecast.forced_own_food = relief.own_items;
+        forecast.forced_own_food_tag = relief.own_tag.clone();
+        forecast.forced_faction_food = relief.faction_items;
+        forecast.upkeep = Some((owed - relief.own_covered - relief.faction_covered).max(0));
     }
 
     // Step 7, in a second pass for the same reason the first one exists: the settlement is
@@ -859,6 +894,10 @@ struct Ledger<'a> {
     /// ledger, and moving a balance to make one message read correctly is how two checks end up
     /// disagreeing about one turn (`ah-fjty`).
     upkeep_relieved: BTreeMap<String, i64>,
+    /// What step 2 left of this hex's faction-food pool, written by `charge_upkeep` from the pass
+    /// it already makes. Steps 5 and 6 draw on the same food, and a third call to
+    /// `feed_from_faction_food` would be a third answer to one question.
+    faction_food: FactionFoodPass,
 }
 
 /// Everything the hex's units hold, with this month's orders applied.
@@ -876,6 +915,7 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
         upkeep: BTreeMap::new(),
         upkeep_drawn: BTreeMap::new(),
         upkeep_relieved: BTreeMap::new(),
+        faction_food: FactionFoodPass::default(),
     };
 
     for ordered in &hex.units {
@@ -911,13 +951,10 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
 /// (`ah-uwa3`), so it is netted off the fee. Netted off rather than credited to the balance: a
 /// credit would leave the surplus where the orders could spend it, which is the very error this
 /// removes.
-fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
-    // Step 2 of the payment order needs every unit's step-1 leftovers before it can settle any of
-    // them, so this is two passes over one set of facts rather than one pass - built once here,
-    // because two copies of the same literal are two things to keep in step.
-    let nothing = Receipts::default();
-    let facts: Vec<UnitFacts<'_>> = hex
-        .units
+/// Every own unit in one hex as maintenance sees it. Shared by `charge_upkeep` and by steps 5 and
+/// 6, which must read exactly the same facts or the column and the warning will disagree.
+fn hex_facts<'a>(hex: &'a Hex<'_>, nothing: &'a Receipts) -> Vec<UnitFacts<'a>> {
+    hex.units
         .iter()
         .map(|ordered| UnitFacts {
             unit_id: &ordered.unit.unit_id,
@@ -930,9 +967,17 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             flags: &ordered.unit.flags,
             skills: &ordered.unit.skills,
             intents: ordered.intents,
-            receipts: &nothing,
+            receipts: nothing,
         })
-        .collect();
+        .collect()
+}
+
+fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
+    // Step 2 of the payment order needs every unit's step-1 leftovers before it can settle any of
+    // them, so this is two passes over one set of facts rather than one pass - built once here,
+    // because two copies of the same literal are two things to keep in step.
+    let nothing = Receipts::default();
+    let facts = hex_facts(hex, &nothing);
 
     let region = RegionWages {
         tax_base: hex.region.tax_base,
@@ -945,7 +990,9 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     // the same way: warning that a unit cannot pay a fee its faction-mates' grain already paid is
     // two surfaces contradicting each other, which is what `ah-7cdt`'s verification found.
     let claims: Vec<FoodClaim> = facts.iter().map(food_claim).collect();
-    let settled = feed_from_faction_food(&claims);
+    let pass = feed_from_faction_food(&claims);
+    let settled = pass.settled.clone();
+    ledger.faction_food = pass;
 
     for (ordered, facts) in hex.units.iter().zip(&facts) {
         let owed = match settled.get(&ordered.unit.unit_id) {
@@ -1490,68 +1537,155 @@ fn relieved_balance(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
 fn upkeep_claims(hexes: &[(Hex<'_>, Ledger<'_>)]) -> Vec<UpkeepClaim> {
     let mut claims = Vec::new();
     for (hex, ledger) in hexes {
-        let owes = |ordered: &Ordered<'_>| -> Option<(String, i64)> {
-            let who = &ordered.unit.unit_id;
-            if ledger.doubted.contains(who) {
-                // A unit whose sums cannot be trusted is not judged at all, here as everywhere
-                // else in this module - and a guessed headcount is charged nothing to begin with.
-                return None;
-            }
-            let drawn = ledger.upkeep_drawn.get(who).copied().unwrap_or_default();
-            (drawn > 0).then(|| (who.clone(), drawn))
-        };
+        claims.extend(
+            unpayable_upkeep(hex, ledger)
+                .into_iter()
+                .map(|(unit_id, short)| UpkeepClaim { unit_id, short }),
+        );
+    }
+    claims
+}
 
-        // A hex holding a sharing unit is one purse, and `report_shortfalls` judges it as one: it
-        // says nothing about a penniless unit standing beside a rich sharer. The fund must read
-        // that hex the same way, or it invents a claimant whose maintenance its faction-mates'
-        // silver already pays - the contradiction `ah-7cdt` removed for the faction-food pool -
-        // and that phantom claim exhausts the fund a real claimant elsewhere needed.
-        let sharers = hex.units.iter().filter(|ordered| ordered.shares());
-        if sharers.clone().next().is_some() {
-            let pool: i64 = sharers
-                .map(|ordered| balance_of(ledger, &ordered.unit.unit_id, SILVER))
-                .sum();
-            let borrowed: i64 = hex
-                .units
-                .iter()
-                .filter(|ordered| {
-                    !ordered.shares() && !ledger.doubted.contains(&ordered.unit.unit_id)
-                })
-                .map(|ordered| (-balance_of(ledger, &ordered.unit.unit_id, SILVER)).max(0))
-                .sum();
-            // What the hex cannot pay between them, of which maintenance can be blamed for at
-            // most what it drew. Nothing is claimed at all where the pool covers everybody.
-            let mut remaining = borrowed - pool;
-            for ordered in &hex.units {
-                if remaining <= 0 {
-                    break;
-                }
-                let Some((unit_id, drawn)) = owes(ordered) else {
-                    continue;
-                };
-                let short = drawn.min(remaining);
-                remaining -= short;
-                claims.push(UpkeepClaim { unit_id, short });
-            }
-            continue;
+/// What each unit in one hex owes in maintenance that its own silver - and its hex's sharing pool -
+/// cannot cover. The input to step 5 and, once food has run, to step 7.
+///
+/// Read a hex exactly as `report_shortfalls` reads it, or the relief and the warnings will disagree
+/// about the same turn: each unit on its own where nobody shares, and the whole hex as one purse
+/// where somebody does. The two branches below are those two readings.
+fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
+    let mut claims = Vec::new();
+    let owes = |ordered: &Ordered<'_>| -> Option<(String, i64)> {
+        let who = &ordered.unit.unit_id;
+        if ledger.doubted.contains(who) {
+            // A unit whose sums cannot be trusted is not judged at all, here as everywhere else in
+            // this module - and a guessed headcount is charged nothing to begin with.
+            return None;
         }
+        // What an earlier step has already paid off is no longer drawn on the balance, so it is no
+        // longer maintenance's to claim: steps 5 and 6 write their relief before step 7 asks.
+        let drawn = ledger.upkeep_drawn.get(who).copied().unwrap_or_default()
+            - ledger.upkeep_relieved.get(who).copied().unwrap_or_default();
+        let drawn = drawn.max(0);
+        (drawn > 0).then(|| (who.clone(), drawn))
+    };
 
-        // No sharing unit, so every unit is judged on its own balance - again exactly as
-        // `report_shortfalls` does. At most what maintenance drew is maintenance's fault, and the
-        // rest of an overdraft belongs to the unit's orders: a unit holding $10, buying $350 of
-        // horses and owing $40 is short $380, of which the fund may pay $40 and never the $340.
+    let sharers = hex.units.iter().filter(|ordered| ordered.shares());
+    if sharers.clone().next().is_some() {
+        let pool: i64 = sharers
+            .map(|ordered| silver_balance(ledger, &ordered.unit.unit_id))
+            .sum();
+        let borrowed: i64 = hex
+            .units
+            .iter()
+            .filter(|ordered| !ordered.shares() && !ledger.doubted.contains(&ordered.unit.unit_id))
+            .map(|ordered| (-silver_balance(ledger, &ordered.unit.unit_id)).max(0))
+            .sum();
+        // What the hex cannot pay between them, of which maintenance can be blamed for at most
+        // what it drew. Nothing is claimed at all where the pool covers everybody.
+        let mut remaining = borrowed - pool;
         for ordered in &hex.units {
+            if remaining <= 0 {
+                break;
+            }
             let Some((unit_id, drawn)) = owes(ordered) else {
                 continue;
             };
-            let overdraft = -balance_of(ledger, &unit_id, SILVER);
-            let short = overdraft.min(drawn);
-            if short > 0 {
-                claims.push(UpkeepClaim { unit_id, short });
-            }
+            let short = drawn.min(remaining);
+            remaining -= short;
+            claims.push((unit_id, short));
+        }
+        return claims;
+    }
+
+    // No sharing unit, so every unit is judged on its own balance - again exactly as
+    // `report_shortfalls` does. At most what maintenance drew is maintenance's fault, and the rest
+    // of an overdraft belongs to the unit's orders: a unit holding $10, buying $350 of horses and
+    // owing $40 is short $380, of which food or the fund may pay $40 and never the $340.
+    for ordered in &hex.units {
+        let Some((unit_id, drawn)) = owes(ordered) else {
+            continue;
+        };
+        let overdraft = -silver_balance(ledger, &unit_id);
+        let short = overdraft.min(drawn);
+        if short > 0 {
+            claims.push((unit_id, short));
         }
     }
     claims
+}
+
+/// Steps 5 and 6 of the payment order, per hex, and what they leave for step 7.
+///
+/// Faction-wide only because it walks every hex; the food itself never leaves the hex that holds
+/// it.
+fn feed_from_food_after_silver(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+) -> BTreeMap<String, LateFoodRelief> {
+    let mut all: BTreeMap<String, LateFoodRelief> = BTreeMap::new();
+    let nothing = Receipts::default();
+
+    for (hex, ledger) in hexes {
+        let short: BTreeMap<String, i64> = unpayable_upkeep(hex, ledger).into_iter().collect();
+        if short.is_empty() {
+            continue;
+        }
+
+        let facts = hex_facts(hex, &nothing);
+        let claims: Vec<LateFoodClaim> = hex
+            .units
+            .iter()
+            .zip(&facts)
+            .map(|(ordered, facts)| LateFoodClaim {
+                unit_id: ordered.unit.unit_id.clone(),
+                short: short
+                    .get(&ordered.unit.unit_id)
+                    .copied()
+                    .unwrap_or_default(),
+                own_food: food_claim(facts).spare_food,
+                own_food_tag: lone_food_tag(&ordered.unit.items),
+            })
+            .collect();
+
+        let pool_left = ledger.faction_food.pool_left;
+        let relief = feed_after_silver(&claims, pool_left);
+
+        for claim in &claims {
+            let Some(fed) = relief.get(&claim.unit_id) else {
+                continue;
+            };
+            // A unit a short pool might yet have fed is not warned about a fee that may not be
+            // owed - which is what relieving the whole of it does, without touching any figure.
+            let relieved = if fed.contended {
+                claim.short
+            } else {
+                fed.own_covered + fed.faction_covered
+            };
+            if relieved > 0 {
+                *ledger
+                    .upkeep_relieved
+                    .entry(claim.unit_id.clone())
+                    .or_insert(0) += relieved;
+            }
+        }
+        all.extend(relief);
+    }
+    all
+}
+
+/// The tag of a unit's food when it holds one kind of food and only one; `None` when it holds
+/// several, because which items the engine eats then cannot be told.
+fn lone_food_tag(items: &[ItemAmount]) -> Option<String> {
+    let mut tags = items
+        .iter()
+        .filter(|item| {
+            item.amount > 0
+                && FOOD_TAGS
+                    .iter()
+                    .any(|tag| item.tag.eq_ignore_ascii_case(tag))
+        })
+        .map(|item| item.tag.to_ascii_uppercase());
+    let first = tags.next()?;
+    tags.all(|tag| tag == first).then_some(first)
 }
 
 /// Writes what the fund paid into each ledger, so the checks that read a balance see it.
@@ -4916,6 +5050,181 @@ mod tests {
             ledger.upkeep_drawn.get("5"),
             Some(&20),
             "only what the wages could not cover reached the balance"
+        );
+    }
+
+    // --- steps 5 and 6: food pays what silver could not (`ah-eacd`) -----------------------------
+
+    /// A unit holding food, with no `CONSUME` flag and no silver. Steps 5 and 6 apply to every
+    /// unit, so its grain pays the fee and the column must say so.
+    #[test]
+    fn a_unit_holding_food_and_no_silver_is_not_left_owing() {
+        let hex = region(vec![with_item(
+            with_men(with_silver(starving(unit("5")), 0), 6),
+            2,
+            "grain",
+            "GRAI",
+        )]);
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let forecast = &review.silver[0];
+        assert_eq!(forecast.upkeep, Some(0));
+        assert_eq!(forecast.own_food_covered, 60);
+        assert_eq!(forecast.forced_own_food, 2);
+        assert_eq!(forecast.forced_own_food_tag.as_deref(), Some("GRAI"));
+    }
+
+    /// The flag's ordering effect, which must not regress: a unit that can pay in silver pays in
+    /// silver and keeps its food.
+    #[test]
+    fn a_unit_that_can_pay_in_silver_keeps_its_food() {
+        let hex = region(vec![with_item(
+            with_men(with_silver(starving(unit("5")), 500), 6),
+            2,
+            "grain",
+            "GRAI",
+        )]);
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let forecast = &review.silver[0];
+        assert_eq!(forecast.upkeep, Some(60));
+        assert_eq!(forecast.forced_own_food, 0);
+        assert_eq!(forecast.own_food_covered, 0);
+    }
+
+    /// Round 2: which items a mixed larder gives up is not knowable, so they are counted and not
+    /// named.
+    #[test]
+    fn a_mixed_larder_is_counted_and_not_named() {
+        let hex = region(vec![with_item(
+            with_item(
+                with_men(with_silver(starving(unit("5")), 0), 12),
+                1,
+                "grain",
+                "GRAI",
+            ),
+            3,
+            "livestock",
+            "LIVE",
+        )]);
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let forecast = &review.silver[0];
+        assert_eq!(forecast.forced_own_food, 3);
+        assert_eq!(forecast.forced_own_food_tag, None);
+    }
+
+    /// Round 3: step 6 is flag-blind. A `CONSUME UNIT` unit that ate its own food at step 1 and
+    /// then ran out of silver still reaches a neighbour's larder, just later than a
+    /// `CONSUME FACTION` one would.
+    #[test]
+    fn a_consume_unit_unit_reaches_faction_food_at_step_six() {
+        let mut eater = with_men(with_silver(starving(unit("5")), 0), 6);
+        eater.flags.push("consuming unit's food".to_string());
+        let neighbour = with_item(
+            with_men(with_silver(starving(unit("7")), 500), 2),
+            2,
+            "grain",
+            "GRAI",
+        );
+
+        let review = review_turn(
+            &report(vec![region(vec![eater, neighbour])]),
+            "",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let forecast = &review.silver[0];
+        assert_eq!(forecast.unit_id, "5");
+        assert_eq!(forecast.upkeep, Some(0));
+        assert_eq!(forecast.forced_faction_food, 2);
+        assert_eq!(forecast.faction_food_covered, 60);
+    }
+
+    /// The warning must go with the figure: a unit its own food will feed is not short of silver.
+    #[test]
+    fn a_unit_its_own_food_will_feed_is_not_warned() {
+        let hex = region(vec![with_item(
+            with_men(with_silver(starving(unit("5")), 0), 6),
+            2,
+            "grain",
+            "GRAI",
+        )]);
+
+        assert_eq!(codes(&check(vec![hex], "")), [] as [&str; 0]);
+    }
+
+    /// Round 3: a short remaining pool warns nobody, and leaves every figure where step 5 left it.
+    #[test]
+    fn a_unit_a_short_pool_might_feed_is_not_warned_either() {
+        let hex = region(vec![
+            with_item(
+                with_men(with_silver(starving(unit("2")), 500), 2),
+                1,
+                "grain",
+                "GRAI",
+            ),
+            with_men(with_silver(starving(unit("5")), 0), 6),
+            with_men(with_silver(starving(unit("7")), 0), 8),
+        ]);
+
+        let review = review_turn(
+            &report(vec![hex.clone()]),
+            "",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        for id in ["5", "7"] {
+            let unit = forecast(&review, id);
+            assert!(unit.food_contended, "{id}: {unit:?}");
+            assert_eq!(unit.faction_food_covered, 0, "{id}");
+        }
+        assert_eq!(forecast(&review, "5").upkeep, Some(60), "the figure stands");
+        assert_eq!(codes(&check(vec![hex], "")), [] as [&str; 0]);
+    }
+
+    /// The relief is maintenance's alone: a unit whose food pays its whole fee and whose orders
+    /// still overspend is warned about its orders.
+    #[test]
+    fn a_unit_whose_orders_overspend_is_still_warned() {
+        let hex = region(vec![with_item(
+            with_men(with_silver(starving(unit("5")), 10), 6),
+            2,
+            "grain",
+            "GRAI",
+        )]);
+
+        let findings = check(vec![hex], "unit 5\nWITHDRAW 10 grain\n");
+        let short: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect();
+
+        assert_eq!(short.len(), 1, "{findings:?}");
+        assert!(
+            !short[0].message.contains("upkeep"),
+            "maintenance its grain paid is no part of the blame: {}",
+            short[0].message
         );
     }
 
@@ -9914,27 +10223,39 @@ mod tests {
         assert_eq!(forecast(&review, "2001").doubt, None);
     }
 
+    /// The `CONSUME UNIT` flag reaches the unit's own food and never its faction's, so a unit
+    /// carrying it pays in silver beside a neighbour's full larder. Its silver is what keeps steps
+    /// 5 and 6 out of this: a unit with none reaches the pool at step 6 whatever its flags say,
+    /// which `feed_after_silver` settles and `a_consume_unit_unit_reaches_faction_food_at_step_six`
+    /// pins (`ah-eacd`).
     #[test]
     fn a_unit_consuming_only_its_own_food_does_not_draw_on_the_pool() {
         let quartermaster = with_item(with_silver(starving(unit("2000")), 500), 6, "grain", "GRAI");
-        let mut eater = starving(unit("2001"));
+        let mut eater = with_silver(starving(unit("2001")), 500);
         eater.flags = vec!["consuming unit's food".to_string()];
         eater.men = 6;
 
         let review = forecast_of(vec![quartermaster, eater]);
 
-        assert_eq!(forecast(&review, "2001").upkeep, Some(60));
+        let eaten = forecast(&review, "2001");
+        assert_eq!(eaten.upkeep, Some(60));
+        assert_eq!(eaten.faction_food_covered, 0);
+        assert_eq!(eaten.forced_faction_food, 0);
     }
 
+    /// Same rule for a unit with no flag at all: steps 1 and 2 leave a neighbour's grain alone
+    /// while the unit's own silver can pay. Steps 5 and 6 are settled elsewhere (`ah-eacd`).
     #[test]
     fn a_unit_consuming_nothing_pays_silver_beside_a_full_pool() {
         let quartermaster = with_item(with_silver(starving(unit("2000")), 500), 6, "grain", "GRAI");
-        let mut eater = starving(unit("2001"));
+        let mut eater = with_silver(starving(unit("2001")), 500);
         eater.men = 6;
 
         let review = forecast_of(vec![quartermaster, eater]);
 
-        assert_eq!(forecast(&review, "2001").upkeep, Some(60));
+        let eaten = forecast(&review, "2001");
+        assert_eq!(eaten.upkeep, Some(60));
+        assert_eq!(eaten.faction_food_covered, 0);
     }
 
     /// The doubt is about the upkeep alone: everything else about the month is still exact.

@@ -58,7 +58,7 @@ export function summariseUnit(
   countUpkeep = false
 ): UnitSummary {
   return {
-    silver: silver === null ? null : summariseSilver(silver, warned, countUpkeep),
+    silver: silver === null ? null : summariseSilver(unit, silver, warned, countUpkeep),
     title: `${unit.name} (${unit.unitId})`,
     skills: unit.skills.map((skill) => ({
       label: `${skill.name} ${skill.tag}`,
@@ -96,6 +96,18 @@ export function placeTooltip(pointer: Point, size: Size, viewport: Size): Placem
   };
 }
 
+/**
+ * What the unit calls the food of a given tag, for the sentences that name it. Report food names
+ * are already mass nouns - `grain`, `livestock`, `fish` - so nothing is pluralised; the tag itself,
+ * lower-cased, is the fallback for a larder the report named oddly (`ah-eacd`).
+ */
+function nameOfHeldItem(unit: ReportUnit, tag: string): string {
+  const held = unit.items.find(
+    (item) => item.tag.toUpperCase() === tag.toUpperCase()
+  );
+  return held?.name ?? tag.toLowerCase();
+}
+
 /** A figure the forecast is sure of, or `?` for a term that could not be priced. */
 function figure(amount: number | null): string {
   return amount === null ? "?" : String(amount);
@@ -110,6 +122,7 @@ function figure(amount: number | null): string {
  * small number explains nothing. The order is the order of how much the reader needs it.
  */
 function summariseSilver(
+  unit: ReportUnit,
   silver: UnitSilver,
   warned: boolean,
   countUpkeep: boolean
@@ -124,7 +137,7 @@ function summariseSilver(
     { label: "At month end", value: figure(end) }
   ];
 
-  return { rows, note: silverNote(silver, warned, countUpkeep) };
+  return { rows, note: silverNote(unit, silver, warned, countUpkeep) };
 }
 
 /**
@@ -164,6 +177,7 @@ function namesInAList(names: string[]): string {
 }
 
 function silverNote(
+  unit: ReportUnit,
   silver: UnitSilver,
   warned: boolean,
   countUpkeep: boolean
@@ -215,19 +229,42 @@ function silverNote(
   }
   // A doubt about the figure on show, so it sorts above the informational lines that explain one -
   // and below the shortfall line above, which is about an order the game will refuse (`ah-fjty`).
+  // Step 6's contended case, which precedes step 7's in the payment order. Unlike step 7 it
+  // suppresses the not-enough-silver warning as well, so the note is the only thing that says the
+  // figure on show is pessimistic (`ah-eacd`).
+  if (countUpkeep && silver.foodContended) {
+    return "There is not enough food here to feed every unit that needs it, so this unit may yet be fed.";
+  }
   if (countUpkeep && silver.unclaimedContended) {
     return "There is not enough unclaimed silver to feed every unit that needs it.";
   }
   // The two food notes are ordered by the game's own maintenance payment order: a unit spends its
   // own food (step 1) before the hex's faction food (step 2), so a unit fed by both names the step
   // that actually fed it first (`ah-p9z5`).
-  if (countUpkeep && silver.ownFoodCovered > 0) {
+  // Guarded on `forcedOwnFood`, because a unit fed at step 5 has a non-zero `ownFoodCovered` too
+  // and this branch would otherwise swallow the step-5 sentence below (`ah-eacd`).
+  if (countUpkeep && silver.ownFoodCovered > 0 && silver.forcedOwnFood === 0) {
     return `This unit's own food covers ${silver.ownFoodCovered} of its upkeep.`;
+  }
+  // Step 5: food the game takes as a last resort rather than food the `CONSUME` flag chose. Said
+  // in items and not silver, because the reader can act on knowing the loss was forced - they
+  // could send silver (`ah-eacd`).
+  if (countUpkeep && silver.forcedOwnFood > 0) {
+    const what = silver.forcedOwnFoodTag
+      ? `${silver.forcedOwnFood} ${nameOfHeldItem(unit, silver.forcedOwnFoodTag)}`
+      : `${silver.forcedOwnFood} of its food items`;
+    return `This unit has no silver for its upkeep, so ${what} will be eaten.`;
   }
   // An Upkeep of 0 on a unit with six men reads as a defect until something says why: this is the
   // only row a *neighbour's* holdings move (`ah-7cdt`).
-  if (countUpkeep && silver.factionFoodCovered > 0) {
+  if (countUpkeep && silver.factionFoodCovered > 0 && silver.forcedFactionFood === 0) {
     return `Faction food in this hex covers ${silver.factionFoodCovered} of this unit's upkeep.`;
+  }
+  // Step 6. Counted and never named: the pool is other units' inventory, and which items a shared,
+  // all-or-nothing pool gives up is not this unit's to say (`ah-eacd`).
+  if (countUpkeep && silver.forcedFactionFood > 0) {
+    const n = silver.forcedFactionFood;
+    return `This unit has no silver for its upkeep, so ${n} faction food item${n === 1 ? "" : "s"} in this hex will be eaten.`;
   }
   // Step 7 of the payment order, and so the last of the three notes that explain an Upkeep the
   // reader can see is smaller than the headcount owes: own food (step 1), the hex's faction food

@@ -163,6 +163,10 @@ describe("the silver section", () => {
     ownFoodCovered: 0,
     unclaimedCovered: 0,
     unclaimedContended: false,
+    forcedOwnFood: 0,
+    forcedOwnFoodTag: null,
+    forcedFactionFood: 0,
+    foodContended: false,
     ...overrides
   });
 
@@ -211,6 +215,87 @@ describe("the silver section", () => {
     expect(contested.silver?.note).toBe(
       "There is not enough faction food here to feed every unit set to eat it."
     );
+  });
+
+  it("says_when_food_is_eaten_because_silver_ran_out", () => {
+    const forced = summariseUnit(
+      aReportUnit({
+        unitId: "1",
+        items: [{ amount: 2, name: "grain", tag: "GRAI" }]
+      }),
+      forecast({
+        upkeep: 0,
+        ownFoodCovered: 60,
+        forcedOwnFood: 2,
+        forcedOwnFoodTag: "GRAI"
+      }),
+      true,
+      true
+    );
+    expect(forced.silver?.note).toBe(
+      "This unit has no silver for its upkeep, so 2 grain will be eaten."
+    );
+  });
+
+  it("counts_a_mixed_larder_rather_than_naming_it", () => {
+    const mixed = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        upkeep: 0,
+        ownFoodCovered: 150,
+        forcedOwnFood: 3,
+        forcedOwnFoodTag: null
+      }),
+      true,
+      true
+    );
+    expect(mixed.silver?.note).toBe(
+      "This unit has no silver for its upkeep, so 3 of its food items will be eaten."
+    );
+  });
+
+  it("counts_faction_food_and_never_names_it", () => {
+    const fed = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 0, factionFoodCovered: 50, forcedFactionFood: 1 }),
+      true,
+      true
+    );
+    expect(fed.silver?.note).toBe(
+      "This unit has no silver for its upkeep, so 1 faction food item in this hex will be eaten."
+    );
+
+    const several = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 0, factionFoodCovered: 100, forcedFactionFood: 2 }),
+      true,
+      true
+    );
+    expect(several.silver?.note).toBe(
+      "This unit has no silver for its upkeep, so 2 faction food items in this hex will be eaten."
+    );
+  });
+
+  it("says_when_a_short_pool_might_yet_feed_the_unit", () => {
+    const contended = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 60, foodContended: true }),
+      true,
+      true
+    );
+    expect(contended.silver?.note).toBe(
+      "There is not enough food here to feed every unit that needs it, so this unit may yet be fed."
+    );
+  });
+
+  it("a_chosen_food_payment_keeps_its_own_sentence", () => {
+    const chosen = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 0, ownFoodCovered: 60, forcedOwnFood: 0 }),
+      true,
+      true
+    );
+    expect(chosen.silver?.note).toBe("This unit's own food covers 60 of its upkeep.");
   });
 
   it("the_silver_section_says_when_a_units_own_food_fed_it", () => {
