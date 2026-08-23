@@ -173,6 +173,15 @@ pub struct MonsterCombat {
     pub damage_per_attack: i64,
 }
 
+/// What wielding a weapon needs, as the data page's wield clause states it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Weapon {
+    /// The skill tag needed to wield it, or `None` where the page says none is needed.
+    #[serde(default)]
+    pub needs: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ItemEntry {
@@ -195,6 +204,10 @@ pub struct ItemEntry {
     /// nowhere - anything that is not a basic item - and for a ruleset cached before `ah-1wcw.6`.
     #[serde(default)]
     pub withdraw_cost: Option<i64>,
+    /// Present only for weapons - an item whose page description states how it is wielded. `None`
+    /// for everything else, and for a ruleset cached before `ah-1ad6.1`.
+    #[serde(default)]
+    pub weapon: Option<Weapon>,
     /// What the data page says about it, after the preamble of name, tag, weight and capacity the
     /// fields above already carry. `None` for an entry that is nothing but that preamble, and for
     /// a ruleset cached before ah-3cj4.2, which carried no prose at all.
@@ -805,6 +818,38 @@ mod tests {
     // Failing to recognise a name is a **warning** wherever it is asked, never an error: the
     // catalogue is scraped from the game being played and may be stale, absent, or simply missing
     // an entry, and none of that is grounds for telling a player their order is wrong.
+
+    // `ItemEntry` carries `deny_unknown_fields`, so a new field must be optional in both
+    // directions: absent from a ruleset cached before it existed, and present in one scraped
+    // after (`ah-1ad6.1`).
+    #[test]
+    fn a_ruleset_without_weapons_still_loads() {
+        let json = r#"{
+            "tag": "GRAI", "name": "grain", "kind": "equipment", "weight": 5,
+            "capacity": {"walk": 0, "ride": 0, "fly": 0, "swim": 0},
+            "selfMobile": {"walk": false, "ride": false, "fly": false, "swim": false},
+            "moves": 0
+        }"#;
+
+        let entry: ItemEntry = serde_json::from_str(json).expect("an entry with no weapon loads");
+
+        assert_eq!(entry.weapon, None);
+    }
+
+    #[test]
+    fn a_weapon_needing_no_skill_round_trips() {
+        let entry: ItemEntry = serde_json::from_str(
+            r#"{
+            "tag": "SWOR", "name": "sword", "kind": "equipment", "weight": 1,
+            "capacity": {"walk": 0, "ride": 0, "fly": 0, "swim": 0},
+            "selfMobile": {"walk": false, "ride": false, "fly": false, "swim": false},
+            "moves": 0, "weapon": {"needs": null}
+        }"#,
+        )
+        .expect("a weapon needing no skill loads");
+
+        assert_eq!(entry.weapon, Some(Weapon { needs: None }));
+    }
 
     #[test]
     fn a_buildings_build_requirement_survives_a_round_trip() {
