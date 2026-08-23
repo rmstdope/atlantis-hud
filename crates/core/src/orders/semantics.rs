@@ -104,6 +104,7 @@ pub mod codes {
     pub const BUILD_HELP_NOT_BUILDING: Code = Code("build-help-not-building");
     pub const UNIT_DOES_NOTHING: Code = Code("unit-does-nothing");
     pub const BUILD_WITHOUT_SKILL: Code = Code("build-without-skill");
+    pub const CLAIMS_EXCEED_UNCLAIMED: Code = Code("claims-exceed-unclaimed");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -112,7 +113,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 24] = [
+    pub const ALL: [Code; 25] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -137,6 +138,7 @@ pub mod codes {
         BUILD_HELP_NOT_BUILDING,
         UNIT_DOES_NOTHING,
         BUILD_WITHOUT_SKILL,
+        CLAIMS_EXCEED_UNCLAIMED,
     ];
 }
 
@@ -2829,6 +2831,7 @@ fn check_faction(
 ) {
     check_quartermasters(report, ordered, ruleset, options, findings);
     check_trade_regions(report, ordered, options, findings);
+    check_claims(report, ordered, options, findings);
 }
 
 /// What this faction may spend on trade this month, and whether taxing draws on the same pool.
@@ -3028,6 +3031,72 @@ fn check_quartermasters(
                 "your faction already has its {} quartermasters",
                 entry.maximum
             ),
+            region_id: unit.region_id.clone(),
+            unit_id: Some(unit.unit_id.clone()),
+            line: Some(placed.line),
+            column_start: Some(placed.column_start),
+            column_end: Some(placed.column_end),
+        });
+    }
+}
+
+/// Every unit that claims, when the faction's units claim more between them than it holds.
+///
+/// Faction-wide rather than per hex: the purse is one pool for the whole report, and a claim in one
+/// hex spends what a claim in another cannot. Every claiming unit is named because none of them is
+/// more at fault than the others - the message says the total, so a unit reading it is not being
+/// blamed for the overrun on its own.
+///
+/// A report that states no purse does not fire the check at all. That is a decision rather than a
+/// guard: a faction with no stated `Unclaimed silver:` is not evidence of an empty purse, and
+/// treating absence as zero would warn about every claim in any report whose header the parser did
+/// not read. `ah-bumi` counts a claim as written in exactly that case, for the same reason.
+fn check_claims(
+    report: &ParsedReport,
+    ordered: &OrderedUnits,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::CLAIMS_EXCEED_UNCLAIMED) {
+        return;
+    }
+
+    let Some(purse) = report.header.unclaimed_silver else {
+        return;
+    };
+
+    // Placed intents rather than units: a unit with two CLAIM lines contributes both to the total
+    // and is warned on each, and each line is separately editable.
+    let claims: Vec<(&ReportUnit, &PlacedIntent)> = report
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .filter(|unit| unit.own)
+        .flat_map(|unit| {
+            ordered
+                .intents_of(&unit.unit_id)
+                .iter()
+                .filter(|placed| matches!(placed.intent, Intent::Claim(_)))
+                .map(move |placed| (unit, placed))
+        })
+        .collect();
+
+    let total: i64 = claims
+        .iter()
+        .map(|(_, placed)| match placed.intent {
+            Intent::Claim(amount) => amount,
+            _ => 0,
+        })
+        .sum();
+
+    if total <= purse {
+        return;
+    }
+
+    for (unit, placed) in claims {
+        findings.push(Finding {
+            code: codes::CLAIMS_EXCEED_UNCLAIMED,
+            message: format!("your units claim {total} between them and the faction has {purse}"),
             region_id: unit.region_id.clone(),
             unit_id: Some(unit.unit_id.clone()),
             line: Some(placed.line),
@@ -6876,6 +6945,128 @@ mod tests {
         );
     }
 
+    // --- claims against the faction's purse ----------------------------------------------------
+
+    /// `report`, with a stated (or deliberately absent) `Unclaimed silver:` figure - the one thing
+    /// `claims-exceed-unclaimed` reads besides the orders themselves.
+    fn report_with_purse(purse: Option<i64>, regions: Vec<ReportRegion>) -> ParsedReport {
+        ParsedReport {
+            header: crate::report::header::ReportHeader {
+                unclaimed_silver: purse,
+                ..Default::default()
+            },
+            regions,
+            ..Default::default()
+        }
+    }
+
+    /// The claim check on its own, with the unrelated defaults out of the way.
+    fn check_claims_of(
+        purse: Option<i64>,
+        regions: Vec<ReportRegion>,
+        orders: &str,
+    ) -> Vec<Finding> {
+        check_turn(
+            &report_with_purse(purse, regions),
+            orders,
+            Some(&ruleset()),
+            disabling(codes::UNIT_DOES_NOTHING),
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::CLAIMS_EXCEED_UNCLAIMED)
+        .collect()
+    }
+
+    #[test]
+    fn a_faction_claiming_more_than_it_holds_is_warned() {
+        let findings = check_claims_of(
+            Some(4935),
+            vec![region(vec![unit("500"), unit("700")])],
+            "unit 500\nCLAIM 3000\nunit 700\nCLAIM 2000\n",
+        );
+
+        assert_eq!(findings.len(), 2, "both claiming units: {findings:?}");
+        assert_eq!(
+            findings
+                .iter()
+                .map(|finding| finding.unit_id.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("500"), Some("700")]
+        );
+        for finding in &findings {
+            assert_eq!(
+                finding.message,
+                "your units claim 5000 between them and the faction has 4935"
+            );
+        }
+        assert_eq!(findings[0].line, Some(2));
+        assert_eq!(findings[1].line, Some(4));
+    }
+
+    #[test]
+    fn claims_within_the_purse_are_not_warned_about() {
+        assert!(check_claims_of(
+            Some(4935),
+            vec![region(vec![unit("500"), unit("700")])],
+            "unit 500\nCLAIM 3000\nunit 700\nCLAIM 1000\n",
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn claims_exactly_matching_the_purse_are_not_warned_about() {
+        assert!(check_claims_of(
+            Some(4000),
+            vec![region(vec![unit("500"), unit("700")])],
+            "unit 500\nCLAIM 3000\nunit 700\nCLAIM 1000\n",
+        )
+        .is_empty());
+    }
+
+    /// A report that states no purse is not evidence of an empty one, so the check does not fire.
+    /// The decision, not a guard - `ah-bumi` counts a claim as written in the same case.
+    #[test]
+    fn a_report_with_no_stated_purse_is_not_warned_about() {
+        assert!(check_claims_of(
+            None,
+            vec![region(vec![unit("500"), unit("700")])],
+            "unit 500\nCLAIM 3000\nunit 700\nCLAIM 9000\n",
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn a_foreign_units_claim_does_not_count() {
+        let mut theirs = unit("700");
+        theirs.own = false;
+        theirs.faction_id = Some("12".to_string());
+        assert!(check_claims_of(
+            Some(4935),
+            vec![region(vec![unit("500"), theirs])],
+            "unit 500\nCLAIM 3000\nunit 700\nCLAIM 9000\n",
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn a_unit_claiming_twice_is_warned_on_each_line() {
+        let findings = check_claims_of(
+            Some(4935),
+            vec![region(vec![unit("500")])],
+            "unit 500\nCLAIM 3000\nCLAIM 3000\n",
+        );
+
+        assert_eq!(findings.len(), 2, "one per claim line: {findings:?}");
+        for finding in &findings {
+            assert_eq!(
+                finding.message,
+                "your units claim 6000 between them and the faction has 4935"
+            );
+        }
+        assert_eq!(findings[0].line, Some(2));
+        assert_eq!(findings[1].line, Some(3));
+    }
+
     // --- disabling advisory checks -------------------------------------------------------------
 
     /// The runtime default (`hex-unguarded` off, everything else on) plus one more code disabled.
@@ -6925,6 +7116,9 @@ mod tests {
             /// per-hex check, and what `too-many-quartermasters` and `too-many-trade-regions`
             /// need instead of a hex.
             allowance: Option<(&'static str, i64, i64)>,
+            /// The `Unclaimed silver:` figure the case's report should state - `None` for every
+            /// check that does not read the purse, and what `claims-exceed-unclaimed` needs.
+            unclaimed: Option<i64>,
         }
         let cases: Vec<Case> = vec![
             Case {
@@ -6932,48 +7126,56 @@ mod tests {
                 regions: vec![region(vec![with_silver(unit("5"), 40)])],
                 orders: "unit 5\nGIVE 7 100 SILV\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::NOT_ENOUGH_ITEMS,
                 regions: vec![region(vec![with_item(unit("5"), 3, "sword", "SWOR")])],
                 orders: "unit 5\nGIVE 7 10 swords\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::GUARD_DROPPED,
                 regions: vec![region(vec![guard_dropping])],
                 orders: "unit 5\nMOVE N\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::HEX_UNGUARDED,
                 regions: vec![region(vec![unit("5")])],
                 orders: "unit 5\nWORK\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::TAUGHT_NOT_HERE,
                 regions: vec![region(teaching_hex())],
                 orders: "unit 500\nTEACH 999\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::TAUGHT_NOT_STUDYING,
                 regions: vec![region(teaching_hex())],
                 orders: "unit 500\nTEACH 700\nunit 700\nWORK\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::TEACHER_CANNOT_TEACH,
                 regions: vec![region(teacher_below_student)],
                 orders: "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::TEACHING_OVERSUBSCRIBED,
                 regions: vec![region(oversubscribed)],
                 orders: "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::TEACHER_HAS_FREE_SLOTS,
@@ -6984,12 +7186,14 @@ mod tests {
                 ])],
                 orders: "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::FORM_ALIAS_REUSED,
                 regions: vec![region(vec![unit("5")])],
                 orders: "unit 5\nFORM 1\nEND\nFORM 1\nEND\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::FLEET_OVERLOADED,
@@ -7004,6 +7208,7 @@ mod tests {
                 }],
                 orders: "unit 11125\nSAIL N\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::FLEET_UNDERCREWED,
@@ -7017,30 +7222,35 @@ mod tests {
                 }],
                 orders: "unit 11125\nSAIL N\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::GIVE_TARGET_NOT_HERE,
                 regions: vec![region(vec![with_silver(unit("5"), 1000)])],
                 orders: "unit 5\nGIVE 16585 500 SILV\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::NOT_TRADED_HERE,
                 regions: vec![region(vec![unit("5")])],
                 orders: "unit 5\nBUY 5 silk\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::TOO_MANY_QUARTERMASTERS,
                 regions: vec![region(vec![unit("5")])],
                 orders: "unit 5\nSTUDY QUAM\n",
                 allowance: Some(("Quartermasters", 2, 2)),
+                unclaimed: None,
             },
             Case {
                 code: codes::UNIT_OVERLOADED,
                 regions: vec![region(vec![carrying("5", 1800, 150)])],
                 orders: "unit 5\nMOVE S\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::STUDY_AT_MAXIMUM,
@@ -7051,6 +7261,7 @@ mod tests {
                 )])],
                 orders: "unit 5\nSTUDY OBSE\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::ALREADY_BUILT,
@@ -7060,6 +7271,7 @@ mod tests {
                 }],
                 orders: "unit 4021\nBUILD\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::TOO_MANY_TRADE_REGIONS,
@@ -7070,18 +7282,21 @@ mod tests {
                 ],
                 orders: "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n",
                 allowance: Some(("Trade Regions", 2, 2)),
+                unclaimed: None,
             },
             Case {
                 code: codes::MAGIC_STUDY_OUTSIDE_BUILDING,
                 regions: vec![region(vec![mage(2)])],
                 orders: "unit 5\nSTUDY FORC\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::BUILD_OUTSIDE_STRUCTURE,
                 regions: vec![region(vec![unit("4021")])],
                 orders: "unit 4021\nBUILD\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::BUILD_HELP_NOT_BUILDING,
@@ -7091,18 +7306,28 @@ mod tests {
                 }],
                 orders: "unit 4021\nWORK\nunit 4117\nBUILD HELP 4021\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::UNIT_DOES_NOTHING,
                 regions: vec![region(vec![unit("4021")])],
                 orders: "unit 4021\n",
                 allowance: None,
+                unclaimed: None,
             },
             Case {
                 code: codes::BUILD_WITHOUT_SKILL,
                 regions: vec![region(vec![unit("4021")])],
                 orders: "unit 4021\nBUILD Mine\n",
                 allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::CLAIMS_EXCEED_UNCLAIMED,
+                regions: vec![region(vec![unit("500"), unit("700")])],
+                orders: "unit 500\nCLAIM 3000\nunit 700\nCLAIM 2000\n",
+                allowance: None,
+                unclaimed: Some(4935),
             },
         ];
 
@@ -7125,14 +7350,16 @@ mod tests {
             regions,
             orders,
             allowance,
+            unclaimed,
         } in &cases
         {
-            let built = match allowance {
+            let mut built = match allowance {
                 Some((label, used, maximum)) => {
                     report_with_status(label, *used, *maximum, regions.clone())
                 }
                 None => report(regions.clone()),
             };
+            built.header.unclaimed_silver = *unclaimed;
 
             // Fully enabled (rather than the runtime default) so `hex-unguarded`'s own case, which
             // the default itself disables, still gets to prove its fixture fires at all.
