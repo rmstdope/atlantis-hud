@@ -131,7 +131,8 @@ describe("the Warnings settings tab", () => {
       "More quartermasters than allowed",
       "Producing in too many regions",
       "Claiming more than the faction has",
-      "Upkeep the faction cannot pay"
+      "Upkeep the faction cannot pay",
+      "Taxing a hex you are pillaging"
     ];
     for (const title of titles) {
       expect(html).toContain(title);
@@ -141,6 +142,13 @@ describe("the Warnings settings tab", () => {
     // title stays what a returning user looks for (`ah-tdsi`).
     expect(html).toContain(
       "CLAIM and WITHDRAW orders across all your units asking for more unclaimed silver than the faction holds."
+    );
+
+    // A pillage empties the hex before any TAX reaches it, and the description is what says so
+    // (`ah-cxxa`). Asserted against the escaped markup, because React escapes the apostrophe in
+    // "region's" - the shipped string itself is the plain one.
+    expect(html).toContain(
+      "TAX orders in a hex where one of your own units is ordered to PILLAGE, which collects the region&#x27;s money first."
     );
 
     // One toggle per code the wire actually carries - a title added here without a code, or a

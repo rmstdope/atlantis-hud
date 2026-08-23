@@ -545,6 +545,12 @@ const WARNING_GROUPS: readonly {
         code: "unit-does-nothing",
         title: "Units that do nothing",
         description: "A unit with no order that spends its month."
+      },
+      {
+        code: "taxed-a-pillaged-hex",
+        title: "Taxing a hex you are pillaging",
+        description:
+          "TAX orders in a hex where one of your own units is ordered to PILLAGE, which collects the region's money first."
       }
     ]
   },
