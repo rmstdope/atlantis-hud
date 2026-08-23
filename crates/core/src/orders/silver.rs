@@ -242,6 +242,13 @@ pub struct UnitSilver {
     /// nobody wrote reads as a defect until something says why - the same reason
     /// `own_food_covered` and `unclaimed_covered` are carried.
     pub works_by_default: bool,
+    /// Whether this unit's tax income comes from its taxing flag rather than from a `TAX` order in
+    /// this month's orders. Drives the hover's note and nothing else: the income is the same either
+    /// way (`ah-fvzu`).
+    ///
+    /// `false` for a unit that also carries an explicit `TAX`, which has an order on screen that
+    /// explains itself.
+    pub taxes_by_flag: bool,
 }
 
 /// The kind of order a shortfall bites on, so the hover can name it (`ah-uwa3`).
@@ -719,6 +726,7 @@ pub fn forecast_unit(
             production_wanted: 0,
             production_capped_by: None,
             works_by_default: works_by_default(intents),
+            taxes_by_flag: false,
         };
     }
 
@@ -1133,6 +1141,10 @@ pub fn forecast_unit(
         production_wanted: production.as_ref().map_or(0, |(_, plan)| plan.wanted),
         production_capped_by: production.as_ref().and_then(|(_, plan)| plan.capped_by),
         works_by_default: works_by_default(intents),
+        taxes_by_flag: taxes(unit_flags, intents)
+            && !intents
+                .iter()
+                .any(|placed| matches!(placed.intent, Intent::Tax)),
     }
 }
 
@@ -2454,6 +2466,33 @@ mod tests {
         let sell_first = priced(&[selling("wibble", Amount::Exact(40)), placed(Intent::Tax)]);
         assert_eq!(tax_first, Some(SilverDoubt::UnknownTaxBase));
         assert_eq!(sell_first, tax_first);
+    }
+
+    #[test]
+    fn a_flagged_unit_is_marked_as_taxing_by_its_flag() {
+        let unit = forecast_flagged(
+            8,
+            taxable(Some(40_000)),
+            PoolShares::default(),
+            &flags(&["taxing"]),
+            &[],
+        );
+        assert!(unit.taxes_by_flag);
+    }
+
+    /// A unit with a `TAX` on screen explains itself, flag or no flag (`ah-fvzu`).
+    #[test]
+    fn a_unit_with_a_tax_order_is_not_marked_as_taxing_by_its_flag() {
+        let with_both = forecast_flagged(
+            8,
+            taxable(Some(40_000)),
+            PoolShares::default(),
+            &flags(&["taxing"]),
+            &[placed(Intent::Tax)],
+        );
+        assert!(!with_both.taxes_by_flag);
+        let ordered = forecast(8, taxable(Some(40_000)), &[placed(Intent::Tax)]);
+        assert!(!ordered.taxes_by_flag);
     }
 
     #[test]

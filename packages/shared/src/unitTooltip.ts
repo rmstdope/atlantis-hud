@@ -314,6 +314,13 @@ function silverNote(
   if (silver.worksByDefault && silver.lateIncome !== null && silver.lateIncome > 0) {
     return "This unit has no month-long order, so it will work and earn wages.";
   }
+  // The one income in the column with no line in this turn's orders behind it: the flag was set in
+  // some earlier turn and is invisible here, so $40,000 would otherwise appear from nowhere
+  // (`ah-fvzu`). Above the gift note because a gift is the more specific of the two, and both
+  // explain where money in the figure came from.
+  if (silver.taxesByFlag) {
+    return "This unit is set to tax every turn, so it taxes without an order.";
+  }
   // A gift is the one part of the figure that comes from somebody else's orders, so it is the one
   // part a reader cannot find by looking at this unit's own block.
   if (silver.received > 0 && silver.givers.length > 0) {

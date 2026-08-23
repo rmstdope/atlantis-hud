@@ -174,7 +174,28 @@ describe("the silver section", () => {
     productionWanted: 0,
     productionCappedBy: null,
     worksByDefault: false,
+    taxesByFlag: false,
     ...overrides
+  });
+
+  it("says_when_a_unit_taxes_by_its_flag", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ income: 40000, atMonthEnd: 39860, taxesByFlag: true })
+    );
+
+    expect(summary.silver?.note).toBe(
+      "This unit is set to tax every turn, so it taxes without an order."
+    );
+  });
+
+  it("a_unit_with_a_tax_order_says_nothing_extra", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ income: 40000, atMonthEnd: 39860, taxesByFlag: false })
+    );
+
+    expect(summary.silver?.note ?? null).toBeNull();
   });
 
   it("says_when_silver_caps_a_production", () => {
