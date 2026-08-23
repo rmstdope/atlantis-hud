@@ -2565,7 +2565,6 @@ fn spenders(upkeep: i64) -> &'static str {
     }
 }
 
-/// How to write an item in a message: the catalogue's name where there is one, the tag otherwise.
 /// Every item's plural, as the report itself writes it.
 ///
 /// Keyed by upper-case tag. Built from every unit line in the report that shows **more than one**
@@ -2630,6 +2629,7 @@ fn counted_item(
     format!("{count} {name}")
 }
 
+/// How to write an item in a message: the catalogue's name where there is one, the tag otherwise.
 fn item_name(tag: &str, hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> String {
     if let Some(item) = ruleset.and_then(|ruleset| ruleset.find_item(tag)) {
         return item.name.clone();
