@@ -27,8 +27,9 @@ use crate::movement::mode::{
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::orders::silver::{
-    feed_from_faction_food, food_claim, forecast_unit, parse_wage_centis, unit_upkeep, FoodClaim,
-    Lookups, PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver,
+    feed_from_faction_food, food_claim, forecast_unit, parse_wage_centis, unit_upkeep,
+    FactionPurse, FoodClaim, Lookups, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
+    SilverDoubt, UnitFacts, UnitSilver,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -253,9 +254,15 @@ pub fn review_turn(
     // quadratic in the size of a faction, on a path that runs on every keystroke.
     let receipts = gather_receipts(report, &ordered, ruleset);
 
+    // Faction-wide, so it is read once for the whole report rather than per hex: the same value
+    // recomputed in every region would also read to the next person as though it were regional.
+    let purse = FactionPurse {
+        unclaimed: report.header.unclaimed_silver,
+    };
+
     for region in &report.regions {
         let hex = Hex::read(region, &ordered);
-        forecast_hex(&hex, &receipts, ruleset, &mut silver);
+        forecast_hex(&hex, &receipts, purse, ruleset, &mut silver);
         if hex.units.is_empty() {
             continue;
         }
@@ -297,6 +304,7 @@ pub fn review_turn(
 fn forecast_hex(
     hex: &Hex<'_>,
     receipts: &BTreeMap<String, Receipts>,
+    purse: FactionPurse,
     ruleset: Option<&Ruleset>,
     into: &mut Vec<UnitSilver>,
 ) {
@@ -368,6 +376,7 @@ fn forecast_hex(
         into.push(forecast_unit(
             facts,
             region,
+            purse,
             Lookups {
                 sale: &sale,
                 purchase: &purchase,
@@ -8770,6 +8779,30 @@ mod tests {
             assert_eq!(unit.doubt, Some(SilverDoubt::ContestedFactionFood), "{id}");
         }
         assert_eq!(forecast(&review, "2000").upkeep, Some(10));
+    }
+
+    /// The plumbing test: the purse lives on the report header, and only `review_turn` can carry
+    /// it to `forecast_unit`. A claim larger than the purse is what proves it arrived - built but
+    /// never passed, the unit would read the whole 9000.
+    #[test]
+    fn a_review_passes_the_factions_unclaimed_silver() {
+        let report = ParsedReport {
+            regions: vec![region(vec![unit("2000")])],
+            header: crate::report::header::ReportHeader {
+                unclaimed_silver: Some(4935),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let review = review_turn(
+            &report,
+            "unit 2000\nCLAIM 9000\n",
+            None,
+            CheckOptions::default(),
+        );
+
+        assert_eq!(forecast(&review, "2000").income, Some(4935));
     }
 
     fn forecast_of(units: Vec<ReportUnit>) -> TurnReview {

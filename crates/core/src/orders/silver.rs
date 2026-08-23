@@ -240,6 +240,15 @@ pub struct RegionWages {
     pub entertainment: Option<i64>,
 }
 
+/// What the faction holds that any of its units may draw on.
+///
+/// Faction-wide, unlike [`RegionWages`]: one purse for the whole report, not one per hex.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FactionPurse {
+    /// `Unclaimed silver: $N` from the report header, or `None` where the report does not say.
+    pub unclaimed: Option<i64>,
+}
+
 /// The wage rate the report prints, as hundredths of a silver.
 ///
 /// `ReportRegion::wages` is a *string* the parser stores verbatim - `"$24.1"`, `"$0"`, `"$12.0"` -
@@ -301,6 +310,7 @@ pub fn parse_wage_centis(wages: Option<&str>) -> Option<i64> {
 pub fn forecast_unit(
     facts: UnitFacts<'_>,
     region: RegionWages,
+    purse: FactionPurse,
     lookups: Lookups<'_>,
     ruleset: Option<&Ruleset>,
 ) -> UnitSilver {
@@ -352,6 +362,16 @@ pub fn forecast_unit(
 
     for placed in intents {
         match &placed.intent {
+            Intent::Claim(amount) => {
+                // Capped at what the faction actually holds, and never divided between units that
+                // claim in the same turn - exactly as `WORK` and `ENTERTAIN` treat their regional
+                // pools. A purse the report does not state leaves only the limit unknown, not the
+                // amount, so the stated figure is counted and nothing is doubted.
+                income = income.saturating_add(match purse.unclaimed {
+                    Some(available) => (*amount).min(available),
+                    None => *amount,
+                });
+            }
             Intent::Tax => match region.tax_base {
                 Some(base) => {
                     income = income.saturating_add(men.saturating_mul(TAX_PER_MAN).min(base))
@@ -853,8 +873,28 @@ mod tests {
     }
 
     fn forecast(men: i64, region: RegionWages, intents: &[PlacedIntent]) -> UnitSilver {
+        forecast_holding(men, region, FactionPurse::default(), intents)
+    }
+
+    /// The same as [`forecast`], with a faction purse for the `CLAIM` arm to be capped by.
+    fn forecast_holding(
+        men: i64,
+        region: RegionWages,
+        purse: FactionPurse,
+        intents: &[PlacedIntent],
+    ) -> UnitSilver {
         let receipts = Receipts::default();
-        forecast_unit(facts(men, intents, &receipts), region, no_market(), None)
+        forecast_unit(
+            facts(men, intents, &receipts),
+            region,
+            purse,
+            no_market(),
+            None,
+        )
+    }
+
+    fn purse(unclaimed: Option<i64>) -> FactionPurse {
+        FactionPurse { unclaimed }
     }
 
     fn taxable(tax_base: Option<i64>) -> RegionWages {
@@ -877,6 +917,78 @@ mod tests {
     fn ruleset() -> Ruleset {
         Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
             .expect("the committed ruleset should be usable")
+    }
+
+    #[test]
+    fn a_claiming_unit_counts_what_it_claims() {
+        let unit = forecast_holding(
+            1,
+            RegionWages::default(),
+            purse(Some(4935)),
+            &[placed(Intent::Claim(500))],
+        );
+        assert_eq!(unit.income, Some(500));
+        assert_eq!(unit.at_month_end, Some(500));
+        assert_eq!(unit.doubt, None);
+    }
+
+    #[test]
+    fn a_claim_is_capped_by_what_the_faction_holds() {
+        let unit = forecast_holding(
+            1,
+            RegionWages::default(),
+            purse(Some(4935)),
+            &[placed(Intent::Claim(9000))],
+        );
+        assert_eq!(unit.income, Some(4935));
+        assert_eq!(unit.doubt, None);
+    }
+
+    #[test]
+    fn a_claim_with_no_stated_purse_counts_what_was_claimed() {
+        let unit = forecast_holding(
+            1,
+            RegionWages::default(),
+            purse(None),
+            &[placed(Intent::Claim(500))],
+        );
+        assert_eq!(unit.income, Some(500));
+        assert_eq!(unit.doubt, None);
+    }
+
+    /// The accepted overstatement, pinned deliberately: each unit is capped at the whole purse and
+    /// the purse is never divided between them, exactly as `WORK` treats a region's wages. A
+    /// warning about the total belongs to `ah-wur4` - do not "fix" this into contention modelling.
+    #[test]
+    fn two_units_claiming_are_each_capped_at_the_whole_purse() {
+        let region = RegionWages::default();
+        let first = forecast_holding(1, region, purse(Some(4935)), &[placed(Intent::Claim(4000))]);
+        let second = forecast_holding(1, region, purse(Some(4935)), &[placed(Intent::Claim(4000))]);
+        assert_eq!(first.income, Some(4000));
+        assert_eq!(second.income, Some(4000));
+    }
+
+    #[test]
+    fn a_claim_of_nothing_changes_nothing() {
+        let unit = forecast_holding(
+            1,
+            RegionWages::default(),
+            purse(Some(4935)),
+            &[placed(Intent::Claim(0))],
+        );
+        assert_eq!(unit.income, Some(0));
+        assert_eq!(unit.at_month_end, Some(0));
+    }
+
+    #[test]
+    fn a_claim_alongside_other_income_adds_to_it() {
+        let unit = forecast_holding(
+            8,
+            taxable(Some(100_000)),
+            purse(Some(4935)),
+            &[placed(Intent::Tax), placed(Intent::Claim(500))],
+        );
+        assert_eq!(unit.income, Some(900));
     }
 
     #[test]
@@ -942,6 +1054,7 @@ mod tests {
                 ..facts(6, &intents, &receipts)
             },
             RegionWages::default(),
+            FactionPurse::default(),
             no_market(),
             Some(&ruleset),
         );
@@ -963,6 +1076,7 @@ mod tests {
                 ..facts(6, &intents, &receipts)
             },
             RegionWages::default(),
+            FactionPurse::default(),
             no_market(),
             Some(&ruleset),
         );
@@ -983,6 +1097,7 @@ mod tests {
                 ..facts(8, &intents, &receipts)
             },
             taxable(Some(100_000)),
+            FactionPurse::default(),
             no_market(),
             None,
         );
@@ -1006,6 +1121,7 @@ mod tests {
         forecast_unit(
             facts(1, intents, &receipts),
             RegionWages::default(),
+            FactionPurse::default(),
             Lookups {
                 sale,
                 ..no_market()
@@ -1089,6 +1205,7 @@ mod tests {
                 entertainment,
                 ..RegionWages::default()
             },
+            FactionPurse::default(),
             no_market(),
             None,
         )
@@ -1140,6 +1257,7 @@ mod tests {
                 entertainment,
                 ..RegionWages::default()
             },
+            FactionPurse::default(),
             no_market(),
             Some(&ruleset),
         )
@@ -1200,6 +1318,7 @@ mod tests {
         let unit = forecast_unit(
             facts(5, &[], &receipts),
             RegionWages::default(),
+            FactionPurse::default(),
             no_market(),
             None,
         );
@@ -1219,6 +1338,7 @@ mod tests {
         let unit = forecast_unit(
             facts(8, &intents, &receipts),
             taxable(Some(100_000)),
+            FactionPurse::default(),
             no_market(),
             None,
         );
@@ -1244,6 +1364,7 @@ mod tests {
                 ..facts(8, &intents, &receipts)
             },
             RegionWages::default(),
+            FactionPurse::default(),
             Lookups {
                 sale: &wanted(24, 40, 40),
                 ..no_market()
@@ -1263,6 +1384,7 @@ mod tests {
                 ..facts(8, &[], &receipts)
             },
             taxable(Some(100_000)),
+            FactionPurse::default(),
             no_market(),
             None,
         );
@@ -1297,6 +1419,7 @@ mod tests {
                 ..facts(1, intents, &receipts)
             },
             region,
+            FactionPurse::default(),
             Lookups {
                 purchase,
                 ..no_market()
@@ -1658,7 +1781,13 @@ mod tests {
         let men = [item(1, "LEAD")];
         let mut facts = made_of(1, &men, &[], &[]);
         facts.held = 200;
-        let unit = forecast_unit(facts, RegionWages::default(), no_market(), None);
+        let unit = forecast_unit(
+            facts,
+            RegionWages::default(),
+            FactionPurse::default(),
+            no_market(),
+            None,
+        );
         assert_eq!(unit.upkeep, Some(50));
         assert_eq!(unit.expense, Some(0));
         assert_eq!(unit.at_month_end, Some(200));
