@@ -97,7 +97,7 @@ describe("the Warnings settings tab", () => {
     resetSettingsStore();
   });
 
-  it("renders one toggle per advisory code, grouped Studying/Teaching / Resources / Guarding / Orders / Building / Sailing", () => {
+  it("renders one toggle per advisory code, grouped Studying/Teaching / Resources / Guarding / Orders / Building / Producing / Sailing", () => {
     resetSettingsStore();
     const html = renderToStaticMarkup(<WarningSettings />);
 
@@ -106,6 +106,7 @@ describe("the Warnings settings tab", () => {
     expect(html).toContain("Guarding");
     expect(html).toContain("Orders");
     expect(html).toContain("Building");
+    expect(html).toContain("Producing");
     expect(html).toContain("Sailing");
 
     const titles = [
@@ -126,6 +127,8 @@ describe("the Warnings settings tab", () => {
       "Building outside a structure",
       "Helping a unit that is not building",
       "Building without the skill",
+      "Producing without the skill",
+      "Producing what the region has not",
       "Overloaded fleets",
       "Undercrewed fleets",
       "More quartermasters than allowed",

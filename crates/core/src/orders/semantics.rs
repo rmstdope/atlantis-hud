@@ -25,7 +25,7 @@ use crate::movement::mode::{
     best_allowance, cargo_capacity, fleet_label, parse_fleet_kind, sailing_requirement,
 };
 use crate::movement::orders::MoveStep;
-use crate::movement::rules::{item_spellings, Ruleset};
+use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
     feed_after_silver, feed_from_faction_food, food_claim, forecast_unit, late_income,
     parse_wage_centis, plan_production, recipe_for, settle_unclaimed, split_pool, unit_upkeep,
@@ -106,6 +106,8 @@ pub mod codes {
     pub const CLAIMS_EXCEED_UNCLAIMED: Code = Code("claims-exceed-unclaimed");
     pub const UPKEEP_EXCEEDS_UNCLAIMED: Code = Code("upkeep-exceeds-unclaimed");
     pub const TAXED_A_PILLAGED_HEX: Code = Code("taxed-a-pillaged-hex");
+    pub const PRODUCE_WITHOUT_SKILL: Code = Code("produce-without-skill");
+    pub const PRODUCE_NOT_HERE: Code = Code("produce-not-here");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -114,7 +116,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 27] = [
+    pub const ALL: [Code; 29] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -142,6 +144,8 @@ pub mod codes {
         CLAIMS_EXCEED_UNCLAIMED,
         UPKEEP_EXCEEDS_UNCLAIMED,
         TAXED_A_PILLAGED_HEX,
+        PRODUCE_WITHOUT_SKILL,
+        PRODUCE_NOT_HERE,
     ];
 }
 
@@ -326,6 +330,7 @@ pub fn review_turn(
         check_building_outside(hex, &options, &mut findings);
         check_build_help(hex, &options, &mut findings);
         check_build_skill(hex, ruleset, &options, &mut findings);
+        check_production(hex, ruleset, &options, &mut findings);
         check_studying(hex, ruleset, &options, &mut findings);
         check_magic_study(hex, ruleset, &options, &mut findings);
         check_forms(hex, &options, &mut findings);
@@ -2829,6 +2834,159 @@ fn check_build_skill(
             format!("{verb} {article} {kind}: needs {skill} {required}, {shortfall}"),
             Some(placed),
         ));
+    }
+}
+
+/// Both ways a `PRODUCE` order makes nothing: the unit cannot make the item anywhere, or not here.
+///
+/// Two codes rather than one because they are separately toggleable and separately true, and a
+/// unit that fails both gets both marks - the navigator's choice, 2026-08-23: suppressing one must
+/// never silently hide the other, and a player who fixed only the region would move a unit that
+/// still cannot do the job when it arrives.
+///
+/// Unlike `check_build_skill` there is no whole-catalogue gate to add beside the ruleset one: a
+/// ruleset carrying no recipes answers `None` from [`producing_skill`] for every item, which the
+/// loop below already reads as the "no skill produces it" sentence rather than as silence.
+fn check_production(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    let Some(ruleset) = ruleset else { return };
+    let says_skill = options.emits(codes::PRODUCE_WITHOUT_SKILL);
+    let says_here = options.emits(codes::PRODUCE_NOT_HERE);
+    if !says_skill && !says_here {
+        return;
+    }
+
+    for ordered in &hex.units {
+        // One warning per unit, on the first PRODUCE in the block, as the BUILD checks do. A
+        // PRODUCE is month-long, so a unit has at most one that matters anyway.
+        let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Produce { .. }))
+        else {
+            continue;
+        };
+        let Intent::Produce { item } = &placed.intent else {
+            continue;
+        };
+
+        // The catalogue's own name where it knows the item - "catapult", not the "CATP" or the
+        // "catapults" the player may have typed. Nothing is pluralised here: how it is said is the
+        // interface's business.
+        let label = ruleset
+            .find_item(item)
+            .map_or_else(|| item.to_lowercase(), |entry| entry.name.clone());
+
+        let recipe = resolve_item(item, hex, ordered, Some(ruleset))
+            .and_then(|tag| producing_skill(ruleset, &tag, ordered).map(|found| (tag, found)));
+        let Some((tag, (skill, recipe))) = recipe else {
+            // The item resolves to nothing, or nothing in the game produces it. Either way the
+            // month is wasted, so this is a sentence rather than silence.
+            if says_skill {
+                findings.push(ordered.finding(
+                    hex,
+                    codes::PRODUCE_WITHOUT_SKILL,
+                    format!("cannot produce {label}: no skill produces it"),
+                    Some(placed),
+                ));
+            }
+            continue;
+        };
+
+        if says_skill {
+            // `skill_level` answers 0 for a skill the unit has not got, which makes the comparison
+            // uniform - the *message* still has to tell the two apart.
+            let held = i64::from(ordered.skill_level(&skill.tag));
+            let required = i64::from(recipe.level);
+            if held < required {
+                let name = &skill.name;
+                let shortfall = if held == 0 {
+                    format!("has no {name}")
+                } else {
+                    format!("has {name} {held}")
+                };
+                findings.push(ordered.finding(
+                    hex,
+                    codes::PRODUCE_WITHOUT_SKILL,
+                    format!("cannot produce {label}: needs {name} {required}, {shortfall}"),
+                    Some(placed),
+                ));
+            }
+        }
+
+        // Only a recipe with no material inputs comes from the hex itself. A sword is made *from*
+        // iron and can be made wherever there is iron to hand, so running this on it would mark
+        // every `@produce sword` in the game; a unit short of the iron is `not-enough-items`.
+        if says_here && recipe.inputs.is_empty() {
+            let products = &hex.region.products;
+            if !products
+                .iter()
+                .any(|product| product.tag.eq_ignore_ascii_case(&tag))
+            {
+                let names: Vec<String> = products
+                    .iter()
+                    .map(|product| product.name.clone())
+                    .collect();
+                let has = if names.is_empty() {
+                    "nothing".to_string()
+                } else {
+                    in_a_list(&names)
+                };
+                findings.push(ordered.finding(
+                    hex,
+                    codes::PRODUCE_NOT_HERE,
+                    format!("cannot produce {label} here: this region produces {has}"),
+                    Some(placed),
+                ));
+            }
+        }
+    }
+}
+
+/// The skill that makes an item tag, and the recipe by which it makes it.
+///
+/// [`crate::orders::silver::recipe_for`] answers the recipe alone, which is all the ledger needs;
+/// here the message has to name the skill too, and both surfaces must agree on which recipe, so
+/// this is that lookup extended rather than a second one.
+///
+/// Which skill, when more than one produces the same tag: the one the unit already has, if any
+/// does; otherwise the one needing the lowest level; ties broken alphabetically by tag, which the
+/// `BTreeMap`'s own order gives. Deterministic on purpose - a message that changed with map
+/// iteration order would flake a test months later.
+fn producing_skill<'a>(
+    ruleset: &'a Ruleset,
+    tag: &str,
+    ordered: &Ordered<'_>,
+) -> Option<(&'a SkillEntry, &'a Production)> {
+    let candidates: Vec<(&SkillEntry, &Production)> = ruleset
+        .skills
+        .values()
+        .flat_map(|skill| {
+            skill
+                .produces
+                .iter()
+                .filter(|recipe| recipe.tag.eq_ignore_ascii_case(tag))
+                .map(move |recipe| (skill, recipe))
+        })
+        .collect();
+
+    candidates
+        .iter()
+        .find(|(skill, _)| ordered.skill_level(&skill.tag) > 0)
+        .or_else(|| candidates.iter().min_by_key(|(_, recipe)| recipe.level))
+        .copied()
+}
+
+/// `a`, `a and b`, `a, b and c` - the shape `namesInAList` already uses in the interface.
+fn in_a_list(names: &[String]) -> String {
+    match names {
+        [] => String::new(),
+        [only] => only.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
     }
 }
 
@@ -10081,6 +10239,21 @@ mod tests {
                 allowance: None,
                 unclaimed: None,
             },
+            Case {
+                code: codes::PRODUCE_WITHOUT_SKILL,
+                regions: vec![region(vec![unit("4021")])],
+                orders: "unit 4021\nPRODUCE catapult\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                // A fixture region names no products at all, which is the `produces nothing` case.
+                code: codes::PRODUCE_NOT_HERE,
+                regions: vec![region(vec![with_skill(unit("4021"), "MINI", 1)])],
+                orders: "unit 4021\nPRODUCE iron\n",
+                allowance: None,
+                unclaimed: None,
+            },
         ];
 
         assert_eq!(
@@ -11432,6 +11605,180 @@ mod tests {
         );
     }
 
+    // --- PRODUCE: what the unit cannot make, and what the region has not ------------------------
+
+    /// A region whose `Products` line names grain, wood and furs.
+    fn produces(units: Vec<ReportUnit>) -> ReportRegion {
+        ReportRegion {
+            products: vec![
+                ItemAmount {
+                    amount: 40,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                },
+                ItemAmount {
+                    amount: 20,
+                    name: "wood".to_string(),
+                    tag: "WOOD".to_string(),
+                },
+                ItemAmount {
+                    amount: 10,
+                    name: "furs".to_string(),
+                    tag: "FUR".to_string(),
+                },
+            ],
+            ..region(units)
+        }
+    }
+
+    /// Only the two production codes, so an unrelated advisory cannot make one of these read as a
+    /// failure of the check under test.
+    fn produce_codes(findings: &[Finding]) -> Vec<&str> {
+        codes(findings)
+            .into_iter()
+            .filter(|code| code.starts_with("produce-"))
+            .collect()
+    }
+
+    #[test]
+    fn a_unit_without_the_skill_cannot_produce() {
+        let findings = check(
+            vec![region(vec![with_skill(unit("4021"), "CARP", 2)])],
+            "unit 4021\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(produce_codes(&findings), ["produce-without-skill"]);
+        assert_eq!(
+            findings[0].message,
+            "cannot produce catapult: needs carpenter 4, has carpenter 2"
+        );
+    }
+
+    #[test]
+    fn a_unit_with_no_such_skill_at_all_is_told_so() {
+        let findings = check(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(produce_codes(&findings), ["produce-without-skill"]);
+        assert_eq!(
+            findings[0].message,
+            "cannot produce catapult: needs carpenter 4, has no carpenter"
+        );
+    }
+
+    #[test]
+    fn a_unit_with_the_skill_is_not_marked() {
+        let findings = check(
+            vec![region(vec![with_skill(unit("4021"), "CARP", 5)])],
+            "unit 4021\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(produce_codes(&findings), Vec::<&str>::new(), "{findings:?}");
+    }
+
+    #[test]
+    fn an_item_nothing_produces_is_marked_too() {
+        let findings = check(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nPRODUCE quicksilver\n",
+        );
+
+        assert_eq!(produce_codes(&findings), ["produce-without-skill"]);
+        assert!(
+            findings.iter().any(
+                |finding| finding.message == "cannot produce quicksilver: no skill produces it"
+            ),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_resource_the_region_has_not_is_marked() {
+        let findings = check(
+            vec![produces(vec![with_skill(unit("4021"), "MINI", 1)])],
+            "unit 4021\nPRODUCE iron\n",
+        );
+
+        assert_eq!(produce_codes(&findings), ["produce-not-here"]);
+        assert_eq!(
+            findings[0].message,
+            "cannot produce iron here: this region produces grain, wood and furs"
+        );
+    }
+
+    #[test]
+    fn a_region_that_produces_nothing_says_so() {
+        let findings = check(
+            vec![region(vec![with_skill(unit("4021"), "MINI", 1)])],
+            "unit 4021\nPRODUCE iron\n",
+        );
+
+        assert_eq!(produce_codes(&findings), ["produce-not-here"]);
+        assert_eq!(
+            findings[0].message,
+            "cannot produce iron here: this region produces nothing"
+        );
+    }
+
+    #[test]
+    fn a_resource_the_region_has_is_not_marked() {
+        let findings = check(
+            vec![produces(vec![with_skill(unit("4021"), "FARM", 1)])],
+            "unit 4021\nPRODUCE grain\n",
+        );
+
+        assert_eq!(produce_codes(&findings), Vec::<&str>::new(), "{findings:?}");
+    }
+
+    /// A sword is made *from* iron rather than from the hex, so its region is not the question -
+    /// a unit short of the iron is `not-enough-items`. This pins the `inputs.is_empty()` seam.
+    #[test]
+    fn a_recipe_with_inputs_is_not_a_region_question() {
+        let findings = check(
+            vec![produces(vec![with_skill(unit("4021"), "WEAP", 1)])],
+            "unit 4021\nPRODUCE sword\n",
+        );
+
+        assert_eq!(produce_codes(&findings), Vec::<&str>::new(), "{findings:?}");
+    }
+
+    #[test]
+    fn a_unit_failing_both_checks_gets_both_marks() {
+        let findings = check(
+            vec![produces(vec![unit("4021")])],
+            "unit 4021\nPRODUCE iron\n",
+        );
+
+        assert_eq!(
+            produce_codes(&findings),
+            ["produce-without-skill", "produce-not-here"]
+        );
+    }
+
+    #[test]
+    fn disabling_one_does_not_hide_the_other() {
+        let regions = vec![produces(vec![unit("4021")])];
+        let orders = "unit 4021\nPRODUCE iron\n";
+
+        let without_skill_off = check_turn(
+            &report(regions.clone()),
+            orders,
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::PRODUCE_WITHOUT_SKILL]),
+        );
+        assert_eq!(produce_codes(&without_skill_off), ["produce-not-here"]);
+
+        let not_here_off = check_turn(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::PRODUCE_NOT_HERE]),
+        );
+        assert_eq!(produce_codes(&not_here_off), ["produce-without-skill"]);
+    }
+
     // --- the faction's region allowance ---------------------------------------------------------
 
     /// `report_with_status`, checked with `check_trade_regions` reachable through `check_turn`
@@ -11448,8 +11795,15 @@ mod tests {
             orders,
             Some(&ruleset()),
             // Their bare BUILDs are written from outside any structure, which
-            // `build-outside-structure` is right about and these tests are not about.
-            disabling_all(&[codes::BUILD_OUTSIDE_STRUCTURE, codes::UNIT_DOES_NOTHING]),
+            // `build-outside-structure` is right about and these tests are not about. So are the
+            // two production warnings: these fixture units have no farming and their regions name
+            // no products, both of which are true and neither of which is the allowance.
+            disabling_all(&[
+                codes::BUILD_OUTSIDE_STRUCTURE,
+                codes::UNIT_DOES_NOTHING,
+                codes::PRODUCE_WITHOUT_SKILL,
+                codes::PRODUCE_NOT_HERE,
+            ]),
         )
     }
 
@@ -11611,7 +11965,21 @@ mod tests {
         ];
         let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n";
 
-        assert_eq!(codes(&check(regions, orders)), Vec::<&str>::new());
+        // The two production warnings are true of these fixtures - no farming, no products line -
+        // and orthogonal to whether a missing status block is judged.
+        assert_eq!(
+            codes(&check_turn(
+                &report(regions),
+                orders,
+                Some(&ruleset()),
+                disabling_all(&[
+                    codes::UNIT_DOES_NOTHING,
+                    codes::PRODUCE_WITHOUT_SKILL,
+                    codes::PRODUCE_NOT_HERE,
+                ]),
+            )),
+            Vec::<&str>::new()
+        );
     }
 
     #[test]

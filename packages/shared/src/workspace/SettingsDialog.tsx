@@ -581,6 +581,23 @@ const WARNING_GROUPS: readonly {
     ]
   },
   {
+    heading: "Producing",
+    entries: [
+      {
+        code: "produce-without-skill",
+        title: "Producing without the skill",
+        description:
+          "A PRODUCE order for an item the unit has not the skill or level to make."
+      },
+      {
+        code: "produce-not-here",
+        title: "Producing what the region has not",
+        description:
+          "A PRODUCE order for a resource this region's Products line does not name."
+      }
+    ]
+  },
+  {
     heading: "Sailing",
     entries: [
       {
