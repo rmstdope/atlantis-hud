@@ -243,6 +243,10 @@ pub struct Gap {
 pub struct Gaps {
     /// Winter raises movement costs by an amount the rules page never states.
     pub weather: Gap,
+    /// PRODUCE recipes are carried but nothing spends them - see `ah-19l2.2`, which closes the gap
+    /// and removes this key again. `None` for a ruleset generated before it was declared.
+    #[serde(default)]
+    pub production: Option<Gap>,
 }
 
 /// Every spelling an order's item argument stands for, in the order they must be tried.
@@ -289,12 +293,36 @@ pub struct CastCost {
     pub transmute: BTreeMap<String, String>,
 }
 
-/// One thing a skill can make, and the level at which it can first be made.
+/// One thing a production recipe consumes: an item tag (`SILV` for silver) and how many.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProductionInput {
+    pub tag: String,
+    pub amount: i64,
+}
+
+/// One thing a skill can make, the level at which it can first be made, and what it takes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Production {
     pub tag: String,
     pub level: u32,
+    /// What one output consumes. Empty for a recipe that takes nothing but labour - every raw
+    /// resource - and for a ruleset generated before inputs were scraped.
+    #[serde(default)]
+    pub inputs: Vec<ProductionInput>,
+    /// Whether `inputs` are alternatives rather than requirements - cooking's "any of" alone today.
+    #[serde(default)]
+    pub inputs_are_alternatives: bool,
+    /// Man-months per `outputs`. Absent for a ruleset generated before the rate was scraped;
+    /// `None`, never 1, so a consumer can tell "not scraped" from "one a month" - and so no
+    /// default of 0 waits as a division by zero in `ah-19l2.2`.
+    #[serde(default)]
+    pub man_months: Option<u32>,
+    /// How many the recipe makes per `man_months`. `None` both for a ruleset generated before this
+    /// was scraped and for cooking, whose output the page states as a formula.
+    #[serde(default)]
+    pub outputs: Option<u32>,
 }
 
 /// A skill a unit must already have, at a level, before it may begin to study another.
@@ -969,6 +997,20 @@ mod tests {
         let entry: ItemEntry =
             serde_json::from_str(json).expect("an entry missing withdrawCost should still parse");
         assert_eq!(entry.withdraw_cost, None);
+    }
+
+    /// A ruleset cached before `ah-19l2.1` carries a bare `{tag, level}` production, and must still
+    /// load: `deny_unknown_fields` is about keys the struct has never heard of, and
+    /// `#[serde(default)]` is what covers keys the JSON has not got yet.
+    #[test]
+    fn a_ruleset_without_production_inputs_still_loads() {
+        let json = r#"{ "tag": "CATP", "level": 4 }"#;
+        let production: Production =
+            serde_json::from_str(json).expect("a production missing inputs should still parse");
+        assert_eq!(production.inputs, Vec::new());
+        assert!(!production.inputs_are_alternatives);
+        assert_eq!(production.man_months, None);
+        assert_eq!(production.outputs, None);
     }
 
     /// force, pattern, spirit, necromancy, teleportation and illusion are magic; mining, lumberjack,

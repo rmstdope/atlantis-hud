@@ -622,7 +622,14 @@ describe("parseSkillReference", () => {
 
     // "mining [MINI] 1: ... A unit with this skill may PRODUCE iron [IRON] at a rate of 1 per
     //  man-month."
-    expect(skills.MINI.produces).toContainEqual({ tag: "IRON", level: 1 });
+    expect(skills.MINI.produces).toContainEqual({
+      tag: "IRON",
+      level: 1,
+      inputs: [],
+      inputsAreAlternatives: false,
+      manMonths: 1,
+      outputs: 1
+    });
   });
 
   it("does not mistake what a product is made from for a product", () => {
@@ -643,7 +650,7 @@ describe("parseSkillReference", () => {
     const skills = parseSkillReference(DATA_HTML);
 
     // MINI: iron at 1, mithril at 3, admantium at 5.
-    expect(skills.MINI.produces).toEqual([
+    expect(skills.MINI.produces.map((p) => ({ tag: p.tag, level: p.level }))).toEqual([
       { tag: "IRON", level: 1 },
       { tag: "MITH", level: 3 },
       { tag: "ADMT", level: 5 }
@@ -656,7 +663,7 @@ describe("parseSkillReference", () => {
     // "cooking [COOK] 1: ... may PRODUCE a number of meals [MEAL] equal to skill level divided by
     //  2, rounded up from any of grain [GRAI], livestock [LIVE] and fish [FISH] at a rate of 1
     //  per man-month."
-    expect(skills.COOK.produces).toEqual([{ tag: "MEAL", level: 1 }]);
+    expect(skills.COOK.produces).toMatchObject([{ tag: "MEAL", level: 1 }]);
   });
 
   it("reads several products in one sentence", () => {
@@ -664,10 +671,122 @@ describe("parseSkillReference", () => {
 
     // "fishing [FISH] 1: ... may PRODUCE fish [FISH] at a rate of 1 per man-month and nets [NET]
     //  from herb [HERB] at a rate of 1 per man-month."
-    expect(skills.FISH.produces.filter((p) => p.level === 1)).toEqual([
+    expect(skills.FISH.produces.filter((p) => p.level === 1)).toMatchObject([
       { tag: "FISH", level: 1 },
       { tag: "NET", level: 1 }
     ]);
+  });
+
+  /**
+   * How long a production takes is what turns a per-unit price into a per-month one: a carpenter
+   * ordered to produce catapults spends 3000 silver per catapult and makes one every four
+   * man-months, so ten carpenters spend 6000 in a month. `ah-19l2.2` needs the rate to say so.
+   */
+  it("reads how long each production takes", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "carpenter [CARP] 4: ... catapults [CATP] ... at a rate of 1 per 4 man-months"
+    expect(skills.CARP.produces.find((p) => p.tag === "CATP")).toMatchObject({
+      manMonths: 4,
+      outputs: 1
+    });
+    // "armorer [ARMO] 1: ... chain armor [CARM] from iron [IRON] at a rate of 1 per man-month"
+    expect(skills.ARMO.produces.find((p) => p.tag === "CARM")).toMatchObject({
+      manMonths: 1,
+      outputs: 1
+    });
+    // "weaponsmith [WEAP] 5: ... admantium swords [ASWR] ... at a rate of 1 per 2 man-months"
+    expect(skills.WEAP.produces.find((p) => p.tag === "ASWR")).toMatchObject({ manMonths: 2 });
+    // "armorer [ARMO] 3: ... plate armor [PARM] from 3 iron [IRON] at a rate of 1 per 3 man-months"
+    expect(skills.ARMO.produces.find((p) => p.tag === "PARM")).toMatchObject({ manMonths: 3 });
+  });
+
+  it("refuses a production rate it does not recognise", () => {
+    const html =
+      "<html><body><pre>broken [BROK] 1: A unit with this skill may PRODUCE swords [SWOR] " +
+      "from iron [IRON] at a rate of 2 per man-month.</pre></body></html>";
+
+    expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
+  });
+
+  it("reads what each production consumes", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "swords [SWOR] from iron [IRON]" - a material with no number is one.
+    expect(skills.WEAP.produces.find((p) => p.tag === "SWOR")?.inputs).toEqual([
+      { tag: "IRON", amount: 1 }
+    ]);
+    // "plate armor [PARM] from 3 iron [IRON]"
+    expect(skills.ARMO.produces.find((p) => p.tag === "PARM")?.inputs).toEqual([
+      { tag: "IRON", amount: 3 }
+    ]);
+    // "healing potions [HPOT] from herb [HERB] and mushroom [MUSH]"
+    expect(skills.HEAL.produces.find((p) => p.tag === "HPOT")?.inputs).toEqual([
+      { tag: "HERB", amount: 1 },
+      { tag: "MUSH", amount: 1 }
+    ]);
+    // "gliders [GLID] from 2 floater hides [FLOA]"
+    expect(skills.CARP.produces.find((p) => p.tag === "GLID")?.inputs).toEqual([
+      { tag: "FLOA", amount: 2 }
+    ]);
+    // "iron [IRON] at a rate of 1 per man-month" - a raw resource takes labour and nothing else.
+    expect(skills.MINI.produces.find((p) => p.tag === "IRON")?.inputs).toEqual([]);
+  });
+
+  it("reads silver as an input like any other", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "catapults [CATP] from 250 wood [WOOD], 30 ironwood [IRWD], 80 furs [FUR] and 3000 silver
+    //  [SILV]" - in the page's order, silver among the rest.
+    expect(skills.CARP.produces.find((p) => p.tag === "CATP")?.inputs).toEqual([
+      { tag: "WOOD", amount: 250 },
+      { tag: "IRWD", amount: 30 },
+      { tag: "FUR", amount: 80 },
+      { tag: "SILV", amount: 3000 }
+    ]);
+    // "steel defenders [STED] from 30 rootstone [ROOT], 250 iron [IRON], 50 furs [FUR] and 3000
+    //  silver [SILV]"
+    expect(skills.CARP.produces.find((p) => p.tag === "STED")?.inputs).toEqual([
+      { tag: "ROOT", amount: 30 },
+      { tag: "IRON", amount: 250 },
+      { tag: "FUR", amount: 50 },
+      { tag: "SILV", amount: 3000 }
+    ]);
+  });
+
+  it("reads cooking's alternative inputs", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "... from any of grain [GRAI], livestock [LIVE] and fish [FISH]" - one of the three, not all
+    // three.
+    const meal = skills.COOK.produces.find((p) => p.tag === "MEAL");
+    expect(meal?.inputsAreAlternatives).toBe(true);
+    expect(meal?.inputs).toEqual([
+      { tag: "GRAI", amount: 1 },
+      { tag: "LIVE", amount: 1 },
+      { tag: "FISH", amount: 1 }
+    ]);
+  });
+
+  it("reads cooking's formula output as unknown rather than one", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "a number of meals [MEAL] equal to skill level divided by 2, rounded up" - a formula, and
+    // this type does not model formulae. A 1 would be wrong at every level above 2.
+    expect(skills.COOK.produces.find((p) => p.tag === "MEAL")).toMatchObject({
+      outputs: null,
+      manMonths: 1
+    });
+  });
+
+  it('reads cooking\'s product from a sentence that says "from" twice', () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "a number of meals [MEAL] equal to skill level divided by 2, rounded up from any of grain
+    //  [GRAI], ..." - splitting on the FIRST " from " happens to leave [MEAL] in the head and the
+    // material list in the tail. That is luck, not design: this test is what keeps a later tidy-up
+    // of the split from breaking it unnoticed.
+    expect(skills.COOK.produces.map((p) => p.tag)).toEqual(["MEAL"]);
   });
 
   it("fails loudly on a production it cannot read", () => {
