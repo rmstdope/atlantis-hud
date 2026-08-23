@@ -66,7 +66,12 @@ const UPKEEP_PER_LEADER: i64 = 50;
 const SILVER_PER_FOOD: i64 = 50;
 
 /// The food items the rules name, by tag.
-const FOOD_TAGS: [&str; 4] = ["GRAI", "LIVE", "FISH", "MEAL"];
+///
+/// Public because every surface that decides *which* items are food must decide it the same way:
+/// `lone_food_tag` names the food a hover says will be eaten, `food_claim` counts what the
+/// accounting spends, and a test asserts against both. Three copies of one literal are three things
+/// to keep in step (`ah-eacd`).
+pub const FOOD_TAGS: [&str; 4] = ["GRAI", "LIVE", "FISH", "MEAL"];
 
 /// The tag a leader carries in `men_by_race`.
 const LEADER_TAG: &str = "LEAD";

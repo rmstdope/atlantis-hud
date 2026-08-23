@@ -30,7 +30,7 @@ use crate::orders::silver::{
     feed_after_silver, feed_from_faction_food, food_claim, forecast_unit, late_income,
     parse_wage_centis, settle_unclaimed, unit_upkeep, FactionFoodPass, FactionPurse, FoodClaim,
     LateFoodClaim, LateFoodRelief, Lookups, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
-    SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
+    SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -1679,7 +1679,7 @@ fn lone_food_tag(items: &[ItemAmount]) -> Option<String> {
         .iter()
         .filter(|item| {
             item.amount > 0
-                && ["GRAI", "LIVE", "FISH", "MEAL"]
+                && FOOD_TAGS
                     .iter()
                     .any(|tag| item.tag.eq_ignore_ascii_case(tag))
         })

@@ -6,7 +6,7 @@
 //! by construction. Anything this parser has to say about it is something the parser got wrong.
 
 use atlantis_hud_core::orders::semantics::{check_turn, review_turn, CheckOptions, Finding};
-use atlantis_hud_core::orders::silver::SilverDoubt;
+use atlantis_hud_core::orders::silver::{SilverDoubt, FOOD_TAGS};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full, ParsedReport};
 use atlantis_hud_core::validate_orders;
@@ -721,7 +721,7 @@ fn holds_food(report: &ParsedReport, unit_id: &str) -> bool {
         .any(|unit| {
             unit.items.iter().any(|item| {
                 item.amount > 0
-                    && ["GRAI", "LIVE", "FISH", "MEAL"]
+                    && FOOD_TAGS
                         .iter()
                         .any(|tag| item.tag.eq_ignore_ascii_case(tag))
             })
