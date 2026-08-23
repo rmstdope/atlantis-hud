@@ -107,6 +107,7 @@ pub mod codes {
     pub const BUILD_WITHOUT_SKILL: Code = Code("build-without-skill");
     pub const CLAIMS_EXCEED_UNCLAIMED: Code = Code("claims-exceed-unclaimed");
     pub const UPKEEP_EXCEEDS_UNCLAIMED: Code = Code("upkeep-exceeds-unclaimed");
+    pub const TAXED_A_PILLAGED_HEX: Code = Code("taxed-a-pillaged-hex");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -115,7 +116,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 26] = [
+    pub const ALL: [Code; 27] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -142,6 +143,7 @@ pub mod codes {
         BUILD_WITHOUT_SKILL,
         CLAIMS_EXCEED_UNCLAIMED,
         UPKEEP_EXCEEDS_UNCLAIMED,
+        TAXED_A_PILLAGED_HEX,
     ];
 }
 
@@ -319,6 +321,7 @@ pub fn review_turn(
         let start = findings.len();
         check_resources(hex, ledger, ruleset, &options, &mut findings);
         check_markets(hex, ruleset, &options, &mut findings);
+        check_pillaged_tax(hex, own_unit_pillages(hex), &options, &mut findings);
         check_guard(hex, &options, &mut findings);
         check_teaching(hex, ruleset, &options, &mut findings);
         check_building(hex, &options, &mut findings);
@@ -383,6 +386,7 @@ fn forecast_hex(
         wage_centis: parse_wage_centis(hex.region.wages.as_deref()),
         max_wages: hex.region.max_wages,
         entertainment: hex.region.entertainment,
+        pillaged: own_unit_pillages(hex),
     };
     let nothing = Receipts::default();
 
@@ -958,6 +962,25 @@ struct Ledger<'a> {
     faction_food: FactionFoodPass,
 }
 
+/// Whether any own unit in this hex is ordered to pillage it.
+///
+/// "PILLAGE comes before TAX, so a unit performing TAX will collect no money in that region that
+/// month" - so this empties the region's tax base for every own unit taxing it (`ah-cxxa`).
+/// Foreign units are not here to begin with (`Hex::read` filters them out) and their orders are
+/// unknowable, so this is only ever about the orders in the document being edited.
+///
+/// Computed once per hex and passed down rather than called per intent: `apply` runs for every
+/// placed intent of every unit, so calling this there would walk the hex quadratically on a path
+/// that runs on every keystroke.
+fn own_unit_pillages(hex: &Hex<'_>) -> bool {
+    hex.units.iter().any(|ordered| {
+        ordered
+            .intents
+            .iter()
+            .any(|placed| matches!(placed.intent, Intent::Pillage))
+    })
+}
+
 /// Everything the hex's units hold, with this month's orders applied.
 ///
 /// Built once per hex and read by two checks: `check_resources` asks whether the sums go negative,
@@ -987,9 +1010,10 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
         }
     }
 
+    let pillaged = own_unit_pillages(hex);
     for ordered in &hex.units {
         for placed in ordered.intents {
-            apply(&mut ledger, hex, ordered, placed, ruleset);
+            apply(&mut ledger, hex, ordered, placed, ruleset, pillaged);
         }
     }
 
@@ -1044,6 +1068,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         wage_centis: parse_wage_centis(hex.region.wages.as_deref()),
         max_wages: hex.region.max_wages,
         entertainment: hex.region.entertainment,
+        pillaged: own_unit_pillages(hex),
     };
 
     // The check and the Silver column read one fact, so they settle the hex's faction-food pool
@@ -1152,6 +1177,37 @@ fn check_markets(
     }
 }
 
+/// Own units ordered to tax a hex one of their faction-mates is pillaging.
+///
+/// One finding per taxing unit, on its own `TAX` line: each is separately editable and each is
+/// equally affected. The pillager itself is never named - its orders are fine, and it is the only
+/// unit here that will collect anything. A unit ordered to do both is still told about its `TAX`
+/// line, because the emptiness is a property of the hex rather than of who caused it (`ah-cxxa`).
+fn check_pillaged_tax(
+    hex: &Hex<'_>,
+    pillaged: bool,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !pillaged || !options.emits(codes::TAXED_A_PILLAGED_HEX) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        for placed in ordered.intents {
+            if !matches!(placed.intent, Intent::Tax) {
+                continue;
+            }
+            findings.push(ordered.finding(
+                hex,
+                codes::TAXED_A_PILLAGED_HEX,
+                "a unit is pillaging this hex, so this TAX will collect nothing".to_string(),
+                Some(placed),
+            ));
+        }
+    }
+}
+
 /// A market's own lines, in the report's order and the report's own spelling, joined for a
 /// message: `"perfume, gems and hill dwarves"`, or just `"perfume"` for a single line.
 fn market_list(lines: &[MarketItem]) -> String {
@@ -1176,6 +1232,9 @@ fn apply(
     actor: &Ordered<'_>,
     placed: &PlacedIntent,
     ruleset: Option<&Ruleset>,
+    // Whether an own unit is pillaging this hex - computed once per hex by the caller, because
+    // this function runs for every placed intent of every unit (`ah-cxxa`).
+    pillaged: bool,
 ) {
     let who = &actor.unit.unit_id;
 
@@ -1215,15 +1274,20 @@ fn apply(
         }
         Intent::Claim(amount) => credit(ledger, who, SILVER, *amount),
         Intent::Tax => {
-            // "Each taxing character collects $50", capped by what the region has to give - and
-            // optimistically, none of it goes to anybody else.
-            let ceiling = hex.region.tax_base.unwrap_or(i64::MAX);
-            credit(
-                ledger,
-                who,
-                SILVER,
-                actor.unit.men.saturating_mul(TAX_PER_MAN).min(ceiling),
-            );
+            // "PILLAGE comes before TAX", so a pillage in this hex leaves every own taxer with
+            // nothing (`ah-cxxa`). Mirrors `forecast_unit`'s arm exactly - two surfaces reading
+            // one order must not price it two ways.
+            if !pillaged {
+                // "Each taxing character collects $50", capped by what the region has to give -
+                // and optimistically, none of what is left goes to any *foreign* unit.
+                let ceiling = hex.region.tax_base.unwrap_or(i64::MAX);
+                credit(
+                    ledger,
+                    who,
+                    SILVER,
+                    actor.unit.men.saturating_mul(TAX_PER_MAN).min(ceiling),
+                );
+            }
         }
         Intent::Pillage => match hex.region.tax_base {
             // "The amount of money collected is equal to twice the available tax money."
@@ -4018,6 +4082,260 @@ mod tests {
             "the warning fires: {:?}",
             codes(&unaffordable.findings)
         );
+    }
+
+    // --- a pillage empties the hex for every own taxer (`ah-cxxa`) -----------------------------
+
+    /// "PILLAGE comes before TAX, so a unit performing TAX will collect no money in that region
+    /// that month." The ledger read `hex.region.tax_base` alone and never looked at the hex's own
+    /// orders, so it credited a taxer beside a pillager in full.
+    #[test]
+    fn the_ledger_credits_a_taxer_nothing_in_a_pillaged_hex() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![with_silver(unit("1"), 0), with_silver(unit("2"), 0)])
+        };
+        let ordered = OrderedUnits::read("unit 1\nPILLAGE\n\nunit 2\nTAX\n");
+        let hex = Hex::read(&hex_region, &ordered);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+
+        assert_eq!(
+            silver_balance(&ledger, "2"),
+            0,
+            "the taxer collects nothing where a faction-mate is pillaging"
+        );
+    }
+
+    /// The pair is the point, exactly as `ah-abwx` and `ah-ycuj` require: before this bead the
+    /// taxer looked solvent on both surfaces, so a single-surface fix passes its own tests and
+    /// fails the corpus agreement test.
+    #[test]
+    fn the_column_and_the_warning_agree_about_a_taxer_in_a_pillaged_hex() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            for_sale: vec![MarketItem {
+                amount: 100,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 100,
+            }],
+            ..region(vec![with_silver(unit("1"), 0), with_silver(unit("2"), 0)])
+        };
+        // Unit 2 taxes and then spends 1,000 it will not have, because unit 1 empties the hex.
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1\nPILLAGE\n\nunit 2\nTAX\nBUY 10 grain\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let taxer = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "2")
+            .expect("the taxer is priced");
+        assert!(
+            taxer.at_month_end.is_some_and(|end| end < 0),
+            "the column shows the shortfall: {:?}",
+            taxer.at_month_end
+        );
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("2")),
+            "the warning fires too: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// The pillager collects; only taxers are emptied. This is the net under the predicate being
+    /// applied to the wrong arm.
+    #[test]
+    fn the_pillager_itself_still_earns_twice_the_base() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![with_silver(unit("1"), 0), with_silver(unit("2"), 0)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1\nPILLAGE\n\nunit 2\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let pillager = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "1")
+            .expect("the pillager is priced");
+        assert_eq!(pillager.income, Some(5000));
+        assert_eq!(pillager.doubt, None);
+    }
+
+    #[test]
+    fn a_unit_that_pillages_is_not_warned_about_its_own_pillage() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![with_silver(unit("1"), 0)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TAXED_A_PILLAGED_HEX),
+            "a lone pillager is told nothing: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// One finding per taxing unit, on its own `TAX` line: each is separately editable and each is
+    /// equally affected. The pillager is never named - its orders are fine.
+    #[test]
+    fn every_taxer_in_a_pillaged_hex_is_told_why() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![
+                with_silver(unit("1"), 0),
+                with_silver(unit("2"), 0),
+                with_silver(unit("3"), 0),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1\nPILLAGE\n\nunit 2\nTAX\n\nunit 3\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::TAXED_A_PILLAGED_HEX)
+            .collect();
+
+        assert_eq!(told.len(), 2, "one per taxer: {told:?}");
+        for finding in &told {
+            assert_eq!(
+                finding.message,
+                "a unit is pillaging this hex, so this TAX will collect nothing"
+            );
+            assert!(
+                finding.line.is_some(),
+                "anchored on the TAX line: {finding:?}"
+            );
+        }
+        let mut named: Vec<&str> = told
+            .iter()
+            .filter_map(|finding| finding.unit_id.as_deref())
+            .collect();
+        named.sort_unstable();
+        assert_eq!(named, vec!["2", "3"], "the pillager is not among them");
+    }
+
+    #[test]
+    fn a_hex_nobody_pillages_says_nothing() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![with_silver(unit("2"), 0)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 2\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TAXED_A_PILLAGED_HEX),
+            "nothing to say: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// `own_unit_pillages` takes a hex, and this is what proves it was not hoisted to the report.
+    #[test]
+    fn a_pillage_in_one_hex_does_not_empty_another() {
+        let here = ReportRegion {
+            tax_base: Some(2500),
+            ..region_at("1:7,53", 7, 53, vec![with_silver(unit("1"), 0)])
+        };
+        let mut elsewhere = ReportRegion {
+            tax_base: Some(2500),
+            ..region_at("1:9,53", 9, 53, vec![with_silver(unit("2"), 0)])
+        };
+        for unit in &mut elsewhere.units {
+            unit.region_id = "1:9,53".to_string();
+        }
+
+        let review = review_turn(
+            &report(vec![here, elsewhere]),
+            "unit 1\nPILLAGE\n\nunit 2\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let taxer = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "2")
+            .expect("the taxer is priced");
+        assert_eq!(
+            taxer.income,
+            Some(50),
+            "another hex's pillage is not its own"
+        );
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TAXED_A_PILLAGED_HEX),
+            "and it is told nothing: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// The predicate is about the hex, not about other units, so a unit ordered to do both is
+    /// warned about its own `TAX` line - its pillage is fine, its tax collects nothing.
+    #[test]
+    fn a_unit_that_pillages_and_is_also_ordered_to_tax_is_still_told() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![with_silver(unit("1"), 0)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1\nPILLAGE\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::TAXED_A_PILLAGED_HEX)
+            .collect();
+        assert_eq!(told.len(), 1, "on its TAX line: {told:?}");
+        assert_eq!(told[0].unit_id.as_deref(), Some("1"));
+
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "1")
+            .expect("priced");
+        assert_eq!(row.income, Some(5000), "the pillage still pays");
     }
 
     // --- fixtures ---------------------------------------------------------------------------
@@ -9272,6 +9590,16 @@ mod tests {
                 orders: "",
                 allowance: None,
                 unclaimed: Some(100),
+            },
+            Case {
+                code: codes::TAXED_A_PILLAGED_HEX,
+                regions: vec![ReportRegion {
+                    tax_base: Some(2500),
+                    ..region(vec![with_silver(unit("5"), 0), with_silver(unit("7"), 0)])
+                }],
+                orders: "unit 5\nPILLAGE\n\nunit 7\nTAX\n",
+                allowance: None,
+                unclaimed: None,
             },
         ];
 

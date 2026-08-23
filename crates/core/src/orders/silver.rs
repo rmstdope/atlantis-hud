@@ -344,6 +344,12 @@ pub struct RegionWages {
     /// is. `None` means the region prints no `Entertainment available` line and pays entertainers
     /// nothing, the same reading `WORK` gives a region with no wage.
     pub entertainment: Option<i64>,
+    /// Whether an own unit in this hex is ordered to pillage it, which empties the tax base before
+    /// any `TAX` order reaches it (`ah-cxxa`). This is not a property of the region as the report
+    /// prints it; it is a property of the orders being written against it. It belongs here anyway,
+    /// because it is exactly what the `TAX` arm needs and nothing else in this module has a view
+    /// of the hex.
+    pub pillaged: bool,
 }
 
 /// What the faction holds that any of its units may draw on.
@@ -530,12 +536,22 @@ pub fn forecast_unit(
                     None => *amount,
                 });
             }
-            Intent::Tax => match region.tax_base {
-                Some(base) => {
-                    income = income.saturating_add(men.saturating_mul(TAX_PER_MAN).min(base))
+            Intent::Tax => {
+                if region.pillaged {
+                    // Zero, and never a doubt: a pillage empties the hex whatever the base was, so
+                    // this collects nothing even where the base itself is unknown (`ah-cxxa`).
+                    // This branch must stay *before* the `tax_base` match, or a hex with no stated
+                    // base raises `UnknownTaxBase` and the certain zero is lost.
+                } else {
+                    match region.tax_base {
+                        Some(base) => {
+                            income =
+                                income.saturating_add(men.saturating_mul(TAX_PER_MAN).min(base))
+                        }
+                        None => income_doubt = income_doubt.or(Some(SilverDoubt::UnknownTaxBase)),
+                    }
                 }
-                None => income_doubt = income_doubt.or(Some(SilverDoubt::UnknownTaxBase)),
-            },
+            }
             // "The amount of money collected is equal to twice the available tax money." Mirrors
             // `semantics::apply`'s own arm exactly, down to the doubt: two surfaces reading one
             // order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj` exists).
@@ -1572,6 +1588,37 @@ mod tests {
         assert_eq!(unit.income, None);
         assert_eq!(unit.expense, Some(0));
         assert_eq!(unit.at_month_end, None);
+    }
+
+    /// "PILLAGE comes before TAX, so a unit performing TAX will collect no money in that region
+    /// that month" - so an own unit pillaging this hex empties it for every other own taxer
+    /// (`ah-cxxa`).
+    #[test]
+    fn a_taxer_in_a_pillaged_hex_collects_nothing() {
+        let region = RegionWages {
+            tax_base: Some(2500),
+            pillaged: true,
+            ..RegionWages::default()
+        };
+        let unit = forecast(30, region, &[placed(Intent::Tax)]);
+        assert_eq!(unit.income, Some(0));
+        assert_eq!(unit.at_month_end, Some(0));
+        assert_eq!(unit.doubt, None);
+    }
+
+    /// A certain zero, not a doubt: a pillage empties the hex whatever the base was, so the taxer
+    /// collects nothing even where the base itself is unknown. Doubting it would hide a fact we
+    /// know (`ah-cxxa`, the navigator's decision).
+    #[test]
+    fn a_taxer_in_a_pillaged_hex_with_no_stated_base_still_collects_nothing() {
+        let region = RegionWages {
+            tax_base: None,
+            pillaged: true,
+            ..RegionWages::default()
+        };
+        let unit = forecast(30, region, &[placed(Intent::Tax)]);
+        assert_eq!(unit.income, Some(0));
+        assert_eq!(unit.doubt, None);
     }
 
     /// "The amount of money collected is equal to twice the available tax money." The ledger
