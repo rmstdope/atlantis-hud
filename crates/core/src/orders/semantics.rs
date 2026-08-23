@@ -345,8 +345,6 @@ pub fn review_turn(
     TurnReview { findings, silver }
 }
 
-/// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
-/// already filtered them out, so their cell is blank for free.
 /// What the payment order's later steps paid on the units' behalf, decided before any hex is
 /// priced and applied to the column together.
 ///
@@ -362,6 +360,8 @@ struct Relief<'a> {
     settlement: &'a UpkeepSettlement,
 }
 
+/// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
+/// already filtered them out, so their cell is blank for free.
 fn forecast_hex(
     hex: &Hex<'_>,
     receipts: &BTreeMap<String, Receipts>,
