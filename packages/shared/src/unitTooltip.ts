@@ -186,15 +186,15 @@ function silverNote(
   if (countUpkeep && silver.doubt === "contested-faction-food") {
     return "There is not enough faction food here to feed every unit set to eat it.";
   }
-  // The column counts what WORK earns; `not-enough-silver` deliberately does not, because wages
-  // are paid in the turn's last phase. Both are true about different moments.
-  if (warned && end !== null && end >= 0) {
-    return "Wages arrive at the end of the month, too late to pay for this month's orders.";
-  }
   // An Upkeep of 0 on a unit with six men reads as a defect until something says why: this is the
   // only row a *neighbour's* holdings move (`ah-7cdt`).
   if (countUpkeep && silver.factionFoodCovered > 0) {
     return `Faction food in this hex covers ${silver.factionFoodCovered} of this unit's upkeep.`;
+  }
+  // The column counts what WORK earns; `not-enough-silver` deliberately does not, because wages
+  // are paid in the turn's last phase. Both are true about different moments.
+  if (warned && end !== null && end >= 0) {
+    return "Wages arrive at the end of the month, too late to pay for this month's orders.";
   }
   // A gift is the one part of the figure that comes from somebody else's orders, so it is the one
   // part a reader cannot find by looking at this unit's own block.
