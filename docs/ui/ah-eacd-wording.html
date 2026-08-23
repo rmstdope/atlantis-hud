@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Naming the food (ah-eacd) — round 2</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-eacd</span> — naming the food, round 2</h1>
+  <p><strong>Settled:</strong> food eaten at step 5 or 6 counts as coverage, so the Upkeep cell
+  drops (Option A); the step-5/6 hover gets its own sentence, distinct from the step-1 one; and it
+  names the loss in <strong>items</strong>, not silver.</p>
+  <blockquote>step 1 &nbsp;·&nbsp; <em>chosen</em> &nbsp;·&nbsp;
+  &ldquo;This unit's own food covers 60 of its upkeep.&rdquo; &nbsp;— unchanged<br>
+  step 5 &nbsp;·&nbsp; <em>forced</em> &nbsp;·&nbsp;
+  &ldquo;This unit has no silver for its upkeep, so <strong>2 grain</strong> of its own will be eaten.&rdquo;</blockquote>
+  <p>Two cases the item wording does not answer by itself. Both are common, not corner cases.</p>
+</header>
+<main>
+<section>
+  <h2 class="rule"><em>Case 1</em> a mixed larder</h2>
+  <p><strong>Hodfarers</strong> owes <b>120</b> and holds <b>1 grain</b> and <b>3 livestock</b>.
+  Three items are eaten. The rules do not say which, and the engine's choice is not visible from a
+  report — so the application has to pick a story and tell it consistently.</p>
+  <div class="lab">Three ways to say it</div>
+  <table class="q">
+    <tr><th>Option</th><th>The sentence</th><th>What it assumes</th></tr>
+    <tr><td class="k">1 — name a mix</td>
+        <td>This unit has no silver for its upkeep, so <b>1 grain and 2 livestock</b> of its own will be eaten.</td>
+        <td>That the game eats in the order the report lists items. Precise, and precisely wrong whenever the engine disagrees.</td></tr>
+    <tr><td class="k">2 — count, don't name</td>
+        <td>This unit has no silver for its upkeep, so <b>3 of its food items</b> will be eaten.</td>
+        <td>Nothing. Exact about the amount, silent about the kind — which is the part nobody can know.</td></tr>
+    <tr><td class="k">3 — name only when there is one kind</td>
+        <td>One kind: &ldquo;…so <b>2 grain</b> of its own will be eaten.&rdquo;<br>
+            Mixed: &ldquo;…so <b>3 of its food items</b> will be eaten.&rdquo;</td>
+        <td>Nothing. Says the most that is true in each case; two sentences to keep in step.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Case 2</em> faction food, held by other units</h2>
+  <p>At step 6 the food comes from <em>somebody else's</em> inventory, pooled across the hex. The
+  hover is built from one unit's data and the shared <code>UnitSilver</code> figures — it has no
+  view of a neighbour's items today, so naming them means the core carrying the tags out.</p>
+  <div class="lab">Two ways to say it</div>
+  <table class="q">
+    <tr><th>Option</th><th>The sentence</th><th>What it costs</th></tr>
+    <tr><td class="k">Items, like step 5</td>
+        <td>This unit has no silver for its upkeep, so <b>1 grain</b> of faction food in this hex will be eaten.</td>
+        <td>The core must carry which tags the pool gives up, per fed unit, through a pool that is shared and settled all-or-nothing. Real work, and a number that can be wrong when several units are fed at once.</td></tr>
+    <tr><td class="k">Count only</td>
+        <td>This unit has no silver for its upkeep, so <b>1 faction food item</b> in this hex will be eaten.</td>
+        <td>Nothing beyond the count the pool already knows. Says less about a loss that is not this unit's to begin with.</td></tr>
+  </table>
+  <p class="cap"><b>Note</b> the step-2 sentence for a <code>CONSUME FACTION</code> unit stays as it
+  is — &ldquo;Faction food in this hex covers 40 of this unit's upkeep.&rdquo; — in silver. Only the
+  new forced-feeding sentences are in items.</p>
+</section>
+</main>
+</body>
+</html>
