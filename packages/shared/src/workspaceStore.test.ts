@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import type { OpenedGame } from "@atlantis/core-client";
 import { UNIT_COLUMNS, type UnitColumn } from "./unitTable";
 import { BADGES } from "./workspace/mapThemes/hexView";
-import { badgesFromStorage, resetWorkspaceStore, useWorkspaceStore } from "./workspaceStore";
+import {
+  badgesFromStorage,
+  resetWorkspaceStore,
+  useWorkspaceStore,
+  workspaceGameOf
+} from "./workspaceStore";
 
 const store = () => useWorkspaceStore.getState();
 
@@ -708,5 +714,51 @@ describe("the units table's column order", () => {
     useWorkspaceStore.getState().setUnitColumnOrder(swapped());
     useWorkspaceStore.getState().resetUnitColumnOrder();
     expect(useWorkspaceStore.getState().unitColumnShares).toEqual({ name: 0.2 });
+  });
+});
+
+describe("the workspace's record of an opened game", () => {
+  const opened = (map?: { width: number; height: number; wrapX: boolean; wrapY: boolean }) => ({
+    gameFilePath: "/games/g1/game.json",
+    databasePath: "idb://g1",
+    schemaVersion: 1,
+    manifest: {
+      manifestVersion: 1,
+      metadata: {
+        gameId: "g1",
+        gameName: "Spring campaign",
+        rulesetId: "neworigins",
+        createdAt: "2026-08-01T00:00:00Z",
+        lastOpenedAt: "2026-08-01T00:00:00Z",
+        ...(map === undefined ? {} : { map })
+      }
+    }
+  });
+
+  // The bug this pins: the settings dialog was handed a hand-built record that simply left `map`
+  // out, so a game's own stated map read as absent and the tab showed the ruleset's default -
+  // labelled "assumed" - however many times the player corrected it. One function builds the
+  // record now, so there is one place for a field to be forgotten rather than two.
+  it("carries the map the game stated", () => {
+    const shape = { width: 40, height: 60, wrapX: true, wrapY: false };
+
+    expect(workspaceGameOf(opened(shape) as unknown as OpenedGame).map).toEqual(shape);
+  });
+
+  // Absence has to survive the trip as absence: it is what makes the ruleset's default read as
+  // assumed rather than as this game's own word.
+  it("leaves the map absent for a game that never stated one", () => {
+    const game = workspaceGameOf(opened() as unknown as OpenedGame);
+
+    expect("map" in game).toBe(false);
+  });
+
+  it("carries the rest of what the workspace needs", () => {
+    expect(workspaceGameOf(opened() as unknown as OpenedGame)).toMatchObject({
+      gameId: "g1",
+      gameName: "Spring campaign",
+      databasePath: "idb://g1",
+      rulesetId: "neworigins"
+    });
   });
 });

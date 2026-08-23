@@ -77,7 +77,7 @@ export function GameForm({
           How far the map runs, and where it joins back onto itself. Clear these if you do not know.
         </p>
         <div className="flex gap-2">
-          <label className="flex flex-1 flex-col gap-1">
+          <label className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="text-ink-soft">Width</span>
             <input
               data-testid="game-map-width"
@@ -86,10 +86,10 @@ export function GameForm({
               value={map.width}
               disabled={busy}
               onChange={(event) => setMap({ ...map, width: event.target.value })}
-              className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+              className="w-full min-w-0 rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
             />
           </label>
-          <label className="flex flex-1 flex-col gap-1">
+          <label className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="text-ink-soft">Height</span>
             <input
               data-testid="game-map-height"
@@ -98,7 +98,7 @@ export function GameForm({
               value={map.height}
               disabled={busy}
               onChange={(event) => setMap({ ...map, height: event.target.value })}
-              className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+              className="w-full min-w-0 rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
             />
           </label>
         </div>

@@ -1,6 +1,6 @@
 import type { MapShape } from "@atlantis/core-client";
 import { type MapDraft, mapFromDraft } from "../mapShape";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AdvisoryCheckCode } from "@atlantis/core-client";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { APP_VERSION } from "../appVersion";
@@ -724,15 +724,38 @@ function GameMapSettings({
   // as the player's own word. A cleared field means "I do not know", which records nothing and
   // puts the game back to assuming its ruleset's default.
   const [draft, setDraft] = useState<MapDraft>(() => draftOf(map));
-  // Keyed on the game's own values so switching games, or a change made elsewhere, refills the
-  // fields rather than leaving another game's numbers on screen.
-  const [shownFor, setShownFor] = useState(map);
-  if (shownFor !== map) {
-    setShownFor(map);
+  // What this component last wrote, so a map coming back from its own write is not treated as news.
+  // A ref rather than state: nothing renders from it.
+  const committed = useRef<MapShape | null>(null);
+  // Refilled in an effect rather than during render. Correcting width and then height is one
+  // gesture: the width's blur starts a write, and the map comes back changed while the height is
+  // already being typed. The render-phase `setShownFor(map)` this replaces made React restart the
+  // render and DISCARD the queued draft update carrying those keystrokes, so the second field of
+  // every pair silently reverted - the refill itself was never the culprit, the render-phase set
+  // was. An effect runs after the commit, so nothing in flight is thrown away, and skipping the
+  // value we just wrote leaves the player's own typing alone while still refilling for a game
+  // switch or a change made elsewhere.
+  useEffect(() => {
+    if (sameMap(map, committed.current)) {
+      return;
+    }
     setDraft(draftOf(map));
-  }
+  }, [map]);
 
-  const commit = (next: MapDraft) => onChangeMap(mapFromDraft(next) ?? undefined);
+  // Only ever one write is outstanding, because the fieldset is disabled for the length of one -
+  // which is what makes a single slot enough to remember what we wrote.
+  const commit = (next: MapDraft) => {
+    const written = mapFromDraft(next);
+    committed.current = written;
+    // Clearing the fields records nothing, and the game then falls back to its ruleset's default -
+    // which may be no map at all. In that case nothing about the map changes identity, so the
+    // effect above never runs and half-typed text would sit above a line saying no map is known.
+    // Normalising here says out loud what was stored: nothing.
+    if (written === null) {
+      setDraft(draftOf(null));
+    }
+    onChangeMap(written ?? undefined);
+  };
 
   return (
     <fieldset className="flex flex-col gap-2 rounded border border-edge p-2">
@@ -753,7 +776,7 @@ function GameMapSettings({
         </p>
       )}
       <div className="flex gap-2">
-        <label className="flex flex-1 flex-col gap-1">
+        <label className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="text-ink-soft">Width</span>
           <input
             data-testid="settings-map-width"
@@ -763,10 +786,10 @@ function GameMapSettings({
             disabled={busy}
             onChange={(event) => setDraft({ ...draft, width: event.target.value })}
             onBlur={() => commit(draft)}
-            className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+            className="w-full min-w-0 rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
           />
         </label>
-        <label className="flex flex-1 flex-col gap-1">
+        <label className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="text-ink-soft">Height</span>
           <input
             data-testid="settings-map-height"
@@ -776,7 +799,7 @@ function GameMapSettings({
             disabled={busy}
             onChange={(event) => setDraft({ ...draft, height: event.target.value })}
             onBlur={() => commit(draft)}
-            className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+            className="w-full min-w-0 rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
           />
         </label>
       </div>
@@ -812,6 +835,19 @@ function GameMapSettings({
         <span className="text-ink-soft">Wraps north to south</span>
       </label>
     </fieldset>
+  );
+}
+
+/** Whether two maps say the same thing, which is what matters when one of them came back from a write. */
+function sameMap(left: MapShape | null, right: MapShape | null): boolean {
+  if (left === null || right === null) {
+    return left === right;
+  }
+  return (
+    left.width === right.width &&
+    left.height === right.height &&
+    left.wrapX === right.wrapX &&
+    left.wrapY === right.wrapY
   );
 }
 
