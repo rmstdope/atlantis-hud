@@ -388,6 +388,33 @@ fn the_committed_turn_forecasts_every_own_unit_and_none_of_the_others() {
     assert_eq!(counts(&review.findings), expected_counts());
 }
 
+/// `ah-bumi`: the committed turn does contain a `CLAIM` - unit 18642 in `mountain (7,53)` orders
+/// `@claim 50` against a header that states `Unclaimed silver: 6038`. So this bead's arm is
+/// exercised by the real turn rather than only by constructed fixtures, and the figure is pinned by
+/// id: 50 is well inside the purse, so the cap does not bite and the claim is counted whole.
+///
+/// The turn's finding counts are unchanged, because this bead adds no check.
+#[test]
+fn the_committed_turns_claims_are_counted() {
+    let report = classified();
+    let review = review_turn(
+        &report,
+        &template(),
+        Some(&ruleset()),
+        CheckOptions::default(),
+    );
+
+    let claimant = review
+        .silver
+        .iter()
+        .find(|unit| unit.unit_id == "18642")
+        .expect("unit 18642 is an own unit of the committed turn");
+    assert_eq!(claimant.income, Some(50));
+    assert_eq!(claimant.doubt, None);
+
+    assert_eq!(counts(&review.findings), expected_counts());
+}
+
 /// `ah-1wcw.2`: the committed turn contains no `SELL`, no `ENTERTAIN`, no earning `CAST` and no
 /// `GIVE` of silver to a unit - its 136 gifts all move items, 130 of them to nobody at all. So the
 /// income sources this bead adds must leave every figure in it exactly where `ah-1wcw.1` left them.
