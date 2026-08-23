@@ -10,6 +10,8 @@
 //! shows `?`, and rounding is always downward, because a forecast that overstates income is the
 //! dangerous direction for a column whose negatives are what a player acts on.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::movement::rules::Ruleset;
@@ -61,8 +63,12 @@ const FOOD_TAGS: [&str; 4] = ["GRAI", "LIVE", "FISH", "MEAL"];
 /// The tag a leader carries in `men_by_race`.
 const LEADER_TAG: &str = "LEAD";
 
+/// The flag that says a unit eats faction food held by other units in its region - step 2 of the
+/// payment order, and the only one of the two that reaches beyond the unit itself.
+const CONSUMING_FACTION_FLAG: &str = "consuming faction's food";
+
 /// The two flags that say a unit is set to spend its food before its silver.
-const CONSUMING_FLAGS: [&str; 2] = ["consuming unit's food", "consuming faction's food"];
+const CONSUMING_FLAGS: [&str; 2] = ["consuming unit's food", CONSUMING_FACTION_FLAG];
 
 /// What one unit's month is expected to do to its silver.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,6 +102,9 @@ pub struct UnitSilver {
     pub received: i64,
     /// Those givers, as `<name> (<id>)`, so the hover can name them.
     pub givers: Vec<String>,
+    /// Silver that faction food held by *other* units in this hex paid off, at step 2 of the
+    /// payment order (`ah-7cdt`). `0` for every unit the pool did not feed, which is most of them.
+    pub faction_food_covered: i64,
     /// Silver this unit is ordered to give to nobody - `GIVE 0 ... SILV`, which destroys it. Part
     /// of `expense` like any other gift; carried separately only so the hover can say so.
     pub given_to_nobody: i64,
@@ -127,6 +136,9 @@ pub enum SilverDoubt {
     /// `GIVE` of a whole class of goods, or of the unit itself: what leaves depends on classifying
     /// everything the unit holds, which is not modelled.
     GivesAWholeClass,
+    /// More units are set to eat the hex's faction food than that food can feed, so which of them
+    /// eats - and therefore what each pays - cannot be determined.
+    ContestedFactionFood,
 }
 
 /// What this hex's market says about goods a unit is ordered to buy.
@@ -321,6 +333,7 @@ pub fn forecast_unit(
             doubt_subject: None,
             received: 0,
             givers: Vec::new(),
+            faction_food_covered: 0,
             given_to_nobody: 0,
         };
     }
@@ -540,6 +553,7 @@ pub fn forecast_unit(
         }),
         received: receipts.silver,
         givers: receipts.givers.clone(),
+        faction_food_covered: 0,
         given_to_nobody,
     }
 }
@@ -568,6 +582,19 @@ enum Deferred {
 /// `None` for a headcount that is itself a guess: charge nothing rather than a guess.
 #[must_use]
 pub fn unit_upkeep(facts: &UnitFacts<'_>) -> Option<i64> {
+    own_food_pass(facts).map(|pass| pass.owed_after_own_food)
+}
+
+/// What step 1 of the payment order did to one unit: what it still owes, and what food it has left.
+struct OwnFoodPass {
+    owed_after_own_food: i64,
+    spare_food: i64,
+}
+
+/// Step 1 of the maintenance payment order - the unit's own food - and what it leaves behind.
+///
+/// `None` for a headcount that is itself a guess: charge nothing rather than a guess.
+fn own_food_pass(facts: &UnitFacts<'_>) -> Option<OwnFoodPass> {
     if facts.men_estimated {
         return None;
     }
@@ -585,13 +612,8 @@ pub fn unit_upkeep(facts: &UnitFacts<'_>) -> Option<i64> {
 
     let owed = leaders
         .saturating_mul(UPKEEP_PER_LEADER)
-        .saturating_add(characters.saturating_mul(UPKEEP_PER_CHARACTER));
-
-    if owed <= 0 || !is_consuming(facts.flags) {
-        // Steps 3 before 5: a unit not set to consume spends its silver before its own food, and
-        // this column is about silver.
-        return Some(owed.max(0));
-    }
+        .saturating_add(characters.saturating_mul(UPKEEP_PER_CHARACTER))
+        .max(0);
 
     let held = facts
         .items
@@ -604,12 +626,125 @@ pub fn unit_upkeep(facts: &UnitFacts<'_>) -> Option<i64> {
         .map(|entry| entry.amount.max(0))
         .sum::<i64>();
 
+    if owed <= 0 || !is_consuming(facts.flags) {
+        // Steps 3 before 5: a unit not set to consume spends its silver before its own food, and
+        // this column is about silver. Its food is untouched, and so is spare for its faction.
+        return Some(OwnFoodPass {
+            owed_after_own_food: owed,
+            spare_food: held,
+        });
+    }
+
     // A fractional maintenance cost still consumes a whole unit of food, so the need rounds up.
     let needed = (owed + SILVER_PER_FOOD - 1) / SILVER_PER_FOOD;
     let used = held.min(needed);
     let covered = used.saturating_mul(SILVER_PER_FOOD).min(owed);
 
-    Some(owed - covered)
+    Some(OwnFoodPass {
+        owed_after_own_food: owed - covered,
+        spare_food: held - used,
+    })
+}
+
+/// What one unit brings to, and takes from, its hex's faction-food pool.
+///
+/// Built after every unit has fed itself at step 1, so `spare_food` is genuinely spare: the same
+/// item can never feed its owner and a neighbour.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FoodClaim {
+    pub unit_id: String,
+    /// Food items still held once this unit has paid what it could of its own upkeep.
+    pub spare_food: i64,
+    /// Upkeep still owed after step 1, in silver.
+    pub owed_after_own_food: i64,
+    /// Whether the unit carries the `consuming faction's food` flag.
+    pub draws_on_pool: bool,
+}
+
+/// What one unit brings to, and takes from, the pool, once it has fed itself at step 1.
+///
+/// A unit whose headcount is a guess brings nothing and claims nothing: what it ate of its own
+/// food is unknown, so counting its holding into the pool would overstate what is spare.
+#[must_use]
+pub fn food_claim(facts: &UnitFacts<'_>) -> FoodClaim {
+    let pass = own_food_pass(facts);
+    FoodClaim {
+        unit_id: facts.unit_id.to_string(),
+        spare_food: pass.as_ref().map_or(0, |pass| pass.spare_food),
+        owed_after_own_food: pass.as_ref().map_or(0, |pass| pass.owed_after_own_food),
+        draws_on_pool: facts
+            .flags
+            .iter()
+            .any(|flag| flag.eq_ignore_ascii_case(CONSUMING_FACTION_FLAG)),
+    }
+}
+
+/// Step 2 of the maintenance payment order, across one hex.
+///
+/// Returns the upkeep each unit is left with. `Some(0)` for a unit the pool feeds; `None` for one
+/// of *several* contending for a pool too small to feed them all, where which unit eats is
+/// genuinely undeterminable and no number is invented. Two cases that look short are not
+/// ambiguous at all and are answered exactly: an empty pool, where nobody eats, and a lone
+/// claimant, which simply eats every item there is. A unit that does not draw on the pool is
+/// absent from the result and keeps whatever step 1 left it.
+#[must_use]
+pub fn feed_from_faction_food(claims: &[FoodClaim]) -> BTreeMap<String, Option<i64>> {
+    // Every own unit in the hex contributes, drawing on the pool or not: a quartermaster paying its
+    // own upkeep in silver still hands its grain to its faction-mates.
+    let pool = claims.iter().fold(0i64, |pool, claim| {
+        pool.saturating_add(claim.spare_food.max(0))
+    });
+
+    let claimants = claims
+        .iter()
+        .filter(|claim| claim.draws_on_pool && claim.owed_after_own_food > 0);
+
+    let total_needed = claimants.clone().fold(0i64, |total, claim| {
+        // A fractional maintenance cost still consumes a whole unit of food, so this rounds up -
+        // in integers, never floats, and saturating so an absurd headcount cannot overflow it.
+        let needed = claim
+            .owed_after_own_food
+            .saturating_add(SILVER_PER_FOOD - 1)
+            / SILVER_PER_FOOD;
+        total.saturating_add(needed)
+    });
+
+    // A hex with no food at all is not ambiguous: nobody eats, so every claimant keeps exactly
+    // what step 1 left it. `?` is for a pool that holds food but not enough - the case where which
+    // unit eats genuinely cannot be told, and the navigator settled it that way on 2026-08-23
+    // after the committed turn showed eleven exactly-known figures being doubted by an empty hex.
+    if pool == 0 {
+        return BTreeMap::new();
+    }
+
+    if total_needed <= pool {
+        // The pool feeds everybody, and a unit it feeds at all it feeds entirely: one item is
+        // worth a whole 50, so a unit owing 60 takes 2 and 2 cover 100.
+        return claimants
+            .map(|claim| (claim.unit_id.clone(), Some(0)))
+            .collect();
+    }
+
+    // Short, and contention needs two contenders: a lone claimant eats every item there is and
+    // owes the rest, with nothing to decide. Settled with the navigator on 2026-08-23, by the same
+    // reasoning that made an empty pool exact.
+    if let (Some(only), 1) = (claimants.clone().next(), claimants.clone().count()) {
+        let covered = pool
+            .saturating_mul(SILVER_PER_FOOD)
+            .min(only.owed_after_own_food);
+        return [(
+            only.unit_id.clone(),
+            Some(only.owed_after_own_food - covered),
+        )]
+        .into();
+    }
+
+    // All or nothing among the rest: the rules waste food, so the total genuinely differs by who
+    // eats - two units owing 60 and 80 against a pool of 3 total 30 or 10 depending on which one
+    // is fed - and there is no correct number to share out.
+    claimants
+        .map(|claim| (claim.unit_id.clone(), None))
+        .collect()
 }
 
 /// Whether the unit is set to spend food on its maintenance, by either `consuming ...` flag.
@@ -1527,5 +1662,126 @@ mod tests {
         assert_eq!(unit.upkeep, Some(50));
         assert_eq!(unit.expense, Some(0));
         assert_eq!(unit.at_month_end, Some(200));
+    }
+}
+
+#[cfg(test)]
+mod faction_food_tests {
+    use super::*;
+
+    fn claim(id: &str, spare_food: i64, owed: i64, draws: bool) -> FoodClaim {
+        FoodClaim {
+            unit_id: id.to_string(),
+            spare_food,
+            owed_after_own_food: owed,
+            draws_on_pool: draws,
+        }
+    }
+
+    #[test]
+    fn faction_food_feeds_every_unit_that_needs_it() {
+        let claims = [
+            claim("quartermaster", 6, 0, false),
+            claim("a", 0, 60, true),
+            claim("b", 0, 80, true),
+        ];
+        let fed = feed_from_faction_food(&claims);
+        assert_eq!(fed.get("a"), Some(&Some(0)));
+        assert_eq!(fed.get("b"), Some(&Some(0)));
+    }
+
+    #[test]
+    fn a_pool_too_small_doubts_every_unit_that_contends() {
+        let claims = [
+            claim("quartermaster", 3, 0, false),
+            claim("a", 0, 60, true),
+            claim("b", 0, 80, true),
+        ];
+        let fed = feed_from_faction_food(&claims);
+        assert_eq!(fed.get("a"), Some(&None));
+        assert_eq!(fed.get("b"), Some(&None));
+    }
+
+    #[test]
+    fn a_unit_that_does_not_draw_on_the_pool_is_untouched() {
+        let claims = [
+            claim("quartermaster", 6, 50, false),
+            claim("a", 0, 60, true),
+        ];
+        let fed = feed_from_faction_food(&claims);
+        assert_eq!(fed.get("quartermaster"), None);
+        assert_eq!(fed.get("a"), Some(&Some(0)));
+    }
+
+    #[test]
+    fn food_held_by_a_unit_that_is_not_consuming_still_fills_the_pool() {
+        let claims = [
+            claim("quartermaster", 2, 50, false),
+            claim("a", 0, 60, true),
+        ];
+        let fed = feed_from_faction_food(&claims);
+        assert_eq!(fed.get("a"), Some(&Some(0)));
+    }
+
+    #[test]
+    fn a_unit_owing_nothing_after_its_own_food_claims_nothing() {
+        let claims = [claim("fed", 0, 0, true), claim("a", 1, 50, true)];
+        let fed = feed_from_faction_food(&claims);
+        assert_eq!(fed.get("fed"), None);
+        assert_eq!(fed.get("a"), Some(&Some(0)));
+    }
+
+    #[test]
+    fn a_pool_of_exactly_enough_feeds_everybody() {
+        let claims = [
+            claim("quartermaster", 4, 0, false),
+            claim("a", 0, 60, true),
+            claim("b", 0, 80, true),
+        ];
+        let fed = feed_from_faction_food(&claims);
+        assert_eq!(fed.get("a"), Some(&Some(0)));
+        assert_eq!(fed.get("b"), Some(&Some(0)));
+    }
+
+    /// An empty pool is exact, not doubtful: with no food in the hex nobody eats, so every unit
+    /// keeps what step 1 left it. Settled with the navigator on 2026-08-23 - the plan doubted this
+    /// case, which put `?` on eleven exactly-known figures in the committed turn.
+    #[test]
+    fn an_empty_hex_pool_leaves_every_claimant_exactly_where_it_was() {
+        let claims = [claim("a", 0, 60, true)];
+        let fed = feed_from_faction_food(&claims);
+        assert_eq!(fed.get("a"), None);
+    }
+
+    /// The boundary the empty-pool rule must not swallow: one item is food, and short is short.
+    #[test]
+    fn a_pool_of_one_item_still_doubts_units_it_cannot_all_feed() {
+        let claims = [
+            claim("a", 1, 60, true),
+            claim("b", 0, 60, true),
+            claim("c", 0, 60, true),
+        ];
+        let fed = feed_from_faction_food(&claims);
+        assert_eq!(fed.get("a"), Some(&None));
+        assert_eq!(fed.get("b"), Some(&None));
+    }
+
+    /// Contention needs two contenders. A lone claimant simply eats what there is, so its figure
+    /// is exact however short the hex is - settled with the navigator on 2026-08-23, by the same
+    /// reasoning that made an empty pool exact.
+    #[test]
+    fn a_lone_claimant_eats_what_there_is_rather_than_being_doubted() {
+        let claims = [claim("quartermaster", 1, 0, false), claim("a", 0, 60, true)];
+        let fed = feed_from_faction_food(&claims);
+        assert_eq!(fed.get("a"), Some(&Some(10)));
+    }
+
+    /// One item is worth a whole 50 even against a smaller debt, and a lone claimant cannot be
+    /// left owing less than nothing.
+    #[test]
+    fn a_lone_claimant_owes_nothing_once_the_pool_covers_it() {
+        let claims = [claim("quartermaster", 1, 0, false), claim("a", 0, 30, true)];
+        let fed = feed_from_faction_food(&claims);
+        assert_eq!(fed.get("a"), Some(&Some(0)));
     }
 }

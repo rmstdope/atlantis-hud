@@ -122,7 +122,7 @@ function summariseSilver(
     { label: "At month end", value: figure(end) }
   ];
 
-  return { rows, note: silverNote(silver, warned) };
+  return { rows, note: silverNote(silver, warned, countUpkeep) };
 }
 
 /** The month-end figure with upkeep taken off, or `null` where either term is unpriceable. */
@@ -141,7 +141,11 @@ function namesInAList(names: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-function silverNote(silver: UnitSilver, warned: boolean): string | null {
+function silverNote(
+  silver: UnitSilver,
+  warned: boolean,
+  countUpkeep: boolean
+): string | null {
   const end = silver.atMonthEnd;
 
   // Counted alone this unit runs out, yet no finding names it - which in this hex means the units
@@ -177,10 +181,20 @@ function silverNote(silver: UnitSilver, warned: boolean): string | null {
   if (silver.doubt === "gives-a-whole-class") {
     return "This unit is giving away a whole class of goods, which cannot be counted.";
   }
+  // With `countUpkeep` off there is no Upkeep row on show, so neither of this bead's two lines has
+  // anything to explain and both would be noise about a hidden figure (`ah-7cdt`).
+  if (countUpkeep && silver.doubt === "contested-faction-food") {
+    return "There is not enough faction food here to feed every unit set to eat it.";
+  }
   // The column counts what WORK earns; `not-enough-silver` deliberately does not, because wages
   // are paid in the turn's last phase. Both are true about different moments.
   if (warned && end !== null && end >= 0) {
     return "Wages arrive at the end of the month, too late to pay for this month's orders.";
+  }
+  // An Upkeep of 0 on a unit with six men reads as a defect until something says why: this is the
+  // only row a *neighbour's* holdings move (`ah-7cdt`).
+  if (countUpkeep && silver.factionFoodCovered > 0) {
+    return `Faction food in this hex covers ${silver.factionFoodCovered} of this unit's upkeep.`;
   }
   // A gift is the one part of the figure that comes from somebody else's orders, so it is the one
   // part a reader cannot find by looking at this unit's own block.

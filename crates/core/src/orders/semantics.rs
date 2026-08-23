@@ -27,8 +27,8 @@ use crate::movement::mode::{
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::orders::silver::{
-    forecast_unit, parse_wage_centis, unit_upkeep, Lookups, PurchaseAnswer, Receipts, RegionWages,
-    SaleAnswer, UnitFacts, UnitSilver,
+    feed_from_faction_food, food_claim, forecast_unit, parse_wage_centis, unit_upkeep, FoodClaim,
+    Lookups, PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -308,6 +308,11 @@ fn forecast_hex(
     };
     let nothing = Receipts::default();
 
+    // Step 2 of the payment order runs across the whole hex, so it needs every unit's step-1
+    // leftovers before it can settle any of them. Gathered here, applied once the loop is done.
+    let mut claims: Vec<FoodClaim> = Vec::with_capacity(hex.units.len());
+    let start = into.len();
+
     for ordered in &hex.units {
         // The market's answer depends on the item each SELL names, and resolving an item name is
         // this module's business - so the arithmetic is handed a closure rather than a value.
@@ -345,20 +350,23 @@ fn forecast_hex(
         // priced withdrawal both need it.
         let item_tag = |text: &str| resolve_item(text, hex, ordered, ruleset);
 
+        let facts = UnitFacts {
+            unit_id: &ordered.unit.unit_id,
+            region_id: &hex.region.region_id,
+            held: ordered.holding(SILVER),
+            men: ordered.unit.men,
+            men_estimated: ordered.unit.men_estimated,
+            men_by_race: &ordered.unit.men_by_race,
+            items: &ordered.unit.items,
+            flags: &ordered.unit.flags,
+            skills: &ordered.unit.skills,
+            intents: ordered.intents,
+            receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
+        };
+        claims.push(food_claim(&facts));
+
         into.push(forecast_unit(
-            UnitFacts {
-                unit_id: &ordered.unit.unit_id,
-                region_id: &hex.region.region_id,
-                held: ordered.holding(SILVER),
-                men: ordered.unit.men,
-                men_estimated: ordered.unit.men_estimated,
-                men_by_race: &ordered.unit.men_by_race,
-                items: &ordered.unit.items,
-                flags: &ordered.unit.flags,
-                skills: &ordered.unit.skills,
-                intents: ordered.intents,
-                receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
-            },
+            facts,
             region,
             Lookups {
                 sale: &sale,
@@ -367,6 +375,29 @@ fn forecast_hex(
             },
             ruleset,
         ));
+    }
+
+    // One claim was pushed per unit, in the same loop that pushed its forecast, so the two are
+    // index-aligned - which is also what keeps two units sharing an id from being confused for one
+    // another, as a lookup by id could not.
+    let settled = feed_from_faction_food(&claims);
+    for (claim, forecast) in claims.iter().zip(into[start..].iter_mut()) {
+        let Some(upkeep) = settled.get(&claim.unit_id).copied() else {
+            continue;
+        };
+        // What the pool paid off is the difference it made. Usually that is the whole of what step
+        // 1 left owing, since the pool feeds all or none - but a lone claimant against a short
+        // pool eats what there is and keeps the remainder, so this is a subtraction rather than
+        // the assumption that a fed unit owes nothing.
+        if let Some(left) = upkeep {
+            forecast.faction_food_covered = claim.owed_after_own_food - left;
+        }
+        forecast.upkeep = upkeep;
+        if upkeep.is_none() {
+            // A doubt about maintenance alone: income, expense and the month-end figure are all
+            // still exactly known, and `at_month_end` never counted upkeep to begin with.
+            forecast.doubt = forecast.doubt.or(Some(SilverDoubt::ContestedFactionFood));
+        }
     }
 }
 
@@ -8597,5 +8628,103 @@ mod tests {
             vec![Some(3), Some(5), None],
             "lines first, in order, then what belongs to no line: {findings:?}"
         );
+    }
+
+    // --- ah-7cdt: faction food in the hex ------------------------------------------------------
+
+    /// A quartermaster's grain feeds a faction-mate set to `consuming faction's food`.
+    #[test]
+    fn a_unit_consuming_faction_food_is_fed_by_its_neighbours() {
+        let quartermaster = with_item(with_silver(starving(unit("2000")), 500), 6, "grain", "GRAI");
+        let mut eater = starving(unit("2001"));
+        eater.flags = vec!["consuming faction's food".to_string()];
+        eater.men = 6;
+
+        let review = forecast_of(vec![quartermaster, eater]);
+
+        assert_eq!(forecast(&review, "2001").upkeep, Some(0));
+        assert_eq!(forecast(&review, "2001").doubt, None);
+        // The hover's `covers {n}` line reads this, and nothing else in the core does.
+        assert_eq!(forecast(&review, "2001").faction_food_covered, 60);
+        assert_eq!(forecast(&review, "2000").faction_food_covered, 0);
+    }
+
+    /// A hex with one eater and not enough grain: it eats what there is, and the hover says how
+    /// much that was rather than claiming the whole fee was met.
+    #[test]
+    fn a_lone_eater_in_a_short_hex_is_fed_what_there_is() {
+        let quartermaster = with_item(with_silver(starving(unit("2000")), 500), 1, "grain", "GRAI");
+        let mut eater = starving(unit("2001"));
+        eater.flags = vec!["consuming faction's food".to_string()];
+        eater.men = 6;
+
+        let review = forecast_of(vec![quartermaster, eater]);
+
+        assert_eq!(forecast(&review, "2001").upkeep, Some(10));
+        assert_eq!(forecast(&review, "2001").faction_food_covered, 50);
+        assert_eq!(forecast(&review, "2001").doubt, None);
+    }
+
+    #[test]
+    fn a_unit_consuming_only_its_own_food_does_not_draw_on_the_pool() {
+        let quartermaster = with_item(with_silver(starving(unit("2000")), 500), 6, "grain", "GRAI");
+        let mut eater = starving(unit("2001"));
+        eater.flags = vec!["consuming unit's food".to_string()];
+        eater.men = 6;
+
+        let review = forecast_of(vec![quartermaster, eater]);
+
+        assert_eq!(forecast(&review, "2001").upkeep, Some(60));
+    }
+
+    #[test]
+    fn a_unit_consuming_nothing_pays_silver_beside_a_full_pool() {
+        let quartermaster = with_item(with_silver(starving(unit("2000")), 500), 6, "grain", "GRAI");
+        let mut eater = starving(unit("2001"));
+        eater.men = 6;
+
+        let review = forecast_of(vec![quartermaster, eater]);
+
+        assert_eq!(forecast(&review, "2001").upkeep, Some(60));
+    }
+
+    /// The doubt is about the upkeep alone: everything else about the month is still exact.
+    #[test]
+    fn a_contested_pool_doubts_the_upkeep_but_not_the_income() {
+        let quartermaster = with_item(with_silver(starving(unit("2000")), 500), 3, "grain", "GRAI");
+        let mut first = with_silver(starving(unit("2001")), 500);
+        first.flags = vec!["consuming faction's food".to_string()];
+        first.men = 6;
+        let mut second = with_silver(starving(unit("2002")), 500);
+        second.flags = vec!["consuming faction's food".to_string()];
+        second.men = 8;
+
+        let review = forecast_of(vec![quartermaster, first, second]);
+
+        for id in ["2001", "2002"] {
+            let unit = forecast(&review, id);
+            assert_eq!(unit.upkeep, None, "{id}");
+            assert!(unit.income.is_some(), "{id}");
+            assert!(unit.expense.is_some(), "{id}");
+            assert!(unit.at_month_end.is_some(), "{id}");
+            assert_eq!(unit.doubt, Some(SilverDoubt::ContestedFactionFood), "{id}");
+        }
+        assert_eq!(forecast(&review, "2000").upkeep, Some(10));
+    }
+
+    fn forecast_of(units: Vec<ReportUnit>) -> TurnReview {
+        let report = ParsedReport {
+            regions: vec![region(units)],
+            ..Default::default()
+        };
+        review_turn(&report, "", None, CheckOptions::default())
+    }
+
+    fn forecast<'a>(review: &'a TurnReview, id: &str) -> &'a UnitSilver {
+        review
+            .silver
+            .iter()
+            .find(|unit| unit.unit_id == id)
+            .expect("every own unit is forecast")
     }
 }
