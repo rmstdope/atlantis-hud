@@ -535,6 +535,10 @@ describe("the Silver column", () => {
     ownFoodCovered: 0,
     unclaimedCovered: 0,
     unclaimedContended: false,
+    forcedOwnFood: 0,
+    forcedOwnFoodTag: null,
+    forcedFactionFood: 0,
+    foodContended: false,
     ...overrides
   });
 

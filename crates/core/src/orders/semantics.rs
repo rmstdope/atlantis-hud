@@ -27,10 +27,10 @@ use crate::movement::mode::{
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::orders::silver::{
-    FactionFoodPass, LateFoodClaim, LateFoodRelief, feed_after_silver, feed_from_faction_food,
-    food_claim, forecast_unit, late_income, parse_wage_centis,
-    settle_unclaimed, unit_upkeep, FactionPurse, FoodClaim, Lookups, PurchaseAnswer, Receipts,
-    RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
+    feed_after_silver, feed_from_faction_food, food_claim, forecast_unit, late_income,
+    parse_wage_centis, settle_unclaimed, unit_upkeep, FactionFoodPass, FactionPurse, FoodClaim,
+    LateFoodClaim, LateFoodRelief, Lookups, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
+    SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;

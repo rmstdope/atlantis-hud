@@ -962,10 +962,7 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
             .min(only.owed_after_own_food);
         // A lone claimant eats every item it can use, which is the whole pool unless its debt
         // needs less: `covered` is capped at the debt, but the items it ate are not.
-        let needed = only
-            .owed_after_own_food
-            .saturating_add(SILVER_PER_FOOD - 1)
-            / SILVER_PER_FOOD;
+        let needed = only.owed_after_own_food.saturating_add(SILVER_PER_FOOD - 1) / SILVER_PER_FOOD;
         let used = pool.min(needed);
         return FactionFoodPass {
             settled: [(
@@ -1027,7 +1024,9 @@ mod late_food_tests {
     fn a_unit_that_owes_nothing_eats_nothing() {
         let claims = [claim("a", 0, 3, Some("GRAI"))];
         let relief = feed_after_silver(&claims, Some(3));
-        assert!(relief.get("a").is_none_or(|r| r == &LateFoodRelief::default()));
+        assert!(relief
+            .get("a")
+            .is_none_or(|r| r == &LateFoodRelief::default()));
     }
 
     #[test]
@@ -2821,7 +2820,10 @@ mod faction_food_tests {
 
     #[test]
     fn a_lone_short_claimant_eats_what_there_is() {
-        let claims = [claim("quartermaster", 1, 0, false), claim("a", 0, 200, true)];
+        let claims = [
+            claim("quartermaster", 1, 0, false),
+            claim("a", 0, 200, true),
+        ];
         let pass = feed_from_faction_food(&claims);
         assert_eq!(pass.settled.get("a"), Some(&Some(150)));
         assert_eq!(pass.pool_left, Some(0));
