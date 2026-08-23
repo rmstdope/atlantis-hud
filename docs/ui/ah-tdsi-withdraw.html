@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WITHDRAW spends the faction's fund (ah-tdsi)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-tdsi</span> — WITHDRAW spends the faction's fund, not the unit's silver</h1>
+  <p>The rules are explicit: <em>“WITHDRAW [item] — Use unclaimed funds to acquire basic items that
+  you need. If you do not have sufficient unclaimed, or if you try withdraw any other than a basic
+  item, an error will be given.”</em></p>
+  <p>Both surfaces charge the unit instead. <code>forecast_unit</code> adds the cost to the same
+  <code>expense</code> accumulator as BUY and GIVE; the ledger's <code>apply</code> charges the
+  unit's silver. Nothing anywhere debits the fund.</p>
+  <blockquote><b>Two visible consequences.</b> A withdrawing unit is shown with less silver than it
+  will really have, and can be warned <code>not-enough-silver</code> for money it was never going to
+  spend — a shipped test pins a unit warned it is “one silver short” of a $369 withdrawal. And a
+  faction that empties its fund through WITHDRAW is never warned, because
+  <code>total_claimed</code> counts <code>Intent::Claim</code> alone.</blockquote>
+</header>
+
+<main>
+
+<section>
+  <h2 class="rule"><em>The unit</em> what the column shows</h2>
+  <table class="t">
+    <tr><th>&nbsp;</th><th>Today</th><th>After</th></tr>
+    <tr><td>Held now</td><td class="num">368</td><td class="num">368</td></tr>
+    <tr><td>In</td><td class="num">0</td><td class="num">0</td></tr>
+    <tr><td>Out (WITHDRAW 10 grain @ $37)</td><td class="num">369</td><td class="num good">0</td></tr>
+    <tr><td>At month end</td><td class="num" style="color:var(--danger)">−1</td><td class="num good">368</td></tr>
+    <tr><td>Warned <code>not-enough-silver</code></td><td>yes — “one silver short”</td><td class="good">no</td></tr>
+  </table>
+  <div class="absent">The withdrawal simply leaves the unit's column. It is not the unit's money.</div>
+
+  <div class="lab">Does the hover say so?</div>
+  <div class="tips">
+    <div class="unit">
+      <div class="tip">
+        <div class="sect">Silver</div>
+        <div class="rowset">
+          <div class="row"><span>Held now</span><span class="v">368</span></div>
+          <div class="row"><span>In</span><span class="v">0</span></div>
+          <div class="row"><span>Out</span><span class="v">0</span></div>
+          <div class="row total"><span>At month end</span><span class="v">368</span></div>
+        </div>
+        <div class="tipnote">This unit's withdrawal is paid from the faction's unclaimed silver.</div>
+      </div>
+      <div class="cap"><b>3a — a note.</b> An <code>Out</code> of 0 on a unit ordered to withdraw
+      $369 of grain reads as a defect until something says why — the same argument that earned the
+      two food notes and the unclaimed-fund note their place.</div>
+    </div>
+    <div class="unit">
+      <div class="cap" style="padding-top:6px"><b>3b — nothing.</b> The column is a
+      <em>silver</em> column and the withdrawal never touches this unit's silver, so there is
+      nothing to explain: a player who did not order a withdrawal sees the same 0. Quieter, and one
+      fewer string to keep true.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>The faction</em> the fund is now spent by two orders, not one</h2>
+  <pre class="calc">Unclaimed silver: $500     CLAIM 300 (unit 101)     WITHDRAW 10 grain @ $37 = 370 (unit 102)
+
+  together they ask for 670 against a fund of 500  ->  the game will refuse one of them</pre>
+  <p>The shipped <code>claims-exceed-unclaimed</code> check sums <code>Intent::Claim</code> alone, so
+  today this is silent. Three ways to fix it:</p>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>What the player reads</th></tr>
+    <tr><td class="k">2a — widen the shipped check, reword</td>
+        <td><code>your units claim and withdraw $670 between them and the faction has $500</code><br>
+        One check for one fund. The Settings row's description widens with it.</td></tr>
+    <tr><td class="k">2b — a second, separate code</td>
+        <td><code>claims-exceed-unclaimed</code> stays exactly as it is, and a new
+        <code>withdrawals-exceed-unclaimed</code> covers the rest. Two rows in Settings, and a
+        faction doing both gets two findings about one fund.</td></tr>
+    <tr><td class="k">2c — widen it, keep the wording</td>
+        <td><code>your units claim $670 between them and the faction has $500</code> — says
+        “claim” of money that was withdrawn. Smallest change, and it tells a small lie.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Who gets named</em></h2>
+  <p>The shipped check names <strong>every claiming unit, each on its own CLAIM line</strong>, for a
+  stated reason: <em>“Every claiming unit is named because none of them is more at fault than the
+  others — the message says the total, so a unit reading it is not being blamed for the overrun on
+  its own.”</em></p>
+  <table class="q">
+    <tr><td class="k">Unit 101, on its CLAIM line</td><td>your units claim and withdraw $670 between them and the faction has $500</td></tr>
+    <tr><td class="k">Unit 102, on its WITHDRAW line</td><td>your units claim and withdraw $670 between them and the faction has $500</td></tr>
+  </table>
+  <div class="absent">Extending that to withdrawing units is the consistent reading. The alternative
+  is to name only the claimers, which would leave the withdrawal — often the larger sum — unmarked
+  in the Problems panel, where a player goes to fix it.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Two shipped strings lose their reason to exist</em></h2>
+  <table class="q">
+    <tr><th>Shipped</th><th>Why it goes</th></tr>
+    <tr><td class="k">SilverSpender::Withdraw → “withdraws”</td>
+        <td>Names the order a shortfall bites on. A withdrawal can no longer cause a unit's
+        shortfall, so it can never be the answer.</td></tr>
+    <tr><td class="k">“The ruleset does not say what withdrawing costs.”</td>
+        <td>Doubted the unit's <em>expense</em>. The unit has no withdrawal expense any more — so a
+        withdrawal the ruleset cannot price no longer makes the unit unpriceable. That is a strict
+        improvement for the column.</td></tr>
+  </table>
+  <p><strong>But the fact does not go away:</strong> an unpriced withdrawal means the faction's total
+  is unknown, so the fund check cannot be trusted.</p>
+  <table class="q">
+    <tr><td class="k">4a — stay silent</td><td>The check simply does not fire, exactly as it declines a report whose header states no fund. Absence of a number is not evidence of an overrun.</td></tr>
+    <tr><td class="k">4b — say so</td><td>A finding on the withdrawing unit: <code>the ruleset does not price this withdrawal, so your unclaimed fund cannot be checked</code>. Honest about a check that has silently switched off.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Out of scope, and worth saying</em></h2>
+  <div class="absent">The ledger charges the silver but <strong>never credits the withdrawn item</strong>
+  — a unit that withdraws 10 grain does not gain 10 grain in the model. That is a real second gap and
+  it is not this bead; fixing the payment side does not make it worse.</div>
+</section>
+</main>
+</body>
+</html>
