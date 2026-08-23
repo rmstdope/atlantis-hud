@@ -111,6 +111,7 @@ pub mod codes {
     pub const PRODUCE_WITHOUT_SKILL: Code = Code("produce-without-skill");
     pub const PRODUCE_NOT_HERE: Code = Code("produce-not-here");
     pub const REGION_POOL_OVERSUBSCRIBED: Code = Code("region-pool-oversubscribed");
+    pub const PILLAGE_WITHOUT_MEN: Code = Code("pillage-without-men");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -119,7 +120,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 30] = [
+    pub const ALL: [Code; 31] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -150,6 +151,7 @@ pub mod codes {
         PRODUCE_WITHOUT_SKILL,
         PRODUCE_NOT_HERE,
         REGION_POOL_OVERSUBSCRIBED,
+        PILLAGE_WITHOUT_MEN,
     ];
 }
 
@@ -333,6 +335,7 @@ pub fn review_turn(
         check_resources(hex, ledger, ruleset, &options, &mut findings);
         check_markets(hex, ruleset, &options, &mut findings);
         check_pillaged_tax(hex, own_unit_pillages(hex), &options, &mut findings);
+        check_pillage_men(hex, ruleset, &options, &mut findings);
         check_guard(hex, &options, &mut findings);
         check_teaching(hex, ruleset, &options, &mut findings);
         check_building(hex, &options, &mut findings);
@@ -3091,6 +3094,53 @@ fn check_build_skill(
     }
 }
 
+/// A `PILLAGE` by a faction without the combat ready men the region needs (`ah-1ad6.2`).
+///
+/// One finding per pillaging unit, on that unit's `PILLAGE` line, rather than one per hex: the
+/// finding hangs on an order, and each pillaging unit wrote its own.
+///
+/// Silent where the tax base or the headcount is unknown. The Silver column already shows `?`
+/// there, and a mark would be a second and louder claim about something nobody knows.
+fn check_pillage_men(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::PILLAGE_WITHOUT_MEN) {
+        return;
+    }
+    let Some(tax_base) = hex.region.tax_base else {
+        return;
+    };
+    let Some(ready) = combat_ready_in(hex, ruleset) else {
+        return;
+    };
+    let needed = pillage_threshold(tax_base);
+    if ready >= needed {
+        return;
+    }
+
+    for ordered in &hex.units {
+        // One warning per unit, on the first PILLAGE in the block, as the BUILD checks do.
+        let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Pillage))
+        else {
+            continue;
+        };
+        findings.push(ordered.finding(
+            hex,
+            codes::PILLAGE_WITHOUT_MEN,
+            format!(
+                "cannot pillage here: needs {needed} combat ready men, this faction has {ready}"
+            ),
+            Some(placed),
+        ));
+    }
+}
+
 /// Both ways a `PRODUCE` order makes nothing: the unit cannot make the item anywhere, or not here.
 ///
 /// Two codes rather than one because they are separately toggleable and separately true, and a
@@ -5706,6 +5756,81 @@ mod tests {
                 .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
                     && finding.unit_id.as_deref() == Some("2")),
             "the warning fires too: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// The mark that says why the column shows nothing (`ah-1ad6.2`), one per pillaging unit
+    /// because the finding hangs on an order and each pillaging unit wrote its own.
+    #[test]
+    fn a_faction_without_the_men_is_told_so() {
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![with_silver(unit("683"), 0)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(told[0].unit_id.as_deref(), Some("683"));
+        assert_eq!(told[0].line, Some(2), "on the PILLAGE line");
+        assert_eq!(
+            told[0].message,
+            "cannot pillage here: needs 90 combat ready men, this faction has 0"
+        );
+    }
+
+    #[test]
+    fn a_faction_with_the_men_is_not_marked() {
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![armed_to_pillage(with_silver(unit("683"), 0), 8963)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN),
+            "{:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// Silence, not a mark: the column already shows `?`, and a mark would be a second and louder
+    /// claim about something unknown.
+    #[test]
+    fn an_unknown_tax_base_is_not_marked() {
+        let hex_region = ReportRegion {
+            tax_base: None,
+            ..region(vec![with_silver(unit("683"), 0)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN),
+            "{:?}",
             codes(&review.findings)
         );
     }
@@ -11788,6 +11913,16 @@ mod tests {
                     ..region(vec![with_men(unit("500"), 10), with_men(unit("700"), 50)])
                 }],
                 orders: "unit 500\nTAX\nunit 700\nTAX\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::PILLAGE_WITHOUT_MEN,
+                regions: vec![ReportRegion {
+                    tax_base: Some(8963),
+                    ..region(vec![unit("683")])
+                }],
+                orders: "unit 683\nPILLAGE\n",
                 allowance: None,
                 unclaimed: None,
             },
