@@ -2981,6 +2981,84 @@ test("a unit named in the region pane's problems is a way to select it", async (
   await expect(page.getByTestId("region-problems")).toBeVisible();
 });
 
+/**
+ * ah-pdly: a chip says `aria-haspopup="dialog"` and then opens one. These pin that the dialog is
+ * where the user is put, and that closing puts them back where they were - the whole of the bead,
+ * and browser-only because `packages/shared` has no jsdom and so runs no effects.
+ */
+test("opening a header popover moves focus to the panel", async ({ page }) => {
+  await loadReport(page);
+
+  await page.getByTestId("turn-messages-chip").click();
+
+  await expect(page.getByTestId("turn-messages")).toBeFocused();
+});
+
+test("closing the panel with Escape puts focus back on the chip", async ({ page }) => {
+  await loadReport(page);
+
+  await page.getByTestId("turn-messages-chip").click();
+  await expect(page.getByTestId("turn-messages")).toBeFocused();
+
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByTestId("turn-messages-chip")).toBeFocused();
+});
+
+test("closing the panel with its own close button puts focus back on the chip", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  await page.getByTestId("turn-messages-chip").click();
+  await page.getByRole("button", { name: "close turn messages", exact: true }).click();
+
+  await expect(page.getByTestId("turn-messages")).toHaveCount(0);
+  await expect(page.getByTestId("turn-messages-chip")).toBeFocused();
+});
+
+/**
+ * The header's chips dismiss one another in a single render, so the panel that just closed must
+ * not drag focus back onto its own chip and off the one that just opened.
+ */
+test("opening a second popover leaves focus in the second panel", async ({ page }) => {
+  await loadReport(page);
+
+  await page.getByTestId("turn-messages-chip").click();
+  await expect(page.getByTestId("turn-messages")).toBeFocused();
+
+  await page.getByTestId("problems-chip").click();
+
+  await expect(page.getByTestId("turn-messages")).toHaveCount(0);
+  await expect(page.getByTestId("problems-panel")).toBeFocused();
+});
+
+/**
+ * One rule, not two panels' worth: every popover shares `PopoverFrame`, so every one of them has
+ * to behave the same way. Left out here because this fixture cannot reach them: `unreadable`
+ * (needs a report with unreadable lines) and `merged` (needs a merged game).
+ */
+test("every header popover takes focus when it opens", async ({ page }) => {
+  await loadReport(page);
+
+  const chips: ReadonlyArray<readonly [string, string]> = [
+    ["game-indicator", "game-picker"],
+    ["turn-chip", "turn-picker"],
+    ["faction-chip", "faction-panel"],
+    ["export-menu", "export-menu-panel"],
+    ["trade-chip", "trade-panel"],
+    ["problems-chip", "problems-panel"],
+    ["turn-messages-chip", "turn-messages"]
+  ];
+
+  for (const [chip, panel] of chips) {
+    await page.getByTestId(chip).click();
+    await expect(page.getByTestId(panel), chip).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId(panel), chip).toHaveCount(0);
+  }
+});
+
 test("the turn messages panel closes on Escape", async ({ page }) => {
   await loadReport(page);
 

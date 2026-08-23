@@ -78,9 +78,31 @@ export function PopoverFrame({
   frameRef?: RefObject<HTMLDivElement | null>;
   children: ReactNode;
 }) {
+  // The frame takes focus as it mounts (ah-pdly). It is the `role="dialog"` element carrying the
+  // `aria-label`, so focusing it announces both the dialog the chip promised and its name - which
+  // is the thing the user was told about and, until now, had to go and find by tabbing. `tabIndex`
+  // of -1 makes it focusable by script without ever becoming a Tab stop of its own, and
+  // `preventScroll` because a panel anchored under a header chip would otherwise be scrolled into
+  // view and drag the whole workspace with it. Empty deps: the frame mounts when the popover opens
+  // and unmounts when it closes, so there is no "already open" case to guard.
+  const ownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    ownRef.current?.focus({ preventScroll: true });
+  }, []);
+
   return (
     <div
-      ref={frameRef}
+      // Both refs on the one node: `frameRef` is an existing prop with a real caller that measures
+      // itself (ah-mwqa), and repurposing it would leave every panel that does not pass one with no
+      // focus at all.
+      ref={(node) => {
+        ownRef.current = node;
+        if (frameRef) {
+          frameRef.current = node;
+        }
+      }}
+      tabIndex={-1}
       data-testid={testId}
       role="dialog"
       aria-label={label}
@@ -112,6 +134,55 @@ export function ChipPopover({
 }) {
   const wrapperRef = useRef<HTMLSpanElement | null>(null);
   usePopoverDismiss(wrapperRef, open, onDismiss);
+
+  // Closing puts the user back where they were (ah-pdly). Remembered on open rather than assumed
+  // to be the chip: a popover can be opened by a cycling chord with focus somewhere else entirely,
+  // and going back to where the user actually was is the rule that holds in every case.
+  const returnTo = useRef<HTMLElement | null>(null);
+  const wasOpen = useRef(open);
+
+  // Captured while rendering, not in an effect: React runs a child's effects before its parent's,
+  // so by the time an effect here saw `document.activeElement` the panel had already taken focus
+  // on mount and we would be remembering the panel we are about to unmount. Render runs before any
+  // of that, when focus is still wherever the user actually was.
+  const hadFocus = useRef(false);
+
+  if (open && !wasOpen.current) {
+    returnTo.current = document.activeElement as HTMLElement | null;
+  }
+  if (!open && wasOpen.current) {
+    // Asked while rendering for the same reason: by the time the effect below runs the panel has
+    // been removed from the document and focus has already fallen to <body>, so "is focus still
+    // ours?" can only be answered before the commit.
+    hadFocus.current = wrapperRef.current?.contains(document.activeElement) ?? false;
+  }
+  wasOpen.current = open;
+
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+    const target = returnTo.current;
+    const ours = hadFocus.current;
+    returnTo.current = null;
+    hadFocus.current = false;
+    // Restore only when the panel still held focus AND nothing else has claimed it since. The
+    // header's chips dismiss one another in a single render, so a press that closed this popover
+    // by opening another must leave the user in the new panel rather than dragging them back to
+    // this chip - and which of the two effects runs first depends on nothing better than the order
+    // the chips happen to sit in the header.
+    //
+    // A press OUTSIDE the popover is deliberately not restored (navigator, 2026-08-23): the
+    // dismissal fires on pointerdown, so this runs before the browser's own mousedown default
+    // moves focus to whatever was pressed, and any restore here would be undone a moment later -
+    // or, worse, would succeed and steal focus off the control the user just clicked. Escape and
+    // the panel's close button, which is what a keyboard user has, both restore.
+    const active = document.activeElement;
+    const unclaimed = active === null || active === document.body;
+    if (target && ours && unclaimed) {
+      target.focus({ preventScroll: true });
+    }
+  }, [open]);
 
   return (
     <span ref={wrapperRef} className={`relative ${className ?? ""}`}>
