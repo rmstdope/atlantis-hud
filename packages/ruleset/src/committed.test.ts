@@ -163,4 +163,24 @@ describe("the committed ruleset", () => {
       )
     ).toEqual([]);
   });
+
+  /**
+   * The data page says a food item pays 30 silver of maintenance; the rules page says 50, and 50 is
+   * what the core charges (`ah-j00u`). This holds the disagreement in place so it cannot be
+   * forgotten: when upstream regenerates the data page, this test fails, and whoever sees it should
+   * confirm the rules page still says 50, delete this test, and delete the note on
+   * `SILVER_PER_FOOD` in `crates/core/src/orders/silver.rs`.
+   *
+   * A failure here is good news and is never fixed by changing the expectation.
+   *
+   * The four tags are the same four as `FOOD_TAGS` (`crates/core/src/orders/silver.rs`); the two
+   * lists must not drift.
+   */
+  it("still records the data page's stale food value", () => {
+    for (const tag of ["GRAI", "LIVE", "FISH", "MEAL"]) {
+      expect(COMMITTED.items[tag]?.description, tag).toContain(
+        "eaten to provide 30 silver towards a unit's maintenance cost"
+      );
+    }
+  });
 });

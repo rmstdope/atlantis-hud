@@ -63,6 +63,23 @@ const UPKEEP_PER_LEADER: i64 = 50;
 /// "Units may substitute one unit of grain, livestock, fish or meals for each 50 silver (or
 /// fraction thereof) of maintenance owed. Food value for a fractional maintenance cost still
 /// consumes the entire unit of food."
+///
+/// **The data page says 30, and it is stale** (`ah-j00u`, settled with the navigator 2026-08-23).
+/// Every food item's entry there reads "can be eaten to provide 30 silver towards a unit's
+/// maintenance cost", and that sentence is scraped verbatim into
+/// `config/public/ruleset.json`'s `items.GRAI.description` and its three siblings - so a reader
+/// who checks the catalogue rather than the rules will find 30 and think this constant wrong.
+///
+/// It is not. The rules page carries 50 in the *Maintenance Costs* section, which is the section
+/// that describes the mechanic; the changelog records "Meals are now 50 silver each (was 30
+/// silver)"; and the data page's 30 appears identically on all four food items, which is what a
+/// generated string that was never regenerated looks like rather than a second opinion.
+///
+/// The report corpus was searched for a unit whose food fell between two turns and cannot settle
+/// it: every candidate is a supply unit visibly trading food, and the rest hold too little to tell
+/// `ceil(owed/50)` from `ceil(owed/30)`. `committed.test.ts`'s
+/// `still records the data page's stale food value` fails when upstream fixes the page, which is
+/// the signal to delete this note.
 const SILVER_PER_FOOD: i64 = 50;
 
 /// The food items the rules name, by tag.
