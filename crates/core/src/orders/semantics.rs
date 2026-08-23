@@ -270,6 +270,11 @@ pub fn review_turn(
     // quadratic in the size of a faction, on a path that runs on every keystroke.
     let receipts = gather_receipts(report, &ordered, ruleset);
 
+    // Read once for the whole report rather than per hex or per message: the unit a shortfall is
+    // said of is often the one holding none of the thing, so the evidence for its plural is
+    // usually somewhere else entirely (`ah-rsdz`).
+    let plurals = plurals_in(report);
+
     // Faction-wide, so it is read once for the whole report rather than per hex: the same value
     // recomputed in every region would also read to the next person as though it were regional.
     let purse = FactionPurse {
@@ -332,8 +337,8 @@ pub fn review_turn(
         }
 
         let start = findings.len();
-        check_region_pools(hex, &overruns, ruleset, &options, &mut findings);
-        check_resources(hex, ledger, ruleset, &options, &mut findings);
+        check_region_pools(hex, &overruns, ruleset, &plurals, &options, &mut findings);
+        check_resources(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_markets(hex, ruleset, &options, &mut findings);
         let pillaged = own_unit_pillages(hex);
         check_pillaged_tax(hex, pillaged, &options, &mut findings);
@@ -1403,10 +1408,11 @@ fn check_resources(
     hex: &Hex<'_>,
     ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    report_shortfalls(ledger, hex, ruleset, options, findings);
+    report_shortfalls(ledger, hex, ruleset, plurals, options, findings);
 }
 
 // --- markets: a BUY or SELL naming what this hex does not trade --------------------------------
@@ -2295,6 +2301,7 @@ fn report_shortfalls(
     ledger: &Ledger<'_>,
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
@@ -2396,12 +2403,12 @@ fn report_shortfalls(
                     at,
                 )
             } else {
-                let name = item_name(tag, hex, ruleset);
+                let short_of = counted_item(short, tag, hex, ruleset, plurals);
                 ordered.finding(
                     hex,
                     codes::NOT_ENOUGH_ITEMS,
                     format!(
-                        "short {short} {name}: this unit can have {} and its orders spend {}",
+                        "short {short_of}: this unit can have {} and its orders spend {}",
                         ordered.holding(tag),
                         ordered.holding(tag) + short,
                     ),
@@ -2464,9 +2471,9 @@ fn report_shortfalls(
                 held + short,
             )
         } else {
-            let name = item_name(&tag, hex, ruleset);
+            let short_of = counted_item(short, &tag, hex, ruleset, plurals);
             format!(
-                "the units in this hex are short {short} {name} between them: they can have \
+                "the units in this hex are short {short_of} between them: they can have \
                  {held} and their orders spend {}",
                 held + short,
             )
@@ -2559,6 +2566,70 @@ fn spenders(upkeep: i64) -> &'static str {
 }
 
 /// How to write an item in a message: the catalogue's name where there is one, the tag otherwise.
+/// Every item's plural, as the report itself writes it.
+///
+/// Keyed by upper-case tag. Built from every unit line in the report that shows **more than one**
+/// of something: `5 horses [HORS]` is the engine's own plural, which is why this beats any rule -
+/// `amulets of protection` and `books of exorcism` are not what adding an `s` produces, and
+/// `10 grain` is what an invariant noun looks like rather than a missing plural.
+///
+/// A tag is absent when nobody in the report holds more than one of it.
+type Plurals = BTreeMap<String, String>;
+
+/// Reads the plural of every item any unit in the report holds more than one of.
+///
+/// **The whole report, not one hex**, and deliberately: the unit a message is about is often the
+/// one that has *too few* of the thing - `short 5 horses` is said of a unit holding none - so the
+/// hex it stands in is exactly where the evidence tends not to be. Built once in `review_turn`
+/// and passed down, rather than scanned per message.
+///
+/// Every unit the report shows, ours and foreign alike: a foreign unit's inventory is as good a
+/// dictionary as ours, and nothing is read from it but a noun. Where two units disagree about a
+/// tag's plural the first by document order stands - it does not arise on the committed corpus,
+/// and a stable answer matters more than which of the two it is.
+fn plurals_in(report: &ParsedReport) -> Plurals {
+    let mut plurals = Plurals::new();
+    for item in report
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .flat_map(|unit| unit.items.iter())
+        .filter(|item| item.amount > 1)
+    {
+        plurals
+            .entry(item.tag.to_ascii_uppercase())
+            .or_insert_with(|| item.name.clone());
+    }
+    plurals
+}
+
+/// A count and an item's name, agreeing in number: `1 horse`, `5 horses`, `10 grain`.
+///
+/// The acceptance criterion `ah-rsdz` was filed for: the rule lives here and nowhere else, so a
+/// message added later inherits it by using this instead of [`item_name`].
+///
+/// A count of 1 takes the ruleset's singular - the catalogue is always present, and the table only
+/// ever holds plurals. Any other count, 0 included (`0 horses` is what English does), takes the
+/// plural, falling back to the singular where the report never showed one. The fallback is never
+/// an invented `-s`: 84 of the 114 items the corpus shows with a count above one pluralise
+/// irregularly, and 30 do not pluralise at all.
+fn counted_item(
+    count: i64,
+    tag: &str,
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+) -> String {
+    if count == 1 {
+        return format!("1 {}", item_name(tag, hex, ruleset));
+    }
+    let name = plurals
+        .get(&tag.to_ascii_uppercase())
+        .cloned()
+        .unwrap_or_else(|| item_name(tag, hex, ruleset));
+    format!("{count} {name}")
+}
+
 fn item_name(tag: &str, hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> String {
     if let Some(item) = ruleset.and_then(|ruleset| ruleset.find_item(tag)) {
         return item.name.clone();
@@ -4344,6 +4415,7 @@ fn check_region_pools(
     hex: &Hex<'_>,
     overruns: &[PoolOverrun],
     ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
@@ -4384,19 +4456,23 @@ fn check_region_pools(
             // `not-traded-here` already speaks about a market in its own terms, and unlike the
             // silver pools above there is no `$`.
             ContendedPool::Market { tag, side } => {
-                let goods = item_name(tag, hex, ruleset).to_lowercase();
+                // The noun agrees with what is *wanted*, never with what is available: the two
+                // differ in number exactly when the sentence is worth reading (`ah-rsdz`).
+                // Lowercasing the whole thing is what this site already did to the name alone -
+                // a leading digit is unaffected by it.
+                let goods = counted_item(*wanted, tag, hex, ruleset, plurals).to_lowercase();
                 match (side, alone) {
                     (MarketSide::Selling, false) => format!(
-                        "your units here sell {wanted} {goods} between them and this market wants {available}"
+                        "your units here sell {goods} between them and this market wants {available}"
                     ),
                     (MarketSide::Buying, false) => format!(
-                        "your units here buy {wanted} {goods} between them and this market has {available}"
+                        "your units here buy {goods} between them and this market has {available}"
                     ),
                     (MarketSide::Selling, true) => {
-                        format!("this unit sells {wanted} {goods} and this market wants {available}")
+                        format!("this unit sells {goods} and this market wants {available}")
                     }
                     (MarketSide::Buying, true) => {
-                        format!("this unit buys {wanted} {goods} and this market has {available}")
+                        format!("this unit buys {goods} and this market has {available}")
                     }
                 }
             }
@@ -4512,6 +4588,210 @@ mod tests {
 
     fn ruleset() -> Ruleset {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
+    }
+
+    /// `ah-rsdz`. A count and an item name have to agree in number, and the plural comes from the
+    /// report's own item lines rather than from any rule: 84 of the 114 items the corpus shows
+    /// with a count above one pluralise irregularly, and 30 do not pluralise at all.
+    mod plural_names {
+        use super::*;
+
+        fn holding(id: &str, amount: i64, name: &str, tag: &str) -> ReportUnit {
+            with_item(unit(id), amount, name, tag)
+        }
+
+        fn plural_of(tag: &str, units: Vec<ReportUnit>) -> Option<String> {
+            plurals_in(&report(vec![region(units)])).get(tag).cloned()
+        }
+
+        #[test]
+        fn reads_a_plural_from_a_unit_that_holds_more_than_one() {
+            assert_eq!(
+                plural_of("HORS", vec![holding("2390", 5, "horses", "HORS")]).as_deref(),
+                Some("horses")
+            );
+        }
+
+        #[test]
+        fn ignores_a_unit_that_holds_exactly_one() {
+            assert_eq!(
+                plural_of("HORS", vec![holding("2390", 1, "horse", "HORS")]),
+                None
+            );
+        }
+
+        /// The test the whole bead exists for: no rule produces `amulets of protection`.
+        #[test]
+        fn reads_an_irregular_plural_as_the_report_writes_it() {
+            assert_eq!(
+                plural_of(
+                    "AMPR",
+                    vec![holding("2390", 3, "amulets of protection", "AMPR")]
+                )
+                .as_deref(),
+                Some("amulets of protection")
+            );
+        }
+
+        #[test]
+        fn reads_an_invariant_noun_unchanged() {
+            assert_eq!(
+                plural_of("GRAI", vec![holding("2390", 10, "grain", "GRAI")]).as_deref(),
+                Some("grain")
+            );
+        }
+
+        /// A foreign unit's inventory is as good a dictionary as ours, and nothing is read from it
+        /// but a noun.
+        #[test]
+        fn reads_a_foreign_units_inventory_too() {
+            let mut theirs = holding("14", 4, "books of exorcism", "BOOK");
+            theirs.own = false;
+            assert_eq!(
+                plural_of("BOOK", vec![theirs]).as_deref(),
+                Some("books of exorcism")
+            );
+        }
+
+        fn counted(count: i64, tag: &str, plurals: &Plurals) -> String {
+            let region = region(vec![]);
+            let ordered = OrderedUnits::read("");
+            let hex = Hex::read(&region, &ordered);
+            counted_item(count, tag, &hex, Some(&ruleset()), plurals)
+        }
+
+        fn table(tag: &str, plural: &str) -> Plurals {
+            let mut plurals = Plurals::new();
+            plurals.insert(tag.to_string(), plural.to_string());
+            plurals
+        }
+
+        /// The catalogue's singular, not the table's - the table only ever holds plurals.
+        #[test]
+        fn one_reads_singular() {
+            assert_eq!(counted(1, "HORS", &table("HORS", "horses")), "1 horse");
+        }
+
+        #[test]
+        fn many_reads_plural() {
+            assert_eq!(counted(5, "HORS", &table("HORS", "horses")), "5 horses");
+        }
+
+        /// Today's behaviour, for the residue only: wrong, but never invented.
+        #[test]
+        fn an_unknown_plural_falls_back() {
+            assert_eq!(counted(5, "HORS", &Plurals::new()), "5 horse");
+        }
+
+        #[test]
+        fn an_invariant_noun_does_not_gain_an_s() {
+            assert_eq!(counted(10, "GRAI", &table("GRAI", "grain")), "10 grain");
+        }
+        // --- the messages that pair a count with a name ---------------------------------------
+
+        /// A unit holding several of something, so the report states the plural somewhere - the
+        /// unit a message is about is usually the one that has too few of the thing.
+        fn dictionary(id: &str, amount: i64, plural: &str, tag: &str) -> ReportUnit {
+            with_item(unit(id), amount, plural, tag)
+        }
+
+        #[test]
+        fn a_shortfall_of_several_reads_plural() {
+            let regions = vec![region(vec![
+                unit("5"),
+                dictionary("7", 3, "swords", "SWOR"),
+            ])];
+            let finding = only(check_ignoring_transfer_targets(
+                regions,
+                "unit 5\nGIVE 9 5 swords\n",
+            ));
+            assert_eq!(
+                finding.message,
+                "short 5 swords: this unit can have 0 and its orders spend 5"
+            );
+        }
+
+        #[test]
+        fn a_shortfall_of_one_reads_singular() {
+            let regions = vec![region(vec![
+                unit("5"),
+                dictionary("7", 3, "swords", "SWOR"),
+            ])];
+            let finding = only(check_ignoring_transfer_targets(
+                regions,
+                "unit 5\nGIVE 9 1 sword\n",
+            ));
+            assert_eq!(
+                finding.message,
+                "short 1 sword: this unit can have 0 and its orders spend 1"
+            );
+        }
+
+        #[test]
+        fn a_hex_shortfall_of_several_reads_plural() {
+            let regions = vec![region(vec![
+                unit("5"),
+                sharing(with_item(unit("7"), 20, "swords", "SWOR")),
+            ])];
+            let finding = only(check_ignoring_transfer_targets(
+                regions,
+                "unit 5\nGIVE 9 30 swords\n",
+            ));
+            assert_eq!(
+                finding.message,
+                "the units in this hex are short 10 swords between them: they can have 20 \
+                 and their orders spend 30"
+            );
+        }
+
+        /// The noun agrees with what is wanted, never with what is available - invisible until the
+        /// two differ in number.
+        #[test]
+        fn the_market_sentences_agree_in_number() {
+            let hex = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 1,
+                    name: "horse".to_string(),
+                    tag: "HORS".to_string(),
+                    price: 50,
+                }],
+                ..region(vec![
+                    with_silver(unit("2390"), 100_000),
+                    dictionary("2391", 4, "horses", "HORS"),
+                ])
+            };
+            let findings = check(vec![hex], "unit 2390\nBUY 2 horse\n");
+            let message = findings
+                .iter()
+                .find(|finding| finding.code == codes::REGION_POOL_OVERSUBSCRIBED)
+                .map(|finding| finding.message.clone())
+                .unwrap_or_else(|| panic!("expected an oversubscription: {findings:?}"));
+            assert_eq!(message, "this unit buys 2 horses and this market has 1");
+        }
+
+        /// `not-traded-here` never puts a number against a name, which is why it escaped the
+        /// defect - and it must keep escaping it.
+        #[test]
+        fn a_message_with_no_count_is_unchanged() {
+            let hex = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 10,
+                    name: "perfume".to_string(),
+                    tag: "PERF".to_string(),
+                    price: 50,
+                }],
+                ..region(vec![
+                    with_silver(unit("2390"), 100_000),
+                    dictionary("2391", 4, "horses", "HORS"),
+                ])
+            };
+            let findings = check(vec![hex], "unit 2390\nBUY 5 horse\n");
+            assert!(
+                findings.iter().any(|finding| finding.message
+                    == "this hex does not sell horse - its market has perfume"),
+                "{findings:?}"
+            );
+        }
     }
 
     /// `ah-t2pn.4`. When own units in one hex are promised more of a region's pool than it holds,
