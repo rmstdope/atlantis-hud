@@ -154,6 +154,7 @@ describe("the silver section", () => {
     doubtSubject: null,
     received: 0,
     givers: [],
+    givenToNobody: 0,
     ...overrides
   });
 
@@ -241,6 +242,29 @@ describe("the silver section", () => {
         givers: ["Paymaster (2390)"]
       })
     ).toBe("Includes 200 given by Paymaster (2390) in this hex.");
+  });
+
+  it("the_silver_section_explains_a_purchase_and_a_withdrawal", () => {
+    const note = (silver: Partial<UnitSilver>) =>
+      summariseUnit(aReportUnit({ unitId: "1" }), forecast(silver)).silver?.note;
+
+    expect(
+      note({
+        expense: null,
+        atMonthEnd: null,
+        doubt: "market-does-not-sell",
+        doubtSubject: "horses"
+      })
+    ).toBe("This region is not selling horses, so what the purchase costs cannot be said.");
+    expect(note({ expense: null, atMonthEnd: null, doubt: "unpriced-withdrawal" })).toBe(
+      "The ruleset does not say what withdrawing costs."
+    );
+    expect(note({ expense: null, atMonthEnd: null, doubt: "gives-a-whole-class" })).toBe(
+      "This unit is giving away a whole class of goods, which cannot be counted."
+    );
+    expect(
+      note({ income: 0, expense: 300, atMonthEnd: 60, givenToNobody: 300 })
+    ).toBe("Includes 300 given away to nobody.");
   });
 
   it("names_every_giver_the_way_a_market_list_reads", () => {

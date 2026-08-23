@@ -149,6 +149,17 @@ function silverNote(silver: UnitSilver, warned: boolean): string | null {
   if (silver.doubt === "estimated-men") {
     return "This unit's headcount is an estimate, so its month cannot be priced.";
   }
+  if (silver.doubt === "market-does-not-sell") {
+    // The market's own name for the goods where anything knew one, and the order's own text
+    // otherwise - the same posture `unknown-goods` above takes.
+    return `This region is not selling ${silver.doubtSubject ?? "these goods"}, so what the purchase costs cannot be said.`;
+  }
+  if (silver.doubt === "unpriced-withdrawal") {
+    return "The ruleset does not say what withdrawing costs.";
+  }
+  if (silver.doubt === "gives-a-whole-class") {
+    return "This unit is giving away a whole class of goods, which cannot be counted.";
+  }
   // The column counts what WORK earns; `not-enough-silver` deliberately does not, because wages
   // are paid in the turn's last phase. Both are true about different moments.
   if (warned && end !== null && end >= 0) {
@@ -158,6 +169,11 @@ function silverNote(silver: UnitSilver, warned: boolean): string | null {
   // part a reader cannot find by looking at this unit's own block.
   if (silver.received > 0 && silver.givers.length > 0) {
     return `Includes ${silver.received} given by ${namesInAList(silver.givers)} in this hex.`;
+  }
+  // Silver a unit is ordered to destroy is spending like any other, and the one kind a reader
+  // would otherwise look for a recipient of and find none.
+  if (silver.givenToNobody > 0) {
+    return `Includes ${silver.givenToNobody} given away to nobody.`;
   }
   if (silver.income === 0 && silver.expense === 0) {
     return "Nothing this unit is ordered to do moves silver.";

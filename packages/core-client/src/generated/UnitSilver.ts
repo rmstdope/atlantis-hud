@@ -37,4 +37,9 @@ received: number,
 /**
  * Those givers, as `<name> (<id>)`, so the hover can name them.
  */
-givers: Array<string>, };
+givers: Array<string>, 
+/**
+ * Silver this unit is ordered to give to nobody - `GIVE 0 ... SILV`, which destroys it. Part
+ * of `expense` like any other gift; carried separately only so the hover can say so.
+ */
+givenToNobody: number, };

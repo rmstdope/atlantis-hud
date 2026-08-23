@@ -13,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::movement::rules::Ruleset;
-use crate::orders::forms::Amount;
+use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{Intent, PlacedIntent};
 use crate::report::model::Skill;
 
@@ -31,6 +31,9 @@ const ENTERTAIN_PER_MAN_PER_LEVEL: i64 = 30;
 const PHANTASMAL_PER_LEVEL: i64 = 600;
 
 const ENTERTAIN_TAG: &str = "ENTE";
+
+/// The item tag silver itself carries, both in a report's inventory and in a cast's costs.
+const SILVER_TAG: &str = "SILV";
 
 /// The two spells this ruleset describes as earning. Hard-coding them in the core is a real cost,
 /// accepted knowingly: the ruleset carries no structured earning for any spell, so there is nothing
@@ -67,6 +70,9 @@ pub struct UnitSilver {
     pub received: i64,
     /// Those givers, as `<name> (<id>)`, so the hover can name them.
     pub givers: Vec<String>,
+    /// Silver this unit is ordered to give to nobody - `GIVE 0 ... SILV`, which destroys it. Part
+    /// of `expense` like any other gift; carried separately only so the hover can say so.
+    pub given_to_nobody: i64,
 }
 
 /// Why a unit's month could not be priced. One variant per sentence the interface shows.
@@ -87,6 +93,41 @@ pub enum SilverDoubt {
     /// `CAST` of a spell the ruleset describes as earning but prices nowhere - Earth Lore, whose
     /// rules text gives no arithmetic at all.
     UnpricedSpell,
+    /// `BUY` of goods this region's `For Sale` list does not carry, so the purchase has no price.
+    MarketDoesNotSell,
+    /// `WITHDRAW` of an item the ruleset carries no withdrawal price for - anything that is not a
+    /// basic item, and every item at all for a ruleset cached before `ah-1wcw.6`.
+    UnpricedWithdrawal,
+    /// `GIVE` of a whole class of goods, or of the unit itself: what leaves depends on classifying
+    /// everything the unit holds, which is not modelled.
+    GivesAWholeClass,
+}
+
+/// What this hex's market says about goods a unit is ordered to buy.
+///
+/// The mirror of [`SaleAnswer`], and shorter: a market that does not sell the goods cannot price
+/// the purchase at all, so there is only one kind of no.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PurchaseAnswer {
+    /// The market sells the goods: what each costs, and how many it has.
+    ForSale { price: i64, market_has: i64 },
+    /// This market has no `For Sale` line for the goods, named as well as anything could name
+    /// them - the catalogue's name where there is one, the order's own text otherwise.
+    NotSold { name: String },
+}
+
+/// What [`forecast_unit`] must ask [`super::semantics`] rather than derive itself.
+///
+/// Resolving an item name against the catalogue and the hex's inventories is that module's
+/// business, so the arithmetic here is handed closures rather than re-deriving any of it.
+#[derive(Clone, Copy)]
+pub struct Lookups<'a> {
+    /// What the hex's `Wanted` list says about goods a `SELL` names.
+    pub sale: &'a dyn Fn(&str) -> SaleAnswer,
+    /// What the hex's `For Sale` list says about goods a `BUY` names.
+    pub purchase: &'a dyn Fn(&str) -> PurchaseAnswer,
+    /// The canonical tag for an item an order names, or `None` for one nothing could identify.
+    pub item_tag: &'a dyn Fn(&str) -> Option<String>,
 }
 
 /// What this hex's market says about goods a unit is ordered to sell.
@@ -214,9 +255,10 @@ pub fn parse_wage_centis(wages: Option<&str>) -> Option<i64> {
 pub fn forecast_unit(
     facts: UnitFacts<'_>,
     region: RegionWages,
-    sale: &dyn Fn(&str) -> SaleAnswer,
+    lookups: Lookups<'_>,
     ruleset: Option<&Ruleset>,
 ) -> UnitSilver {
+    let sale = lookups.sale;
     let UnitFacts {
         unit_id,
         region_id,
@@ -242,6 +284,7 @@ pub fn forecast_unit(
             doubt_subject: None,
             received: 0,
             givers: Vec::new(),
+            given_to_nobody: 0,
         };
     }
 
@@ -252,6 +295,10 @@ pub fn forecast_unit(
     let mut income_doubt = None;
     let mut expense_doubt = None;
     let mut doubt_subject = None;
+    let mut given_to_nobody = 0i64;
+    // `BUY ALL` and `GIVE ... ALL SILV` spend what is left after every other term, so they cannot
+    // be priced inside this pass. Collected in document order and applied below.
+    let mut deferred: Vec<Deferred> = Vec::new();
 
     for placed in intents {
         match &placed.intent {
@@ -313,10 +360,10 @@ pub fn forecast_unit(
                 }
             }
             Intent::Cast { spell, .. } => {
-                match ruleset
-                    .and_then(|ruleset| ruleset.find_skill(spell))
-                    .map(|skill| skill.tag.to_ascii_uppercase())
-                {
+                // Resolved once: this runs per keystroke, and `find_skill` walks the catalogue.
+                let spell = ruleset.and_then(|ruleset| ruleset.find_skill(spell));
+
+                match spell.map(|skill| skill.tag.to_ascii_uppercase()) {
                     Some(tag) if tag == PHANTASMAL_TAG => {
                         // Capped by the region's demand, but it does not *draw* on it: a hex with
                         // an entertainer and a phantasmal entertainer may forecast more than the
@@ -329,16 +376,111 @@ pub fn forecast_unit(
                     Some(tag) if tag == EARTH_LORE_TAG => {
                         income_doubt = income_doubt.or(Some(SilverDoubt::UnpricedSpell))
                     }
-                    // Every other spell earns nothing here; what one *costs* is `ah-1wcw.3`'s.
+                    // Every other spell earns nothing here; what it *costs* is charged below.
                     _ => {}
+                }
+
+                // A cast consumes what the ruleset says it consumes, and only its `SILV` entries
+                // move silver: item costs and the whole `transmute` map are another ledger's
+                // business. A spell the ruleset does not know, or knows no cost for, costs nothing
+                // and doubts nothing - which is the truth about most spells.
+                if let Some(cost) = spell.and_then(|skill| skill.cast.as_ref()) {
+                    for input in &cost.costs {
+                        if input.tag.eq_ignore_ascii_case(SILVER_TAG) {
+                            expense = expense.saturating_add(input.amount);
+                        }
+                    }
+                }
+            }
+            Intent::Buy { amount, item } => match (lookups.purchase)(item) {
+                PurchaseAnswer::ForSale { price, market_has } => match amount {
+                    Amount::Exact(count) => {
+                        expense = expense.saturating_add(count.saturating_mul(price));
+                    }
+                    // What a unit can afford depends on everything else this month does, so this
+                    // waits for the running total below.
+                    Amount::All { .. } => deferred.push(Deferred::BuyAll { price, market_has }),
+                },
+                PurchaseAnswer::NotSold { name } => {
+                    if expense_doubt.is_none() {
+                        expense_doubt = Some(SilverDoubt::MarketDoesNotSell);
+                        doubt_subject = doubt_subject.or(Some(name));
+                    }
+                }
+            },
+            Intent::Give { to, what, amount } => {
+                let tag = match what {
+                    Selector::Item(text) => (lookups.item_tag)(text),
+                    // A whole class of goods, or the unit itself: what leaves depends on
+                    // classifying everything the unit holds, exactly as `semantics::transfer`
+                    // declines to model.
+                    Selector::Class(_) | Selector::WholeUnit => {
+                        expense_doubt = expense_doubt.or(Some(SilverDoubt::GivesAWholeClass));
+                        continue;
+                    }
+                };
+                if !tag.is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER_TAG)) {
+                    continue;
+                }
+                let to_nobody = matches!(to, Party::Discard);
+                match amount {
+                    Amount::Exact(count) => {
+                        expense = expense.saturating_add(*count);
+                        if to_nobody {
+                            given_to_nobody = given_to_nobody.saturating_add(*count);
+                        }
+                    }
+                    Amount::All { except } => deferred.push(Deferred::GiveAllSilver {
+                        except: *except,
+                        to_nobody,
+                    }),
+                }
+            }
+            Intent::Withdraw { count, item } => {
+                let cost = (lookups.item_tag)(item)
+                    .and_then(|tag| ruleset?.items.get(&tag)?.withdraw_cost);
+                match cost {
+                    Some(cost) => expense = expense.saturating_add(count.saturating_mul(cost)),
+                    None => expense_doubt = expense_doubt.or(Some(SilverDoubt::UnpricedWithdrawal)),
                 }
             }
             _ => {}
         }
     }
 
+    // Everything that spends what is *left*, in document order, against a running total that
+    // already carries every other term. Skipped where a side is doubted: the total it would spend
+    // against is not a number, and the side it feeds is `None` either way.
+    if income_doubt.is_none() && expense_doubt.is_none() {
+        let mut running = held.saturating_add(income).saturating_sub(expense);
+        for spend in &deferred {
+            let spent = match spend {
+                Deferred::BuyAll { price, market_has } => {
+                    if *price <= 0 {
+                        0
+                    } else {
+                        (running / price)
+                            .max(0)
+                            .min(*market_has)
+                            .saturating_mul(*price)
+                    }
+                }
+                Deferred::GiveAllSilver { except, to_nobody } => {
+                    let spent = running.saturating_sub(*except).max(0);
+                    if *to_nobody {
+                        given_to_nobody = given_to_nobody.saturating_add(spent);
+                    }
+                    spent
+                }
+            };
+            expense = expense.saturating_add(spent);
+            running = running.saturating_sub(spent);
+        }
+    }
+
     let income = income_doubt.is_none().then_some(income);
     let expense = expense_doubt.is_none().then_some(expense);
+    let doubt = income_doubt.or(expense_doubt);
     let at_month_end = match (income, expense) {
         (Some(income), Some(expense)) => Some(held.saturating_add(income).saturating_sub(expense)),
         _ => None,
@@ -351,11 +493,26 @@ pub fn forecast_unit(
         income,
         expense,
         at_month_end,
-        doubt: income_doubt.or(expense_doubt),
-        doubt_subject: doubt_subject.filter(|_| income_doubt == Some(SilverDoubt::UnknownGoods)),
+        doubt,
+        doubt_subject: doubt_subject.filter(|_| {
+            matches!(
+                doubt,
+                Some(SilverDoubt::UnknownGoods) | Some(SilverDoubt::MarketDoesNotSell)
+            )
+        }),
         received: receipts.silver,
         givers: receipts.givers.clone(),
+        given_to_nobody,
     }
+}
+
+/// A term that spends whatever is left after every other one, kept until the running total exists.
+#[derive(Debug, Clone, Copy)]
+enum Deferred {
+    /// `BUY ALL`: as many as the unit can afford, and no more than the market has.
+    BuyAll { price: i64, market_has: i64 },
+    /// `GIVE ... ALL SILV`, less any `EXCEPT` reserve.
+    GiveAllSilver { except: i64, to_nobody: bool },
 }
 
 /// The level a unit has in one skill, by tag, or 0 for a skill it does not have.
@@ -420,6 +577,28 @@ mod tests {
         SaleAnswer::NotWanted
     }
 
+    /// A market that sells nothing, for the rules that have no purchase in them.
+    fn no_purchases(item: &str) -> PurchaseAnswer {
+        PurchaseAnswer::NotSold {
+            name: item.to_lowercase(),
+        }
+    }
+
+    /// Items resolve to their own text, upper-cased - enough for the rules that only ask whether
+    /// something is `SILV`.
+    fn verbatim_tag(text: &str) -> Option<String> {
+        Some(text.to_ascii_uppercase())
+    }
+
+    /// The lookups for a unit that neither buys nor sells.
+    fn no_market() -> Lookups<'static> {
+        Lookups {
+            sale: &no_sales,
+            purchase: &no_purchases,
+            item_tag: &verbatim_tag,
+        }
+    }
+
     fn skill(tag: &str, level: u32) -> Skill {
         Skill {
             name: tag.to_string(),
@@ -431,7 +610,7 @@ mod tests {
 
     fn forecast(men: i64, region: RegionWages, intents: &[PlacedIntent]) -> UnitSilver {
         let receipts = Receipts::default();
-        forecast_unit(facts(men, intents, &receipts), region, &no_sales, None)
+        forecast_unit(facts(men, intents, &receipts), region, no_market(), None)
     }
 
     fn taxable(tax_base: Option<i64>) -> RegionWages {
@@ -519,7 +698,7 @@ mod tests {
                 ..facts(6, &intents, &receipts)
             },
             RegionWages::default(),
-            &no_sales,
+            no_market(),
             Some(&ruleset),
         );
         assert_eq!(unit.expense, Some(60));
@@ -540,7 +719,7 @@ mod tests {
                 ..facts(6, &intents, &receipts)
             },
             RegionWages::default(),
-            &no_sales,
+            no_market(),
             Some(&ruleset),
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::UnpricedSkill));
@@ -560,7 +739,7 @@ mod tests {
                 ..facts(8, &intents, &receipts)
             },
             taxable(Some(100_000)),
-            &no_sales,
+            no_market(),
             None,
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::EstimatedMen));
@@ -583,7 +762,10 @@ mod tests {
         forecast_unit(
             facts(1, intents, &receipts),
             RegionWages::default(),
-            sale,
+            Lookups {
+                sale,
+                ..no_market()
+            },
             None,
         )
     }
@@ -663,7 +845,7 @@ mod tests {
                 entertainment,
                 ..RegionWages::default()
             },
-            &no_sales,
+            no_market(),
             None,
         )
     }
@@ -714,7 +896,7 @@ mod tests {
                 entertainment,
                 ..RegionWages::default()
             },
-            &no_sales,
+            no_market(),
             Some(&ruleset),
         )
     }
@@ -774,7 +956,7 @@ mod tests {
         let unit = forecast_unit(
             facts(5, &[], &receipts),
             RegionWages::default(),
-            &no_sales,
+            no_market(),
             None,
         );
         assert_eq!(unit.income, Some(200));
@@ -793,7 +975,7 @@ mod tests {
         let unit = forecast_unit(
             facts(8, &intents, &receipts),
             taxable(Some(100_000)),
-            &no_sales,
+            no_market(),
             None,
         );
         assert_eq!(unit.income, Some(600));
@@ -818,7 +1000,10 @@ mod tests {
                 ..facts(8, &intents, &receipts)
             },
             RegionWages::default(),
-            &wanted(24, 40, 40),
+            Lookups {
+                sale: &wanted(24, 40, 40),
+                ..no_market()
+            },
             None,
         );
         assert_eq!(unit.income, Some(240));
@@ -834,7 +1019,7 @@ mod tests {
                 ..facts(8, &[], &receipts)
             },
             taxable(Some(100_000)),
-            &no_sales,
+            no_market(),
             None,
         );
         assert_eq!(unit.held, 600);
@@ -844,5 +1029,266 @@ mod tests {
         assert_eq!(unit.doubt, None);
         assert_eq!(unit.unit_id, "1234");
         assert_eq!(unit.region_id, "mountain (7,53)");
+    }
+
+    // --- ah-1wcw.3: what a month spends ------------------------------------------------------
+
+    /// A market selling one thing, for the purchase rules.
+    fn sells(price: i64, market_has: i64) -> impl Fn(&str) -> PurchaseAnswer {
+        move |_item: &str| PurchaseAnswer::ForSale { price, market_has }
+    }
+
+    /// One unit, one set of orders, against a market and a ruleset.
+    fn spending(
+        held: i64,
+        intents: &[PlacedIntent],
+        region: RegionWages,
+        purchase: &dyn Fn(&str) -> PurchaseAnswer,
+        ruleset: Option<&Ruleset>,
+    ) -> UnitSilver {
+        let receipts = Receipts::default();
+        forecast_unit(
+            UnitFacts {
+                held,
+                ..facts(1, intents, &receipts)
+            },
+            region,
+            Lookups {
+                purchase,
+                ..no_market()
+            },
+            ruleset,
+        )
+    }
+
+    #[test]
+    fn a_buying_unit_pays_the_price_the_market_states() {
+        let intents = vec![placed(Intent::Buy {
+            amount: Amount::Exact(5),
+            item: "grain".to_string(),
+        })];
+        let unit = spending(0, &intents, RegionWages::default(), &sells(12, 40), None);
+        assert_eq!(unit.expense, Some(60));
+        assert_eq!(unit.doubt, None);
+    }
+
+    #[test]
+    fn buying_what_the_market_does_not_sell_is_doubted() {
+        let intents = vec![placed(Intent::Buy {
+            amount: Amount::Exact(5),
+            item: "Horses".to_string(),
+        })];
+        let unit = spending(0, &intents, RegionWages::default(), &no_purchases, None);
+        assert_eq!(unit.expense, None);
+        assert_eq!(unit.doubt, Some(SilverDoubt::MarketDoesNotSell));
+        assert_eq!(unit.doubt_subject.as_deref(), Some("horses"));
+    }
+
+    #[test]
+    fn buying_all_spends_what_the_unit_can_afford() {
+        let intents = vec![placed(Intent::Buy {
+            amount: Amount::All { except: 0 },
+            item: "grain".to_string(),
+        })];
+        let unit = spending(500, &intents, RegionWages::default(), &sells(12, 40), None);
+        assert_eq!(unit.expense, Some(480));
+        assert_eq!(unit.at_month_end, Some(20));
+    }
+
+    #[test]
+    fn buying_all_takes_no_more_than_the_market_has() {
+        let intents = vec![placed(Intent::Buy {
+            amount: Amount::All { except: 0 },
+            item: "grain".to_string(),
+        })];
+        let unit = spending(500, &intents, RegionWages::default(), &sells(12, 4), None);
+        assert_eq!(unit.expense, Some(48));
+    }
+
+    #[test]
+    fn buying_all_is_afforded_out_of_what_this_month_earns() {
+        let intents = vec![
+            placed(Intent::Buy {
+                amount: Amount::All { except: 0 },
+                item: "grain".to_string(),
+            }),
+            placed(Intent::Tax),
+        ];
+        let region = RegionWages {
+            tax_base: Some(1000),
+            ..RegionWages::default()
+        };
+        // 50 taxed on top of 10 held buys five at 12, where the 10 alone would buy none.
+        let unit = spending(10, &intents, region, &sells(12, 40), None);
+        assert_eq!(unit.income, Some(50));
+        assert_eq!(unit.expense, Some(60));
+        assert_eq!(unit.at_month_end, Some(0));
+    }
+
+    #[test]
+    fn two_buy_all_orders_spend_in_document_order() {
+        let intents = vec![
+            placed(Intent::Buy {
+                amount: Amount::All { except: 0 },
+                item: "grain".to_string(),
+            }),
+            placed(Intent::Buy {
+                amount: Amount::All { except: 0 },
+                item: "grain".to_string(),
+            }),
+        ];
+        // 100 buys five at 12 up to the market's 5, leaving 40; the second buys three more.
+        let unit = spending(100, &intents, RegionWages::default(), &sells(12, 5), None);
+        assert_eq!(unit.expense, Some(96));
+        assert_eq!(unit.at_month_end, Some(4));
+    }
+
+    #[test]
+    fn a_unit_that_gives_silver_away_is_charged_for_it() {
+        let intents = vec![placed(Intent::Give {
+            to: Party::Unit("1235".to_string()),
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::Exact(300),
+        })];
+        let unit = spending(500, &intents, RegionWages::default(), &no_purchases, None);
+        assert_eq!(unit.expense, Some(300));
+        assert_eq!(unit.given_to_nobody, 0);
+        assert_eq!(unit.at_month_end, Some(200));
+    }
+
+    #[test]
+    fn silver_given_to_nobody_is_still_spent() {
+        let intents = vec![placed(Intent::Give {
+            to: Party::Discard,
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::All { except: 0 },
+        })];
+        let unit = spending(300, &intents, RegionWages::default(), &no_purchases, None);
+        assert_eq!(unit.expense, Some(300));
+        assert_eq!(unit.given_to_nobody, 300);
+        assert_eq!(unit.at_month_end, Some(0));
+    }
+
+    #[test]
+    fn giving_away_an_item_costs_no_silver() {
+        let intents = vec![placed(Intent::Give {
+            to: Party::Discard,
+            what: Selector::Item("HORS".to_string()),
+            amount: Amount::All { except: 0 },
+        })];
+        let unit = spending(300, &intents, RegionWages::default(), &no_purchases, None);
+        assert_eq!(unit.expense, Some(0));
+        assert_eq!(unit.doubt, None);
+    }
+
+    #[test]
+    fn giving_away_a_whole_class_of_goods_is_doubted() {
+        let intents = vec![placed(Intent::Give {
+            to: Party::Unit("1235".to_string()),
+            what: Selector::Class("ITEMS".to_string()),
+            amount: Amount::All { except: 0 },
+        })];
+        let unit = spending(500, &intents, RegionWages::default(), &no_purchases, None);
+        assert_eq!(unit.expense, None);
+        assert_eq!(unit.doubt, Some(SilverDoubt::GivesAWholeClass));
+    }
+
+    #[test]
+    fn a_cast_that_consumes_silver_is_charged_for_it() {
+        let ruleset = ruleset();
+        let intents = vec![placed(Intent::Cast {
+            spell: "create amulet of protection".to_string(),
+            arguments: Vec::new(),
+        })];
+        let unit = spending(
+            500,
+            &intents,
+            RegionWages::default(),
+            &no_purchases,
+            Some(&ruleset),
+        );
+        assert_eq!(unit.expense, Some(200));
+    }
+
+    #[test]
+    fn a_cast_that_consumes_items_costs_no_silver() {
+        let ruleset = ruleset();
+        let intents = vec![placed(Intent::Cast {
+            spell: "enchant armor".to_string(),
+            arguments: Vec::new(),
+        })];
+        let unit = spending(
+            500,
+            &intents,
+            RegionWages::default(),
+            &no_purchases,
+            Some(&ruleset),
+        );
+        assert_eq!(unit.expense, Some(0));
+        assert_eq!(unit.doubt, None);
+    }
+
+    #[test]
+    fn a_spell_the_ruleset_does_not_price_costs_nothing() {
+        let ruleset = ruleset();
+        let intents = vec![placed(Intent::Cast {
+            spell: "no such spell".to_string(),
+            arguments: Vec::new(),
+        })];
+        let unit = spending(
+            500,
+            &intents,
+            RegionWages::default(),
+            &no_purchases,
+            Some(&ruleset),
+        );
+        assert_eq!(unit.expense, Some(0));
+        assert_eq!(unit.doubt, None);
+    }
+
+    #[test]
+    fn a_withdrawing_unit_pays_the_rulesets_price() {
+        let ruleset = ruleset();
+        let intents = vec![placed(Intent::Withdraw {
+            count: 5,
+            item: "STON".to_string(),
+        })];
+        let unit = spending(
+            500,
+            &intents,
+            RegionWages::default(),
+            &no_purchases,
+            Some(&ruleset),
+        );
+        assert_eq!(unit.expense, Some(375));
+    }
+
+    #[test]
+    fn a_withdrawal_the_ruleset_cannot_price_is_doubted() {
+        let ruleset = ruleset();
+        let intents = vec![placed(Intent::Withdraw {
+            count: 1,
+            item: "LEAD".to_string(),
+        })];
+        let unit = spending(
+            500,
+            &intents,
+            RegionWages::default(),
+            &no_purchases,
+            Some(&ruleset),
+        );
+        assert_eq!(unit.expense, None);
+        assert_eq!(unit.doubt, Some(SilverDoubt::UnpricedWithdrawal));
+    }
+
+    #[test]
+    fn a_withdrawal_with_no_ruleset_at_all_is_doubted() {
+        let intents = vec![placed(Intent::Withdraw {
+            count: 1,
+            item: "STON".to_string(),
+        })];
+        let unit = spending(500, &intents, RegionWages::default(), &no_purchases, None);
+        assert_eq!(unit.expense, None);
+        assert_eq!(unit.doubt, Some(SilverDoubt::UnpricedWithdrawal));
     }
 }

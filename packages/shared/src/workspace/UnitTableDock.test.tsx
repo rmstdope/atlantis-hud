@@ -526,6 +526,7 @@ describe("the Silver column", () => {
     doubtSubject: null,
     received: 0,
     givers: [],
+    givenToNobody: 0,
     ...overrides
   });
 

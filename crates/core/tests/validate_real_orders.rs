@@ -47,6 +47,9 @@ const EXPECTED: &[(&str, usize)] = &[
     ("unit-does-nothing", 2),
 ];
 
+/// What the committed turn's 27 own units spend between them, all of it on `STUDY`.
+const EXPECTED_SPENDING: i64 = 800;
+
 /// The expectation table as a map, so an assertion can be read as a table.
 fn expected_counts() -> BTreeMap<&'static str, usize> {
     let table: BTreeMap<&'static str, usize> = EXPECTED.iter().copied().collect();
@@ -417,5 +420,57 @@ fn the_committed_turn_has_no_sales_gifts_entertainment_or_earning_magic() {
     // The turn's own findings are untouched: this bead adds no check, and in particular does not
     // move `not-traded-here`, which fires zero times here and would be the first sign that market
     // resolution had changed rather than silver arithmetic.
+    assert_eq!(counts(&review.findings), expected_counts());
+}
+
+/// `ah-1wcw.3`: the committed turn contains no `BUY`, no `WITHDRAW` and no `GIVE` of silver - its
+/// 136 gifts all move items, and all six of its casts consume swords and plate armour rather than
+/// silver. So the expense sources this bead adds must leave every figure in it exactly where
+/// `ah-1wcw.1` left them: studying, and nothing else.
+///
+/// A green run here is evidence that nothing broke, not that anything works. The rules are proved
+/// on the constructed fixtures in `orders::silver`.
+#[test]
+fn the_committed_turn_has_no_purchases_withdrawals_or_gifts_of_silver() {
+    let report = classified();
+    let review = review_turn(
+        &report,
+        &template(),
+        Some(&ruleset()),
+        CheckOptions::default(),
+    );
+
+    for unit in &review.silver {
+        assert_eq!(
+            unit.given_to_nobody, 0,
+            "{} discards silver the turn does not discard",
+            unit.unit_id
+        );
+        assert!(
+            !matches!(
+                unit.doubt,
+                Some(SilverDoubt::MarketDoesNotSell)
+                    | Some(SilverDoubt::UnpricedWithdrawal)
+                    | Some(SilverDoubt::GivesAWholeClass)
+            ),
+            "{} is doubted for an expense the turn does not contain: {:?}",
+            unit.unit_id,
+            unit.doubt
+        );
+    }
+
+    // Studying is the whole of this turn's spending, and it landed in `ah-1wcw.1`. Pinned as one
+    // total rather than per unit: a new expense source anywhere would move it, and a table of 27
+    // rows would have to be renegotiated by every later child of this epic.
+    let spent: i64 = review
+        .silver
+        .iter()
+        .map(|unit| unit.expense.unwrap_or(0))
+        .sum();
+    assert_eq!(
+        spent, EXPECTED_SPENDING,
+        "the committed turn's total expense"
+    );
+
     assert_eq!(counts(&review.findings), expected_counts());
 }
