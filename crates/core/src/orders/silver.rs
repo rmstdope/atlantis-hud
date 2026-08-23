@@ -20,7 +20,7 @@ use crate::orders::intents::{Intent, PlacedIntent};
 use crate::report::model::{ItemAmount, Skill};
 
 /// "Each taxing character collects $50."
-const TAX_PER_MAN: i64 = 50;
+pub(crate) const TAX_PER_MAN: i64 = 50;
 
 /// "A unit with Entertainment level 1 will earn 30 silver per man by issuing the ENTERTAIN order.
 /// Higher levels of Entertainment skill can earn more, so a character with Entertainment skill 2
@@ -269,6 +269,37 @@ pub enum SilverDoubt {
     /// More units are set to eat the hex's faction food than that food can feed, so which of them
     /// eats - and therefore what each pays - cannot be determined.
     ContestedFactionFood,
+    /// A regional pool this unit draws on is contended by a faction-mate whose headcount is itself
+    /// a guess, so no unit's share of it can be worked out - including this one's, whose own count
+    /// is exact. Distinct from [`SilverDoubt::EstimatedMen`], which is about the unit's own
+    /// headcount.
+    ContestedRegionPool,
+}
+
+/// What one unit may draw from one contended regional pool, once its faction-mates in the same hex
+/// have been settled against it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PoolShare {
+    /// Nothing to settle: this unit is the only one in the hex wanting the pool, or the region
+    /// states no pool at all. The arithmetic falls back to [`RegionWages`] and behaves exactly as
+    /// it does without contention.
+    #[default]
+    Uncontended,
+    /// What [`split_pool`] gave this unit.
+    Share(i64),
+    /// The hex cannot be settled: some unit contending for this pool has a headcount that is
+    /// itself a guess, so no unit's share is a number - including units whose own count is exact.
+    Unknowable,
+}
+
+/// What one unit may draw from each of its region's contended pools.
+///
+/// One field per pool. `ah-t2pn.2` adds wages and entertainment, `ah-t2pn.3` the market
+/// quantities; each is [`PoolShare::Uncontended`] until its own bead lands, which is exactly the
+/// behaviour before any of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PoolShares {
+    pub tax: PoolShare,
 }
 
 /// What this hex's market says about goods a unit is ordered to buy.
@@ -481,6 +512,7 @@ pub fn late_income(facts: &UnitFacts<'_>, region: RegionWages) -> i64 {
 pub fn forecast_unit(
     facts: UnitFacts<'_>,
     region: RegionWages,
+    shares: PoolShares,
     purse: FactionPurse,
     lookups: Lookups<'_>,
     ruleset: Option<&Ruleset>,
@@ -544,6 +576,8 @@ pub fn forecast_unit(
     let mut expense_doubt = None;
     let mut doubt_subject = None;
     let mut given_to_nobody = 0i64;
+    // Whether this block has already drawn its settled share of the region's tax base.
+    let mut tax_share_drawn = false;
     let mut withdrawing = false;
     // The first order in the block that actually moves silver out, which is what the hover names.
     // Recorded where `expense` grows rather than read off the intents: a `GIVE` of items and a
@@ -574,15 +608,37 @@ pub fn forecast_unit(
                 if region.pillaged {
                     // Zero, and never a doubt: a pillage empties the hex whatever the base was, so
                     // this collects nothing even where the base itself is unknown (`ah-cxxa`).
-                    // This branch must stay *before* the `tax_base` match, or a hex with no stated
-                    // base raises `UnknownTaxBase` and the certain zero is lost.
+                    // This branch must stay *before* the settlement below, or a hex with no stated
+                    // base raises `UnknownTaxBase`, and a contended one raises
+                    // `ContestedRegionPool`, where the certain zero is the better answer.
                 } else {
-                    match region.tax_base {
-                        Some(base) => {
-                            income =
-                                income.saturating_add(men.saturating_mul(TAX_PER_MAN).min(base))
+                    match shares.tax {
+                        // A unit nobody contends with, exactly as it was before the settlement
+                        // existed.
+                        PoolShare::Uncontended => match region.tax_base {
+                            Some(base) => {
+                                income =
+                                    income.saturating_add(men.saturating_mul(TAX_PER_MAN).min(base))
+                            }
+                            None => {
+                                income_doubt = income_doubt.or(Some(SilverDoubt::UnknownTaxBase))
+                            }
+                        },
+                        // Already capped by the settlement, and already no larger than this unit's
+                        // ask. Drawn once however many times the block says `TAX`: the settlement
+                        // counted the unit's men once, so adding the share per line would promise
+                        // the region's pool twice over - the very thing the split exists to stop.
+                        PoolShare::Share(share) => {
+                            if !tax_share_drawn {
+                                tax_share_drawn = true;
+                                income = income.saturating_add(share);
+                            }
                         }
-                        None => income_doubt = income_doubt.or(Some(SilverDoubt::UnknownTaxBase)),
+                        // Only income is doubted: this unit's own men are known, so what it spends
+                        // is still exactly priceable - which separates this from `EstimatedMen`.
+                        PoolShare::Unknowable => {
+                            income_doubt = income_doubt.or(Some(SilverDoubt::ContestedRegionPool))
+                        }
                     }
                 }
             }
@@ -1090,6 +1146,86 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
             .map(|claim| (claim.unit_id.clone(), None))
             .collect(),
         pool_left: None,
+    }
+}
+
+/// Splits a contended regional pool between the units that asked for it.
+///
+/// Returns one share per claim, **index-aligned with `wants`** - not keyed by unit id, for the
+/// reason [`feed_from_faction_food`] gives: two units in one hex may carry the same id, and a map
+/// would silently merge them.
+///
+/// When the pool covers every claim, each unit gets exactly what it asked for and nothing is
+/// divided. When it does not, each gets `pool * wants[i] / total`, **rounded down** - so the
+/// shares never add up to more than the pool, and up to `wants.len() - 1` silver of it goes
+/// unpromised. Understating by a few silver is the safe direction for a figure whose negatives a
+/// player acts on; the alternative is promising money the region does not have, which is the
+/// defect this removes.
+///
+/// The rules state this split for markets outright ("in proportion to the amount each buyer
+/// attempted to buy"). For `TAX` it is the same arithmetic as the rules' own "split evenly among
+/// all taxers", read per man: a taxer's ask is `men * 50`, so proportional-to-ask *is*
+/// proportional-to-men.
+#[must_use]
+pub fn split_pool(wants: &[i64], pool: i64) -> Vec<i64> {
+    let clamped: Vec<i64> = wants.iter().map(|want| (*want).max(0)).collect();
+    let pool = pool.max(0);
+    let total: i128 = clamped.iter().map(|want| i128::from(*want)).sum();
+    if total <= i128::from(pool) {
+        // Nothing is contended, so nothing is divided - which is also what keeps a lone taxer,
+        // and every hex the region can afford, reading exactly as it did before.
+        return clamped;
+    }
+    clamped
+        .iter()
+        .map(|want| i64::try_from(i128::from(pool) * i128::from(*want) / total).unwrap_or(i64::MAX))
+        .collect()
+}
+
+#[cfg(test)]
+mod split_pool_tests {
+    use super::*;
+
+    #[test]
+    fn a_pool_that_covers_every_claim_divides_nothing() {
+        assert_eq!(split_pool(&[500, 1000], 2500), vec![500, 1000]);
+    }
+
+    #[test]
+    fn a_short_pool_is_divided_in_proportion_to_what_each_asked() {
+        let shares = split_pool(&[500, 2500], 2500);
+        assert_eq!(shares, vec![416, 2083]);
+        assert!(
+            shares.iter().sum::<i64>() <= 2500,
+            "the pool is never promised twice: {shares:?}"
+        );
+    }
+
+    /// The behaviour table in the bead's plan, every row of it. The property that matters more
+    /// than any single figure is the last assertion: the shares never add up to more than there
+    /// is.
+    #[test]
+    fn a_pool_is_never_promised_twice() {
+        let cases: &[(&[i64], i64, Vec<i64>)] = &[
+            (&[], 2500, vec![]),
+            (&[], 0, vec![]),
+            (&[500, 2500], 0, vec![0, 0]),
+            (&[500, 2500], -10, vec![0, 0]),
+            (&[0, 0], 2500, vec![0, 0]),
+            (&[-5, -5], 2500, vec![0, 0]),
+            (&[500, 1000], 2500, vec![500, 1000]),
+            (&[500, 2500], 2500, vec![416, 2083]),
+            (&[2500], 2500, vec![2500]),
+            (&[3000], 2500, vec![2500]),
+        ];
+        for (wants, pool, expected) in cases {
+            let shares = split_pool(wants, *pool);
+            assert_eq!(&shares, expected, "wants {wants:?} against {pool}");
+            assert!(
+                shares.iter().sum::<i64>() <= (*pool).max(0),
+                "wants {wants:?} against {pool} promised {shares:?}"
+            );
+        }
     }
 }
 
@@ -1840,6 +1976,7 @@ mod tests {
         forecast_unit(
             facts(men, intents, &receipts),
             region,
+            PoolShares::default(),
             purse,
             no_market(),
             None,
@@ -2085,6 +2222,7 @@ mod tests {
                 ..facts(6, &intents, &receipts)
             },
             RegionWages::default(),
+            PoolShares::default(),
             FactionPurse::default(),
             no_market(),
             Some(&ruleset),
@@ -2107,6 +2245,7 @@ mod tests {
                 ..facts(6, &intents, &receipts)
             },
             RegionWages::default(),
+            PoolShares::default(),
             FactionPurse::default(),
             no_market(),
             Some(&ruleset),
@@ -2128,6 +2267,7 @@ mod tests {
                 ..facts(8, &intents, &receipts)
             },
             taxable(Some(100_000)),
+            PoolShares::default(),
             FactionPurse::default(),
             no_market(),
             None,
@@ -2152,6 +2292,7 @@ mod tests {
         forecast_unit(
             facts(1, intents, &receipts),
             RegionWages::default(),
+            PoolShares::default(),
             FactionPurse::default(),
             Lookups {
                 sale,
@@ -2284,6 +2425,7 @@ mod tests {
         let unit = forecast_unit(
             facts(1, &intents, &receipts),
             RegionWages::default(),
+            PoolShares::default(),
             FactionPurse::default(),
             Lookups {
                 sale: &sale,
@@ -2401,6 +2543,7 @@ mod tests {
                 entertainment,
                 ..RegionWages::default()
             },
+            PoolShares::default(),
             FactionPurse::default(),
             no_market(),
             None,
@@ -2453,6 +2596,7 @@ mod tests {
                 entertainment,
                 ..RegionWages::default()
             },
+            PoolShares::default(),
             FactionPurse::default(),
             no_market(),
             Some(&ruleset),
@@ -2516,6 +2660,7 @@ mod tests {
                 ..facts(1, &intents, &receipts)
             },
             region,
+            PoolShares::default(),
             FactionPurse::default(),
             no_market(),
             Some(ruleset),
@@ -2606,6 +2751,7 @@ mod tests {
         let unit = forecast_unit(
             facts(5, &[], &receipts),
             RegionWages::default(),
+            PoolShares::default(),
             FactionPurse::default(),
             no_market(),
             None,
@@ -2626,6 +2772,7 @@ mod tests {
         let unit = forecast_unit(
             facts(8, &intents, &receipts),
             taxable(Some(100_000)),
+            PoolShares::default(),
             FactionPurse::default(),
             no_market(),
             None,
@@ -2652,6 +2799,7 @@ mod tests {
                 ..facts(8, &intents, &receipts)
             },
             RegionWages::default(),
+            PoolShares::default(),
             FactionPurse::default(),
             Lookups {
                 sale: &wanted(24, 40, 40),
@@ -2672,6 +2820,7 @@ mod tests {
                 ..facts(8, &[], &receipts)
             },
             taxable(Some(100_000)),
+            PoolShares::default(),
             FactionPurse::default(),
             no_market(),
             None,
@@ -2707,6 +2856,7 @@ mod tests {
                 ..facts(1, intents, &receipts)
             },
             region,
+            PoolShares::default(),
             FactionPurse::default(),
             Lookups {
                 purchase,
@@ -3129,6 +3279,7 @@ mod tests {
         let unit = forecast_unit(
             facts,
             RegionWages::default(),
+            PoolShares::default(),
             FactionPurse::default(),
             no_market(),
             None,
@@ -3142,6 +3293,7 @@ mod tests {
         forecast_unit(
             facts,
             RegionWages::default(),
+            PoolShares::default(),
             FactionPurse::default(),
             no_market(),
             None,

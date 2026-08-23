@@ -582,6 +582,17 @@ describe("the silver section", () => {
     );
   });
 
+  it("the_note_explains_a_pool_contended_by_a_guessed_headcount", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ atMonthEnd: null, doubt: "contested-region-pool" })
+    );
+
+    expect(summary.silver?.note).toBe(
+      "Another of your units here draws on the same pool and its headcount is an estimate, so this unit's share cannot be worked out."
+    );
+  });
+
   it("the_silver_section_separates_income_that_arrives_too_late", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
