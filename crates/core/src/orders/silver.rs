@@ -402,7 +402,7 @@ pub fn pool_wants(facts: &UnitFacts<'_>, region: RegionWages) -> PoolWants {
     // A unit that spends its month on nothing is set to work, so it contends for the region's wage
     // pool exactly as an explicit `WORK` does (`ah-gjq4`, landing after `ah-t2pn.2`). Without this
     // every idle unit in a hex would be promised the whole pool.
-    if works_by_default(facts.intents) {
+    if is_set_to_work(facts.flags, facts.intents) {
         wants.wages = facts.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
     }
     wants
@@ -649,7 +649,7 @@ pub fn late_income(facts: &UnitFacts<'_>, region: RegionWages, shares: PoolShare
     // arm so it is unmistakably a default and not a second `Intent::Work`, and priced through this
     // function so `semantics::charge_upkeep` sees it too - wages arrive in the turn's last phase,
     // which is why they pay upkeep and cannot fund this month's orders.
-    if works_by_default(facts.intents) {
+    if is_set_to_work(facts.flags, facts.intents) {
         late = late.saturating_add(match shares.wages {
             PoolShare::Uncontended => wants.wages.min(region.max_wages.unwrap_or(i64::MAX)),
             PoolShare::Share(share) => share,
@@ -700,7 +700,9 @@ pub fn forecast_unit(
 
     // A headcount that is a guess cannot multiply anything out, so it short-circuits both sides
     // before any rule below is read - exactly as `semantics::study` refuses to price one.
-    if men_estimated && (intents.iter().any(moves_silver_per_man) || works_by_default(intents)) {
+    if men_estimated
+        && (intents.iter().any(moves_silver_per_man) || is_set_to_work(unit_flags, intents))
+    {
         return UnitSilver {
             unit_id: unit_id.to_string(),
             region_id: region_id.to_string(),
@@ -731,7 +733,7 @@ pub fn forecast_unit(
             produced_name: None,
             production_wanted: 0,
             production_capped_by: None,
-            works_by_default: works_by_default(intents),
+            works_by_default: is_set_to_work(unit_flags, intents),
             taxes_by_flag: false,
         };
     }
@@ -1032,7 +1034,7 @@ pub fn forecast_unit(
     // A pool this unit draws on may be contended by a faction-mate whose headcount is a guess, so
     // its share is not a number at all. `late_income` returned 0 for it; the figure the column
     // shows must say so rather than quietly understating (`ah-t2pn.2`).
-    if works_by_default(intents) && shares.wages == PoolShare::Unknowable {
+    if is_set_to_work(unit_flags, intents) && shares.wages == PoolShare::Unknowable {
         income_doubt = income_doubt.or(Some(SilverDoubt::ContestedRegionPool));
     }
     for placed in intents {
@@ -1146,7 +1148,7 @@ pub fn forecast_unit(
         produced_name: production.as_ref().map(|(name, _)| name.clone()),
         production_wanted: production.as_ref().map_or(0, |(_, plan)| plan.wanted),
         production_capped_by: production.as_ref().and_then(|(_, plan)| plan.capped_by),
-        works_by_default: works_by_default(intents),
+        works_by_default: is_set_to_work(unit_flags, intents),
         taxes_by_flag: taxes(unit_flags, intents)
             && !intents
                 .iter()
@@ -1829,6 +1831,16 @@ pub fn pillage_threshold(tax_base: i64) -> i64 {
     (tax_base.max(0) + per_man - 1) / per_man
 }
 
+/// Whether this unit will be set to work by default - no month-long order, and not taxing.
+///
+/// [`works_by_default`] reads the orders alone, which is all `ah-gjq4` had to look at. A unit that
+/// taxes by its flag has no order either and is emphatically not idle: it spends its month taxing,
+/// and crediting it the region's wage on top of its tax would pay it twice for one month
+/// (`ah-fvzu`). The same reasoning that exempts it from `unit-does-nothing`.
+fn is_set_to_work(flags: &[String], intents: &[PlacedIntent]) -> bool {
+    works_by_default(intents) && !taxes(flags, intents)
+}
+
 /// Whether this unit will tax this month - by an explicit `TAX` order, or because it carries the
 /// taxing flag, which taxes every turn without one (`ah-fvzu`).
 ///
@@ -2499,6 +2511,22 @@ mod tests {
         assert!(!with_both.taxes_by_flag);
         let ordered = forecast(8, taxable(Some(40_000)), &[placed(Intent::Tax)]);
         assert!(!ordered.taxes_by_flag);
+    }
+
+    /// A unit taxing by its flag spends its month taxing, so it is not also set to work - which
+    /// would credit it the region's wage on top of its tax (`ah-fvzu` meeting `ah-gjq4`).
+    #[test]
+    fn a_flagged_taxer_is_not_also_set_to_work() {
+        let region = RegionWages {
+            tax_base: Some(40_000),
+            wage_centis: Some(1200),
+            max_wages: Some(10_000),
+            ..RegionWages::default()
+        };
+        let unit = forecast_flagged(8, region, PoolShares::default(), &flags(&["taxing"]), &[]);
+        assert!(!unit.works_by_default);
+        assert_eq!(unit.income, Some(400));
+        assert_eq!(unit.late_income, Some(0));
     }
 
     #[test]
