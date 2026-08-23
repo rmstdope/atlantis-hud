@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shared regional pools (ah-t2pn) — chosen</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-t2pn</span> — your own units share a region's pools</h1>
+  <p>A region's tax base, wage pool, entertainment demand and market quantities are shared, and the
+  rules say what happens when they are oversubscribed. The forecast gives <strong>every unit the
+  whole pool</strong>: <code>forecast_hex</code> builds one <code>RegionWages</code> and hands the
+  same copy to each unit, and the only cross-unit accounting in the whole function is food.</p>
+  <p>So a player with three taxing units in a city is shown three times the money. Foreign units
+  cannot be predicted and it is right not to try — but your own units are all in the orders document
+  in front of us.</p>
+  <blockquote>Tax income is <em>“split evenly among all taxers”</em>. Market oversupply and
+  oversubscription <em>“split up in proportion to the number each unit tried to sell” / “in
+  proportion to the amount each buyer attempted to buy”</em>. For wages and entertainment the rules
+  say only that the pool runs out.</blockquote>
+  <p><strong>Chosen: model the contention.</strong> The column shows what the game will pay. This
+  reverses <code>ah-1wcw.1</code>'s per-unit rule for the four <em>regional</em> pools, knowingly.
+  <code>CLAIM</code> against the faction purse is untouched — <code>ah-bumi</code> settled that
+  column and <code>ah-wur4</code> shipped its warning.</p>
+</header>
+
+<main>
+
+<section>
+  <h2 class="rule"><em>One rule for all four pools</em></h2>
+  <p>“Split evenly among all taxers” is read <strong>per man</strong> — which is how the rate is
+  stated in the first place (“each taxing character collects $50”). And per man is arithmetically
+  identical to <em>in proportion to what each unit asked for</em>, because a taxer's ask is exactly
+  <code>men × 50</code>. So the proportional split the rules state outright for markets is the same
+  function, and it serves all four pools.</p>
+  <pre class="calc">share[i] = wants[i]                      when the pool covers everybody
+share[i] = pool * wants[i] / total       when it does not, rounded DOWN</pre>
+  <div class="absent">Rounded down on purpose: the shares then never add up to more than the pool,
+  and a few silver goes unpromised. Understating by a handful is the safe direction for a figure
+  whose negatives a player acts on; the alternative is promising money the region does not have,
+  which is the defect being removed.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Tax</em> a $2,500 region, a scout and a garrison</h2>
+  <table class="t">
+    <tr><th>Unit</th><th>Men</th><th>Could collect alone</th><th>Shown today</th><th>Chosen</th></tr>
+    <tr><td>Scouts (101)</td><td>10</td><td class="num">500</td><td class="num">500</td><td class="num good">416</td></tr>
+    <tr><td>Garrison (102)</td><td>50</td><td class="num">2,500</td><td class="num">2,500</td><td class="num good">2,083</td></tr>
+    <tr><td><b>Together</b></td><td>60</td><td class="num">3,000</td><td class="num" style="color:var(--danger)">3,000</td><td class="num good">2,499</td></tr>
+  </table>
+  <div class="absent">Today the player is promised <strong>$3,000</strong> from a region holding
+  $2,500. Two rejected readings of “evenly”: <em>per unit</em> gives both $1,250 — which promises a
+  10-man unit $1,250 when 10 men can collect $500, the same defect in a new place; <em>cap each at
+  its own ceiling then split the remainder</em> gives $500 and $2,000, nobody promised the
+  impossible, but it invents a two-stage rule the rulebook does not describe.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Wages and entertainment</em> where the rules say nothing</h2>
+  <table class="t">
+    <tr><th>Unit</th><th>Men</th><th>Wants</th><th>Chosen (proportional)</th><th>Rejected (evenly)</th></tr>
+    <tr><td>Labour A (103)</td><td>50</td><td class="num">600</td><td class="num good">545</td><td class="num">600</td></tr>
+    <tr><td>Labour B (104)</td><td>60</td><td class="num">720</td><td class="num good">655</td><td class="num">600</td></tr>
+  </table>
+  <div class="absent">Proportional is our rule rather than the rulebook's — but it is borrowed from
+  the split the rulebook <em>does</em> state for markets, rather than invented whole. Splitting
+  evenly was rejected because it pays a 60-man unit what a 50-man unit gets. Showing
+  <code>?</code> on every contending unit — the doctrine <code>ah-1wcw.1</code> and
+  <code>ah-7cdt</code> both applied — was rejected because a city where several units work is the
+  normal case, so it would be <code>?</code> on many units every turn.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Markets</em> a quantity, not silver</h2>
+  <pre class="calc">Market wants 100 horses.   Trader A tries to sell 60.   Trader B tries to sell 60.
+
+  each sells 50, and the silver follows from that</pre>
+  <div class="absent">The one pool the rules are explicit about. Named in goods rather than silver
+  because that is what the market line states, and because the shipped
+  <code>not-traded-here</code> already speaks about a market in its own terms.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>When a contender's headcount is a guess</em></h2>
+  <p>If one taxer's men are estimated, <strong>no</strong> taxer's share is a number — including a
+  unit whose own count is exact. Both are doubted; a unit in the hex that is not taxing keeps its
+  exact figure, exactly as <code>ah-7cdt</code>'s quartermaster did.</p>
+  <div class="tips">
+    <div class="unit">
+      <div class="tip">
+        <div class="sect">Silver</div>
+        <div class="rowset">
+          <div class="row"><span>Held now</span><span class="v">0</span></div>
+          <div class="row"><span>In</span><span class="v q">?</span></div>
+          <div class="row"><span>Out</span><span class="v">120</span></div>
+          <div class="row total"><span>At month end</span><span class="v q">?</span></div>
+        </div>
+        <div class="tipnote">Another of your units here draws on the same pool and its headcount is an estimate, so this unit's share cannot be worked out.</div>
+      </div>
+      <div class="cap"><b>A new doubt, not the old one.</b> The shipped <code>estimated-men</code>
+      sentence reads “This unit's headcount is an estimate” — untrue of a unit whose own count is
+      exact. Note that <strong>Out is still a number</strong>: only the share of one pool is unknown,
+      so what the unit spends is still priced.</div>
+    </div>
+    <div class="unit">
+      <div class="cap" style="padding-top:6px"><b>Rejected wording:</b> “A unit sharing this
+      region's pool has an estimated headcount, so the shares cannot be worked out.” — the same fact
+      with less finger-pointing, and it fits a narrow hover without wrapping. And
+      <b>rejected outright:</b> reusing <code>estimated-men</code>, which needs no new variant and no
+      regenerated types but tells the player something untrue about the unit they are looking at.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>And a warning as well</em></h2>
+  <p>With the column corrected, a unit earns less than its men could collect alone and nothing on
+  screen says why. One code, <code>region-pool-oversubscribed</code>, one finding per contending
+  unit, on its own order line:</p>
+  <table class="q">
+    <tr><td class="k">Scouts (101), on its TAX line</td><td>your units here tax for $3,000 between them and this region has $2,500</td></tr>
+    <tr><td class="k">Garrison (102), on its TAX line</td><td>your units here tax for $3,000 between them and this region has $2,500</td></tr>
+  </table>
+  <div class="absent">Mirrors the shipped <code>claims-exceed-unclaimed</code> — “your units claim
+  {total} between them and the faction has {purse}” — so the two read as a pair, one faction-scope
+  and one hex-scope. One finding per contending unit rather than one for the hex, for
+  <code>ah-wur4</code>'s stated reason: <em>“a single finding must anchor on some unit, and picking
+  one by document order blames a unit no more at fault than the others.”</em>
+  <br><br><em>Rejected:</em> a hover note only, which was the planner's recommendation once the
+  column was correct; and nothing at all, which leaves a taxer earning under $50 a man unexplained.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>When it does nothing</em></h2>
+  <table class="t">
+    <tr><th>Situation</th><th>Effect</th></tr>
+    <tr><td>One unit taxing a region</td><td>none — contention needs two</td></tr>
+    <tr><td>Two units whose asks the pool covers</td><td>none — nothing is divided</td></tr>
+    <tr><td>The region states no tax base</td><td>none — today's <code>UnknownTaxBase</code> doubt, unchanged; absent is not zero</td></tr>
+    <tr><td>A unit taxing and a unit working</td><td>none — different pools</td></tr>
+    <tr><td>Foreign units in the hex</td><td>never counted, and never will be</td></tr>
+    <tr><td><code>CLAIM</code> against the faction purse</td><td>untouched — <code>ah-bumi</code> and <code>ah-wur4</code> settled it</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Built in four passes</em></h2>
+  <table class="q">
+    <tr><td class="k">ah-t2pn.1</td><td>The shared <code>split_pool</code> settlement, and TAX wired to it.</td></tr>
+    <tr><td class="k">ah-t2pn.2</td><td>WORK and ENTERTAIN — and keeping <code>charge_upkeep</code> in step, since <code>late_income</code> is shared with it on purpose.</td></tr>
+    <tr><td class="k">ah-t2pn.3</td><td>Markets, in goods.</td></tr>
+    <tr><td class="k">ah-t2pn.4</td><td>The <code>region-pool-oversubscribed</code> finding and its Settings row.</td></tr>
+  </table>
+  <div class="absent">The last three are blocked on the first, which builds the settlement they all
+  share.</div>
+</section>
+</main>
+</body>
+</html>
