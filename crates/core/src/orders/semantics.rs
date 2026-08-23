@@ -28,10 +28,10 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
     feed_after_silver, feed_from_faction_food, food_claim, forecast_unit, late_income,
-    parse_wage_centis, plan_production, recipe_for, settle_unclaimed, split_pool, unit_upkeep,
-    FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide,
-    PoolShare, PoolShares, PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt,
-    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS, TAX_PER_MAN,
+    parse_wage_centis, plan_production, pool_wants, recipe_for, settle_unclaimed, split_pool,
+    unit_upkeep, FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups,
+    MarketSide, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
+    SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS, TAX_PER_MAN,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -369,37 +369,88 @@ struct Relief<'a> {
     settlement: &'a UpkeepSettlement,
 }
 
-/// One [`PoolShare`] per unit in `hex.units`, for the region's tax base.
+/// One [`PoolShares`] per unit in `hex.units`, index-aligned, for every contended regional pool.
 ///
-/// [`PoolShare::Uncontended`] unless two or more own units in this hex are ordered to tax it: one
-/// taxer is exactly the uncontended case and keeps the arithmetic it always had, including its
-/// `UnknownTaxBase` doubt for a region that states no base.
-fn tax_shares_for(hex: &Hex<'_>, taxers: &[usize], tax_base: Option<i64>) -> Vec<PoolShare> {
-    let mut shares = vec![PoolShare::Uncontended; hex.units.len()];
-    // A region stating no base has no pool to divide, and one taxer is not contention: both keep
-    // the arithmetic - and, for the first, the `UnknownTaxBase` doubt - they always had.
-    let Some(base) = tax_base.filter(|_| taxers.len() > 1) else {
-        return shares;
-    };
-
-    // A guessed headcount is a guessed ask, so no taxer's share is a number - not even one whose
-    // own count is exact. A unit not drawing on the base is untouched.
-    if taxers
-        .iter()
-        .any(|index| hex.units[*index].unit.men_estimated)
-    {
-        for index in taxers {
-            shares[*index] = PoolShare::Unknowable;
-        }
-        return shares;
+/// Computed **once per hex** and handed to both [`forecast_hex`] and [`charge_upkeep`]: they price
+/// `WORK` and `ENTERTAIN` through the same [`late_income`], so two settlements would be two answers
+/// to one question - the drift `ah-uwa3` removed and `ah-ycuj` now guards.
+///
+/// Per pool the same three rules: fewer than two units wanting it is not contention and keeps the
+/// arithmetic it always had; any wanting unit with a guessed headcount makes every wanting unit's
+/// share [`PoolShare::Unknowable`]; otherwise [`split_pool`] divides it. A unit not drawing on a
+/// pool is never touched by somebody else's contention for it.
+fn pool_shares_for(hex: &Hex<'_>, region: RegionWages) -> Vec<PoolShares> {
+    /// One contended pool, as the loop below reads it: what a unit asks of it, where that unit's
+    /// share of it is written, and what the region says it holds.
+    struct ContendedPool {
+        want_of: fn(&PoolWants) -> i64,
+        share_of: fn(&mut PoolShares) -> &mut PoolShare,
+        pool: Option<i64>,
     }
 
-    let wants: Vec<i64> = taxers
+    let nothing = Receipts::default();
+    let wants: Vec<PoolWants> = hex_facts(hex, &nothing)
         .iter()
-        .map(|index| hex.units[*index].unit.men.saturating_mul(TAX_PER_MAN))
+        .map(|facts| pool_wants(facts, region))
         .collect();
-    for (index, share) in taxers.iter().zip(split_pool(&wants, base)) {
-        shares[*index] = PoolShare::Share(share);
+
+    let mut shares = vec![PoolShares::default(); hex.units.len()];
+    // `max_wages: None` means the region states *no ceiling*, not that it has no money, so it is
+    // never contended - dividing a pool of zero would pay every worker nothing. `entertainment:
+    // None` is the opposite default and is documented as such on `RegionWages`: the region pays
+    // entertainers nothing, so there is nothing to divide and nothing to doubt.
+    let pools = [
+        ContendedPool {
+            want_of: |want| want.tax,
+            share_of: |into| &mut into.tax,
+            pool: region.tax_base,
+        },
+        ContendedPool {
+            want_of: |want| want.wages,
+            share_of: |into| &mut into.wages,
+            pool: region.max_wages,
+        },
+        ContendedPool {
+            want_of: |want| want.entertainment,
+            share_of: |into| &mut into.entertainment,
+            pool: region.entertainment,
+        },
+    ];
+
+    for ContendedPool {
+        want_of,
+        share_of,
+        pool,
+    } in pools
+    {
+        let wanting: Vec<usize> = (0..hex.units.len())
+            .filter(|index| want_of(&wants[*index]) > 0)
+            .collect();
+        // A region stating no pool has none to divide, and one unit is not contention: both keep
+        // the arithmetic - and, for `TAX`, the `UnknownTaxBase` doubt - they always had.
+        let Some(pool) = pool.filter(|_| wanting.len() > 1) else {
+            continue;
+        };
+
+        // A guessed headcount is a guessed ask, so no unit's share is a number - not even one
+        // whose own count is exact.
+        if wanting
+            .iter()
+            .any(|index| hex.units[*index].unit.men_estimated)
+        {
+            for index in wanting {
+                *share_of(&mut shares[index]) = PoolShare::Unknowable;
+            }
+            continue;
+        }
+
+        let asks: Vec<i64> = wanting
+            .iter()
+            .map(|index| want_of(&wants[*index]))
+            .collect();
+        for (index, share) in wanting.iter().zip(split_pool(&asks, pool)) {
+            *share_of(&mut shares[*index]) = PoolShare::Share(share);
+        }
     }
     shares
 }
@@ -492,6 +543,20 @@ fn market_shares_for(
         .collect()
 }
 
+/// The region's shared figures, as both surfaces that price a hex read them.
+///
+/// One function rather than two identical literals: `forecast_hex` and `charge_upkeep` must settle
+/// the same pools from the same numbers, and two copies are two things to keep in step.
+fn region_wages(hex: &Hex<'_>) -> RegionWages {
+    RegionWages {
+        tax_base: hex.region.tax_base,
+        wage_centis: parse_wage_centis(hex.region.wages.as_deref()),
+        max_wages: hex.region.max_wages,
+        entertainment: hex.region.entertainment,
+        pillaged: own_unit_pillages(hex),
+    }
+}
+
 /// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
 /// already filtered them out, so their cell is blank for free.
 fn forecast_hex(
@@ -507,30 +572,12 @@ fn forecast_hex(
         food: food_relief,
         settlement,
     } = relief;
-    let region = RegionWages {
-        tax_base: hex.region.tax_base,
-        wage_centis: parse_wage_centis(hex.region.wages.as_deref()),
-        max_wages: hex.region.max_wages,
-        entertainment: hex.region.entertainment,
-        pillaged: own_unit_pillages(hex),
-    };
+    let region = region_wages(hex);
     let nothing = Receipts::default();
 
     // A region's pools are shared, so who else in this hex draws on them has to be settled before
-    // any one unit can be priced against them (`ah-t2pn.1`).
-    let taxers: Vec<usize> = hex
-        .units
-        .iter()
-        .enumerate()
-        .filter(|(_, ordered)| {
-            ordered
-                .intents
-                .iter()
-                .any(|placed| matches!(placed.intent, Intent::Tax))
-        })
-        .map(|(index, _)| index)
-        .collect();
-    let tax_shares = tax_shares_for(hex, &taxers, hex.region.tax_base);
+    // any one unit can be priced against them (`ah-t2pn`).
+    let shares = pool_shares_for(hex, region);
 
     // A market line is shared the same way, and the rules say so outright: oversupply and
     // oversubscription split in proportion to what each unit tried to trade (`ah-t2pn.3`).
@@ -607,9 +654,7 @@ fn forecast_hex(
         into.push(forecast_unit(
             facts,
             region,
-            PoolShares {
-                tax: tax_shares[index],
-            },
+            shares[index],
             purse,
             Lookups {
                 sale: &sale,
@@ -1226,13 +1271,10 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     let nothing = Receipts::default();
     let facts = hex_facts(hex, &nothing);
 
-    let region = RegionWages {
-        tax_base: hex.region.tax_base,
-        wage_centis: parse_wage_centis(hex.region.wages.as_deref()),
-        max_wages: hex.region.max_wages,
-        entertainment: hex.region.entertainment,
-        pillaged: own_unit_pillages(hex),
-    };
+    // The same settlement `forecast_hex` prices the column from: `WORK` and `ENTERTAIN` reach both
+    // surfaces through one `late_income`, so two settlements would be two answers to one question.
+    let region = region_wages(hex);
+    let shares = pool_shares_for(hex, region);
 
     // The check and the Silver column read one fact, so they settle the hex's faction-food pool
     // the same way: warning that a unit cannot pay a fee its faction-mates' grain already paid is
@@ -1242,7 +1284,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     let settled = pass.settled.clone();
     ledger.faction_food = pass;
 
-    for (ordered, facts) in hex.units.iter().zip(&facts) {
+    for ((ordered, facts), shares) in hex.units.iter().zip(&facts).zip(&shares) {
         let owed = match settled.get(&ordered.unit.unit_id) {
             // The pool fed this unit: it owes what step 2 left it, not what step 1 did.
             Some(Some(left)) => *left,
@@ -1261,7 +1303,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         // Only what the late earnings cannot cover reaches the balance. `ledger.upkeep` keeps the
         // *full* fee: it is read only to word the finding ("orders and upkeep" against "orders"),
         // and a unit whose wages cover its fee is still a unit with a fee.
-        let charged = (owed - late_income(facts, region)).max(0);
+        let charged = (owed - late_income(facts, region, *shares)).max(0);
         if charged > 0 {
             *ledger
                 .balance
@@ -4332,10 +4374,10 @@ mod tests {
             assert_eq!(silver_of(&review, "2390").doubt, None);
         }
 
-        /// `ah-t2pn.1` deliberately stops at `TAX`. These two say so, so the next implementer
-        /// sees the boundary was drawn rather than missed.
+        /// `ah-t2pn.1` stopped at `TAX`; `ah-t2pn.2` extended the same settlement to the wage
+        /// pool, so two equal workers now halve a pool that cannot cover both.
         #[test]
-        fn working_is_still_never_divided() {
+        fn working_is_divided_too() {
             let hex = ReportRegion {
                 wages: Some("$10".to_string()),
                 max_wages: Some(300),
@@ -4348,8 +4390,8 @@ mod tests {
                 CheckOptions::default(),
             );
 
-            assert_eq!(silver_of(&review, "2390").late_income, Some(300));
-            assert_eq!(silver_of(&review, "2391").late_income, Some(300));
+            assert_eq!(silver_of(&review, "2390").late_income, Some(150));
+            assert_eq!(silver_of(&review, "2391").late_income, Some(150));
         }
 
         /// A block may say `TAX` twice; the settlement counted its men once, so it draws its
@@ -4384,6 +4426,307 @@ mod tests {
 
             assert_eq!(silver_of(&review, "2390").income, Some(4000));
             assert_eq!(silver_of(&review, "2391").income, Some(4000));
+        }
+    }
+
+    /// `ah-t2pn.2`. A region's wage pool and its entertainment demand are shared exactly as its
+    /// tax base is: own units drawing on one split it in proportion to what each asked for, and
+    /// both the Silver column and the upkeep charge learn it from one settlement.
+    mod shared_wage_and_entertainment_pools {
+        use super::*;
+
+        fn worker(id: &str, men: i64) -> ReportUnit {
+            let mut unit = unit(id);
+            unit.men = men;
+            unit
+        }
+
+        fn entertainer(id: &str, men: i64, level: u32) -> ReportUnit {
+            with_skill(worker(id, men), "ENTE", level)
+        }
+
+        fn silver_of(review: &TurnReview, id: &str) -> UnitSilver {
+            review
+                .silver
+                .iter()
+                .find(|forecast| forecast.unit_id == id)
+                .cloned()
+                .unwrap_or_else(|| panic!("no forecast for {id}: {:?}", review.silver))
+        }
+
+        fn wage_review(
+            wages: &str,
+            max_wages: Option<i64>,
+            entertainment: Option<i64>,
+            units: Vec<ReportUnit>,
+            orders: &str,
+        ) -> TurnReview {
+            let hex = ReportRegion {
+                wages: Some(wages.to_string()),
+                max_wages,
+                entertainment,
+                ..region(units)
+            };
+            review_turn(
+                &report(vec![hex]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+        }
+
+        /// The regression net under everything below: one worker is not contention.
+        #[test]
+        fn a_lone_worker_still_earns_the_whole_pool() {
+            let review = wage_review(
+                "$12.0",
+                Some(1200),
+                None,
+                vec![worker("2390", 50)],
+                "unit 2390\nWORK\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").late_income, Some(600));
+        }
+
+        /// The bead's headline: $1,200 of pool, $1,320 of ask, and the two figures now add up to
+        /// no more than the region has. Both are rounded down by `split_pool`, so a few silver of
+        /// the pool goes unpromised - the safe direction.
+        #[test]
+        fn two_workers_split_a_wage_pool_that_cannot_cover_both() {
+            let review = wage_review(
+                "$12.0",
+                Some(1200),
+                None,
+                vec![worker("2390", 50), worker("2391", 60)],
+                "unit 2390\nWORK\nunit 2391\nWORK\n",
+            );
+
+            let first = silver_of(&review, "2390").late_income.expect("a number");
+            let second = silver_of(&review, "2391").late_income.expect("a number");
+            assert_eq!((first, second), (545, 654));
+            assert!(
+                first + second <= 1200,
+                "the pool is never promised twice: {first} + {second}"
+            );
+        }
+
+        #[test]
+        fn two_workers_a_pool_can_cover_are_not_divided() {
+            let review = wage_review(
+                "$12.0",
+                Some(2000),
+                None,
+                vec![worker("2390", 50), worker("2391", 60)],
+                "unit 2390\nWORK\nunit 2391\nWORK\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").late_income, Some(600));
+            assert_eq!(silver_of(&review, "2391").late_income, Some(720));
+        }
+
+        /// The single most damaging mistake available here: `max_wages: None` means the region
+        /// states *no ceiling*, not that it has no money.
+        #[test]
+        fn two_workers_in_a_region_with_no_wage_ceiling_are_not_divided() {
+            let review = wage_review(
+                "$12.0",
+                None,
+                None,
+                vec![worker("2390", 50), worker("2391", 60)],
+                "unit 2390\nWORK\nunit 2391\nWORK\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").late_income, Some(600));
+            assert_eq!(silver_of(&review, "2391").late_income, Some(720));
+        }
+
+        #[test]
+        fn two_entertainers_split_the_regions_demand() {
+            let review = wage_review(
+                "$12.0",
+                Some(2000),
+                Some(200),
+                vec![entertainer("2390", 5, 2), entertainer("2391", 5, 1)],
+                "unit 2390\nENTERTAIN\nunit 2391\nENTERTAIN\n",
+            );
+
+            // Asks of 300 and 150 against a demand of 200.
+            assert_eq!(silver_of(&review, "2390").late_income, Some(133));
+            assert_eq!(silver_of(&review, "2391").late_income, Some(66));
+        }
+
+        /// Different pools, no contention.
+        #[test]
+        fn a_worker_and_an_entertainer_do_not_contend() {
+            let review = wage_review(
+                "$12.0",
+                Some(300),
+                Some(200),
+                vec![worker("2390", 50), entertainer("2391", 5, 2)],
+                "unit 2390\nWORK\nunit 2391\nENTERTAIN\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").late_income, Some(300));
+            assert_eq!(silver_of(&review, "2391").late_income, Some(200));
+            assert_eq!(silver_of(&review, "2390").doubt, None);
+            assert_eq!(silver_of(&review, "2391").doubt, None);
+        }
+
+        /// A region with no entertainment line pays entertainers nothing, contended or not - the
+        /// opposite default to `max_wages`, two lines apart in the same struct.
+        #[test]
+        fn two_entertainers_where_the_region_states_no_demand_still_earn_nothing() {
+            let review = wage_review(
+                "$12.0",
+                Some(2000),
+                None,
+                vec![entertainer("2390", 5, 2), entertainer("2391", 5, 1)],
+                "unit 2390\nENTERTAIN\nunit 2391\nENTERTAIN\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").late_income, Some(0));
+            assert_eq!(silver_of(&review, "2391").late_income, Some(0));
+            assert_eq!(silver_of(&review, "2390").doubt, None);
+        }
+
+        /// A block may say `WORK` twice; the settlement counted its men once, so it draws its
+        /// share once.
+        #[test]
+        fn a_block_that_works_twice_still_draws_one_share() {
+            let review = wage_review(
+                "$12.0",
+                Some(1200),
+                None,
+                vec![worker("2390", 50), worker("2391", 60)],
+                "unit 2390\nWORK\nWORK\nunit 2391\nWORK\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").late_income, Some(545));
+        }
+
+        /// The bead's real risk: a worker whose wages are cut also covers less of its own fee,
+        /// and the warning and the column must learn that from one computation.
+        #[test]
+        fn contended_wages_leave_less_to_cover_upkeep() {
+            let units = || vec![starving(worker("2390", 50)), starving(worker("2391", 60))];
+            let orders = "unit 2390\nWORK\nunit 2391\nWORK\n";
+
+            // Fees of 500 and 600; uncontended wages of 600 and 720 cover both.
+            let roomy = wage_review("$12.0", Some(5000), None, units(), orders);
+            assert!(
+                !roomy
+                    .findings
+                    .iter()
+                    .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+                "{:?}",
+                roomy.findings
+            );
+
+            // The same units against a $1,000 pool: shares of 454 and 545 cover neither fee.
+            let short = wage_review("$12.0", Some(1000), None, units(), orders);
+            let warned: Vec<&str> = short
+                .findings
+                .iter()
+                .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+                .filter_map(|finding| finding.unit_id.as_deref())
+                .collect();
+            assert!(warned.contains(&"2390"), "{:?}", short.findings);
+            assert_eq!(silver_of(&short, "2390").late_income, Some(454));
+            assert_eq!(silver_of(&short, "2390").upkeep, Some(500));
+        }
+
+        /// The one-computation invariant stated as a test: the figure the column shows and the
+        /// figure the upkeep charge nets the fee against are the same number.
+        #[test]
+        fn wages_and_upkeep_agree_about_one_contended_worker() {
+            let review = wage_review(
+                "$12.0",
+                Some(1000),
+                None,
+                vec![starving(worker("2390", 50)), starving(worker("2391", 60))],
+                "unit 2390\nWORK\nunit 2391\nWORK\n",
+            );
+
+            let forecast = silver_of(&review, "2390");
+            let late = forecast.late_income.expect("a number");
+            let fee = forecast.upkeep.expect("every unit owes a fee");
+            let short = review
+                .findings
+                .iter()
+                .find(|finding| {
+                    finding.code == codes::NOT_ENOUGH_SILVER
+                        && finding.unit_id.as_deref() == Some("2390")
+                })
+                .expect("the contended worker cannot pay its fee");
+            assert!(
+                short.message.contains(&(fee - late).to_string()),
+                "the warning is short by exactly what the column says is missing: \
+                 fee {fee}, wages {late}, message {:?}",
+                short.message
+            );
+        }
+
+        #[test]
+        fn a_workers_estimated_headcount_doubts_every_worker_in_the_hex() {
+            let mut guessed = worker("2391", 60);
+            guessed.men_estimated = true;
+            let review = wage_review(
+                "$12.0",
+                Some(1200),
+                Some(200),
+                vec![worker("2390", 50), guessed, entertainer("2392", 5, 2)],
+                "unit 2390\nWORK\nunit 2391\nWORK\nunit 2392\nENTERTAIN\n",
+            );
+
+            let exact_worker = silver_of(&review, "2390");
+            assert_eq!(exact_worker.doubt, Some(SilverDoubt::ContestedRegionPool));
+            assert_eq!(exact_worker.income, None);
+            assert_eq!(exact_worker.late_income, None);
+            assert_eq!(exact_worker.at_month_end, None);
+
+            // The guessed unit short-circuits earlier, on its own headcount.
+            assert_eq!(
+                silver_of(&review, "2391").doubt,
+                Some(SilverDoubt::EstimatedMen)
+            );
+
+            let entertaining = silver_of(&review, "2392");
+            assert_eq!(
+                entertaining.doubt, None,
+                "a unit drawing on another pool is not contending"
+            );
+            assert_eq!(entertaining.late_income, Some(200));
+        }
+
+        /// What separates this doubt from `EstimatedMen`'s whole-unit early return: the unit's
+        /// own men are known, so its spending is still a number.
+        #[test]
+        fn a_contested_wage_pool_still_prices_what_the_unit_spends() {
+            let mut guessed = worker("2391", 60);
+            guessed.men_estimated = true;
+            let hex = ReportRegion {
+                wages: Some("$12.0".to_string()),
+                max_wages: Some(1200),
+                for_sale: vec![MarketItem {
+                    amount: 100,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 100,
+                }],
+                ..region(vec![with_silver(worker("2390", 50), 5000), guessed])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nWORK\nBUY 2 grain\nunit 2391\nWORK\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let buyer = silver_of(&review, "2390");
+            assert_eq!(buyer.doubt, Some(SilverDoubt::ContestedRegionPool));
+            assert_eq!(buyer.income, None);
+            assert_eq!(buyer.expense, Some(200));
         }
     }
 
