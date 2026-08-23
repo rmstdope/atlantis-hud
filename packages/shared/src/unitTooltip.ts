@@ -279,12 +279,6 @@ function silverNote(
   if (countUpkeep && silver.unclaimedCovered > 0) {
     return `The faction's unclaimed silver covers ${silver.unclaimedCovered} of this unit's upkeep.`;
   }
-  // The fund pays for a withdrawal, never the unit, so an `Out` of zero on a unit ordered to
-  // withdraw $369 of grain reads as a defect until this says why (`ah-tdsi`). Not gated on
-  // `countUpkeep` like the notes above it: it explains `Out`, which is on show either way.
-  if (silver.withdrawing) {
-    return "This unit's withdrawal is paid from the faction's unclaimed silver.";
-  }
   // A gift is the one part of the figure that comes from somebody else's orders, so it is the one
   // part a reader cannot find by looking at this unit's own block.
   if (silver.received > 0 && silver.givers.length > 0) {
@@ -294,6 +288,14 @@ function silverNote(
   // would otherwise look for a recipient of and find none.
   if (silver.givenToNobody > 0) {
     return `Includes ${silver.givenToNobody} given away to nobody.`;
+  }
+  // The fund pays for a withdrawal, never the unit, so an `Out` of zero on a unit ordered to
+  // withdraw $369 of grain reads as a defect until this says why (`ah-tdsi`). Not gated on
+  // `countUpkeep` like the food notes: it explains `Out`, which is on show either way. It sits
+  // below the two notes above because those explain money that IS on show, and this one explains a
+  // contribution of zero - the file's own order of priority.
+  if (silver.withdrawing) {
+    return "This unit's withdrawal is paid from the faction's unclaimed silver.";
   }
   if (silver.income === 0 && silver.expense === 0) {
     return "Nothing this unit is ordered to do moves silver.";

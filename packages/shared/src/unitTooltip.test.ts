@@ -598,6 +598,25 @@ describe("the silver section", () => {
     expect(note(false)).toBe("This unit's withdrawal is paid from the faction's unclaimed silver.");
   });
 
+  // The withdrawal note explains a contribution of zero; these two explain money that is on show,
+  // and a gift is the one part of the figure a reader cannot find in this unit's own block. So a
+  // unit that withdraws AND receives must still be told about the gift (`ah-tdsi`).
+  it("the_withdrawal_note_never_masks_a_gift", () => {
+    const noteFor = (overrides: Partial<UnitSilver>) =>
+      summariseUnit(
+        aReportUnit({ unitId: "1" }),
+        forecast({ withdrawing: true, ...overrides }),
+        true
+      ).silver?.note;
+
+    expect(
+      noteFor({ income: 300, expense: 0, atMonthEnd: 360, received: 300, givers: ["2"] })
+    ).toBe("Includes 300 given by 2 in this hex.");
+    expect(noteFor({ income: 0, expense: 300, atMonthEnd: 60, givenToNobody: 300 })).toBe(
+      "Includes 300 given away to nobody."
+    );
+  });
+
   it("names_every_giver_the_way_a_market_list_reads", () => {
     const note = (givers: string[], received: number) =>
       summariseUnit(

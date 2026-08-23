@@ -3669,9 +3669,7 @@ fn total_drawn_from_fund(
 
 /// What the ruleset says one of `item` costs to withdraw, or `None` where it says nothing.
 fn withdrawal_cost(item: &str, ruleset: Option<&Ruleset>) -> Option<i64> {
-    let ruleset = ruleset?;
-    let tag = ruleset.find_item(item)?.tag.to_ascii_uppercase();
-    ruleset.items.get(&tag)?.withdraw_cost
+    ruleset?.find_item(item)?.withdraw_cost
 }
 
 /// Every unit that claims or withdraws, when the faction's units ask more of the unclaimed fund
@@ -5023,6 +5021,42 @@ mod tests {
         assert_eq!(
             finding.message,
             "your units owe $60 of upkeep they cannot pay and the faction has $50 unclaimed"
+        );
+    }
+
+    /// The other half of `ah-tdsi`'s decline-over-guess rule, and the half a zero-fallback would
+    /// pass: a fund whose withdrawals nothing can price cannot be sized, so it is not spent on
+    /// upkeep at all and the unit it would have rescued is warned as it was before `ah-fjty`.
+    /// Treating the unknown total as zero would leave the whole $8450 in play and silence this.
+    #[test]
+    fn an_unpriceable_withdrawal_leaves_the_upkeep_settlement_inactive() {
+        let starving_hex = || {
+            vec![region(vec![
+                unfed(unit("5")),
+                with_men(with_silver(starving(unit("7")), 0), 6),
+            ])]
+        };
+
+        assert_eq!(
+            codes(&check_with_purse(
+                Some(8450),
+                starving_hex(),
+                "unit 5\nWITHDRAW 1 longship\n"
+            )),
+            ["not-enough-silver"],
+            "the fund cannot be sized, so it cannot be spent"
+        );
+
+        // The control: the same fund, a withdrawal the ruleset *can* price, and the unit is
+        // rescued exactly as `ah-fjty` shipped it.
+        assert_eq!(
+            codes(&check_with_purse(
+                Some(8450),
+                starving_hex(),
+                "unit 5\nWITHDRAW 1 grain\n"
+            )),
+            [] as [&str; 0],
+            "a fund that can be sized still pays the upkeep"
         );
     }
 
@@ -8904,6 +8938,11 @@ mod tests {
         );
     }
 
+    /// A control rather than a discriminating test, and deliberately so: any fund that covers the
+    /// claim and the withdrawal together also covers the claim alone, so no fixture of this shape
+    /// can fail when withdrawals go uncounted. What proves they are counted is the pair of overdraw
+    /// tests above; this one guards the other direction, that counting them does not invent a
+    /// warning.
     #[test]
     fn a_fund_that_covers_both_warns_about_neither() {
         assert!(check_claims_of(

@@ -669,7 +669,9 @@ pub fn forecast_unit(
             // not an expense of this unit's month at all - the fund is `check_claims`'s business
             // (`ah-tdsi`). The count is still reported, so the hover can say why `Out` is zero on a
             // unit ordered to withdraw.
-            Intent::Withdraw { .. } => withdrawing = true,
+            // A count of zero takes nothing from the fund, so it explains no `Out` and earns no
+            // note - the plan's `{ .. }` would have set the flag for `WITHDRAW 0 grain` too.
+            Intent::Withdraw { count, .. } => withdrawing = withdrawing || *count > 0,
             _ => {}
         }
     }
@@ -2523,6 +2525,25 @@ mod tests {
         assert_eq!(unit.expense, Some(0));
         assert_eq!(unit.at_month_end, Some(500));
         assert!(unit.withdrawing);
+    }
+
+    /// A withdrawal of nothing takes nothing from the fund, so there is no zero for the hover to
+    /// explain and no note to earn (`ah-tdsi`).
+    #[test]
+    fn withdrawing_a_count_of_zero_leaves_the_flag_false() {
+        let ruleset = ruleset();
+        let intents = vec![placed(Intent::Withdraw {
+            count: 0,
+            item: "STON".to_string(),
+        })];
+        let unit = spending(
+            500,
+            &intents,
+            RegionWages::default(),
+            &no_purchases,
+            Some(&ruleset),
+        );
+        assert!(!unit.withdrawing);
     }
 
     /// Guards a `withdrawing` set by anything other than a real `WITHDRAW` order.
