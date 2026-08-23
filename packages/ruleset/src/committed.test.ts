@@ -118,6 +118,42 @@ describe("the committed ruleset", () => {
   });
 
   /**
+   * ah-19l2.1's acceptance criterion: the two productions on the whole page that cost silver, read
+   * from the **committed** file rather than from a re-parse - so this fails if the file ships
+   * without the recipes, which is the failure that would matter to `ah-19l2.2`.
+   */
+  it("prices the two productions that cost silver", () => {
+    const carpenter = COMMITTED.skills.CARP.produces;
+
+    expect(carpenter.find((p) => p.tag === "CATP")).toEqual({
+      tag: "CATP",
+      level: 4,
+      inputs: [
+        { tag: "WOOD", amount: 250 },
+        { tag: "IRWD", amount: 30 },
+        { tag: "FUR", amount: 80 },
+        { tag: "SILV", amount: 3000 }
+      ],
+      inputsAreAlternatives: false,
+      manMonths: 4,
+      outputs: 1
+    });
+    expect(carpenter.find((p) => p.tag === "STED")).toEqual({
+      tag: "STED",
+      level: 4,
+      inputs: [
+        { tag: "ROOT", amount: 30 },
+        { tag: "IRON", amount: 250 },
+        { tag: "FUR", amount: 50 },
+        { tag: "SILV", amount: 3000 }
+      ],
+      inputsAreAlternatives: false,
+      manMonths: 4,
+      outputs: 1
+    });
+  });
+
+  /**
    * ah-3cj4.1: every entry the data page calls a building, not only the ten that state a defence.
    * A Mine is one of the commonest structures in the game, and the reference feature (ah-5jkt) had
    * nothing at all to say about it.

@@ -117,8 +117,41 @@ export type CastInput = { tag: string; amount: number };
  */
 export type CastCost = { costs: CastInput[]; transmute: Record<string, string> };
 
-/** One thing a skill can make, and the level at which it can first be made. */
-export type Production = { tag: string; level: number };
+/** One thing a production recipe consumes: an item tag and how many, silver being `SILV`. */
+export type ProductionInput = { tag: string; amount: number };
+
+/** One thing a skill can make, the level at which it can first be made, and what it takes. */
+export type Production = {
+  tag: string;
+  level: number;
+  /**
+   * What one output consumes, in the order the page lists it. Empty for a recipe that takes
+   * nothing but labour - which is most of them: iron, wood, herbs and every other raw resource
+   * are produced from the region itself.
+   *
+   * An input the page writes without a number is one: `swords [SWOR] from iron [IRON]`.
+   */
+  inputs: ProductionInput[];
+  /**
+   * Whether `inputs` are alternatives rather than requirements - the page's `from any of grain
+   * [GRAI], livestock [LIVE] and fish [FISH]`, which consumes one of the three and not all three.
+   *
+   * True for cooking alone today. Carried as a flag rather than a different shape because one
+   * irregular recipe does not earn a union type, and a consumer that ignores it over-states what a
+   * recipe costs - the safe direction for a warning, and the wrong one silently for a forecast.
+   */
+  inputsAreAlternatives: boolean;
+  /** Man-months per `outputs`. 1 for `at a rate of 1 per man-month`, 4 for `1 per 4 man-months`. */
+  manMonths: number;
+  /**
+   * How many the recipe makes per `manMonths`. Every recipe on the page today makes exactly one.
+   *
+   * `null` for cooking, whose output the page states as a formula rather than a number - "a number
+   * of meals [MEAL] equal to skill level divided by 2, rounded up". Null rather than a guess: this
+   * type does not model formulae, and a 1 there would be wrong at every level above 2.
+   */
+  outputs: number | null;
+};
 
 /** A skill a unit must already have, at a level, before it may begin to study another. */
 export type SkillRequirement = { tag: string; level: number };
@@ -517,10 +550,29 @@ function readCastCost(tag: string, paragraph: string): CastCost | null {
 
 /** The clause a production sentence opens with. Every PRODUCE on the page today is a `may PRODUCE`. */
 const PRODUCTION = /may PRODUCE ([^.]*)\./i;
-/** What separates one production from the next: `at a rate of 1 per man-month`, `... per 3 man-months`. */
-const PRODUCTION_RATE = /at a rate of [^.]*?man-months?/i;
+/**
+ * One production inside that clause: everything up to and including its rate phrase.
+ *
+ * The rate is what ends each production - `at a rate of 1 per man-month`, `... per 3 man-months` -
+ * so a global match over the clause yields one production per match, with the rate's two numbers
+ * captured rather than discarded. Anything trailing the last rate carries no production and is
+ * ignored, as it always was.
+ */
+const PRODUCTION_SEGMENT = /(.*?)at a rate of (\d+) per (?:(\d+) )?man-months?/gis;
 /** The tag in `swords [SWOR]`, `a number of meals [MEAL]`. */
 const PRODUCED_TAG = /\[([A-Z0-9]{2,6})\]/;
+/**
+ * One material inside the ` from ` tail: an optional number, a name, the tag.
+ *
+ * Global, and read straight out of the tail rather than out of pieces split off it - the same
+ * reasoning as `CAST_INPUT`: the pairs are self-delimiting, so `a and b`, `a, b and c` and
+ * whatever separator the page adopts next all read alike, because the separator is never looked at.
+ */
+const PRODUCTION_INPUT = /(?:(\d+) )?[a-z][a-z ]*\[([A-Z0-9]{2,6})\]/gi;
+/** `from any of grain [GRAI], livestock [LIVE] and fish [FISH]` - one of the list, not all of it. */
+const ANY_OF = /^any of /i;
+/** `a number of meals [MEAL] equal to skill level divided by 2, rounded up` - a formula, not a count. */
+const FORMULA_OUTPUT = /\bequal to\b/i;
 
 /**
  * What one level's paragraph says the skill may produce, or `[]` when it says nothing - true of
@@ -528,9 +580,13 @@ const PRODUCED_TAG = /\[([A-Z0-9]{2,6})\]/;
  *
  * The whole difficulty is telling a product from its materials: `swords [SWOR] from iron [IRON]`
  * names two items and the skill makes only the first. So the clause is cut into one segment per
- * production - the rate phrase is what ends each - and within a segment everything from the first
- * ` from ` is dropped before the tag is read. A trailing empty segment carries no tag and is
- * skipped; a clause that yields no tag at all is the page having changed shape, and throws.
+ * production - the rate phrase is what ends each - and the segment is split at its first ` from `:
+ * the head names the product, the tail lists what it consumes. A segment carrying no tag is
+ * skipped; a clause that yields no production at all is the page having changed shape, and throws.
+ *
+ * Cooking says ` from ` twice - `... rounded up from any of grain [GRAI]` - and splitting on the
+ * first occurrence happens to give the right answer on both sides. That is luck rather than
+ * design, and `data.test.ts` pins it by name.
  */
 function readProduction(tag: string, paragraph: string, level: number): Production[] {
   const clause = paragraph.match(PRODUCTION);
@@ -539,11 +595,38 @@ function readProduction(tag: string, paragraph: string, level: number): Producti
   }
 
   const made: Production[] = [];
-  for (const segment of clause[1].split(PRODUCTION_RATE)) {
-    const found = segment.split(" from ")[0].match(PRODUCED_TAG);
-    if (found) {
-      made.push({ tag: found[1], level });
+  for (const segment of clause[1].matchAll(PRODUCTION_SEGMENT)) {
+    const [, stated, outputs, manMonths] = segment;
+    const [head, ...rest] = stated.split(" from ");
+    const found = head.match(PRODUCED_TAG);
+    if (!found) {
+      continue;
     }
+
+    // Every rate the page states today makes exactly one per period. A page that starts saying
+    // "2 per man-month" must stop the scrape rather than be silently read as one - the posture
+    // this scraper already takes wherever it cannot read what it was given.
+    if (outputs !== "1") {
+      throw new RulesetScrapeError(
+        `could not read the production rate of skill ${tag} in "${segment[0].trim()}"`
+      );
+    }
+
+    const tail = rest.join(" from ").trim();
+    const inputsAreAlternatives = ANY_OF.test(tail);
+    const inputs: ProductionInput[] = [];
+    for (const [, amount, inputTag] of tail.replace(ANY_OF, "").matchAll(PRODUCTION_INPUT)) {
+      inputs.push({ tag: inputTag, amount: amount === undefined ? 1 : Number.parseInt(amount, 10) });
+    }
+
+    made.push({
+      tag: found[1],
+      level,
+      inputs,
+      inputsAreAlternatives,
+      manMonths: manMonths === undefined ? 1 : Number.parseInt(manMonths, 10),
+      outputs: FORMULA_OUTPUT.test(head) ? null : 1
+    });
   }
 
   if (made.length === 0) {

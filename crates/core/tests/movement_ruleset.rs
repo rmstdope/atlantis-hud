@@ -5,7 +5,7 @@
 //! what the game says. Both are worth a failing test.
 
 use atlantis_hud_core::movement::rules::{
-    CastInput, ItemKind, MovementMode, Production, Ruleset, RulesetError,
+    CastInput, ItemKind, MovementMode, Ruleset, RulesetError,
 };
 
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
@@ -446,35 +446,60 @@ fn reads_what_a_skill_can_produce() {
     let mini = ruleset
         .find_skill("MINI")
         .expect("MINI is in the catalogue");
+    // Projected to tag and level: what this test is about is which products appear at which
+    // level, and the recipe fields beside them are `reads_what_a_production_consumes`' business.
     assert_eq!(
-        mini.produces,
-        vec![
-            Production {
-                tag: "IRON".into(),
-                level: 1
-            },
-            Production {
-                tag: "MITH".into(),
-                level: 3
-            },
-            Production {
-                tag: "ADMT".into(),
-                level: 5
-            }
-        ]
+        mini.produces
+            .iter()
+            .map(|made| (made.tag.as_str(), made.level))
+            .collect::<Vec<_>>(),
+        vec![("IRON", 1), ("MITH", 3), ("ADMT", 5)]
     );
 
     let weap = ruleset
         .find_skill("WEAP")
         .expect("WEAP is in the catalogue");
-    assert!(weap.produces.contains(&Production {
-        tag: "SWOR".into(),
-        level: 1
-    }));
-    assert!(weap.produces.contains(&Production {
-        tag: "ASWR".into(),
-        level: 5
-    }));
+    let weapons: Vec<_> = weap
+        .produces
+        .iter()
+        .map(|made| (made.tag.as_str(), made.level))
+        .collect();
+    assert!(weapons.contains(&("SWOR", 1)));
+    assert!(weapons.contains(&("ASWR", 5)));
+}
+
+/// ah-19l2.1: the recipe itself, from the committed ruleset - the catapult being the one production
+/// a real committed turn orders, at 3000 silver apiece and one per four man-months.
+#[test]
+fn reads_what_a_production_consumes() {
+    let ruleset = ruleset();
+
+    let carp = ruleset
+        .find_skill("CARP")
+        .expect("CARP is in the catalogue");
+    let catapult = carp
+        .produces
+        .iter()
+        .find(|made| made.tag == "CATP")
+        .expect("a carpenter may produce catapults");
+
+    assert_eq!(catapult.man_months, Some(4));
+    assert_eq!(catapult.outputs, Some(1));
+    assert!(!catapult.inputs_are_alternatives);
+    assert_eq!(
+        catapult
+            .inputs
+            .iter()
+            .map(|input| (input.tag.as_str(), input.amount))
+            .collect::<Vec<_>>(),
+        vec![("WOOD", 250), ("IRWD", 30), ("FUR", 80), ("SILV", 3000)]
+    );
+
+    // A raw resource takes labour and nothing else - an empty list rather than an absent one.
+    let mini = ruleset
+        .find_skill("MINI")
+        .expect("MINI is in the catalogue");
+    assert!(mini.produces[0].inputs.is_empty());
 }
 
 /// A material a product is made from must never be recorded as a product itself: WEAP produces

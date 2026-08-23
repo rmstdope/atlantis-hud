@@ -54,10 +54,28 @@ export type Ruleset = {
   };
   movement: MovementRules;
   risk: RiskThresholds;
-  gaps: { weather: Gap };
+  gaps: { weather: Gap; production: Gap };
   items: ItemReference;
   skills: SkillReference;
   buildings: BuildingReference;
+};
+
+/**
+ * The recipes are scraped; nothing spends them yet. `ah-19l2.2` closes this gap and deletes this
+ * declaration - an undeclared missing capability is one somebody re-discovers.
+ */
+const PRODUCTION_GAP: Gap = {
+  modelled: false,
+  note:
+    "The ruleset now carries what each PRODUCE recipe consumes, but nothing spends it: PRODUCE " +
+    "is parsed as a month-long order and neither the Silver column nor the shortfall check " +
+    "charges it. Two recipes cost silver - catapults and steel defenders, 3000 each.",
+  consequence:
+    "A unit ordered to produce a catapult or a steel defender is shown spending nothing, and is " +
+    "not warned when it cannot afford one. Treat a producing unit's silver as an upper bound.",
+  evidence:
+    "may PRODUCE catapults [CATP] from 250 wood [WOOD], 30 ironwood [IRWD], 80 furs [FUR] and " +
+    "3000 silver [SILV] at a rate of 1 per 4 man-months"
 };
 
 export type BuildInput = {
@@ -150,7 +168,7 @@ export function buildRuleset(input: BuildInput): Ruleset {
     },
     movement,
     risk: DEFAULT_RISK,
-    gaps: { weather: WEATHER_GAP },
+    gaps: { weather: WEATHER_GAP, production: PRODUCTION_GAP },
     items,
     skills,
     buildings
