@@ -190,4 +190,13 @@ productionCappedBy: ProductionCap | null,
  * nobody wrote reads as a defect until something says why - the same reason
  * `own_food_covered` and `unclaimed_covered` are carried.
  */
-worksByDefault: boolean, };
+worksByDefault: boolean, 
+/**
+ * Whether this unit's tax income comes from its taxing flag rather than from a `TAX` order in
+ * this month's orders. Drives the hover's note and nothing else: the income is the same either
+ * way (`ah-fvzu`).
+ *
+ * `false` for a unit that also carries an explicit `TAX`, which has an order on screen that
+ * explains itself.
+ */
+taxesByFlag: boolean, };

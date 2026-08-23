@@ -546,6 +546,7 @@ describe("the Silver column", () => {
     productionWanted: 0,
     productionCappedBy: null,
     worksByDefault: false,
+    taxesByFlag: false,
     ...overrides
   });
 

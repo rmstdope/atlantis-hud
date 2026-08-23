@@ -29,7 +29,7 @@ use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
     combat_ready, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
     late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants, recipe_for,
-    settle_unclaimed, split_pool, unit_upkeep, ContendedPool, FactionFoodPass, FactionPurse,
+    settle_unclaimed, split_pool, taxes, unit_upkeep, ContendedPool, FactionFoodPass, FactionPurse,
     FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, PoolOverrun, PoolShare,
     PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt,
     UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS, TAX_PER_MAN,
@@ -1295,16 +1295,9 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
     let hex_combat_ready = combat_ready_in(hex, ruleset);
     for ordered in &hex.units {
         for placed in ordered.intents {
-            apply(
-                &mut ledger,
-                hex,
-                ordered,
-                placed,
-                ruleset,
-                pillaged,
-                hex_combat_ready,
-            );
+            apply(&mut ledger, hex, ordered, placed, ruleset, hex_combat_ready);
         }
+        credit_tax(&mut ledger, hex, ordered, pillaged);
     }
 
     charge_upkeep(&mut ledger, hex);
@@ -1481,15 +1474,26 @@ fn check_pillaged_tax(
     }
 
     for ordered in &hex.units {
+        let mut ordered_to_tax = false;
         for placed in ordered.intents {
             if !matches!(placed.intent, Intent::Tax) {
                 continue;
             }
+            ordered_to_tax = true;
             findings.push(ordered.finding(
                 hex,
                 codes::TAXED_A_PILLAGED_HEX,
                 "a unit is pillaging this hex, so this TAX will collect nothing".to_string(),
                 Some(placed),
+            ));
+        }
+        // A unit that taxes by its flag collects nothing here either, and has no line to hang the
+        // mark on - so it hangs on the block, which is what `finding_at_block` is for (`ah-fvzu`).
+        if !ordered_to_tax && taxes(&ordered.unit.flags, ordered.intents) {
+            findings.push(ordered.finding_at_block(
+                hex,
+                codes::TAXED_A_PILLAGED_HEX,
+                "a unit is pillaging this hex, so this TAX will collect nothing".to_string(),
             ));
         }
     }
@@ -1550,6 +1554,29 @@ fn market_list(lines: &[MarketItem]) -> String {
     }
 }
 
+/// The tax a unit collects this month, credited once per unit rather than once per `TAX` line.
+///
+/// A unit-level term because taxing is a property of the unit: the taxing flag makes it tax every
+/// turn with no order at all, and a unit carrying both the flag and a `TAX` taxes once
+/// (`ah-fvzu`). Mirrors `silver::forecast_unit`'s own term exactly - two surfaces reading one
+/// order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj` exists).
+fn credit_tax(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>, pillaged: bool) {
+    // "PILLAGE comes before TAX", so a pillage in this hex leaves every own taxer with nothing
+    // (`ah-cxxa`).
+    if pillaged || !taxes(&actor.unit.flags, actor.intents) {
+        return;
+    }
+    // "Each taxing character collects $50", capped by what the region has to give - and
+    // optimistically, none of what is left goes to any *foreign* unit.
+    let ceiling = hex.region.tax_base.unwrap_or(i64::MAX);
+    credit(
+        ledger,
+        &actor.unit.unit_id,
+        SILVER,
+        actor.unit.men.saturating_mul(TAX_PER_MAN).min(ceiling),
+    );
+}
+
 /// Applies one order to the ledger.
 fn apply(
     ledger: &mut Ledger<'_>,
@@ -1557,11 +1584,8 @@ fn apply(
     actor: &Ordered<'_>,
     placed: &PlacedIntent,
     ruleset: Option<&Ruleset>,
-    // Whether an own unit is pillaging this hex - computed once per hex by the caller, because
-    // this function runs for every placed intent of every unit (`ah-cxxa`).
-    pillaged: bool,
-    // Combat ready men this faction has in this hex - computed once per hex by the caller for the
-    // same reason `pillaged` is: this path runs per intent, and per keystroke (`ah-1ad6.2`).
+    // Combat ready men this faction has in this hex - computed once per hex by the caller, because
+    // this function runs for every placed intent of every unit (`ah-1ad6.2`).
     hex_combat_ready: Option<i64>,
 ) {
     let who = &actor.unit.unit_id;
@@ -1602,22 +1626,9 @@ fn apply(
             );
         }
         Intent::Claim(amount) => credit(ledger, who, SILVER, *amount),
-        Intent::Tax => {
-            // "PILLAGE comes before TAX", so a pillage in this hex leaves every own taxer with
-            // nothing (`ah-cxxa`). Mirrors `forecast_unit`'s arm exactly - two surfaces reading
-            // one order must not price it two ways.
-            if !pillaged {
-                // "Each taxing character collects $50", capped by what the region has to give -
-                // and optimistically, none of what is left goes to any *foreign* unit.
-                let ceiling = hex.region.tax_base.unwrap_or(i64::MAX);
-                credit(
-                    ledger,
-                    who,
-                    SILVER,
-                    actor.unit.men.saturating_mul(TAX_PER_MAN).min(ceiling),
-                );
-            }
-        }
+        // Credited once per unit by `credit_tax` in `ledger_for`, not per line: a unit may tax by
+        // its flag with no `TAX` order at all, and one carrying both taxes once (`ah-fvzu`).
+        Intent::Tax => {}
         // Mirrors `silver::forecast_unit`'s own arm exactly, down to the doubt: two surfaces
         // reading one order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj`
         // exists).
@@ -3529,6 +3540,14 @@ fn check_idle_units(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
         if ordered.unit.men == 0 && !ordered.unit.men_estimated {
             continue;
         }
+        // A unit set to tax every turn spends its month doing so, with no order in this turn's
+        // orders to say it - and no order the player could add would satisfy this advice, since a
+        // `TAX` would be redundant (`ah-fvzu`). The same reasoning `ah-udff` used for a unit with
+        // no men. `spends_the_month` takes an `&Intent` and a flagged unit has no intent at all,
+        // so the exemption belongs here rather than there.
+        if taxes(&ordered.unit.flags, ordered.intents) {
+            continue;
+        }
         if ordered.intents().any(spends_the_month) {
             continue;
         }
@@ -4089,6 +4108,11 @@ fn check_trade_regions(
     for region in &report.regions {
         let region_id = region.region_id.as_str();
         for unit in region.units.iter().filter(|unit| unit.own) {
+            // A unit taxing by its flag taxes this region with no `TAX` line to find, so the
+            // region counts against the allowance like any other (`ah-fvzu`).
+            if taxes(&unit.flags, ordered.intents_of(&unit.unit_id)) {
+                taxing.insert(region_id);
+            }
             for placed in ordered.intents_of(&unit.unit_id) {
                 match &placed.intent {
                     // Both shapes a PRODUCE order can take: one naming what it makes
@@ -4102,9 +4126,8 @@ fn check_trade_regions(
                             first_produce = Some((region_id, unit.unit_id.as_str(), placed));
                         }
                     }
-                    Intent::Tax => {
-                        taxing.insert(region_id);
-                    }
+                    // Counted once per unit above, flag or order alike.
+                    Intent::Tax => {}
                     _ => {}
                 }
             }
@@ -5735,6 +5758,130 @@ mod tests {
             "the warning fires: {:?}",
             codes(&unaffordable.findings)
         );
+    }
+
+    // --- a unit that taxes by its flag (`ah-fvzu`) ----------------------------------------------
+
+    /// A unit set to tax every turn, with no `TAX` in this month's orders.
+    fn taxing_by_flag(mut unit: ReportUnit) -> ReportUnit {
+        unit.flags.push("taxing".to_string());
+        unit
+    }
+
+    #[test]
+    fn the_ledger_credits_a_flagged_taxer() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![with_silver(taxing_by_flag(unit("1")), 0)])
+        };
+        let ordered = OrderedUnits::read("");
+        let hex = Hex::read(&hex_region, &ordered);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+
+        assert_eq!(silver_balance(&ledger, "1"), 50);
+    }
+
+    #[test]
+    fn the_ledger_does_not_credit_a_flagged_taxer_twice() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![with_silver(taxing_by_flag(unit("1")), 0)])
+        };
+        let ordered = OrderedUnits::read("unit 1\nTAX\n");
+        let hex = Hex::read(&hex_region, &ordered);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+
+        assert_eq!(silver_balance(&ledger, "1"), 50);
+    }
+
+    /// A flagged taxer contends for the region's base like any other, or every other taxer's share
+    /// is too large (`ah-t2pn.1`).
+    #[test]
+    fn a_flagged_taxer_contends_for_the_tax_base() {
+        let hex_region = ReportRegion {
+            tax_base: Some(60),
+            ..region(vec![
+                with_silver(unit("1"), 0),
+                with_silver(taxing_by_flag(unit("2")), 0),
+            ])
+        };
+        let ordered = OrderedUnits::read("unit 1\nTAX\n");
+        let hex = Hex::read(&hex_region, &ordered);
+        let region = region_wages(&hex, None);
+        let settled = pool_shares_for(&hex, region);
+
+        assert_eq!(settled.shares.len(), 2);
+        for share in &settled.shares {
+            assert_eq!(share.tax, PoolShare::Share(30));
+        }
+    }
+
+    #[test]
+    fn a_flagged_unit_is_not_told_it_does_nothing() {
+        let hex_region = region(vec![with_silver(taxing_by_flag(unit("1")), 100)]);
+        let ordered = OrderedUnits::read("");
+        let hex = Hex::read(&hex_region, &ordered);
+        let mut findings = Vec::new();
+        check_idle_units(&hex, &CheckOptions::default(), &mut findings);
+
+        assert!(findings.is_empty(), "{:?}", codes(&findings));
+    }
+
+    #[test]
+    fn a_unit_without_the_flag_still_is() {
+        let hex_region = region(vec![with_silver(unit("1"), 100)]);
+        let ordered = OrderedUnits::read("");
+        let hex = Hex::read(&hex_region, &ordered);
+        let mut findings = Vec::new();
+        check_idle_units(&hex, &CheckOptions::default(), &mut findings);
+
+        assert_eq!(codes(&findings), vec![codes::UNIT_DOES_NOTHING.as_str()]);
+    }
+
+    /// A flagged unit has no `TAX` line to hang the mark on, so it hangs on its block
+    /// (`semantics::finding_at_block`).
+    #[test]
+    fn a_flagged_taxer_in_a_pillaged_hex_is_marked_on_its_block() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![
+                with_silver(unit("1"), 0),
+                with_silver(taxing_by_flag(unit("2")), 0),
+            ])
+        };
+        let ordered = OrderedUnits::read("unit 1\nPILLAGE\n");
+        let hex = Hex::read(&hex_region, &ordered);
+        let mut findings = Vec::new();
+        check_pillaged_tax(&hex, true, &CheckOptions::default(), &mut findings);
+
+        assert_eq!(findings.len(), 1);
+        let marked = &findings[0];
+        assert_eq!(
+            marked.message,
+            "a unit is pillaging this hex, so this TAX will collect nothing"
+        );
+        assert_eq!(marked.column_start, None);
+        assert_eq!(marked.column_end, None);
+    }
+
+    #[test]
+    fn a_unit_with_a_tax_order_is_still_marked_on_its_line() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![
+                with_silver(unit("1"), 0),
+                with_silver(taxing_by_flag(unit("2")), 0),
+            ])
+        };
+        let ordered = OrderedUnits::read("unit 1\nPILLAGE\n\nunit 2\nTAX\n");
+        let hex = Hex::read(&hex_region, &ordered);
+        let mut findings = Vec::new();
+        check_pillaged_tax(&hex, true, &CheckOptions::default(), &mut findings);
+
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].column_start.is_some());
     }
 
     // --- a pillage empties the hex for every own taxer (`ah-cxxa`) -----------------------------
@@ -13995,6 +14142,21 @@ mod tests {
             "PRODUCE and TAX orders in 3 regions; this faction may tax and trade in 2, so 1 \
              region's orders will be refused"
         );
+    }
+
+    /// A unit taxing by its flag taxes its region as surely as one with a `TAX` line, so the
+    /// region counts against the allowance (`ah-fvzu`).
+    #[test]
+    fn a_flagged_taxer_counts_toward_the_taxed_regions() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![unit("5")]),
+            region_at("1:8,53", 8, 53, vec![unit("6")]),
+            region_at("1:9,53", 9, 53, vec![taxing_by_flag(unit("7"))]),
+        ];
+        let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\n";
+        let findings = check_trade(regions, orders, "Regions", 2);
+
+        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
     }
 
     /// A region that both produces and taxes must count once against the pooled allowance, not
