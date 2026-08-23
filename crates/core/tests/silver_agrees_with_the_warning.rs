@@ -226,11 +226,10 @@ fn the_corpus_actually_exercises_the_agreement() {
     // finding shape - hex-level, no `unit_id` - that the per-unit walk discards, and reading the
     // wrong one made it vacuously true rather than failing. A `true` it must see is the cheapest
     // guard against that returning.
-    // Dormant with the test it guards, and for the reason given there (`ah-e66j`, `ah-8l9a`): that
-    // test now walks nothing, so a floor under it would assert about a comparison nobody makes.
-    // Kept as a binding rather than deleted, so that restoring the test restores its guard with it
-    // - and so that the corpus is still asked the question, which is what a reader checks first.
-    let _warned_sharing_hexes_when_ah_8l9a_lands = warned_shared_hexes;
+    assert!(
+        !warned_shared_hexes.is_empty(),
+        "no sharing hex in the corpus is warned, so the hex-level equality never sees a `true`"
+    );
 }
 
 /// The ledger's balance before maintenance, reconstructed from the column.
@@ -255,6 +254,77 @@ fn balance_before_maintenance(silver: &UnitSilver) -> Option<i64> {
 fn upkeep_drawn_from_silver(silver: &UnitSilver) -> i64 {
     let late = silver.late_income.unwrap_or(0);
     (silver.upkeep.unwrap_or(0) - late).max(0)
+}
+
+/// What maintenance draws off a unit's own silver **before step 4 moves anything**.
+///
+/// `upkeep_drawn_from_silver` is the figure the column shows, which is net of every relief - and
+/// since `ah-e66j` that includes silver a faction-mate in the same hex lent at step 4. Steps 2 and
+/// 7 are paid from *outside* the hex (faction food, the unclaimed fund) and must stay subtracted;
+/// step 4 is paid from *inside* it, by a unit this very sum is about to count as a lender, so
+/// leaving it subtracted would count the same silver twice - once as the lender's spare and once
+/// as a claim that no longer exists.
+///
+/// Correct in both of `ah-e66j`'s branches without distinguishing them, so the test needs no signal
+/// for what step 4 did. Where the hex covered everybody, `shared_silver_covered` carries what each
+/// fed unit received and adding it back restores the pre-step-4 claim exactly. Where the hex fell
+/// short, `ah-e66j` records nothing on either side by decision, so `upkeep` was never reduced and
+/// `shared_silver_covered` is `0` - and adding zero is right.
+fn upkeep_before_hex_sharing(silver: &UnitSilver) -> i64 {
+    let late = silver.late_income.unwrap_or(0);
+    (silver.upkeep.unwrap_or(0) + silver.shared_silver_covered - late).max(0)
+}
+
+/// A `UnitSilver` carrying only the three terms the claim helpers read, for the arithmetic test
+/// below. Everything else is the neutral value, so a reader can see at a glance that nothing else
+/// is in play.
+fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> UnitSilver {
+    UnitSilver {
+        unit_id: "1".into(),
+        region_id: "(0,0)".into(),
+        held: 0,
+        income: Some(0),
+        late_income: Some(late_income),
+        expense: Some(0),
+        at_month_end: Some(0),
+        short_for_orders: Some(0),
+        short_on: None,
+        upkeep: Some(upkeep),
+        doubt: None,
+        doubt_subject: None,
+        received: 0,
+        givers: Vec::new(),
+        faction_food_covered: 0,
+        shared_silver_covered,
+        own_food_covered: 0,
+        forced_own_food: 0,
+        forced_own_food_tag: None,
+        forced_faction_food: 0,
+        food_contended: false,
+        unclaimed_covered: 0,
+        unclaimed_contended: false,
+        given_to_nobody: 0,
+        withdrawing: false,
+    }
+}
+
+#[test]
+fn upkeep_before_hex_sharing_adds_back_what_a_neighbour_lent() {
+    // 20 still owed after a neighbour paid 40 of it: the claim on the hex was 60 before step 4.
+    assert_eq!(upkeep_before_hex_sharing(&claim_case(20, 0, 40)), 60);
+
+    // With nothing lent - which is every unit outside a sharing hex, and every unit in a hex that
+    // fell short - the two helpers must agree, or the reconstruction would have changed meaning
+    // for units step 4 never touched.
+    let untouched = claim_case(30, 5, 0);
+    assert_eq!(
+        upkeep_before_hex_sharing(&untouched),
+        upkeep_drawn_from_silver(&untouched)
+    );
+
+    // Late income still cancels the claim rather than driving it negative, exactly as
+    // `charge_upkeep` does.
+    assert_eq!(upkeep_before_hex_sharing(&claim_case(10, 50, 5)), 0);
 }
 
 /// Why one unit is exempt from the per-unit equality, and what is asserted about it instead.
@@ -354,10 +424,11 @@ fn the_column_and_the_warning_agree_on_every_unit_in_the_corpus() {
 /// this way, and every divergence the corpus contains is one of them.
 ///
 /// What is left is the hex-level statement, and it is the check's own arithmetic rather than a flat
-/// sum over the hex: the purse is the balance-after-maintenance of the hex's non-doubted
-/// **sharers**, the claims on it are the overdrafts of its non-doubted **non-sharers** (a
-/// non-sharer in credit keeps its own silver and helps nobody), and **the pooled
-/// `not-enough-silver` finding fires exactly when the purse does not cover the claims.**
+/// sum over the hex: the purse is what every non-doubted own unit has spare once its own
+/// maintenance is drawn, the claims on it are what maintenance still draws on the units that came
+/// up short - capped at what it drew, so a unit's *overspending* is never put on the hex - and
+/// **the pooled `not-enough-silver` finding fires exactly when the purse does not cover the claims
+/// and some unit's whole remaining overdraft is still upkeep.**
 /// Both directions are asserted, as one equality, because both are real: a hex warned with a
 /// healthy purse and a hex silent with an empty one are different defects and each has a surface
 /// that could cause it.
@@ -365,20 +436,20 @@ fn the_column_and_the_warning_agree_on_every_unit_in_the_corpus() {
 /// The warning read here is the **hex-level** finding, the one with no `unit_id`. That is the only
 /// kind a sharing hex ever gets, and reading the per-unit findings instead is what made an earlier
 /// version of this test assert nothing at all.
-/// **Dormant since `ah-e66j`, deliberately, and `ah-8l9a` exists to wake it up again.**
+/// **Dormant between `ah-e66j` and `ah-8l9a`, and awake again now.** `ah-e66j` made maintenance
+/// sharing automatic - every hex holding more than one own unit lends silver between its units at
+/// step 4 - and the lender's row shows nothing of the loan (the navigator's round-2 decision),
+/// so the purse could no longer be reconstructed the way this test reconstructed it. The filter
+/// was widened to skip every such hex, which was every sharing hex the corpus has, and the test
+/// walked nothing: exactly the vacuity Copilot caught on #602, reintroduced knowingly with a bead
+/// against it.
 ///
-/// That bead made maintenance sharing automatic, so every hex holding more than one own unit lends
-/// silver between its units at step 4 of the payment order - and the lender's row shows nothing of
-/// the loan (the navigator's round-2 decision), while in the branch where the hex cannot cover
-/// every claimant *neither* side records anything, by design. So the purse below can no longer be
-/// reconstructed from the column: three reconstructions were tried while `ah-e66j` was built and
-/// each agreed with the ledger on most of the corpus and diverged on a hex where step 4 had moved
-/// silver invisibly.
-///
-/// The filter therefore skips every hex with more than one own unit, which is every sharing hex the
-/// corpus has, so this test currently walks nothing. That is exactly the vacuity Copilot caught on
-/// #602 - reintroduced knowingly, with the navigator's agreement, and with a bead against it rather
-/// than by accident. What restores it is a signal the test can read for what step 4 moved.
+/// `ah-8l9a` restores it without asking production for a new field. Step 4 is reconstructed in its
+/// two states instead - `upkeep_before_hex_sharing` adds `shared_silver_covered` back to recover
+/// the claim the pool actually saw, and `upkeep_drawn_from_silver` stays as the column's own,
+/// post-relief figure that the hex-level message is finally collected from. What that cannot reach
+/// is the `SHARE` pool for *orders*, whose lender the column never shows; a hex that is both
+/// flagged and crowded is therefore skipped, and said so at the filter.
 #[test]
 fn the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus() {
     /// One hex's side of the comparison.
@@ -392,6 +463,15 @@ fn the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus() {
         warned: bool,
         /// A doubted sharer makes the pool untrusted, so no pooled finding is emitted at all.
         untrusted: bool,
+        /// Whether this hex is judged by `report_shortfalls`'s `SHARE` pool rather than by step
+        /// 4's maintenance pooling. True only for a hex whose single own unit carries the flag -
+        /// a flagged hex with neighbours is skipped above, unreconstructable.
+        flagged: bool,
+        /// What that lone sharer has left once the column's maintenance is drawn.
+        lone_sharer_left: i64,
+        /// The overdrafts the hex-level maintenance message is summed from: those of units whose
+        /// whole shortfall is upkeep step 4 could not cover.
+        maintenance_short: i64,
         /// `<unit> (<its own B - U>)`, so a failure names who is in the purse.
         units: Vec<String>,
     }
@@ -400,7 +480,20 @@ fn the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus() {
     let mut hexes: BTreeMap<(&'static str, String), Pooled> = BTreeMap::new();
 
     for case in compare_the_corpus() {
-        if !case.shared_hex || case.crowded_hex {
+        // Judged: every hex the ledger pools maintenance across (`crowded_hex`), plus the lone
+        // `sharing` unit whose hex pools nothing, where the two arms coincide.
+        //
+        // Skipped: a hex that is **both** flagged and crowded. There the pooled finding may come
+        // from `report_shortfalls`'s `SHARE` pool for *orders*, which sums `relieved_balance` over
+        // the sharers alone - and a lender's `relieved_balance` is below what its row shows,
+        // because `ah-e66j`'s round-2 decision keeps the loan off the column. That half is
+        // unreconstructable from the column and stays unguarded here, deliberately: this test
+        // restores the maintenance guard, which is what `ah-e66j` broke, and guarding the orders
+        // pool would need the lending exposed (`ah-8l9a`, *Out of scope*).
+        if case.shared_hex && case.crowded_hex {
+            continue;
+        }
+        if !case.shared_hex && !case.crowded_hex {
             continue;
         }
         let silver = &case.silver;
@@ -409,6 +502,7 @@ fn the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus() {
             .or_default();
         entry.warned = case.hex_warned;
         entry.untrusted |= case.doubted_sharer_in_hex;
+        entry.flagged |= case.shares;
 
         // A doubted unit contributes nothing to the purse the check sums either: `relieved_balance`
         // is only read for units the ledger did not doubt.
@@ -416,26 +510,63 @@ fn the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus() {
             entry.units.push(format!("{} (doubted)", silver.unit_id));
             continue;
         };
-        let left = balance - upkeep_drawn_from_silver(silver);
-        if case.shares {
-            entry.pool += left;
-        } else {
-            entry.claims += (-left).max(0);
+        // Step 4 is reconstructed as the ledger runs it, in two states: what each unit's balance
+        // was *before* it - which is what the pool lends out of and what claims are made against -
+        // and what the column shows *after* it, which is what the hex-level message is finally
+        // collected from. The one field that separates them is `shared_silver_covered`, and
+        // `upkeep_before_hex_sharing` is where it is added back.
+        let drawn_before = upkeep_before_hex_sharing(silver);
+        let left_before = balance - drawn_before;
+        let left_after = balance - upkeep_drawn_from_silver(silver);
+
+        // Every unit lends what it has spare once its own maintenance is paid, and claims at most
+        // what maintenance drew on it - `unpayable_upkeep`'s own cap, without which a unit whose
+        // *orders* overspend would put that overspending on the hex.
+        entry.pool += left_before.max(0);
+        entry.claims += (-left_before).max(0).min(drawn_before);
+
+        // What the hex-level message is actually made of: a unit whose whole overdraft is unpaid
+        // upkeep. One that also overspends on its orders keeps its own per-unit finding instead
+        // (`report_shortfalls`'s `short <= unpaid_upkeep` gate), and a non-negative balance before
+        // maintenance is exactly that condition seen from the column.
+        if balance >= 0 && left_after < 0 {
+            entry.maintenance_short += -left_after;
         }
+        if case.shares {
+            entry.lone_sharer_left += left_after;
+        }
+
         entry.units.push(format!(
-            "{} ({left}{})",
+            "{} (before {left_before}, after {left_after}, drawn {drawn_before})",
             silver.unit_id,
-            if case.shares { ", sharing" } else { "" }
         ));
     }
 
-    for ((fixture, region_id), hex) in hexes {
+    let mut judged_pooled_hexes = 0usize;
+    for ((fixture, region_id), hex) in &hexes {
         if hex.untrusted {
             continue;
         }
+        if hex.units.len() > 1 {
+            judged_pooled_hexes += 1;
+        }
+
+        // The ledger sets `maintenance_pooled` only when step 4 had something to lend and could
+        // not cover everybody, and emits the hex finding only when some unit's whole overdraft is
+        // then still upkeep. Both halves are needed: a hex that covered everybody is silent, and
+        // so is one whose only overdrafts are its orders'.
+        let pooled_and_short = hex.pool > 0 && hex.claims > 0 && hex.pool < hex.claims;
+        // A lone sharer's hex is judged by the `SHARE` pool instead, which is that one unit's own
+        // relieved balance - and with no neighbour there is nothing for step 4 to lend, so the
+        // maintenance arm never speaks for it.
+        let expected = if hex.flagged {
+            hex.lone_sharer_left < 0
+        } else {
+            pooled_and_short && hex.maintenance_short > 0
+        };
         assert_eq!(
             hex.warned,
-            hex.pool - hex.claims < 0,
+            expected,
             "{fixture} hex {region_id}: the column gives a purse of {} against claims of {} on it, \
              leaving {}, and the pooled warning {} - {}",
             hex.pool,
@@ -445,4 +576,124 @@ fn the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus() {
             hex.units.join(", "),
         );
     }
+
+    // A test that compares nothing passes, which is the defect this bead was written against
+    // (`ah-8l9a`, and Copilot's comment on #602 before it). The count is of hexes actually
+    // **judged** - `untrusted` hexes are short-circuited above and must not reach it, or the same
+    // vacuity returns in a new place.
+    //
+    // A count of *judged* pooled hexes rather than of *warned* ones, which is what `ah-8l9a`'s
+    // acceptance asked for, and the corpus is why: all 22 of its crowded, unflagged hexes are
+    // solvent, so no floor over warned ones can be met without either widening the corpus or
+    // counting the flagged hexes this test cannot reconstruct. The warned direction is covered
+    // instead by `a_hex_that_cannot_cover_its_own_upkeep_is_warned_once_for_the_hex` below, which
+    // is the branch a corpus of solvent hexes can never exercise.
+    assert!(
+        judged_pooled_hexes > 0,
+        "no hex holding more than one own unit was judged, so this test compared nothing that \
+         pooling applies to - either the corpus changed or the reconstruction is silently \
+         exempting every hex, which is what `ah-8l9a` was written to end"
+    );
+}
+
+/// The branch the corpus does not contain: a hex whose units cannot cover their own upkeep between
+/// them.
+///
+/// Every crowded, unflagged hex in the corpus is solvent, so the walk above only ever watches step
+/// 4 succeed. This is the other side of `ah-e66j`'s decision - where the pool falls short the whole
+/// hex is marked once and no unit's figure moves - and without a fixture for it the restored guard
+/// would still be blind to the case it most needs to catch.
+///
+/// One lender with a little spare and one unit that cannot pay a penny of its fee: the pool is real
+/// but too small, so nothing is recorded on either unit and the hex is marked instead.
+#[test]
+fn a_hex_that_cannot_cover_its_own_upkeep_is_warned_once_for_the_hex() {
+    let ruleset = ruleset();
+    // Joined rather than written as one escaped literal: a wrapped unit line is recognised by its
+    // two-space indent, and a `\`-continuation in a Rust string eats exactly that.
+    let report = [
+        "Atlantis Report For:",
+        "The Disinherited Knights (42)",
+        "February, Year 1",
+        "",
+        "plain (1,1) in Nowhere, 10 peasants (humans), $5.",
+        "------------------------------------------------------------",
+        "  Wages: $13.5 (Max: $633).",
+        "  Wanted: none.",
+        "  For Sale: none.",
+        "  Entertainment available: $85.",
+        "  Products: 31 grain [GRAI].",
+        "",
+        "Exits:",
+        "  Southeast : plain (2,2) in Nowhere.",
+        "",
+        "* Lender (100), The Disinherited Knights (42), behind, human [HUMN], 12 silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: none.",
+        "* Pauper (101), The Disinherited Knights (42), behind, human [HUMN]. Weight: 10. Capacity: 0/0/15/0. Skills: none.",
+        "",
+    ]
+    .join("\n");
+    let mut parsed = parse_report_full(&report);
+    classify_units(&mut parsed, &ruleset);
+    let review = review_turn(&parsed, "", Some(&ruleset), CheckOptions::default());
+
+    let silver: BTreeMap<&str, &UnitSilver> = review
+        .silver
+        .iter()
+        .map(|silver| (silver.unit_id.as_str(), silver))
+        .collect();
+    assert_eq!(
+        silver.len(),
+        2,
+        "both own units must reach the column, or this fixture asserts about nothing"
+    );
+
+    // `ah-e66j`'s contended branch records nothing on either side, so the column shows the pauper
+    // owing its whole fee and the lender having lent nothing. If this ever moves, the branch this
+    // fixture covers has changed and the reconstruction above must change with it.
+    for (id, unit) in &silver {
+        assert_eq!(
+            unit.shared_silver_covered, 0,
+            "{id}: a hex that fell short records no relief, by decision (`ah-e66j`)"
+        );
+    }
+    assert_eq!(silver["100"].held, 12);
+    assert_eq!(silver["101"].held, 0);
+    assert_eq!(silver["100"].upkeep, Some(10));
+    assert_eq!(silver["101"].upkeep, Some(10));
+
+    let shortfalls: Vec<_> = review
+        .findings
+        .iter()
+        .filter(|finding| finding.code.as_str() == "not-enough-silver")
+        .collect();
+    assert_eq!(
+        shortfalls.len(),
+        1,
+        "expected exactly one shortfall for this hex, got {:?}",
+        shortfalls
+            .iter()
+            .map(|finding| (finding.unit_id.clone(), finding.message.clone()))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        shortfalls[0].unit_id.is_none(),
+        "the hex is marked once and no unit is named, because which of them the engine feeds \
+         cannot be told (`ah-e66j`): {:?}",
+        shortfalls[0]
+    );
+
+    // And the reconstruction the corpus walk uses agrees, which is the point of the fixture: a
+    // real pool of $2 against claims of $10, and the pauper's whole overdraft still upkeep.
+    let left_of = |unit: &UnitSilver| {
+        balance_before_maintenance(unit).expect("nothing is doubted here")
+            - upkeep_before_hex_sharing(unit)
+    };
+    let claim_of = |unit: &UnitSilver| (-left_of(unit)).max(0).min(upkeep_before_hex_sharing(unit));
+    let pool = left_of(silver["100"]).max(0) + left_of(silver["101"]).max(0);
+    let claims = claim_of(silver["100"]) + claim_of(silver["101"]);
+    assert_eq!((pool, claims), (2, 10));
+    assert!(
+        pool > 0 && pool < claims,
+        "the reconstruction must see a real pool that falls short - pool {pool}, claims {claims}"
+    );
 }
