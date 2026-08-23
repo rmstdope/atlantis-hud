@@ -3,6 +3,8 @@
 //! Deliberately hand written rather than regex based: the crate has no regex dependency, and these
 //! shapes are simple enough that the parsing reads more clearly than a pattern would.
 
+use std::collections::BTreeSet;
+
 use super::level;
 use super::model::{Coordinate, ItemAmount, MarketItem, Settlement, Skill};
 
@@ -41,6 +43,37 @@ pub fn split_top_level(input: &str, separator: char) -> Vec<String> {
     parts
 }
 
+/// The byte indices of brackets that never close (or never open).
+///
+/// A name may contain a stray bracket - `Smiley :(` is a real one - and a depth counter cannot tell
+/// that from a nesting that has not finished yet. Matching the brackets first says exactly which
+/// ones are noise, so the scan can step over them instead of being derailed by them.
+///
+/// `(` and `[` are interchangeable here, matching [`split_top_level`] and the scan below, so that
+/// every scanner in this module agrees about the same string.
+///
+/// Empty for well-formed input, which is what makes the fallback in [`split_leading_id`] free on
+/// every real report.
+#[must_use]
+fn unmatched_brackets(input: &str) -> BTreeSet<usize> {
+    let mut open_positions: Vec<usize> = Vec::new();
+    let mut stray = BTreeSet::new();
+
+    for (index, character) in input.char_indices() {
+        match character {
+            '(' | '[' => open_positions.push(index),
+            // A closer with nothing open is itself the stray one; `pop` both matches and reports.
+            ')' | ']' if open_positions.pop().is_none() => {
+                stray.insert(index);
+            }
+            _ => {}
+        }
+    }
+
+    stray.extend(open_positions);
+    stray
+}
+
 /// Reads a leading `Name (id)` from `input`, where the name may itself contain top-level commas.
 ///
 /// Scans for the first parenthesised group at bracket depth zero whose contents are all ASCII
@@ -57,11 +90,32 @@ pub fn split_top_level(input: &str, separator: char) -> Vec<String> {
 /// an unreadable line.
 #[must_use]
 pub fn split_leading_id(input: &str) -> Option<(String, String, &str)> {
+    if let Some(found) = scan_leading_id(input, &BTreeSet::new()) {
+        return Some(found);
+    }
+
+    let stray = unmatched_brackets(input);
+    if stray.is_empty() {
+        return None;
+    }
+
+    scan_leading_id(input, &stray)
+}
+
+/// [`split_leading_id`]'s scan, with a set of byte indices to treat as ordinary characters.
+///
+/// A bracket at an ignored index changes no depth and opens no candidate, which is what lets a
+/// stray one inside a name be stepped over rather than derail the scan.
+fn scan_leading_id<'a>(
+    input: &'a str,
+    ignore: &BTreeSet<usize>,
+) -> Option<(String, String, &'a str)> {
     let mut depth = 0i32;
     let mut candidate_open: Option<usize> = None;
 
     for (index, character) in input.char_indices() {
         match character {
+            _ if ignore.contains(&index) => {}
             '(' => {
                 if depth <= 0 {
                     candidate_open = Some(index);
@@ -409,5 +463,69 @@ mod tests {
     fn recognises_an_empty_list() {
         assert!(is_none_list("none."));
         assert!(!is_none_list("69 fish [FISH]."));
+    }
+
+    #[test]
+    fn finds_the_brackets_that_never_close() {
+        let one = "Smiley :( (100)";
+        assert_eq!(
+            unmatched_brackets(one),
+            [one.find('(').unwrap()].into_iter().collect()
+        );
+
+        let two = "Bob [x (100)";
+        assert_eq!(
+            unmatched_brackets(two),
+            [two.find('[').unwrap()].into_iter().collect()
+        );
+
+        assert_eq!(
+            unmatched_brackets("Three of Five (793)"),
+            std::collections::BTreeSet::new()
+        );
+
+        let four = "Smiley :) (100)";
+        assert_eq!(
+            unmatched_brackets(four),
+            [four.find(')').unwrap()].into_iter().collect()
+        );
+    }
+
+    #[test]
+    fn reads_a_name_containing_an_unclosed_bracket() {
+        assert_eq!(
+            split_leading_id("Smiley :( (100), Wanderers (29), 10 humans [HUMN]"),
+            Some((
+                "Smiley :(".to_string(),
+                "100".to_string(),
+                "Wanderers (29), 10 humans [HUMN]"
+            ))
+        );
+
+        assert_eq!(
+            split_leading_id("Bob [x (100), Wanderers (29)"),
+            Some(("Bob [x".to_string(), "100".to_string(), "Wanderers (29)"))
+        );
+    }
+
+    #[test]
+    fn an_unclosed_bracket_does_not_change_a_line_that_already_read() {
+        assert_eq!(
+            split_leading_id("Smiley :) (100), Wanderers (29), 10 humans [HUMN]"),
+            Some((
+                "Smiley :)".to_string(),
+                "100".to_string(),
+                "Wanderers (29), 10 humans [HUMN]"
+            ))
+        );
+
+        assert_eq!(
+            split_leading_id("Three of Five (793), Borg (73), behind"),
+            Some((
+                "Three of Five".to_string(),
+                "793".to_string(),
+                "Borg (73), behind"
+            ))
+        );
     }
 }

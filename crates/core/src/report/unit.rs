@@ -457,4 +457,43 @@ mod tests {
         assert_eq!(unit.men, 20);
         assert_eq!(unit.items.len(), 2);
     }
+
+    #[test]
+    fn keeps_a_unit_whose_name_contains_an_unclosed_bracket() {
+        let unit = parse_unit(
+            "* Smiley :( (100), Wanderers (29), 10 humans [HUMN].",
+            true,
+            "1:7,53",
+            None,
+        )
+        .expect("unit should parse");
+
+        assert_eq!(unit.name, "Smiley :(");
+        assert_eq!(unit.unit_id, "100");
+        assert_eq!(unit.faction_name.as_deref(), Some("Wanderers"));
+        assert_eq!(unit.men, 10);
+
+        let square = parse_unit(
+            "* Bob [x (100), Wanderers (29), 10 humans [HUMN].",
+            true,
+            "1:7,53",
+            None,
+        )
+        .expect("unit should parse");
+
+        assert_eq!(square.name, "Bob [x");
+        assert_eq!(square.unit_id, "100");
+        assert_eq!(square.faction_name.as_deref(), Some("Wanderers"));
+
+        let faction = parse_unit(
+            "* Scout (100), Wanderers :( (29), 10 humans [HUMN].",
+            true,
+            "1:7,53",
+            None,
+        )
+        .expect("unit should parse");
+
+        assert_eq!(faction.faction_name.as_deref(), Some("Wanderers :("));
+        assert_eq!(faction.faction_id.as_deref(), Some("29"));
+    }
 }
