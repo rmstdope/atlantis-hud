@@ -29,10 +29,10 @@ use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
     feed_after_silver, feed_from_faction_food, food_claim, forecast_unit, late_income,
     parse_wage_centis, plan_production, pool_wants, recipe_for, settle_unclaimed, split_pool,
-    unit_upkeep, FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups,
-    MarketSide, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages,
-    SaleAnswer, SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
-    TAX_PER_MAN,
+    unit_upkeep, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim,
+    LateFoodRelief, Lookups, MarketSide, PoolOverrun, PoolShare, PoolShares, PoolWants,
+    PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver,
+    UpkeepClaim, UpkeepSettlement, FOOD_TAGS, TAX_PER_MAN,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -109,6 +109,7 @@ pub mod codes {
     pub const TAXED_A_PILLAGED_HEX: Code = Code("taxed-a-pillaged-hex");
     pub const PRODUCE_WITHOUT_SKILL: Code = Code("produce-without-skill");
     pub const PRODUCE_NOT_HERE: Code = Code("produce-not-here");
+    pub const REGION_POOL_OVERSUBSCRIBED: Code = Code("region-pool-oversubscribed");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -117,7 +118,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 29] = [
+    pub const ALL: [Code; 30] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -147,6 +148,7 @@ pub mod codes {
         TAXED_A_PILLAGED_HEX,
         PRODUCE_WITHOUT_SKILL,
         PRODUCE_NOT_HERE,
+        REGION_POOL_OVERSUBSCRIBED,
     ];
 }
 
@@ -305,6 +307,9 @@ pub fn review_turn(
     apply_relief(&mut hexes, &settlement);
 
     for (hex, ledger) in &hexes {
+        // Per hex, because the pools are: what one region's units ask of its tax base says nothing
+        // about the next region's.
+        let mut overruns: Vec<PoolOverrun> = Vec::new();
         forecast_hex(
             hex,
             &receipts,
@@ -316,12 +321,14 @@ pub fn review_turn(
                 settlement: &settlement,
             },
             &mut silver,
+            &mut overruns,
         );
         if hex.units.is_empty() {
             continue;
         }
 
         let start = findings.len();
+        check_region_pools(hex, &overruns, ruleset, &options, &mut findings);
         check_resources(hex, ledger, ruleset, &options, &mut findings);
         check_markets(hex, ruleset, &options, &mut findings);
         check_pillaged_tax(hex, own_unit_pillages(hex), &options, &mut findings);
@@ -370,6 +377,19 @@ struct Relief<'a> {
     settlement: &'a UpkeepSettlement,
 }
 
+/// What settling a hex's pools between their claimants produced: a share per unit, and what had to
+/// be divided to arrive at them.
+///
+/// The overruns travel with the shares rather than being worked out again by the check that
+/// reports them (`ah-t2pn.4`), so the sentence a player reads and the figures in their Silver
+/// column can never disagree about what this hex asked for.
+struct PoolSettlement {
+    /// One entry per unit in `hex.units`, index-aligned with it.
+    shares: Vec<PoolShares>,
+    /// Every pool the hex's own units asked more of than it holds. Empty is the ordinary case.
+    overruns: Vec<PoolOverrun>,
+}
+
 /// One [`PoolShares`] per unit in `hex.units`, index-aligned, for every contended regional pool.
 ///
 /// Computed **once per hex** and handed to both [`forecast_hex`] and [`charge_upkeep`]: they price
@@ -380,13 +400,15 @@ struct Relief<'a> {
 /// arithmetic it always had; any wanting unit with a guessed headcount makes every wanting unit's
 /// share [`PoolShare::Unknowable`]; otherwise [`split_pool`] divides it. A unit not drawing on a
 /// pool is never touched by somebody else's contention for it.
-fn pool_shares_for(hex: &Hex<'_>, region: RegionWages) -> Vec<PoolShares> {
+fn pool_shares_for(hex: &Hex<'_>, region: RegionWages) -> PoolSettlement {
     /// One contended pool, as the loop below reads it: what a unit asks of it, where that unit's
-    /// share of it is written, and what the region says it holds.
-    struct ContendedPool {
+    /// share of it is written, what the region says it holds, and which pool to name in a finding
+    /// about it.
+    struct Contended {
         want_of: fn(&PoolWants) -> i64,
         share_of: fn(&mut PoolShares) -> &mut PoolShare,
         pool: Option<i64>,
+        names: ContendedPool,
     }
 
     let nothing = Receipts::default();
@@ -396,32 +418,42 @@ fn pool_shares_for(hex: &Hex<'_>, region: RegionWages) -> Vec<PoolShares> {
         .collect();
 
     let mut shares = vec![PoolShares::default(); hex.units.len()];
+    let mut overruns: Vec<PoolOverrun> = Vec::new();
     // `max_wages: None` means the region states *no ceiling*, not that it has no money, so it is
     // never contended - dividing a pool of zero would pay every worker nothing. `entertainment:
     // None` is the opposite default and is documented as such on `RegionWages`: the region pays
     // entertainers nothing, so there is nothing to divide and nothing to doubt.
     let pools = [
-        ContendedPool {
+        Contended {
             want_of: |want| want.tax,
             share_of: |into| &mut into.tax,
-            pool: region.tax_base,
+            // A pillage empties the hex before any TAX reaches it (`ah-cxxa`), so there is no
+            // pool left for anybody to draw on, let alone oversubscribe: every taxer here
+            // collects a certain nothing whatever the settlement would have said, and
+            // `taxed-a-pillaged-hex` is the finding that fits. `ah-t2pn.4` found the two firing
+            // together.
+            pool: region.tax_base.filter(|_| !region.pillaged),
+            names: ContendedPool::Tax,
         },
-        ContendedPool {
+        Contended {
             want_of: |want| want.wages,
             share_of: |into| &mut into.wages,
             pool: region.max_wages,
+            names: ContendedPool::Wages,
         },
-        ContendedPool {
+        Contended {
             want_of: |want| want.entertainment,
             share_of: |into| &mut into.entertainment,
             pool: region.entertainment,
+            names: ContendedPool::Entertainment,
         },
     ];
 
-    for ContendedPool {
+    for Contended {
         want_of,
         share_of,
         pool,
+        names,
     } in pools
     {
         let wanting: Vec<usize> = (0..hex.units.len())
@@ -449,11 +481,22 @@ fn pool_shares_for(hex: &Hex<'_>, region: RegionWages) -> Vec<PoolShares> {
             .iter()
             .map(|index| want_of(&wants[*index]))
             .collect();
+        // Only a pool that is genuinely short is an overrun (`ah-t2pn.4`): one that covers every
+        // claim divided nothing, so there is nothing to tell anybody about.
+        let wanted: i64 = asks.iter().copied().fold(0, i64::saturating_add);
+        if wanted > pool {
+            overruns.push(PoolOverrun {
+                pool: names,
+                wanted,
+                available: pool,
+                claimants: wanting.clone(),
+            });
+        }
         for (index, share) in wanting.iter().zip(split_pool(&asks, pool)) {
             *share_of(&mut shares[*index]) = PoolShare::Share(share);
         }
     }
-    shares
+    PoolSettlement { shares, overruns }
 }
 
 /// Every own unit's claim on each of this hex's market lines, settled (`ah-t2pn.3`).
@@ -468,6 +511,7 @@ fn pool_shares_for(hex: &Hex<'_>, region: RegionWages) -> Vec<PoolShares> {
 fn market_shares_for(
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
+    overruns: &mut Vec<PoolOverrun>,
 ) -> BTreeMap<(String, MarketSide), Vec<i64>> {
     let mut wants: BTreeMap<(String, MarketSide), Vec<i64>> = BTreeMap::new();
 
@@ -538,6 +582,26 @@ fn market_shares_for(
                 .iter()
                 .find(|line| line.tag.eq_ignore_ascii_case(&tag))
                 .map_or(0, |line| line.amount);
+            // Only a line that is genuinely short is an overrun (`ah-t2pn.4`). Unlike the silver
+            // pools, one trader is enough: `ah-t2pn.3` settles a market whenever anybody trades,
+            // which is what caps a unit ordering `BUY 200` where 100 exist.
+            let wanted: i64 = claims.iter().copied().fold(0, i64::saturating_add);
+            if wanted > pool {
+                overruns.push(PoolOverrun {
+                    pool: ContendedPool::Market {
+                        tag: tag.clone(),
+                        side,
+                    },
+                    wanted,
+                    available: pool,
+                    claimants: claims
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, claim)| **claim > 0)
+                        .map(|(index, _)| index)
+                        .collect(),
+                });
+            }
             let shares = split_pool(&claims, pool);
             ((tag, side), shares)
         })
@@ -567,6 +631,7 @@ fn forecast_hex(
     ruleset: Option<&Ruleset>,
     relief: &Relief<'_>,
     into: &mut Vec<UnitSilver>,
+    overruns: &mut Vec<PoolOverrun>,
 ) {
     let Relief {
         shared_silver,
@@ -578,11 +643,13 @@ fn forecast_hex(
 
     // A region's pools are shared, so who else in this hex draws on them has to be settled before
     // any one unit can be priced against them (`ah-t2pn`).
-    let shares = pool_shares_for(hex, region);
+    let settled = pool_shares_for(hex, region);
+    let shares = settled.shares;
+    overruns.extend(settled.overruns);
 
     // A market line is shared the same way, and the rules say so outright: oversupply and
     // oversubscription split in proportion to what each unit tried to trade (`ah-t2pn.3`).
-    let market_shares = market_shares_for(hex, ruleset);
+    let market_shares = market_shares_for(hex, ruleset, overruns);
 
     // Step 2 of the payment order runs across the whole hex, so it needs every unit's step-1
     // leftovers before it can settle any of them. Gathered here, applied once the loop is done.
@@ -1275,7 +1342,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     // The same settlement `forecast_hex` prices the column from: `WORK` and `ENTERTAIN` reach both
     // surfaces through one `late_income`, so two settlements would be two answers to one question.
     let region = region_wages(hex);
-    let shares = pool_shares_for(hex, region);
+    let shares = pool_shares_for(hex, region).shares;
 
     // The check and the Silver column read one fact, so they settle the hex's faction-food pool
     // the same way: warning that a unit cannot pay a fee its faction-mates' grain already paid is
@@ -4130,6 +4197,109 @@ fn withdrawal_cost(item: &str, ruleset: Option<&Ruleset>) -> Option<i64> {
     ruleset?.find_item(item)?.withdraw_cost
 }
 
+/// Own units in one hex promised more of a region's pool than it holds.
+///
+/// Per hex, because the pools are: a tax base belongs to the region, unlike the faction purse that
+/// `claims-exceed-unclaimed` guards.
+///
+/// Every claimant is named, on its own order line, each carrying the same total - `ah-wur4`'s
+/// reasoning, and its words: none of them is more at fault than the others, and a message stating
+/// the total means a unit reading it is not being blamed for the overrun on its own.
+fn check_region_pools(
+    hex: &Hex<'_>,
+    overruns: &[PoolOverrun],
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::REGION_POOL_OVERSUBSCRIBED) {
+        return;
+    }
+
+    for overrun in overruns {
+        let PoolOverrun {
+            pool,
+            wanted,
+            available,
+            claimants,
+        } = overrun;
+
+        // `ah-t2pn.1`'s rule 1 leaves a lone claimant on a silver pool uncontended, so it can
+        // never be settled and never overrun. Inventing a singular sentence for one would hide a
+        // real defect in the settlement behind a plausible message. A market is different:
+        // `ah-t2pn.3` settles one for a lone trader too, which is what caps a unit ordering
+        // `BUY 200` where 100 exist - so that case has a sentence of its own.
+        let alone = claimants.len() < 2;
+        debug_assert!(
+            !alone || matches!(pool, ContendedPool::Market { .. }),
+            "a silver pool cannot be oversubscribed by one unit: {overrun:?}"
+        );
+
+        let message = match pool {
+            ContendedPool::Tax if !alone => format!(
+                "your units here tax for ${wanted} between them and this region has ${available}"
+            ),
+            ContendedPool::Wages if !alone => format!(
+                "your units here work for ${wanted} between them and this region pays ${available}"
+            ),
+            ContendedPool::Entertainment if !alone => format!(
+                "your units here entertain for ${wanted} between them and this region pays ${available}"
+            ),
+            // A market line is stated in what it trades, so the sentence is too - as
+            // `not-traded-here` already speaks about a market in its own terms, and unlike the
+            // silver pools above there is no `$`.
+            ContendedPool::Market { tag, side } => {
+                let goods = item_name(tag, hex, ruleset).to_lowercase();
+                match (side, alone) {
+                    (MarketSide::Selling, false) => format!(
+                        "your units here sell {wanted} {goods} between them and this market wants {available}"
+                    ),
+                    (MarketSide::Buying, false) => format!(
+                        "your units here buy {wanted} {goods} between them and this market has {available}"
+                    ),
+                    (MarketSide::Selling, true) => {
+                        format!("this unit sells {wanted} {goods} and this market wants {available}")
+                    }
+                    (MarketSide::Buying, true) => {
+                        format!("this unit buys {wanted} {goods} and this market has {available}")
+                    }
+                }
+            }
+            // A lone claimant on a silver pool, which the assertion above calls a bug: emitting
+            // nothing in release is the safe answer.
+            _ => continue,
+        };
+
+        for index in claimants {
+            let Some(ordered) = hex.units.get(*index) else {
+                continue;
+            };
+            // The unit's own line for this pool, so the finding can be clicked to the order it is
+            // about - the first placement of the relevant intent, as `check_claims` anchors per
+            // placement.
+            let at = ordered.intents.iter().find(|placed| match pool {
+                ContendedPool::Tax => matches!(placed.intent, Intent::Tax),
+                ContendedPool::Wages => matches!(placed.intent, Intent::Work),
+                ContendedPool::Entertainment => matches!(placed.intent, Intent::Entertain),
+                ContendedPool::Market { tag, side } => match (&placed.intent, side) {
+                    (Intent::Sell { item, .. }, MarketSide::Selling)
+                    | (Intent::Buy { item, .. }, MarketSide::Buying) => {
+                        resolve_item(item, hex, ordered, ruleset)
+                            .is_some_and(|resolved| resolved.eq_ignore_ascii_case(tag))
+                    }
+                    _ => false,
+                },
+            });
+            findings.push(ordered.finding(
+                hex,
+                codes::REGION_POOL_OVERSUBSCRIBED,
+                message.clone(),
+                at,
+            ));
+        }
+    }
+}
+
 /// Every unit that claims or withdraws, when the faction's units ask more of the unclaimed fund
 /// between them than it holds. Two orders draw on the one fund (`ah-tdsi`).
 ///
@@ -4209,6 +4379,366 @@ mod tests {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
     }
 
+    /// `ah-t2pn.4`. When own units in one hex are promised more of a region's pool than it holds,
+    /// each of them is told so on its own order line.
+    ///
+    /// Tax only for now: `ah-t2pn.2` and `ah-t2pn.3` had not landed when this was built, and a
+    /// sentence for a pool nothing settles is a string no player could reach.
+    mod region_pool_oversubscribed {
+        use super::*;
+
+        fn taxer(id: &str, men: i64) -> ReportUnit {
+            let mut unit = unit(id);
+            unit.men = men;
+            unit
+        }
+
+        fn review(base: Option<i64>, units: Vec<ReportUnit>, orders: &str) -> TurnReview {
+            let hex = ReportRegion {
+                tax_base: base,
+                ..region(units)
+            };
+            review_turn(
+                &report(vec![hex]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+        }
+
+        fn oversubscriptions(review: &TurnReview) -> Vec<&Finding> {
+            review
+                .findings
+                .iter()
+                .filter(|finding| finding.code == codes::REGION_POOL_OVERSUBSCRIBED)
+                .collect()
+        }
+
+        /// The bead's headline. Every claimant is named, each on its own `TAX` line, and each
+        /// message states the total - so no one unit is blamed for the overrun on its own.
+        #[test]
+        fn every_taxer_is_told_the_region_cannot_pay_them_all() {
+            let review = review(
+                Some(2500),
+                vec![taxer("2390", 10), taxer("2391", 50)],
+                "unit 2390\nTAX\nunit 2391\nTAX\n",
+            );
+
+            let found = oversubscriptions(&review);
+            assert_eq!(found.len(), 2, "{:?}", review.findings);
+            for finding in &found {
+                assert_eq!(
+                    finding.message,
+                    "your units here tax for $3000 between them and this region has $2500"
+                );
+            }
+            assert_eq!(found[0].unit_id.as_deref(), Some("2390"));
+            assert_eq!(
+                found[0].line,
+                Some(2),
+                "anchored on the unit's own TAX line"
+            );
+            assert_eq!(found[1].unit_id.as_deref(), Some("2391"));
+            assert_eq!(found[1].line, Some(4));
+        }
+
+        #[test]
+        fn a_unit_not_drawing_on_the_pool_is_not_told() {
+            let review = review(
+                Some(2500),
+                vec![taxer("2390", 10), taxer("2391", 50), taxer("2392", 50)],
+                "unit 2390\nTAX\nunit 2391\nTAX\nunit 2392\nMOVE N\n",
+            );
+
+            let told: Vec<&str> = oversubscriptions(&review)
+                .iter()
+                .filter_map(|finding| finding.unit_id.as_deref())
+                .collect();
+            assert_eq!(told, vec!["2390", "2391"]);
+        }
+
+        /// A base that covers every taxer divided nothing, so nothing is said.
+        #[test]
+        fn a_region_that_can_pay_everybody_says_nothing() {
+            let review = review(
+                Some(2500),
+                vec![taxer("2390", 10), taxer("2391", 20)],
+                "unit 2390\nTAX\nunit 2391\nTAX\n",
+            );
+
+            assert!(oversubscriptions(&review).is_empty());
+        }
+
+        /// A lone taxer is uncontended by `ah-t2pn.1`'s rule 1, so a silver pool can never produce
+        /// a one-claimant overrun - which is why there is no singular sentence for one.
+        #[test]
+        fn a_lone_taxer_never_produces_an_overrun() {
+            let review = review(Some(2500), vec![taxer("2390", 500)], "unit 2390\nTAX\n");
+
+            assert!(oversubscriptions(&review).is_empty());
+        }
+
+        /// Note **pays**, not has: a region pays wages, it does not have them.
+        #[test]
+        fn every_worker_is_told_the_region_cannot_pay_them_all() {
+            let hex = ReportRegion {
+                wages: Some("13.5".to_string()),
+                max_wages: Some(100),
+                ..region(vec![taxer("2390", 10), taxer("2391", 10)])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nWORK\nunit 2391\nWORK\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let found = oversubscriptions(&review);
+            assert_eq!(found.len(), 2, "{:?}", review.findings);
+            assert_eq!(
+                found[0].message,
+                "your units here work for $270 between them and this region pays $100"
+            );
+        }
+
+        #[test]
+        fn every_entertainer_is_told_the_region_cannot_pay_them_all() {
+            let hex = ReportRegion {
+                entertainment: Some(50),
+                ..region(vec![
+                    with_skill(taxer("2390", 2), "ENTE", 1),
+                    with_skill(taxer("2391", 2), "ENTE", 1),
+                ])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nENTERTAIN\nunit 2391\nENTERTAIN\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let found = oversubscriptions(&review);
+            assert_eq!(found.len(), 2, "{:?}", review.findings);
+            assert_eq!(
+                found[0].message,
+                "your units here entertain for $120 between them and this region pays $50"
+            );
+        }
+
+        fn horse_seller(id: &str, holds: i64) -> ReportUnit {
+            with_item(unit(id), holds, "horse", "HORS")
+        }
+
+        fn market(
+            wanted: Vec<MarketItem>,
+            for_sale: Vec<MarketItem>,
+            units: Vec<ReportUnit>,
+        ) -> ReportRegion {
+            ReportRegion {
+                wanted,
+                for_sale,
+                ..region(units)
+            }
+        }
+
+        fn horses(amount: i64) -> MarketItem {
+            MarketItem {
+                amount,
+                name: "horse".to_string(),
+                tag: "HORS".to_string(),
+                price: 50,
+            }
+        }
+
+        /// Goods, not silver: a market line is stated in what it trades, and `not-traded-here`
+        /// already speaks about a market in its own terms.
+        #[test]
+        fn every_seller_is_told_the_market_will_not_take_it_all() {
+            let review = review_turn(
+                &report(vec![market(
+                    vec![horses(100)],
+                    vec![],
+                    vec![horse_seller("2390", 60), horse_seller("2391", 60)],
+                )]),
+                "unit 2390\nSELL 60 horse\nunit 2391\nSELL 60 horse\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let found = oversubscriptions(&review);
+            assert_eq!(found.len(), 2, "{:?}", review.findings);
+            assert_eq!(
+                found[0].message,
+                "your units here sell 120 horse between them and this market wants 100"
+            );
+        }
+
+        #[test]
+        fn every_buyer_is_told_the_market_has_not_got_it_all() {
+            let review = review_turn(
+                &report(vec![market(
+                    vec![],
+                    vec![horses(100)],
+                    vec![
+                        with_silver(unit("2390"), 100_000),
+                        with_silver(unit("2391"), 100_000),
+                    ],
+                )]),
+                "unit 2390\nBUY 60 horse\nunit 2391\nBUY 60 horse\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let found = oversubscriptions(&review);
+            assert_eq!(found.len(), 2, "{:?}", review.findings);
+            assert_eq!(
+                found[0].message,
+                "your units here buy 120 horse between them and this market has 100"
+            );
+        }
+
+        /// `ah-t2pn.3` settles a market for a lone trader too, which is what caps a unit ordering
+        /// `BUY 200` where 100 exist - so the plural sentence would say "your units ... between
+        /// them" of one unit.
+        #[test]
+        fn a_lone_buyer_asking_for_more_than_the_market_has_is_told_so() {
+            let review = review_turn(
+                &report(vec![market(
+                    vec![],
+                    vec![horses(100)],
+                    vec![with_silver(unit("2390"), 100_000)],
+                )]),
+                "unit 2390\nBUY 200 horse\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let found = oversubscriptions(&review);
+            assert_eq!(found.len(), 1, "{:?}", review.findings);
+            assert_eq!(
+                found[0].message,
+                "this unit buys 200 horse and this market has 100"
+            );
+        }
+
+        #[test]
+        fn a_lone_seller_offering_more_than_the_market_wants_is_told_so() {
+            let review = review_turn(
+                &report(vec![market(
+                    vec![horses(100)],
+                    vec![],
+                    vec![horse_seller("2390", 200)],
+                )]),
+                "unit 2390\nSELL 200 horse\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let found = oversubscriptions(&review);
+            assert_eq!(found.len(), 1, "{:?}", review.findings);
+            assert_eq!(
+                found[0].message,
+                "this unit sells 200 horse and this market wants 100"
+            );
+        }
+
+        /// One code, two facts. Nothing here deduplicates by unit.
+        #[test]
+        fn two_pools_in_one_hex_produce_two_findings_per_unit() {
+            let hex = ReportRegion {
+                tax_base: Some(100),
+                wages: Some("13.5".to_string()),
+                max_wages: Some(100),
+                ..region(vec![taxer("2390", 10), taxer("2391", 10)])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nTAX\nWORK\nunit 2391\nTAX\nWORK\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let for_2390: Vec<&str> = oversubscriptions(&review)
+                .iter()
+                .filter(|finding| finding.unit_id.as_deref() == Some("2390"))
+                .map(|finding| finding.message.as_str())
+                .collect();
+            assert_eq!(for_2390.len(), 2, "{:?}", review.findings);
+            assert!(for_2390.iter().any(|message| message.contains("tax for")));
+            assert!(for_2390.iter().any(|message| message.contains("work for")));
+        }
+
+        /// A market has one pool per item per side, so an oversubscribed one says nothing about
+        /// the line beside it.
+        #[test]
+        fn different_goods_produce_different_findings() {
+            let swords = MarketItem {
+                amount: 100,
+                name: "sword".to_string(),
+                tag: "SWOR".to_string(),
+                price: 50,
+            };
+            let review = review_turn(
+                &report(vec![market(
+                    vec![horses(100), swords],
+                    vec![],
+                    vec![
+                        with_item(horse_seller("2390", 60), 10, "sword", "SWOR"),
+                        with_item(horse_seller("2391", 60), 10, "sword", "SWOR"),
+                    ],
+                )]),
+                "unit 2390\nSELL 60 horse\nSELL 10 sword\nunit 2391\nSELL 60 horse\nSELL 10 sword\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let messages: Vec<&str> = oversubscriptions(&review)
+                .iter()
+                .map(|finding| finding.message.as_str())
+                .collect();
+            assert_eq!(messages.len(), 2, "{:?}", review.findings);
+            assert!(messages.iter().all(|message| message.contains("horse")));
+            assert!(!messages.iter().any(|message| message.contains("sword")));
+        }
+
+        /// `ah-cxxa` empties the hex before any TAX reaches it, so there is no pool left to
+        /// oversubscribe and this check must stay quiet - the pillage finding is the one to read.
+        #[test]
+        fn a_pillaged_hex_has_no_pool_to_oversubscribe() {
+            let review = review(
+                Some(2500),
+                vec![taxer("2390", 10), taxer("2391", 50), taxer("2392", 1)],
+                "unit 2390\nTAX\nunit 2391\nTAX\nunit 2392\nPILLAGE\n",
+            );
+
+            assert!(
+                oversubscriptions(&review).is_empty(),
+                "{:?}",
+                review.findings
+            );
+        }
+
+        /// The guard that the sentence and the column come from one computation: `wanted` is what
+        /// the units' own figures would have shown before the split.
+        #[test]
+        fn the_totals_in_the_sentence_match_the_column() {
+            let contended = review(
+                Some(2500),
+                vec![taxer("2390", 10), taxer("2391", 50)],
+                "unit 2390\nTAX\nunit 2391\nTAX\n",
+            );
+
+            let alone = review(Some(1_000_000), vec![taxer("2390", 10)], "unit 2390\nTAX\n");
+            let also_alone = review(Some(1_000_000), vec![taxer("2391", 50)], "unit 2391\nTAX\n");
+            let uncontended = alone.silver[0].income.expect("a number")
+                + also_alone.silver[0].income.expect("a number");
+
+            assert!(oversubscriptions(&contended)[0]
+                .message
+                .contains(&format!("tax for ${uncontended} between them")));
+        }
+    }
+
     /// `ah-t2pn.1`. A region's tax base is shared: two own units taxing one hex split it, and the
     /// column shows what the game will actually pay rather than promising each of them all of it.
     mod shared_tax_base {
@@ -4240,6 +4770,78 @@ mod tests {
                 Some(&ruleset()),
                 CheckOptions::default(),
             )
+        }
+
+        fn settle(base: Option<i64>, units: Vec<ReportUnit>, orders: &str) -> Vec<PoolOverrun> {
+            let hex_region = ReportRegion {
+                tax_base: base,
+                ..region(units)
+            };
+            let ordered = OrderedUnits::read(orders);
+            let hex = Hex::read(&hex_region, &ordered);
+            pool_shares_for(&hex, region_wages(&hex)).overruns
+        }
+
+        /// `ah-t2pn.4`. The settlement says what it divided, so the sentence a player reads comes
+        /// from the same arithmetic as the figures in their column.
+        #[test]
+        fn the_settlement_reports_an_oversubscribed_tax_base() {
+            assert_eq!(
+                settle(
+                    Some(2500),
+                    vec![taxer("2390", 10), taxer("2391", 50)],
+                    "unit 2390\nTAX\nunit 2391\nTAX\n",
+                ),
+                vec![PoolOverrun {
+                    pool: ContendedPool::Tax,
+                    wanted: 3000,
+                    available: 2500,
+                    claimants: vec![0, 1],
+                }]
+            );
+        }
+
+        /// Nothing was divided, so there is nothing to say.
+        #[test]
+        fn a_pool_that_covers_everybody_reports_no_overrun() {
+            assert_eq!(
+                settle(
+                    Some(2500),
+                    vec![taxer("2390", 10), taxer("2391", 20)],
+                    "unit 2390\nTAX\nunit 2391\nTAX\n",
+                ),
+                vec![]
+            );
+        }
+
+        /// A pool nothing can settle has no total to put in a sentence. The units carry
+        /// `ah-t2pn.1`'s doubt instead, which is the right thing to show.
+        #[test]
+        fn an_unjudgeable_pool_reports_no_overrun() {
+            let mut guessed = taxer("2391", 50);
+            guessed.men_estimated = true;
+            assert_eq!(
+                settle(
+                    Some(2500),
+                    vec![taxer("2390", 10), guessed],
+                    "unit 2390\nTAX\nunit 2391\nTAX\n",
+                ),
+                vec![]
+            );
+
+            let review = tax_review(
+                Some(2500),
+                vec![taxer("2390", 10), {
+                    let mut guessed = taxer("2391", 50);
+                    guessed.men_estimated = true;
+                    guessed
+                }],
+                "unit 2390\nTAX\nunit 2391\nTAX\n",
+            );
+            assert_eq!(
+                silver_of(&review, "2390").doubt,
+                Some(SilverDoubt::ContestedRegionPool)
+            );
         }
 
         /// The regression net under everything below: one taxer is not contention, and its
@@ -10988,6 +11590,16 @@ mod tests {
                 code: codes::PRODUCE_NOT_HERE,
                 regions: vec![region(vec![with_skill(unit("4021"), "MINI", 1)])],
                 orders: "unit 4021\nPRODUCE iron\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::REGION_POOL_OVERSUBSCRIBED,
+                regions: vec![ReportRegion {
+                    tax_base: Some(2500),
+                    ..region(vec![with_men(unit("500"), 10), with_men(unit("700"), 50)])
+                }],
+                orders: "unit 500\nTAX\nunit 700\nTAX\n",
                 allowance: None,
                 unclaimed: None,
             },

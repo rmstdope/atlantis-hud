@@ -292,6 +292,38 @@ pub enum PoolShare {
     Unknowable,
 }
 
+/// Which of a region's contended pools an order draws on.
+///
+/// One variant per pool the settlement divides.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContendedPool {
+    /// The region's tax base (`ah-t2pn.1`).
+    Tax,
+    /// The region's wage pool (`ah-t2pn.2`).
+    Wages,
+    /// What the region pays entertainers (`ah-t2pn.2`).
+    Entertainment,
+    /// One market line (`ah-t2pn.3`). It carries the goods and the side, because a hex has one
+    /// such pool per item per side - the `Wanted` and `For Sale` lists are two different pools.
+    Market { tag: String, side: MarketSide },
+}
+
+/// One pool that the hex's own units asked more of than it holds.
+///
+/// Produced by the settlement rather than recomputed by the check that reports it, so the sentence
+/// a player reads and the shares their Silver column shows can never disagree about what was asked
+/// for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PoolOverrun {
+    pub pool: ContendedPool,
+    /// What the hex's own units asked for between them, before any split.
+    pub wanted: i64,
+    /// What the pool holds.
+    pub available: i64,
+    /// Indices into `hex.units` of the units that asked, in `hex.units` order.
+    pub claimants: Vec<usize>,
+}
+
 /// What one unit may draw from each of its region's contended pools.
 ///
 /// One field per pool. `ah-t2pn.2` adds wages and entertainment, `ah-t2pn.3` the market

@@ -490,6 +490,12 @@ const WARNING_GROUPS: readonly {
         code: "upkeep-exceeds-unclaimed",
         title: "Upkeep the faction cannot pay",
         description: "Units that cannot pay their maintenance, when the faction's unclaimed silver will not cover the shortfall either."
+      },
+      {
+        code: "region-pool-oversubscribed",
+        title: "Promised more than the region has",
+        description:
+          "Your units in one hex ordered to tax, work, entertain or trade for more than the region or its market can supply between them."
       }
     ]
   },
