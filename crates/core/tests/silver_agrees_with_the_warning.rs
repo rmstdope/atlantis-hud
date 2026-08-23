@@ -305,6 +305,10 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         unclaimed_contended: false,
         given_to_nobody: 0,
         withdrawing: false,
+        produced: 0,
+        produced_name: None,
+        production_wanted: 0,
+        production_capped_by: None,
     }
 }
 

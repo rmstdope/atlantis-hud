@@ -28,7 +28,7 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::orders::silver::{
     feed_after_silver, feed_from_faction_food, food_claim, forecast_unit, late_income,
-    parse_wage_centis, settle_unclaimed, unit_upkeep, FactionFoodPass, FactionPurse, FoodClaim,
+    parse_wage_centis, plan_production, recipe_for, settle_unclaimed, unit_upkeep, FactionFoodPass, FactionPurse, FoodClaim,
     LateFoodClaim, LateFoodRelief, Lookups, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
     SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
 };
@@ -1183,8 +1183,7 @@ fn apply(
     let who = &actor.unit.unit_id;
 
     match &placed.intent {
-        // Priced in a later increment of `ah-19l2.2`.
-        Intent::Produce { .. } => {}
+        Intent::Produce { item } => produce(ledger, hex, actor, placed, item, ruleset),
         Intent::Give { to, what, amount } => {
             transfer(
                 ledger,
@@ -1336,6 +1335,38 @@ fn buy(
         placed,
     );
     credit(ledger, who, &offer.tag.to_ascii_uppercase(), *count);
+}
+
+/// `PRODUCE <item>`: what the run costs comes off the unit's silver and its materials.
+///
+/// It **does not** `credit` what it makes, which is where it differs from `buy` directly above.
+/// Production resolves in the month's last phase, so goods made this month cannot be spent this
+/// month - and crediting them would silence a `not-enough-items` warning that should fire, because
+/// the engine will refuse a `GIVE` of goods that do not exist yet. The same reading the ledger
+/// already gives wages and takings from entertaining (`ah-uwa3`, `ah-19l2.2`).
+fn produce(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    actor: &Ordered<'_>,
+    placed: &PlacedIntent,
+    item: &str,
+    ruleset: Option<&Ruleset>,
+) {
+    let who = &actor.unit.unit_id;
+    let plan = resolve_item(item, hex, actor, ruleset)
+        .and_then(|tag| recipe_for(ruleset, &tag))
+        .and_then(|recipe| plan_production(recipe, actor.unit.men, &actor.unit.items));
+    let Some(plan) = plan else {
+        // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
+        // same posture `buy` takes for goods the market does not carry.
+        ledger.doubted.insert(who.clone());
+        return;
+    };
+
+    charge(ledger, who, SILVER, plan.silver, placed);
+    for material in &plan.materials {
+        charge(ledger, who, &material.tag, material.amount, placed);
+    }
 }
 
 fn sell(
@@ -4850,6 +4881,59 @@ mod tests {
 
         assert_eq!(forecast.doubt, Some(SilverDoubt::UnpricedProduction));
         assert_eq!(forecast.expense, None);
+    }
+
+    /// The run is planned against what the unit *holds*, so a production on its own can never
+    /// overdraw - the cap has already seen to that. It bites when something else spends the same
+    /// silver first, which is exactly the imprecision the holdings cap accepts: the figure is the
+    /// one a player can read off the report, and the ledger's running balance catches the rest.
+    #[test]
+    fn a_unit_that_cannot_afford_its_production_is_warned() {
+        let findings = check_ignoring_transfer_targets(
+            vec![region(vec![carpenters(3000, 9999)])],
+            "unit 12881\nGIVE 7 3000 SILV\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(codes(&findings), ["not-enough-silver"]);
+        assert!(
+            findings[0].message.contains("3000"),
+            "the catapult's own 3000: {}",
+            findings[0].message
+        );
+    }
+
+    /// The same, for the materials: 250 wood given away leaves the catapult short of the wood the
+    /// unit's inventory said it had.
+    #[test]
+    fn a_unit_without_the_materials_is_warned() {
+        let findings = check_ignoring_transfer_targets(
+            vec![region(vec![carpenters(100_000, 250)])],
+            "unit 12881\nGIVE 7 250 WOOD\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(codes(&findings), ["not-enough-items"]);
+        assert!(
+            findings[0].message.contains("wood"),
+            "the wood is what ran out: {}",
+            findings[0].message
+        );
+    }
+
+    /// Production resolves in the month's last phase, so what it makes cannot be given away in the
+    /// same month - which is the one place `produce` differs from `buy`.
+    #[test]
+    fn produced_goods_do_not_arrive_in_time_to_be_given_away() {
+        let findings = check_ignoring_transfer_targets(
+            vec![region(vec![carpenters(100_000, 9999)])],
+            "unit 12881\nPRODUCE catapult\nGIVE 1 1 CATP\n",
+        );
+
+        assert_eq!(codes(&findings), ["not-enough-items"]);
+        assert!(
+            findings[0].message.contains("catapult"),
+            "{}",
+            findings[0].message
+        );
     }
 
     // --- income the report cannot pin down --------------------------------------------------
