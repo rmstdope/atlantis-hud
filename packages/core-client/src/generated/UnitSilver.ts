@@ -146,4 +146,11 @@ unclaimedContended: boolean,
  * Silver this unit is ordered to give to nobody - `GIVE 0 ... SILV`, which destroys it. Part
  * of `expense` like any other gift; carried separately only so the hover can say so.
  */
-givenToNobody: number, };
+givenToNobody: number, 
+/**
+ * Whether this unit is ordered to withdraw anything. The withdrawal costs the unit nothing -
+ * the faction's unclaimed fund pays (`ah-tdsi`) - so an `Out` of zero on a unit ordered to
+ * withdraw $369 of grain reads as a defect until the hover says why. Carried as a flag rather
+ * than a sum because the sum is not this unit's to show and may not be priceable at all.
+ */
+withdrawing: boolean, };

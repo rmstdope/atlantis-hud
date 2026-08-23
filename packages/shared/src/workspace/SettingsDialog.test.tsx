@@ -137,6 +137,12 @@ describe("the Warnings settings tab", () => {
       expect(html).toContain(title);
     }
 
+    // Two orders draw on the one fund, and the description is where that detail lives - the row's
+    // title stays what a returning user looks for (`ah-tdsi`).
+    expect(html).toContain(
+      "CLAIM and WITHDRAW orders across all your units asking for more unclaimed silver than the faction holds."
+    );
+
     // One toggle per code the wire actually carries - a title added here without a code, or a
     // code without a title, would otherwise go unnoticed.
     for (const code of ADVISORY_CHECK_CODES) {

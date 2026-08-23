@@ -540,6 +540,7 @@ describe("the Silver column", () => {
     forcedFactionFood: 0,
     foodContended: false,
     sharedSilverCovered: 0,
+    withdrawing: false,
     ...overrides
   });
 
@@ -562,6 +563,16 @@ describe("the Silver column", () => {
     const markup = drawSilver(forecast({ atMonthEnd: 800 }));
     expect(markup).toContain(">800<");
     expect(markup).not.toContain("text-danger\">800");
+  });
+
+  // A withdrawal is paid by the faction's fund, so the figure the core hands over is the unit's
+  // silver undiminished. That the core no longer reduces it is pinned in Rust; what this pins is
+  // that `withdrawing` paints nothing here - the flag is the hover's business, not the column's
+  // (`ah-tdsi`).
+  it("a_withdrawing_unit_shows_its_silver_in_default_ink", () => {
+    const markup = drawSilver(forecast({ held: 369, atMonthEnd: 369, withdrawing: true }));
+    expect(markup).toContain(">369<");
+    expect(markup).not.toContain('text-danger">369');
   });
 
   it("a_unit_that_runs_out_shows_a_red_figure", () => {

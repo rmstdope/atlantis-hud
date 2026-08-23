@@ -156,8 +156,7 @@ const SPENDS: Record<NonNullable<UnitSilver["shortOn"]>, string> = {
   buy: "buys",
   cast: "casts",
   study: "studies",
-  give: "gives",
-  withdraw: "withdraws"
+  give: "gives"
 };
 
 /** The month-end figure with upkeep taken off, or `null` where either term is unpriceable. */
@@ -212,9 +211,6 @@ function silverNote(
     // The market's own name for the goods where anything knew one, and the order's own text
     // otherwise - the same posture `unknown-goods` above takes.
     return `This region is not selling ${silver.doubtSubject ?? "these goods"}, so what the purchase costs cannot be said.`;
-  }
-  if (silver.doubt === "unpriced-withdrawal") {
-    return "The ruleset does not say what withdrawing costs.";
   }
   if (silver.doubt === "gives-a-whole-class") {
     return "This unit is giving away a whole class of goods, which cannot be counted.";
@@ -292,6 +288,14 @@ function silverNote(
   // would otherwise look for a recipient of and find none.
   if (silver.givenToNobody > 0) {
     return `Includes ${silver.givenToNobody} given away to nobody.`;
+  }
+  // The fund pays for a withdrawal, never the unit, so an `Out` of zero on a unit ordered to
+  // withdraw $369 of grain reads as a defect until this says why (`ah-tdsi`). Not gated on
+  // `countUpkeep` like the food notes: it explains `Out`, which is on show either way. It sits
+  // below the two notes above because those explain money that IS on show, and this one explains a
+  // contribution of zero - the file's own order of priority.
+  if (silver.withdrawing) {
+    return "This unit's withdrawal is paid from the faction's unclaimed silver.";
   }
   if (silver.income === 0 && silver.expense === 0) {
     return "Nothing this unit is ordered to do moves silver.";

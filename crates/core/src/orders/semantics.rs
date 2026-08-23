@@ -290,9 +290,12 @@ pub fn review_turn(
     let claims = upkeep_claims(&hexes);
     // `CLAIM` resolves during the month and maintenance is settled at its end, so this month's
     // claims come off the fund before step 7 ever sees it (`ah-fjty`).
+    // A fund whose withdrawals nothing can price is not a fund we can spend on upkeep, so an
+    // unknown total leaves the settlement inactive rather than falling back (`ah-tdsi`).
     let available = purse
         .unclaimed
-        .map(|held| (held - total_claimed(report, &ordered)).max(0));
+        .zip(total_drawn_from_fund(report, &ordered, ruleset))
+        .map(|(held, drawn)| (held - drawn).max(0));
     let settlement = settle_unclaimed(&claims, available);
     apply_relief(&mut hexes, &settlement);
 
@@ -1233,19 +1236,10 @@ fn apply(
         Intent::Sell { amount, item } => sell(ledger, hex, actor, placed, amount, item, ruleset),
         Intent::Study { skill } => study(ledger, actor, placed, skill, ruleset),
         Intent::Cast { spell, arguments } => cast(ledger, actor, placed, spell, arguments, ruleset),
-        // The ruleset prices a withdrawal (`ah-1wcw.6`), so it is charged. A price it does not
-        // carry - an item that is not a basic one, or a ruleset cached before that bead - is still
-        // an amount nobody can count, which is exactly the case for declining to judge the unit.
-        Intent::Withdraw { count, item } => {
-            match resolve_item(item, hex, actor, ruleset)
-                .and_then(|tag| ruleset?.items.get(&tag)?.withdraw_cost)
-            {
-                Some(cost) => charge(ledger, who, SILVER, count.saturating_mul(cost), placed),
-                None => {
-                    ledger.doubted.insert(who.clone());
-                }
-            }
-        }
+        // The fund pays, not the unit (`ah-tdsi`). Nothing is charged here, and an unpriceable
+        // withdrawal no longer doubts the unit: what cannot be counted is the *faction's* total,
+        // which is `check_claims`'s to decline on.
+        Intent::Withdraw { .. } => {}
         // Wages and takings from entertaining are paid in the last phase of the turn, after study
         // has been paid for, so they can fund nothing this month.
         Intent::Work | Intent::Entertain => {}
@@ -3380,7 +3374,7 @@ fn check_faction(
 ) {
     check_quartermasters(report, ordered, ruleset, options, findings);
     check_trade_regions(report, ordered, options, findings);
-    check_claims(report, ordered, options, findings);
+    check_claims(report, ordered, ruleset, options, findings);
 }
 
 /// What this faction may spend on trade this month, and whether taxing draws on the same pool.
@@ -3637,28 +3631,49 @@ fn check_upkeep_fund(
     }
 }
 
-/// What this month's `CLAIM` orders ask for, across the whole report.
+/// What this month's orders ask of the faction's unclaimed fund: every `CLAIM` amount, plus every
+/// `WITHDRAW`'s price from the ruleset.
 ///
 /// `CLAIM` resolves during the month and maintenance is settled at its end, so this comes off the
 /// unclaimed fund before step 7 of the payment order sees it (`ah-fjty`). Shared with
 /// `check_claims` rather than summed twice, so the fund cannot be spent differently by two pieces
-/// of code that disagree. Named for what it counts *today*: `WITHDRAW` also spends the fund and is
-/// not counted here, which is `ah-tdsi`'s to widen.
-fn total_claimed(report: &ParsedReport, ordered: &OrderedUnits) -> i64 {
+/// of code that disagree.
+///
+/// `None` when any withdrawal cannot be priced - no ruleset, or an item the catalogue carries no
+/// `withdraw_cost` for. That is not zero and must not be treated as zero: the total is genuinely
+/// unknown, and both callers decline rather than guess (`ah-tdsi`, following `check_claims`'s own
+/// rule for a report that states no fund at all).
+///
+/// Priced against the ruleset's catalogue by the order's own item text, because at faction scope
+/// there is no hex and no actor for `resolve_item` to search the inventories of.
+fn total_drawn_from_fund(
+    report: &ParsedReport,
+    ordered: &OrderedUnits,
+    ruleset: Option<&Ruleset>,
+) -> Option<i64> {
     report
         .regions
         .iter()
         .flat_map(|region| region.units.iter())
         .filter(|unit| unit.own)
         .flat_map(|unit| ordered.intents_of(&unit.unit_id).iter())
-        .map(|placed| match placed.intent {
-            Intent::Claim(amount) => amount,
-            _ => 0,
+        .try_fold(0i64, |total, placed| match &placed.intent {
+            Intent::Claim(amount) => Some(total.saturating_add(*amount)),
+            Intent::Withdraw { count, item } => {
+                let cost = withdrawal_cost(item, ruleset)?;
+                Some(total.saturating_add(count.saturating_mul(cost)))
+            }
+            _ => Some(total),
         })
-        .sum()
 }
 
-/// Every unit that claims, when the faction's units claim more between them than it holds.
+/// What the ruleset says one of `item` costs to withdraw, or `None` where it says nothing.
+fn withdrawal_cost(item: &str, ruleset: Option<&Ruleset>) -> Option<i64> {
+    ruleset?.find_item(item)?.withdraw_cost
+}
+
+/// Every unit that claims or withdraws, when the faction's units ask more of the unclaimed fund
+/// between them than it holds. Two orders draw on the one fund (`ah-tdsi`).
 ///
 /// Faction-wide rather than per hex: the purse is one pool for the whole report, and a claim in one
 /// hex spends what a claim in another cannot. Every claiming unit is named because none of them is
@@ -3672,6 +3687,7 @@ fn total_claimed(report: &ParsedReport, ordered: &OrderedUnits) -> i64 {
 fn check_claims(
     report: &ParsedReport,
     ordered: &OrderedUnits,
+    ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
@@ -3694,12 +3710,16 @@ fn check_claims(
             ordered
                 .intents_of(&unit.unit_id)
                 .iter()
-                .filter(|placed| matches!(placed.intent, Intent::Claim(_)))
+                .filter(|placed| {
+                    matches!(placed.intent, Intent::Claim(_) | Intent::Withdraw { .. })
+                })
                 .map(move |placed| (unit, placed))
         })
         .collect();
 
-    let total = total_claimed(report, ordered);
+    let Some(total) = total_drawn_from_fund(report, ordered, ruleset) else {
+        return;
+    };
 
     if total <= purse {
         return;
@@ -3708,7 +3728,9 @@ fn check_claims(
     for (unit, placed) in claims {
         findings.push(Finding {
             code: codes::CLAIMS_EXCEED_UNCLAIMED,
-            message: format!("your units claim {total} between them and the faction has {purse}"),
+            message: format!(
+                "your units claim and withdraw ${total} between them and the faction has ${purse}"
+            ),
             region_id: unit.region_id.clone(),
             unit_id: Some(unit.unit_id.clone()),
             line: Some(placed.line),
@@ -4650,7 +4672,7 @@ mod tests {
         assert_eq!(
             check(
                 regions,
-                "unit 5\nSTUDY combat\nunit 7\nWITHDRAW 1 longship\n"
+                "unit 5\nSTUDY combat\nunit 7\nSTUDY basketweaving\n"
             ),
             vec![]
         );
@@ -4976,6 +4998,78 @@ mod tests {
         assert_eq!(
             finding.message,
             "your units owe $60 of upkeep they cannot pay and the faction has $50 unclaimed"
+        );
+    }
+
+    /// A withdrawal spends the same fund a claim does, so it must leave less of it for step 7 -
+    /// without this the settlement would see the whole $8450 and rescue the unit silently
+    /// (`ah-tdsi`).
+    #[test]
+    fn a_withdrawal_leaves_less_of_the_fund_for_upkeep() {
+        // Separate hexes: since `ah-e66j` a faction-mate in the same hex lends its silver for
+        // maintenance, SHARE flag or not, and would pay this unit's fee before the fund was asked.
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![unfed(unit("5"))]),
+            region_at(
+                "1:8,54",
+                8,
+                54,
+                vec![with_men(with_silver(starving(unit("7")), 0), 6)],
+            ),
+        ];
+
+        let findings: Vec<Finding> =
+            check_with_purse(Some(14850), regions, "unit 5\nWITHDRAW 400 grain\n")
+                .into_iter()
+                .filter(|finding| finding.code == codes::UPKEEP_EXCEEDS_UNCLAIMED)
+                .collect();
+
+        let finding = only(findings);
+        assert_eq!(
+            finding.message,
+            "your units owe $60 of upkeep they cannot pay and the faction has $50 unclaimed"
+        );
+    }
+
+    /// The other half of `ah-tdsi`'s decline-over-guess rule, and the half a zero-fallback would
+    /// pass: a fund whose withdrawals nothing can price cannot be sized, so it is not spent on
+    /// upkeep at all and the unit it would have rescued is warned as it was before `ah-fjty`.
+    /// Treating the unknown total as zero would leave the whole $8450 in play and silence this.
+    #[test]
+    fn an_unpriceable_withdrawal_leaves_the_upkeep_settlement_inactive() {
+        // Separate hexes, for the reason `a_withdrawal_leaves_less_of_the_fund_for_upkeep` gives.
+        let starving_hex = || {
+            vec![
+                region_at("1:7,53", 7, 53, vec![unfed(unit("5"))]),
+                region_at(
+                    "1:8,54",
+                    8,
+                    54,
+                    vec![with_men(with_silver(starving(unit("7")), 0), 6)],
+                ),
+            ]
+        };
+
+        assert_eq!(
+            codes(&check_with_purse(
+                Some(8450),
+                starving_hex(),
+                "unit 5\nWITHDRAW 1 longship\n"
+            )),
+            ["not-enough-silver"],
+            "the fund cannot be sized, so it cannot be spent"
+        );
+
+        // The control: the same fund, a withdrawal the ruleset *can* price, and the unit is
+        // rescued exactly as `ah-fjty` shipped it.
+        assert_eq!(
+            codes(&check_with_purse(
+                Some(8450),
+                starving_hex(),
+                "unit 5\nWITHDRAW 1 grain\n"
+            )),
+            [] as [&str; 0],
+            "a fund that can be sized still pays the upkeep"
         );
     }
 
@@ -5719,7 +5813,7 @@ mod tests {
             "GRAI",
         )]);
 
-        let findings = check(vec![hex], "unit 5\nWITHDRAW 10 grain\n");
+        let findings = check(vec![hex], "unit 5\nSTUDY combat\n");
         let short: Vec<&Finding> = findings
             .iter()
             .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
@@ -5834,45 +5928,74 @@ mod tests {
         );
     }
 
-    /// `ah-1wcw.6`: the ruleset prices a withdrawal, so it is charged like any other spending -
-    /// `count * withdrawCost`, which is $370 for ten grain at $37.
+    /// `ah-tdsi`: the faction's unclaimed fund pays for a withdrawal, so the withdrawing unit's own
+    /// silver is untouched and a unit holding nothing at all is not warned.
     #[test]
-    fn a_withdrawing_unit_is_charged_the_rulesets_price() {
+    fn a_withdrawing_unit_is_charged_nothing() {
         assert_eq!(
             codes(&check(
-                vec![region(vec![with_silver(unit("5"), 370)])],
+                vec![region(vec![with_silver(unit("5"), 0)])],
                 "unit 5\nWITHDRAW 10 grain\n"
             )),
             [] as [&str; 0],
-            "$370 covers ten grain exactly"
+            "the fund pays for the grain, so this unit spends nothing"
         );
     }
 
-    /// The behaviour change `ah-1wcw.6` carries: `not-enough-silver` declined to judge a withdrawing
-    /// unit only because the price was unknown, and now that it is known it speaks.
+    /// The bead's headline: a unit one silver short of what the withdrawal used to cost it is not
+    /// short of anything at all, because the withdrawal was never its to pay for (`ah-tdsi`).
     #[test]
-    fn a_withdrawing_unit_that_cannot_pay_is_warned_about() {
+    fn a_withdrawing_unit_that_could_not_pay_is_no_longer_warned() {
         assert_eq!(
             codes(&check(
                 vec![region(vec![with_silver(unit("5"), 369)])],
                 "unit 5\nWITHDRAW 10 grain\n"
             )),
-            ["not-enough-silver"],
-            "one silver short of ten grain"
+            [] as [&str; 0],
+            "$369 is not short of a bill this unit never gets"
         );
     }
 
-    /// The old path stays, and stays reachable: a ruleset that prices an item nowhere - as one
-    /// cached before `ah-1wcw.6` prices everything - still declines to judge the unit.
+    /// A withdrawal the ruleset cannot price used to mark the unit `doubted`, which silenced every
+    /// finding about it - including ones with nothing to do with withdrawing (`ah-tdsi`).
     #[test]
-    fn a_withdrawal_the_ruleset_cannot_price_is_still_doubted() {
+    fn an_unpriceable_withdrawal_no_longer_silences_the_units_other_findings() {
         assert_eq!(
             check_ignoring_transfer_targets(
                 vec![region(vec![with_silver(unit("5"), 0)])],
                 "unit 5\nWITHDRAW 1 longship\nGIVE 7 100 SILV\n"
-            ),
-            vec![],
-            "the page prices no ship for withdrawal, so there is no sum to check"
+            )
+            .into_iter()
+            .map(|finding| finding.code)
+            .collect::<Vec<_>>(),
+            vec![codes::NOT_ENOUGH_SILVER],
+            "the gift is still $100 more than this unit holds"
+        );
+    }
+
+    /// A withdrawal beside a purchase the unit genuinely cannot afford: the warning must still fire,
+    /// and name only the purchase's figures (`ah-tdsi`).
+    #[test]
+    fn a_unit_that_withdraws_and_overspends_is_still_warned_for_the_overspend() {
+        let findings = check(
+            vec![region(vec![with_silver(unit("5"), 0)])],
+            "unit 5\nWITHDRAW 10 grain\nGIVE 7 100 SILV\n",
+        );
+        let messages: Vec<&str> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(messages.len(), 1, "{findings:?}");
+        assert!(
+            messages[0].contains("100"),
+            "the gift is what it is short of: {}",
+            messages[0]
+        );
+        assert!(
+            !messages[0].contains("370") && !messages[0].contains("470"),
+            "and the withdrawal is no part of the sum: {}",
+            messages[0]
         );
     }
 
@@ -6254,7 +6377,7 @@ mod tests {
         assert_eq!(
             check_ignoring_transfer_targets(
                 regions,
-                "unit 5\nGIVE 9 30 swords\nunit 7\nWITHDRAW 1 longship\n"
+                "unit 5\nGIVE 9 30 swords\nunit 7\nSTUDY basketweaving\n"
             ),
             vec![]
         );
@@ -8713,7 +8836,7 @@ mod tests {
         for finding in &findings {
             assert_eq!(
                 finding.message,
-                "your units claim 5000 between them and the faction has 4935"
+                "your units claim and withdraw $5000 between them and the faction has $4935"
             );
         }
         assert_eq!(findings[0].line, Some(2));
@@ -8777,7 +8900,101 @@ mod tests {
         for finding in &findings {
             assert_eq!(
                 finding.message,
-                "your units claim 6000 between them and the faction has 4935"
+                "your units claim and withdraw $6000 between them and the faction has $4935"
+            );
+        }
+        assert_eq!(findings[0].line, Some(2));
+        assert_eq!(findings[1].line, Some(3));
+    }
+
+    /// `ah-tdsi`: one fund, drawn on by two orders, so the check counts them together and names
+    /// every unit that draws on it.
+    #[test]
+    fn claims_and_withdrawals_together_can_overdraw_the_fund() {
+        let findings = check_claims_of(
+            Some(500),
+            vec![region(vec![unit("101"), unit("102")])],
+            "unit 101\nCLAIM 300\nunit 102\nWITHDRAW 10 grain\n",
+        );
+
+        assert_eq!(findings.len(), 2, "both drawing units: {findings:?}");
+        assert_eq!(
+            findings
+                .iter()
+                .map(|finding| finding.unit_id.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("101"), Some("102")]
+        );
+        for finding in &findings {
+            assert_eq!(
+                finding.message,
+                "your units claim and withdraw $670 between them and the faction has $500"
+            );
+        }
+        assert_eq!(findings[0].line, Some(2));
+        assert_eq!(findings[1].line, Some(4));
+    }
+
+    /// One shape of sentence for both cases: a faction that only claims reads exactly the same way.
+    #[test]
+    fn a_claim_alone_still_reads_the_same_way() {
+        let findings = check_claims_of(
+            Some(500),
+            vec![region(vec![unit("101")])],
+            "unit 101\nCLAIM 600\n",
+        );
+
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(
+            findings[0].message,
+            "your units claim and withdraw $600 between them and the faction has $500"
+        );
+    }
+
+    /// A control rather than a discriminating test, and deliberately so: any fund that covers the
+    /// claim and the withdrawal together also covers the claim alone, so no fixture of this shape
+    /// can fail when withdrawals go uncounted. What proves they are counted is the pair of overdraw
+    /// tests above; this one guards the other direction, that counting them does not invent a
+    /// warning.
+    #[test]
+    fn a_fund_that_covers_both_warns_about_neither() {
+        assert!(check_claims_of(
+            Some(700),
+            vec![region(vec![unit("101"), unit("102")])],
+            "unit 101\nCLAIM 300\nunit 102\nWITHDRAW 10 grain\n",
+        )
+        .is_empty());
+    }
+
+    /// A withdrawal nothing can price makes the faction's total genuinely unknown, and an unknown
+    /// total is not zero: the check declines rather than guessing, exactly as it already declines a
+    /// report that states no fund (`ah-tdsi`). The claim alone overruns, so a naive zero-fallback
+    /// would still fire here.
+    #[test]
+    fn an_unpriceable_withdrawal_declines_the_fund_check() {
+        assert!(check_claims_of(
+            Some(500),
+            vec![region(vec![unit("101"), unit("102")])],
+            "unit 101\nCLAIM 600\nunit 102\nWITHDRAW 1 longship\n",
+        )
+        .is_empty());
+    }
+
+    /// A unit with two `WITHDRAW` lines contributes both to the total and is named on each, the
+    /// same way `a_unit_claiming_twice_is_warned_on_each_line` pins it for claims.
+    #[test]
+    fn two_withdrawals_by_one_unit_both_count() {
+        let findings = check_claims_of(
+            Some(500),
+            vec![region(vec![unit("101")])],
+            "unit 101\nWITHDRAW 10 grain\nWITHDRAW 10 grain\n",
+        );
+
+        assert_eq!(findings.len(), 2, "one per withdraw line: {findings:?}");
+        for finding in &findings {
+            assert_eq!(
+                finding.message,
+                "your units claim and withdraw $740 between them and the faction has $500"
             );
         }
         assert_eq!(findings[0].line, Some(2));

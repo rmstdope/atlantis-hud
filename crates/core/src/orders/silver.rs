@@ -187,6 +187,11 @@ pub struct UnitSilver {
     /// Silver this unit is ordered to give to nobody - `GIVE 0 ... SILV`, which destroys it. Part
     /// of `expense` like any other gift; carried separately only so the hover can say so.
     pub given_to_nobody: i64,
+    /// Whether this unit is ordered to withdraw anything. The withdrawal costs the unit nothing -
+    /// the faction's unclaimed fund pays (`ah-tdsi`) - so an `Out` of zero on a unit ordered to
+    /// withdraw $369 of grain reads as a defect until the hover says why. Carried as a flag rather
+    /// than a sum because the sum is not this unit's to show and may not be priceable at all.
+    pub withdrawing: bool,
 }
 
 /// The kind of order a shortfall bites on, so the hover can name it (`ah-uwa3`).
@@ -198,7 +203,6 @@ pub enum SilverSpender {
     Cast,
     Study,
     Give,
-    Withdraw,
 }
 
 /// Why a unit's month could not be priced. One variant per sentence the interface shows.
@@ -218,9 +222,6 @@ pub enum SilverDoubt {
     UnknownGoods,
     /// `BUY` of goods this region's `For Sale` list does not carry, so the purchase has no price.
     MarketDoesNotSell,
-    /// `WITHDRAW` of an item the ruleset carries no withdrawal price for - anything that is not a
-    /// basic item, and every item at all for a ruleset cached before `ah-1wcw.6`.
-    UnpricedWithdrawal,
     /// `GIVE` of a whole class of goods, or of the unit itself: what leaves depends on classifying
     /// everything the unit holds, which is not modelled.
     GivesAWholeClass,
@@ -477,6 +478,7 @@ pub fn forecast_unit(
             unclaimed_covered: 0,
             unclaimed_contended: false,
             given_to_nobody: 0,
+            withdrawing: false,
         };
     }
 
@@ -488,6 +490,7 @@ pub fn forecast_unit(
     let mut expense_doubt = None;
     let mut doubt_subject = None;
     let mut given_to_nobody = 0i64;
+    let mut withdrawing = false;
     // The first order in the block that actually moves silver out, which is what the hover names.
     // Recorded where `expense` grows rather than read off the intents: a `GIVE` of items and a
     // costless `CAST` are orders, but they spend nothing, and naming one of those would point the
@@ -662,20 +665,13 @@ pub fn forecast_unit(
                     }),
                 }
             }
-            Intent::Withdraw { count, item } => {
-                let cost = (lookups.item_tag)(item)
-                    .and_then(|tag| ruleset?.items.get(&tag)?.withdraw_cost);
-                match cost {
-                    Some(cost) => {
-                        let charged = count.saturating_mul(cost);
-                        expense = expense.saturating_add(charged);
-                        if charged > 0 {
-                            spent_on = spent_on.or(Some(SilverSpender::Withdraw));
-                        }
-                    }
-                    None => expense_doubt = expense_doubt.or(Some(SilverDoubt::UnpricedWithdrawal)),
-                }
-            }
+            // WITHDRAW draws on the faction's unclaimed fund, never the unit's own silver, so it is
+            // not an expense of this unit's month at all - the fund is `check_claims`'s business
+            // (`ah-tdsi`). The count is still reported, so the hover can say why `Out` is zero on a
+            // unit ordered to withdraw.
+            // A count of zero takes nothing from the fund, so it explains no `Out` and earns no
+            // note - the plan's `{ .. }` would have set the flag for `WITHDRAW 0 grain` too.
+            Intent::Withdraw { count, .. } => withdrawing = withdrawing || *count > 0,
             _ => {}
         }
     }
@@ -775,6 +771,7 @@ pub fn forecast_unit(
         unclaimed_covered: 0,
         unclaimed_contended: false,
         given_to_nobody,
+        withdrawing,
     }
 }
 
@@ -2462,8 +2459,10 @@ mod tests {
         assert_eq!(unit.doubt, None);
     }
 
+    /// `ah-tdsi`: the faction's unclaimed fund pays for a withdrawal, never the withdrawing
+    /// unit's own silver, so the order costs this unit's month nothing at all.
     #[test]
-    fn a_withdrawing_unit_pays_the_rulesets_price() {
+    fn a_withdrawing_unit_pays_nothing_of_its_own() {
         let ruleset = ruleset();
         let intents = vec![placed(Intent::Withdraw {
             count: 5,
@@ -2476,11 +2475,26 @@ mod tests {
             &no_purchases,
             Some(&ruleset),
         );
-        assert_eq!(unit.expense, Some(375));
+        assert_eq!(unit.expense, Some(0), "the fund pays, not the unit");
+        assert_eq!(
+            unit.at_month_end,
+            Some(500),
+            "so the unit keeps what it holds"
+        );
+        assert_eq!(
+            unit.short_on, None,
+            "and no shortfall can bite on a withdrawal"
+        );
+        assert!(
+            unit.withdrawing,
+            "the hover still needs to know it withdrew"
+        );
     }
 
+    /// A withdrawal the ruleset cannot price used to make the whole column unpriceable. It cost the
+    /// unit nothing either way, so there is nothing left to doubt (`ah-tdsi`).
     #[test]
-    fn a_withdrawal_the_ruleset_cannot_price_is_doubted() {
+    fn a_withdrawal_the_ruleset_cannot_price_still_leaves_an_exact_column() {
         let ruleset = ruleset();
         let intents = vec![placed(Intent::Withdraw {
             count: 1,
@@ -2493,20 +2507,60 @@ mod tests {
             &no_purchases,
             Some(&ruleset),
         );
-        assert_eq!(unit.expense, None);
-        assert_eq!(unit.doubt, Some(SilverDoubt::UnpricedWithdrawal));
+        assert_eq!(unit.doubt, None);
+        assert_eq!(unit.expense, Some(0));
+        assert_eq!(unit.at_month_end, Some(500));
+        assert!(unit.withdrawing);
     }
 
+    /// The same with no ruleset at all - the case a report cached before `ah-1wcw.6` presents.
     #[test]
-    fn a_withdrawal_with_no_ruleset_at_all_is_doubted() {
+    fn a_withdrawal_with_no_ruleset_at_all_still_leaves_an_exact_column() {
         let intents = vec![placed(Intent::Withdraw {
             count: 1,
             item: "STON".to_string(),
         })];
         let unit = spending(500, &intents, RegionWages::default(), &no_purchases, None);
-        assert_eq!(unit.expense, None);
-        assert_eq!(unit.doubt, Some(SilverDoubt::UnpricedWithdrawal));
+        assert_eq!(unit.doubt, None);
+        assert_eq!(unit.expense, Some(0));
+        assert_eq!(unit.at_month_end, Some(500));
+        assert!(unit.withdrawing);
     }
+
+    /// A withdrawal of nothing takes nothing from the fund, so there is no zero for the hover to
+    /// explain and no note to earn (`ah-tdsi`).
+    #[test]
+    fn withdrawing_a_count_of_zero_leaves_the_flag_false() {
+        let ruleset = ruleset();
+        let intents = vec![placed(Intent::Withdraw {
+            count: 0,
+            item: "STON".to_string(),
+        })];
+        let unit = spending(
+            500,
+            &intents,
+            RegionWages::default(),
+            &no_purchases,
+            Some(&ruleset),
+        );
+        assert!(!unit.withdrawing);
+    }
+
+    /// Guards a `withdrawing` set by anything other than a real `WITHDRAW` order.
+    #[test]
+    fn withdrawing_nothing_leaves_the_flag_false() {
+        let ruleset = ruleset();
+        let intents = vec![placed(Intent::Work)];
+        let unit = spending(
+            500,
+            &intents,
+            RegionWages::default(),
+            &no_purchases,
+            Some(&ruleset),
+        );
+        assert!(!unit.withdrawing);
+    }
+
     /// One shared empty [`Receipts`], so the helpers below can hand out a `'static` borrow
     /// instead of every test declaring a local that has to outlive its facts.
     fn no_receipts() -> &'static Receipts {

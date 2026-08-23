@@ -483,7 +483,8 @@ const WARNING_GROUPS: readonly {
       {
         code: "claims-exceed-unclaimed",
         title: "Claiming more than the faction has",
-        description: "CLAIM orders across all your units asking for more unclaimed silver than the faction holds."
+        description:
+          "CLAIM and WITHDRAW orders across all your units asking for more unclaimed silver than the faction holds."
       },
       {
         code: "upkeep-exceeds-unclaimed",

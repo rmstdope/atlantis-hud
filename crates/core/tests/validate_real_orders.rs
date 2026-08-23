@@ -552,9 +552,7 @@ fn the_committed_turn_has_no_purchases_withdrawals_or_gifts_of_silver() {
         assert!(
             !matches!(
                 unit.doubt,
-                Some(SilverDoubt::MarketDoesNotSell)
-                    | Some(SilverDoubt::UnpricedWithdrawal)
-                    | Some(SilverDoubt::GivesAWholeClass)
+                Some(SilverDoubt::MarketDoesNotSell) | Some(SilverDoubt::GivesAWholeClass)
             ),
             "{} is doubted for an expense the turn does not contain: {:?}",
             unit.unit_id,
