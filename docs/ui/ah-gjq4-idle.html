@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Idle units work by default (ah-gjq4)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head><body>
+<header>
+  <h1><span>ah-gjq4</span> — an idle unit works, and earns</h1>
+  <p>A unit with no month-long order automatically <code>WORK</code>s, and work pays the region's
+  wage. The forecast prices only an <em>explicit</em> <code>Intent::Work</code>, so an idle unit
+  shows no income — while its upkeep is still charged. It can be shown short of money, or starving,
+  when the wages it will really earn would have paid.</p>
+  <p><strong>That is the same false-alarm class as <code>ah-fjty</code>, <code>ah-eacd</code>,
+  <code>ah-e66j</code> and <code>ah-tdsi</code></strong> — all four warned about a unit something was
+  going to pay for. An idle unit is probably the commonest unit in a real turn, so this is the widest
+  of them.</p>
+  <p>The definition of “no month-long order” is already shipped and exhaustive:
+  <code>spends_the_month</code> (<code>semantics.rs:714</code>), written as a full <code>match</code>
+  precisely so a new order cannot slip through silently. This bead reuses it and defines nothing.</p>
+</header>
+<main>
+
+<section>
+  <h2 class="rule"><em>The hex</em> wages $12.0 a man</h2>
+  <table class="t">
+    <tr><th>Unit</th><th>Men</th><th>Orders</th><th>Upkeep</th><th>Today</th><th>After</th></tr>
+    <tr><td>Scouts (101)</td><td>6</td><td>— none —</td><td class="num">60</td><td class="num" style="color:var(--danger)">−60 · warned</td><td class="num good">+12</td></tr>
+    <tr><td>Guards (102)</td><td>8</td><td>GUARD</td><td class="num">80</td><td class="num" style="color:var(--danger)">−80 · warned</td><td class="num good">+16</td></tr>
+    <tr><td>Student (103)</td><td>1</td><td>STUDY combat</td><td class="num">10</td><td class="num">−10</td><td class="num">−10</td></tr>
+  </table>
+  <div class="absent"><code>GUARD</code> is a flag, not a month's work — <code>spends_the_month</code>
+  already says so, and a guard can tax as well — so Guards (102) works too. The student spends its
+  month and is untouched. Wages arrive in the turn's last phase, so they pay upkeep but cannot fund
+  this month's purchases; <code>late_income</code> already models exactly that and is the path this
+  goes through.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>The tension this creates</em></h2>
+  <p>The shipped <code>unit-does-nothing</code> check tells you a unit <em>“has no order that spends
+  the month”</em> — and it uses the very same <code>spends_the_month</code>. So the units this bead
+  starts paying wages to are <strong>exactly</strong> the units that check flags.</p>
+  <blockquote>Scouts (101) — <code>has no order that spends the month</code> … and now also
+  <code>In: 12</code>, earned by working.</blockquote>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>&nbsp;</th></tr>
+    <tr><td class="k">A — leave the warning alone</td><td>It is literally true: there is no
+      <em>order</em>. And it is still worth saying, because working is usually the worst thing a unit
+      could be doing with its month. The two surfaces simply say different things about the same
+      unit.</td></tr>
+    <tr><td class="k">B — reword it</td><td><code class="k">has no order, so it will work for wages</code>
+      — says what will actually happen rather than implying the month is wasted, and the number in
+      the column now agrees with it. Changes a shipped string.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Does the column say where the money came from?</em></h2>
+  <div class="tips">
+    <div class="unit">
+      <div class="tip">
+        <div class="sect">Silver</div>
+        <div class="rowset">
+          <div class="row"><span>Held now</span><span class="v">0</span></div>
+          <div class="row"><span>In</span><span class="v">72</span></div>
+          <div class="row"><span>In too late to spend</span><span class="v">72</span></div>
+          <div class="row"><span>Out</span><span class="v">0</span></div>
+          <div class="row"><span>Upkeep</span><span class="v">60</span></div>
+          <div class="row total"><span>At month end</span><span class="v">12</span></div>
+        </div>
+        <div class="tipnote">This unit has no month-long order, so it will work and earn wages.</div>
+      </div>
+      <div class="cap"><b>1 — with a note.</b> Silver appearing from an order the player never wrote
+      is the sort of thing that reads as a defect. The note is the same shape as the food and
+      unclaimed-fund lines, which exist for exactly that reason.</div>
+    </div>
+    <div class="unit">
+      <div class="cap" style="padding-top:6px"><b>2 — silently.</b> The <em>In too late to spend</em>
+      row already tells a reader this is wages, and the hover has a one-note-wins table that a new
+      entry competes in. Quieter, and one fewer string to keep true.
+      <br><br>Either way the arithmetic is identical; the choice is whether the player is told
+      <em>why</em>.</div>
+    </div>
+  </div>
+</section>
+</main></body></html>
