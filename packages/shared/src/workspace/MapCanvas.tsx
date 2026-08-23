@@ -19,6 +19,7 @@ import {
   fitTo,
   foldCoordinate,
   ghostShift,
+  ghostSpread,
   HEX_RADIUS,
   isOffScreen,
   neighbour,
@@ -257,6 +258,11 @@ export type MapCanvasHandle = {
  *   it arrives before the first fit and is the only insets any path reads. A pane changing later
  *   moves nothing until the next level or game (ah-lfo).
  */
+/** The repeats `-spread .. +spread`, in order, as the multiples the ghost copies stand at. */
+function repeatsEitherSide(spread: number): number[] {
+  return Array.from({ length: spread * 2 + 1 }, (_, index) => index - spread);
+}
+
 export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function MapCanvas(
   {
     gameId,
@@ -367,7 +373,12 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   const spans = useMemo(() => wrapSpans(shape), [shape]);
 
   /**
-   * Where to draw the world again: one repeat back, here and one repeat on, per axis that repeats.
+   * Where to draw the world again: as many repeats either side of here as the screen is wide
+   * enough to show, per axis that repeats.
+   *
+   * How many is a question about the zoom rather than about the pan - a screen wider than a repeat
+   * needs more than one copy either side, and zooming out is precisely how a screen becomes wider
+   * than a repeat. A fixed one either side is what ran out on the right when zoomed far out.
    *
    * They are `<use>` elements rather than duplicated nodes, so nine of them cost nine DOM nodes
    * rather than nine copies of every hex, road, note and ring. Which repeat each one actually
@@ -379,10 +390,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     if (spans.x === null && spans.y === null) {
       return [];
     }
-    const xs = spans.x === null ? [0] : [-1, 0, 1];
-    const ys = spans.y === null ? [0] : [-1, 0, 1];
+    const scale = scaleOf(view.step);
+    const xs = spans.x === null ? [0] : repeatsEitherSide(ghostSpread(spans.x, scale, size.width));
+    const ys = spans.y === null ? [0] : repeatsEitherSide(ghostSpread(spans.y, scale, size.height));
     return xs.flatMap((mx) => ys.map((my) => ({ mx, my })));
-  }, [spans]);
+  }, [spans, view.step, size]);
 
   /**
    * Moves the world's copies to the repeats either side of wherever the camera is.
@@ -397,8 +409,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
         return;
       }
       const scale = scaleOf(view.step);
-      const shiftX = ghostShift(view.tx, spans.x, scale);
-      const shiftY = ghostShift(view.ty, spans.y, scale);
+      const shiftX = ghostShift(view.tx, spans.x, scale, size.width);
+      const shiftY = ghostShift(view.ty, spans.y, scale, size.height);
       for (const ghost of world.querySelectorAll<SVGUseElement>(":scope > use")) {
         const mx = Number(ghost.dataset.ghostX) + shiftX;
         const my = Number(ghost.dataset.ghostY) + shiftY;
@@ -414,7 +426,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
         ghost.setAttribute("y", String(my * (spans.y ?? 0)));
       }
     },
-    [spans]
+    [spans, size]
   );
 
   /**

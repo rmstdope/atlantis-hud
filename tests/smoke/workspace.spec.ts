@@ -3342,6 +3342,50 @@ async function expectWorldUnderTheView(page: Page, period: number) {
   expect(Math.min(...drawn.map((x) => Math.abs(x)))).toBeLessThanOrEqual(period / 2 + 1);
 }
 
+/**
+ * That copies of the world cover the visible strip from edge to edge, not merely somewhere near its
+ * middle.
+ *
+ * The distinction is the whole of the verification failure this test was written for. Zoomed far
+ * enough out the strip is wider than a single repeat, so a copy sitting under the centre says
+ * nothing about the right-hand edge - and the right-hand edge is precisely where the emptiness
+ * opened, because the copies were placed around the camera's origin rather than around what is on
+ * screen.
+ */
+async function expectWorldAcrossTheView(page: Page, period: number) {
+  const tx = await mapTx(page);
+  const strip = await visibleStrip(page);
+  const canvas = await page.locator("[data-testid='map-canvas']").boundingBox();
+  const scale = await page
+    .locator("[data-testid='map-canvas'] svg")
+    .evaluate((node) => Number(getComputedStyle(node).getPropertyValue("--map-scale")));
+  const offsets = await page
+    .getByTestId("map-world-ghost")
+    .evaluateAll((nodes) =>
+      nodes
+        .filter((node) => node.getAttribute("display") !== "none")
+        .map((node) => Number(node.getAttribute("x")))
+    );
+
+  // Each copy is drawn across one period, starting where the world's left edge lands for it. In the
+  // canvas's own coordinates, which is what the transform is written in.
+  const left = strip.x - (canvas?.x ?? 0);
+  const right = left + strip.width;
+  const copies = [0, ...offsets]
+    .map((offset) => tx + offset * scale)
+    .sort((a, b) => a - b);
+
+  // Walk east from the strip's left edge, taking whichever copy reaches furthest. A tolerance of a
+  // pixel, because the transform is written rounded to two decimals.
+  let reached = left;
+  for (const start of copies) {
+    if (start <= reached + 1 && start + period > reached) {
+      reached = start + period;
+    }
+  }
+  expect(reached).toBeGreaterThanOrEqual(right - 1);
+}
+
 /** Drags the map west-to-east by `dx` pixels in one gesture, from the middle of the visible strip. */
 async function panMap(page: Page, dx: number) {
   const strip = await visibleStrip(page);
@@ -3397,6 +3441,41 @@ test("panning east forever stays on the map", async ({ page }) => {
   for (let sweep = 0; sweep < 12; sweep += 1) {
     await panMap(page, 300);
     await expectWorldUnderTheView(page, period);
+  }
+});
+
+/**
+ * ah-brgo.1, reopened: zoomed far out, the map still covers the screen to both edges.
+ *
+ * What the navigator saw was asymmetric - the left was right at every zoom, the right swapped its
+ * copy out too early and back in too late, so a band of emptiness opened there. The asymmetry was
+ * the tell: the copies were chosen by rounding on the camera's origin, which is the world's left
+ * edge and not the middle of what is on screen, and a fixed one either side stops spanning the
+ * screen as soon as the screen is wider than a repeat. Zooming out is how a screen becomes wider
+ * than a repeat.
+ *
+ * `expectWorldAcrossTheView` rather than `expectWorldUnderTheView`: the older helper asks only that
+ * a copy is near the centre, which stayed true throughout the failure.
+ */
+test("zoomed out, the map covers the screen to its right-hand edge", async ({ page }) => {
+  await loadReport(page);
+
+  // Far enough out that the screen is several worlds wide, which is the condition the bug needed.
+  for (let step = 0; step < 6; step += 1) {
+    await page.getByRole("button", { name: "Zoom out", exact: true }).click();
+  }
+
+  await expectWorldAcrossTheView(page, await mapPeriod(page));
+
+  // And it stays covered as the player drags, in both directions - the right-hand edge being the
+  // one that failed.
+  for (let sweep = 0; sweep < 6; sweep += 1) {
+    await panMap(page, 300);
+    await expectWorldAcrossTheView(page, await mapPeriod(page));
+  }
+  for (let sweep = 0; sweep < 12; sweep += 1) {
+    await panMap(page, -300);
+    await expectWorldAcrossTheView(page, await mapPeriod(page));
   }
 });
 
