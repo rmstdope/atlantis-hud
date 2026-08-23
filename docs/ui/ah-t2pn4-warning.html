@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The oversubscribed-pool warning (ah-t2pn.4)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head><body>
+<header>
+  <h1><span>ah-t2pn.4</span> — the warning that goes with the corrected column</h1>
+  <p>You chose one code, <code>region-pool-oversubscribed</code>, one finding per contending unit on
+  its own order line, wording mirroring the shipped <code>claims-exceed-unclaimed</code>
+  (<em>“your units claim {total} between them and the faction has {purse}”</em>).</p>
+  <p>One code now has to carry <strong>five</strong> sentences, because the pools are measured in
+  different things — and <code>ah-t2pn.3</code>'s decision has created a case the family interview
+  never saw.</p>
+</header>
+<main>
+
+<section>
+  <h2 class="rule"><em>The five sentences</em></h2>
+  <table class="q">
+    <tr><th>Pool</th><th>Line</th></tr>
+    <tr><td>tax</td><td class="k">your units here tax for $3,000 between them and this region has $2,500</td></tr>
+    <tr><td>wages</td><td class="k">your units here work for $1,320 between them and this region pays $1,200</td></tr>
+    <tr><td>entertainment</td><td class="k">your units here entertain for $900 between them and this region pays $600</td></tr>
+    <tr><td>market, selling</td><td class="k">your units here sell 120 horses between them and this market wants 100</td></tr>
+    <tr><td>market, buying</td><td class="k">your units here buy 120 horses between them and this market has 100</td></tr>
+  </table>
+  <div class="absent">Silver pools say <em>has</em> / <em>pays</em>; markets say <em>wants</em> /
+  <em>has</em> and are named in goods, because that is what the market line prints. All five keep
+  <code>claims-exceed-unclaimed</code>'s spine: <em>your units … between them and …</em></div>
+</section>
+
+<section>
+  <h2 class="rule"><em>The new case</em> one unit, no contention</h2>
+  <p><code>ah-t2pn.3</code> settles markets whenever <strong>anyone</strong> trades, not only when two
+  units contend — that is what caps a lone unit ordering <code>BUY 200</code> where 100 exist. So the
+  pool is oversubscribed by one unit, on its own.</p>
+  <pre class="calc">Market has 100 horses.   One unit orders BUY 200 HORS.   Nobody else is trading.
+
+  "your units here buy 200 horses between them and this market has 100"
+                 ^^^^^ one unit                ^^^^^^^^^^^^ between whom?</pre>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>What happens</th></tr>
+    <tr><td class="k">A — a second sentence for the lone case</td>
+      <td><code class="k">this unit buys 200 horses and this market has 100</code><br>
+      Reads correctly, and the plural sentence is kept for the genuine contention it was written for.
+      Costs a sixth and seventh string (buying and selling).</td></tr>
+    <tr><td class="k">B — the finding fires only with two or more units</td>
+      <td>The lone over-buyer is still <em>capped</em> in the column (that was your decision in
+      <code>ah-t2pn.3</code>) but raises no finding. One sentence per pool, and the warning stays
+      about contention, which is what the code is named for. The lone case is then silently corrected
+      with nothing saying why.</td></tr>
+    <tr><td class="k">C — keep the plural sentence for one unit</td>
+      <td>No new string. Reads wrong on the commonest single-unit mistake there is.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>The Settings row</em> Resources group</h2>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>Title</th><th>Description</th></tr>
+    <tr><td class="k">1</td><td>Promised more than the region has</td><td>Your units in one hex ordered to tax, work, entertain or trade for more than the region or its market can supply between them.</td></tr>
+    <tr><td class="k">2</td><td>Sharing a region's pool</td><td>Several of your own units in one hex drawing on the same tax base, wage pool, entertainment demand or market stock.</td></tr>
+  </table>
+  <div class="absent">It joins <strong>Resources</strong> beside “Claiming more than the faction has”
+  — same fund-runs-out shape, one hex-scope and one faction-scope. Not <em>Orders</em>: the orders are
+  all legal, there is simply not enough to go round.</div>
+</section>
+</main></body></html>
