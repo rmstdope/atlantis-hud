@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>README: how to install (ah-m0cj)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head><body>
+<header>
+  <h1><span>ah-m0cj</span> — a way in for people who want to <em>use</em> the app</h1>
+  <p>Today the README goes: title → <strong>Where your games are kept</strong> (some 60 lines on how
+  browser storage can lose your game) → <strong>Requirements</strong> (Node, pnpm, rustup,
+  wasm-pack) → <strong>Install</strong> (submodule, pnpm install). Every route in is a developer
+  route.</p>
+  <p><strong>The prose already exists.</strong> Every release's notes carry a tested “Installing”
+  section covering all four routes, including the Gatekeeper and SmartScreen warnings — written
+  because the macOS build is <strong>not notarized</strong> and will otherwise say it is damaged.
+  Nothing new needs inventing; the question is where it lives and how it stays in step.</p>
+</header>
+<main>
+
+<section>
+  <h2 class="rule"><em>Ordering</em> two shapes</h2>
+  <div class="tips">
+    <div class="unit">
+      <div class="cap"><b>Order A — get it, then the caveats.</b>
+      <pre class="calc">atlantis-hud
+  (one-line description)
+Getting Atlantis HUD          <- new
+  Use it in your browser
+  macOS / Windows / Linux
+  Self-hosting the web app
+Where your games are kept
+  ...
+Building from source          <- was Requirements
+Install (developer)
+...</pre>
+      A reader learns what it is, how to get it, and only then how to look after it. The storage
+      caveats land when they are actionable — you have chosen browser or desktop by then, and the
+      Safari warning is advice about a choice already made.</div>
+    </div>
+    <div class="unit">
+      <div class="cap"><b>Order B — caveats first, as today.</b>
+      <pre class="calc">atlantis-hud
+  (one-line description)
+Where your games are kept
+  ...
+Getting Atlantis HUD          <- new, moved down
+  ...
+Building from source
+...</pre>
+      Keeps the existing shape and moves only the new section in. The data-loss warnings are read
+      by everyone, which matters because the browser is the easiest way in and the most fragile.
+      Costs: ~60 lines of “here is how you can lose your game” before the reader knows how to get
+      it at all.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>The hosted instance</em> which comes first?</h2>
+  <p><code>https://atlantis-hud.kurelid.se</code> needs no installation and is almost certainly what
+  most readers want. Today it is named only under <strong>Ship it</strong>, a section about how
+  deploys work.</p>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>Reads</th></tr>
+    <tr><td class="k">1 — hosted first</td><td>“<strong>Just use it.</strong> Open
+      <code>atlantis-hud.kurelid.se</code> — nothing to install.” Then the downloads. Lowest
+      friction; a reader is playing in one click. But it leads with the option whose storage is the
+      most fragile, and Safari users are told seven days later.</td></tr>
+    <tr><td class="k">2 — desktop first</td><td>Downloads first, hosted as “or try it without
+      installing”. The desktop app keeps games as ordinary files that your backups pick up, which is
+      the durable choice — and the unsigned-binary friction is front-loaded onto exactly the readers
+      least likely to tolerate it.</td></tr>
+    <tr><td class="k">3 — a table of all four</td><td>One table: route, who it suits, what to do.
+      Even-handed and scannable, and it commits to no recommendation — which for a first-time reader
+      is itself a cost.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Keeping one copy of the words</em></h2>
+  <p>The install prose exists in <code>.github/workflows/release.yml</code> (the release-notes body,
+  <code>:403</code>) and would now also exist in the README. Two copies drift.</p>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>What happens</th></tr>
+    <tr><td class="k">a — copy it into the README</td><td>Both read well standalone; the release
+      notes keep working for someone who arrives on the releases page. Costs: two places to fix when
+      the Gatekeeper story changes — which it does the day someone buys an Apple membership.</td></tr>
+    <tr><td class="k">b — README is the single copy, notes link to it</td><td>One source of truth.
+      Costs: a release-notes reader has to click through to GitHub for the step that makes their
+      download open at all.</td></tr>
+    <tr><td class="k">c — copy it, and note in both that they are a pair</td><td>An HTML comment in
+      each naming the other, so whoever edits one is told. Cheap, and it is a reminder rather than a
+      mechanism.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Fixed either way</em></h2>
+  <table class="q">
+    <tr><td class="k">Links do not go stale</td><td><code>github.com/rmstdope/atlantis-hud/releases/latest</code>, never a <code>v0.11.0</code> asset path.</td></tr>
+    <tr><td class="k">The macOS warning is not buried</td><td>The build is unsigned; a reader who is not told will conclude the app is broken. It goes with the macOS download, not in a footnote.</td></tr>
+    <tr><td class="k">Nothing is deleted</td><td>Requirements, Install, Run, Check and test, Ship it, Rulesets, agents — all stay, retitled or introduced so the audience is obvious.</td></tr>
+  </table>
+</section>
+</main></body></html>
