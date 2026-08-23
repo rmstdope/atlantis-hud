@@ -821,7 +821,7 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
         }
     }
 
-    charge_upkeep(&mut ledger, hex, ruleset);
+    charge_upkeep(&mut ledger, hex);
 
     ledger
 }
@@ -839,7 +839,7 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
 /// (`ah-uwa3`), so it is netted off the fee. Netted off rather than credited to the balance: a
 /// credit would leave the surplus where the orders could spend it, which is the very error this
 /// removes.
-fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>, ruleset: Option<&Ruleset>) {
+fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     // Step 2 of the payment order needs every unit's step-1 leftovers before it can settle any of
     // them, so this is two passes over one set of facts rather than one pass - built once here,
     // because two copies of the same literal are two things to keep in step.
@@ -894,7 +894,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>, ruleset: Option<&Rulese
         // Only what the late earnings cannot cover reaches the balance. `ledger.upkeep` keeps the
         // *full* fee: it is read only to word the finding ("orders and upkeep" against "orders"),
         // and a unit whose wages cover its fee is still a unit with a fee.
-        let charged = (owed - late_income(facts, region, ruleset)).max(0);
+        let charged = (owed - late_income(facts, region)).max(0);
         if charged > 0 {
             *ledger
                 .balance

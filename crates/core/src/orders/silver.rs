@@ -43,10 +43,18 @@ const SILVER_TAG: &str = "SILV";
 /// the omission obvious rather than silent.
 const PHANTASMAL_TAG: &str = "PHEN";
 
-/// Earth Lore earns "an amount of money based on his level, and the economy of the region" - no
-/// rate, no arithmetic, and a `null` `cast` entry. Doubted rather than guessed at: `ah-1wcw.1`'s
-/// rule is never a number that might be wrong.
+/// Earth Lore earns "an amount of money based on his level, and the economy of the region" - the
+/// rules page gives no arithmetic at all, so [`EARTH_LORE_PER_LEVEL_PER_WAGE`] below is the only
+/// statement of it in the tree.
 const EARTH_LORE_TAG: &str = "EART";
+
+/// "floor(2 x level x W)", where W is the region's wage rate - the navigator's figure, 2026-08-23.
+/// The scraped ruleset prices this spell nowhere, so this is the only statement of it in the tree.
+///
+/// There is no `men` term, unlike `ENTERTAIN` above, and that is deliberate: a mage unit can hold
+/// only one leader, so a casting unit is always exactly one man and per-unit and per-man are the
+/// same number. Do not "fix" this by multiplying by `facts.men`.
+const EARTH_LORE_PER_LEVEL_PER_WAGE: i64 = 2;
 
 /// "This fee is generally 10 silver for a normal character, and 50 silver for a leader."
 const UPKEEP_PER_CHARACTER: i64 = 10;
@@ -165,9 +173,6 @@ pub enum SilverDoubt {
     /// goods the market does not want, which earn nothing and are not doubted: we do not know
     /// *what* is being sold, so we cannot say the market has no line for it.
     UnknownGoods,
-    /// `CAST` of a spell the ruleset describes as earning but prices nowhere - Earth Lore, whose
-    /// rules text gives no arithmetic at all.
-    UnpricedSpell,
     /// `BUY` of goods this region's `For Sale` list does not carry, so the purchase has no price.
     MarketDoesNotSell,
     /// `WITHDRAW` of an item the ruleset carries no withdrawal price for - anything that is not a
@@ -333,17 +338,18 @@ pub fn parse_wage_centis(wages: Option<&str>) -> Option<i64> {
     Some(whole.saturating_mul(100).saturating_add(centis))
 }
 
-/// What a unit's orders earn it in the turn's last phase - wages, entertaining, and Phantasmal
-/// Entertainment.
+/// What a unit's orders earn it in the turn's last phase - wages and entertaining.
 ///
 /// The one place that decides which earnings arrive too late to be spent. [`forecast_unit`] and
 /// `semantics::charge_upkeep` both read it, because two copies of this rule is exactly the drift
 /// that `ah-uwa3` was filed to remove.
 ///
-/// Takes the ruleset because Phantasmal Entertainment is recognised by its catalogue tag, exactly
-/// as [`forecast_unit`] recognises it; a caller with no ruleset simply prices no spell.
+/// **Neither earning spell is here**, and that is not an omission: `CAST` resolves before every
+/// spend order, so a mage's takings can fund the same month's `BUY` (`ah-e77q`, correcting
+/// `ah-uwa3`'s classification of Phantasmal Entertainment). [`forecast_unit`] prices both - which
+/// is also why this no longer needs the ruleset: nothing late is recognised by a catalogue tag.
 #[must_use]
-pub fn late_income(facts: &UnitFacts<'_>, region: RegionWages, ruleset: Option<&Ruleset>) -> i64 {
+pub fn late_income(facts: &UnitFacts<'_>, region: RegionWages) -> i64 {
     let mut late = 0i64;
     for placed in facts.intents {
         match &placed.intent {
@@ -357,16 +363,6 @@ pub fn late_income(facts: &UnitFacts<'_>, region: RegionWages, ruleset: Option<&
                     .saturating_mul(skill_level(facts.skills, ENTERTAIN_TAG))
                     .saturating_mul(ENTERTAIN_PER_MAN_PER_LEVEL);
                 late = late.saturating_add(earned.min(region.entertainment.unwrap_or(0)));
-            }
-            Intent::Cast { spell, .. } => {
-                let tag = ruleset
-                    .and_then(|ruleset| ruleset.find_skill(spell))
-                    .map(|skill| skill.tag.to_ascii_uppercase());
-                if tag.as_deref() == Some(PHANTASMAL_TAG) {
-                    let earned = skill_level(facts.skills, PHANTASMAL_TAG)
-                        .saturating_mul(PHANTASMAL_PER_LEVEL);
-                    late = late.saturating_add(earned.min(region.entertainment.unwrap_or(0)));
-                }
             }
             _ => {}
         }
@@ -519,11 +515,27 @@ pub fn forecast_unit(
                 let spell = ruleset.and_then(|ruleset| ruleset.find_skill(spell));
 
                 match spell.map(|skill| skill.tag.to_ascii_uppercase()) {
-                    // Phantasmal Entertainment earns late, like the two orders above, so
-                    // [`late_income`] prices it; what the cast *costs* is still charged below.
-                    Some(tag) if tag == PHANTASMAL_TAG => {}
+                    // Both earning spells arrive in time to be spent: `CAST` resolves before every
+                    // spend order, so neither is [`late_income`]'s business. What each cast
+                    // *costs* is still charged below - the arm earns and falls through.
+                    Some(tag) if tag == PHANTASMAL_TAG => {
+                        let earned = skill_level(facts.skills, PHANTASMAL_TAG)
+                            .saturating_mul(PHANTASMAL_PER_LEVEL);
+                        income =
+                            income.saturating_add(earned.min(region.entertainment.unwrap_or(0)));
+                    }
                     Some(tag) if tag == EARTH_LORE_TAG => {
-                        income_doubt = income_doubt.or(Some(SilverDoubt::UnpricedSpell))
+                        // W is the region's wage, which `RegionWages` carries in hundredths - so
+                        // the division by 100 is the same shape `WORK` uses, and floors for the
+                        // same reason. Multiplied out before dividing, so a fractional wage is not
+                        // lost. A hex that states no wage pays nothing and raises no doubt, again
+                        // exactly as `WORK` treats one: the formula multiplies by W, and W is
+                        // nothing.
+                        let earned = skill_level(facts.skills, EARTH_LORE_TAG)
+                            .saturating_mul(EARTH_LORE_PER_LEVEL_PER_WAGE)
+                            .saturating_mul(region.wage_centis.unwrap_or(0))
+                            / 100;
+                        income = income.saturating_add(earned);
                     }
                     // Every other spell earns nothing here; what it *costs* is charged below.
                     _ => {}
@@ -613,7 +625,7 @@ pub fn forecast_unit(
 
     // The three earnings that arrive in the turn's last phase, priced in one place so this
     // function and the upkeep charge can never disagree about them (`ah-uwa3`).
-    let late = late_income(&facts, region, ruleset);
+    let late = late_income(&facts, region);
     income = income.saturating_add(late);
 
     // Everything that spends what is *left*, in document order, against a running total that
@@ -1335,29 +1347,28 @@ mod tests {
     }
 
     #[test]
-    fn phantasmal_entertainment_earns_late() {
-        let ruleset = ruleset();
-        let receipts = Receipts::default();
-        let intents = [placed(Intent::Cast {
-            spell: "phantasmal entertainment".to_string(),
-            arguments: Vec::new(),
-        })];
-        let skills = [skill("PHEN", 2)];
-        let unit = forecast_unit(
-            UnitFacts {
-                skills: &skills,
-                ..facts(1, &intents, &receipts)
-            },
-            RegionWages {
-                entertainment: Some(10_000),
-                ..RegionWages::default()
-            },
-            FactionPurse::default(),
-            no_market(),
-            Some(&ruleset),
-        );
+    fn phantasmal_entertainment_is_not_late_income() {
+        // `CAST` resolves before every spend order, so a mage's takings can fund a `BUY` in the
+        // same month - which is why this spell left `late_income` (`ah-e77q` correcting `ah-uwa3`).
+        let unit = casting("Phantasmal_Entertainment", "PHEN", 2, Some(10_000));
         assert_eq!(unit.income, Some(1200));
-        assert_eq!(unit.late_income, Some(1200));
+        assert_eq!(unit.late_income, Some(0));
+    }
+
+    #[test]
+    fn earth_lore_is_not_late_income() {
+        let unit = casting_for_wages("Earth_Lore", "EART", 3, "$14.0");
+        assert_eq!(unit.income, Some(84));
+        assert_eq!(unit.late_income, Some(0));
+    }
+
+    #[test]
+    fn wages_and_entertaining_are_still_late() {
+        // The guard that moving the spells took neither of these with them.
+        let working = forecast(10, paying("$12.0", None), &[placed(Intent::Work)]);
+        assert_eq!(working.late_income, Some(120));
+        let entertainer = entertaining(5, 2, Some(1000));
+        assert_eq!(entertainer.late_income, Some(300));
     }
 
     #[test]
@@ -1586,12 +1597,96 @@ mod tests {
         assert_eq!(unit.doubt, None);
     }
 
+    /// A caster in a hex that states a wage, which is what Earth Lore is priced from.
+    fn casting_for_wages(spell: &str, tag: &str, level: u32, wage: &str) -> UnitSilver {
+        casting_in(spell, tag, level, paying(wage, None), None)
+    }
+
+    /// [`casting`] with the region and the ruleset both stated, for the two spells whose earnings
+    /// depend on something other than the entertainment pool.
+    fn casting_in(
+        spell: &str,
+        tag: &str,
+        level: u32,
+        region: RegionWages,
+        ruleset_override: Option<&Ruleset>,
+    ) -> UnitSilver {
+        let committed = ruleset();
+        let ruleset = ruleset_override.unwrap_or(&committed);
+        let receipts = Receipts::default();
+        let intents = [placed(Intent::Cast {
+            spell: spell.to_string(),
+            arguments: Vec::new(),
+        })];
+        let skills = [skill(tag, level)];
+        forecast_unit(
+            UnitFacts {
+                skills: if level == 0 { &[] } else { &skills },
+                ..facts(1, &intents, &receipts)
+            },
+            region,
+            FactionPurse::default(),
+            no_market(),
+            Some(ruleset),
+        )
+    }
+
     #[test]
-    fn a_mage_casting_earth_lore_is_doubted() {
-        let unit = casting("Earth_Lore", "EART", 3, Some(5000));
-        assert_eq!(unit.doubt, Some(SilverDoubt::UnpricedSpell));
-        assert_eq!(unit.income, None);
-        assert_eq!(unit.at_month_end, None);
+    fn a_mage_casting_earth_lore_earns_twice_the_wage_a_level() {
+        let unit = casting_for_wages("Earth_Lore", "EART", 3, "$14.0");
+        assert_eq!(unit.income, Some(84));
+        assert_eq!(unit.doubt, None);
+    }
+
+    #[test]
+    fn earth_lore_in_a_hex_with_no_wage_earns_nothing() {
+        // The formula multiplies by the wage, and a hex that states none pays none - the same
+        // answer `WORK` already gives, and not a doubt.
+        let unit = casting_in("Earth_Lore", "EART", 3, RegionWages::default(), None);
+        assert_eq!(unit.income, Some(0));
+        assert_eq!(unit.doubt, None);
+    }
+
+    #[test]
+    fn earth_lore_rounds_down() {
+        // floor(2 x 1 x 14.5) = 29, which is the case a float would round to 30.
+        let unit = casting_for_wages("Earth_Lore", "EART", 1, "$14.5");
+        assert_eq!(unit.income, Some(29));
+    }
+
+    #[test]
+    fn a_mage_with_no_earth_lore_skill_earns_nothing() {
+        let unit = casting_for_wages("Earth_Lore", "EART", 0, "$14.0");
+        assert_eq!(unit.income, Some(0));
+        assert_eq!(unit.doubt, None);
+    }
+
+    #[test]
+    fn earth_lore_and_a_cast_cost_are_both_counted() {
+        // The committed ruleset prices no Earth Lore cast, so the cost is added here: the arm has
+        // to earn *and* fall through to the charge below, and nothing else notices if it does not.
+        let ruleset = ruleset_pricing_an_earth_lore_cast(50);
+        let unit = casting_in(
+            "Earth_Lore",
+            "EART",
+            3,
+            paying("$14.0", None),
+            Some(&ruleset),
+        );
+        assert_eq!(unit.income, Some(84));
+        assert_eq!(unit.expense, Some(50));
+    }
+
+    /// The committed ruleset with a silver cost put on Earth Lore's cast, which the real one
+    /// leaves `null`.
+    fn ruleset_pricing_an_earth_lore_cast(silver: i64) -> Ruleset {
+        let mut json: serde_json::Value = serde_json::from_str(atlantis_hud_fixtures::RULESET_JSON)
+            .expect("the committed ruleset should be JSON");
+        json["skills"]["EART"]["cast"] = serde_json::json!({
+            "costs": [{ "tag": "SILV", "amount": silver }],
+            "transmute": {},
+        });
+        Ruleset::from_json(&json.to_string()).expect("a priced Earth Lore should still parse")
     }
 
     #[test]

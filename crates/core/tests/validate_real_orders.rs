@@ -508,10 +508,7 @@ fn the_committed_turn_has_no_sales_gifts_entertainment_or_earning_magic() {
             unit.unit_id
         );
         assert!(
-            !matches!(
-                unit.doubt,
-                Some(SilverDoubt::UnknownGoods) | Some(SilverDoubt::UnpricedSpell)
-            ),
+            !matches!(unit.doubt, Some(SilverDoubt::UnknownGoods)),
             "{} is doubted for a source the turn does not contain: {:?}",
             unit.unit_id,
             unit.doubt
