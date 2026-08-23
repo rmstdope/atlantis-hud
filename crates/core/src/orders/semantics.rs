@@ -1554,7 +1554,6 @@ fn market_list(lines: &[MarketItem]) -> String {
     }
 }
 
-/// Applies one order to the ledger.
 /// The tax a unit collects this month, credited once per unit rather than once per `TAX` line.
 ///
 /// A unit-level term because taxing is a property of the unit: the taxing flag makes it tax every
@@ -1578,6 +1577,7 @@ fn credit_tax(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>, pilla
     );
 }
 
+/// Applies one order to the ledger.
 fn apply(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
