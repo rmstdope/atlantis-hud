@@ -6,7 +6,8 @@ export {
   type ItemKind,
   type ItemReference,
   type MonsterCombat,
-  type SelfMobility
+  type SelfMobility,
+  type Weapon
 } from "./data";
 export {
   parseMovementRules,
