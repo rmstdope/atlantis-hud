@@ -2215,7 +2215,7 @@ fn report_shortfalls(
                     format!(
                         "short ${short}: this unit can have ${} and its {} spend ${}",
                         ordered.holding(SILVER),
-                        spenders(unpaid_upkeep(ledger, who)),
+                        spenders(upkeep_still_drawn(ledger, who)),
                         ordered.holding(SILVER) + short,
                     ),
                     at,
@@ -2276,7 +2276,7 @@ fn report_shortfalls(
             let owed: i64 = hex
                 .units
                 .iter()
-                .map(|o| unpaid_upkeep(ledger, &o.unit.unit_id))
+                .map(|o| upkeep_still_drawn(ledger, &o.unit.unit_id))
                 .sum();
             format!(
                 "the units in this hex are short ${short} between them: they can have ${held} \
@@ -2337,6 +2337,29 @@ fn report_shortfalls(
 /// The fee a message may blame, rather than the fee that was charged: a unit whose whole fee the
 /// fund paid but whose orders still overspend must be told that its *orders* spend the silver, or
 /// the sentence's own arithmetic does not add up (`ah-fjty`).
+/// What maintenance is still taking off this unit's silver: what it actually drew, less what an
+/// earlier step of the payment order has already paid back.
+///
+/// Different from [`unpaid_upkeep`], which is the whole fee less the relief and answers a different
+/// question - whether an overdraft is maintenance's doing. This one words the message, and a
+/// message must not name an upkeep that spent none of the unit's silver: since `ah-gjq4` an idle
+/// unit's own wages pay its fee, exactly as an explicit `WORK`'s already did, and saying "its
+/// orders and upkeep spend" of a unit whose wages paid the fee sends the reader looking for a
+/// charge that is not there - the same reasoning `ah-1wcw.4` and `ah-fjty` applied to the fund.
+fn upkeep_still_drawn(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    let drawn = ledger
+        .upkeep_drawn
+        .get(unit_id)
+        .copied()
+        .unwrap_or_default();
+    let relieved = ledger
+        .upkeep_relieved
+        .get(unit_id)
+        .copied()
+        .unwrap_or_default();
+    (drawn - relieved).max(0)
+}
+
 fn unpaid_upkeep(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     let fee = ledger.upkeep.get(unit_id).copied().unwrap_or_default();
     let paid = ledger
@@ -6100,6 +6123,29 @@ mod tests {
         assert!(
             check(regions, "unit 5\n").is_empty(),
             "an idle unit whose wages cover its upkeep is not short"
+        );
+    }
+
+    /// The message must not name an upkeep the unit's own wages paid, the same way `ah-fjty` stopped
+    /// it naming one the unclaimed fund paid: a reader told "its orders and upkeep spend" goes
+    /// looking for a charge that is not on the balance. Since `ah-gjq4` an idle unit earns wages, so
+    /// this is now the common case rather than a corner of `WORK` (`ah-1wcw.4`).
+    #[test]
+    fn a_shortfall_does_not_name_an_upkeep_the_wages_paid() {
+        let regions = vec![ReportRegion {
+            wages: Some("$12.0".to_string()),
+            max_wages: Some(1200),
+            ..region(vec![with_men(with_silver(starving(unit("5")), 0), 6)])
+        }];
+
+        // $60 of upkeep against $72 of defaulted wages, and orders that spend $100 the unit has not
+        // got: the shortfall is real and it is the orders' doing alone.
+        let finding = only(check(regions, "unit 5\nGIVE 0 100 SILV\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert!(
+            !finding.message.contains("upkeep"),
+            "the wages paid the fee, so only the orders spend: {}",
+            finding.message
         );
     }
 
