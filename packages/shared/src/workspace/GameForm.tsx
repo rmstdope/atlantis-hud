@@ -1,8 +1,29 @@
 import type { FormEvent } from "react";
 import { useState } from "react";
 import type { MapShape } from "@atlantis/core-client";
-import { mapDraftFor, mapFromDraft } from "../mapShape";
+import type { MapDraft } from "../mapShape";
+import { mapDraftFor, mapFromDraft, mapShapeProblems } from "../mapShape";
 import { RULESETS } from "../rulesets";
+import { MapShapeProblemLines } from "./MapShapeProblemLines";
+
+/**
+ * The game this form would create, or `null` when it would create none.
+ *
+ * A pure function rather than a branch inside the submit handler, so the refusal is testable in a
+ * package that renders without a DOM and fires no events (`../testing/README.md`). `null` is the
+ * answer for a map whose wrapping cannot be drawn: the button is disabled for that too, but a
+ * disabled button is not a guarantee - Enter in a text field submits a form.
+ */
+export function gameSubmission(
+  name: string,
+  rulesetId: string,
+  map: MapDraft
+): { name: string; rulesetId: string; map: MapShape | undefined } | null {
+  if (mapShapeProblems(map).length > 0) {
+    return null;
+  }
+  return { name, rulesetId, map: mapFromDraft(map) ?? undefined };
+}
 
 /**
  * Everything creating a game asks for: a name, and which ruleset it is played under.
@@ -34,9 +55,15 @@ export function GameForm({
     setMap(mapDraftFor(chosen));
   };
 
+  const problems = mapShapeProblems(map);
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    onCreate(name, rulesetId, mapFromDraft(map) ?? undefined);
+    const submission = gameSubmission(name, rulesetId, map);
+    if (submission === null) {
+      return;
+    }
+    onCreate(submission.name, submission.rulesetId, submission.map);
   };
 
   return (
@@ -124,6 +151,7 @@ export function GameForm({
           />
           <span className="text-ink-soft">Wraps north to south</span>
         </label>
+        <MapShapeProblemLines problems={problems} testidPrefix="game-map-problem" />
       </fieldset>
 
       {error ? (
@@ -134,7 +162,7 @@ export function GameForm({
 
       <button
         type="submit"
-        disabled={busy}
+        disabled={busy || problems.length > 0}
         className="rounded border border-brass px-2.5 py-1 text-brass disabled:opacity-50"
       >
         {busy ? "Creating…" : submitLabel}

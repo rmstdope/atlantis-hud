@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mapDraftFor, mapFromDraft, mapShapeJson, mapShapeOfGame } from "./mapShape";
+import {
+  mapDraftFor,
+  mapFromDraft,
+  mapShapeJson,
+  mapShapeOfGame,
+  mapShapeProblems
+} from "./mapShape";
 
 describe("the map a game is played on", () => {
   it("takes the player's own answer when the game recorded one", () => {
@@ -82,5 +88,83 @@ describe("the map fields a create form offers", () => {
     expect(mapFromDraft({ width: "wide", height: "96", wrapX: true, wrapY: false })).toBeNull();
     expect(mapFromDraft({ width: "0", height: "96", wrapX: true, wrapY: false })).toBeNull();
     expect(mapFromDraft({ width: "-72", height: "96", wrapX: true, wrapY: false })).toBeNull();
+  });
+});
+
+describe("wrapping a hex lattice cannot support", () => {
+  it("an odd width cannot wrap east-west", () => {
+    expect(mapShapeProblems({ width: "71", height: "96", wrapX: true, wrapY: false })).toEqual([
+      {
+        axis: "x",
+        message:
+          "A 71-wide map cannot wrap east-west: the eastern and western edges would sit half a hex out of step. Use an even width, or turn off east-west wrap."
+      }
+    ]);
+  });
+
+  it("an odd height cannot wrap north-south", () => {
+    expect(mapShapeProblems({ width: "72", height: "95", wrapX: false, wrapY: true })).toEqual([
+      {
+        axis: "y",
+        message:
+          "A 95-high map cannot wrap north-south: the northern and southern edges would sit half a hex out of step. Use an even height, or turn off north-south wrap."
+      }
+    ]);
+  });
+
+  it("an even span is fine", () => {
+    expect(mapShapeProblems({ width: "72", height: "96", wrapX: true, wrapY: true })).toEqual([]);
+  });
+
+  it("wrapping that is off is never a problem", () => {
+    expect(mapShapeProblems({ width: "71", height: "95", wrapX: false, wrapY: false })).toEqual([]);
+  });
+
+  it("reports both axes when both are wrong", () => {
+    const problems = mapShapeProblems({ width: "71", height: "95", wrapX: true, wrapY: true });
+
+    expect(problems.map((problem) => problem.axis)).toEqual(["x", "y"]);
+  });
+
+  it("says nothing about a draft whose dimensions cannot be read", () => {
+    // An unreadable width states no map, and a map nobody stated wraps nowhere - a parity message
+    // here would be an error about an absence.
+    expect(mapShapeProblems({ width: "abc", height: "", wrapX: true, wrapY: true })).toEqual([]);
+  });
+});
+
+describe("a game that already carries wrapping that cannot be drawn", () => {
+  it("reads a recorded odd width without east-west wrap", () => {
+    expect(mapShapeOfGame("neworigins", { width: 71, height: 96, wrapX: true, wrapY: true })).toEqual(
+      { map: { width: 71, height: 96, wrapX: false, wrapY: true }, stated: true }
+    );
+  });
+
+  it("reads a recorded odd height without north-south wrap", () => {
+    expect(mapShapeOfGame("neworigins", { width: 72, height: 95, wrapX: true, wrapY: true })).toEqual(
+      { map: { width: 72, height: 95, wrapX: true, wrapY: false }, stated: true }
+    );
+  });
+
+  it("returns the very object it was given when nothing needs turning off", () => {
+    // Identity, not just equality: `GameMapSettings` resyncs its draft in an effect keyed on the
+    // map's identity, and a fresh object per call would wipe half-typed text on every render.
+    const recorded = { width: 72, height: 96, wrapX: true, wrapY: true };
+
+    expect(mapShapeOfGame("neworigins", recorded).map).toBe(recorded);
+  });
+
+  it("returns a recorded shape that is fine unchanged", () => {
+    expect(mapShapeOfGame("neworigins", { width: 72, height: 96, wrapX: true, wrapY: true })).toEqual(
+      { map: { width: 72, height: 96, wrapX: true, wrapY: true }, stated: true }
+    );
+  });
+
+  it("leaves the manifest it was given alone", () => {
+    const recorded = { width: 71, height: 96, wrapX: true, wrapY: false };
+
+    mapShapeOfGame("neworigins", recorded);
+
+    expect(recorded).toEqual({ width: 71, height: 96, wrapX: true, wrapY: false });
   });
 });

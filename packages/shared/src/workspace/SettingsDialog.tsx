@@ -1,5 +1,6 @@
 import type { MapShape } from "@atlantis/core-client";
-import { type MapDraft, mapFromDraft } from "../mapShape";
+import { type MapDraft, mapCommitOf, mapFromDraft, mapShapeProblems } from "../mapShape";
+import { MapShapeProblemLines } from "./MapShapeProblemLines";
 import { useEffect, useRef, useState } from "react";
 import type { AdvisoryCheckCode } from "@atlantis/core-client";
 import { useEscapeToDismiss } from "./dismissLayer";
@@ -707,7 +708,7 @@ function GameSettings({
  * why an assumed map is labelled as assumed rather than shown as a fact. Editing any value writes
  * all four, and that is what turns the assumption into a statement.
  */
-function GameMapSettings({
+export function GameMapSettings({
   map,
   stated,
   busy,
@@ -745,6 +746,13 @@ function GameMapSettings({
   // Only ever one write is outstanding, because the fieldset is disabled for the length of one -
   // which is what makes a single slot enough to remember what we wrote.
   const commit = (next: MapDraft) => {
+    // Wrapping a hex lattice cannot support stores nothing at all: the game keeps the map it had,
+    // and the draft keeps what was typed so either field can be the one that is corrected. The
+    // resync effect above cannot undo it, because it runs on a change to `map` and `map` is
+    // exactly what has not changed.
+    if (mapCommitOf(next) === null) {
+      return;
+    }
     const written = mapFromDraft(next);
     committed.current = written;
     // Clearing the fields records nothing, and the game then falls back to its ruleset's default -
@@ -834,6 +842,10 @@ function GameMapSettings({
         />
         <span className="text-ink-soft">Wraps north to south</span>
       </label>
+      <MapShapeProblemLines
+        problems={mapShapeProblems(draft)}
+        testidPrefix="settings-map-problem"
+      />
     </fieldset>
   );
 }
