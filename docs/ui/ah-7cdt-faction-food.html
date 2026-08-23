@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Faction food pays upkeep (ah-7cdt) — chosen</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-7cdt</span> — faction food pays a unit's upkeep</h1>
+  <p>From <strong>GitHub issue #556</strong>, reported by a player. Most of that report is already
+  answered by <code>ah-1wcw.4</code>, which charges 10 silver a character and 50 a leader, pays it
+  from the unit's <em>own</em> food first where the unit is set to consume, and values food at
+  <strong>50</strong> — the very rate the reporter said was wrong at 30.</p>
+  <p>This bead is the one piece left: <code>CONSUME FACTION</code> means a unit eats
+  <strong>faction</strong> food held by <em>other</em> units in the region — step 2 of the rules'
+  payment order, which <code>ah-1wcw.4</code> scoped out because <code>ah-1wcw.1</code> settled that
+  the Silver column counts each unit alone.</p>
+  <blockquote>1. Food the unit owns &nbsp;·&nbsp; <strong>2. Food from faction units in the region</strong>
+  &nbsp;·&nbsp; 3. Silver the unit holds &nbsp;·&nbsp; 4–9. regional and allied</blockquote>
+  <p>So it is a <strong>deliberate exception</strong> to a settled rule, for one term, with precedent:
+  the shipped <code>not-enough-silver</code> already pools silver across a hex's <code>sharing</code>
+  units for the same reason.</p>
+</header>
+
+<main>
+<section>
+  <h2 class="rule"><em>The pool</em> what is in it, and when</h2>
+  <p><strong>Two passes, in the rules' own order.</strong> Every consuming unit spends its own food
+  first (step 1). Only what is left over, across all your units in the hex, forms the pool that
+  step 2 draws on — so the same grain can never feed two units.</p>
+  <p>Only units flagged <code>consuming faction's food</code> draw on the pool. A unit flagged
+  <code>consuming unit's food</code> eats its own and stops there; a unit consuming nothing pays
+  silver, because step 3 comes before step 5.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>When the pool is enough</em> exact numbers for everybody</h2>
+  <table class="t">
+    <tr><th>Unit</th><th>Men</th><th>Owes</th><th>Own food</th><th>Consuming</th><th>From pool</th><th>Upkeep shown</th></tr>
+    <tr><td>Scouts (101)</td><td>6</td><td class="num">60</td><td class="num">0</td><td>faction</td><td class="num">2</td><td class="num good">0</td></tr>
+    <tr><td>Guards (102)</td><td>8</td><td class="num">80</td><td class="num">0</td><td>faction</td><td class="num">2</td><td class="num good">0</td></tr>
+    <tr><td>Quartermaster (103)</td><td>1</td><td class="num">10</td><td class="num">6 grain</td><td>no</td><td class="num">—</td><td class="num">10</td></tr>
+  </table>
+  <div class="absent">The quartermaster is not consuming, so its silver pays first and all 6 grain
+  stay in the pool. Scouts and Guards need <code>ceil(60/50) = 2</code> and
+  <code>ceil(80/50) = 2</code>; 4 of 6 are spent and both are fed.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>When the pool is short</em> the figure is <code>?</code>, and here is why</h2>
+  <p>Same hex, but the quartermaster holds only <strong>3</strong> grain. Four are needed. The rules
+  waste food — each unit needs <em>whole</em> items, and a partial one is consumed whole — so the
+  total genuinely depends on who eats:</p>
+  <pre class="calc">Scouts owe 60 -> needs 2 items      Guards owe 80 -> needs 2 items      pool = 3
+
+  Scouts fed first    Scouts   0    Guards  30    total 30
+  Guards fed first    Scouts  10    Guards   0    total 10</pre>
+  <p>Two different, equally defensible answers, and nothing in the report says which the engine will
+  pick. So neither unit gets a number:</p>
+  <table class="t">
+    <tr><th>Unit</th><th>Owes</th><th>Consuming</th><th>Upkeep shown</th></tr>
+    <tr><td>Scouts (101)</td><td class="num">60</td><td>faction</td><td class="q">?</td></tr>
+    <tr><td>Guards (102)</td><td class="num">80</td><td>faction</td><td class="q">?</td></tr>
+    <tr><td>Quartermaster (103)</td><td class="num">10</td><td>no</td><td class="num">10</td></tr>
+  </table>
+  <div class="absent">The quartermaster is unaffected: it does not draw on the pool, so its figure is
+  still exact. Only the units that contend are doubted — this is <code>ah-1wcw.1</code>'s rule,
+  <em>never a number that might be wrong</em>, applied to the one case that cannot be resolved.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>The panel</em> both states</h2>
+  <div class="tips">
+    <div class="unit">
+      <div class="tip">
+        <div class="sect">Silver</div>
+        <div class="rowset">
+          <div class="row"><span>Held now</span><span class="v">40</span></div>
+          <div class="row"><span>In</span><span class="v">0</span></div>
+          <div class="row"><span>Out</span><span class="v">0</span></div>
+          <div class="row"><span>Upkeep</span><span class="v">10</span></div>
+          <div class="row total"><span>At month end</span><span class="v">30</span></div>
+        </div>
+        <div class="tipnote">Faction food in this hex covers 50 of this unit's upkeep.</div>
+      </div>
+      <div class="cap"><b>Fed by a neighbour.</b> Owed 60, one food from the pool covers 50, and 10
+      is left to pay in silver. Without the note the Upkeep row would just look too small.</div>
+    </div>
+    <div class="unit">
+      <div class="tip">
+        <div class="sect">Silver</div>
+        <div class="rowset">
+          <div class="row"><span>Held now</span><span class="v">40</span></div>
+          <div class="row"><span>In</span><span class="v">0</span></div>
+          <div class="row"><span>Out</span><span class="v">0</span></div>
+          <div class="row"><span>Upkeep</span><span class="v q">?</span></div>
+          <div class="row total"><span>At month end</span><span class="v q">?</span></div>
+        </div>
+        <div class="tipnote">There is not enough faction food here to feed every unit set to eat it.</div>
+      </div>
+      <div class="cap"><b>Contended pool.</b> The note states the fact without pretending to know
+      who goes without — which is exactly why the figure is <code>?</code>.</div>
+    </div>
+  </div>
+  <div class="absent">The <code>Upkeep</code> row itself is <code>ah-1wcw.4</code>'s and appears only
+  when its Settings → Global toggle is on. When upkeep is not being counted, neither note appears —
+  there is no upkeep on show to explain.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Strings</em> verbatim</h2>
+  <table class="q">
+    <tr><th>When</th><th>Line</th></tr>
+    <tr><td>faction food covered some or all of the upkeep</td><td class="k">Faction food in this hex covers {n} of this unit's upkeep.</td></tr>
+    <tr><td>the pool is short, so the figure is <code>?</code></td><td class="k">There is not enough faction food here to feed every unit set to eat it.</td></tr>
+  </table>
+  <div class="absent"><code>{n}</code> is silver, not a count of items — the panel is in silver
+  throughout. Both lines join the shared "one note, first match wins" table settled in
+  <code>ah-1wcw.1</code>; the short-pool line is a doubt and therefore sorts with the doubts, above
+  the informational lines.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Rejected</em> and why</h2>
+  <table class="q">
+    <tr><th>Considered</th><th>Rejected because</th></tr>
+    <tr><td>Optimistic — every consuming unit may draw the whole pool</td><td>Consistent with TAX, WORK and entertaining, but it says everybody ate when four were needed and three held. Understating a shortfall is the dangerous direction for a column whose negatives you act on.</td></tr>
+    <tr><td>First come, first fed (report order)</td><td>The order is ours, not the engine's, so one unit would be shown starving for a reason that exists only inside this app — and reordering the report would change who.</td></tr>
+    <tr><td>Feed the neediest first</td><td>A stated rule rather than an accident of order, but still our invention rather than the engine's.</td></tr>
+    <tr><td>Pool in silver and ignore the whole-item waste</td><td>Always a number and no <code>?</code> — but optimistic exactly when the hex is short of food, which is the moment you would want to know.</td></tr>
+    <tr><td>Share the shortfall across the contending units</td><td>Chosen first, then withdrawn: there is no single correct total to share, because the waste is per unit and the total differs by who eats. The arithmetic above is the demonstration.</td></tr>
+    <tr><td>Pool all food in the hex without the first pass</td><td>Double-counts — the same grain would feed its owner at step 1 and a neighbour at step 2.</td></tr>
+    <tr><td>Closing this bead as covered by ah-1wcw.4</td><td>Considered seriously, since the reporter's two explicit asks are both met there. Kept because CONSUME FACTION genuinely means something ah-1wcw.4 does not do.</td></tr>
+  </table>
+</section>
+</main>
+</body>
+</html>
