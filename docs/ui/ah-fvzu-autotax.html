@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taxing by flag (ah-fvzu)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-fvzu</span> — a unit that taxes by flag, not by order</h1>
+  <p>The <code>AUTOTAX</code> order sets a unit's <strong>taxing</strong> flag, and it then taxes
+  every turn without a <code>TAX</code> line in that turn's orders. The forecast prices only the
+  explicit <code>Intent::Tax</code>, so a flagged unit is shown earning <strong>nothing</strong>.</p>
+  <p>The corpus has one such unit of ours, and it is not a small one:</p>
+  <blockquote><code>* City Guards (13303), on guard, The Disinherited Knights (42), revealing
+  faction, holding, <b>taxing</b>, sharing, 800 orcs [ORC], 2 catapults [CATP], 2049 swords
+  [SWOR]&hellip;</code></blockquote>
+  <p><strong>800 men taxing is $40,000</strong> before the region's cap. The column shows
+  <b>0</b>.</p>
+  <p>The arithmetic, the tax-base cap, the pillage conflict and the several-taxers split are all
+  settled already &mdash; a flagged taxer simply joins them, exactly as an explicit one does. What
+  is not settled is that this unit <em>has no order at all</em>, so there is nothing on the page to
+  explain where the money came from.</p>
+</header>
+<main>
+<section>
+  <h2 class="rule"><em>Question 1</em> where does the money appear to come from?</h2>
+  <p>Every other income in the column is answered by a line in the orders. This one is answered by
+  a flag on the unit, set in some earlier turn and invisible in this turn's orders.</p>
+  <table class="q">
+    <tr><th>Option</th><th>The hover</th><th></th></tr>
+    <tr><td class="k">A — say it</td>
+        <td>&ldquo;This unit is set to tax every turn, so it taxes without an order.&rdquo;</td>
+        <td>Answers the question a reader will actually have &mdash; <em>why is this unit earning
+        $40,000 when its orders are empty?</em> One more sentence in a hover that has several.</td></tr>
+    <tr><td class="k">B — say nothing</td>
+        <td>The Income figure alone, like every other unit.</td>
+        <td>Consistent, and cheapest. A player who did not set the flag themselves &mdash; or set it
+        twenty turns ago &mdash; has no way to find out from this screen.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Question 2</em> is a flagged unit &ldquo;doing nothing&rdquo;?</h2>
+  <p>City Guards has <strong>no orders at all</strong>. So today it also carries this mark:</p>
+  <blockquote><code>has no order that spends the month</code> &nbsp;&mdash; the
+  <code>unit-does-nothing</code> advisory</blockquote>
+  <p>Which is false: it spends the month taxing, and it is meant to. There is no order the player
+  could add to satisfy the advice &mdash; adding <code>TAX</code> would be redundant.</p>
+  <table class="q">
+    <tr><th>Option</th><th></th><th></th></tr>
+    <tr><td class="k">Exempt it, in this bead</td>
+        <td>A flagged unit spends its month, so the mark does not fire.</td>
+        <td>The two defects are the same unit on the same screen, and a player who fixes one still
+        sees the other. Small: one condition beside the two exemptions
+        <code>check_idle_units</code> already has.</td></tr>
+    <tr><td class="k">Leave it, file it separately</td>
+        <td>The mark keeps firing until its own bead.</td>
+        <td>Keeps this bead to the silver column, which is what its title says. The false mark
+        stays on the one unit in the corpus it affects.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Question 3</em> the flag and an explicit <code>TAX</code> together</h2>
+  <p>A unit may carry the flag <em>and</em> be given a <code>TAX</code> order this turn. It still
+  taxes once.</p>
+  <table class="q">
+    <tr><th>Option</th><th></th></tr>
+    <tr><td class="k">Count once, silently</td>
+        <td>Income is the same either way. The redundant <code>TAX</code> is harmless and unmentioned.</td></tr>
+    <tr><td class="k">Count once, and say so</td>
+        <td>A mark on the redundant <code>TAX</code> line: <em>&ldquo;this unit already taxes every
+        turn&rdquo;</em>. Catches a player who does not know the flag is set &mdash; and needs a new
+        advisory code, its own toggle and its own row.</td></tr>
+  </table>
+</section>
+</main>
+</body>
+</html>
