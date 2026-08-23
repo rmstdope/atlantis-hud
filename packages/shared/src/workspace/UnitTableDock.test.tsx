@@ -541,6 +541,10 @@ describe("the Silver column", () => {
     foodContended: false,
     sharedSilverCovered: 0,
     withdrawing: false,
+    produced: 0,
+    producedName: null,
+    productionWanted: 0,
+    productionCappedBy: null,
     ...overrides
   });
 

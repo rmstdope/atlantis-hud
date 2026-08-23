@@ -28,9 +28,10 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::orders::silver::{
     feed_after_silver, feed_from_faction_food, food_claim, forecast_unit, late_income,
-    parse_wage_centis, settle_unclaimed, unit_upkeep, FactionFoodPass, FactionPurse, FoodClaim,
-    LateFoodClaim, LateFoodRelief, Lookups, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
-    SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
+    parse_wage_centis, plan_production, recipe_for, settle_unclaimed, unit_upkeep, FactionFoodPass,
+    FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, PurchaseAnswer, Receipts,
+    RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
+    FOOD_TAGS,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -431,6 +432,7 @@ fn forecast_hex(
         // Resolving an item an order names is this module's business, and a gift of silver and a
         // priced withdrawal both need it.
         let item_tag = |text: &str| resolve_item(text, hex, ordered, ruleset);
+        let name_of = |tag: &str| item_name(tag, hex, ruleset);
 
         let facts = UnitFacts {
             unit_id: &ordered.unit.unit_id,
@@ -455,6 +457,7 @@ fn forecast_hex(
                 sale: &sale,
                 purchase: &purchase,
                 item_tag: &item_tag,
+                item_name: &name_of,
             },
             ruleset,
         ));
@@ -664,7 +667,8 @@ fn spends_the_month(intent: &Intent) -> bool {
         | Intent::Entertain
         | Intent::Move { .. }
         | Intent::Sail { .. }
-        | Intent::Build { .. } => true,
+        | Intent::Build { .. }
+        | Intent::Produce { .. } => true,
 
         // CAST is NOT a full month order: "a mage may still MOVE, STUDY, or use any other month
         // long order". A bare CAST falls back to `MonthLong("CAST")`, so it has to be caught
@@ -1239,6 +1243,7 @@ fn apply(
     let who = &actor.unit.unit_id;
 
     match &placed.intent {
+        Intent::Produce { item } => produce(ledger, hex, actor, placed, item, ruleset),
         Intent::Give { to, what, amount } => {
             transfer(
                 ledger,
@@ -1395,6 +1400,38 @@ fn buy(
         placed,
     );
     credit(ledger, who, &offer.tag.to_ascii_uppercase(), *count);
+}
+
+/// `PRODUCE <item>`: what the run costs comes off the unit's silver and its materials.
+///
+/// It **does not** `credit` what it makes, which is where it differs from `buy` directly above.
+/// Production resolves in the month's last phase, so goods made this month cannot be spent this
+/// month - and crediting them would silence a `not-enough-items` warning that should fire, because
+/// the engine will refuse a `GIVE` of goods that do not exist yet. The same reading the ledger
+/// already gives wages and takings from entertaining (`ah-uwa3`, `ah-19l2.2`).
+fn produce(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    actor: &Ordered<'_>,
+    placed: &PlacedIntent,
+    item: &str,
+    ruleset: Option<&Ruleset>,
+) {
+    let who = &actor.unit.unit_id;
+    let plan = resolve_item(item, hex, actor, ruleset)
+        .and_then(|tag| recipe_for(ruleset, &tag))
+        .and_then(|recipe| plan_production(recipe, actor.unit.men, &actor.unit.items));
+    let Some(plan) = plan else {
+        // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
+        // same posture `buy` takes for goods the market does not carry.
+        ledger.doubted.insert(who.clone());
+        return;
+    };
+
+    charge(ledger, who, SILVER, plan.silver, placed);
+    for material in &plan.materials {
+        charge(ledger, who, &material.tag, material.amount, placed);
+    }
 }
 
 fn sell(
@@ -3497,7 +3534,9 @@ fn check_trade_regions(
         for unit in region.units.iter().filter(|unit| unit.own) {
             for placed in ordered.intents_of(&unit.unit_id) {
                 match &placed.intent {
-                    Intent::MonthLong("PRODUCE") => {
+                    // Both shapes a PRODUCE order can take: one naming what it makes
+                    // (`ah-19l2.2`) and one that named nothing readable.
+                    Intent::Produce { .. } | Intent::MonthLong("PRODUCE") => {
                         producing.insert(region_id);
                         let earlier = first_produce
                             .as_ref()
@@ -5073,6 +5112,175 @@ mod tests {
             check(vec![hex], "unit 5\nSELL 10 grain\nBUY 4 horses\n"),
             vec![],
             "300 earned covers 280 spent"
+        );
+    }
+
+    // --- what a production costs (`ah-19l2.2`) ------------------------------------------------
+
+    /// The forecast for one unit, with the committed ruleset behind it.
+    fn forecast_with_ruleset(regions: Vec<ReportRegion>, orders: &str) -> UnitSilver {
+        let review = review_turn(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        review
+            .silver
+            .into_iter()
+            .next()
+            .expect("one own unit was forecast")
+    }
+
+    /// Unit 12881 `Carpenters` in miniature: ten carpenters with materials for two catapults and
+    /// silver for one.
+    fn carpenters(silver: i64, wood: i64) -> ReportUnit {
+        let unit = with_men(
+            with_item(
+                with_item(
+                    with_item(with_silver(unit("12881"), silver), wood, "wood", "WOOD"),
+                    999,
+                    "ironwood",
+                    "IRWD",
+                ),
+                999,
+                "furs",
+                "FUR",
+            ),
+            10,
+        );
+        with_skill(unit, "CARP", 5)
+    }
+
+    #[test]
+    fn a_producing_unit_spends_what_its_run_costs() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(3000, 9999)])],
+            "unit 12881\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(
+            forecast.expense,
+            Some(3000),
+            "silver caps it at one catapult"
+        );
+        assert_eq!(forecast.produced, 1);
+        assert_eq!(forecast.produced_name.as_deref(), Some("catapult"));
+        assert_eq!(forecast.production_wanted, 2);
+        assert_eq!(
+            forecast.production_capped_by,
+            Some(crate::orders::silver::ProductionCap::Silver)
+        );
+    }
+
+    #[test]
+    fn a_production_at_full_rate_names_no_cap() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(100_000, 9999)])],
+            "unit 12881\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(forecast.expense, Some(6000));
+        assert_eq!(forecast.produced, 2);
+        assert_eq!(forecast.production_wanted, 2);
+        assert_eq!(forecast.production_capped_by, None);
+    }
+
+    /// The committed turn's own case: `Carpenters` holds no silver of its own, so it makes none of
+    /// the two its men could - and the hover must still be able to say so, which is why the name
+    /// survives a cap of zero.
+    #[test]
+    fn a_unit_capped_to_none_still_names_what_it_would_have_made() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(0, 9999)])],
+            "unit 12881\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(forecast.expense, Some(0));
+        assert_eq!(forecast.produced, 0);
+        assert_eq!(forecast.production_wanted, 2);
+        assert_eq!(forecast.produced_name.as_deref(), Some("catapult"));
+        assert_eq!(
+            forecast.production_capped_by,
+            Some(crate::orders::silver::ProductionCap::Silver)
+        );
+    }
+
+    #[test]
+    fn a_production_the_ruleset_cannot_price_is_doubted() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(100_000, 9999)])],
+            "unit 12881\nPRODUCE quicksilver\n",
+        );
+
+        assert_eq!(forecast.doubt, Some(SilverDoubt::UnpricedProduction));
+        assert_eq!(forecast.doubt_subject.as_deref(), Some("quicksilver"));
+        assert_eq!(forecast.expense, None);
+    }
+
+    /// Cooking states "any of grain, livestock and fish"; which the engine takes cannot be told,
+    /// so nothing is priced rather than all three being charged.
+    #[test]
+    fn a_recipe_of_alternatives_is_doubted_rather_than_guessed() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(100_000, 9999)])],
+            "unit 12881\nPRODUCE meals\n",
+        );
+
+        assert_eq!(forecast.doubt, Some(SilverDoubt::UnpricedProduction));
+        assert_eq!(forecast.expense, None);
+    }
+
+    /// The run is planned against what the unit *holds*, so a production on its own can never
+    /// overdraw - the cap has already seen to that. It bites when something else spends the same
+    /// silver first, which is exactly the imprecision the holdings cap accepts: the figure is the
+    /// one a player can read off the report, and the ledger's running balance catches the rest.
+    #[test]
+    fn a_unit_that_cannot_afford_its_production_is_warned() {
+        let findings = check_ignoring_transfer_targets(
+            vec![region(vec![carpenters(3000, 9999)])],
+            "unit 12881\nGIVE 7 3000 SILV\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(codes(&findings), ["not-enough-silver"]);
+        assert!(
+            findings[0].message.contains("3000"),
+            "the catapult's own 3000: {}",
+            findings[0].message
+        );
+    }
+
+    /// The same, for the materials: 250 wood given away leaves the catapult short of the wood the
+    /// unit's inventory said it had.
+    #[test]
+    fn a_unit_without_the_materials_is_warned() {
+        let findings = check_ignoring_transfer_targets(
+            vec![region(vec![carpenters(100_000, 250)])],
+            "unit 12881\nGIVE 7 250 WOOD\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(codes(&findings), ["not-enough-items"]);
+        assert!(
+            findings[0].message.contains("wood"),
+            "the wood is what ran out: {}",
+            findings[0].message
+        );
+    }
+
+    /// Production resolves in the month's last phase, so what it makes cannot be given away in the
+    /// same month - which is the one place `produce` differs from `buy`.
+    #[test]
+    fn produced_goods_do_not_arrive_in_time_to_be_given_away() {
+        let findings = check_ignoring_transfer_targets(
+            vec![region(vec![carpenters(100_000, 9999)])],
+            "unit 12881\nPRODUCE catapult\nGIVE 1 1 CATP\n",
+        );
+
+        assert_eq!(codes(&findings), ["not-enough-items"]);
+        assert!(
+            findings[0].message.contains("catapult"),
+            "{}",
+            findings[0].message
         );
     }
 
