@@ -497,6 +497,13 @@ pub struct RegionWages {
     /// because it is exactly what the `TAX` arm needs and nothing else in this module has a view
     /// of the hex.
     pub pillaged: bool,
+    /// Combat ready men this faction has in the hex, summed over its own units - or `None` when a
+    /// headcount in the hex is a guess, or there is no ruleset to read weapons from.
+    ///
+    /// Like `pillaged` above, this is not a property of the region as the report prints it. It
+    /// belongs here for the same reason that field does: it is exactly what the `PILLAGE` arm
+    /// needs, and nothing else in this module has a view of the hex (`ah-1ad6.2`).
+    pub combat_ready: Option<i64>,
 }
 
 /// What the faction holds that any of its units may draw on.
@@ -759,9 +766,24 @@ pub fn forecast_unit(
             // "The amount of money collected is equal to twice the available tax money." Mirrors
             // `semantics::apply`'s own arm exactly, down to the doubt: two surfaces reading one
             // order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj` exists).
-            Intent::Pillage => match region.tax_base {
-                Some(base) => income = income.saturating_add(base.saturating_mul(2)),
-                None => income_doubt = income_doubt.or(Some(SilverDoubt::UnknownTaxBase)),
+            //
+            // "This requires the faction to have enough combat ready men in the region to tax half
+            // of the available money in the region" - so a faction short of the threshold earns
+            // nothing at all from the order (`ah-1ad6.2`).
+            Intent::Pillage => match (region.tax_base, region.combat_ready) {
+                // No tax base: unchanged, and the older doubt wins - what the region holds is
+                // unknown before the question of who may take it arises.
+                (None, _) => income_doubt = income_doubt.or(Some(SilverDoubt::UnknownTaxBase)),
+                // A guessed headcount somewhere in the hex: the threshold cannot be tested at all.
+                // `EstimatedMen` is reused rather than a variant added - its sentence stays true.
+                (Some(_), None) => {
+                    income_doubt = income_doubt.or(Some(SilverDoubt::EstimatedMen));
+                }
+                (Some(base), Some(ready)) if ready >= pillage_threshold(base) => {
+                    income = income.saturating_add(base.saturating_mul(2));
+                }
+                // Short of the threshold: the order earns nothing, exactly.
+                (Some(_), Some(_)) => {}
             },
             // `WORK` and `ENTERTAIN` earn nothing but late income, so [`late_income`] prices them
             // both - once, for this function and for `semantics::charge_upkeep` alike.
@@ -2204,6 +2226,16 @@ mod tests {
         }
     }
 
+    /// A region whose tax base is stated and whose faction has men enough to pillage it, which is
+    /// what the `PILLAGE` arm needs before it credits anything (`ah-1ad6.2`).
+    fn pillageable(tax_base: i64) -> RegionWages {
+        RegionWages {
+            tax_base: Some(tax_base),
+            combat_ready: Some(pillage_threshold(tax_base)),
+            ..RegionWages::default()
+        }
+    }
+
     fn paying(wage: &str, max_wages: Option<i64>) -> RegionWages {
         RegionWages {
             wage_centis: parse_wage_centis(Some(wage)),
@@ -2351,7 +2383,7 @@ mod tests {
     /// nothing at all, so the two surfaces priced one order two ways (`ah-abwx`).
     #[test]
     fn a_pillaging_unit_earns_twice_the_tax_base() {
-        let unit = forecast(1, taxable(Some(2500)), &[placed(Intent::Pillage)]);
+        let unit = forecast(1, pillageable(2500), &[placed(Intent::Pillage)]);
         assert_eq!(unit.income, Some(5000));
         assert_eq!(unit.at_month_end, Some(5000));
         assert_eq!(unit.doubt, None);
@@ -2379,17 +2411,89 @@ mod tests {
                 item: "grain".to_string(),
             }),
         ];
-        let unit = spending(0, &intents, taxable(Some(2500)), &sells(12, 40), None);
+        let unit = spending(0, &intents, pillageable(2500), &sells(12, 40), None);
         assert_eq!(unit.income, Some(5000));
         assert_eq!(unit.expense, Some(480));
         assert_eq!(unit.at_month_end, Some(4520));
+    }
+
+
+    /// The reported defect (`ah-1ad6.2`): *The Lost One (683)*, one leader in a hex whose tax base
+    /// is 8,963, was credited the full 17,926. The hex needs 90 combat ready men.
+    #[test]
+    fn a_faction_without_the_men_earns_nothing_from_pillage() {
+        let region = RegionWages {
+            tax_base: Some(8963),
+            combat_ready: Some(1),
+            ..RegionWages::default()
+        };
+        let unit = forecast(1, region, &[placed(Intent::Pillage)]);
+        assert_eq!(unit.income, Some(0));
+        assert_eq!(unit.at_month_end, Some(0));
+        assert_eq!(unit.doubt, None);
+    }
+
+    /// No regression on `ah-abwx`: a faction that does have the men is credited in full.
+    #[test]
+    fn a_faction_with_the_men_is_credited_in_full() {
+        let region = RegionWages {
+            tax_base: Some(8963),
+            combat_ready: Some(90),
+            ..RegionWages::default()
+        };
+        let unit = forecast(90, region, &[placed(Intent::Pillage)]);
+        assert_eq!(unit.income, Some(17_926));
+        assert_eq!(unit.doubt, None);
+    }
+
+    /// One guessed headcount anywhere in the hex makes the threshold unanswerable, and it is
+    /// unanswerable in the direction that matters: the estimate might be what carries the faction
+    /// over. `EstimatedMen` is reused rather than a variant added.
+    #[test]
+    fn a_guessed_headcount_in_the_hex_doubts_the_pillage() {
+        let region = RegionWages {
+            tax_base: Some(8963),
+            combat_ready: None,
+            ..RegionWages::default()
+        };
+        let unit = forecast(1, region, &[placed(Intent::Pillage)]);
+        assert_eq!(unit.doubt, Some(SilverDoubt::EstimatedMen));
+        assert_eq!(unit.income, None);
+    }
+
+    /// The navigator's decision: "the faction to have enough combat ready men in the region", so a
+    /// lone leader ordering `PILLAGE` beside a faction-mate of 90 armed men qualifies, and the
+    /// army need issue no order. The count is the hex's, never the pillaging unit's own.
+    #[test]
+    fn the_men_are_counted_across_the_hex_not_the_unit() {
+        let region = RegionWages {
+            tax_base: Some(8963),
+            combat_ready: Some(90),
+            ..RegionWages::default()
+        };
+        let unit = forecast(1, region, &[placed(Intent::Pillage)]);
+        assert_eq!(unit.income, Some(17_926));
+        assert_eq!(unit.doubt, None);
+    }
+
+    /// The older doubt wins: what the region holds is unknown before the question of who may take
+    /// it arises.
+    #[test]
+    fn an_unknown_tax_base_outranks_an_unknown_headcount() {
+        let region = RegionWages {
+            tax_base: None,
+            combat_ready: None,
+            ..RegionWages::default()
+        };
+        let unit = forecast(1, region, &[placed(Intent::Pillage)]);
+        assert_eq!(unit.doubt, Some(SilverDoubt::UnknownTaxBase));
     }
 
     /// Guards against the arm being folded into `Tax`'s match rather than written beside it: a
     /// pillaging unit earns twice the base and nothing per man.
     #[test]
     fn pillaging_does_not_also_tax() {
-        let unit = forecast(8, taxable(Some(1000)), &[placed(Intent::Pillage)]);
+        let unit = forecast(8, pillageable(1000), &[placed(Intent::Pillage)]);
         assert_eq!(unit.income, Some(2000));
     }
 
