@@ -743,6 +743,10 @@ struct Ledger<'a> {
     doubted: BTreeSet<String>,
     /// The first order that drew each balance down, so a finding can point at a line.
     charged_at: BTreeMap<(String, String), PlacedIntent>,
+    /// What each unit was charged in maintenance, so a shortfall message can say that the fee is
+    /// part of what drew the balance down - it is not an order, and saying "its orders spend" of
+    /// it would tell a player their orders spend silver they do not (`ah-1wcw.4`).
+    upkeep: BTreeMap<String, i64>,
 }
 
 /// Everything the hex's units hold, with this month's orders applied.
@@ -757,6 +761,7 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
         balance: BTreeMap::new(),
         doubted: BTreeSet::new(),
         charged_at: BTreeMap::new(),
+        upkeep: BTreeMap::new(),
     };
 
     for ordered in &hex.units {
@@ -811,6 +816,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             .balance
             .entry((ordered.unit.unit_id.clone(), SILVER.to_string()))
             .or_insert(0) -= owed;
+        ledger.upkeep.insert(ordered.unit.unit_id.clone(), owed);
     }
 }
 
@@ -1385,8 +1391,9 @@ fn report_shortfalls(
                     hex,
                     codes::NOT_ENOUGH_SILVER,
                     format!(
-                        "short ${short}: this unit can have ${} and its orders spend ${}",
+                        "short ${short}: this unit can have ${} and its {} spend ${}",
                         ordered.holding(SILVER),
+                        spenders(ledger.upkeep.get(who).copied().unwrap_or(0)),
                         ordered.holding(SILVER) + short,
                     ),
                     at,
@@ -1444,9 +1451,19 @@ fn report_shortfalls(
             .sum();
 
         let message = if tag == SILVER {
+            let owed: i64 = hex
+                .units
+                .iter()
+                .map(|o| ledger.upkeep.get(&o.unit.unit_id).copied().unwrap_or(0))
+                .sum();
             format!(
                 "the units in this hex are short ${short} between them: they can have ${held} \
-                 and their orders spend ${}",
+                 and their {} spend ${}",
+                if owed > 0 {
+                    "orders and upkeep"
+                } else {
+                    "orders"
+                },
                 held + short,
             )
         } else {
@@ -1458,6 +1475,19 @@ fn report_shortfalls(
             )
         };
         findings.push(hex.finding(code, message));
+    }
+}
+
+/// What a shortfall message names as having spent the silver.
+///
+/// Maintenance is not an order, so a unit charged one must not be told its *orders* spend it - the
+/// fee is charged whatever a unit is told to do, and a player reading "its orders spend $30" of a
+/// unit whose orders spend nothing would go looking for a mistake that is not there.
+fn spenders(upkeep: i64) -> &'static str {
+    if upkeep > 0 {
+        "orders and upkeep"
+    } else {
+        "orders"
     }
 }
 
@@ -3217,11 +3247,17 @@ mod tests {
     /// A fixture unit with its maintenance grain taken away again, for the handful of tests that
     /// weigh or move everything a unit carries and would otherwise weigh the grain too. It pays
     /// its maintenance in silver instead - which weighs nothing, so no fleet's load moves.
-    fn unfed(mut unit: ReportUnit) -> ReportUnit {
+    fn unfed(unit: ReportUnit) -> ReportUnit {
+        with_silver(starving(unit), 10_000)
+    }
+
+    /// A fixture unit with neither its maintenance grain nor any silver to pay the fee with, for
+    /// the tests that are *about* a unit that cannot pay its own upkeep.
+    fn starving(mut unit: ReportUnit) -> ReportUnit {
         unit.items
             .retain(|item| !item.tag.eq_ignore_ascii_case("GRAI"));
         unit.flags.clear();
-        with_silver(unit, 10_000)
+        unit
     }
 
     fn with_silver(mut unit: ReportUnit, amount: i64) -> ReportUnit {
@@ -3730,16 +3766,15 @@ mod tests {
     #[test]
     fn a_unit_that_cannot_pay_its_upkeep_is_warned_about() {
         let regions = vec![region(vec![with_men(
-            with_silver(unfed(unit("5")), 30),
+            with_silver(starving(unit("5")), 30),
             10,
         )])];
 
         let finding = only(check(regions, "unit 5\nWORK\n"));
         assert_eq!(finding.code.as_str(), "not-enough-silver");
-        assert!(
-            finding.message.contains("short $70"),
-            "ten men owe $100 and the unit holds $30: {}",
-            finding.message
+        assert_eq!(
+            finding.message,
+            "short $70: this unit can have $30 and its orders and upkeep spend $100"
         );
     }
 
@@ -3748,14 +3783,18 @@ mod tests {
     /// themselves spend nothing.
     #[test]
     fn upkeep_is_charged_whatever_the_display_setting_says() {
-        let regions = vec![region(vec![with_men(with_silver(unfed(unit("5")), 0), 3)])];
+        let regions = vec![region(vec![with_men(
+            with_silver(starving(unit("5")), 0),
+            3,
+        )])];
 
         let finding = only(check(regions, "unit 5\nWORK\n"));
         assert_eq!(finding.code.as_str(), "not-enough-silver");
-        assert!(
-            finding.message.contains("short $30"),
-            "three men owe $30 and WORK spends nothing: {}",
-            finding.message
+        // The message says upkeep, not orders: WORK spends nothing, and a player told otherwise
+        // would go looking for a mistake that is not there.
+        assert_eq!(
+            finding.message,
+            "short $30: this unit can have $0 and its orders and upkeep spend $30"
         );
     }
 
