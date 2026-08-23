@@ -146,6 +146,14 @@ describe("a game that already carries wrapping that cannot be drawn", () => {
     );
   });
 
+  it("returns the very object it was given when nothing needs turning off", () => {
+    // Identity, not just equality: `GameMapSettings` resyncs its draft in an effect keyed on the
+    // map's identity, and a fresh object per call would wipe half-typed text on every render.
+    const recorded = { width: 72, height: 96, wrapX: true, wrapY: true };
+
+    expect(mapShapeOfGame("neworigins", recorded).map).toBe(recorded);
+  });
+
   it("returns a recorded shape that is fine unchanged", () => {
     expect(mapShapeOfGame("neworigins", { width: 72, height: 96, wrapX: true, wrapY: true })).toEqual(
       { map: { width: 72, height: 96, wrapX: true, wrapY: true }, stated: true }

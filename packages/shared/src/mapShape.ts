@@ -50,14 +50,20 @@ export function mapShapeOfGame(rulesetId: string, recorded: MapShape | undefined
  * `defaultMapFor` is not passed through this: a ruleset's own declared map is a fact about the
  * ruleset, and one that failed this test would be a bug in `rulesets.ts` rather than something to
  * paper over per game.
+ *
+ * **The recorded object itself is returned when nothing needs turning off**, which almost always
+ * it does not. That is not a micro-optimisation: `GameMapSettings` resyncs its draft in an effect
+ * keyed on the map's identity, so a fresh object per call would make that effect run on every
+ * render of the dialog and wipe half-typed text. The smoke spec "a corrected map size is still
+ * there when settings are reopened" is what catches it.
  */
 function withDrawableWrapping(map: MapShape): MapShape {
-  return {
-    width: map.width,
-    height: map.height,
-    wrapX: map.wrapX && map.width % 2 === 0,
-    wrapY: map.wrapY && map.height % 2 === 0
-  };
+  const wrapX = map.wrapX && map.width % 2 === 0;
+  const wrapY = map.wrapY && map.height % 2 === 0;
+  if (wrapX === map.wrapX && wrapY === map.wrapY) {
+    return map;
+  }
+  return { width: map.width, height: map.height, wrapX, wrapY };
 }
 
 /**
