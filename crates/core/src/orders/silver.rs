@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::movement::rules::{Production, Ruleset};
 use crate::orders::forms::{Amount, Party, Selector};
-use crate::orders::intents::{Intent, PlacedIntent};
+use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::report::model::{ItemAmount, Skill};
 
 /// "Each taxing character collects $50."
@@ -228,6 +228,13 @@ pub struct UnitSilver {
     /// What stopped it making `production_wanted`, or `None` when nothing did. Drives the hover's
     /// note and nothing else - the figures above are already the capped ones (`ah-19l2.2`).
     pub production_capped_by: Option<ProductionCap>,
+    /// Whether this unit has no month-long order and will therefore be set to work, earning the
+    /// region's wage. `false` for every unit that spends its month on something (`ah-gjq4`).
+    ///
+    /// Carried so the hover can say where the silver came from: income arriving from an order
+    /// nobody wrote reads as a defect until something says why - the same reason
+    /// `own_food_covered` and `unclaimed_covered` are carried.
+    pub works_by_default: bool,
 }
 
 /// The kind of order a shortfall bites on, so the hover can name it (`ah-uwa3`).
@@ -371,6 +378,12 @@ pub fn pool_wants(facts: &UnitFacts<'_>, region: RegionWages) -> PoolWants {
             }
             _ => {}
         }
+    }
+    // A unit that spends its month on nothing is set to work, so it contends for the region's wage
+    // pool exactly as an explicit `WORK` does (`ah-gjq4`, landing after `ah-t2pn.2`). Without this
+    // every idle unit in a hex would be promised the whole pool.
+    if works_by_default(facts.intents) {
+        wants.wages = facts.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
     }
     wants
 }
@@ -611,6 +624,18 @@ pub fn late_income(facts: &UnitFacts<'_>, region: RegionWages, shares: PoolShare
             _ => {}
         }
     }
+    // A unit that spends its month on nothing is set to work, and work pays the region's wage
+    // exactly as an explicit `WORK` does (`ah-gjq4`). Priced here rather than beside the explicit
+    // arm so it is unmistakably a default and not a second `Intent::Work`, and priced through this
+    // function so `semantics::charge_upkeep` sees it too - wages arrive in the turn's last phase,
+    // which is why they pay upkeep and cannot fund this month's orders.
+    if works_by_default(facts.intents) {
+        late = late.saturating_add(match shares.wages {
+            PoolShare::Uncontended => wants.wages.min(region.max_wages.unwrap_or(i64::MAX)),
+            PoolShare::Share(share) => share,
+            PoolShare::Unknowable => 0,
+        });
+    }
     late
 }
 
@@ -653,7 +678,7 @@ pub fn forecast_unit(
 
     // A headcount that is a guess cannot multiply anything out, so it short-circuits both sides
     // before any rule below is read - exactly as `semantics::study` refuses to price one.
-    if men_estimated && intents.iter().any(moves_silver_per_man) {
+    if men_estimated && (intents.iter().any(moves_silver_per_man) || works_by_default(intents)) {
         return UnitSilver {
             unit_id: unit_id.to_string(),
             region_id: region_id.to_string(),
@@ -684,6 +709,7 @@ pub fn forecast_unit(
             produced_name: None,
             production_wanted: 0,
             production_capped_by: None,
+            works_by_default: works_by_default(intents),
         };
     }
 
@@ -979,6 +1005,9 @@ pub fn forecast_unit(
     // A pool this unit draws on may be contended by a faction-mate whose headcount is a guess, so
     // its share is not a number at all. `late_income` returned 0 for it; the figure the column
     // shows must say so rather than quietly understating (`ah-t2pn.2`).
+    if works_by_default(intents) && shares.wages == PoolShare::Unknowable {
+        income_doubt = income_doubt.or(Some(SilverDoubt::ContestedRegionPool));
+    }
     for placed in intents {
         match &placed.intent {
             Intent::Work if shares.wages == PoolShare::Unknowable => {
@@ -1090,6 +1119,7 @@ pub fn forecast_unit(
         produced_name: production.as_ref().map(|(name, _)| name.clone()),
         production_wanted: production.as_ref().map_or(0, |(_, plan)| plan.wanted),
         production_capped_by: production.as_ref().and_then(|(_, plan)| plan.capped_by),
+        works_by_default: works_by_default(intents),
     }
 }
 
@@ -2518,6 +2548,108 @@ mod tests {
         assert_eq!(unit.doubt, None);
     }
 
+    // --- the defaulted WORK (`ah-gjq4`) ---------------------------------------------------------
+
+    /// A unit with no month-long order is set to work, and work pays the region's wage. The
+    /// earning arrives in the turn's last phase exactly as an explicit `WORK` does.
+    #[test]
+    fn a_unit_with_no_month_long_order_works_by_default() {
+        let unit = forecast(6, paying("$12.0", None), &[]);
+        assert_eq!(unit.late_income, Some(72));
+        assert_eq!(unit.income, Some(72));
+        assert!(unit.works_by_default);
+    }
+
+    #[test]
+    fn a_unit_that_spends_its_month_does_not_also_work() {
+        let unit = forecast(
+            6,
+            paying("$12.0", None),
+            &[placed(Intent::Study {
+                skill: "combat".to_string(),
+            })],
+        );
+        assert_eq!(unit.late_income, Some(0));
+        assert!(!unit.works_by_default);
+    }
+
+    /// `GUARD` is a flag rather than a month's work, which `spends_the_month` already encodes - so
+    /// a unit ordered only to guard still works.
+    #[test]
+    fn guarding_is_not_spending_the_month() {
+        let unit = forecast(6, paying("$12.0", None), &[placed(Intent::Guard(true))]);
+        assert_eq!(unit.late_income, Some(72));
+        assert!(unit.works_by_default);
+    }
+
+    /// `CAST` leaves the month free, so a unit ordered only to cast works as well.
+    #[test]
+    fn a_unit_ordered_only_to_cast_still_works() {
+        let unit = forecast(
+            6,
+            paying("$12.0", None),
+            &[placed(Intent::Cast {
+                spell: "Fire".to_string(),
+                arguments: Vec::new(),
+            })],
+        );
+        assert_eq!(unit.late_income, Some(72));
+        assert!(unit.works_by_default);
+    }
+
+    /// A region with no wage line pays nothing, so the default invents no income.
+    #[test]
+    fn a_region_with_no_wage_line_pays_an_idle_unit_nothing() {
+        let unit = forecast(6, RegionWages::default(), &[]);
+        assert_eq!(unit.income, Some(0));
+        assert!(unit.works_by_default);
+    }
+
+    /// Wages arrive in the turn's last phase, so a defaulted wage cannot fund this month's orders.
+    /// A term added straight to `income` would pass the test above and fail this one.
+    #[test]
+    fn an_idle_units_wages_cannot_fund_its_purchases() {
+        let receipts = Receipts::default();
+        let intents: [PlacedIntent; 0] = [];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 0,
+                ..facts(6, &intents, &receipts)
+            },
+            paying("$12.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            no_market(),
+            None,
+        );
+        assert_eq!(unit.income, Some(72));
+        assert_eq!(unit.short_for_orders, Some(0));
+        assert_eq!(unit.late_income, Some(72));
+    }
+
+    /// The estimated-headcount short-circuit is conditional on some intent moving silver per man,
+    /// and an idle unit has no intents at all - so without the defaulted-work clause a guessed
+    /// headcount would be multiplied out into a wage.
+    #[test]
+    fn an_idle_unit_with_an_estimated_headcount_is_doubted() {
+        let receipts = Receipts::default();
+        let intents: [PlacedIntent; 0] = [];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 600,
+                men_estimated: true,
+                ..facts(8, &intents, &receipts)
+            },
+            paying("$12.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            no_market(),
+            None,
+        );
+        assert_eq!(unit.doubt, Some(SilverDoubt::EstimatedMen));
+        assert_eq!(unit.income, None);
+    }
+
     #[test]
     fn a_fractional_wage_rounds_down() {
         let unit = forecast(3, paying("$12.5", None), &[placed(Intent::Work)]);
@@ -2704,9 +2836,11 @@ mod tests {
 
     #[test]
     fn earth_lore_is_not_late_income() {
+        // The spell's 84 is spendable this month; the 14 the mage also earns working is not
+        // (`ah-gjq4`), which is exactly the distinction this test exists to hold.
         let unit = casting_for_wages("Earth_Lore", "EART", 3, "$14.0");
-        assert_eq!(unit.income, Some(84));
-        assert_eq!(unit.late_income, Some(0));
+        assert_eq!(unit.income, Some(98));
+        assert_eq!(unit.late_income, Some(14));
     }
 
     #[test]
@@ -2984,8 +3118,10 @@ mod tests {
 
     #[test]
     fn a_mage_casting_earth_lore_earns_twice_the_wage_a_level() {
+        // 84 from the spell, plus 14 the mage earns working: CAST leaves the month free, so the
+        // unit is also set to work (`ah-gjq4`).
         let unit = casting_for_wages("Earth_Lore", "EART", 3, "$14.0");
-        assert_eq!(unit.income, Some(84));
+        assert_eq!(unit.income, Some(98));
         assert_eq!(unit.doubt, None);
     }
 
@@ -3000,23 +3136,26 @@ mod tests {
 
     #[test]
     fn earth_lore_rounds_down() {
-        // floor(2 x 1 x 14.1) = floor(28.2) = 28. Rounding to nearest, or up, would say 29.
+        // floor(2 x 1 x 14.1) = floor(28.2) = 28. Rounding to nearest, or up, would say 29. Plus
+        // the 14 the same mage earns working, since CAST leaves its month free (`ah-gjq4`).
         let unit = casting_for_wages("Earth_Lore", "EART", 1, "$14.1");
-        assert_eq!(unit.income, Some(28));
+        assert_eq!(unit.income, Some(28 + 14));
     }
 
     #[test]
     fn earth_lore_does_not_lose_the_wage_s_fraction() {
         // 2 x 1 x 1450 / 100 = 29. Dividing the wage down to whole silver first would say 28,
-        // which is what "multiply before dividing" buys.
+        // which is what "multiply before dividing" buys. Plus the 14 the mage earns working
+        // (`ah-gjq4`).
         let unit = casting_for_wages("Earth_Lore", "EART", 1, "$14.5");
-        assert_eq!(unit.income, Some(29));
+        assert_eq!(unit.income, Some(29 + 14));
     }
 
     #[test]
     fn a_mage_with_no_earth_lore_skill_earns_nothing() {
+        // Nothing from the spell; the 14 is the wage its free month earns (`ah-gjq4`).
         let unit = casting_for_wages("Earth_Lore", "EART", 0, "$14.0");
-        assert_eq!(unit.income, Some(0));
+        assert_eq!(unit.income, Some(14));
         assert_eq!(unit.doubt, None);
     }
 
@@ -3032,7 +3171,7 @@ mod tests {
             paying("$14.0", None),
             Some(&ruleset),
         );
-        assert_eq!(unit.income, Some(84));
+        assert_eq!(unit.income, Some(98));
         assert_eq!(unit.expense, Some(50));
     }
 
@@ -3105,9 +3244,14 @@ mod tests {
     #[test]
     fn a_sale_a_cast_and_a_guessed_headcount_are_still_priced() {
         // Neither a sale nor a cast is per-man, so a headcount that is a guess does not stop them
-        // being priced - unlike TAX, WORK, STUDY and ENTERTAIN.
+        // being priced - unlike TAX, WORK, STUDY and ENTERTAIN. The bare `SAIL` is what spends the
+        // month: without it the unit would be set to work by default, and a defaulted wage *is*
+        // per-man (`ah-gjq4`).
         let receipts = Receipts::default();
-        let intents = [selling("furs", Amount::Exact(10))];
+        let intents = [
+            selling("furs", Amount::Exact(10)),
+            placed(Intent::MonthLong("SAIL")),
+        ];
         let unit = forecast_unit(
             UnitFacts {
                 men_estimated: true,

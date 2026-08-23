@@ -173,6 +173,7 @@ describe("the silver section", () => {
     producedName: null,
     productionWanted: 0,
     productionCappedBy: null,
+    worksByDefault: false,
     ...overrides
   });
 
@@ -450,6 +451,71 @@ describe("the silver section", () => {
       true
     );
     expect(notCounting.silver?.note ?? "").not.toContain("unclaimed silver");
+  });
+
+  it("the_note_says_an_idle_unit_will_work", () => {
+    // Income arriving from an order nobody wrote reads as a defect until something says why
+    // (`ah-gjq4`). It explains the `In` row, which is on show whatever the upkeep setting says -
+    // unlike the food and fund notes, which explain `Upkeep`.
+    const idle = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ income: 72, lateIncome: 72, worksByDefault: true }),
+      true,
+      true
+    );
+    expect(idle.silver?.note).toBe(
+      "This unit has no month-long order, so it will work and earn wages."
+    );
+
+    const notCounting = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ income: 72, lateIncome: 72, worksByDefault: true }),
+      true
+    );
+    expect(notCounting.silver?.note).toBe(
+      "This unit has no month-long order, so it will work and earn wages."
+    );
+  });
+
+  it("an_idle_unit_whose_income_is_a_gift_is_not_told_it_will_earn_wages", () => {
+    // Total income carries gifts and claims as well as wages, so an idle unit in a region with no
+    // wage line that was given silver has `income > 0` and no wages at all. For an idle unit the
+    // wage is exactly its late income, which is what the note is gated on (`ah-gjq4`, review).
+    const gifted = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        income: 40,
+        lateIncome: 0,
+        worksByDefault: true,
+        received: 40,
+        givers: ["Lender (100)"]
+      }),
+      true,
+      true
+    );
+    expect(gifted.silver?.note).toBe(
+      "Includes 40 given by Lender (100) in this hex."
+    );
+  });
+
+  it("an_idle_unit_that_faction_food_also_fed_shows_the_food_note", () => {
+    // The ordering decided in planning: the food note is the rarer, more specific fact, and a zero
+    // in the Upkeep row is a sharper surprise than a positive income figure (`ah-gjq4`).
+    const fed = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        income: 72,
+        lateIncome: 72,
+        worksByDefault: true,
+        upkeep: 0,
+        factionFoodCovered: 60
+      }),
+      true,
+      true
+    );
+    expect(fed.silver?.note).toBe(
+      "Faction food in this hex covers 60 of this unit's upkeep."
+    );
   });
 
   it("the_note_says_the_fund_cannot_reach_everybody", () => {

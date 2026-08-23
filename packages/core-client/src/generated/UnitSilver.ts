@@ -181,4 +181,13 @@ productionWanted: number,
  * What stopped it making `production_wanted`, or `None` when nothing did. Drives the hover's
  * note and nothing else - the figures above are already the capped ones (`ah-19l2.2`).
  */
-productionCappedBy: ProductionCap | null, };
+productionCappedBy: ProductionCap | null, 
+/**
+ * Whether this unit has no month-long order and will therefore be set to work, earning the
+ * region's wage. `false` for every unit that spends its month on something (`ah-gjq4`).
+ *
+ * Carried so the hover can say where the silver came from: income arriving from an order
+ * nobody wrote reads as a defect until something says why - the same reason
+ * `own_food_covered` and `unclaimed_covered` are carried.
+ */
+worksByDefault: boolean, };
