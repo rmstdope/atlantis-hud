@@ -479,6 +479,11 @@ const WARNING_GROUPS: readonly {
         code: "not-enough-items",
         title: "Overdrawn items",
         description: "Orders spend more of an item than the unit or the hex holds."
+      },
+      {
+        code: "claims-exceed-unclaimed",
+        title: "Claiming more than the faction has",
+        description: "CLAIM orders across all your units asking for more unclaimed silver than the faction holds."
       }
     ]
   },
