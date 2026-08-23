@@ -686,11 +686,19 @@ fn the_committed_turn_has_faction_food_eaters_but_no_faction_food() {
             .iter()
             .find(|forecast| &forecast.unit_id == id)
             .expect("every own unit is forecast");
-        assert_eq!(
-            unit.upkeep.map(|left| left + unit.unclaimed_covered),
-            Some(unit_upkeep_of(&report, id)),
-            "{id}"
-        );
+        // `unit_upkeep_of` models steps 1 and 2 only, so it can only be *equalled* where steps 5
+        // and 6 have no food to work with (`ah-eacd`). A unit holding food may pay less than the
+        // helper says, never more, and an inequality is the strongest thing the helper can then
+        // honestly assert.
+        let recovered = unit.upkeep.map(|left| left + unit.unclaimed_covered);
+        if holds_food(&report, id) {
+            assert!(
+                recovered.unwrap_or(0) <= unit_upkeep_of(&report, id),
+                "{id}: food can only ever reduce the fee"
+            );
+        } else {
+            assert_eq!(recovered, Some(unit_upkeep_of(&report, id)), "{id}");
+        }
     }
     assert!(
         review
@@ -702,6 +710,24 @@ fn the_committed_turn_has_faction_food_eaters_but_no_faction_food() {
 }
 
 /// What one unit's headcount owes, straight from the rules, for the test above to compare against.
+/// Whether this unit holds any of the food the maintenance rules name - the only units steps 5 and
+/// 6 of the payment order can touch (`ah-eacd`).
+fn holds_food(report: &ParsedReport, unit_id: &str) -> bool {
+    report
+        .regions
+        .iter()
+        .flat_map(|region| &region.units)
+        .filter(|unit| unit.unit_id == unit_id)
+        .any(|unit| {
+            unit.items.iter().any(|item| {
+                item.amount > 0
+                    && ["GRAI", "LIVE", "FISH", "MEAL"]
+                        .iter()
+                        .any(|tag| item.tag.eq_ignore_ascii_case(tag))
+            })
+        })
+}
+
 fn unit_upkeep_of(report: &ParsedReport, id: &str) -> i64 {
     let unit = report
         .regions
