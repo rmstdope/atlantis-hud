@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Costing a PRODUCE order (ah-19l2.2) — round 2</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-19l2.2</span> — the edges, round 2</h1>
+  <p><strong>Settled:</strong> a producing unit makes what its men allow, capped by the silver and
+  materials it holds; the materials are debited as well as the silver, so
+  <code>not-enough-items</code> fires; and the hover speaks only when the cap bites.</p>
+  <p>Bringing materials in makes three more things visible.</p>
+</header>
+<main>
+<section>
+  <h2 class="rule"><em>Question 4</em> the capped sentence, when materials are what ran out</h2>
+  <p>The agreed note assumed silver was the binding constraint. Now it may be wood.</p>
+  <table class="q">
+    <tr><th>Option</th><th>The sentences</th></tr>
+    <tr><td class="k">A — name the constraint</td>
+        <td>silver: &ldquo;This unit has silver for <b>1</b> catapult, not the <b>2</b> its men could make.&rdquo;<br>
+            materials: &ldquo;This unit has materials for <b>1</b> catapult, not the <b>2</b> its men could make.&rdquo;<br>
+            both: the silver one, since silver is what the column is about.</td></tr>
+    <tr><td class="k">B — one sentence, name neither</td>
+        <td>&ldquo;This unit can make <b>1</b> catapult, not the <b>2</b> its men could.&rdquo;
+            &nbsp;— one string, and the reader looks at their own holdings to see which ran out.</td></tr>
+    <tr><td class="k">C — name the item that ran out</td>
+        <td>&ldquo;This unit is 250 <b>wood</b> short of the 2 catapults its men could make.&rdquo;
+            &nbsp;— most actionable, and it duplicates the <code>not-enough-items</code> mark
+            that now fires on the same unit.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Question 5</em> a unit that cannot produce what it ordered</h2>
+  <p><code>produces</code> already carries the level each recipe needs — carpenter <b>4</b> for a
+  catapult. A unit ordered to produce one without the skill makes nothing, and today the client
+  says nothing about that either.</p>
+  <table class="q">
+    <tr><th>Option</th><th>What shows</th><th></th></tr>
+    <tr><td class="k">A — a new advisory</td>
+        <td>&ldquo;this unit has carpenter 2 and producing catapults needs carpenter 4&rdquo;, as its
+        own code beside <code>study-at-maximum</code> and the rest.</td>
+        <td>Catches a wasted month, which is what the advisories are for. A new code is a new row in
+        <code>validate_real_orders</code>'s table and its own interview about wording.</td></tr>
+    <tr><td class="k">B — expense 0, no mark</td>
+        <td>The column shows the unit spending nothing, correctly, and nothing is said.</td>
+        <td>Keeps this bead to costing. The wasted month is a separate bead, filed unranked.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Question 6</em> do the produced goods arrive?</h2>
+  <p>Carpenters ends the month holding 2 catapults it did not have. If a later order gives them
+  away, the ledger decides whether that is possible.</p>
+  <table class="q">
+    <tr><th>Option</th><th>What happens</th><th></th></tr>
+    <tr><td class="k">A — credit the output</td>
+        <td><code>GIVE 2 CATP</code> after a <code>PRODUCE</code> is affordable, and no
+        <code>not-enough-items</code> fires.</td>
+        <td>Truthful about the month. But production resolves in the month's last phase, like wages
+        — so goods made this month cannot be given away this month, and crediting them would
+        <em>silence</em> a warning that should fire.</td></tr>
+    <tr><td class="k">B — debit inputs, do not credit output</td>
+        <td>The materials go; the catapults do not arrive in time to be spent. A
+        <code>GIVE</code> of them is still short.</td>
+        <td>Matches how the ledger already treats wages and takings from entertaining
+        (<code>ah-uwa3</code>): earned this month, unusable this month.</td></tr>
+  </table>
+</section>
+</main>
+</body>
+</html>
