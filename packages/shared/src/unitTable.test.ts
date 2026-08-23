@@ -397,10 +397,10 @@ describe("silverShown", () => {
       foodContended: false,
       sharedSilverCovered: 0,
       withdrawing: false,
-    produced: 0,
-    producedName: null,
-    productionWanted: 0,
-    productionCappedBy: null
+      produced: 0,
+      producedName: null,
+      productionWanted: 0,
+      productionCappedBy: null
     }) satisfies UnitSilver;
 
   it("subtracts upkeep only when the setting is on", () => {

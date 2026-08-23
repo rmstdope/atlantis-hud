@@ -237,16 +237,16 @@ function silverNote(
   // only in the turn's last phase (`ah-uwa3`). The one line that says so names both the amount and
   // the order that fails, and comes before the two food notes: an order the game will refuse is
   // worth more of the reader's attention than an upkeep that was quietly paid.
-  // An order the game will not carry out as written, like the shortfall line directly below - and
-  // below it, because a shortfall is the more urgent of the two (`ah-19l2.2`). Silent at full
-  // rate: the count is only worth a line when something stopped it.
-  if (silver.productionCappedBy !== null && silver.producedName !== null) {
-    const has = silver.productionCappedBy === "silver" ? "silver" : "materials";
-    return `This unit has ${has} for ${countOf(silver.produced, silver.producedName)}, not the ${silver.productionWanted} its men could make.`;
-  }
   if (silver.shortForOrders !== null && silver.shortForOrders > 0) {
     const spends = silver.shortOn ? ` when it ${SPENDS[silver.shortOn]}` : "";
     return `Wages arrive too late to pay for this month's orders, so this unit is ${silver.shortForOrders} short${spends}.`;
+  }
+  // An order the game will not carry out as written, like the shortfall line above - and below it,
+  // because a shortfall is the more urgent of the two (`ah-19l2.2`). Silent at full rate: the
+  // count is only worth a line when something stopped it.
+  if (silver.productionCappedBy !== null && silver.producedName !== null) {
+    const has = silver.productionCappedBy === "silver" ? "silver" : "materials";
+    return `This unit has ${has} for ${countOf(silver.produced, silver.producedName)}, not the ${silver.productionWanted} its men could make.`;
   }
   // A doubt about the figure on show, so it sorts above the informational lines that explain one -
   // and below the shortfall line above, which is about an order the game will refuse (`ah-fjty`).

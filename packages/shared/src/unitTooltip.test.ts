@@ -216,6 +216,28 @@ describe("the silver section", () => {
     );
   });
 
+  it("the_shortfall_outranks_a_capped_production", () => {
+    const both = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        expense: 3000,
+        atMonthEnd: 0,
+        upkeep: 0,
+        shortForOrders: 200,
+        shortOn: "produce",
+        produced: 1,
+        producedName: "catapult",
+        productionWanted: 2,
+        productionCappedBy: "silver"
+      }),
+      true
+    );
+
+    expect(both.silver?.note).toBe(
+      "Wages arrive too late to pay for this month's orders, so this unit is 200 short when it produces."
+    );
+  });
+
   it("says_nothing_when_a_production_runs_at_full_rate", () => {
     const full = summariseUnit(
       aReportUnit({ unitId: "1" }),
