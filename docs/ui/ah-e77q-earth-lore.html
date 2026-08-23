@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earth Lore earns silver (ah-e77q) — chosen</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; margin-top:20px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:15px; display:flex; flex-direction:column; gap:10px; }
+  .card h3 { font-size:15.5px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .card h3 .recd { color:var(--ground); background:var(--brass); border-radius:3px; font:10px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px; text-transform:uppercase; padding:1px 5px; margin-left:6px; vertical-align:2px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; padding:0; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:16px 0 6px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(235px,1fr)); gap:16px; margin-top:12px; align-items:start; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); } .row .v.neg { color:var(--danger); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12px; margin-top:6px; } .cap b { color:var(--ink); }
+  table.q { border-collapse:collapse; font-size:12.5px; margin-top:12px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:5px 9px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:10.5px; letter-spacing:1.1px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-e77q</span> — Earth Lore earns silver</h1>
+  <p>Your formula: <code>floor(2 × level × W)</code>, where <strong>W</strong> is the region's wage
+  rate. It replaces the decision you and I took in <code>ah-1wcw.2</code>, where I had you
+  <em>doubt</em> Earth Lore because the ruleset gives no arithmetic — I said then that if you knew
+  the real formula it would beat both options offered, and it does.</p>
+  <pre class="calc">a level-3 Earth Lore mage in a hex paying $14      ->  floor(2 × 3 × 14) = 84</pre>
+  <p>The code already has the shape: the <code>Cast</code> arm prices Phantasmal Entertainment and
+  sends Earth Lore to a <code>?</code>. This swaps the shrug for the number — and, because Earth Lore
+  is the <strong>only</strong> thing that produces that <code>?</code>, it retires a doubt and its
+  hover line with it.</p>
+  <p>Three things are open, and one of them is urgent because <strong>Cyclops is building
+  <code>ah-uwa3</code> right now</strong>.</p>
+</header>
+
+<main>
+<section>
+  <h2 class="rule"><em>Chosen</em> magic money arrives in time to be spent</h2>
+  <p><strong>Decided 2026-08-23: B</strong> &mdash; and the navigator corrected a second thing in the
+  same breath: <em>"Make sure that the income from phantasmal entertainment are also in time because
+  CAST comes before all spend orders."</em></p>
+  <p>So <strong>neither</strong> earning spell is late. <code>ah-uwa3</code> classifies Phantasmal
+  Entertainment alongside wages and entertaining, and that part of it is superseded; this bead moves
+  it out. Wages and <code>ENTERTAIN</code> are unaffected and stay late &mdash; they are paid in the
+  turn's last phase, where a <code>CAST</code> resolves before any spend order.</p>
+  <p><code>ah-uwa3</code>, in flight, splits a unit's income into what arrives <strong>in time</strong>
+  and what arrives in the turn's <strong>last phase</strong> — too late to pay for a <code>BUY</code>
+  or a <code>CAST</code>, though still fine for upkeep. It puts wages, entertaining and
+  <strong>Phantasmal Entertainment</strong> in the late group. Earth Lore has to join one or the
+  other, and whichever bead lands second inherits the answer.</p>
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> Late, with the others</h3>
+      <div class="concept">Earth Lore joins wages, entertaining and Phantasmal Entertainment. It funds upkeep but cannot fund this month's purchases.</div>
+      <div class="tip">
+        <div class="sect">Silver</div>
+        <div class="rowset">
+          <div class="row"><span>Held now</span><span class="v">0</span></div>
+          <div class="row"><span>In, in time</span><span class="v">0</span></div>
+          <div class="row"><span>In, too late</span><span class="v">84</span></div>
+          <div class="row"><span>Out</span><span class="v">60</span></div>
+          <div class="row total"><span>At month end</span><span class="v">24</span></div>
+        </div>
+        <div class="tipnote">Wages arrive at the end of the month, too late to pay for this month's orders.</div>
+      </div>
+      <ul class="notes">
+        <li>Consistent with Phantasmal Entertainment, the other earning spell, which is already late.</li>
+        <li>The formula is <em>the wage rate</em> doubled — it is paid out of the same regional economy that pays wages, which is an argument that it is paid at the same time.</li>
+        <li class="con">If it is really paid earlier, the column understates what the mage can spend — the cautious direction, but still wrong.</li>
+      </ul>
+    </div>
+    <div class="card rec">
+      <h3><em>B</em> In time<span class="recd">Chosen</span></h3>
+      <div class="concept">Earth Lore money is available to the same month's orders.</div>
+      <div class="tip">
+        <div class="sect">Silver</div>
+        <div class="rowset">
+          <div class="row"><span>Held now</span><span class="v">0</span></div>
+          <div class="row"><span>In, in time</span><span class="v">84</span></div>
+          <div class="row"><span>In, too late</span><span class="v">0</span></div>
+          <div class="row"><span>Out</span><span class="v">60</span></div>
+          <div class="row total"><span>At month end</span><span class="v">24</span></div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>A mage funding its own studying reads as solvent, which is the common case for a caster.</li>
+        <li class="con">If it is really late, the column says a purchase will succeed that the game will refuse — the alarming direction.</li>
+        <li class="con">Disagrees with Phantasmal Entertainment for no stated reason.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="absent">Same month-end figure either way. What changes is whether the mage is warned
+  that it cannot afford its orders — which is the whole point of <code>ah-uwa3</code>.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Chosen</em> a hex that states no wage</h2>
+  <p><code>W</code> comes from the region's own <code>Wages:</code> line. Some hexes have none —
+  ocean, and anywhere with no population. A mage can still be standing there casting.</p>
+  <table class="q">
+    <tr><th>#</th><th>Behaviour</th><th>Note</th></tr>
+    <tr><td><strong>2-i</strong></td><td>Earns <strong>0</strong>, and is not doubted</td><td><strong>Chosen.</strong> Exactly how <code>WORK</code> already treats a hex with no wage: no wage, no earnings, and no shrug. The formula multiplies by W, and W is nothing.</td></tr>
+    <tr><td><strong>2-ii</strong></td><td>Shows <code>?</code></td><td>Honest that we cannot price it — but the formula says it earns nothing, so a <code>?</code> would be caution about a figure we do know.</td></tr>
+    <tr><td><strong>2-iii</strong></td><td>Earns something anyway</td><td>Would need a second rule for wageless hexes, which nothing supplies.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Answered</em> the question does not arise</h2>
+  <p>Asked whether the earnings scale with the unit's men, since the formula has no term for them.
+  The navigator's answer: <em>"invalid. a mage unit can only have 1 leader, nothing else."</em></p>
+  <p>So a casting unit is <strong>always exactly one man</strong>, and per-unit and per-man are the
+  same number. The formula is taken literally, with no men factor, and the two readings below cannot
+  disagree. Worth recording because a reader meeting <code>ENTERTAIN</code>'s
+  <code>30 × men × level</code> two arms above will wonder why this one has no <code>men</code> in
+  it.</p>
+  <table class="q">
+    <tr><th>#</th><th>Behaviour</th><th>Note</th></tr>
+    <tr><td><strong>3-i</strong></td><td>Per <strong>unit</strong> — the formula as written</td><td><strong>Chosen, and unambiguous:</strong> a mage unit is one leader, so there is no other reading.</td></tr>
+    <tr><td><strong>3-ii</strong></td><td>Multiplied by the unit's men</td><td>Matches how <code>ENTERTAIN</code> works (30 × men × level). If several mages really do each earn, this is right and 3-i understates badly.</td></tr>
+  </table>
+
+</section>
+</main>
+</body>
+</html>
