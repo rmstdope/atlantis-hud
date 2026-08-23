@@ -28,9 +28,10 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::orders::silver::{
     feed_after_silver, feed_from_faction_food, food_claim, forecast_unit, late_income,
-    parse_wage_centis, plan_production, recipe_for, settle_unclaimed, unit_upkeep, FactionFoodPass, FactionPurse, FoodClaim,
-    LateFoodClaim, LateFoodRelief, Lookups, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
-    SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
+    parse_wage_centis, plan_production, recipe_for, settle_unclaimed, unit_upkeep, FactionFoodPass,
+    FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, PurchaseAnswer, Receipts,
+    RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
+    FOOD_TAGS,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -4800,7 +4801,12 @@ mod tests {
 
     /// The forecast for one unit, with the committed ruleset behind it.
     fn forecast_with_ruleset(regions: Vec<ReportRegion>, orders: &str) -> UnitSilver {
-        let review = review_turn(&report(regions), orders, Some(&ruleset()), CheckOptions::default());
+        let review = review_turn(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
         review
             .silver
             .into_iter()
@@ -4835,7 +4841,11 @@ mod tests {
             "unit 12881\nPRODUCE catapult\n",
         );
 
-        assert_eq!(forecast.expense, Some(3000), "silver caps it at one catapult");
+        assert_eq!(
+            forecast.expense,
+            Some(3000),
+            "silver caps it at one catapult"
+        );
         assert_eq!(forecast.produced, 1);
         assert_eq!(forecast.produced_name.as_deref(), Some("catapult"));
         assert_eq!(forecast.production_wanted, 2);

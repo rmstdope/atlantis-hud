@@ -154,10 +154,20 @@ function inTime(silver: UnitSilver): number | null {
 /** How the hover names the order a shortfall bites on. */
 const SPENDS: Record<NonNullable<UnitSilver["shortOn"]>, string> = {
   buy: "buys",
+  produce: "produces",
   cast: "casts",
   study: "studies",
   give: "gives"
 };
+
+/**
+ * `1 catapult`, `0 catapults`. The core carries the catalogue's singular, because the unit does
+ * not hold the thing yet and nothing in its inventory could be read for a plural; English belongs
+ * out here, the way `ah-eacd`'s step-6 sentence already puts it.
+ */
+function countOf(count: number, name: string): string {
+  return `${count} ${name}${count === 1 ? "" : "s"}`;
+}
 
 /** The month-end figure with upkeep taken off, or `null` where either term is unpriceable. */
 function shownEnd(silver: UnitSilver): number | null {
@@ -196,6 +206,9 @@ function silverNote(
   if (silver.doubt === "unknown-tax-base") {
     return "The report never said what this region's tax base is.";
   }
+  if (silver.doubt === "unpriced-production") {
+    return `The ruleset does not say what producing ${silver.doubtSubject ?? "this"} costs.`;
+  }
   if (silver.doubt === "unpriced-skill") {
     return "The ruleset does not say what studying this skill costs.";
   }
@@ -224,6 +237,13 @@ function silverNote(
   // only in the turn's last phase (`ah-uwa3`). The one line that says so names both the amount and
   // the order that fails, and comes before the two food notes: an order the game will refuse is
   // worth more of the reader's attention than an upkeep that was quietly paid.
+  // An order the game will not carry out as written, like the shortfall line directly below - and
+  // below it, because a shortfall is the more urgent of the two (`ah-19l2.2`). Silent at full
+  // rate: the count is only worth a line when something stopped it.
+  if (silver.productionCappedBy !== null && silver.producedName !== null) {
+    const has = silver.productionCappedBy === "silver" ? "silver" : "materials";
+    return `This unit has ${has} for ${countOf(silver.produced, silver.producedName)}, not the ${silver.productionWanted} its men could make.`;
+  }
   if (silver.shortForOrders !== null && silver.shortForOrders > 0) {
     const spends = silver.shortOn ? ` when it ${SPENDS[silver.shortOn]}` : "";
     return `Wages arrive too late to pay for this month's orders, so this unit is ${silver.shortForOrders} short${spends}.`;

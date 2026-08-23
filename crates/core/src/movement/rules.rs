@@ -243,10 +243,6 @@ pub struct Gap {
 pub struct Gaps {
     /// Winter raises movement costs by an amount the rules page never states.
     pub weather: Gap,
-    /// PRODUCE recipes are carried but nothing spends them - see `ah-19l2.2`, which closes the gap
-    /// and removes this key again. `None` for a ruleset generated before it was declared.
-    #[serde(default)]
-    pub production: Option<Gap>,
 }
 
 /// Every spelling an order's item argument stands for, in the order they must be tried.

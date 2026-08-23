@@ -624,8 +624,7 @@ pub fn forecast_unit(
                         production = Some(((lookups.item_name)(&recipe.tag), plan));
                     }
                     None => {
-                        expense_doubt =
-                            expense_doubt.or(Some(SilverDoubt::UnpricedProduction));
+                        expense_doubt = expense_doubt.or(Some(SilverDoubt::UnpricedProduction));
                         doubt_subject = doubt_subject.or(Some(item.to_lowercase()));
                     }
                 }
@@ -1436,8 +1435,8 @@ fn moves_silver_per_man(placed: &PlacedIntent) -> bool {
 pub fn recipe_for<'a>(ruleset: Option<&'a Ruleset>, tag: &str) -> Option<&'a Production> {
     ruleset?
         .skills
-        .iter()
-        .flat_map(|(_, skill)| skill.produces.iter())
+        .values()
+        .flat_map(|skill| skill.produces.iter())
         .find(|recipe| recipe.tag.eq_ignore_ascii_case(tag))
 }
 
@@ -1490,7 +1489,11 @@ pub struct ProductionPlan {
 /// fish" consumes *one* of the three, and reading it as three requirements would debit all three.
 /// Each of those is a `?` in the column rather than an invented number.
 #[must_use]
-pub fn plan_production(recipe: &Production, men: i64, held: &[ItemAmount]) -> Option<ProductionPlan> {
+pub fn plan_production(
+    recipe: &Production,
+    men: i64,
+    held: &[ItemAmount],
+) -> Option<ProductionPlan> {
     if recipe.inputs_are_alternatives {
         return None;
     }
@@ -1603,7 +1606,12 @@ mod production_tests {
         let plan = plan_production(
             &catapult(),
             10,
-            &held(&[("SILV", 100_000), ("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+            &held(&[
+                ("SILV", 100_000),
+                ("WOOD", 9999),
+                ("IRWD", 999),
+                ("FUR", 999),
+            ]),
         )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 2);
@@ -1651,7 +1659,12 @@ mod production_tests {
         let plan = plan_production(
             &catapult(),
             10,
-            &held(&[("SILV", 100_000), ("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
+            &held(&[
+                ("SILV", 100_000),
+                ("WOOD", 250),
+                ("IRWD", 999),
+                ("FUR", 999),
+            ]),
         )
         .expect("a priceable recipe");
         assert_eq!(plan.made, 1);
@@ -1680,8 +1693,7 @@ mod production_tests {
             man_months: Some(1),
             outputs: Some(1),
         };
-        let plan =
-            plan_production(&sword, 5, &held(&[("IRON", 2)])).expect("a priceable recipe");
+        let plan = plan_production(&sword, 5, &held(&[("IRON", 2)])).expect("a priceable recipe");
         assert_eq!(plan.wanted, 5);
         assert_eq!(plan.made, 2);
         assert_eq!(plan.silver, 0);

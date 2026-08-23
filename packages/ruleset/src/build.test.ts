@@ -95,20 +95,6 @@ describe("buildRuleset", () => {
     expect(ruleset.gaps.weather.evidence).toContain("in winter");
   });
 
-  /**
-   * The recipes are scraped but unspent, and a missing capability nobody declared is one somebody
-   * re-discovers - which is what this bead's parent was filed about.
-   */
-  it("records the production gap rather than staying silent about it", () => {
-    const ruleset = built();
-
-    expect(ruleset.gaps.production.modelled).toBe(false);
-    expect(ruleset.gaps.production.note).toMatch(/PRODUCE/);
-    expect(ruleset.gaps.production.consequence).toMatch(/upper bound/i);
-    // Quoted from the page, so a reader can check the claim rather than take our word for it.
-    expect(ruleset.gaps.production.evidence).toContain("3000 silver [SILV]");
-  });
-
   it("marks the risk thresholds as chosen by us rather than scraped", () => {
     const ruleset = built();
 

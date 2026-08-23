@@ -169,7 +169,69 @@ describe("the silver section", () => {
     foodContended: false,
     sharedSilverCovered: 0,
     withdrawing: false,
+    produced: 0,
+    producedName: null,
+    productionWanted: 0,
+    productionCappedBy: null,
     ...overrides
+  });
+
+  it("says_when_silver_caps_a_production", () => {
+    const capped = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        expense: 3000,
+        atMonthEnd: 0,
+        upkeep: 0,
+        produced: 1,
+        producedName: "catapult",
+        productionWanted: 2,
+        productionCappedBy: "silver"
+      }),
+      true
+    );
+
+    expect(capped.silver?.note).toBe(
+      "This unit has silver for 1 catapult, not the 2 its men could make."
+    );
+  });
+
+  it("says_when_materials_cap_a_production", () => {
+    const capped = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        expense: 0,
+        atMonthEnd: 60,
+        upkeep: 0,
+        produced: 0,
+        producedName: "catapult",
+        productionWanted: 2,
+        productionCappedBy: "materials"
+      }),
+      true
+    );
+
+    expect(capped.silver?.note).toBe(
+      "This unit has materials for 0 catapults, not the 2 its men could make."
+    );
+  });
+
+  it("says_nothing_when_a_production_runs_at_full_rate", () => {
+    const full = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        expense: 6000,
+        atMonthEnd: 0,
+        upkeep: 0,
+        produced: 2,
+        producedName: "catapult",
+        productionWanted: 2,
+        productionCappedBy: null
+      }),
+      true
+    );
+
+    expect(full.silver?.note).toBeNull();
   });
 
   it("the_silver_section_says_what_made_the_number", () => {
