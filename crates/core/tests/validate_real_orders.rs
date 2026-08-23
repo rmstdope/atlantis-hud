@@ -507,3 +507,72 @@ fn the_committed_turns_upkeep_is_what_its_headcount_owes() {
         "every own unit in this turn is counted rather than estimated, so every one can be priced"
     );
 }
+
+/// `ah-7cdt`: the committed turn carries eleven units set to `consuming faction's food`, and no
+/// food anywhere near them, so this bead leaves every figure in it exactly where `ah-1wcw.4` did.
+///
+/// The plan expected the turn to carry the flag at all; it does, in hex `1:26,52`, where 22 own
+/// units stand and not one holds grain, livestock, fish or meals. An empty pool feeds nobody and
+/// doubts nobody (settled with the navigator on 2026-08-23), so the turn's total maintenance is
+/// unmoved at 2,140 and the whole of this bead is invisible here. That is the finding: the real
+/// turn exercises step 2's *no food* branch and nothing else.
+#[test]
+fn the_committed_turn_has_faction_food_eaters_but_no_faction_food() {
+    let report = classified();
+    let review = review_turn(
+        &report,
+        &template(),
+        Some(&ruleset()),
+        CheckOptions::default(),
+    );
+
+    let drawing: Vec<&str> = report
+        .regions
+        .iter()
+        .flat_map(|region| &region.units)
+        .filter(|unit| {
+            unit.own
+                && unit
+                    .flags
+                    .iter()
+                    .any(|flag| flag.eq_ignore_ascii_case("consuming faction's food"))
+        })
+        .map(|unit| unit.unit_id.as_str())
+        .collect();
+    assert_eq!(drawing.len(), 11, "{drawing:?}");
+
+    // Every one of them is in a hex whose own units hold no food at all, so each pays what its own
+    // headcount owes and none of them is doubted.
+    for id in &drawing {
+        let unit = review
+            .silver
+            .iter()
+            .find(|forecast| &forecast.unit_id == id)
+            .expect("every own unit is forecast");
+        assert_eq!(unit.upkeep, Some(unit_upkeep_of(&report, id)), "{id}");
+    }
+    assert!(
+        review
+            .silver
+            .iter()
+            .all(|unit| unit.doubt != Some(SilverDoubt::ContestedFactionFood)),
+        "an empty pool doubts nobody"
+    );
+}
+
+/// What one unit's headcount owes, straight from the rules, for the test above to compare against.
+fn unit_upkeep_of(report: &ParsedReport, id: &str) -> i64 {
+    let unit = report
+        .regions
+        .iter()
+        .flat_map(|region| &region.units)
+        .find(|unit| unit.unit_id == id)
+        .expect("the unit is in the report");
+    let leaders: i64 = unit
+        .men_by_race
+        .iter()
+        .filter(|entry| entry.tag.eq_ignore_ascii_case("LEAD"))
+        .map(|entry| entry.amount)
+        .sum();
+    leaders * 50 + (unit.men - leaders) * 10
+}

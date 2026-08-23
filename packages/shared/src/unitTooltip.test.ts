@@ -156,6 +156,7 @@ describe("the silver section", () => {
     received: 0,
     givers: [],
     givenToNobody: 0,
+    factionFoodCovered: 0,
     ...overrides
   });
 
@@ -180,6 +181,44 @@ describe("the silver section", () => {
       { label: "Upkeep", value: "50" },
       { label: "At month end", value: "-190" }
     ]);
+  });
+
+  it("the_silver_section_explains_faction_food", () => {
+    const covered = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 0, factionFoodCovered: 60 }),
+      true,
+      true
+    );
+    expect(covered.silver?.note).toBe(
+      "Faction food in this hex covers 60 of this unit's upkeep."
+    );
+
+    const contested = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: null, doubt: "contested-faction-food" }),
+      true,
+      true
+    );
+    expect(contested.silver?.note).toBe(
+      "There is not enough faction food here to feed every unit set to eat it."
+    );
+  });
+
+  it("no_faction_food_note_when_upkeep_is_not_counted", () => {
+    const covered = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 0, factionFoodCovered: 60 }),
+      true
+    );
+    expect(covered.silver?.note ?? "").not.toContain("Faction food");
+
+    const contested = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: null, doubt: "contested-faction-food" }),
+      true
+    );
+    expect(contested.silver?.note ?? "").not.toContain("faction food");
   });
 
   it("an_upkeep_nothing_could_price_reads_as_a_question_mark", () => {

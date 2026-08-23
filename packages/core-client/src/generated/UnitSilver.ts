@@ -49,6 +49,11 @@ received: number,
  */
 givers: Array<string>, 
 /**
+ * Silver that faction food held by *other* units in this hex paid off, at step 2 of the
+ * payment order (`ah-7cdt`). `0` for every unit the pool did not feed, which is most of them.
+ */
+factionFoodCovered: number, 
+/**
  * Silver this unit is ordered to give to nobody - `GIVE 0 ... SILV`, which destroys it. Part
  * of `expense` like any other gift; carried separately only so the hover can say so.
  */
