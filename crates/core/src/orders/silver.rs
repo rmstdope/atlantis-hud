@@ -1352,6 +1352,7 @@ mod tests {
                 entertainment: Some(10_000),
                 ..RegionWages::default()
             },
+            FactionPurse::default(),
             no_market(),
             Some(&ruleset),
         );
@@ -1381,6 +1382,7 @@ mod tests {
         let unit = forecast_unit(
             facts(1, &intents, &receipts),
             RegionWages::default(),
+            FactionPurse::default(),
             Lookups {
                 sale: &sale,
                 ..no_market()
