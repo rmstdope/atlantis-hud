@@ -823,8 +823,14 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
 /// fire, so the check always counts it. A unit whose headcount is a guess is charged nothing rather
 /// than a guess.
 fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
-    for ordered in &hex.units {
-        let facts = UnitFacts {
+    // Step 2 of the payment order needs every unit's step-1 leftovers before it can settle any of
+    // them, so this is two passes over one set of facts rather than one pass - built once here,
+    // because two copies of the same literal are two things to keep in step.
+    let nothing = Receipts::default();
+    let facts: Vec<UnitFacts<'_>> = hex
+        .units
+        .iter()
+        .map(|ordered| UnitFacts {
             unit_id: &ordered.unit.unit_id,
             region_id: &hex.region.region_id,
             held: ordered.holding(SILVER),
@@ -835,10 +841,28 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             flags: &ordered.unit.flags,
             skills: &ordered.unit.skills,
             intents: ordered.intents,
-            receipts: &Receipts::default(),
-        };
-        let Some(owed) = unit_upkeep(&facts) else {
-            continue;
+            receipts: &nothing,
+        })
+        .collect();
+
+    // The check and the Silver column read one fact, so they settle the hex's faction-food pool
+    // the same way: warning that a unit cannot pay a fee its faction-mates' grain already paid is
+    // two surfaces contradicting each other, which is what `ah-7cdt`'s verification found.
+    let claims: Vec<FoodClaim> = facts.iter().map(food_claim).collect();
+    let settled = feed_from_faction_food(&claims);
+
+    for (ordered, facts) in hex.units.iter().zip(&facts) {
+        let owed = match settled.get(&ordered.unit.unit_id) {
+            // The pool fed this unit: it owes what step 2 left it, not what step 1 did.
+            Some(Some(left)) => *left,
+            // Contended for a pool too small to feed them all, so what this unit pays cannot be
+            // told at all (the column shows `?`). Charging the undiscounted fee would warn about
+            // a shortfall that may not exist, and this module does not produce false warnings.
+            Some(None) => continue,
+            None => match unit_upkeep(facts) {
+                Some(owed) => owed,
+                None => continue,
+            },
         };
         if owed <= 0 {
             continue;
@@ -3826,6 +3850,42 @@ mod tests {
         assert_eq!(
             finding.message,
             "short $30: this unit can have $0 and its orders and upkeep spend $30"
+        );
+    }
+
+    /// The shortfall check and the Silver column read one fact, so they must agree about it: a
+    /// unit fed by its hex's faction food owes nothing, and warning that it is short of the fee
+    /// the pool already paid is two surfaces contradicting each other (`ah-7cdt`, Psylocke).
+    #[test]
+    fn a_unit_fed_by_faction_food_is_not_warned_about_the_upkeep_the_pool_paid() {
+        let quartermaster = with_item(with_silver(starving(unit("5")), 500), 6, "grain", "GRAI");
+        let mut eater = with_silver(starving(unit("7")), 0);
+        eater.men = 6;
+        eater.flags = vec!["consuming faction's food".to_string()];
+
+        assert_eq!(
+            codes(&check(vec![region(vec![quartermaster, eater])], "")),
+            Vec::<&str>::new(),
+            "the pool covers the whole fee, so nobody is short"
+        );
+    }
+
+    /// A pool too small for two contenders leaves the fee genuinely unknown, and the column shows
+    /// `?`. A warning built on a number the column will not state is the same contradiction the
+    /// other way round, so no shortfall is claimed for a contending unit.
+    #[test]
+    fn a_contested_pool_claims_no_shortfall_it_cannot_price() {
+        let quartermaster = with_item(with_silver(starving(unit("5")), 500), 3, "grain", "GRAI");
+        let mut first = with_silver(starving(unit("7")), 0);
+        first.men = 6;
+        first.flags = vec!["consuming faction's food".to_string()];
+        let mut second = with_silver(starving(unit("9")), 0);
+        second.men = 8;
+        second.flags = vec!["consuming faction's food".to_string()];
+
+        assert_eq!(
+            codes(&check(vec![region(vec![quartermaster, first, second])], "")),
+            Vec::<&str>::new()
         );
     }
 

@@ -205,6 +205,21 @@ describe("the silver section", () => {
     );
   });
 
+  it("the_faction_food_note_survives_a_warned_unit", () => {
+    // Psylocke's ah-7cdt verification: an Upkeep of 0 with nothing said about why. The wages
+    // sentence is about what WORK earns and says nothing about the row a reader is puzzling over,
+    // so the explanation of the figure on show wins.
+    const fed = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ income: 0, expense: 0, atMonthEnd: 0, upkeep: 0, factionFoodCovered: 60 }),
+      true,
+      true
+    );
+    expect(fed.silver?.note).toBe(
+      "Faction food in this hex covers 60 of this unit's upkeep."
+    );
+  });
+
   it("no_faction_food_note_when_upkeep_is_not_counted", () => {
     const covered = summariseUnit(
       aReportUnit({ unitId: "1" }),
