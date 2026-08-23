@@ -31,6 +31,18 @@ describe("PopoverFrame", () => {
     }
   });
 
+  it("is focusable by script but not by tab", () => {
+    // The frame takes focus when it opens (ah-pdly), so it must be focusable - but it is never a
+    // Tab stop of its own, or a keyboard user would land on the panel container on the way past.
+    const markup = renderToStaticMarkup(
+      <PopoverFrame testId="x" label="X" align="left" width="w-72">
+        body
+      </PopoverFrame>
+    );
+
+    expect(markup).toContain('tabindex="-1"');
+  });
+
   it("anchored right", () => {
     const markup = renderToStaticMarkup(
       <PopoverFrame testId="x" label="X" align="right" width="w-44">

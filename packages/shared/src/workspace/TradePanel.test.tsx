@@ -34,8 +34,15 @@ function findByTestId(node: unknown, testId: string): { props: Record<string, un
   // A function component (like `TradePanel` itself) has to be called to see what it renders; a
   // host element's children are already fully-formed React elements, needing no such call.
   if (typeof element.type === "function") {
-    const rendered = (element.type as (props: unknown) => unknown)(element.props);
-    return findByTestId(rendered, testId);
+    // Calling a component outside a renderer is only possible while it uses no hooks, and
+    // `PopoverFrame` now does (ah-pdly: it takes focus when it opens). React throws in that case,
+    // and every id this walk is asked for sits inside such a frame rather than on it - so falling
+    // through to the children is the whole of the recovery.
+    try {
+      return findByTestId((element.type as (props: unknown) => unknown)(element.props), testId);
+    } catch {
+      return findByTestId(element.props?.children, testId);
+    }
   }
   return findByTestId(element.props?.children, testId);
 }
