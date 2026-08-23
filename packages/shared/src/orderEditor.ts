@@ -233,3 +233,28 @@ export function findingsByHex(diagnostics: OrderDiagnostic[]): HexFindings[] {
 
   return [...byHex].map(([regionId, findings]) => ({ regionId, findings }));
 }
+
+/**
+ * The own units the Silver column marks with a ⚠, by id.
+ *
+ * Two checks put a unit in trouble over silver and both belong on the row. `not-enough-silver` is
+ * the shortfall check; `upkeep-exceeds-unclaimed` (`ah-fjty`) names every unit whose maintenance
+ * the faction's unclaimed fund could not reach. The second shipped without this and the table
+ * marked none of its units, so a player reading the rows saw a plain figure for a unit that will
+ * starve - the finding was in the Problems panel and nothing on the row pointed at it.
+ *
+ * A finding anchored to the hex names no unit and marks none: in a hex whose units pool their
+ * silver, blaming one of several would be as wrong in the table as it is in the panel.
+ */
+export function unitsWarnedAboutSilver(diagnostics: OrderDiagnostic[]): Set<string> {
+  return new Set(
+    diagnostics
+      .filter(
+        (diagnostic) =>
+          diagnostic.code === "not-enough-silver" ||
+          diagnostic.code === "upkeep-exceeds-unclaimed"
+      )
+      .map((diagnostic) => diagnostic.unitId)
+      .filter((unitId): unitId is string => unitId !== null)
+  );
+}
