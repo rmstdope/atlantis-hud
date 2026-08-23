@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markets and contention (ah-t2pn.3)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head><body>
+<header>
+  <h1><span>ah-t2pn.3</span> — markets, and one thing the family interview did not cover</h1>
+  <p>You settled that own units in a hex split a contended pool <strong>in proportion to what each
+  asked for</strong>. For markets the rules say so outright: oversupply and oversubscription
+  <em>“split up in proportion to the number each unit tried to sell” / “in proportion to the amount
+  each buyer attempted to buy”</em>.</p>
+  <p>Applying that is straightforward. But reading the code turned up a separate defect sitting in
+  the same arm, and the fix for one is the fix for the other — so it needs your call.</p>
+</header>
+<main>
+
+<section>
+  <h2 class="rule"><em>The contention</em> what you already decided</h2>
+  <table class="t">
+    <tr><th>Unit</th><th>Tries to sell</th><th>Market wants</th><th>Today</th><th>After</th></tr>
+    <tr><td>Trader A (101)</td><td class="num">60 horses</td><td rowspan="2" class="num">100</td><td class="num">60</td><td class="num good">50</td></tr>
+    <tr><td>Trader B (102)</td><td class="num">60 horses</td><td class="num">60</td><td class="num good">50</td></tr>
+  </table>
+  <div class="absent">Both are shown the silver for 60 horses; the market will take 100 between them.
+  Proportional, exactly as the rules state and as you chose for the other three pools.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>The surprise</em> a lone buyer is charged for goods that are not there</h2>
+  <p>The <code>BUY</code> arm charges <code>count × price</code> and <strong>never looks at how much
+  the market has</strong> unless the order is <code>BUY ALL</code>. So:</p>
+  <pre class="calc">Market has 100 horses at $60.   One unit orders BUY 200 HORS.
+
+  today    charged 200 x 60 = $12,000   for 100 horses that exist and 100 that do not
+  capped   charged 100 x 60 =  $6,000</pre>
+  <p>This has nothing to do with contention — there is only one unit. But the settlement fixes it
+  <em>for free</em>: splitting a pool of 100 between asks of 200 gives 100, whether the asks come
+  from one unit or five. <code>split_pool</code> does not treat a lone claimant as a special case.</p>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>What happens</th></tr>
+    <tr><td class="k">A — apply the settlement whenever anyone buys or sells</td>
+      <td>The lone over-buyer is capped too, and one rule covers both. Costs: a figure changes for a
+      single-unit case the family interview never discussed, and markets then behave unlike tax and
+      wages, where you settled that contention needs <strong>two</strong> units.</td></tr>
+    <tr><td class="k">B — settle only when two or more units want the pool</td>
+      <td>Consistent with the other three pools and strictly in scope. Costs: two units asking 200
+      between them are capped at 100, while one unit asking 200 alone is charged for 200 — the same
+      market, two different answers.</td></tr>
+    <tr><td class="k">C — B now, and file the lone over-buyer separately</td>
+      <td>Keeps this bead to exactly what was interviewed, and leaves the inconsistency on the screen
+      until the new bead is ranked and built.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Either way</em></h2>
+  <div class="absent">A <code>SELL</code> is already capped at what the unit holds
+  (<code>asked.min(market_takes).min(unit_holds)</code>), so the selling side has no equivalent
+  surprise — only <code>BUY</code> does. Goods this market does not trade still earn nothing and are
+  still explained by the shipped <code>not-traded-here</code> finding; goods nothing could identify
+  are still doubted. Neither changes here.</div>
+</section>
+</main></body></html>
