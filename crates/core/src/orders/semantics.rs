@@ -4858,6 +4858,26 @@ mod tests {
         assert_eq!(forecast.production_capped_by, None);
     }
 
+    /// The committed turn's own case: `Carpenters` holds no silver of its own, so it makes none of
+    /// the two its men could - and the hover must still be able to say so, which is why the name
+    /// survives a cap of zero.
+    #[test]
+    fn a_unit_capped_to_none_still_names_what_it_would_have_made() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(0, 9999)])],
+            "unit 12881\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(forecast.expense, Some(0));
+        assert_eq!(forecast.produced, 0);
+        assert_eq!(forecast.production_wanted, 2);
+        assert_eq!(forecast.produced_name.as_deref(), Some("catapult"));
+        assert_eq!(
+            forecast.production_capped_by,
+            Some(crate::orders::silver::ProductionCap::Silver)
+        );
+    }
+
     #[test]
     fn a_production_the_ruleset_cannot_price_is_doubted() {
         let forecast = forecast_with_ruleset(

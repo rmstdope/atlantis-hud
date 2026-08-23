@@ -161,8 +161,11 @@ withdrawing: boolean,
  */
 produced: number, 
 /**
- * The item's name, as the ruleset or the report calls it, for the hover to say. `None` when
- * the unit produces nothing.
+ * The item's name, as the ruleset or the report calls it, for the hover to say. `None` only
+ * when the unit has no priceable `PRODUCE` order at all - **not** when a cap leaves it making
+ * none. Unit 12881 `Carpenters` in the committed turn holds no silver of its own and so makes
+ * zero of the two catapults its men could, and that is precisely the case the hover exists to
+ * speak about; nulling the name there would silence it.
  *
  * A name and not a tag, unlike every other `*_tag` field here, and deliberately: the unit
  * does not hold the thing yet, so the interface cannot look its name up in the unit's own
