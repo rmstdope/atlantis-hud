@@ -8,6 +8,7 @@ import {
   expectOrders,
   expectOrdersNot,
   fillOrders,
+  importReport,
   loadReport,
   mapTransform,
   ordersInput,
@@ -2462,6 +2463,52 @@ test("selecting an arriving unit in its destination hex draws its route", async 
   await expect(page.getByTestId("panel-unit")).toContainText("10575");
   await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
   await expect(page.getByTestId("route-line-solid")).toHaveAttribute("points", fromOrigin ?? "");
+});
+
+/**
+ * The bead's own case (ah-6yj2): a report imported the instant a game opens, before the ruleset
+ * fetch that runs alongside the live Import control has settled.
+ *
+ * Every one of the 372 units in this fixture states what it holds, and every tag it uses is known
+ * to the ruleset, so with classification running none of them - own or foreign - can be an
+ * estimate. Loading it by hand marked them all, because the load raced the fetch and nothing ever
+ * parsed the report again. Doing this slowly will not reproduce it, so this imports without
+ * waiting for anything but the header.
+ */
+test("a loaded report marks no unit as an estimate", async ({ page }) => {
+  // The window this bead is about is the ruleset fetch, and on a fast local asset it is far too
+  // small for a driven browser to land inside reliably - the walk passed against the broken build.
+  // Holding the asset back for a moment makes the race the one the navigator hit by hand, and the
+  // load has to wait it out rather than parse without it.
+  await page.route("**/ruleset.json", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await route.continue();
+  });
+
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, "Estimate game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  // No settling wait between the header appearing and the file going in: that gap is the bug.
+  await importReport(page, "g3-f42-t82.rep", F42_T82);
+  await expect(page.getByTestId("import-status")).toContainText("regions");
+
+  // Sweeps hexes rather than one, so both own and foreign units are covered - the table windows
+  // its rows, so what is on screen per hex is a screenful rather than the lot.
+  let seen = 0;
+  let realFigure = false;
+  for (const hex of ["1:36,4", "1:37,3", "1:36,2"]) {
+    await selectHex(page, hex);
+    const cells = await page.locator("[data-testid^='unit-row-'] td:nth-child(5)").allInnerTexts();
+    expect(cells.filter((cell) => cell.startsWith("~"))).toEqual([]);
+    seen += cells.length;
+    // A figure that reads as a real count, so hiding the marker rather than counting the men
+    // cannot pass this.
+    realFigure ||= cells.some((cell) => Number(cell.replace(/[^0-9]/g, "")) > 0);
+  }
+  expect(seen).toBeGreaterThan(2);
+  expect(realFigure).toBe(true);
 });
 
 /**
