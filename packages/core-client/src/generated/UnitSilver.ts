@@ -91,6 +91,22 @@ factionFoodCovered: number,
  */
 ownFoodCovered: number, 
 /**
+ * Silver of this unit's upkeep paid by the faction's unclaimed fund, at step 7 of the payment
+ * order. `0` for every unit the fund did not reach - which is every unit whenever the fund
+ * cannot reach them all, because then which one it fed cannot be told.
+ *
+ * Carried separately from the two food figures only so the hover can say which paid: all
+ * three leave `upkeep` at the same number, and a zero there reads as a defect until something
+ * says why (`ah-fjty`).
+ */
+unclaimedCovered: number, 
+/**
+ * Whether this unit owes maintenance it cannot pay and the faction's unclaimed fund cannot
+ * reach every unit in that position. Drives the hover's note and **never changes a figure**:
+ * the `upkeep` on show is this unit's whole remaining fee, pessimistically (`ah-fjty`).
+ */
+unclaimedContended: boolean, 
+/**
  * Silver this unit is ordered to give to nobody - `GIVE 0 ... SILV`, which destroys it. Part
  * of `expense` like any other gift; carried separately only so the hover can say so.
  */

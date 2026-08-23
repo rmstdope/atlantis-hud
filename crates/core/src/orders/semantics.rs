@@ -27,9 +27,9 @@ use crate::movement::mode::{
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::orders::silver::{
-    feed_from_faction_food, food_claim, forecast_unit, late_income, parse_wage_centis, unit_upkeep,
-    FactionPurse, FoodClaim, Lookups, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
-    SilverDoubt, UnitFacts, UnitSilver,
+    feed_from_faction_food, food_claim, forecast_unit, late_income, parse_wage_centis,
+    settle_unclaimed, unit_upkeep, FactionPurse, FoodClaim, Lookups, PurchaseAnswer, Receipts,
+    RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -105,6 +105,7 @@ pub mod codes {
     pub const UNIT_DOES_NOTHING: Code = Code("unit-does-nothing");
     pub const BUILD_WITHOUT_SKILL: Code = Code("build-without-skill");
     pub const CLAIMS_EXCEED_UNCLAIMED: Code = Code("claims-exceed-unclaimed");
+    pub const UPKEEP_EXCEEDS_UNCLAIMED: Code = Code("upkeep-exceeds-unclaimed");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -113,7 +114,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 25] = [
+    pub const ALL: [Code; 26] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -139,6 +140,7 @@ pub mod codes {
         UNIT_DOES_NOTHING,
         BUILD_WITHOUT_SKILL,
         CLAIMS_EXCEED_UNCLAIMED,
+        UPKEEP_EXCEEDS_UNCLAIMED,
     ];
 }
 
@@ -262,30 +264,54 @@ pub fn review_turn(
         unclaimed: report.header.unclaimed_silver,
     };
 
-    for region in &report.regions {
-        let hex = Hex::read(region, &ordered);
-        forecast_hex(&hex, &receipts, purse, ruleset, &mut silver);
+    // Step 7 of the payment order is faction-wide, so every hex's ledger has to exist before any
+    // of them can be judged: what one hex's units take from the fund is what another hex's cannot.
+    // Hence two passes over the regions rather than one. `Hex<'_>` borrows `report` and `ordered`
+    // and `Ledger<'_>` borrows `ruleset`, all of which outlive this function, so holding them all
+    // at once costs peak memory rather than work - each ledger is still built exactly once. A
+    // region with no own units now builds an empty ledger where the single-pass loop skipped it,
+    // which is a walk of nothing.
+    let mut hexes: Vec<(Hex<'_>, Ledger<'_>)> = report
+        .regions
+        .iter()
+        .map(|region| {
+            let hex = Hex::read(region, &ordered);
+            let ledger = ledger_for(&hex, ruleset);
+            (hex, ledger)
+        })
+        .collect();
+
+    let claims = upkeep_claims(&hexes);
+    // `CLAIM` resolves during the month and maintenance is settled at its end, so this month's
+    // claims come off the fund before step 7 ever sees it (`ah-fjty`).
+    let available = purse
+        .unclaimed
+        .map(|held| (held - total_claimed(report, &ordered)).max(0));
+    let settlement = settle_unclaimed(&claims, available);
+    apply_relief(&mut hexes, &settlement);
+
+    for (hex, ledger) in &hexes {
+        forecast_hex(hex, &receipts, purse, ruleset, &settlement, &mut silver);
         if hex.units.is_empty() {
             continue;
         }
 
         let start = findings.len();
-        let ledger = ledger_for(&hex, ruleset);
-        check_resources(&hex, &ledger, ruleset, &options, &mut findings);
-        check_markets(&hex, ruleset, &options, &mut findings);
-        check_guard(&hex, &options, &mut findings);
-        check_teaching(&hex, ruleset, &options, &mut findings);
-        check_building(&hex, &options, &mut findings);
-        check_building_outside(&hex, &options, &mut findings);
-        check_build_help(&hex, &options, &mut findings);
-        check_build_skill(&hex, ruleset, &options, &mut findings);
-        check_studying(&hex, ruleset, &options, &mut findings);
-        check_magic_study(&hex, ruleset, &options, &mut findings);
-        check_forms(&hex, &options, &mut findings);
-        check_idle_units(&hex, &options, &mut findings);
-        check_transfer_targets(&hex, &located, &options, &mut findings);
-        check_sailing(&hex, &ledger, ruleset, &options, &mut findings);
-        check_movement(&hex, &ledger, ruleset, &options, &mut findings);
+        check_resources(hex, ledger, ruleset, &options, &mut findings);
+        check_markets(hex, ruleset, &options, &mut findings);
+        check_guard(hex, &options, &mut findings);
+        check_teaching(hex, ruleset, &options, &mut findings);
+        check_building(hex, &options, &mut findings);
+        check_building_outside(hex, &options, &mut findings);
+        check_build_help(hex, &options, &mut findings);
+        check_build_skill(hex, ruleset, &options, &mut findings);
+        check_studying(hex, ruleset, &options, &mut findings);
+        check_magic_study(hex, ruleset, &options, &mut findings);
+        check_forms(hex, &options, &mut findings);
+        check_idle_units(hex, &options, &mut findings);
+        check_transfer_targets(hex, &located, &options, &mut findings);
+        check_sailing(hex, ledger, ruleset, &options, &mut findings);
+        check_movement(hex, ledger, ruleset, &options, &mut findings);
 
         // Within a hex, what sits on a line comes first and in line order; what belongs to the hex
         // itself comes last. `sort_by_key` is stable, so checks that produce several findings for
@@ -297,6 +323,7 @@ pub fn review_turn(
     // counted once, after every hex has been read - and `validate_turn` sorts the whole list by
     // line afterwards, so these findings land beside the per-hex ones rather than after them.
     check_faction(report, &ordered, ruleset, &options, &mut findings);
+    check_upkeep_fund(report, &settlement, &options, &mut findings);
 
     TurnReview { findings, silver }
 }
@@ -308,6 +335,7 @@ fn forecast_hex(
     receipts: &BTreeMap<String, Receipts>,
     purse: FactionPurse,
     ruleset: Option<&Ruleset>,
+    settlement: &UpkeepSettlement,
     into: &mut Vec<UnitSilver>,
 ) {
     let region = RegionWages {
@@ -409,6 +437,36 @@ fn forecast_hex(
             // still exactly known, and `at_month_end` never counted upkeep to begin with.
             forecast.doubt = forecast.doubt.or(Some(SilverDoubt::ContestedFactionFood));
         }
+    }
+
+    // Step 7, in a second pass for the same reason the first one exists: the settlement is
+    // faction-wide, so it is decided before any hex is priced and only applied here.
+    //
+    // The walk is positional over `hex.units` but the lookup is by id, so - unlike the food pass
+    // above - two report units sharing an id are conflated here. That is exactly what
+    // `Ledger.balance` already does with such a pair, so this adds no hazard it does not have; it
+    // is written down because the difference from the pass above is invisible until it is not.
+    for (ordered, forecast) in hex.units.iter().zip(into[start..].iter_mut()) {
+        let Some(owed) = forecast.upkeep else {
+            // A fee that is already doubted stays doubted: the fund cannot settle a number
+            // nothing knows.
+            continue;
+        };
+        if settlement.covered.is_empty() {
+            // The fund could not reach everybody, so it reached nobody here. The figure stays
+            // where it is - the pessimistic answer the navigator chose - and only the hover's
+            // note changes.
+            forecast.unclaimed_contended =
+                settlement.short > 0 && settlement.claimants.contains(&ordered.unit.unit_id);
+            continue;
+        }
+        let covered = settlement
+            .covered
+            .get(&ordered.unit.unit_id)
+            .copied()
+            .unwrap_or_default();
+        forecast.unclaimed_covered = covered;
+        forecast.upkeep = Some((owed - covered).max(0));
     }
 }
 
@@ -789,6 +847,18 @@ struct Ledger<'a> {
     /// part of what drew the balance down - it is not an order, and saying "its orders spend" of
     /// it would tell a player their orders spend silver they do not (`ah-1wcw.4`).
     upkeep: BTreeMap<String, i64>,
+    /// What maintenance actually took off each unit's silver balance - the fee less the silver
+    /// that arrives in time to pay it. Different from `upkeep` for any unit that works or
+    /// entertains, and it is this figure, not the fee, that the faction's unclaimed fund can be
+    /// asked to settle (`ah-fjty`). Present for every unit that owes a fee at all, including one
+    /// whose wages cover the whole of it, so an absent key means "no fee" rather than "covered".
+    upkeep_drawn: BTreeMap<String, i64>,
+    /// What the faction's unclaimed fund takes back off that overdraft, at step 7 of the payment
+    /// order. Written by `review_turn` after the ledger is built, never inside `ledger_for`, and
+    /// deliberately not credited to `balance`: `check_sailing` and `check_movement` read the same
+    /// ledger, and moving a balance to make one message read correctly is how two checks end up
+    /// disagreeing about one turn (`ah-fjty`).
+    upkeep_relieved: BTreeMap<String, i64>,
 }
 
 /// Everything the hex's units hold, with this month's orders applied.
@@ -804,6 +874,8 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
         doubted: BTreeSet::new(),
         charged_at: BTreeMap::new(),
         upkeep: BTreeMap::new(),
+        upkeep_drawn: BTreeMap::new(),
+        upkeep_relieved: BTreeMap::new(),
     };
 
     for ordered in &hex.units {
@@ -902,6 +974,9 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                 .or_insert(0) -= charged;
         }
         ledger.upkeep.insert(ordered.unit.unit_id.clone(), owed);
+        ledger
+            .upkeep_drawn
+            .insert(ordered.unit.unit_id.clone(), charged);
     }
 }
 
@@ -1375,6 +1450,129 @@ fn balance_of(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
         .unwrap_or(0)
 }
 
+/// A unit's silver balance as the shortfall check must read it: what the ledger holds, plus what
+/// the faction's unclaimed fund took back off its maintenance at step 7 (`ah-fjty`).
+///
+/// A term added on top rather than a credit to `balance`, because `check_sailing` and
+/// `check_movement` read the same ledger and must go on seeing the silver the unit actually holds.
+fn silver_balance(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    balance_of(ledger, unit_id, SILVER)
+        + ledger
+            .upkeep_relieved
+            .get(unit_id)
+            .copied()
+            .unwrap_or_default()
+}
+
+/// A balance for any tag, with step 7's relief applied where the tag is the one it can pay.
+///
+/// The relief is silver and only silver, so every other tag reads exactly as it did.
+fn relieved_balance(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
+    if tag == SILVER {
+        silver_balance(ledger, unit_id)
+    } else {
+        balance_of(ledger, unit_id, tag)
+    }
+}
+
+/// Every unit that owes maintenance its faction-mates' silver cannot cover, across the report.
+///
+/// Read a hex exactly as `report_shortfalls` reads it, or the fund and the warnings will disagree
+/// about the same turn: each unit on its own where nobody shares, and the whole hex as one purse
+/// where somebody does. The two branches below are those two readings, and the body of each says
+/// what it is doing and why.
+///
+/// A shared hex allocates its shortfall to its units in report order, which decides *which* of
+/// several fee-owing units is named when the shortfall runs out before the fees do. That order is
+/// ours rather than the engine's, and it is only ever visible in a hex whose pooled silver is
+/// short by less than its units' fees between them; the total - which is what the settlement and
+/// every message state - is exact either way.
+fn upkeep_claims(hexes: &[(Hex<'_>, Ledger<'_>)]) -> Vec<UpkeepClaim> {
+    let mut claims = Vec::new();
+    for (hex, ledger) in hexes {
+        let owes = |ordered: &Ordered<'_>| -> Option<(String, i64)> {
+            let who = &ordered.unit.unit_id;
+            if ledger.doubted.contains(who) {
+                // A unit whose sums cannot be trusted is not judged at all, here as everywhere
+                // else in this module - and a guessed headcount is charged nothing to begin with.
+                return None;
+            }
+            let drawn = ledger.upkeep_drawn.get(who).copied().unwrap_or_default();
+            (drawn > 0).then(|| (who.clone(), drawn))
+        };
+
+        // A hex holding a sharing unit is one purse, and `report_shortfalls` judges it as one: it
+        // says nothing about a penniless unit standing beside a rich sharer. The fund must read
+        // that hex the same way, or it invents a claimant whose maintenance its faction-mates'
+        // silver already pays - the contradiction `ah-7cdt` removed for the faction-food pool -
+        // and that phantom claim exhausts the fund a real claimant elsewhere needed.
+        let sharers = hex.units.iter().filter(|ordered| ordered.shares());
+        if sharers.clone().next().is_some() {
+            let pool: i64 = sharers
+                .map(|ordered| balance_of(ledger, &ordered.unit.unit_id, SILVER))
+                .sum();
+            let borrowed: i64 = hex
+                .units
+                .iter()
+                .filter(|ordered| {
+                    !ordered.shares() && !ledger.doubted.contains(&ordered.unit.unit_id)
+                })
+                .map(|ordered| (-balance_of(ledger, &ordered.unit.unit_id, SILVER)).max(0))
+                .sum();
+            // What the hex cannot pay between them, of which maintenance can be blamed for at
+            // most what it drew. Nothing is claimed at all where the pool covers everybody.
+            let mut remaining = borrowed - pool;
+            for ordered in &hex.units {
+                if remaining <= 0 {
+                    break;
+                }
+                let Some((unit_id, drawn)) = owes(ordered) else {
+                    continue;
+                };
+                let short = drawn.min(remaining);
+                remaining -= short;
+                claims.push(UpkeepClaim { unit_id, short });
+            }
+            continue;
+        }
+
+        // No sharing unit, so every unit is judged on its own balance - again exactly as
+        // `report_shortfalls` does. At most what maintenance drew is maintenance's fault, and the
+        // rest of an overdraft belongs to the unit's orders: a unit holding $10, buying $350 of
+        // horses and owing $40 is short $380, of which the fund may pay $40 and never the $340.
+        for ordered in &hex.units {
+            let Some((unit_id, drawn)) = owes(ordered) else {
+                continue;
+            };
+            let overdraft = -balance_of(ledger, &unit_id, SILVER);
+            let short = overdraft.min(drawn);
+            if short > 0 {
+                claims.push(UpkeepClaim { unit_id, short });
+            }
+        }
+    }
+    claims
+}
+
+/// Writes what the fund paid into each ledger, so the checks that read a balance see it.
+///
+/// A no-op for an inactive settlement and for one the fund could not cover, whose `covered` is
+/// empty by construction.
+fn apply_relief(hexes: &mut [(Hex<'_>, Ledger<'_>)], settlement: &UpkeepSettlement) {
+    if settlement.covered.is_empty() {
+        return;
+    }
+    for (hex, ledger) in hexes {
+        for ordered in &hex.units {
+            if let Some(covered) = settlement.covered.get(&ordered.unit.unit_id) {
+                ledger
+                    .upkeep_relieved
+                    .insert(ordered.unit.unit_id.clone(), *covered);
+            }
+        }
+    }
+}
+
 fn credit(ledger: &mut Ledger<'_>, unit_id: &str, tag: &str, amount: i64) {
     *ledger
         .balance
@@ -1447,8 +1645,16 @@ fn report_shortfalls(
             .range((who.clone(), String::new())..)
             .take_while(|((unit_id, _), _)| unit_id == who);
 
-        for ((unit_id, tag), balance) in mine {
-            if *balance >= 0 {
+        let mine: Vec<(String, String, i64)> = mine
+            .map(|((unit_id, tag), _)| {
+                let balance = relieved_balance(ledger, unit_id, tag);
+                (unit_id.clone(), tag.clone(), balance)
+            })
+            .collect();
+
+        for (unit_id, tag, balance) in &mine {
+            let (unit_id, tag, balance) = (unit_id, tag, *balance);
+            if balance >= 0 {
                 continue;
             }
 
@@ -1478,7 +1684,7 @@ fn report_shortfalls(
                     format!(
                         "short ${short}: this unit can have ${} and its {} spend ${}",
                         ordered.holding(SILVER),
-                        spenders(ledger.upkeep.get(who).copied().unwrap_or(0)),
+                        spenders(unpaid_upkeep(ledger, who)),
                         ordered.holding(SILVER) + short,
                     ),
                     at,
@@ -1515,7 +1721,7 @@ fn report_shortfalls(
 
         let pool: i64 = sharers
             .iter()
-            .map(|o| balance_of(ledger, &o.unit.unit_id, &tag))
+            .map(|o| relieved_balance(ledger, &o.unit.unit_id, &tag))
             .sum();
         let short = claims.get(&tag).copied().unwrap_or(0) - pool;
         if short <= 0 {
@@ -1530,7 +1736,7 @@ fn report_shortfalls(
             .filter(|o| {
                 o.shares()
                     || (!ledger.doubted.contains(&o.unit.unit_id)
-                        && balance_of(ledger, &o.unit.unit_id, &tag) < 0)
+                        && relieved_balance(ledger, &o.unit.unit_id, &tag) < 0)
             })
             .map(|o| o.holding(&tag))
             .sum();
@@ -1539,7 +1745,7 @@ fn report_shortfalls(
             let owed: i64 = hex
                 .units
                 .iter()
-                .map(|o| ledger.upkeep.get(&o.unit.unit_id).copied().unwrap_or(0))
+                .map(|o| unpaid_upkeep(ledger, &o.unit.unit_id))
                 .sum();
             format!(
                 "the units in this hex are short ${short} between them: they can have ${held} \
@@ -1561,6 +1767,21 @@ fn report_shortfalls(
         };
         findings.push(hex.finding(code, message));
     }
+}
+
+/// The maintenance a unit is left paying, once the faction's unclaimed fund has taken its share.
+///
+/// The fee a message may blame, rather than the fee that was charged: a unit whose whole fee the
+/// fund paid but whose orders still overspend must be told that its *orders* spend the silver, or
+/// the sentence's own arithmetic does not add up (`ah-fjty`).
+fn unpaid_upkeep(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    let fee = ledger.upkeep.get(unit_id).copied().unwrap_or_default();
+    let paid = ledger
+        .upkeep_relieved
+        .get(unit_id)
+        .copied()
+        .unwrap_or_default();
+    (fee - paid).max(0)
 }
 
 /// What a shortfall message names as having spent the silver.
@@ -3059,6 +3280,75 @@ fn check_quartermasters(
     }
 }
 
+/// Every unit that owes maintenance it cannot pay, when the faction's unclaimed fund cannot cover
+/// them all between them.
+///
+/// Faction-wide rather than per hex, because the fund is: what one hex's units eat is what another
+/// hex's cannot. Every claimant is named and the message states the total, so a unit reading it is
+/// not being blamed for a shortfall that is the faction's - the same reasoning
+/// `claims-exceed-unclaimed` gives for naming every claiming unit.
+///
+/// The finding carries no line: maintenance belongs to no order, so there is nothing to point at.
+/// Per-hex sorting already puts a line-less finding last within its hex, which is where it belongs.
+fn check_upkeep_fund(
+    report: &ParsedReport,
+    settlement: &UpkeepSettlement,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::UPKEEP_EXCEEDS_UNCLAIMED) {
+        return;
+    }
+    // `short > 0` already implies the settlement is active: nothing can be short of a fund that
+    // was never in play.
+    if settlement.short <= 0 {
+        return;
+    }
+
+    let message = format!(
+        "your units owe ${} of upkeep they cannot pay and the faction has ${} unclaimed",
+        settlement.owed, settlement.available
+    );
+
+    for unit in report
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .filter(|unit| unit.own && settlement.claimants.contains(&unit.unit_id))
+    {
+        findings.push(Finding {
+            code: codes::UPKEEP_EXCEEDS_UNCLAIMED,
+            message: message.clone(),
+            region_id: unit.region_id.clone(),
+            unit_id: Some(unit.unit_id.clone()),
+            line: None,
+            column_start: None,
+            column_end: None,
+        });
+    }
+}
+
+/// What this month's `CLAIM` orders ask for, across the whole report.
+///
+/// `CLAIM` resolves during the month and maintenance is settled at its end, so this comes off the
+/// unclaimed fund before step 7 of the payment order sees it (`ah-fjty`). Shared with
+/// `check_claims` rather than summed twice, so the fund cannot be spent differently by two pieces
+/// of code that disagree. Named for what it counts *today*: `WITHDRAW` also spends the fund and is
+/// not counted here, which is `ah-tdsi`'s to widen.
+fn total_claimed(report: &ParsedReport, ordered: &OrderedUnits) -> i64 {
+    report
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .filter(|unit| unit.own)
+        .flat_map(|unit| ordered.intents_of(&unit.unit_id).iter())
+        .map(|placed| match placed.intent {
+            Intent::Claim(amount) => amount,
+            _ => 0,
+        })
+        .sum()
+}
+
 /// Every unit that claims, when the faction's units claim more between them than it holds.
 ///
 /// Faction-wide rather than per hex: the purse is one pool for the whole report, and a claim in one
@@ -3100,13 +3390,7 @@ fn check_claims(
         })
         .collect();
 
-    let total: i64 = claims
-        .iter()
-        .map(|(_, placed)| match placed.intent {
-            Intent::Claim(amount) => amount,
-            _ => 0,
-        })
-        .sum();
+    let total = total_claimed(report, ordered);
 
     if total <= purse {
         return;
@@ -4133,6 +4417,446 @@ mod tests {
         assert_eq!(
             codes(&check(vec![hex], "unit 5\nWORK\nSTUDY combat\n")),
             ["not-enough-silver"]
+        );
+    }
+
+    /// `check`, with a stated `Unclaimed silver:` figure - the fund step 7 of the payment order
+    /// settles the starving units against (`ah-fjty`).
+    fn check_with_purse(
+        purse: Option<i64>,
+        regions: Vec<ReportRegion>,
+        orders: &str,
+    ) -> Vec<Finding> {
+        check_turn(
+            &report_with_purse(purse, regions),
+            orders,
+            Some(&ruleset()),
+            disabling(codes::UNIT_DOES_NOTHING),
+        )
+    }
+
+    /// Step 7 of the payment order: "If you have silver in your unclaimed fund, then that silver
+    /// will be automatically claimed by units that would otherwise starve." A young faction still
+    /// holding its starting silver is the commonest case there is, and warning it that its units
+    /// starve is the false alarm `ah-fjty` was filed about.
+    #[test]
+    fn a_unit_the_unclaimed_fund_can_feed_is_not_warned() {
+        let regions = vec![region(vec![with_men(
+            with_silver(starving(unit("5")), 0),
+            6,
+        )])];
+
+        assert_eq!(
+            codes(&check_with_purse(Some(8450), regions, "")),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// The fund pays maintenance and nothing else, so a unit that overspends on its orders is
+    /// still told so - and told that its *orders* spend it, since its upkeep was paid.
+    #[test]
+    fn the_fund_pays_the_upkeep_and_the_shopping_is_still_unaffordable() {
+        let mut hex = region(vec![with_men(with_silver(starving(unit("5")), 10), 4)]);
+        hex.for_sale.push(MarketItem {
+            amount: 10,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 70,
+        });
+
+        let finding = only(check_with_purse(
+            Some(8450),
+            vec![hex],
+            "unit 5\nBUY 5 horses\n",
+        ));
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert_eq!(
+            finding.message,
+            "short $340: this unit can have $10 and its orders spend $350"
+        );
+    }
+
+    /// The fund is faction-wide, so when it cannot reach everybody no unit is more at fault than
+    /// the others: every claimant is named and each message states the faction-wide total, exactly
+    /// as `claims-exceed-unclaimed` does (`ah-fjty`).
+    #[test]
+    fn every_unit_is_named_when_the_fund_cannot_feed_them_all() {
+        let regions = vec![region(vec![
+            with_men(with_silver(starving(unit("5")), 0), 6),
+            with_men(with_silver(starving(unit("7")), 0), 6),
+            with_men(with_silver(starving(unit("9")), 0), 4),
+        ])];
+
+        let findings: Vec<Finding> = check_with_purse(Some(100), regions, "")
+            .into_iter()
+            .filter(|finding| finding.code == codes::UPKEEP_EXCEEDS_UNCLAIMED)
+            .collect();
+
+        assert_eq!(findings.len(), 3, "{findings:?}");
+        for finding in &findings {
+            assert_eq!(
+                finding.message,
+                "your units owe $160 of upkeep they cannot pay and the faction has $100 unclaimed"
+            );
+            assert_eq!(
+                finding.line, None,
+                "maintenance belongs to no order, so there is no line to point at"
+            );
+        }
+        assert_eq!(
+            findings
+                .iter()
+                .filter_map(|finding| finding.unit_id.as_deref())
+                .collect::<Vec<_>>(),
+            ["5", "7", "9"]
+        );
+    }
+
+    #[test]
+    fn a_fund_that_covers_everybody_names_nobody() {
+        let regions = vec![region(vec![
+            with_men(with_silver(starving(unit("5")), 0), 6),
+            with_men(with_silver(starving(unit("7")), 0), 6),
+        ])];
+
+        assert_eq!(
+            codes(&check_with_purse(Some(8450), regions, "")),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// A report whose header states no purse is not evidence of an empty one, so nothing about it
+    /// changes - the same reasoning `claims-exceed-unclaimed` gives for declining to fire.
+    #[test]
+    fn a_report_with_no_unclaimed_line_warns_exactly_as_before() {
+        let regions = vec![region(vec![with_men(
+            with_silver(starving(unit("5")), 30),
+            10,
+        )])];
+
+        let finding = only(check_with_purse(None, regions, "unit 5\nWORK\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert_eq!(
+            finding.message,
+            "short $70: this unit can have $30 and its orders and upkeep spend $100"
+        );
+    }
+
+    /// A stated `$0` is not arbitrary against a stated `$1`: with nothing in the fund every unit's
+    /// shortfall is exactly its own, so today's per-unit message is the right one and a broke
+    /// faction keeps its line-level marks (`ah-fjty`, round 1 question 3).
+    #[test]
+    fn an_empty_fund_warns_exactly_as_before() {
+        let regions = vec![region(vec![with_men(
+            with_silver(starving(unit("5")), 30),
+            10,
+        )])];
+
+        let finding = only(check_with_purse(Some(0), regions, "unit 5\nWORK\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert_eq!(
+            finding.message,
+            "short $70: this unit can have $30 and its orders and upkeep spend $100"
+        );
+    }
+
+    /// `CLAIM` resolves during the month and maintenance is settled at its end, so a claim of the
+    /// whole fund leaves step 7 nothing - and an emptied fund is inactive, exactly as an unstated
+    /// one is (`ah-fjty`, round 2 question 2).
+    #[test]
+    fn a_claim_of_the_whole_fund_leaves_nothing_for_upkeep() {
+        let regions = vec![region(vec![
+            unfed(unit("5")),
+            with_men(with_silver(starving(unit("7")), 0), 6),
+        ])];
+
+        let findings = check_with_purse(Some(8450), regions, "unit 5\nCLAIM 8450\n");
+        assert_eq!(codes(&findings), ["not-enough-silver"], "{findings:?}");
+        assert_eq!(
+            findings[0].message,
+            "short $60: this unit can have $0 and its orders and upkeep spend $60"
+        );
+    }
+
+    #[test]
+    fn a_partial_claim_leaves_the_rest_for_upkeep() {
+        let regions = vec![region(vec![
+            unfed(unit("5")),
+            with_men(with_silver(starving(unit("7")), 0), 6),
+        ])];
+
+        let findings: Vec<Finding> = check_with_purse(Some(8450), regions, "unit 5\nCLAIM 8400\n")
+            .into_iter()
+            .filter(|finding| finding.code == codes::UPKEEP_EXCEEDS_UNCLAIMED)
+            .collect();
+
+        let finding = only(findings);
+        assert_eq!(
+            finding.message,
+            "your units owe $60 of upkeep they cannot pay and the faction has $50 unclaimed"
+        );
+    }
+
+    /// The fund pays maintenance and only maintenance: a unit with no fee at all that overspends
+    /// on its orders is warned exactly as it was before this bead.
+    #[test]
+    fn the_fund_never_pays_for_orders() {
+        let mut hex = region(vec![with_silver(unit("5"), 100)]);
+        hex.for_sale.push(MarketItem {
+            amount: 10,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 70,
+        });
+
+        let finding = only(check_with_purse(
+            Some(8450),
+            vec![hex],
+            "unit 5\nBUY 2 horses\n",
+        ));
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert_eq!(
+            finding.message,
+            "short $40: this unit can have $100 and its orders spend $140"
+        );
+    }
+
+    /// A guessed headcount is charged nothing by `charge_upkeep`, so it has no shortfall to claim -
+    /// and a fund too small for the rest is still judged without it.
+    #[test]
+    fn a_guessed_headcount_does_not_claim_from_the_fund() {
+        let mut guessed = with_men(with_silver(starving(unit("5")), 0), 6);
+        guessed.men_estimated = true;
+        let regions = vec![region(vec![
+            guessed,
+            with_men(with_silver(starving(unit("7")), 0), 6),
+            with_men(with_silver(starving(unit("9")), 0), 4),
+        ])];
+
+        let findings: Vec<Finding> = check_with_purse(Some(60), regions, "")
+            .into_iter()
+            .filter(|finding| finding.code == codes::UPKEEP_EXCEEDS_UNCLAIMED)
+            .collect();
+
+        assert_eq!(
+            findings
+                .iter()
+                .filter_map(|finding| finding.unit_id.as_deref())
+                .collect::<Vec<_>>(),
+            ["7", "9"],
+            "the guessed unit takes no part: {findings:?}"
+        );
+        assert_eq!(
+            findings[0].message,
+            "your units owe $100 of upkeep they cannot pay and the faction has $60 unclaimed",
+            "the guessed unit's own $60 is no part of the total either"
+        );
+    }
+
+    /// `ah-fjty`, round 1 question 1: the column and the warning both move. A unit the fund feeds
+    /// shows an `Upkeep` of 0, and says separately what paid it - a zero with nothing to explain it
+    /// reads as a defect.
+    #[test]
+    fn a_unit_the_fund_feeds_shows_no_upkeep() {
+        let report = report_with_purse(
+            Some(8450),
+            vec![region(vec![with_men(
+                with_silver(starving(unit("5")), 0),
+                6,
+            )])],
+        );
+
+        let review = review_turn(&report, "", Some(&ruleset()), CheckOptions::default());
+
+        let forecast = &review.silver[0];
+        assert_eq!(forecast.upkeep, Some(0));
+        assert_eq!(forecast.unclaimed_covered, 60);
+        assert!(!forecast.unclaimed_contended);
+    }
+
+    /// Round 2 question 1: when the fund cannot reach everybody the figure stays where it is, in
+    /// red, and only the hover's note changes. The pessimistic answer, and the navigator's - a `?`
+    /// in every short unit's column at once is less useful than a number.
+    #[test]
+    fn a_contended_fund_leaves_the_upkeep_where_it_is() {
+        let report = report_with_purse(
+            Some(100),
+            vec![region(vec![
+                with_men(with_silver(starving(unit("5")), 0), 6),
+                with_men(with_silver(starving(unit("7")), 0), 6),
+            ])],
+        );
+
+        let review = review_turn(&report, "", Some(&ruleset()), CheckOptions::default());
+
+        for forecast in &review.silver {
+            assert_eq!(forecast.upkeep, Some(60), "{}", forecast.unit_id);
+            assert_eq!(forecast.unclaimed_covered, 0);
+            assert!(forecast.unclaimed_contended);
+            assert!(
+                forecast.doubt.is_none(),
+                "no new doubt: the figure on show is exact, merely pessimistic"
+            );
+        }
+    }
+
+    /// The relief is applied to every hex, not merely the first: a fund that reaches two starving
+    /// units in two different regions silences both.
+    #[test]
+    fn the_relief_reaches_every_hex_the_claimants_stand_in() {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![with_men(with_silver(starving(unit("5")), 0), 6)],
+            ),
+            region_at(
+                "1:8,54",
+                8,
+                54,
+                vec![with_men(with_silver(starving(unit("7")), 0), 4)],
+            ),
+        ];
+
+        let report = report_with_purse(Some(8450), regions);
+        let review = review_turn(
+            &report,
+            "",
+            Some(&ruleset()),
+            disabling(codes::UNIT_DOES_NOTHING),
+        );
+
+        assert_eq!(codes(&review.findings), Vec::<&str>::new());
+        assert_eq!(
+            review
+                .silver
+                .iter()
+                .map(|unit| unit.unclaimed_covered)
+                .collect::<Vec<_>>(),
+            [60, 40],
+            "both regions, not just the first"
+        );
+    }
+
+    /// The claim is the smaller of what maintenance drew and what the unit is actually overdrawn
+    /// by, and this is the case where the *overdraft* is the smaller of the two: the unit pays
+    /// half its own fee out of what it holds, so only the remainder is the fund's to pay.
+    #[test]
+    fn a_unit_that_part_pays_its_own_fee_claims_only_the_rest() {
+        let regions = vec![region(vec![with_men(
+            with_silver(starving(unit("5")), 30),
+            6,
+        )])];
+
+        let report = report_with_purse(Some(8450), regions);
+        let review = review_turn(
+            &report,
+            "",
+            Some(&ruleset()),
+            disabling(codes::UNIT_DOES_NOTHING),
+        );
+
+        assert_eq!(codes(&review.findings), Vec::<&str>::new());
+        assert_eq!(
+            review.silver[0].unclaimed_covered, 30,
+            "$30 of the $60 fee, because the unit's own $30 pays the other half"
+        );
+        assert_eq!(review.silver[0].upkeep, Some(30));
+    }
+
+    /// A unit whose faction-mates' *silver* already pays its maintenance is no claimant on the
+    /// fund, exactly as one its faction-mates' grain feeds is not (`ah-7cdt`). `report_shortfalls`
+    /// judges a hex holding a sharing unit as one purse and says nothing about the penniless unit
+    /// beside the rich one; a fund pass reading each unit's own balance would invent a claimant
+    /// there, and - worse - its phantom claim would exhaust the fund and deny a real claimant
+    /// elsewhere the rescue this bead exists to give.
+    #[test]
+    fn a_unit_the_hexs_shared_silver_pays_for_claims_nothing_from_the_fund() {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    sharing(unfed(unit("5"))),
+                    with_men(with_silver(starving(unit("7")), 0), 6),
+                ],
+            ),
+            region_at(
+                "1:8,54",
+                8,
+                54,
+                vec![with_men(with_silver(starving(unit("9")), 0), 4)],
+            ),
+        ];
+
+        let findings = check_with_purse(Some(50), regions, "");
+
+        assert_eq!(
+            codes(&findings),
+            Vec::<&str>::new(),
+            "unit 7 is paid for by unit 5's shared silver, so the fund's $50 reaches unit 9's \
+             $40 whole: {findings:?}"
+        );
+    }
+
+    /// The fund is one pool for the whole report, so it is counted once across every hex. A
+    /// per-hex settlement passes every other test here and fails this one.
+    #[test]
+    fn the_fund_is_counted_once_across_several_hexes() {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![with_men(with_silver(starving(unit("5")), 0), 6)],
+            ),
+            region_at(
+                "1:8,54",
+                8,
+                54,
+                vec![with_men(with_silver(starving(unit("7")), 0), 6)],
+            ),
+            region_at(
+                "1:9,55",
+                9,
+                55,
+                vec![with_men(with_silver(starving(unit("9")), 0), 6)],
+            ),
+        ];
+
+        let findings: Vec<Finding> = check_with_purse(Some(100), regions, "")
+            .into_iter()
+            .filter(|finding| finding.code == codes::UPKEEP_EXCEEDS_UNCLAIMED)
+            .collect();
+
+        assert_eq!(findings.len(), 3, "{findings:?}");
+        assert_eq!(
+            findings[0].message,
+            "your units owe $180 of upkeep they cannot pay and the faction has $100 unclaimed",
+            "one fund for the whole report, not $100 per hex"
+        );
+    }
+
+    /// `ah-fjty`: the fee and the overdraft it can be blamed for are different numbers for any
+    /// unit that works or entertains, and the unclaimed fund settles the second, never the first.
+    #[test]
+    fn the_ledger_separates_the_fee_from_what_it_drew_off_the_balance() {
+        let mut hex = region(vec![with_men(with_silver(starving(unit("5")), 0), 6)]);
+        hex.wages = Some("$12.0".to_string());
+        hex.max_wages = Some(40);
+
+        let ordered = OrderedUnits::read("unit 5\nWORK\n");
+        let read = Hex::read(&hex, &ordered);
+        let rules = ruleset();
+        let ledger = ledger_for(&read, Some(&rules));
+
+        assert_eq!(ledger.upkeep.get("5"), Some(&60), "the whole fee");
+        assert_eq!(
+            ledger.upkeep_drawn.get("5"),
+            Some(&20),
+            "only what the wages could not cover reached the balance"
         );
     }
 
@@ -7448,6 +8172,16 @@ mod tests {
                 orders: "unit 500\nCLAIM 3000\nunit 700\nCLAIM 2000\n",
                 allowance: None,
                 unclaimed: Some(4935),
+            },
+            Case {
+                code: codes::UPKEEP_EXCEEDS_UNCLAIMED,
+                regions: vec![region(vec![
+                    with_men(with_silver(starving(unit("500")), 0), 6),
+                    with_men(with_silver(starving(unit("700")), 0), 6),
+                ])],
+                orders: "",
+                allowance: None,
+                unclaimed: Some(100),
             },
         ];
 

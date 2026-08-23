@@ -213,6 +213,11 @@ function silverNote(
     const spends = silver.shortOn ? ` when it ${SPENDS[silver.shortOn]}` : "";
     return `Wages arrive too late to pay for this month's orders, so this unit is ${silver.shortForOrders} short${spends}.`;
   }
+  // A doubt about the figure on show, so it sorts above the informational lines that explain one -
+  // and below the shortfall line above, which is about an order the game will refuse (`ah-fjty`).
+  if (countUpkeep && silver.unclaimedContended) {
+    return "There is not enough unclaimed silver to feed every unit that needs it.";
+  }
   // The two food notes are ordered by the game's own maintenance payment order: a unit spends its
   // own food (step 1) before the hex's faction food (step 2), so a unit fed by both names the step
   // that actually fed it first (`ah-p9z5`).
@@ -223,6 +228,12 @@ function silverNote(
   // only row a *neighbour's* holdings move (`ah-7cdt`).
   if (countUpkeep && silver.factionFoodCovered > 0) {
     return `Faction food in this hex covers ${silver.factionFoodCovered} of this unit's upkeep.`;
+  }
+  // Step 7 of the payment order, and so the last of the three notes that explain an Upkeep the
+  // reader can see is smaller than the headcount owes: own food (step 1), the hex's faction food
+  // (step 2), then the faction's unclaimed fund (`ah-fjty`).
+  if (countUpkeep && silver.unclaimedCovered > 0) {
+    return `The faction's unclaimed silver covers ${silver.unclaimedCovered} of this unit's upkeep.`;
   }
   // A gift is the one part of the figure that comes from somebody else's orders, so it is the one
   // part a reader cannot find by looking at this unit's own block.

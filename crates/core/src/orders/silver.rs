@@ -10,7 +10,7 @@
 //! shows `?`, and rounding is always downward, because a forecast that overstates income is the
 //! dangerous direction for a column whose negatives are what a player acts on.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -141,6 +141,18 @@ pub struct UnitSilver {
     /// leave `upkeep` at the same number, and a zero there reads as a defect until something says
     /// why (`ah-7cdt`, `ah-p9z5`).
     pub own_food_covered: i64,
+    /// Silver of this unit's upkeep paid by the faction's unclaimed fund, at step 7 of the payment
+    /// order. `0` for every unit the fund did not reach - which is every unit whenever the fund
+    /// cannot reach them all, because then which one it fed cannot be told.
+    ///
+    /// Carried separately from the two food figures only so the hover can say which paid: all
+    /// three leave `upkeep` at the same number, and a zero there reads as a defect until something
+    /// says why (`ah-fjty`).
+    pub unclaimed_covered: i64,
+    /// Whether this unit owes maintenance it cannot pay and the faction's unclaimed fund cannot
+    /// reach every unit in that position. Drives the hover's note and **never changes a figure**:
+    /// the `upkeep` on show is this unit's whole remaining fee, pessimistically (`ah-fjty`).
+    pub unclaimed_contended: bool,
     /// Silver this unit is ordered to give to nobody - `GIVE 0 ... SILV`, which destroys it. Part
     /// of `expense` like any other gift; carried separately only so the hover can say so.
     pub given_to_nobody: i64,
@@ -426,6 +438,8 @@ pub fn forecast_unit(
             givers: Vec::new(),
             faction_food_covered: 0,
             own_food_covered: 0,
+            unclaimed_covered: 0,
+            unclaimed_contended: false,
             given_to_nobody: 0,
         };
     }
@@ -710,6 +724,8 @@ pub fn forecast_unit(
         givers: receipts.givers.clone(),
         faction_food_covered: 0,
         own_food_covered,
+        unclaimed_covered: 0,
+        unclaimed_contended: false,
         given_to_nobody,
     }
 }
@@ -906,6 +922,87 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> BTreeMap<String, Option<i
     claimants
         .map(|claim| (claim.unit_id.clone(), None))
         .collect()
+}
+
+/// One unit's unpayable maintenance, for the faction-wide settlement of step 7.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpkeepClaim {
+    pub unit_id: String,
+    /// Silver of this unit's *maintenance* that its own silver cannot cover, after every earlier
+    /// step of the payment order has already been applied. Never more than the fee itself: what a
+    /// unit overspends on its orders is its orders' fault and no business of the fund's.
+    pub short: i64,
+}
+
+/// What the faction's unclaimed fund does about the units that cannot pay their maintenance.
+///
+/// Faction-wide, like the fund itself: one settlement for the whole report, never one per hex.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UpkeepSettlement {
+    /// Per unit, the maintenance the fund paid. **Empty unless the fund reaches every claimant** -
+    /// when it is short, which unit it fed is undeterminable, so it feeds none of them here.
+    pub covered: BTreeMap<String, i64>,
+    /// Every unit that owed maintenance it could not pay, whether or not the fund reached it.
+    pub claimants: BTreeSet<String>,
+    /// What the claimants owed between them.
+    pub owed: i64,
+    /// What the fund had for them, after this month's `CLAIM` orders took theirs. Never negative.
+    pub available: i64,
+    /// `owed - available`, floored at zero. `> 0` means the fund could not reach everybody.
+    pub short: i64,
+}
+
+impl UpkeepSettlement {
+    /// Whether the fund is in play at all. `false` leaves every surface exactly as it is today.
+    #[must_use]
+    pub fn active(&self) -> bool {
+        self.available > 0 && self.owed > 0
+    }
+}
+
+/// Settles step 7 of the maintenance payment order: "If you have silver in your unclaimed fund,
+/// then that silver will be automatically claimed by units that would otherwise starve."
+///
+/// `available` is `None` where the report header states no `Unclaimed silver:` line, and `Some(n)`
+/// where it does - already net of this month's `CLAIM` orders.
+///
+/// `None`, or `Some(n)` with `n <= 0`, returns [`UpkeepSettlement::default()`]: an inactive
+/// settlement that changes nothing. That is a decision and not a guard - with no fund, or an
+/// emptied one, every unit's shortfall is exactly its own, so today's per-unit message is the
+/// right one and keeping it costs a broke faction none of its line-level marks (`ah-fjty`).
+#[must_use]
+pub fn settle_unclaimed(claims: &[UpkeepClaim], available: Option<i64>) -> UpkeepSettlement {
+    let Some(available) = available.filter(|fund| *fund > 0) else {
+        return UpkeepSettlement::default();
+    };
+
+    // A claim of nothing is not a claim: a unit that pays its own maintenance never draws on the
+    // fund, and naming it among the claimants would blame it for a shortfall it takes no part in.
+    let claiming = claims.iter().filter(|claim| claim.short > 0);
+
+    let owed = claiming
+        .clone()
+        .fold(0i64, |owed, claim| owed.saturating_add(claim.short));
+
+    // The fund reaches everybody, so say exactly what it paid each of them. When it cannot, which
+    // unit it fed is undeterminable, so it feeds none of them here and every claimant is named
+    // instead - the shape `claims-exceed-unclaimed` already uses (`ah-fjty`).
+    let covered = if owed <= available {
+        claiming
+            .clone()
+            .map(|claim| (claim.unit_id.clone(), claim.short))
+            .collect()
+    } else {
+        BTreeMap::new()
+    };
+
+    UpkeepSettlement {
+        covered,
+        claimants: claiming.map(|claim| claim.unit_id.clone()).collect(),
+        owed,
+        available,
+        short: (owed - available).max(0),
+    }
 }
 
 /// Whether the unit is set to spend food on its maintenance, by either `consuming ...` flag.
@@ -2369,5 +2466,77 @@ mod faction_food_tests {
         let claims = [claim("quartermaster", 1, 0, false), claim("a", 0, 30, true)];
         let fed = feed_from_faction_food(&claims);
         assert_eq!(fed.get("a"), Some(&Some(0)));
+    }
+}
+
+#[cfg(test)]
+mod unclaimed_fund_tests {
+    use super::*;
+
+    fn claim(id: &str, short: i64) -> UpkeepClaim {
+        UpkeepClaim {
+            unit_id: id.to_string(),
+            short,
+        }
+    }
+
+    #[test]
+    fn the_fund_pays_every_unit_that_cannot_pay_its_own_upkeep() {
+        let claims = [claim("a", 60), claim("b", 60), claim("c", 40)];
+        let settled = settle_unclaimed(&claims, Some(8450));
+        assert_eq!(settled.covered.get("a"), Some(&60));
+        assert_eq!(settled.covered.get("b"), Some(&60));
+        assert_eq!(settled.covered.get("c"), Some(&40));
+        assert_eq!(settled.owed, 160);
+        assert_eq!(settled.available, 8450);
+        assert_eq!(settled.short, 0);
+        assert!(settled.active());
+    }
+
+    #[test]
+    fn the_fund_pays_nobody_when_it_cannot_pay_them_all() {
+        let claims = [claim("a", 60), claim("b", 60), claim("c", 40)];
+        let settled = settle_unclaimed(&claims, Some(100));
+        assert!(settled.covered.is_empty());
+        assert_eq!(settled.claimants.len(), 3);
+        assert_eq!(settled.short, 60);
+        assert!(settled.active());
+    }
+
+    #[test]
+    fn a_fund_the_report_never_stated_settles_nothing() {
+        let claims = [claim("a", 60)];
+        let settled = settle_unclaimed(&claims, None);
+        assert_eq!(settled, UpkeepSettlement::default());
+        assert!(!settled.active());
+    }
+
+    #[test]
+    fn a_fund_the_claims_emptied_settles_nothing() {
+        let claims = [claim("a", 60)];
+        let settled = settle_unclaimed(&claims, Some(0));
+        assert_eq!(settled, UpkeepSettlement::default());
+        assert!(!settled.active());
+    }
+
+    #[test]
+    fn a_fund_nobody_claims_from_is_not_active() {
+        let settled = settle_unclaimed(&[], Some(8450));
+        assert_eq!(settled.available, 8450);
+        assert_eq!(settled.owed, 0);
+        assert!(settled.covered.is_empty());
+        assert!(settled.claimants.is_empty());
+        assert!(!settled.active());
+    }
+
+    #[test]
+    fn a_unit_owing_nothing_is_no_claimant() {
+        let claims = [claim("a", 0), claim("b", -20), claim("c", 40)];
+        let settled = settle_unclaimed(&claims, Some(8450));
+        assert_eq!(settled.claimants.len(), 1);
+        assert!(settled.claimants.contains("c"));
+        assert_eq!(settled.owed, 40);
+        assert_eq!(settled.covered.get("a"), None);
+        assert_eq!(settled.covered.get("b"), None);
     }
 }

@@ -388,12 +388,21 @@ describe("silverShown", () => {
       givers: [],
       givenToNobody: 0,
       factionFoodCovered: 0,
-      ownFoodCovered: 0
+      ownFoodCovered: 0,
+      unclaimedCovered: 0,
+      unclaimedContended: false
     }) satisfies UnitSilver;
 
   it("subtracts upkeep only when the setting is on", () => {
     expect(silverShown(forecast(100, 50), true)).toBe(50);
     expect(silverShown(forecast(100, 50), false)).toBe(100);
+  });
+
+  // `ah-fjty`: the core already subtracts what the faction's unclaimed fund paid from `upkeep`,
+  // so the column needs no term of its own - a rescued unit simply shows the whole month end.
+  it("shows a rescued unit the whole of its month end", () => {
+    const rescued = { ...forecast(100, 0), unclaimedCovered: 60 } satisfies UnitSilver;
+    expect(silverShown(rescued, true)).toBe(100);
   });
 
   it("propagates a null from either side", () => {

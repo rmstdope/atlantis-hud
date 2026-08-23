@@ -161,6 +161,8 @@ describe("the silver section", () => {
     givenToNobody: 0,
     factionFoodCovered: 0,
     ownFoodCovered: 0,
+    unclaimedCovered: 0,
+    unclaimedContended: false,
     ...overrides
   });
 
@@ -256,6 +258,48 @@ describe("the silver section", () => {
     expect(fed.silver?.note).toBe(
       "Faction food in this hex covers 60 of this unit's upkeep."
     );
+  });
+
+  it("the_note_names_the_unclaimed_fund_when_it_paid_the_upkeep", () => {
+    // Step 7 of the payment order, after both food steps: an Upkeep of 0 the faction's unclaimed
+    // silver paid, said in the same shape as the two food notes (`ah-fjty`).
+    const fed = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 0, unclaimedCovered: 60 }),
+      true,
+      true
+    );
+    expect(fed.silver?.note).toBe(
+      "The faction's unclaimed silver covers 60 of this unit's upkeep."
+    );
+
+    const notCounting = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 0, unclaimedCovered: 60 }),
+      true
+    );
+    expect(notCounting.silver?.note ?? "").not.toContain("unclaimed silver");
+  });
+
+  it("the_note_says_the_fund_cannot_reach_everybody", () => {
+    // The figure on show is this unit's whole fee, pessimistically, so the note is what says the
+    // number may be kinder than it looks (`ah-fjty`, round 2 question 1).
+    const contended = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 50, unclaimedContended: true }),
+      true,
+      true
+    );
+    expect(contended.silver?.note).toBe(
+      "There is not enough unclaimed silver to feed every unit that needs it."
+    );
+
+    const notCounting = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 50, unclaimedContended: true }),
+      true
+    );
+    expect(notCounting.silver?.note ?? "").not.toContain("unclaimed silver");
   });
 
   it("no_faction_food_note_when_upkeep_is_not_counted", () => {
