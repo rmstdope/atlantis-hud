@@ -23,6 +23,9 @@ import {
 import { ROW_HEIGHT } from "../../packages/shared/src/unitTable";
 // Likewise the hover delay: the test waits a fraction of it, so a copy here could outlive a change.
 import { HOVER_DELAY_MS } from "../../packages/shared/src/unitTooltip";
+// The renderer's own column pitch, so the world width these wrap tests pan by cannot drift from
+// the geometry the map is actually drawn with.
+import { COLUMN_PITCH } from "../../packages/shared/src/workspace/mapViewport";
 // The seam itself, not a copy: the header budget below is only worth anything if it fails for the
 // same arithmetic the orders drag actually uses (ah-csni).
 import { railHasRoomToDrag, railRemFor } from "../../packages/shared/src/workspace/panelLayout";
@@ -3292,6 +3295,123 @@ test("arrow keys walk from hex to neighbouring hex", async ({ page }) => {
   await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:8,52");
   await page.locator("polygon:focus").press("ArrowLeft");
   await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:7,53");
+});
+
+/**
+ * The world's on-screen width, and where the map is drawn - the two numbers every wrap assertion
+ * below is written against.
+ *
+ * Read from the map itself rather than assumed: `--map-scale` is what the renderer is using, and
+ * the fixture game plays on the New Origins default map, which is 72 wide and wraps east-west.
+ */
+async function mapPeriod(page: Page): Promise<number> {
+  const scale = await page
+    .locator("[data-testid='map-canvas'] svg")
+    .evaluate((node) => Number(getComputedStyle(node).getPropertyValue("--map-scale")));
+  // 72 columns at the renderer's own column pitch.
+  return 72 * COLUMN_PITCH * scale;
+}
+
+/** How far the world is translated across the screen, from the transform the map writes by hand. */
+async function mapTx(page: Page): Promise<number> {
+  return Number(/translate\(([-\d.]+)/u.exec(await mapTransform(page))?.[1] ?? "0");
+}
+
+/**
+ * That a copy of the world - the world itself or one of the ghosts - is drawn across the view.
+ *
+ * The copies are moved to the repeats either side of wherever the camera has got to, so one of them
+ * always spans the screen. A copy further than one world away means they stopped following, which
+ * is the map running out and the player looking at empty ground.
+ */
+async function expectWorldUnderTheView(page: Page, period: number) {
+  const tx = await mapTx(page);
+  const offsets = await page
+    .getByTestId("map-world-ghost")
+    .evaluateAll((nodes) =>
+      nodes
+        .filter((node) => node.getAttribute("display") !== "none")
+        .map((node) => Number(node.getAttribute("x")))
+    );
+  const scale = await page
+    .locator("[data-testid='map-canvas'] svg")
+    .evaluate((node) => Number(getComputedStyle(node).getPropertyValue("--map-scale")));
+
+  // Where each copy is drawn on screen, the world itself included, and how far the nearest is.
+  const drawn = [0, ...offsets].map((offset) => tx + offset * scale);
+  expect(Math.min(...drawn.map((x) => Math.abs(x)))).toBeLessThanOrEqual(period / 2 + 1);
+}
+
+/** Drags the map west-to-east by `dx` pixels in one gesture, from the middle of the visible strip. */
+async function panMap(page: Page, dx: number) {
+  const strip = await visibleStrip(page);
+  const y = strip.y + strip.height / 2;
+  const from = strip.x + strip.width * (dx > 0 ? 0.2 : 0.8);
+  await page.mouse.move(from, y);
+  await page.mouse.down();
+  await page.mouse.move(from + dx, y, { steps: 10 });
+  await page.mouse.up();
+}
+
+/**
+ * ah-brgo.1: the map joins back onto itself, so a click on a copy of a hex beyond the seam selects
+ * the hex it is a copy of - not one at an x the map does not hold.
+ *
+ * A browser test because it is about hit testing: the ghost copies take no pointer events, so the
+ * click lands on the fog rect and the coordinate worked out from the pixel is folded back onto the
+ * map. The fold itself is pinned in `mapViewport.test.ts`.
+ */
+test("a click beyond the seam selects the hex it is a copy of", async ({ page }) => {
+  await loadReport(page);
+  const period = await mapPeriod(page);
+  const before = await mapTx(page);
+
+  // East until the view has left the map's own range entirely: what is on screen is then a copy of
+  // it, and a click there works out an x beyond the map's eastern end.
+  for (let sweep = 0; sweep < 40 && (await mapTx(page)) < before + period; sweep += 1) {
+    await panMap(page, 300);
+  }
+  expect(await mapTx(page)).toBeGreaterThan(before + period);
+
+  const strip = await visibleStrip(page);
+  await page.mouse.click(strip.x + strip.width / 2, strip.y + strip.height / 2);
+
+  const label = await page.locator("polygon:focus").getAttribute("aria-label");
+  const x = Number(/1:(-?\d+),/u.exec(label ?? "")?.[1]);
+  // Without the fold this reads as a hex at an x the map does not hold.
+  expect(x).toBeGreaterThanOrEqual(0);
+  expect(x).toBeLessThan(72);
+});
+
+/**
+ * ah-brgo.1: panning east through several world widths never runs out of map.
+ *
+ * The camera is left where the player put it and the copies move around it, a whole world at a
+ * time, so one of them always spans the screen. A whole world is exactly the distance at which a
+ * copy is pixel-identical to the world itself, which is why nothing shifts on screen as it happens.
+ */
+test("panning east forever stays on the map", async ({ page }) => {
+  await loadReport(page);
+  const period = await mapPeriod(page);
+
+  for (let sweep = 0; sweep < 12; sweep += 1) {
+    await panMap(page, 300);
+    await expectWorldUnderTheView(page, period);
+  }
+});
+
+/**
+ * West as readily as east: the copies follow a translation running negative just as they follow one
+ * running positive, and a westward drag is the commonest way to leave the map's own range at all.
+ */
+test("panning west past the origin stays on the map", async ({ page }) => {
+  await loadReport(page);
+  const period = await mapPeriod(page);
+
+  for (let sweep = 0; sweep < 12; sweep += 1) {
+    await panMap(page, -300);
+    await expectWorldUnderTheView(page, period);
+  }
 });
 
 test("the cursor may wander as far into the unexplored as it likes", async ({ page }) => {

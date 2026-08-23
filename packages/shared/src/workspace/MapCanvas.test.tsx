@@ -1,11 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { SURFACE_LEVEL, type HexMapModel } from "../hexMapModel";
-import type { HexNoteRecord } from "@atlantis/core-client";
+import type { HexNoteRecord, MapShape } from "@atlantis/core-client";
 import { MapCanvas } from "./MapCanvas";
 import { CONGESTED_HEXES } from "./mapThemes/congestedFixture";
 import { allBadges } from "./mapThemes/hexView";
-import { worldOf } from "./mapViewport";
+import { COLUMN_PITCH, ROW_PITCH, worldOf } from "./mapViewport";
 import type { LayerProps, MapTheme } from "./mapThemes/mapTheme";
 
 /**
@@ -484,3 +484,70 @@ describe("the map's view controls", () => {
   });
 });
 
+
+/**
+ * The world drawn with a map shape, so the ghost copies that make the map repeat can be counted.
+ *
+ * They are markup - `<use>` elements referencing the one drawn world - which is exactly what a
+ * `renderToStaticMarkup` test can see. The camera fold that keeps them enough is an effect, and is
+ * pinned in `mapViewport.test.ts` and the smoke suite instead.
+ */
+function drawShaped(shape: MapShape | null): string {
+  return renderToStaticMarkup(
+    <MapCanvas
+      gameId={null}
+      model={model}
+      theme={probe()}
+      level={1}
+      selectedRegionId={null}
+      selectionEpoch={0}
+      onSelectRegion={() => {}}
+      showStaleness
+      showTextures={false}
+      badges={allBadges(true)}
+      shape={shape}
+    />
+  );
+}
+
+function ghosts(markup: string): string[] {
+  return markup.match(/<use[^>]*data-testid="map-world-ghost"[^>]*>/g) ?? [];
+}
+
+describe("a map that joins back onto itself", () => {
+  it("draws a ghost either side when the map wraps east-west", () => {
+    const drawn = ghosts(drawShaped({ width: 72, height: 96, wrapX: true, wrapY: false }));
+
+    // Three slots, of which the one standing where the world itself is drawn hides: `applyView`
+    // moves them to the repeats either side of wherever the camera has got to.
+    expect(drawn).toHaveLength(3);
+    expect(drawn.filter((ghost) => ghost.includes('display="none"'))).toHaveLength(1);
+    const span = 72 * COLUMN_PITCH;
+    expect(drawn.some((ghost) => ghost.includes(`x="${-span}"`))).toBe(true);
+    expect(drawn.some((ghost) => ghost.includes(`x="${span}"`))).toBe(true);
+    // A click over a ghost has to fall through to the hit rect underneath it.
+    expect(drawn.every((ghost) => ghost.includes('pointer-events="none"'))).toBe(true);
+    // One world drawn, cloned - not three worlds.
+    expect(drawn.every((ghost) => ghost.includes('href="#map-world-content"'))).toBe(true);
+  });
+
+  it("draws no ghosts when the map does not wrap", () => {
+    expect(ghosts(drawShaped({ width: 72, height: 96, wrapX: false, wrapY: false }))).toHaveLength(0);
+    expect(ghosts(drawShaped(null))).toHaveLength(0);
+    expect(ghosts(draw())).toHaveLength(0);
+  });
+
+  it("draws eight ghosts when both axes wrap", () => {
+    const drawn = ghosts(drawShaped({ width: 72, height: 96, wrapX: true, wrapY: true }));
+
+    // Nine slots for the nine repeats around the camera, less the one it is standing in.
+    expect(drawn).toHaveLength(9);
+    expect(drawn.filter((ghost) => ghost.includes('display="none"'))).toHaveLength(1);
+    expect(drawn.some((ghost) => ghost.includes(`y="${96 * ROW_PITCH}"`))).toBe(true);
+  });
+
+  it("draws no ghosts for an odd width", () => {
+    // The lattice holds only positions where x + y is even, so an odd width does not join.
+    expect(ghosts(drawShaped({ width: 71, height: 96, wrapX: true, wrapY: false }))).toHaveLength(0);
+  });
+});
