@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A foreign guard blocks TAX (ah-g7ts)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head><body>
+<header>
+  <h1><span>ah-g7ts</span> — a foreign guard can block your TAX, and one word decides everything</h1>
+  <blockquote>“Units which have the Guard flag set (using the GUARD order) will block TAX orders
+  issued by other factions in the same region, <strong>unless you have declared the faction in
+  question Friendly</strong>.”</blockquote>
+  <p>Observed in <code>neworigins-3.0.0-g3-f42-t1.rep</code>, mountain (36,4): a foreign City Guard
+  (14) of The Guardsmen, on guard, 120 leaders. Our unit ordering TAX or PILLAGE there is credited
+  in full with no hint of the guard.</p>
+  <p><strong>The data is all there</strong> — <code>ReportUnit.on_guard</code>,
+  <code>.own</code>, <code>.faction_id</code>, and the header's
+  <code>DeclaredAttitudes</code> with its default and per-level faction lists. So the bead's guess
+  that this “is almost certainly a doubt” may be too pessimistic. It turns entirely on who
+  <em>“you”</em> is in that sentence.</p>
+</header>
+<main>
+
+<section>
+  <h2 class="rule"><em>The two readings</em></h2>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>What it means, and what we can compute</th></tr>
+    <tr><td class="k">R1 — “you” is <b>us</b>, the taxer</td>
+      <td>The guard blocks unless <em>we</em> have declared <em>them</em> Friendly. Our own report
+      prints exactly that, in <code>Declared Attitudes</code>. So in most hexes we can say
+      <strong>certainly</strong> whether we are blocked — a real zero, like
+      <code>ah-cxxa</code>'s pillaged hex — and only fall back to a doubt when the guard conceals
+      its faction or the report has no attitudes block.</td></tr>
+    <tr><td class="k">R2 — “you” is <b>them</b>, the guard's owner</td>
+      <td>The rules are addressed to the reader, and the guarding faction is the one doing the
+      declaring. Their attitude toward us is <strong>not in our report and never will be</strong>.
+      Then every foreign guard in a hex we tax is an unknowable, and the only honest answer is a
+      doubt, every time.</td></tr>
+  </table>
+  <div class="absent">The readings are not close: R1 gives an exact figure in the common case, R2
+  gives <code>?</code> on every hex containing a foreign guard — and city hexes almost always contain
+  one, because <strong>City Guards are on guard by definition</strong>. This is a rules question, not
+  a preference, and you play the game.</div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Under R1</em> what the four cases look like</h2>
+  <table class="t">
+    <tr><th>The hex contains</th><th>TAX / PILLAGE shows</th></tr>
+    <tr><td>no foreign unit on guard</td><td class="num">unchanged</td></tr>
+    <tr><td>a foreign guard we declared <b>Friendly</b> or <b>Ally</b></td><td class="num">unchanged</td></tr>
+    <tr><td>a foreign guard at Hostile / Unfriendly / Neutral, or falling to a default below Friendly</td><td class="num good">0 — certain</td></tr>
+    <tr><td>a foreign guard <b>concealing its faction</b> (<code>faction_id: None</code>)</td><td class="q">?</td></tr>
+    <tr><td>a report with <b>no</b> Declared Attitudes block</td><td class="q">?</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Under either reading</em> what does the player actually see?</h2>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>&nbsp;</th></tr>
+    <tr><td class="k">A — a finding</td><td>A new code on the TAX line:
+      <code class="k">a foreign unit is guarding this hex, so this TAX may collect nothing</code>.
+      Marks the order in the Problems panel, like <code>ah-cxxa</code>'s pillage warning.</td></tr>
+    <tr><td class="k">B — a doubt only</td><td>The Silver figure becomes <code>?</code> with a hover
+      line. No new code, no Settings row. Under R2 this fires on nearly every city hex, every
+      turn.</td></tr>
+    <tr><td class="k">C — both</td><td>The figure is honest <em>and</em> the line is marked. Most
+      informative; also the noisiest, and under R2 it would mark most taxing orders in the game.</td></tr>
+  </table>
+  <div class="absent">Note the interaction with <code>ah-1ad6</code> (Beast is planning it): that one
+  also zeroes or doubts a PILLAGE, for a different reason. Two beads reaching for the same arm — the
+  plans should say which takes precedence when both apply.</div>
+</section>
+</main></body></html>
