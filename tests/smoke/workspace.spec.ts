@@ -916,13 +916,14 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
   await expect(page.getByTestId("problem-entry").first()).toContainText("⚠");
 
-  // Corrected, the shortfall this test introduced goes away - "@work" both covers it and spends
-  // the month. What is left in this hex is not about these orders at all: since ah-1wcw.4 the
-  // silver check counts each unit's monthly maintenance, and this hex's units hold no silver to
-  // pay theirs. Wages do not help, since they are paid in the turn's last phase and fund nothing
-  // this month.
+  // Since ah-fjty the sentence says "their orders spend" rather than "their orders and upkeep
+  // spend": this hex's one fee - unit 18642's $50 - is paid by the faction's unclaimed silver at
+  // step 7 of the payment order, and this report's header states $6,038 of it. The wording is the
+  // whole point, since a message naming an upkeep the fund has paid does not add up.
   await fillOrders(page, "@work");
-  await expect(page.getByTestId("region-problems")).toContainText("upkeep");
+  const remaining = page.getByTestId("region-problems");
+  await expect(remaining).toContainText("their orders spend");
+  await expect(remaining).not.toContainText("upkeep");
   await expect(page.getByTestId("problems-chip")).toContainText("12 problems");
 });
 
@@ -1187,15 +1188,14 @@ test("an order with the wrong argument is caught, and the offending word quoted"
   await expect(page.getByTestId("orders-diagnostic")).toHaveCount(0);
   await expect(page.getByTestId("orders-status")).toContainText("0 warnings");
 
-  // An order the unit can actually carry out leaves this unit with nothing to say. The hex still
-  // has one thing to say, and it is not about these orders: since ah-1wcw.4 the silver check
-  // counts each unit's monthly maintenance, and unit 18642 here is a leader owing $50 with
-  // neither silver nor food to pay it - wages do not help, since they are paid in the turn's last
-  // phase and fund nothing this month.
+  // An order the unit can actually carry out leaves this unit with nothing to say, and since
+  // ah-fjty the hex has nothing to say about maintenance either: unit 18642 is a leader owing $50
+  // with neither silver nor food, and the faction's unclaimed silver (this report's header states
+  // $6,038) pays it at step 7 of the payment order. What is left is the sword this test is about.
   await fillOrders(page, "@work");
   await expect(page.getByTestId("orders-diagnostic")).toHaveCount(0);
   await expect(page.getByTestId("orders-status")).toContainText("0 warnings");
-  await expect(page.getByTestId("region-problems")).toContainText("upkeep");
+  await expect(page.getByTestId("region-problems")).not.toContainText("upkeep");
 });
 
 test("a TURN block left open is reported against the unit that wrote it", async ({ page }) => {

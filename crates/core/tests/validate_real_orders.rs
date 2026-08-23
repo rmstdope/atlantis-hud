@@ -40,22 +40,27 @@ use common::ruleset;
 /// - `study-at-maximum` (ah-1uj): unit 13402 is reported at combat [COMB] 5 (450) - the ruleset's
 ///   own maximum - and orders "@study comb" anyway, which is a real wasted month.
 /// - `not-enough-items` (ah-dbb.2): the enchant-armor mages are short plate armor between them.
-/// - `not-enough-silver` (ah-1wcw.4): the check counts each unit's monthly maintenance, and one
-///   unit cannot pay its own. Unit 18642, alone in `1:7,53`, is a leader owing $50 and holds
-///   neither silver nor food, and its hex holds no silver at all - so neither the hex's shared
-///   purse nor the game's own regional pooling of maintenance could cover it. The faction-wide
-///   $62,000 against $1,900 of upkeep is real but held in other hexes, and this check is per hex.
 ///
-///   This was **two** until `ah-uwa3`. Unit 1688, alone in `1:15,63`, is a hill dwarf owing $10
-///   that holds nothing - but it orders `@work` in a hex paying `$26.0`, and wages arrive in the
-///   turn's last phase, in time for maintenance if not for anything the orders spend. So its fee
-///   is covered and it is no longer short. `ah-uwa3`'s plan predicted this table would not move,
+/// `not-enough-silver` is **absent**, and its history is worth keeping because the table has moved
+/// twice for two different real reasons:
+///
+/// - It was **two** until `ah-uwa3`. Unit 1688, alone in `1:15,63`, is a hill dwarf owing $10 that
+///   holds nothing - but it orders `@work` in a hex paying `$26.0`, and wages arrive in the turn's
+///   last phase, in time for maintenance if not for anything the orders spend. So its fee is
+///   covered and it is no longer short. `ah-uwa3`'s plan predicted this table would not move,
 ///   reading the turn as having no order that could be affected; the turn's one `WORK` order is
 ///   exactly the affected case, and the finding that went is the bug the bead was filed to fix.
+/// - It was **one** until `ah-fjty`. Unit 18642, alone in `1:7,53`, is a leader owing $50 that
+///   holds neither silver nor food, in a hex holding no silver at all - so neither the hex's shared
+///   purse nor the game's own regional pooling could cover it. But the header states
+///   `Unclaimed silver: 6038`, and step 7 of the payment order claims that silver automatically for
+///   units that would otherwise starve; the same unit's own `@claim 50` leaves $5,988 of it, which
+///   is ample. This is precisely the false alarm `ah-fjty` was filed about - a young faction still
+///   holding its starting silver being told its units starve - and its disappearance from a real
+///   committed turn is the bead proving itself on the corpus.
 const EXPECTED: &[(&str, usize)] = &[
     ("magic-study-outside-building", 6),
     ("not-enough-items", 1),
-    ("not-enough-silver", 1),
     ("study-at-maximum", 1),
     ("unit-does-nothing", 2),
 ];
@@ -589,8 +594,45 @@ fn the_committed_turns_upkeep_is_what_its_headcount_owes() {
         CheckOptions::default(),
     );
 
-    let owed: i64 = review.silver.iter().filter_map(|unit| unit.upkeep).sum();
+    // The fee, before step 7 of the payment order settles any of it. `ah-fjty` made the column's
+    // `upkeep` what the unit is *left* paying, so the fee is that plus what the faction's unclaimed
+    // fund covered - and it is the fee, not the remainder, that this turn's headcount fixes.
+    let owed: i64 = review
+        .silver
+        .iter()
+        .filter_map(|unit| unit.upkeep.map(|left| left + unit.unclaimed_covered))
+        .sum();
     assert_eq!(owed, 2_140);
+
+    // What the player is actually shown, once the header's $6,038 unclaimed - less unit 18642's own
+    // `@claim 50` - has fed every unit that could not pay (`ah-fjty`).
+    let shown: i64 = review.silver.iter().filter_map(|unit| unit.upkeep).sum();
+    assert_eq!(shown, 2_090);
+    let covered: i64 = review
+        .silver
+        .iter()
+        .map(|unit| unit.unclaimed_covered)
+        .sum();
+    // $50, and only $50: this faction shares throughout, so almost every unit's maintenance is
+    // already paid by its hex's pooled silver and never reaches the fund at all. The one claimant
+    // is unit 18642, alone in `1:7,53` - a leader owing $50 in a hex holding nothing else. Reading
+    // each unit's own balance instead would have claimed $870 here, for units their faction-mates'
+    // silver pays for, which is the same contradiction `ah-7cdt` removed for faction food.
+    assert_eq!(
+        covered, 50,
+        "the fund reaches every claimant, so it says which"
+    );
+    let fed: Vec<&str> = review
+        .silver
+        .iter()
+        .filter(|unit| unit.unclaimed_covered > 0)
+        .map(|unit| unit.unit_id.as_str())
+        .collect();
+    assert_eq!(fed, ["18642"]);
+    assert!(
+        review.silver.iter().all(|unit| !unit.unclaimed_contended),
+        "the fund covers them all, so nothing is contended"
+    );
     assert!(
         review.silver.iter().all(|unit| unit.upkeep.is_some()),
         "every own unit in this turn is counted rather than estimated, so every one can be priced"
@@ -605,6 +647,12 @@ fn the_committed_turns_upkeep_is_what_its_headcount_owes() {
 /// doubts nobody (settled with the navigator on 2026-08-23), so the turn's total maintenance is
 /// unmoved at 2,140 and the whole of this bead is invisible here. That is the finding: the real
 /// turn exercises step 2's *no food* branch and nothing else.
+///
+/// `ah-fjty` then made the column show what step 7's unclaimed fund pays of a starving unit's fee,
+/// so the assertion below adds `unclaimed_covered` back on to recover the fee this test is about.
+/// None of these eleven is actually fed by the fund - they share, so their hex's pooled silver
+/// pays them - but the assertion is written to survive that either way. Step 2 is still doing
+/// nothing here, which is the point.
 #[test]
 fn the_committed_turn_has_faction_food_eaters_but_no_faction_food() {
     let report = classified();
@@ -638,7 +686,11 @@ fn the_committed_turn_has_faction_food_eaters_but_no_faction_food() {
             .iter()
             .find(|forecast| &forecast.unit_id == id)
             .expect("every own unit is forecast");
-        assert_eq!(unit.upkeep, Some(unit_upkeep_of(&report, id)), "{id}");
+        assert_eq!(
+            unit.upkeep.map(|left| left + unit.unclaimed_covered),
+            Some(unit_upkeep_of(&report, id)),
+            "{id}"
+        );
     }
     assert!(
         review

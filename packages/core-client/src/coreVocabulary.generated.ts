@@ -27,7 +27,8 @@ export const ADVISORY_CHECK_CODES = [
   "build-help-not-building",
   "unit-does-nothing",
   "build-without-skill",
-  "claims-exceed-unclaimed"
+  "claims-exceed-unclaimed",
+  "upkeep-exceeds-unclaimed"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];

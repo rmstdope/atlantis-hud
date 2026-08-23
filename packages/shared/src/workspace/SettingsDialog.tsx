@@ -484,6 +484,11 @@ const WARNING_GROUPS: readonly {
         code: "claims-exceed-unclaimed",
         title: "Claiming more than the faction has",
         description: "CLAIM orders across all your units asking for more unclaimed silver than the faction holds."
+      },
+      {
+        code: "upkeep-exceeds-unclaimed",
+        title: "Upkeep the faction cannot pay",
+        description: "Units that cannot pay their maintenance, when the faction's unclaimed silver will not cover the shortfall either."
       }
     ]
   },

@@ -130,7 +130,8 @@ describe("the Warnings settings tab", () => {
       "Undercrewed fleets",
       "More quartermasters than allowed",
       "Producing in too many regions",
-      "Claiming more than the faction has"
+      "Claiming more than the faction has",
+      "Upkeep the faction cannot pay"
     ];
     for (const title of titles) {
       expect(html).toContain(title);

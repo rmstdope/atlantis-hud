@@ -153,6 +153,23 @@ describe("settings store", () => {
   });
 
   /**
+   * `ah-fjty`: a stored blob written before a code existed picks it up at its default rather than
+   * needing a migration - which is what `DEFAULT_ADVISORY_CHECKS`' "everything except
+   * `hex-unguarded`" rule and `reconcileAdvisoryChecks`' copy-only-what-is-named are for.
+   */
+  it("gives a stored blob that never heard of a code its default", () => {
+    useSettingsStore.setState({
+      advisoryChecks: {
+        "guard-dropped": false
+      } as unknown as typeof DEFAULT_ADVISORY_CHECKS
+    });
+
+    applyPersistedSettings();
+
+    expect(store().advisoryChecks["upkeep-exceeds-unclaimed"]).toBe(true);
+  });
+
+  /**
    * The earlier build had one checkbox, "Warn about unguarded hexes", persisted under its own key.
    * A player who ticked it upgrading into the Warnings tab must keep seeing that warning - applying
    * the new default instead would silently flip a preference they chose.
