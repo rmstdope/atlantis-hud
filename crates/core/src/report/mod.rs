@@ -211,4 +211,22 @@ mod tests {
 
         assert!(parsed.unreadable_lines.is_empty());
     }
+
+    #[test]
+    fn a_name_with_an_unclosed_bracket_is_no_longer_unreadable() {
+        let parsed = parse_report_full(concat!(
+            "mountain (7,53) in Inhead, contains Tinsel [town]\n",
+            "  Wages: $12.\n",
+            "* Smiley :( (100), Wanderers (29), 10 humans [HUMN].\n",
+        ));
+
+        let names: Vec<&str> = parsed
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .map(|unit| unit.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["Smiley :("]);
+        assert!(parsed.unreadable_lines.is_empty());
+    }
 }
