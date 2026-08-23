@@ -466,6 +466,13 @@ pub fn forecast_unit(
                 }
                 None => income_doubt = income_doubt.or(Some(SilverDoubt::UnknownTaxBase)),
             },
+            // "The amount of money collected is equal to twice the available tax money." Mirrors
+            // `semantics::apply`'s own arm exactly, down to the doubt: two surfaces reading one
+            // order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj` exists).
+            Intent::Pillage => match region.tax_base {
+                Some(base) => income = income.saturating_add(base.saturating_mul(2)),
+                None => income_doubt = income_doubt.or(Some(SilverDoubt::UnknownTaxBase)),
+            },
             // `WORK` and `ENTERTAIN` earn nothing but late income, so [`late_income`] prices them
             // both - once, for this function and for `semantics::charge_upkeep` alike.
             Intent::Work | Intent::Entertain => {}
@@ -1154,6 +1161,53 @@ mod tests {
         assert_eq!(unit.income, None);
         assert_eq!(unit.expense, Some(0));
         assert_eq!(unit.at_month_end, None);
+    }
+
+    /// "The amount of money collected is equal to twice the available tax money." The ledger
+    /// (`semantics::apply`) has credited exactly this since it shipped; the column credited
+    /// nothing at all, so the two surfaces priced one order two ways (`ah-abwx`).
+    #[test]
+    fn a_pillaging_unit_earns_twice_the_tax_base() {
+        let unit = forecast(1, taxable(Some(2500)), &[placed(Intent::Pillage)]);
+        assert_eq!(unit.income, Some(5000));
+        assert_eq!(unit.at_month_end, Some(5000));
+        assert_eq!(unit.doubt, None);
+    }
+
+    /// A silent zero is the defect being removed, so `income` is asserted `None` and not merely
+    /// the doubt: a column that showed nothing would pass a test that only read the doubt.
+    #[test]
+    fn a_pillaging_unit_with_no_stated_tax_base_is_doubted() {
+        let unit = forecast(1, taxable(None), &[placed(Intent::Pillage)]);
+        assert_eq!(unit.doubt, Some(SilverDoubt::UnknownTaxBase));
+        assert_eq!(unit.income, None);
+        assert_eq!(unit.at_month_end, None);
+    }
+
+    /// Pillaging resolves before the market, so its silver funds this month's orders - which is
+    /// what `BUY ALL` reads (`ah-1wcw.3`, `ah-uwa3`). This is the test that fails if the credit is
+    /// ever routed through `late_income`.
+    #[test]
+    fn a_pillaging_unit_can_afford_what_it_pillaged_for() {
+        let intents = vec![
+            placed(Intent::Pillage),
+            placed(Intent::Buy {
+                amount: Amount::All { except: 0 },
+                item: "grain".to_string(),
+            }),
+        ];
+        let unit = spending(0, &intents, taxable(Some(2500)), &sells(12, 40), None);
+        assert_eq!(unit.income, Some(5000));
+        assert_eq!(unit.expense, Some(480));
+        assert_eq!(unit.at_month_end, Some(4520));
+    }
+
+    /// Guards against the arm being folded into `Tax`'s match rather than written beside it: a
+    /// pillaging unit earns twice the base and nothing per man.
+    #[test]
+    fn pillaging_does_not_also_tax() {
+        let unit = forecast(8, taxable(Some(1000)), &[placed(Intent::Pillage)]);
+        assert_eq!(unit.income, Some(2000));
     }
 
     #[test]

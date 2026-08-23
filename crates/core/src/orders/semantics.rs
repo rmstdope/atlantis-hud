@@ -3346,6 +3346,65 @@ mod tests {
         assert_eq!(review.silver[0].doubt, None);
     }
 
+    /// The pair is the point (`ah-abwx`): one direction alone passes on a surface that credits
+    /// nothing. The ledger has always credited a pillage twice the region's tax base, so the
+    /// column has to say the same or the player is shown a red month-end beside a silent warning.
+    #[test]
+    fn the_column_and_the_warning_agree_about_a_pillager_that_spends() {
+        let market = |orders: &str| {
+            let hex = ReportRegion {
+                tax_base: Some(2500),
+                for_sale: vec![MarketItem {
+                    amount: 100,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 100,
+                }],
+                ..region(vec![with_silver(unit("2390"), 0)])
+            };
+            review_turn(
+                &report(vec![hex]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+        };
+
+        // Ten grain at 100 is 1,000 out of the 5,000 the pillage brings in.
+        let affordable = market("unit 2390\nPILLAGE\nBUY 10 grain\n");
+        assert!(
+            affordable.silver[0].at_month_end.is_some_and(|end| end > 0),
+            "the column shows the pillage: {:?}",
+            affordable.silver[0].at_month_end
+        );
+        assert!(
+            !affordable
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+            "the warning stays quiet: {:?}",
+            codes(&affordable.findings)
+        );
+
+        // Eighty grain at 100 is 8,000, which 5,000 cannot pay for.
+        let unaffordable = market("unit 2390\nPILLAGE\nBUY 80 grain\n");
+        assert!(
+            unaffordable.silver[0]
+                .at_month_end
+                .is_some_and(|end| end < 0),
+            "the column shows the shortfall: {:?}",
+            unaffordable.silver[0].at_month_end
+        );
+        assert!(
+            unaffordable
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+            "the warning fires: {:?}",
+            codes(&unaffordable.findings)
+        );
+    }
+
     // --- fixtures ---------------------------------------------------------------------------
 
     fn region(units: Vec<ReportUnit>) -> ReportRegion {
