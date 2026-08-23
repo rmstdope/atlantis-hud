@@ -168,6 +168,7 @@ describe("the silver section", () => {
     forcedFactionFood: 0,
     foodContended: false,
     sharedSilverCovered: 0,
+    withdrawing: false,
     ...overrides
   });
 
@@ -575,15 +576,26 @@ describe("the silver section", () => {
         doubtSubject: "horses"
       })
     ).toBe("This region is not selling horses, so what the purchase costs cannot be said.");
-    expect(note({ expense: null, atMonthEnd: null, doubt: "unpriced-withdrawal" })).toBe(
-      "The ruleset does not say what withdrawing costs."
-    );
     expect(note({ expense: null, atMonthEnd: null, doubt: "gives-a-whole-class" })).toBe(
       "This unit is giving away a whole class of goods, which cannot be counted."
     );
     expect(
       note({ income: 0, expense: 300, atMonthEnd: 60, givenToNobody: 300 })
     ).toBe("Includes 300 given away to nobody.");
+  });
+
+  it("says_the_fund_paid_for_a_withdrawal", () => {
+    const note = (countUpkeep: boolean) =>
+      summariseUnit(
+        aReportUnit({ unitId: "1" }),
+        forecast({ income: 0, expense: 0, atMonthEnd: 60, upkeep: 0, withdrawing: true }),
+        true,
+        countUpkeep
+      ).silver?.note;
+
+    // It explains `Out`, which is on show whatever the upkeep setting says (`ah-tdsi`).
+    expect(note(true)).toBe("This unit's withdrawal is paid from the faction's unclaimed silver.");
+    expect(note(false)).toBe("This unit's withdrawal is paid from the faction's unclaimed silver.");
   });
 
   it("names_every_giver_the_way_a_market_list_reads", () => {

@@ -156,8 +156,7 @@ const SPENDS: Record<NonNullable<UnitSilver["shortOn"]>, string> = {
   buy: "buys",
   cast: "casts",
   study: "studies",
-  give: "gives",
-  withdraw: "withdraws"
+  give: "gives"
 };
 
 /** The month-end figure with upkeep taken off, or `null` where either term is unpriceable. */
@@ -212,9 +211,6 @@ function silverNote(
     // The market's own name for the goods where anything knew one, and the order's own text
     // otherwise - the same posture `unknown-goods` above takes.
     return `This region is not selling ${silver.doubtSubject ?? "these goods"}, so what the purchase costs cannot be said.`;
-  }
-  if (silver.doubt === "unpriced-withdrawal") {
-    return "The ruleset does not say what withdrawing costs.";
   }
   if (silver.doubt === "gives-a-whole-class") {
     return "This unit is giving away a whole class of goods, which cannot be counted.";
@@ -282,6 +278,12 @@ function silverNote(
   // (step 2), then the faction's unclaimed fund (`ah-fjty`).
   if (countUpkeep && silver.unclaimedCovered > 0) {
     return `The faction's unclaimed silver covers ${silver.unclaimedCovered} of this unit's upkeep.`;
+  }
+  // The fund pays for a withdrawal, never the unit, so an `Out` of zero on a unit ordered to
+  // withdraw $369 of grain reads as a defect until this says why (`ah-tdsi`). Not gated on
+  // `countUpkeep` like the notes above it: it explains `Out`, which is on show either way.
+  if (silver.withdrawing) {
+    return "This unit's withdrawal is paid from the faction's unclaimed silver.";
   }
   // A gift is the one part of the figure that comes from somebody else's orders, so it is the one
   // part a reader cannot find by looking at this unit's own block.

@@ -3,4 +3,4 @@
 /**
  * The kind of order a shortfall bites on, so the hover can name it (`ah-uwa3`).
  */
-export type SilverSpender = "buy" | "cast" | "study" | "give" | "withdraw";
+export type SilverSpender = "buy" | "cast" | "study" | "give";
