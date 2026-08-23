@@ -1685,6 +1685,65 @@ pub fn settle_unclaimed(claims: &[UpkeepClaim], available: Option<i64>) -> Upkee
     }
 }
 
+/// Whether the unit is set to avoid combat, by its `avoiding` report flag.
+fn is_avoiding(flags: &[String]) -> bool {
+    flags.iter().any(|flag| flag.eq_ignore_ascii_case("avoiding"))
+}
+
+/// How many of one unit's men are combat ready, in the sense `PILLAGE` needs.
+///
+/// The rules page never defines the phrase - it uses it three times and explains it nowhere - so
+/// this is the navigator's reading, settled 2026-08-23 (`ah-1ad6.2`): **a man is combat ready when
+/// he has a weapon he can wield**, and a unit set to avoid combat has none who are.
+///
+/// - `avoiding` in `flags` - zero, whatever the unit holds.
+/// - otherwise `min(men, weapons the unit can wield)`, where a weapon needing a skill counts only
+///   for a unit that has that skill at level 1 or better.
+///
+/// `behind` is not consulted: a unit in the back rank still fights.
+///
+/// `None` when the headcount is estimated - a guessed headcount cannot be compared against a
+/// threshold - and when there is no ruleset, since nothing says which items are weapons.
+#[must_use]
+pub fn combat_ready(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<i64> {
+    if facts.men_estimated {
+        return None;
+    }
+    if is_avoiding(facts.flags) {
+        return Some(0);
+    }
+    let ruleset = ruleset?;
+    let mut armed = 0i64;
+    for held in facts.items {
+        let Some(entry) = ruleset.items.get(&held.tag.to_uppercase()) else {
+            continue;
+        };
+        let Some(weapon) = entry.weapon.as_ref() else {
+            continue;
+        };
+        // `needs` is a *skill* tag, not the item's own: `DBOW` is wielded with `LBOW`.
+        let wieldable = match weapon.needs.as_deref() {
+            None => true,
+            Some(skill) => skill_level(facts.skills, skill) >= 1,
+        };
+        if wieldable {
+            armed = armed.saturating_add(held.amount.max(0));
+        }
+    }
+    Some(facts.men.max(0).min(armed))
+}
+
+/// Combat ready men a faction needs in a region before it may pillage it.
+///
+/// "enough combat ready men in the region to tax half of the available money" - a taxer collects
+/// [`TAX_PER_MAN`], so this is `ceil(tax_base / 2 / 50)`, computed as `ceil(tax_base / 100)` in
+/// integers with no float anywhere.
+#[must_use]
+pub fn pillage_threshold(tax_base: i64) -> i64 {
+    let per_man = TAX_PER_MAN * 2;
+    (tax_base.max(0) + per_man - 1) / per_man
+}
+
 /// Whether the unit is set to spend food on its maintenance, by either `consuming ...` flag.
 fn is_consuming(flags: &[String]) -> bool {
     flags.iter().any(|flag| {
@@ -3732,5 +3791,149 @@ mod unclaimed_fund_tests {
         assert_eq!(settled.owed, 40);
         assert_eq!(settled.covered.get("a"), None);
         assert_eq!(settled.covered.get("b"), None);
+    }
+}
+
+#[cfg(test)]
+mod combat_ready_tests {
+    use super::*;
+
+    fn ruleset() -> Ruleset {
+        Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
+            .expect("the committed ruleset should be usable")
+    }
+
+    fn item(tag: &str, amount: i64) -> ItemAmount {
+        ItemAmount {
+            amount,
+            name: tag.to_lowercase(),
+            tag: tag.to_string(),
+        }
+    }
+
+    fn skill(tag: &str, level: u32) -> Skill {
+        Skill {
+            name: tag.to_lowercase(),
+            tag: tag.to_string(),
+            level,
+            points: 0,
+        }
+    }
+
+    /// A unit with a headcount, whatever it holds and whatever flags it carries.
+    fn unit<'a>(
+        men: i64,
+        items: &'a [ItemAmount],
+        flags: &'a [String],
+        skills: &'a [Skill],
+        receipts: &'a Receipts,
+    ) -> UnitFacts<'a> {
+        UnitFacts {
+            unit_id: "683",
+            region_id: "mountain (36,4)",
+            held: 0,
+            men,
+            men_estimated: false,
+            men_by_race: &[],
+            items,
+            flags,
+            skills,
+            intents: &[],
+            receipts,
+        }
+    }
+
+    fn count(
+        men: i64,
+        items: &[ItemAmount],
+        flags: &[&str],
+        skills: &[Skill],
+    ) -> Option<i64> {
+        let receipts = Receipts::default();
+        let flags: Vec<String> = flags.iter().map(|flag| (*flag).to_string()).collect();
+        combat_ready(
+            &unit(men, items, &flags, skills, &receipts),
+            Some(&ruleset()),
+        )
+    }
+
+    /// "enough combat ready men in the region to tax half of the available money in the region" -
+    /// a taxer collects `TAX_PER_MAN`, so half a base of 8,963 needs 90 men.
+    #[test]
+    fn a_region_needs_a_hundredth_of_its_tax_base_in_men() {
+        assert_eq!(pillage_threshold(8963), 90);
+        assert_eq!(pillage_threshold(100), 1);
+        assert_eq!(pillage_threshold(101), 2);
+        assert_eq!(pillage_threshold(0), 0);
+    }
+
+    #[test]
+    fn a_unit_with_no_weapons_is_not_combat_ready() {
+        assert_eq!(count(50, &[], &[], &[]), Some(0));
+    }
+
+    #[test]
+    fn a_unit_counts_one_man_per_weapon() {
+        assert_eq!(count(50, &[item("SWOR", 10)], &[], &[]), Some(10));
+    }
+
+    #[test]
+    fn weapons_beyond_the_headcount_do_not_add_men() {
+        assert_eq!(count(5, &[item("SWOR", 10)], &[], &[]), Some(5));
+    }
+
+    #[test]
+    fn a_crossbow_counts_only_for_a_unit_that_can_use_it() {
+        assert_eq!(count(10, &[item("XBOW", 10)], &[], &[]), Some(0));
+        assert_eq!(
+            count(10, &[item("XBOW", 10)], &[], &[skill("XBOW", 1)]),
+            Some(10)
+        );
+    }
+
+    /// `needs` is a *skill* tag, not the item's own: `DBOW` is wielded with `LBOW`. Reading it as
+    /// the item's own tag looks right for `XBOW` by coincidence, and this is what separates them.
+    #[test]
+    fn a_double_bow_needs_longbow_not_its_own_tag() {
+        assert_eq!(
+            count(10, &[item("DBOW", 10)], &[], &[skill("LBOW", 1)]),
+            Some(10)
+        );
+        assert_eq!(
+            count(10, &[item("DBOW", 10)], &[], &[skill("XBOW", 1)]),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn an_avoiding_unit_has_no_combat_ready_men() {
+        assert_eq!(count(50, &[item("SWOR", 50)], &["avoiding"], &[]), Some(0));
+    }
+
+    /// `behind` is not consulted: a unit in the back rank still fights.
+    #[test]
+    fn a_behind_unit_still_counts() {
+        assert_eq!(count(50, &[item("SWOR", 50)], &["behind"], &[]), Some(50));
+    }
+
+    /// `None`, not 0: a guessed headcount cannot be compared against a threshold, and the guess
+    /// might be what carries the faction over it.
+    #[test]
+    fn a_guessed_headcount_cannot_be_counted() {
+        let receipts = Receipts::default();
+        let items = [item("SWOR", 50)];
+        let facts = UnitFacts {
+            men_estimated: true,
+            ..unit(50, &items, &[], &[], &receipts)
+        };
+        assert_eq!(combat_ready(&facts, Some(&ruleset())), None);
+    }
+
+    /// Nothing can be told about weapons without the catalogue that says which items are weapons.
+    #[test]
+    fn without_a_ruleset_nothing_can_be_counted() {
+        let receipts = Receipts::default();
+        let items = [item("SWOR", 50)];
+        assert_eq!(combat_ready(&unit(50, &items, &[], &[], &receipts), None), None);
     }
 }
