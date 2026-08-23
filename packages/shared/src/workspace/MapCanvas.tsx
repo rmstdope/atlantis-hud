@@ -361,8 +361,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   /**
    * How far apart the world's repeats are, per axis - `null` on an axis that does not repeat.
    *
-   * The camera is folded into the first repeat after every move, so it never leaves the central
-   * band and one ghost copy on each side is always enough, however far the player drags.
+   * The copies are moved to the repeats either side of wherever the camera has got to, so one of
+   * them always spans the screen however far the player drags - see `ghostShift`.
    */
   const spans = useMemo(() => wrapSpans(shape), [shape]);
 

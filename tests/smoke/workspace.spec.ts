@@ -3308,9 +3308,9 @@ test("a click beyond the seam selects the hex it is a copy of", async ({ page })
 /**
  * ah-brgo.1: panning east through several world widths never runs out of map.
  *
- * The camera is folded into the first repeat after every move, so the world drawn either side of
- * itself is always enough - and because the fold moves by exactly one world width, nothing on
- * screen shifts as it happens.
+ * The camera is left where the player put it and the copies move around it, a whole world at a
+ * time, so one of them always spans the screen. A whole world is exactly the distance at which a
+ * copy is pixel-identical to the world itself, which is why nothing shifts on screen as it happens.
  */
 test("panning east forever stays on the map", async ({ page }) => {
   await loadReport(page);
@@ -3323,9 +3323,8 @@ test("panning east forever stays on the map", async ({ page }) => {
 });
 
 /**
- * The negative case the fold gets wrong if it is written as a plain `%`: the first westward pan
- * from the origin produces a negative translation, and a negative fold puts the world off screen -
- * which is the very bug this bead exists to fix.
+ * West as readily as east: the copies follow a translation running negative just as they follow one
+ * running positive, and a westward drag is the commonest way to leave the map's own range at all.
  */
 test("panning west past the origin stays on the map", async ({ page }) => {
   await loadReport(page);
