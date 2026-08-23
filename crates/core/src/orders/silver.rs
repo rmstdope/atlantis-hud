@@ -315,6 +315,15 @@ pub enum PurchaseAnswer {
     NotSold { name: String },
 }
 
+/// Which side of the market an order is on, for [`Lookups::market_share`]. Buying and selling the
+/// same goods draw on two separate pools - the `For Sale` and `Wanted` lines - so the side is part
+/// of the question.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MarketSide {
+    Buying,
+    Selling,
+}
+
 /// What [`forecast_unit`] must ask [`super::semantics`] rather than derive itself.
 ///
 /// Resolving an item name against the catalogue and the hex's inventories is that module's
@@ -330,6 +339,13 @@ pub struct Lookups<'a> {
     /// The catalogue's name for a tag, for the one figure the interface cannot name itself: what
     /// a unit is about to produce is not yet in its inventory (`ah-19l2.2`).
     pub item_name: &'a dyn Fn(&str) -> String,
+    /// How much of the goods an order names this unit may trade, once its faction-mates in the
+    /// same hex have been settled against it (`ah-t2pn.3`).
+    ///
+    /// `None` means nothing was settled - the goods are not traded here, nothing could identify
+    /// them, or the hex could not be settled at all - and the arm falls back to what the market
+    /// line itself says, which is the behaviour before this bead.
+    pub market_share: &'a dyn Fn(&str, MarketSide) -> Option<i64>,
 }
 
 /// What this hex's market says about goods a unit is ordered to sell.
@@ -662,7 +678,11 @@ pub fn forecast_unit(
                         Amount::Exact(count) => *count,
                         Amount::All { except } => (unit_holds - except).max(0),
                     };
-                    let sold = asked.min(market_takes).min(unit_holds).max(0);
+                    // What this hex's other own sellers left of the line, or the line itself
+                    // where nothing was settled (`ah-t2pn.3`).
+                    let allowed =
+                        (lookups.market_share)(item, MarketSide::Selling).unwrap_or(market_takes);
+                    let sold = asked.min(allowed).min(unit_holds).max(0);
                     income = income.saturating_add(sold.saturating_mul(price));
                 }
                 // Goods this market does not want are unsellable, so the order earns nothing. That
@@ -763,7 +783,12 @@ pub fn forecast_unit(
             Intent::Buy { amount, item } => match (lookups.purchase)(item) {
                 PurchaseAnswer::ForSale { price, market_has } => match amount {
                     Amount::Exact(count) => {
-                        let charged = count.saturating_mul(price);
+                        // The settled figure is already capped by what the market has, so this
+                        // also stops a lone unit being charged for goods that do not exist - the
+                        // navigator's decision, recorded in the bead's plan (`ah-t2pn.3`).
+                        let allowed =
+                            (lookups.market_share)(item, MarketSide::Buying).unwrap_or(*count);
+                        let charged = (*count).min(allowed).max(0).saturating_mul(price);
                         expense = expense.saturating_add(charged);
                         if charged > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Buy));
@@ -771,7 +796,13 @@ pub fn forecast_unit(
                     }
                     // What a unit can afford depends on everything else this month does, so this
                     // waits for the running total below.
-                    Amount::All { .. } => deferred.push(Deferred::BuyAll { price, market_has }),
+                    // The share is captured here, where the `Lookups` are, rather than in the
+                    // deferred pass - which runs after the settlement and knows nothing of it.
+                    Amount::All { .. } => deferred.push(Deferred::BuyAll {
+                        price,
+                        market_has: (lookups.market_share)(item, MarketSide::Buying)
+                            .unwrap_or(market_has),
+                    }),
                 },
                 PurchaseAnswer::NotSold { name } => {
                     if expense_doubt.is_none() {
@@ -1938,6 +1969,12 @@ mod tests {
         Some(text.to_ascii_uppercase())
     }
 
+    /// Nothing settled, so every arm falls back to what the market line itself says - which is
+    /// this module's own behaviour, unit-tested here without `semantics`' settlement.
+    fn unsettled_market(_item: &str, _side: MarketSide) -> Option<i64> {
+        None
+    }
+
     /// The lookups for a unit that neither buys nor sells.
     fn no_market() -> Lookups<'static> {
         Lookups {
@@ -1945,6 +1982,7 @@ mod tests {
             purchase: &no_purchases,
             item_tag: &verbatim_tag,
             item_name: &verbatim_name,
+            market_share: &unsettled_market,
         }
     }
 
