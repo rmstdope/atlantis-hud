@@ -389,9 +389,6 @@ describe("the silver section", () => {
     expect(
       note({ income: null, atMonthEnd: null, doubt: "unknown-goods", doubtSubject: "herbs" })
     ).toBe("The report does not say what herbs are, so what this sale earns cannot be said.");
-    expect(note({ income: null, atMonthEnd: null, doubt: "unpriced-spell" })).toBe(
-      "The ruleset does not say what this spell earns."
-    );
     expect(
       note({
         income: 200,

@@ -186,9 +186,6 @@ function silverNote(
     // other way to say which ones are meant.
     return `The report does not say what ${silver.doubtSubject ?? "these goods"} are, so what this sale earns cannot be said.`;
   }
-  if (silver.doubt === "unpriced-spell") {
-    return "The ruleset does not say what this spell earns.";
-  }
   if (silver.doubt === "estimated-men") {
     return "This unit's headcount is an estimate, so its month cannot be priced.";
   }
