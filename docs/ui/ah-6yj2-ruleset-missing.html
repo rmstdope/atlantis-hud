@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Every unit an estimate (ah-6yj2) — chosen</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:22px; align-items:start; }
+  .cards.two { grid-template-columns:repeat(2,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:11px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .card h3 .recd { color:var(--ground); background:var(--brass); border-radius:3px; font:10px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px; text-transform:uppercase; padding:1px 5px; margin-left:6px; vertical-align:2px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; padding:0; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:16px 0 6px; }
+  .app { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; line-height:1.45; }
+  .win { border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  .apphdr { display:flex; align-items:center; gap:11px; padding:0 10px; min-height:30px; background:var(--panel); border-bottom:1px solid var(--edge); flex-wrap:wrap; }
+  .chip { border:1px solid var(--edge); background:var(--raised); border-radius:3px; padding:0 7px; color:var(--ink-soft); font-size:11px; display:inline-block; }
+  .chip.warnc { border-color:var(--warn); color:var(--warn); }
+  .status { display:flex; align-items:center; gap:6px; color:var(--ink-soft); font-size:11.5px; }
+  .status .dot { width:6px; height:6px; border-radius:50%; display:inline-block; }
+  .dot.warn { background:var(--warn); } .dot.dim { background:var(--ink-dim); }
+  .tbl { width:100%; border-collapse:collapse; font-size:11.5px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .tbl th { color:var(--brass); font-size:10px; letter-spacing:.9px; text-transform:uppercase; text-align:left; padding:4px 8px; border-bottom:1px solid var(--edge); font-weight:normal; }
+  .tbl td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); color:var(--ink-soft); }
+  .tbl td.n { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); text-align:right; }
+  .est { color:var(--ink-dim); }
+  .est::after { content:" ~"; color:var(--warn); }
+  .mapbg { height:26px; background: repeating-linear-gradient(60deg, #141b23 0 9px, #151d25 9px 18px), var(--ground); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  pre.ev { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.65 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+  pre.ev b { color:var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-6yj2</span> — every unit shown as an estimate</h1>
+  <p><strong>The bead assumes a parser defect. It is not one.</strong> Measured against the fixture
+  you loaded:</p>
+  <pre class="ev">units in the report            372   (182 your own, 190 foreign)
+units that state what they hold  <b>372</b>   - every single one
+item tags used by those units   all <b>known</b> to the ruleset (171 tags, 0 unrecognised)</pre>
+  <p>And the classifier clears the estimate flag whenever it recognises everything a unit holds. So
+  with the ruleset loaded, <strong>none of those 372 units should be an estimate</strong> — own or
+  foreign. There is no separate rule to establish for foreign units in this report, because not one
+  of them conceals its composition.</p>
+  <p><strong>What actually happened is that the classification never ran.</strong> It only runs when
+  the ruleset is loaded:</p>
+  <pre class="ev">ruleset "ready"        -> parseReportClassified   -> men counted, flag cleared
+ruleset anything else  -> parseReportFull         -> <b>every unit an estimate</b></pre>
+  <p>There are three ways to be in the second row: the report was loaded <em>before</em> the ruleset
+  finished fetching; the fetch failed; or the game's ruleset has no file at all. <strong>All three are
+  silent.</strong> `RulesetState` has had an <code>unavailable</code> case since it was written and
+  nothing in the interface has ever mentioned it — no banner, no status line, no chip. The app simply
+  degrades every number in the report and says nothing.</p>
+  <p>So the questions are not about the parser. They are about what should happen when the rules are
+  not there.</p>
+</header>
+
+<main>
+<section>
+  <h2 class="rule"><em>What you saw</em> and what it should have been</h2>
+  <div class="cards two">
+    <div class="card">
+      <h3>Today</h3>
+      <div class="app"><div class="win">
+        <div class="apphdr"><span style="color:var(--ink-soft)">Turn <span class="chip">82 ▾</span></span><span class="status"><span class="dot dim"></span></span></div>
+        <table class="tbl">
+          <tr><th>Unit</th><th>Faction</th><th style="text-align:right">Men</th></tr>
+          <tr><td>scout (15361)</td><td>Disinherited Knights</td><td class="n est">1</td></tr>
+          <tr><td>Woodsmen (6611)</td><td>Disinherited Knights</td><td class="n est">24</td></tr>
+          <tr><td>Fan (803)</td><td>Fanhunters</td><td class="n est">6</td></tr>
+        </table>
+      </div></div>
+      <ul class="notes"><li class="con">Every figure marked as a guess, including your own units, whose numbers came straight off the report.</li><li class="con">Nothing says why, so there is nothing to act on.</li></ul>
+    </div>
+    <div class="card rec">
+      <h3>With the ruleset loaded<span class="recd">Correct</span></h3>
+      <div class="app"><div class="win">
+        <div class="apphdr"><span style="color:var(--ink-soft)">Turn <span class="chip">82 ▾</span></span></div>
+        <table class="tbl">
+          <tr><th>Unit</th><th>Faction</th><th style="text-align:right">Men</th></tr>
+          <tr><td>scout (15361)</td><td>Disinherited Knights</td><td class="n">1</td></tr>
+          <tr><td>Woodsmen (6611)</td><td>Disinherited Knights</td><td class="n">24</td></tr>
+          <tr><td>Fan (803)</td><td>Fanhunters</td><td class="n">6</td></tr>
+        </table>
+      </div></div>
+      <ul class="notes"><li>Exactly the same parse, classified. No estimate marker anywhere in this report.</li></ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Chosen</em> a load waits for the ruleset</h2>
+  <p><strong>Decided 2026-08-23: 1-i</strong>, once it was established that the ruleset is a
+  <em>local bundled asset</em> rather than a network call &mdash; <code>/ruleset.json</code>, served
+  from <code>config/public</code> by the build, working offline. The navigator's condition was
+  exactly that, and it holds.</p>
+  <p>The navigator also corrected the bead: <strong>every</strong> unit, not nearly every, and in a
+  browser. That is the decisive detail, because it is the signature of the classification pass not
+  running at all rather than of any rule about which units can be estimated.</p>
+  <p>The fetch takes a moment. Import a report inside that moment and you get the unclassified parse
+  — permanently, for that load. This is the likeliest cause of what you saw, because you opened the
+  app and loaded a fixture straight away.</p>
+  <div class="cards">
+    <div class="card rec">
+      <h3><em>1-i</em> Wait for it<span class="recd">Chosen</span></h3>
+      <div class="concept">A load that arrives while the ruleset is still loading waits for it, then parses classified.</div>
+      <div class="app"><div class="win">
+        <div class="apphdr"><span class="status"><span class="dot dim"></span>reading the rules…</span></div>
+        <div class="mapbg"></div>
+      </div></div>
+      <ul class="notes">
+        <li>Removes the race outright rather than reporting it.</li>
+        <li>It is a local file behind a fetch — the wait is imperceptible in the ordinary case.</li>
+        <li class="con">If the fetch is slow or hangs, the import appears to hang with it, so it needs a ceiling.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>1-ii</em> Parse now, reclassify after</h3>
+      <div class="concept">Load immediately; when the ruleset arrives, re-parse and replace the figures.</div>
+      <ul class="notes">
+        <li>Nothing ever waits.</li>
+        <li class="con">Numbers change under the player a second after they appear, which is its own kind of wrong.</li>
+        <li class="con">Two parses of a large report for every load.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>1-iii</em> Refuse until it is ready</h3>
+      <div class="concept">The Import control is disabled while the ruleset is loading.</div>
+      <ul class="notes">
+        <li>Honest and simple.</li>
+        <li class="con">Disables the app's main action for a moment on every open, for a case that resolves itself.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Chosen</em> when the ruleset genuinely is not there, say so</h2>
+  <p>Waiting cannot help this one: the fetch failed, or the game names a ruleset with no file. Today
+  the report loads, every unit becomes an estimate, and nothing is said. Whatever is chosen here is
+  the first thing the interface has ever said about a missing ruleset.</p>
+  <div class="cards">
+    <div class="card rec">
+      <h3><em>2-i</em> Load it, and say so<span class="recd">Chosen</span></h3>
+      <div class="concept">The report loads with its estimates, and the header carries a warning naming the cause.</div>
+      <div class="app"><div class="win">
+        <div class="apphdr">
+          <span style="color:var(--ink-soft)">Turn <span class="chip">82 ▾</span></span>
+          <span class="status"><span class="dot warn"></span>the rules could not be loaded — unit numbers are estimates</span>
+        </div>
+        <div class="mapbg"></div>
+      </div></div>
+      <ul class="notes">
+        <li>The player keeps their report and learns why every figure is hedged.</li>
+        <li>Uses the status line's existing warning tone; nothing new is built.</li>
+        <li class="con">The status line is one shared channel and the next message replaces it.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>2-ii</em> A chip that stays</h3>
+      <div class="concept">An amber <code>no rules</code> chip beside the others, for as long as it is true, opening a panel that says what is degraded.</div>
+      <div class="app"><div class="win">
+        <div class="apphdr">
+          <span style="color:var(--ink-soft)">Turn <span class="chip">82 ▾</span></span>
+          <span class="chip warnc">⚠ no rules ▾</span>
+        </div>
+        <div class="mapbg"></div>
+      </div></div>
+      <ul class="notes">
+        <li>Survives; it is true for the whole session, not just the moment of loading.</li>
+        <li>Exactly the pattern <code>ah-w544.2</code> just built for unreadable lines.</li>
+        <li class="con">A fourth chip in the header, for a state that should be rare.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>2-iii</em> Refuse to load</h3>
+      <div class="concept">Without rules, the report is not imported at all.</div>
+      <ul class="notes">
+        <li>Nothing misleading can ever be shown.</li>
+        <li class="con">Unusable offline, and the report is still largely readable without a ruleset — refusing costs more than it saves.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Chosen</em> the words</h2>
+  <table class="q">
+    <tr><th>#</th><th>Line</th><th>Note</th></tr>
+    <tr><td><strong>3-i</strong></td><td class="k">The rules could not be loaded — unit numbers are estimates.</td><td><strong>Chosen.</strong> Cause then consequence, and it names exactly which numbers rather than hedging about "some".</td></tr>
+    <tr><td><strong>3-ii</strong></td><td class="k">Running without the rules: some numbers are guesses.</td><td>Shorter, vaguer about which numbers.</td></tr>
+    <tr><td><strong>3-iii</strong></td><td class="k">Unit numbers are estimates — the rules for this game could not be loaded.</td><td>Consequence first, which is what the player actually noticed.</td></tr>
+  </table>
+</section>
+</main>
+</body>
+</html>
