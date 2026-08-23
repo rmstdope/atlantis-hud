@@ -300,6 +300,47 @@ pub enum PoolShare {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PoolShares {
     pub tax: PoolShare,
+    /// This unit's share of the region's wage pool - the `Max:` figure on its `Wages:` line.
+    pub wages: PoolShare,
+    /// This unit's share of the region's entertainment demand.
+    pub entertainment: PoolShare,
+}
+
+/// What one unit's orders ask of each of its region's contended pools, before any settlement.
+///
+/// The single place each want is derived, so [`late_income`] and the settlement in
+/// `super::semantics` cannot disagree about what a unit asked for. A unit not ordered to draw on a
+/// pool wants `0`, and a zero want is not a claim on it.
+///
+/// Counted once per unit however many times its block repeats an order: the pools are settled
+/// against headcounts, and a block that says `WORK` twice has no more men for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PoolWants {
+    pub tax: i64,
+    pub wages: i64,
+    pub entertainment: i64,
+}
+
+/// What this unit asks of each of its region's contended pools.
+#[must_use]
+pub fn pool_wants(facts: &UnitFacts<'_>, region: RegionWages) -> PoolWants {
+    let mut wants = PoolWants::default();
+    for placed in facts.intents {
+        match &placed.intent {
+            Intent::Tax => wants.tax = facts.men.saturating_mul(TAX_PER_MAN),
+            Intent::Work => {
+                wants.wages = facts.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
+            }
+            Intent::Entertain => {
+                wants.entertainment = facts
+                    .men
+                    .saturating_mul(skill_level(facts.skills, ENTERTAIN_TAG))
+                    .saturating_mul(ENTERTAIN_PER_MAN_PER_LEVEL);
+            }
+            _ => {}
+        }
+    }
+    wants
 }
 
 /// What this hex's market says about goods a unit is ordered to buy.
@@ -489,21 +530,44 @@ pub fn parse_wage_centis(wages: Option<&str>) -> Option<i64> {
 /// spend order, so a mage's takings can fund the same month's `BUY` (`ah-e77q`, correcting
 /// `ah-uwa3`'s classification of Phantasmal Entertainment). [`forecast_unit`] prices both - which
 /// is also why this no longer needs the ruleset: nothing late is recognised by a catalogue tag.
+///
+/// `shares` is what this unit may draw from each pool once its faction-mates in the same hex have
+/// been settled against it (`ah-t2pn`). It is a parameter rather than something derived here
+/// because the settlement needs the whole hex, and this function is deliberately per unit and
+/// pure - and because [`forecast_unit`] and `semantics::charge_upkeep` must be handed **the same**
+/// shares, for the reason this function exists at all.
 #[must_use]
-pub fn late_income(facts: &UnitFacts<'_>, region: RegionWages) -> i64 {
+pub fn late_income(facts: &UnitFacts<'_>, region: RegionWages, shares: PoolShares) -> i64 {
+    let wants = pool_wants(facts, region);
     let mut late = 0i64;
+    let mut worked = false;
+    let mut entertained = false;
     for placed in facts.intents {
         match &placed.intent {
-            Intent::Work => {
-                let earned = facts.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
-                late = late.saturating_add(earned.min(region.max_wages.unwrap_or(i64::MAX)));
+            // Each pool is drawn once however many times the block repeats the order: the
+            // settlement counted this unit's men once, so adding the share per line would promise
+            // the region's pool twice over - the very thing the split exists to stop.
+            Intent::Work if !worked => {
+                worked = true;
+                late = late.saturating_add(match shares.wages {
+                    PoolShare::Uncontended => wants.wages.min(region.max_wages.unwrap_or(i64::MAX)),
+                    PoolShare::Share(share) => share,
+                    // Nowhere to put a doubt: this returns a plain number, and `forecast_unit`
+                    // raises `ContestedRegionPool` separately. Zero is the pessimistic direction,
+                    // and `semantics::charge_upkeep` - which has no doubt to raise at all - wants
+                    // exactly that: the full fee charged against no wages.
+                    PoolShare::Unknowable => 0,
+                });
             }
-            Intent::Entertain => {
-                let earned = facts
-                    .men
-                    .saturating_mul(skill_level(facts.skills, ENTERTAIN_TAG))
-                    .saturating_mul(ENTERTAIN_PER_MAN_PER_LEVEL);
-                late = late.saturating_add(earned.min(region.entertainment.unwrap_or(0)));
+            Intent::Entertain if !entertained => {
+                entertained = true;
+                late = late.saturating_add(match shares.entertainment {
+                    PoolShare::Uncontended => {
+                        wants.entertainment.min(region.entertainment.unwrap_or(0))
+                    }
+                    PoolShare::Share(share) => share,
+                    PoolShare::Unknowable => 0,
+                });
             }
             _ => {}
         }
@@ -612,9 +676,11 @@ pub fn forecast_unit(
         match &placed.intent {
             Intent::Claim(amount) => {
                 // Capped at what the faction actually holds, and never divided between units that
-                // claim in the same turn - exactly as `WORK` and `ENTERTAIN` treat their regional
-                // pools. A purse the report does not state leaves only the limit unknown, not the
-                // amount, so the stated figure is counted and nothing is doubted.
+                // claim in the same turn - unlike the regional pools, which `ah-t2pn` settles
+                // between own units. The purse is faction-wide and `ah-bumi` settled it
+                // deliberately the other way; `claims-exceed-unclaimed` (`ah-wur4`) is what carries
+                // the overrun. A purse the report does not state leaves only the limit unknown, not
+                // the amount, so the stated figure is counted and nothing is doubted.
                 income = income.saturating_add(match purse.unclaimed {
                     Some(available) => (*amount).min(available),
                     None => *amount,
@@ -856,7 +922,22 @@ pub fn forecast_unit(
     // The two earnings that arrive in the turn's last phase - wages and entertaining - priced in
     // one place so this function and the upkeep charge can never disagree about them (`ah-uwa3`).
     // Neither earning spell is among them any more (`ah-e77q`): both are priced above, in time.
-    let late = late_income(&facts, region);
+    // A pool this unit draws on may be contended by a faction-mate whose headcount is a guess, so
+    // its share is not a number at all. `late_income` returned 0 for it; the figure the column
+    // shows must say so rather than quietly understating (`ah-t2pn.2`).
+    for placed in intents {
+        match &placed.intent {
+            Intent::Work if shares.wages == PoolShare::Unknowable => {
+                income_doubt = income_doubt.or(Some(SilverDoubt::ContestedRegionPool));
+            }
+            Intent::Entertain if shares.entertainment == PoolShare::Unknowable => {
+                income_doubt = income_doubt.or(Some(SilverDoubt::ContestedRegionPool));
+            }
+            _ => {}
+        }
+    }
+
+    let late = late_income(&facts, region, shares);
     income = income.saturating_add(late);
 
     // Everything that spends what is *left*, in document order, against a running total that
