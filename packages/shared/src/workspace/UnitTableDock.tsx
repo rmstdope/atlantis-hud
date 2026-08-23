@@ -762,9 +762,11 @@ function UnitRow({
   // Only our own units have a month to price; `getSilver` returns null for everyone else anyway,
   // and the cell is empty either way.
   const silver = unit.own ? (getSilver?.(unit.unitId) ?? null) : null;
-  // The `not-enough-silver` finding, matched on the unit alone. In a hex whose units share, that
-  // finding is anchored to the hex and names no unit, and blaming one of several would be as
-  // wrong there as it is in the Problems panel - so there is deliberately no fallback to the hex.
+  // The silver findings that name this unit - `not-enough-silver`, or `upkeep-exceeds-unclaimed`
+  // where the faction's unclaimed fund could not reach it (`ah-fjty`). In a hex whose units share,
+  // the shortfall finding is anchored to the hex and names no unit, and blaming one of several
+  // would be as wrong there as it is in the Problems panel - so there is deliberately no fallback
+  // to the hex.
   const warned = silver !== null && (silverWarnings?.has(unit.unitId) ?? false);
   // The setting decides whether maintenance comes off the figure (`ah-1wcw.4`); the core computes
   // both answers, so switching it costs no round trip through the checks.
@@ -874,8 +876,9 @@ function UnitRow({
     ),
     // What this unit is expected to hold when the month ends (ah-1wcw.1). Red is this unit,
     // counted alone, in trouble: ending below zero, or unable to pay for its own orders out of
-    // silver that reaches it in time (ah-uwa3). ⚠ is the existing `not-enough-silver` finding,
-    // which pools across the hex's sharing units. The two mean different things on purpose, so a ⚠
+    // silver that reaches it in time (ah-uwa3). ⚠ is a silver finding that names this unit -
+    // `not-enough-silver`, which pools across the hex's sharing units, or `upkeep-exceeds-unclaimed`
+    // (ah-fjty). The two mean different things on purpose, so a ⚠
     // on a positive figure is not a contradiction - the hover explains it.
     silver: (
       <Td

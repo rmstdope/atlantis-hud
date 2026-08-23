@@ -80,6 +80,7 @@ import {
   findingsByHex,
   findingsForHex,
   shouldTriggerAutosave,
+  unitsWarnedAboutSilver,
   type OrdersOrigin,
   type ValidatedOrders
 } from "../orderEditor";
@@ -2261,20 +2262,14 @@ export function AppShell({
   );
 
   /**
-   * The units the shortfall check actually names (`ah-1wcw.1`).
+   * The units the silver checks actually name (`ah-1wcw.1`, `ah-fjty`).
    *
    * A hex whose units share is reported against the hex and names no unit, so nothing here
    * carries a warning - which is deliberate: blaming one of several would be as wrong in the
    * table as it is in the Problems panel.
    */
   const silverWarnings = useMemo(
-    () =>
-      new Set(
-        validated.diagnostics
-          .filter((diagnostic) => diagnostic.code === "not-enough-silver")
-          .map((diagnostic) => diagnostic.unitId)
-          .filter((unitId): unitId is string => unitId !== null)
-      ),
+    () => unitsWarnedAboutSilver(validated.diagnostics),
     [validated.diagnostics]
   );
 

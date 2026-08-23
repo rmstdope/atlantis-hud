@@ -11,7 +11,8 @@ import {
   shouldSaveOnBlur,
   shouldTriggerAutosave,
   suggestOrderCommands,
-  summarizeOrderValidation
+  summarizeOrderValidation,
+  unitsWarnedAboutSilver
 } from "./orderEditor";
 
 describe("orderEditor policy", () => {
@@ -424,5 +425,39 @@ describe("findings that belong to a hex", () => {
 
   it("has no groups when nothing is wrong anywhere", () => {
     expect(findingsByHex([])).toEqual([]);
+  });
+});
+
+/**
+ * The unit table's ⚠, which is a set of unit ids rather than a list of findings.
+ *
+ * `upkeep-exceeds-unclaimed` was shipped by `ah-fjty` naming every unit the faction's unclaimed
+ * fund could not reach, and the table marked none of them: its set was keyed to
+ * `not-enough-silver` alone, so a unit the fund left short showed a plain figure and no warning at
+ * all. That is the failure the verification caught - the finding existed in the Problems panel and
+ * nothing on the row said so.
+ */
+describe("the units the silver column marks", () => {
+  it("marks a unit the faction's unclaimed fund cannot reach", () => {
+    const short: OrderDiagnostic = {
+      ...hexFinding("upkeep-exceeds-unclaimed"),
+      unitId: "12127",
+      message: "your units owe $1437 of upkeep they cannot pay and the faction has $100 unclaimed"
+    };
+    expect(unitsWarnedAboutSilver([short])).toEqual(new Set(["12127"]));
+  });
+
+  it("still marks a unit the shortfall check names", () => {
+    expect(unitsWarnedAboutSilver([unitFinding("7226", 3)])).toEqual(new Set(["7226"]));
+  });
+
+  it("marks nobody for a finding anchored to the hex rather than a unit", () => {
+    expect(unitsWarnedAboutSilver([hexFinding("not-enough-silver")])).toEqual(new Set());
+  });
+
+  it("marks nobody for a finding about something other than silver", () => {
+    expect(unitsWarnedAboutSilver([{ ...unitFinding("7226", 3), code: "unit-does-nothing" }])).toEqual(
+      new Set()
+    );
   });
 });
