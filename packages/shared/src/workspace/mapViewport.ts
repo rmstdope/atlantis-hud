@@ -397,22 +397,53 @@ function repeats(wraps: boolean | undefined, extent: number | undefined): boolea
 }
 
 /**
- * How many worlds the ghost copies are shifted by, so the three of them (one either side of the
- * middle one) cover wherever the camera has got to.
+ * How many worlds the ghost copies are shifted by, so that they cover wherever the camera has got
+ * to.
  *
  * The camera itself is deliberately **not** folded. Folding it keeps the arithmetic in one repeat,
  * but the world is drawn once and the ghosts are clones of it: a folded camera leaves the player
  * looking at a clone while the real hexes, note pins and rings sit a world off screen, out of reach
  * of the keyboard, an assistive technology and every existing test. Moving the copies instead costs
  * one attribute write per ghost per frame and keeps what is on screen the thing it appears to be.
+ *
+ * The copies are centred on the **middle of the screen**, not on `translation`. `translation` is
+ * where the world's left edge sits, and the visible rectangle extends to the right of it rather
+ * than around it, so rounding on `translation` alone places the copies symmetrically about a point
+ * off to the left of what the player can actually see. That left the rightmost copy swapped out too
+ * early and swapped back in too late, opening a gap of emptiness on the right once the screen was
+ * wider than a repeat - which is exactly what zooming out does, and exactly what was reported.
  */
-export function ghostShift(translation: number, span: number | null, scale: number): number {
+export function ghostShift(
+  translation: number,
+  span: number | null,
+  scale: number,
+  viewportExtent: number
+): number {
   if (span === null) return 0;
   const period = span * scale;
   if (!(period > 0)) return 0;
   // `|| 0` rather than a bare negation, so a translation inside the first repeat answers +0 rather
   // than the -0 that reads as a different number to anything comparing exactly.
-  return -Math.round(translation / period) || 0;
+  // The middle of the screen, in multiples of the world's width: screen `x` maps to world
+  // `(x - translation) / scale`, so the centre is `(viewportExtent / 2 - translation) / scale`.
+  return Math.round((viewportExtent / 2 - translation) / period) || 0;
+}
+
+/**
+ * How many copies of the world to draw on each side of the middle one, so that the screen is
+ * covered however far out it is zoomed.
+ *
+ * One either side is enough only while the screen is narrower than the world. Zooming out is the
+ * same world at fewer pixels per unit, so a screen several repeats wide needs several copies; a
+ * fixed three is what ran out. The half added to the count is the rounding `ghostShift` does - the
+ * copies land on a whole repeat, so the middle one can sit up to half a repeat away from the middle
+ * of the screen.
+ */
+export function ghostSpread(span: number | null, scale: number, viewportExtent: number): number {
+  if (span === null) return 0;
+  const period = span * scale;
+  if (!(period > 0)) return 1;
+  return Math.max(1, Math.ceil(viewportExtent / period / 2 + 0.5));
 }
 
 /**

@@ -14,6 +14,7 @@ import {
   PIXELS_PER_STEP,
   foldCoordinate,
   ghostShift,
+  ghostSpread,
   ROW_PITCH,
   rulerTicks,
   scaleOf,
@@ -496,17 +497,62 @@ describe("wrapping", () => {
   });
 
   it("shifts the ghost copies to wherever the camera has got to", () => {
+    // A screen of no width is the camera's origin and nothing else, so these are the copies placed
+    // around `tx` itself.
     // The camera is left where it is, so at rest the copies sit either side of the world itself.
-    expect(ghostShift(0, 100, 1)).toBe(0);
-    expect(ghostShift(-40, 100, 1)).toBe(0);
+    expect(ghostShift(0, 100, 1, 0)).toBe(0);
+    expect(ghostShift(-40, 100, 1, 0)).toBe(0);
     // A world east, and the copies move a world with it - which is what keeps one of them under the
     // pointer however far the drag goes.
-    expect(ghostShift(-120, 100, 1)).toBe(1);
-    expect(ghostShift(320, 100, 1)).toBe(-3);
+    expect(ghostShift(-120, 100, 1, 0)).toBe(1);
+    expect(ghostShift(320, 100, 1, 0)).toBe(-3);
     // The period is in screen pixels, so the scale matters.
-    expect(ghostShift(-220, 100, 2)).toBe(1);
+    expect(ghostShift(-220, 100, 2, 0)).toBe(1);
     // An axis that does not repeat has no copies to shift.
-    expect(ghostShift(-9999, null, 1)).toBe(0);
+    expect(ghostShift(-9999, null, 1, 0)).toBe(0);
+  });
+
+  it("centres the ghost copies on the screen rather than on the camera's origin", () => {
+    // `tx` is where the world's left edge sits, not the middle of what is on screen. Rounding on
+    // `tx` alone puts the copies symmetrically about a point that is off to the left of the visible
+    // rectangle, which is what left a gap of emptiness on the right when zoomed far enough out.
+    // Two periods of screen with the world's left edge at the origin: the middle of the screen is a
+    // whole period east of `tx`, so the copies belong a repeat further east too.
+    expect(ghostShift(0, 100, 1, 200)).toBe(1);
+    // Half a period of screen never moves them off the repeat `tx` is in.
+    expect(ghostShift(0, 100, 1, 50)).toBe(0);
+  });
+
+  it("draws as many copies as the screen is wide, so no gap opens when zoomed out", () => {
+    // Each copy covers one period, so a screen several periods wide needs several copies. One
+    // either side is only ever enough while the screen is narrower than the world.
+    expect(ghostSpread(100, 1, 50)).toBe(1);
+    expect(ghostSpread(100, 1, 100)).toBe(1);
+    // Zooming out is exactly this: the same world, fewer pixels per unit, so more repeats on screen.
+    expect(ghostSpread(100, 0.25, 800)).toBeGreaterThanOrEqual(4);
+    // An axis that does not repeat has no copies at all.
+    expect(ghostSpread(null, 1, 800)).toBe(0);
+  });
+
+  it("the copies it draws cover the whole screen, at every zoom and every pan", () => {
+    // The property the two functions exist to hold, written as the thing the navigator saw fail:
+    // wherever the camera is and however far out it is zoomed, every pixel of the screen is inside
+    // some copy of the world. A gap anywhere is the reported bug.
+    const span = 100;
+    for (const scale of [2, 1, 0.5, 0.2, 0.05]) {
+      for (const translation of [0, -37, -940, 615, -12345, 7777]) {
+        const width = 1400;
+        const shift = ghostShift(translation, span, scale, width);
+        const spread = ghostSpread(span, scale, width);
+        // The screen, in multiples of the world's width.
+        const from = -translation / scale / span;
+        const to = from + width / scale / span;
+        // Copy `m` draws the world across `[m, m + 1]` in those same multiples.
+        const covered = { from: shift - spread, to: shift + spread + 1 };
+        expect(covered.from).toBeLessThanOrEqual(from);
+        expect(covered.to).toBeGreaterThanOrEqual(to);
+      }
+    }
   });
 
   it("labels fold into the map's own range", () => {
