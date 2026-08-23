@@ -2,7 +2,7 @@
 
 - **Implementer:** Rogue
 - **Date:** 2026-08-23
-- **PR:** #575 (and rmstdope/cerebro#94)
+- **PR:** #578 (and rmstdope/cerebro#94)
 
 ## Cloning the `cerebro` submodule outside the repository is refused, and the plan's trap recommends it
 
