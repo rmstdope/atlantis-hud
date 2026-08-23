@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::movement::rules::Ruleset;
+use crate::movement::rules::{Production, Ruleset};
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{Intent, PlacedIntent};
 use crate::report::model::{ItemAmount, Skill};
@@ -1360,6 +1360,281 @@ fn moves_silver_per_man(placed: &PlacedIntent) -> bool {
             // TAX (`ah-19l2.2`).
             | Intent::Produce { .. }
     )
+}
+
+/// Which limit decided how many a unit produces, when it is not its men.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "kebab-case")]
+pub enum ProductionCap {
+    /// The unit holds less silver than the recipe wants for that many.
+    Silver,
+    /// The unit holds too little of at least one material input.
+    Materials,
+}
+
+/// What one `PRODUCE` order makes, and what it takes to make it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ProductionPlan {
+    /// How many the unit will actually make.
+    pub made: i64,
+    /// How many its men alone would make - `men / man_months`, rounded down. Equal to `made`
+    /// unless something capped it.
+    pub wanted: i64,
+    /// Silver the whole run costs: `made * <the recipe's SILV input>`. `0` for the great majority
+    /// of recipes, which take no silver.
+    pub silver: i64,
+    /// Every material the whole run consumes, silver excluded, in the recipe's own order.
+    ///
+    /// `name` carries the tag rather than a name: this module holds no catalogue, so whichever
+    /// surface needs English resolves it (`semantics::item_name`), the same way the
+    /// `not-enough-items` message already does.
+    pub materials: Vec<ItemAmount>,
+    /// What stopped it making `wanted`, or `None` when nothing did.
+    pub capped_by: Option<ProductionCap>,
+}
+
+/// What a unit's `PRODUCE` order makes this month, from the recipe and what the unit holds.
+///
+/// `held` is the unit's inventory as the report shows it, and the cap is taken against **that**
+/// rather than against a running balance. That is a decision, not an oversight: the ledger keeps a
+/// running balance and `forecast_unit` does not, so capping against one would give the two
+/// surfaces different answers for the same order - which is exactly the drift `ah-ycuj`'s corpus
+/// test exists to catch. Holdings are imprecise in both directions (a unit that BUYs wood first
+/// makes more than this says; one that spends its silver elsewhere makes fewer), they are the
+/// figure the player can see in the report, and they need no assumption about the order in which
+/// orders resolve.
+///
+/// `None` when the recipe cannot be applied at all: a recipe stating no man-months or no outputs
+/// (a ruleset scraped before `ah-19l2.1`, or cooking, whose page states a formula), or one whose
+/// inputs are alternatives rather than requirements - cooking's "any of grain, livestock and
+/// fish" consumes *one* of the three, and reading it as three requirements would debit all three.
+/// Each of those is a `?` in the column rather than an invented number.
+#[must_use]
+pub fn plan_production(recipe: &Production, men: i64, held: &[ItemAmount]) -> Option<ProductionPlan> {
+    if recipe.inputs_are_alternatives {
+        return None;
+    }
+    let man_months = i64::from(recipe.man_months.filter(|months| *months > 0)?);
+    let outputs = i64::from(recipe.outputs.filter(|made| *made > 0)?);
+
+    let wanted = (men / man_months) * outputs;
+    if wanted <= 0 {
+        return Some(ProductionPlan::default());
+    }
+
+    let holding = |tag: &str| -> i64 {
+        held.iter()
+            .find(|item| item.tag.eq_ignore_ascii_case(tag))
+            .map_or(0, |item| item.amount)
+    };
+
+    let silver_each = recipe
+        .inputs
+        .iter()
+        .find(|input| input.tag.eq_ignore_ascii_case(SILVER_TAG))
+        .map_or(0, |input| input.amount);
+    let materials_each: Vec<&crate::movement::rules::ProductionInput> = recipe
+        .inputs
+        .iter()
+        .filter(|input| !input.tag.eq_ignore_ascii_case(SILVER_TAG))
+        .collect();
+
+    let by_silver = if silver_each > 0 {
+        holding(SILVER_TAG) / silver_each
+    } else {
+        i64::MAX
+    };
+    let by_materials = materials_each
+        .iter()
+        .filter(|input| input.amount > 0)
+        .map(|input| holding(&input.tag) / input.amount)
+        .min()
+        .unwrap_or(i64::MAX);
+
+    let made = wanted.min(by_silver).min(by_materials);
+    // Silver is named first when both bind, because the column this feeds is about silver.
+    let capped_by = if made == wanted {
+        None
+    } else if by_silver <= by_materials {
+        Some(ProductionCap::Silver)
+    } else {
+        Some(ProductionCap::Materials)
+    };
+
+    Some(ProductionPlan {
+        made,
+        wanted,
+        silver: made * silver_each,
+        materials: materials_each
+            .iter()
+            .map(|input| ItemAmount {
+                amount: made * input.amount,
+                name: input.tag.clone(),
+                tag: input.tag.clone(),
+            })
+            .collect(),
+        capped_by,
+    })
+}
+
+#[cfg(test)]
+mod production_tests {
+    use super::*;
+    use crate::movement::rules::ProductionInput;
+
+    fn input(tag: &str, amount: i64) -> ProductionInput {
+        ProductionInput {
+            tag: tag.to_string(),
+            amount,
+        }
+    }
+
+    fn held(items: &[(&str, i64)]) -> Vec<ItemAmount> {
+        items
+            .iter()
+            .map(|(tag, amount)| ItemAmount {
+                amount: *amount,
+                name: tag.to_lowercase(),
+                tag: (*tag).to_string(),
+            })
+            .collect()
+    }
+
+    /// The corpus's own recipe: a catapult is 3000 silver, 250 wood, 30 ironwood and 80 furs, one
+    /// per four man-months.
+    fn catapult() -> Production {
+        Production {
+            tag: "CATP".to_string(),
+            level: 4,
+            inputs: vec![
+                input("SILV", 3000),
+                input("WOOD", 250),
+                input("IRWD", 30),
+                input("FUR", 80),
+            ],
+            inputs_are_alternatives: false,
+            man_months: Some(4),
+            outputs: Some(1),
+        }
+    }
+
+    #[test]
+    fn ten_men_make_two_catapults_at_four_man_months() {
+        let plan = plan_production(
+            &catapult(),
+            10,
+            &held(&[("SILV", 100_000), ("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 2);
+        assert_eq!(plan.made, 2);
+        assert_eq!(plan.silver, 6000);
+        assert_eq!(
+            plan.materials
+                .iter()
+                .map(|item| (item.tag.as_str(), item.amount))
+                .collect::<Vec<_>>(),
+            vec![("WOOD", 500), ("IRWD", 60), ("FUR", 160)]
+        );
+        assert_eq!(plan.capped_by, None);
+    }
+
+    #[test]
+    fn a_unit_too_small_to_make_one_makes_none() {
+        let plan = plan_production(&catapult(), 3, &held(&[("SILV", 100_000)]))
+            .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 0);
+        assert_eq!(plan.made, 0);
+        assert_eq!(plan.silver, 0);
+        assert_eq!(plan.materials, Vec::new());
+        assert_eq!(plan.capped_by, None);
+    }
+
+    /// Unit 12881 `Carpenters` as the committed turn has it: ten men, materials for two, silver
+    /// for one.
+    #[test]
+    fn silver_caps_what_a_unit_produces() {
+        let plan = plan_production(
+            &catapult(),
+            10,
+            &held(&[("SILV", 3000), ("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 2);
+        assert_eq!(plan.made, 1);
+        assert_eq!(plan.silver, 3000);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Silver));
+    }
+
+    #[test]
+    fn materials_cap_what_a_unit_produces() {
+        let plan = plan_production(
+            &catapult(),
+            10,
+            &held(&[("SILV", 100_000), ("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.made, 1);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Materials));
+    }
+
+    #[test]
+    fn silver_is_named_first_when_both_bind() {
+        let plan = plan_production(
+            &catapult(),
+            10,
+            &held(&[("SILV", 3000), ("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.made, 1);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Silver));
+    }
+
+    #[test]
+    fn a_recipe_that_costs_no_silver_is_capped_by_materials_alone() {
+        let sword = Production {
+            tag: "SWOR".to_string(),
+            level: 1,
+            inputs: vec![input("IRON", 1)],
+            inputs_are_alternatives: false,
+            man_months: Some(1),
+            outputs: Some(1),
+        };
+        let plan =
+            plan_production(&sword, 5, &held(&[("IRON", 2)])).expect("a priceable recipe");
+        assert_eq!(plan.wanted, 5);
+        assert_eq!(plan.made, 2);
+        assert_eq!(plan.silver, 0);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Materials));
+    }
+
+    /// Cooking says "any of grain, livestock and fish", and which the engine takes cannot be told -
+    /// so nothing is priced rather than all three being debited.
+    #[test]
+    fn a_recipe_of_alternatives_is_not_priced() {
+        let meals = Production {
+            tag: "MEAL".to_string(),
+            level: 1,
+            inputs: vec![input("GRAI", 1), input("LIVE", 1), input("FISH", 1)],
+            inputs_are_alternatives: true,
+            man_months: Some(1),
+            outputs: Some(1),
+        };
+        assert_eq!(plan_production(&meals, 5, &held(&[("GRAI", 99)])), None);
+    }
+
+    /// A ruleset scraped before `ah-19l2.1` states neither rate nor output, and a default of 1
+    /// there would invent one.
+    #[test]
+    fn a_recipe_with_no_stated_rate_is_not_priced() {
+        let mut unscraped = catapult();
+        unscraped.man_months = None;
+        assert_eq!(plan_production(&unscraped, 10, &held(&[])), None);
+        let mut no_output = catapult();
+        no_output.outputs = None;
+        assert_eq!(plan_production(&no_output, 10, &held(&[])), None);
+    }
 }
 
 #[cfg(test)]
