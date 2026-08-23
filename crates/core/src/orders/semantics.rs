@@ -28,12 +28,11 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
     combat_ready, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
-    late_income, pillage_threshold,
-    parse_wage_centis, plan_production, pool_wants, recipe_for, settle_unclaimed, split_pool,
-    unit_upkeep, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim,
-    LateFoodRelief, Lookups, MarketSide, PoolOverrun, PoolShare, PoolShares, PoolWants,
-    PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver,
-    UpkeepClaim, UpkeepSettlement, FOOD_TAGS, TAX_PER_MAN,
+    late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants, recipe_for,
+    settle_unclaimed, split_pool, unit_upkeep, ContendedPool, FactionFoodPass, FactionPurse,
+    FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, PoolOverrun, PoolShare,
+    PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt,
+    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS, TAX_PER_MAN,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;

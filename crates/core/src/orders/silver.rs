@@ -1709,7 +1709,9 @@ pub fn settle_unclaimed(claims: &[UpkeepClaim], available: Option<i64>) -> Upkee
 
 /// Whether the unit is set to avoid combat, by its `avoiding` report flag.
 fn is_avoiding(flags: &[String]) -> bool {
-    flags.iter().any(|flag| flag.eq_ignore_ascii_case("avoiding"))
+    flags
+        .iter()
+        .any(|flag| flag.eq_ignore_ascii_case("avoiding"))
 }
 
 /// How many of one unit's men are combat ready, in the sense `PILLAGE` needs.
@@ -2416,7 +2418,6 @@ mod tests {
         assert_eq!(unit.expense, Some(480));
         assert_eq!(unit.at_month_end, Some(4520));
     }
-
 
     /// The reported defect (`ah-1ad6.2`): *The Lost One (683)*, one leader in a hex whose tax base
     /// is 8,963, was credited the full 17,926. The hex needs 90 combat ready men.
@@ -3947,12 +3948,7 @@ mod combat_ready_tests {
         }
     }
 
-    fn count(
-        men: i64,
-        items: &[ItemAmount],
-        flags: &[&str],
-        skills: &[Skill],
-    ) -> Option<i64> {
+    fn count(men: i64, items: &[ItemAmount], flags: &[&str], skills: &[Skill]) -> Option<i64> {
         let receipts = Receipts::default();
         let flags: Vec<String> = flags.iter().map(|flag| (*flag).to_string()).collect();
         combat_ready(
@@ -4038,6 +4034,9 @@ mod combat_ready_tests {
     fn without_a_ruleset_nothing_can_be_counted() {
         let receipts = Receipts::default();
         let items = [item("SWOR", 50)];
-        assert_eq!(combat_ready(&unit(50, &items, &[], &[], &receipts), None), None);
+        assert_eq!(
+            combat_ready(&unit(50, &items, &[], &[], &receipts), None),
+            None
+        );
     }
 }
