@@ -82,6 +82,50 @@ describe("parseItemReference", () => {
     expect(items.LONG).not.toHaveProperty("withdrawCost");
   });
 
+  it("reads a weapon that needs no skill", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    // "sword [SWOR] ... No skill is needed to wield this weapon."
+    expect(items.SWOR.weapon).toEqual({ needs: null });
+  });
+
+  it("reads a weapon that needs a skill", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    // "crossbow [XBOW] ... Knowledge of crossbow [XBOW] is needed to wield this weapon." The
+    // captured tag is the *skill* XBOW, which happens to share its spelling with the item.
+    expect(items.XBOW.weapon).toEqual({ needs: "XBOW" });
+    // "double bow [DBOW] ... Knowledge of longbow [LBOW] is needed ..." - not its own tag.
+    expect(items.DBOW.weapon).toEqual({ needs: "LBOW" });
+  });
+
+  it("leaves everything that is not a weapon alone", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    expect(items.PARM).not.toHaveProperty("weapon");
+    expect(items.HORS).not.toHaveProperty("weapon");
+    expect(items.GRAI).not.toHaveProperty("weapon");
+  });
+
+  it("does not mistake a race for a weapon", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    // These four list weaponsmith among the skills they may study; kind "man" is what excludes
+    // them.
+    for (const tag of ["IDWA", "HDWA", "UDWA", "GBLN"]) {
+      expect(items[tag], tag).not.toHaveProperty("weapon");
+    }
+  });
+
+  it("refuses a wield clause it cannot read", () => {
+    const html =
+      "<html><body><pre>broken sword [BROK], weight 1. This is a slashing weapon. No skill is " +
+      "needed to wield this weapon. Knowledge of longbow [LBOW] is needed to wield this " +
+      "weapon.</pre></body></html>";
+
+    expect(() => parseItemReference(html)).toThrowError(RulesetScrapeError);
+  });
+
   it("classifies a monster and reads the numbers the risk heuristic needs", () => {
     const items = parseItemReference(DATA_HTML);
 

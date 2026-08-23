@@ -37,6 +37,22 @@ export type SelfMobility = {
   swim: boolean;
 };
 
+/**
+ * A weapon, as the data page describes one - an item whose description states how it is wielded.
+ *
+ * Absent from every item that is not a weapon, including the four races whose description lists
+ * weaponsmith among the skills they may study; `kind` is what excludes those, not the word
+ * "weapon" (`ah-1ad6.1`).
+ */
+export type Weapon = {
+  /**
+   * The skill tag needed to wield it, or `null` for the twelve that need none. `null` and not an
+   * absent field: "no skill is needed" is a thing the page states, and an absence would be
+   * indistinguishable from a weapon whose clause this parser failed to read.
+   */
+  needs: string | null;
+};
+
 export type ItemEntry = {
   tag: string;
   name: string;
@@ -87,6 +103,8 @@ export type ItemEntry = {
    * an error will be given." Absent, never zero - a zero would claim the page had said so.
    */
   withdrawCost?: number;
+  /** Present only for weapons - an item whose description states how it is wielded. */
+  weapon?: Weapon;
   /**
    * What the page says about it, after the preamble of name, tag, weight and capacity that the
    * fields above already carry. Absent when the entry is nothing but that preamble.
@@ -344,6 +362,46 @@ function withdrawOf(paragraph: string): { withdrawCost?: number } {
   return cost === null ? {} : { withdrawCost: cost };
 }
 
+/** `No skill is needed to wield this weapon.` */
+const WIELD_NONE = /No skill is needed to wield this weapon\./i;
+/** `Knowledge of crossbow [XBOW] is needed to wield this weapon.` */
+const WIELD_SKILL = /Knowledge of [a-z ]+ \[([A-Z]{2,6})\] is needed to wield this weapon\./i;
+
+/**
+ * The wield clause, as a spreadable field so an item that is not a weapon carries no key.
+ *
+ * Matched on the wield sentence and never on the word "weapon", which also appears in armor
+ * descriptions ("versus slashing attacks"), in race descriptions, and in the weaponsmith skill's
+ * own text. Races are excluded on `kind` before any matching, because a race that may study
+ * weaponsmith is not a weapon.
+ *
+ * The tag captured is a *skill* tag, to be looked up in `skills`. `XBOW` and `LBOW` are each both
+ * an item tag and a skill tag, so the crossbow item needing the crossbow skill is a genuine
+ * coincidence rather than a self-reference; `DBOW`, which needs `LBOW`, is the case that shows it.
+ */
+function weaponOf(kind: ItemKind, paragraph: string): { weapon?: Weapon } {
+  if (kind === "man") {
+    return {};
+  }
+
+  const none = WIELD_NONE.test(paragraph);
+  const skill = paragraph.match(WIELD_SKILL);
+
+  if (none && skill) {
+    throw new RulesetScrapeError(
+      "an item states both that no skill is needed to wield it and that a skill is: " +
+        `${paragraph.slice(0, 70)}. The page has probably changed shape.`
+    );
+  }
+  if (none) {
+    return { weapon: { needs: null } };
+  }
+  if (skill) {
+    return { weapon: { needs: skill[1] } };
+  }
+  return {};
+}
+
 /** The prose of an item entry, as a spreadable field so an entry with none carries no key. */
 function descriptionOf(paragraph: string): { description?: string } {
   const text = prose(paragraph);
@@ -397,6 +455,7 @@ export function parseItemReference(html: string): ItemReference {
       ...withdrawOf(paragraph),
       ...cargoOf(kind, paragraph),
       ...sailingOf(kind, paragraph),
+      ...weaponOf(kind, paragraph),
       ...descriptionOf(paragraph),
       moves:
         readNumber(paragraph, /moves (\d+) hexes? per month/i) ??

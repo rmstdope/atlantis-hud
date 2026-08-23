@@ -154,6 +154,48 @@ describe("the committed ruleset", () => {
   });
 
   /**
+   * ah-1ad6.1: which items are weapons, and what wielding each needs, so ah-1ad6.2 can count a
+   * faction's combat ready men. A set equality rather than a count: a count would accept one
+   * weapon dropped and another gained.
+   */
+  it("carries every weapon the data page describes", () => {
+    const weapons = Object.entries(COMMITTED.items)
+      .filter(([, item]) => item.weapon !== undefined)
+      .map(([tag]) => tag);
+
+    expect(new Set(weapons)).toEqual(
+      new Set([
+        "SWOR",
+        "MSWO",
+        "RUNE",
+        "PICK",
+        "SPEA",
+        "AXE",
+        "HAMM",
+        "BAXE",
+        "ASWR",
+        "JAVE",
+        "PIKE",
+        "FSWO",
+        "XBOW",
+        "MXBO",
+        "LBOW",
+        "DBOW"
+      ])
+    );
+
+    const needSkill = Object.fromEntries(
+      Object.entries(COMMITTED.items)
+        .filter(([, item]) => item.weapon?.needs != null)
+        .map(([tag, item]) => [tag, item.weapon?.needs])
+    );
+
+    // The double bow needs longbow, not its own tag - the case that shows the captured tag is a
+    // skill rather than the item repeating itself.
+    expect(needSkill).toEqual({ XBOW: "XBOW", MXBO: "XBOW", LBOW: "LBOW", DBOW: "LBOW" });
+  });
+
+  /**
    * ah-3cj4.1: every entry the data page calls a building, not only the ten that state a defence.
    * A Mine is one of the commonest structures in the game, and the reference feature (ah-5jkt) had
    * nothing at all to say about it.
