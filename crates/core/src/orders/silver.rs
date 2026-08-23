@@ -103,7 +103,9 @@ pub struct UnitSilver {
     /// the hex's shared purse is the advisory check's business (`ah-1wcw.1`).
     pub short_for_orders: Option<i64>,
     /// Which kind of order the shortfall bites on, for the sentence the hover shows - the first
-    /// spending order in the unit's block. `None` when `short_for_orders` is `Some(0)` or `None`.
+    /// order in the unit's block that actually moves silver out. A `GIVE` of items and a costless
+    /// `CAST` are not spending orders and are never named. `None` when `short_for_orders` is
+    /// `Some(0)` or `None`.
     ///
     /// A tag rather than a word: how it is said is the interface's business, and the core has no
     /// opinion about English.
@@ -440,6 +442,12 @@ pub fn forecast_unit(
     let mut expense_doubt = None;
     let mut doubt_subject = None;
     let mut given_to_nobody = 0i64;
+    // The first order in the block that actually moves silver out, which is what the hover names.
+    // Recorded where `expense` grows rather than read off the intents: a `GIVE` of items and a
+    // costless `CAST` are orders, but they spend nothing, and naming one of those would point the
+    // reader at an order the game will not refuse. A deferred `BUY ALL` or `GIVE ALL SILV` is
+    // considered only if no direct spender was found, since it spends what the others leave.
+    let mut spent_on: Option<SilverSpender> = None;
     // `BUY ALL` and `GIVE ... ALL SILV` spend what is left after every other term, so they cannot
     // be priced inside this pass. Collected in document order and applied below.
     let mut deferred: Vec<Deferred> = Vec::new();
@@ -496,7 +504,13 @@ pub fn forecast_unit(
                     .and_then(|ruleset| ruleset.find_skill(skill))
                     .and_then(|skill| skill.cost);
                 match cost {
-                    Some(cost) => expense = expense.saturating_add(cost.saturating_mul(men)),
+                    Some(cost) => {
+                        let charged = cost.saturating_mul(men);
+                        expense = expense.saturating_add(charged);
+                        if charged > 0 {
+                            spent_on = spent_on.or(Some(SilverSpender::Study));
+                        }
+                    }
                     None => expense_doubt = expense_doubt.or(Some(SilverDoubt::UnpricedSkill)),
                 }
             }
@@ -521,8 +535,9 @@ pub fn forecast_unit(
                 // and doubts nothing - which is the truth about most spells.
                 if let Some(cost) = spell.and_then(|skill| skill.cast.as_ref()) {
                     for input in &cost.costs {
-                        if input.tag.eq_ignore_ascii_case(SILVER_TAG) {
+                        if input.tag.eq_ignore_ascii_case(SILVER_TAG) && input.amount > 0 {
                             expense = expense.saturating_add(input.amount);
+                            spent_on = spent_on.or(Some(SilverSpender::Cast));
                         }
                     }
                 }
@@ -530,7 +545,11 @@ pub fn forecast_unit(
             Intent::Buy { amount, item } => match (lookups.purchase)(item) {
                 PurchaseAnswer::ForSale { price, market_has } => match amount {
                     Amount::Exact(count) => {
-                        expense = expense.saturating_add(count.saturating_mul(price));
+                        let charged = count.saturating_mul(price);
+                        expense = expense.saturating_add(charged);
+                        if charged > 0 {
+                            spent_on = spent_on.or(Some(SilverSpender::Buy));
+                        }
                     }
                     // What a unit can afford depends on everything else this month does, so this
                     // waits for the running total below.
@@ -561,6 +580,9 @@ pub fn forecast_unit(
                 match amount {
                     Amount::Exact(count) => {
                         expense = expense.saturating_add(*count);
+                        if *count > 0 {
+                            spent_on = spent_on.or(Some(SilverSpender::Give));
+                        }
                         if to_nobody {
                             given_to_nobody = given_to_nobody.saturating_add(*count);
                         }
@@ -575,7 +597,13 @@ pub fn forecast_unit(
                 let cost = (lookups.item_tag)(item)
                     .and_then(|tag| ruleset?.items.get(&tag)?.withdraw_cost);
                 match cost {
-                    Some(cost) => expense = expense.saturating_add(count.saturating_mul(cost)),
+                    Some(cost) => {
+                        let charged = count.saturating_mul(cost);
+                        expense = expense.saturating_add(charged);
+                        if charged > 0 {
+                            spent_on = spent_on.or(Some(SilverSpender::Withdraw));
+                        }
+                    }
                     None => expense_doubt = expense_doubt.or(Some(SilverDoubt::UnpricedWithdrawal)),
                 }
             }
@@ -619,6 +647,12 @@ pub fn forecast_unit(
                     spent
                 }
             };
+            if spent > 0 {
+                spent_on = spent_on.or(Some(match spend {
+                    Deferred::BuyAll { .. } => SilverSpender::Buy,
+                    Deferred::GiveAllSilver { .. } => SilverSpender::Give,
+                }));
+            }
             expense = expense.saturating_add(spent);
             running = running.saturating_sub(spent);
         }
@@ -632,18 +666,6 @@ pub fn forecast_unit(
         (Some(income), Some(expense)) => Some(held.saturating_add(income).saturating_sub(expense)),
         _ => None,
     };
-    // The first order in the block that spends anything, which is what the hover names. Read off
-    // the intents rather than tracked through the arithmetic: the shortfall is one number about
-    // the whole month, so no single term "owns" it, and the first spender is the one a reader
-    // looking down the block reaches first.
-    let short_on = intents.iter().find_map(|placed| match &placed.intent {
-        Intent::Buy { .. } => Some(SilverSpender::Buy),
-        Intent::Study { .. } => Some(SilverSpender::Study),
-        Intent::Withdraw { .. } => Some(SilverSpender::Withdraw),
-        Intent::Give { .. } => Some(SilverSpender::Give),
-        Intent::Cast { .. } => Some(SilverSpender::Cast),
-        _ => None,
-    });
     let short_for_orders = match (income, expense) {
         (Some(income), Some(expense)) => Some(
             expense
@@ -662,7 +684,7 @@ pub fn forecast_unit(
         expense,
         at_month_end,
         short_for_orders,
-        short_on: short_on.filter(|_| short_for_orders.is_some_and(|short| short > 0)),
+        short_on: spent_on.filter(|_| short_for_orders.is_some_and(|short| short > 0)),
         upkeep,
         doubt,
         doubt_subject: doubt_subject.filter(|_| {
@@ -1423,6 +1445,27 @@ mod tests {
             }),
         ];
         let unit = spending(0, &intents, paying("$120.0", None), &sells(12, 40), None);
+        assert_eq!(unit.short_on, Some(SilverSpender::Buy));
+    }
+
+    /// A `GIVE` of items spends no silver, so it must not be blamed for a shortfall the later
+    /// `BUY` causes (Copilot on PR #591).
+    #[test]
+    fn an_order_that_spends_no_silver_is_never_named() {
+        let intents = vec![
+            placed(Intent::Work),
+            placed(Intent::Give {
+                to: Party::Unit("7".to_string()),
+                what: Selector::Item("horse".to_string()),
+                amount: Amount::Exact(2),
+            }),
+            placed(Intent::Buy {
+                amount: Amount::Exact(5),
+                item: "grain".to_string(),
+            }),
+        ];
+        let unit = spending(0, &intents, paying("$120.0", None), &sells(12, 40), None);
+        assert_eq!(unit.short_for_orders, Some(60));
         assert_eq!(unit.short_on, Some(SilverSpender::Buy));
     }
 

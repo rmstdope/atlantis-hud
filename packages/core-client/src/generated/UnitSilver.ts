@@ -45,7 +45,9 @@ atMonthEnd: number | null,
 shortForOrders: number | null, 
 /**
  * Which kind of order the shortfall bites on, for the sentence the hover shows - the first
- * spending order in the unit's block. `None` when `short_for_orders` is `Some(0)` or `None`.
+ * order in the unit's block that actually moves silver out. A `GIVE` of items and a costless
+ * `CAST` are not spending orders and are never named. `None` when `short_for_orders` is
+ * `Some(0)` or `None`.
  *
  * A tag rather than a word: how it is said is the interface's business, and the core has no
  * opinion about English.
