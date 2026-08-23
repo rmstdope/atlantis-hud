@@ -196,7 +196,14 @@ import { FloatingFactionDossier, MeasuredFactionDossier } from "./FactionDossier
 import type { KeepClear, PeekMode } from "./dossierPeek";
 import type { Point } from "../unitTooltip";
 import { describeError, runReported } from "./shellAction";
-import { failedStatus, noticeStatus, routineStatus, warningStatus, type StatusLine } from "./shellStatus";
+import {
+  failedStatus,
+  noticeStatus,
+  routineStatus,
+  statusForLoadedTurn,
+  warningStatus,
+  type StatusLine
+} from "./shellStatus";
 
 /**
  * Re-exported rather than defined here since issue #53 moved the rule into `reportLoadDecision`.
@@ -205,6 +212,56 @@ import { failedStatus, noticeStatus, routineStatus, warningStatus, type StatusLi
  * can be tested without rendering anything.
  */
 export { isOlderTurn };
+
+/** How long a load waits for the ruleset before giving up on it and parsing unclassified. */
+export const RULESET_WAIT_MS = 5000;
+
+/**
+ * The parse every load goes through: waits for the ruleset to settle, then classifies if it can.
+ *
+ * Without the wait, a report imported in the moment between opening a game and its ruleset arriving
+ * is parsed unclassified - and nothing parses it again, so every unit reads as an estimate for as
+ * long as that turn is on screen (ah-6yj2). The restore path has always waited; this is import
+ * catching up with it.
+ *
+ * The ruleset and the promise are read through callbacks rather than captured, because the value
+ * that matters is the one after the wait: a closure would hold the state as it was when the loader
+ * was built, which is exactly the stale "loading" causing this.
+ *
+ * The ceiling is not about the network - the ruleset is a bundled asset - but about never letting a
+ * load hang on something that has already failed in a way the promise did not report.
+ */
+export async function rulesetForLoad(
+  settled: () => Promise<RulesetState>,
+  rulesetNow: () => RulesetState,
+  waitMs: number = RULESET_WAIT_MS
+): Promise<RulesetState> {
+  // The settled state travels with the promise rather than being read back off the shell, because
+  // the shell's copy is React state: it is still "loading" for the moment between the fetch
+  // resolving and the render that records it, which is exactly the moment this resolves in.
+  const arrived = await Promise.race([
+    settled(),
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), waitMs);
+    })
+  ]);
+  return arrived ?? rulesetNow();
+}
+
+export function parserWaitingForRuleset(
+  client: Pick<CoreClient, "parseReportClassified" | "parseReportFull">,
+  settled: () => Promise<RulesetState>,
+  rulesetNow: () => RulesetState,
+  waitMs: number = RULESET_WAIT_MS
+): (text: string) => Promise<ParsedReport> {
+  return async (text: string) =>
+    reportParser(client, await rulesetForLoad(settled, rulesetNow, waitMs))(text);
+}
+
+/** The ruleset's own text, for the calls that take it that way, or null when there is none. */
+export function rulesetTextOf(ruleset: RulesetState): string | null {
+  return ruleset.status === "ready" ? ruleset.text : null;
+}
 
 const EMPTY: HexMapModel = {
   hexes: [],
@@ -347,6 +404,43 @@ export function AppShell({
   // The same ruleset as the storage layer wants it: its text once it arrived, `null` while it has
   // not. What gets stored is classified with exactly what the screen was classified with.
   const rulesetText = ruleset.status === "ready" ? ruleset.text : null;
+
+  // The latest ruleset state, readable from a callback that was created before it changed - the
+  // same pattern MapCanvas uses for its viewport, and for the same reason: a closure would capture
+  // the state at the moment the callback was built, which here is the stale value causing ah-6yj2.
+  const rulesetRef = useRef(ruleset);
+  rulesetRef.current = ruleset;
+
+  /**
+   * Settles with the ruleset the fetch found, whichever way it goes. Replaced when the fetch
+   * restarts. It carries the state rather than merely signalling, so a load waiting on it is not
+   * left reading the render-behind copy in `rulesetRef`.
+   */
+  const rulesetSettled = useRef<Promise<RulesetState>>(Promise.resolve(ruleset));
+
+  /**
+   * The ruleset a load should use: the one that has settled, not the one the last render saw.
+   *
+   * Everything a load hands the ruleset to goes through this - the parse, and the memory commit
+   * that stores what each hex held. Classifying the report while committing it unclassified would
+   * fix the marker on screen and leave every remembered hex an estimate, which is the same bug
+   * one layer down (ah-6yj2).
+   */
+  const rulesetForThisLoad = useCallback(
+    () => rulesetForLoad(() => rulesetSettled.current, () => rulesetRef.current),
+    []
+  );
+
+  const parseReport = useMemo(
+    () =>
+      parserWaitingForRuleset(
+        client,
+        () => rulesetSettled.current,
+        () => rulesetRef.current
+      ),
+    [client]
+  );
+
 
   // The game data dictionary, parsed once per ruleset load. `rulesetText` is null both while the
   // ruleset is loading and when it could not be fetched, which is exactly the gate wanted here:
@@ -1018,7 +1112,7 @@ export function AppShell({
    * effect with cancellation this function has no business being wired into.
    */
   const applyLoadedTurn = useCallback(
-    (loaded: LoadedTurn) => {
+    (loaded: LoadedTurn, loadedUnder: RulesetState = rulesetRef.current) => {
       setParsed(loaded.parsed);
       setRawReport(loaded.rawReport);
       clearPlan();
@@ -1033,7 +1127,7 @@ export function AppShell({
       setMergedReports(loaded.merged);
       writeOrdersDocument("external", loaded.orders);
       setSave(savedStateFor(loaded.ordersSavedAt));
-      setStatus(loaded.status);
+      setStatus(statusForLoadedTurn(loaded.status, loadedUnder.status));
 
       // The manifest was rewritten because this report changed which faction the game remembers.
       // Putting it back keeps the in-memory copy level with the file, so the next report loaded in
@@ -1089,15 +1183,29 @@ export function AppShell({
       committed?: MemoryOutcome
     ) =>
       runReported(
-        () => loadTurn(client, game, report, text, rulesetText, new Date().toISOString(), committed),
+        async () => {
+          const settledRuleset = await rulesetForThisLoad();
+          return {
+            settledRuleset,
+            loaded: await loadTurn(
+              client,
+              game,
+              report,
+              text,
+              rulesetTextOf(settledRuleset),
+              new Date().toISOString(),
+              committed
+            )
+          };
+        },
         (message) => setStatus(failedStatus(message)),
         { prefix: `could not read ${fileName}` }
-      ).then((loaded) => {
-        if (loaded) {
-          applyLoadedTurn(loaded);
+      ).then((outcome) => {
+        if (outcome) {
+          applyLoadedTurn(outcome.loaded, outcome.settledRuleset);
         }
       }),
-    [client, game, rulesetText, applyLoadedTurn]
+    [client, game, rulesetForThisLoad, applyLoadedTurn]
   );
 
   /**
@@ -1117,9 +1225,19 @@ export function AppShell({
         setStatus(failedStatus("there is no open game to store it in"));
         return;
       }
-      setStatus(await storeOlderTurn(client, game, report, text, rulesetText, new Date().toISOString(), currentTurn));
+      setStatus(
+        await storeOlderTurn(
+          client,
+          game,
+          report,
+          text,
+          rulesetTextOf(await rulesetForThisLoad()),
+          new Date().toISOString(),
+          currentTurn
+        )
+      );
     },
-    [client, game, rulesetText]
+    [client, game, rulesetForThisLoad]
   );
 
   const loadReport = useCallback(
@@ -1133,7 +1251,7 @@ export function AppShell({
           // Classified when the ruleset is to hand, so a unit's men are counted rather than guessed.
           // Without it every unit reads as an estimate, including the single-race majority where the
           // leading-group figure is exactly right.
-          const report = await reportParser(client, ruleset)(text);
+          const report = await parseReport(text);
 
           const route = routeReport(parsed, report, text, fileName);
 
@@ -1366,7 +1484,7 @@ export function AppShell({
       const batch = await runReported(
         async () => {
           await flush();
-          return prepareBatch(files, reportParser(client, ruleset));
+          return prepareBatch(files, parseReport);
         },
         (message) => setStatus(failedStatus(message)),
         {
@@ -1414,21 +1532,34 @@ export function AppShell({
   useEffect(() => {
     if (!game) {
       setRuleset({ status: "unavailable" });
+      rulesetSettled.current = Promise.resolve({ status: "unavailable" });
       return undefined;
     }
     const rulesetId = game.manifest.metadata.rulesetId;
 
     let cancelled = false;
     setRuleset({ status: "loading" });
+    // Assigned before anything is awaited, so a load starting a millisecond later waits on this
+    // fetch rather than on the previous game's already-resolved promise.
+    let settle: (state: RulesetState) => void = () => undefined;
+    rulesetSettled.current = new Promise<RulesetState>((resolve) => {
+      settle = resolve;
+    });
     void Promise.resolve()
       .then(() => fetch(rulesetUrlFor(rulesetId)))
       .then((response) => (response.ok ? response.text() : null))
       .then((text) => {
+        const state: RulesetState =
+          text === null ? { status: "unavailable" } : { status: "ready", text };
+        // Settled before the state is set, and with the state itself: a load waiting on this must
+        // not be handed the shell's copy, which is one render behind at this instant.
+        settle(state);
         if (!cancelled) {
-          setRuleset(text === null ? { status: "unavailable" } : { status: "ready", text });
+          setRuleset(state);
         }
       })
       .catch(() => {
+        settle({ status: "unavailable" });
         if (!cancelled) {
           setRuleset({ status: "unavailable" });
         }
