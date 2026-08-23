@@ -594,20 +594,39 @@ fn the_committed_turns_upkeep_is_what_its_headcount_owes() {
         CheckOptions::default(),
     );
 
-    // The fee, before step 7 of the payment order settles any of it. `ah-fjty` made the column's
-    // `upkeep` what the unit is *left* paying, so the fee is that plus what the faction's unclaimed
-    // fund covered - and it is the fee, not the remainder, that this turn's headcount fixes.
+    // The fee, before steps 4 and 7 of the payment order settle any of it. `ah-fjty` made the
+    // column's `upkeep` what the unit is *left* paying, so the fee is that plus what the faction's
+    // unclaimed fund covered and what a faction-mate's silver paid at step 4 (`ah-e66j`) - and it
+    // is the fee, not the remainder, that this turn's headcount fixes.
     let owed: i64 = review
         .silver
         .iter()
-        .filter_map(|unit| unit.upkeep.map(|left| left + unit.unclaimed_covered))
+        .filter_map(|unit| {
+            unit.upkeep
+                .map(|left| left + unit.unclaimed_covered + unit.shared_silver_covered)
+        })
         .sum();
     assert_eq!(owed, 2_140);
 
     // What the player is actually shown, once the header's $6,038 unclaimed - less unit 18642's own
-    // `@claim 50` - has fed every unit that could not pay (`ah-fjty`).
+    // `@claim 50` - has fed every unit that could not pay (`ah-fjty`), and once faction-mates
+    // standing in the same hex have paid what they could (`ah-e66j`).
+    //
+    // Was $2,090 until `ah-e66j` made maintenance sharing automatic. The $820 that came off is the
+    // whole of what this bead changes on a real turn: this faction stands several units to a hex
+    // throughout, and the silver one of them holds now pays its neighbour's fee whether or not
+    // anybody set `SHARE`, which is what the rules say happens.
     let shown: i64 = review.silver.iter().filter_map(|unit| unit.upkeep).sum();
-    assert_eq!(shown, 2_090);
+    assert_eq!(shown, 1_270);
+    let shared: i64 = review
+        .silver
+        .iter()
+        .map(|unit| unit.shared_silver_covered)
+        .sum();
+    assert_eq!(
+        shared, 820,
+        "and the column says which units their faction-mates paid for"
+    );
     let covered: i64 = review
         .silver
         .iter()
@@ -690,7 +709,9 @@ fn the_committed_turn_has_faction_food_eaters_but_no_faction_food() {
         // and 6 have no food to work with (`ah-eacd`). A unit holding food may pay less than the
         // helper says, never more, and an inequality is the strongest thing the helper can then
         // honestly assert.
-        let recovered = unit.upkeep.map(|left| left + unit.unclaimed_covered);
+        let recovered = unit
+            .upkeep
+            .map(|left| left + unit.unclaimed_covered + unit.shared_silver_covered);
         if holds_food(&report, id) {
             assert!(
                 recovered.unwrap_or(0) <= unit_upkeep_of(&report, id),

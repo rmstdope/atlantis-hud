@@ -186,7 +186,12 @@ function silverNote(
 
   // Counted alone this unit runs out, yet no finding names it - which in this hex means the units
   // that share have it covered, exactly as the engine's own borrowing rule would.
-  if (end !== null && end < 0 && !warned) {
+  //
+  // Inferred from the figures rather than read from a field, so it fires for *any* silence - and
+  // since `ah-e66j` a hex with no `SHARE` flag anywhere pays its neighbours' upkeep too. Guarded on
+  // `sharedSilverCovered` so this sentence keeps meaning what it says: that the player's own
+  // `SHARE` flags did it. The automatic kind has its own sentence further down.
+  if (end !== null && end < 0 && !warned && silver.sharedSilverCovered === 0) {
     return "Shared silver in this hex covers the shortfall.";
   }
   if (silver.doubt === "unknown-tax-base") {
@@ -265,6 +270,12 @@ function silverNote(
   if (countUpkeep && silver.forcedFactionFood > 0) {
     const n = silver.forcedFactionFood;
     return `This unit has no silver for its upkeep, so ${n} faction food item${n === 1 ? "" : "s"} in this hex will be eaten.`;
+  }
+  // Step 4 of the payment order: automatic, and unconditional on the `SHARE` flag, which governs
+  // discretionary spending only. Said of upkeep because upkeep is the only thing automatic sharing
+  // ever pays for (`ah-e66j`, round 1).
+  if (countUpkeep && silver.sharedSilverCovered > 0) {
+    return "A faction-mate's silver in this hex pays this unit's upkeep.";
   }
   // Step 7 of the payment order, and so the last of the three notes that explain an Upkeep the
   // reader can see is smaller than the headcount owes: own food (step 1), the hex's faction food

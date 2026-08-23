@@ -539,6 +539,7 @@ describe("the Silver column", () => {
     forcedOwnFoodTag: null,
     forcedFactionFood: 0,
     foodContended: false,
+    sharedSilverCovered: 0,
     ...overrides
   });
 
