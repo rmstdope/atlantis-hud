@@ -19,7 +19,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::forms::{Amount, Party, Selector};
-use super::intents::{read_intents, Intent, PlacedIntent, UnitIntents};
+use super::intents::{read_intents, spends_the_month, Intent, PlacedIntent, UnitIntents};
 use super::standing::{self, standing_after, Boarding};
 use crate::movement::mode::{
     best_allowance, cargo_capacity, fleet_label, parse_fleet_kind, sailing_requirement,
@@ -851,49 +851,6 @@ fn names_silver(text: &str, ruleset: Option<&Ruleset>) -> bool {
     match ruleset.and_then(|ruleset| ruleset.find_item(text)) {
         Some(item) => item.tag.eq_ignore_ascii_case(SILVER),
         None => names_the_same_item(text, SILVER, "silver"),
-    }
-}
-
-/// Whether this order consumes the unit's month.
-///
-/// Written as an exhaustive `match` on purpose. `is_busy` below was a `matches!` with a fixed list,
-/// and a variant missing from such a list returns `false` silently - the failure `ah-90w` had to
-/// write a regression test against when `BUILD` gained a shape. Here the compiler refuses a new
-/// `Intent` variant until somebody has said which side of this line it falls on.
-fn spends_the_month(intent: &Intent) -> bool {
-    match intent {
-        // The rules' enumerated list, plus IDLE and ANNIHILATE, which reach here as `MonthLong`.
-        // ADVANCE arrives as `Intent::Move`.
-        Intent::Study { .. }
-        | Intent::Teach { .. }
-        | Intent::Tax
-        | Intent::Pillage
-        | Intent::Work
-        | Intent::Entertain
-        | Intent::Move { .. }
-        | Intent::Sail { .. }
-        | Intent::Build { .. }
-        | Intent::Produce { .. } => true,
-
-        // CAST is NOT a full month order: "a mage may still MOVE, STUDY, or use any other month
-        // long order". A bare CAST falls back to `MonthLong("CAST")`, so it has to be caught
-        // before the arm below - which is why these two arms are in this order.
-        Intent::MonthLong("CAST") => false,
-        Intent::MonthLong(_) => true,
-
-        // Each of these leaves the month free. GUARD is a flag rather than a month's work - a
-        // guard can tax as well - and FORM only asks for a unit to exist.
-        Intent::Cast { .. }
-        | Intent::Give { .. }
-        | Intent::Take { .. }
-        | Intent::Buy { .. }
-        | Intent::Sell { .. }
-        | Intent::Guard(_)
-        | Intent::Claim(_)
-        | Intent::Withdraw { .. }
-        | Intent::Form { .. }
-        | Intent::Enter { .. }
-        | Intent::Leave => false,
     }
 }
 
@@ -6125,6 +6082,72 @@ mod tests {
         assert_eq!(
             finding.message,
             "short $70: this unit can have $30 and its orders and upkeep spend $100"
+        );
+    }
+
+    /// The bead's headline (`ah-gjq4`): a unit with no month-long order is set to work, and the
+    /// wages it will earn pay its maintenance. Warning that it is short of a fee its own defaulted
+    /// month covers is the false alarm this bead exists to stop.
+    #[test]
+    fn an_idle_units_wages_pay_its_upkeep() {
+        let regions = vec![ReportRegion {
+            wages: Some("$12.0".to_string()),
+            max_wages: Some(1200),
+            ..region(vec![with_men(with_silver(starving(unit("5")), 0), 6)])
+        }];
+
+        // $60 of upkeep, $72 of wages: nothing to warn about.
+        assert!(
+            check(regions, "unit 5\n").is_empty(),
+            "an idle unit whose wages cover its upkeep is not short"
+        );
+    }
+
+    /// A unit whose only order is a line the parser could not read is credited the wages anyway.
+    /// `check_idle_units` stays silent about such a unit - an unreadable line may well be a
+    /// month's work - and the navigator chose the common case here rather than matching it
+    /// (`ah-gjq4`). The accepted cost, recorded deliberately: a unit that is really assassinating
+    /// somebody shows income it will not earn.
+    #[test]
+    fn an_unread_order_line_does_not_stop_the_default() {
+        let regions = vec![ReportRegion {
+            wages: Some("$12.0".to_string()),
+            max_wages: Some(1200),
+            ..region(vec![with_men(with_silver(unit("5"), 0), 6)])
+        }];
+        let report = ParsedReport {
+            regions,
+            ..Default::default()
+        };
+
+        let review = review_turn(
+            &report,
+            "unit 5\nFLIBBERTIGIBBET\n",
+            None,
+            CheckOptions::default(),
+        );
+
+        let forecast = &review.silver[0];
+        assert_eq!(forecast.income, Some(72));
+        assert!(forecast.works_by_default);
+    }
+
+    /// The other half of the same rule: wages that fall short still leave a real shortfall, and it
+    /// is counted net of them rather than ignored.
+    #[test]
+    fn an_idle_unit_whose_wages_fall_short_is_still_warned() {
+        let regions = vec![ReportRegion {
+            wages: Some("$1.0".to_string()),
+            max_wages: Some(1200),
+            ..region(vec![with_men(with_silver(starving(unit("5")), 0), 6)])
+        }];
+
+        let finding = only(check(regions, "unit 5\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert!(
+            finding.message.contains("$54"),
+            "the shortfall is net of the $6 the unit earns: {}",
+            finding.message
         );
     }
 

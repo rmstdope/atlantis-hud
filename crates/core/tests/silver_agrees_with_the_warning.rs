@@ -309,6 +309,7 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         produced_name: None,
         production_wanted: 0,
         production_capped_by: None,
+        works_by_default: false,
     }
 }
 
@@ -638,7 +639,16 @@ fn a_hex_that_cannot_cover_its_own_upkeep_is_warned_once_for_the_hex() {
     .join("\n");
     let mut parsed = parse_report_full(&report);
     classify_units(&mut parsed, &ruleset);
-    let review = review_turn(&parsed, "", Some(&ruleset), CheckOptions::default());
+    // Both units are ordered `IDLE` rather than left blank: a unit with no month-long order is set
+    // to work and earns the region's wage, which would pay both fees and leave this fixture
+    // asserting about a hex that is no longer short (`ah-gjq4`). `IDLE` spends the month and earns
+    // nothing, which is the state this branch needs.
+    let review = review_turn(
+        &parsed,
+        "unit 100\nIDLE\nunit 101\nIDLE\n",
+        Some(&ruleset),
+        CheckOptions::default(),
+    );
 
     let silver: BTreeMap<&str, &UnitSilver> = review
         .silver

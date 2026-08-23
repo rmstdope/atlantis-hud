@@ -545,6 +545,7 @@ describe("the Silver column", () => {
     producedName: null,
     productionWanted: 0,
     productionCappedBy: null,
+    worksByDefault: false,
     ...overrides
   });
 

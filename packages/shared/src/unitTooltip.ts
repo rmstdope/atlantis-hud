@@ -302,6 +302,15 @@ function silverNote(
   if (countUpkeep && silver.unclaimedCovered > 0) {
     return `The faction's unclaimed silver covers ${silver.unclaimedCovered} of this unit's upkeep.`;
   }
+  // Income arriving from an order nobody wrote reads as a defect until something says why - the
+  // same reason the food and fund notes above exist (`ah-gjq4`). Not gated on `countUpkeep`: it
+  // explains the `In` row, which is on show whatever the setting says. It sorts below the food and
+  // fund notes because each of those is the rarer, more specific fact, and a zero in a row is a
+  // sharper surprise than a positive income figure the `In too late to spend` row already half
+  // explains - so an idle unit that faction food also fed shows the food note and not this one.
+  if (silver.worksByDefault && silver.income !== null && silver.income > 0) {
+    return "This unit has no month-long order, so it will work and earn wages.";
+  }
   // A gift is the one part of the figure that comes from somebody else's orders, so it is the one
   // part a reader cannot find by looking at this unit's own block.
   if (silver.received > 0 && silver.givers.length > 0) {

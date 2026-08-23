@@ -400,7 +400,8 @@ describe("silverShown", () => {
       produced: 0,
       producedName: null,
       productionWanted: 0,
-      productionCappedBy: null
+      productionCappedBy: null,
+      worksByDefault: false
     }) satisfies UnitSilver;
 
   it("subtracts upkeep only when the setting is on", () => {

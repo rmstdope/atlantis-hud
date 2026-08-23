@@ -471,6 +471,62 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
     }
 }
 
+/// Whether this order consumes the unit's month.
+///
+/// Written as an exhaustive `match` on purpose. `is_busy` below was a `matches!` with a fixed list,
+/// and a variant missing from such a list returns `false` silently - the failure `ah-90w` had to
+/// write a regression test against when `BUILD` gained a shape. Here the compiler refuses a new
+/// `Intent` variant until somebody has said which side of this line it falls on.
+#[must_use]
+pub fn spends_the_month(intent: &Intent) -> bool {
+    match intent {
+        // The rules' enumerated list, plus IDLE and ANNIHILATE, which reach here as `MonthLong`.
+        // ADVANCE arrives as `Intent::Move`.
+        Intent::Study { .. }
+        | Intent::Teach { .. }
+        | Intent::Tax
+        | Intent::Pillage
+        | Intent::Work
+        | Intent::Entertain
+        | Intent::Move { .. }
+        | Intent::Sail { .. }
+        | Intent::Build { .. }
+        | Intent::Produce { .. } => true,
+
+        // CAST is NOT a full month order: "a mage may still MOVE, STUDY, or use any other month
+        // long order". A bare CAST falls back to `MonthLong("CAST")`, so it has to be caught
+        // before the arm below - which is why these two arms are in this order.
+        Intent::MonthLong("CAST") => false,
+        Intent::MonthLong(_) => true,
+
+        // Each of these leaves the month free. GUARD is a flag rather than a month's work - a
+        // guard can tax as well - and FORM only asks for a unit to exist.
+        Intent::Cast { .. }
+        | Intent::Give { .. }
+        | Intent::Take { .. }
+        | Intent::Buy { .. }
+        | Intent::Sell { .. }
+        | Intent::Guard(_)
+        | Intent::Claim(_)
+        | Intent::Withdraw { .. }
+        | Intent::Form { .. }
+        | Intent::Enter { .. }
+        | Intent::Leave => false,
+    }
+}
+
+/// Whether a unit with these orders will be set to work by default.
+///
+/// A unit that spends its month on nothing is made to `WORK`, and work pays the region's wage. The
+/// same predicate the `unit-does-nothing` advisory uses, so the two surfaces cannot disagree about
+/// which units are idle (`ah-gjq4`).
+#[must_use]
+pub fn works_by_default(intents: &[PlacedIntent]) -> bool {
+    !intents
+        .iter()
+        .any(|placed| spends_the_month(&placed.intent))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
