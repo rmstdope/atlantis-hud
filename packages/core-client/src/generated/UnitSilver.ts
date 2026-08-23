@@ -82,6 +82,16 @@ givers: Array<string>,
  */
 factionFoodCovered: number, 
 /**
+ * Silver of this unit's upkeep paid by other own units in the same hex, at step 4 of the
+ * payment order. `0` for every unit its neighbours did not feed - and `0`, deliberately, for
+ * every unit in a hex whose sharing fell short, where which unit was fed cannot be told and
+ * the figure stays pessimistic (`ah-e66j`).
+ *
+ * Automatic and unconditional: the `SHARE` flag governs discretionary spending only, so this
+ * is not the same thing as the `sharing` pool `report_shortfalls` uses.
+ */
+sharedSilverCovered: number, 
+/**
  * Silver of this unit's upkeep paid by food it holds itself, at step 1 of the payment order.
  * `0` when the unit is not set to consume, holds no food, or owes nothing.
  *

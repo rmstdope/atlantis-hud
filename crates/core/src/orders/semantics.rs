@@ -282,6 +282,8 @@ pub fn review_turn(
         })
         .collect();
 
+    // Step 4 comes before steps 5 and 6: a neighbour's silver is spent before anybody's grain.
+    let shared_silver = share_silver_for_upkeep(&mut hexes);
     // Steps 5 and 6 come before step 7 in the payment order, and `upkeep_claims` reads the relief
     // they leave, so this must run first.
     let food_relief = feed_from_food_after_silver(&mut hexes);
@@ -300,8 +302,11 @@ pub fn review_turn(
             &receipts,
             purse,
             ruleset,
-            &settlement,
-            &food_relief,
+            &Relief {
+                shared_silver: &shared_silver,
+                food: &food_relief,
+                settlement: &settlement,
+            },
             &mut silver,
         );
         if hex.units.is_empty() {
@@ -340,6 +345,21 @@ pub fn review_turn(
     TurnReview { findings, silver }
 }
 
+/// What the payment order's later steps paid on the units' behalf, decided before any hex is
+/// priced and applied to the column together.
+///
+/// One argument rather than three because they are one idea - who paid what, and at which step -
+/// and because the order they are applied in is the rules' own: step 4, then steps 5 and 6, then
+/// step 7.
+struct Relief<'a> {
+    /// Step 4: silver from other own units in the same hex (`ah-e66j`).
+    shared_silver: &'a BTreeMap<String, i64>,
+    /// Steps 5 and 6: the unit's own food, then its hex's faction food (`ah-eacd`).
+    food: &'a BTreeMap<String, LateFoodRelief>,
+    /// Step 7: the faction's unclaimed fund, which is faction-wide (`ah-fjty`).
+    settlement: &'a UpkeepSettlement,
+}
+
 /// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
 /// already filtered them out, so their cell is blank for free.
 fn forecast_hex(
@@ -347,10 +367,14 @@ fn forecast_hex(
     receipts: &BTreeMap<String, Receipts>,
     purse: FactionPurse,
     ruleset: Option<&Ruleset>,
-    settlement: &UpkeepSettlement,
-    food_relief: &BTreeMap<String, LateFoodRelief>,
+    relief: &Relief<'_>,
     into: &mut Vec<UnitSilver>,
 ) {
+    let Relief {
+        shared_silver,
+        food: food_relief,
+        settlement,
+    } = relief;
     let region = RegionWages {
         tax_base: hex.region.tax_base,
         wage_centis: parse_wage_centis(hex.region.wages.as_deref()),
@@ -450,6 +474,24 @@ fn forecast_hex(
             // still exactly known, and `at_month_end` never counted upkeep to begin with.
             forecast.doubt = forecast.doubt.or(Some(SilverDoubt::ContestedFactionFood));
         }
+    }
+
+    // Step 4, decided per hex before this one was priced and only applied here - and before the
+    // step-5/6 pass below, which is the payment order's own sequence.
+    //
+    // The walk is positional over `hex.units` but the lookup is by id, so two report units sharing
+    // an id are conflated here; the same caveat, and the same reason, as the pass below.
+    for (ordered, forecast) in hex.units.iter().zip(into[start..].iter_mut()) {
+        let Some(owed) = forecast.upkeep else {
+            // A doubted fee stays doubted: a neighbour cannot settle a number nothing knows.
+            continue;
+        };
+        let covered = shared_silver
+            .get(&ordered.unit.unit_id)
+            .copied()
+            .unwrap_or_default();
+        forecast.shared_silver_covered = covered;
+        forecast.upkeep = Some((owed - covered).max(0));
     }
 
     // Steps 5 and 6, decided per hex before this one was priced and only applied here.
@@ -894,6 +936,19 @@ struct Ledger<'a> {
     /// ledger, and moving a balance to make one message read correctly is how two checks end up
     /// disagreeing about one turn (`ah-fjty`).
     upkeep_relieved: BTreeMap<String, i64>,
+    /// What each unit lent a faction-mate for maintenance at step 4. Subtracted by `silver_balance`,
+    /// so a lender's silver is spent exactly once: without it the same silver would pay a
+    /// neighbour's fee here and still be counted into `report_shortfalls`'s `SHARE` pool for
+    /// somebody's orders (`ah-e66j`).
+    ///
+    /// Deliberately not debited from `balance`, for the reason `upkeep_relieved` gives:
+    /// `check_sailing` and `check_movement` read this ledger and must go on seeing the silver the
+    /// unit actually holds.
+    upkeep_lent: BTreeMap<String, i64>,
+    /// Whether this hex's maintenance sharing fell short, so its silver shortfall belongs to the
+    /// hex rather than to any unit in it. Turns the per-unit `not-enough-silver` findings into the
+    /// single hex-level one, exactly as a `SHARE` flag already does for every tag (`ah-e66j`).
+    maintenance_pooled: bool,
     /// What step 2 left of this hex's faction-food pool, written by `charge_upkeep` from the pass
     /// it already makes. Steps 5 and 6 draw on the same food, and a third call to
     /// `feed_from_faction_food` would be a third answer to one question.
@@ -915,6 +970,8 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
         upkeep: BTreeMap::new(),
         upkeep_drawn: BTreeMap::new(),
         upkeep_relieved: BTreeMap::new(),
+        upkeep_lent: BTreeMap::new(),
+        maintenance_pooled: false,
         faction_food: FactionFoodPass::default(),
     };
 
@@ -1498,7 +1555,8 @@ fn balance_of(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
 }
 
 /// A unit's silver balance as the shortfall check must read it: what the ledger holds, plus what
-/// the faction's unclaimed fund took back off its maintenance at step 7 (`ah-fjty`).
+/// an earlier step of the payment order took back off its maintenance (steps 4-7), less what it
+/// lent a faction-mate at step 4 (`ah-e66j`, `ah-fjty`).
 ///
 /// A term added on top rather than a credit to `balance`, because `check_sailing` and
 /// `check_movement` read the same ledger and must go on seeing the silver the unit actually holds.
@@ -1509,6 +1567,7 @@ fn silver_balance(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
             .get(unit_id)
             .copied()
             .unwrap_or_default()
+        - ledger.upkeep_lent.get(unit_id).copied().unwrap_or_default()
 }
 
 /// A balance for any tag, with step 7's relief applied where the tag is the one it can pay.
@@ -1546,12 +1605,15 @@ fn upkeep_claims(hexes: &[(Hex<'_>, Ledger<'_>)]) -> Vec<UpkeepClaim> {
     claims
 }
 
-/// What each unit in one hex owes in maintenance that its own silver - and its hex's sharing pool -
-/// cannot cover. The input to step 5 and, once food has run, to step 7.
+/// What each unit in one hex owes in maintenance that its own silver cannot cover. The input to
+/// step 4, then to step 5 and, once food has run, to step 7.
 ///
-/// Read a hex exactly as `report_shortfalls` reads it, or the relief and the warnings will disagree
-/// about the same turn: each unit on its own where nobody shares, and the whole hex as one purse
-/// where somebody does. The two branches below are those two readings.
+/// Every unit is read on its own balance. That is not a simplification of the hex's sharing: step 4
+/// (`share_silver_for_upkeep`) does the lending for real, before anything reads a balance, so by
+/// the time this is asked again the neighbours' silver is already spent and inside `silver_balance`
+/// (`ah-e66j`). An earlier version of this function carried a second branch that *estimated* what a
+/// `SHARE` pool would cover; two implementations of one idea is how the column and the warning
+/// drifted apart before (`ah-ycuj`).
 fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
     let mut claims = Vec::new();
     let owes = |ordered: &Ordered<'_>| -> Option<(String, i64)> {
@@ -1569,38 +1631,10 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
         (drawn > 0).then(|| (who.clone(), drawn))
     };
 
-    let sharers = hex.units.iter().filter(|ordered| ordered.shares());
-    if sharers.clone().next().is_some() {
-        let pool: i64 = sharers
-            .map(|ordered| silver_balance(ledger, &ordered.unit.unit_id))
-            .sum();
-        let borrowed: i64 = hex
-            .units
-            .iter()
-            .filter(|ordered| !ordered.shares() && !ledger.doubted.contains(&ordered.unit.unit_id))
-            .map(|ordered| (-silver_balance(ledger, &ordered.unit.unit_id)).max(0))
-            .sum();
-        // What the hex cannot pay between them, of which maintenance can be blamed for at most
-        // what it drew. Nothing is claimed at all where the pool covers everybody.
-        let mut remaining = borrowed - pool;
-        for ordered in &hex.units {
-            if remaining <= 0 {
-                break;
-            }
-            let Some((unit_id, drawn)) = owes(ordered) else {
-                continue;
-            };
-            let short = drawn.min(remaining);
-            remaining -= short;
-            claims.push((unit_id, short));
-        }
-        return claims;
-    }
-
-    // No sharing unit, so every unit is judged on its own balance - again exactly as
-    // `report_shortfalls` does. At most what maintenance drew is maintenance's fault, and the rest
-    // of an overdraft belongs to the unit's orders: a unit holding $10, buying $350 of horses and
-    // owing $40 is short $380, of which food or the fund may pay $40 and never the $340.
+    // Every unit is judged on its own balance, which already carries whatever step 4 lent it
+    // (`silver_balance`). At most what maintenance drew is maintenance's fault, and the rest of an
+    // overdraft belongs to the unit's orders: a unit holding $10, buying $350 of horses and owing
+    // $40 is short $380, of which food or the fund may pay $40 and never the $340.
     for ordered in &hex.units {
         let Some((unit_id, drawn)) = owes(ordered) else {
             continue;
@@ -1612,6 +1646,89 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
         }
     }
     claims
+}
+
+/// Step 4 of the maintenance payment order, per hex: silver from other faction units in the same
+/// region pays what a unit's own silver could not.
+///
+/// **Automatic and unconditional.** The `SHARE` flag governs discretionary spending only - the
+/// rules share money for maintenance "automatically ... between your units in the same region",
+/// and say of `SHARE` itself that funds are shared "for maintenance, but not for less important
+/// purposes" (`ah-e66j`). So every own unit in the hex lends, flag or no flag.
+///
+/// Runs before steps 5 and 6, so a neighbour's silver is spent before anybody's grain - which is
+/// the rules' own order and not a preference.
+///
+/// Returns what each fed unit's neighbours paid, for the column to show. A hex whose pool cannot
+/// cover every claimant lends all of it anyway and returns nothing for it: the total is exact even
+/// though which unit the engine feeds is not, and understating what step 4 paid would send a claim
+/// to the unclaimed fund that step 4 had already met.
+fn share_silver_for_upkeep(hexes: &mut [(Hex<'_>, Ledger<'_>)]) -> BTreeMap<String, i64> {
+    let mut covered: BTreeMap<String, i64> = BTreeMap::new();
+
+    for (hex, ledger) in hexes {
+        let claims = unpayable_upkeep(hex, ledger);
+        if claims.is_empty() {
+            continue;
+        }
+
+        // Every own unit in the hex lends what it has spare. `silver_balance` is post-orders and
+        // post-own-maintenance and already carries any relief written before this point, so it is
+        // exactly "what this unit has spare" - which `balance_of` is not.
+        let spare: Vec<(String, i64)> = hex
+            .units
+            .iter()
+            .filter(|ordered| !ledger.doubted.contains(&ordered.unit.unit_id))
+            .map(|ordered| {
+                let id = ordered.unit.unit_id.clone();
+                let spare = silver_balance(ledger, &id).max(0);
+                (id, spare)
+            })
+            .collect();
+        let pool: i64 = spare.iter().map(|(_, spare)| spare).sum();
+        if pool <= 0 {
+            // Nothing to lend, so nothing is pooled and nothing is contended: every claimant is
+            // left exactly as its own balance found it.
+            continue;
+        }
+        let needed: i64 = claims.iter().map(|(_, short)| short).sum();
+
+        // Short of covering everybody, the whole pool is still lent - in document order over the
+        // claims - and no unit's figure moves. Pessimistic, and the same posture `food_contended`
+        // and `unclaimed_contended` already take.
+        let short = pool < needed;
+        let mut left = pool.min(needed);
+        let lent = left;
+        for (unit_id, claim) in &claims {
+            if left <= 0 {
+                break;
+            }
+            let relieved = (*claim).min(left);
+            left -= relieved;
+            *ledger.upkeep_relieved.entry(unit_id.clone()).or_default() += relieved;
+            if !short {
+                *covered.entry(unit_id.clone()).or_default() += relieved;
+            }
+        }
+        if short {
+            ledger.maintenance_pooled = true;
+        }
+
+        // The lenders, in document order, for exactly what the borrowers took.
+        let mut owed = lent;
+        for (unit_id, spare) in &spare {
+            if owed <= 0 {
+                break;
+            }
+            let taken = (*spare).min(owed);
+            if taken > 0 {
+                owed -= taken;
+                *ledger.upkeep_lent.entry(unit_id.clone()).or_default() += taken;
+            }
+        }
+    }
+
+    covered
 }
 
 /// Steps 5 and 6 of the payment order, per hex, and what they leave for step 7.
@@ -1699,9 +1816,14 @@ fn apply_relief(hexes: &mut [(Hex<'_>, Ledger<'_>)], settlement: &UpkeepSettleme
     for (hex, ledger) in hexes {
         for ordered in &hex.units {
             if let Some(covered) = settlement.covered.get(&ordered.unit.unit_id) {
-                ledger
+                // Added, never inserted. Step 4 and steps 5-6 have both already written here, and
+                // a pool that covered part of a claim hands the remainder straight to the fund -
+                // so replacing would discard what an earlier step paid and invent a shortfall in a
+                // hex that paid for itself (`ah-e66j`).
+                *ledger
                     .upkeep_relieved
-                    .insert(ordered.unit.unit_id.clone(), *covered);
+                    .entry(ordered.unit.unit_id.clone())
+                    .or_default() += *covered;
             }
         }
     }
@@ -1755,9 +1877,20 @@ fn report_shortfalls(
         .iter()
         .any(|o| ledger.doubted.contains(&o.unit.unit_id));
     // Without a ruleset every tag pools; with one, men never do (the engine's one exception).
+    //
+    // Maintenance is **not** pooled here, even though `ah-e66j` made sharing it automatic: this
+    // pool is what a `SHARE` flag lends for *orders*, and folding a hex's maintenance into it would
+    // put a unit's overspending on a purse the rules never open for it. The maintenance shortfall
+    // of an unflagged hex is collected separately below.
     let pooled = |tag: &str| -> bool {
         !sharers.is_empty() && !ruleset.is_some_and(|ruleset| ruleset.is_man(tag))
     };
+
+    // What the hex owes in maintenance that nothing in it could pay, gathered across the units
+    // whose whole overdraft is that fee. Which of them the engine actually leaves unpaid cannot be
+    // told - sharing for maintenance is automatic and drains the hex in the engine's own order - so
+    // they are reported once, against the hex (`ah-e66j`, round 1 question 3).
+    let mut maintenance_short: i64 = 0;
 
     // tag -> the overdrafts of the units that must borrow it (non-sharers; a sharer's own
     // overdraft is already inside the pool's sum, not a claim against it).
@@ -1800,6 +1933,17 @@ fn report_shortfalls(
                 continue;
             }
 
+            let short = -balance;
+
+            // A unit whose overdraft is *entirely* the maintenance an unflagged hex could not pay
+            // between its units is not named: it may well be one the engine feeds. One that also
+            // overspends on its orders keeps its own finding, its line and its name, because
+            // nothing shared that silver for it (`ah-e66j`).
+            if tag == SILVER && ledger.maintenance_pooled && short <= unpaid_upkeep(ledger, who) {
+                maintenance_short += short;
+                continue;
+            }
+
             let code = if tag == SILVER {
                 codes::NOT_ENOUGH_SILVER
             } else {
@@ -1809,7 +1953,6 @@ fn report_shortfalls(
                 continue;
             }
 
-            let short = -balance;
             let at = ledger.charged_at.get(&(unit_id.clone(), tag.clone()));
             let finding = if tag == SILVER {
                 ordered.finding(
@@ -1900,6 +2043,38 @@ fn report_shortfalls(
             )
         };
         findings.push(hex.finding(code, message));
+    }
+
+    // One mark for the hex, and only for its maintenance: an unflagged hex pools nothing else, so
+    // the sentence names upkeep and nothing else either (`ah-e66j`, round 2 question 2). `costs`
+    // rather than `spend`, because a fee is charged whatever a unit is told to do - telling a
+    // player their orders spend it sends them looking through orders that spend nothing
+    // (`ah-1wcw.4`).
+    //
+    // The fees are every non-doubted unit's, and what the hex "can have" is the part of them it
+    // covered - so the arithmetic holds whatever else the hex's orders spent, which a figure taken
+    // from holdings does not.
+    if maintenance_short > 0 && options.emits(codes::NOT_ENOUGH_SILVER) {
+        let owed: i64 = hex
+            .units
+            .iter()
+            .filter(|o| !ledger.doubted.contains(&o.unit.unit_id))
+            .map(|o| {
+                ledger
+                    .upkeep
+                    .get(&o.unit.unit_id)
+                    .copied()
+                    .unwrap_or_default()
+            })
+            .sum();
+        findings.push(hex.finding(
+            codes::NOT_ENOUGH_SILVER,
+            format!(
+                "the units in this hex are short ${maintenance_short} of upkeep between them: \
+                 they can have ${} and their upkeep costs ${owed}",
+                owed - maintenance_short,
+            ),
+        ));
     }
 }
 
@@ -4758,10 +4933,18 @@ mod tests {
     /// one is (`ah-fjty`, round 2 question 2).
     #[test]
     fn a_claim_of_the_whole_fund_leaves_nothing_for_upkeep() {
-        let regions = vec![region(vec![
-            unfed(unit("5")),
-            with_men(with_silver(starving(unit("7")), 0), 6),
-        ])];
+        // The claimer stands in a hex of its own: claimed silver is in its possession, so a
+        // faction-mate beside it would simply be paid at step 4 and the fund never asked
+        // (`ah-e66j`). Separating them keeps this test about the fund.
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![unfed(unit("5"))]),
+            region_at(
+                "1:8,54",
+                8,
+                54,
+                vec![with_men(with_silver(starving(unit("7")), 0), 6)],
+            ),
+        ];
 
         let findings = check_with_purse(Some(8450), regions, "unit 5\nCLAIM 8450\n");
         assert_eq!(codes(&findings), ["not-enough-silver"], "{findings:?}");
@@ -4773,10 +4956,16 @@ mod tests {
 
     #[test]
     fn a_partial_claim_leaves_the_rest_for_upkeep() {
-        let regions = vec![region(vec![
-            unfed(unit("5")),
-            with_men(with_silver(starving(unit("7")), 0), 6),
-        ])];
+        // Separate hexes, for the reason the test above gives.
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![unfed(unit("5"))]),
+            region_at(
+                "1:8,54",
+                8,
+                54,
+                vec![with_men(with_silver(starving(unit("7")), 0), 6)],
+            ),
+        ];
 
         let findings: Vec<Finding> = check_with_purse(Some(8450), regions, "unit 5\nCLAIM 8400\n")
             .into_iter()
@@ -5053,6 +5242,317 @@ mod tests {
         );
     }
 
+    // --- step 4: a faction-mate's silver pays the upkeep, SHARE or not (`ah-e66j`) --------------
+
+    /// The lender's own balance has to fall by what it lent, or the same silver pays a
+    /// neighbour's fee here and is still counted into `report_shortfalls`'s `SHARE` pool for
+    /// somebody's orders. `silver_balance` is the single place that reconciles it (`ah-e66j`).
+    #[test]
+    fn silver_lent_for_upkeep_leaves_the_lender_that_much_poorer() {
+        let hex_region = region(vec![with_silver(unit("5"), 100)]);
+        let ordered = OrderedUnits::read("");
+        let hex = Hex::read(&hex_region, &ordered);
+        let rules = ruleset();
+        let mut ledger = ledger_for(&hex, Some(&rules));
+
+        let before = silver_balance(&ledger, "5");
+        ledger.upkeep_lent.insert("5".to_string(), 40);
+
+        assert_eq!(silver_balance(&ledger, "5"), before - 40);
+    }
+
+    /// The bead's own acceptance criterion. The rules share maintenance money "automatically
+    /// between your units in the same region", so a penniless unit beside a rich faction-mate is
+    /// not starving - **and nothing in this hex carries the `SHARE` flag** (`ah-e66j`).
+    #[test]
+    fn a_broke_unit_is_not_warned_when_a_faction_mate_holds_enough() {
+        let regions = vec![region(vec![
+            with_men(with_silver(starving(unit("5")), 0), 6),
+            with_silver(starving(unit("7")), 1000),
+        ])];
+
+        let findings = check(regions, "");
+
+        assert_eq!(
+            codes(&findings),
+            Vec::<&str>::new(),
+            "unit 7's silver pays unit 5's upkeep with no SHARE flag anywhere: {findings:?}"
+        );
+    }
+
+    /// A lender's silver is spent exactly once. Without `upkeep_lent`, the same silver pays a
+    /// neighbour's fee at step 4 *and* is still counted into `report_shortfalls`'s `SHARE` pool
+    /// for somebody's orders (`ah-e66j`).
+    ///
+    /// Unit 5 holds $1000, owes $10 of its own and lends $70 at step 4 - $60 to unit 7 and $10 to
+    /// unit 9 - leaving a `SHARE` pool of $920 against unit 9's $1010 of horse and fee. The hex is
+    /// therefore short $80; counting the loan twice would make it $10.
+    #[test]
+    fn a_lender_cannot_spend_the_same_silver_twice() {
+        let mut hex_region = region(vec![
+            sharing(with_silver(starving(unit("5")), 1000)),
+            with_men(with_silver(starving(unit("7")), 0), 6),
+            with_silver(starving(unit("9")), 0),
+        ]);
+        hex_region.for_sale.push(MarketItem {
+            amount: 10,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 1000,
+        });
+
+        let findings: Vec<Finding> = check(vec![hex_region], "unit 9\nBUY 1 horse\n")
+            .into_iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect();
+
+        let finding = only(findings);
+        assert_eq!(
+            finding.message,
+            "the units in this hex are short $80 between them: they can have $1000 and their \
+             orders and upkeep spend $1080"
+        );
+    }
+
+    /// A hex that genuinely cannot pay its maintenance is marked **once**, at hex level, with no
+    /// unit named: which of several claimants the engine feeds cannot be told, and four marks for
+    /// one problem - each naming a unit that may well be the one that gets fed - is four wrong
+    /// answers (`ah-e66j`, round 1 question 3).
+    #[test]
+    fn a_hex_that_cannot_pay_its_maintenance_is_marked_once() {
+        let regions = vec![region(vec![
+            with_men(with_silver(starving(unit("5")), 120), 6),
+            with_men(with_silver(starving(unit("7")), 0), 6),
+            with_men(with_silver(starving(unit("9")), 0), 4),
+            with_men(with_silver(starving(unit("11")), 0), 4),
+        ])];
+
+        let finding = only(check(regions, ""));
+
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert_eq!(
+            finding.unit_id, None,
+            "the hex is short, not any unit in it"
+        );
+        assert_eq!(finding.line, None, "maintenance belongs to no order");
+    }
+
+    /// And every figure in such a hex stays where step 4 found it: which unit the pool fed cannot
+    /// be told, so no unit's `Upkeep` drops. The same posture `food_contended` and
+    /// `unclaimed_contended` already take (`ah-e66j`).
+    #[test]
+    fn a_short_hex_keeps_its_pessimistic_figures() {
+        let regions = vec![region(vec![
+            with_men(with_silver(starving(unit("5")), 120), 6),
+            with_men(with_silver(starving(unit("7")), 0), 6),
+            with_men(with_silver(starving(unit("9")), 0), 4),
+            with_men(with_silver(starving(unit("11")), 0), 4),
+        ])];
+
+        let review = review_turn(
+            &report(regions),
+            "",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        for (id, owed) in [("7", 60), ("9", 40), ("11", 40)] {
+            let forecast = forecast(&review, id);
+            assert_eq!(forecast.shared_silver_covered, 0, "{id}");
+            assert_eq!(forecast.upkeep, Some(owed), "{id}");
+        }
+    }
+
+    /// Step 4 hands what it could not pay on to steps 5 and 6, exactly as its own silver does: a
+    /// short hex with grain in it still eats the grain (`ah-e66j`).
+    #[test]
+    fn a_short_hex_still_reaches_food() {
+        let regions = vec![region(vec![
+            with_men(with_silver(starving(unit("5")), 120), 6),
+            with_men(with_silver(starving(unit("7")), 0), 6),
+            with_men(with_silver(starving(unit("9")), 0), 4),
+            with_item(
+                with_men(with_silver(starving(unit("11")), 0), 4),
+                1,
+                "grain",
+                "GRAI",
+            ),
+        ])];
+
+        let review = review_turn(
+            &report(regions),
+            "",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        // Unit 5's own $60 fee leaves $60 of its $120 to lend, and unit 7 takes all of it, so
+        // units 9 and 11 are the ones step 4 cannot reach - and
+        // its own grain is eaten at step 5 exactly as it would be in a hex with nobody to lend.
+        assert_eq!(
+            forecast(&review, "11").own_food_covered,
+            40,
+            "{:?}",
+            forecast(&review, "11")
+        );
+    }
+
+    /// The half of the rule that must not regress. Automatic sharing is confined to maintenance -
+    /// "this sharing of money applies only for maintenance costs, and does not occur for other
+    /// purposes" - so a study nobody can afford is still reported in a hex with no `SHARE` flag,
+    /// however rich the unit beside it (`ah-e66j`).
+    #[test]
+    fn orders_are_not_shared_without_the_flag() {
+        let regions = vec![region(vec![
+            with_silver(unit("5"), 0),
+            with_silver(unit("7"), 5000),
+        ])];
+
+        let findings = check(regions, "unit 5\nSTUDY combat\n");
+
+        assert_eq!(
+            codes(&findings),
+            ["not-enough-silver"],
+            "unit 7 lends for upkeep and for nothing else: {findings:?}"
+        );
+        assert_eq!(findings[0].unit_id.as_deref(), Some("5"));
+    }
+
+    /// A hex with no `SHARE` flag pools for maintenance and for nothing else, so its shortfall
+    /// message must not name orders that were never pooled (`ah-e66j`, round 2 question 2).
+    #[test]
+    fn a_short_maintenance_pool_says_upkeep() {
+        let regions = vec![region(vec![
+            with_men(with_silver(starving(unit("5")), 120), 6),
+            with_men(with_silver(starving(unit("7")), 0), 6),
+            with_men(with_silver(starving(unit("9")), 0), 4),
+            with_men(with_silver(starving(unit("11")), 0), 4),
+        ])];
+
+        assert_eq!(
+            only(check(regions, "")).message,
+            "the units in this hex are short $80 of upkeep between them: they can have $120 and \
+             their upkeep costs $200"
+        );
+    }
+
+    /// A `SHARE` hex pools orders too, so it keeps the sentence it has always had.
+    #[test]
+    fn a_share_hex_keeps_its_orders_and_upkeep_wording() {
+        let mut hex_region = region(vec![
+            sharing(with_men(with_silver(starving(unit("5")), 120), 6)),
+            with_men(with_silver(starving(unit("7")), 0), 6),
+        ]);
+        hex_region.for_sale.push(MarketItem {
+            amount: 10,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 140,
+        });
+
+        let findings: Vec<Finding> = check(vec![hex_region], "unit 7\nBUY 1 horse\n")
+            .into_iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect();
+
+        assert!(
+            only(findings)
+                .message
+                .contains("their orders and upkeep spend"),
+            "a SHARE hex pools orders as well, so the wording stands"
+        );
+    }
+
+    /// `upkeep_relieved` has three writers now - step 4, steps 5 and 6, then step 7 - and every one
+    /// of them must add. Step 7 overwrote, which was survivable while a unit rarely reached it with
+    /// relief already recorded; step 4 makes that routine, because a pool that covers *part* of a
+    /// claim hands the rest straight to the fund (`ah-e66j`).
+    ///
+    /// Unit 5's spare $40 pays $40 of unit 7's $60 fee and the fund pays the last $20. Overwriting
+    /// leaves unit 7 recorded as relieved of $20 rather than $60 and invents a shortfall in a hex
+    /// that paid for itself.
+    #[test]
+    fn step_seven_adds_its_relief_to_step_fours_rather_than_replacing_it() {
+        let regions = vec![region(vec![
+            with_men(with_silver(starving(unit("5")), 100), 6),
+            with_men(with_silver(starving(unit("7")), 0), 6),
+        ])];
+
+        let findings = check_with_purse(Some(20), regions, "");
+
+        assert_eq!(
+            codes(&findings),
+            Vec::<&str>::new(),
+            "$120 of silver against $120 of upkeep is not short of anything: {findings:?}"
+        );
+    }
+
+    /// A hex short of maintenance still names the unit that overspends on its *orders*. Pooling the
+    /// hex's whole silver would lose that unit's name and its line, and would tell the player a
+    /// faction-mate's $120 was available to its purchase - which without `SHARE` it is not
+    /// (`ah-e66j`, out of scope: "sharing for anything but maintenance").
+    #[test]
+    fn a_short_maintenance_hex_still_names_a_unit_that_overspends() {
+        let mut hex_region = region(vec![
+            with_men(with_silver(starving(unit("5")), 120), 6),
+            with_men(with_silver(starving(unit("7")), 0), 6),
+            with_men(with_silver(starving(unit("9")), 0), 4),
+            with_silver(starving(unit("11")), 0),
+        ]);
+        hex_region.for_sale.push(MarketItem {
+            amount: 10,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 300,
+        });
+
+        let findings: Vec<Finding> = check(vec![hex_region], "unit 11\nBUY 1 horse\n")
+            .into_iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect();
+
+        let named: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.unit_id.is_some())
+            .collect();
+        assert_eq!(named.len(), 1, "{findings:?}");
+        assert_eq!(named[0].unit_id.as_deref(), Some("11"));
+        assert!(
+            named[0].line.is_some(),
+            "and it still points at the order that spent it"
+        );
+    }
+
+    /// The hex sentence's arithmetic is about maintenance and nothing else, so an order spending
+    /// silver in the same hex must not turn up inside the quoted fee (`ah-e66j`).
+    #[test]
+    fn an_order_in_the_hex_is_no_part_of_what_upkeep_costs() {
+        let mut hex_region = region(vec![
+            with_men(with_silver(starving(unit("5")), 120), 6),
+            with_men(with_silver(starving(unit("7")), 0), 6),
+            with_men(with_silver(starving(unit("9")), 0), 4),
+            with_men(with_silver(starving(unit("11")), 0), 4),
+        ]);
+        hex_region.for_sale.push(MarketItem {
+            amount: 10,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 20,
+        });
+
+        let findings: Vec<Finding> = check(vec![hex_region], "unit 5\nBUY 1 horse\n")
+            .into_iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect();
+
+        // The four fees are $200 between them; the $20 horse is not one of them.
+        assert_eq!(
+            only(findings).message,
+            "the units in this hex are short $100 of upkeep between them: they can have $100 and \
+             their upkeep costs $200"
+        );
+    }
+
     // --- steps 5 and 6: food pays what silver could not (`ah-eacd`) -----------------------------
 
     /// A unit holding food, with no `CONSUME` flag and no silver. Steps 5 and 6 apply to every
@@ -5139,8 +5639,11 @@ mod tests {
     fn a_consume_unit_unit_reaches_faction_food_at_step_six() {
         let mut eater = with_men(with_silver(starving(unit("5")), 0), 6);
         eater.flags.push("consuming unit's food".to_string());
+        // The neighbour's grain is the point; it holds only what its own fee costs, because a
+        // neighbour with spare silver now pays unit 5 at step 4 and no grain is ever eaten
+        // (`ah-e66j`).
         let neighbour = with_item(
-            with_men(with_silver(starving(unit("7")), 500), 2),
+            with_men(with_silver(starving(unit("7")), 20), 2),
             2,
             "grain",
             "GRAI",
@@ -5177,8 +5680,10 @@ mod tests {
     #[test]
     fn a_unit_a_short_pool_might_feed_is_not_warned_either() {
         let hex = region(vec![
+            // Only what its own fee costs: spare silver is lent at step 4 and the pool is never
+            // reached (`ah-e66j`).
             with_item(
-                with_men(with_silver(starving(unit("2")), 500), 2),
+                with_men(with_silver(starving(unit("2")), 20), 2),
                 1,
                 "grain",
                 "GRAI",
@@ -10211,7 +10716,9 @@ mod tests {
     /// much that was rather than claiming the whole fee was met.
     #[test]
     fn a_lone_eater_in_a_short_hex_is_fed_what_there_is() {
-        let quartermaster = with_item(with_silver(starving(unit("2000")), 500), 1, "grain", "GRAI");
+        // Exactly its own fee and no more: spare silver would pay the eater at step 4 and the
+        // grain would never be reached (`ah-e66j`).
+        let quartermaster = with_item(with_silver(starving(unit("2000")), 10), 1, "grain", "GRAI");
         let mut eater = starving(unit("2001"));
         eater.flags = vec!["consuming faction's food".to_string()];
         eater.men = 6;

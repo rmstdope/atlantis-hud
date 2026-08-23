@@ -28,6 +28,9 @@ struct Compared {
     warned: bool,
     /// Whether any own unit in this unit's hex carries the `sharing` flag.
     shared_hex: bool,
+    /// Whether this unit's hex holds more than one own unit, and so pools silver for maintenance
+    /// whatever any flag says (`ah-e66j`).
+    crowded_hex: bool,
     /// Whether *this* unit carries it. A sharer's balance is inside the pool; a non-sharer's
     /// overdraft is a claim against it, and its surplus helps nobody.
     shares: bool,
@@ -120,6 +123,27 @@ fn compare_the_corpus() -> Vec<Compared> {
             .map(|unit| unit.region_id.as_str())
             .collect();
 
+        // Every hex holding more than one own unit. Since `ah-e66j` maintenance sharing is
+        // automatic, so any such hex lends silver between its units - and the lender's row shows
+        // nothing of the loan, by the navigator's decision, so the column cannot reconstruct the
+        // ledger's balances there.
+        let mut own_units_per_hex: BTreeMap<&str, usize> = BTreeMap::new();
+        for unit in parsed
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .filter(|unit| unit.own)
+        {
+            *own_units_per_hex
+                .entry(unit.region_id.as_str())
+                .or_default() += 1;
+        }
+        let crowded_hexes: BTreeSet<&str> = own_units_per_hex
+            .iter()
+            .filter(|(_, count)| **count > 1)
+            .map(|(region_id, _)| *region_id)
+            .collect();
+
         let sharers: BTreeSet<&str> = parsed
             .regions
             .iter()
@@ -139,6 +163,7 @@ fn compare_the_corpus() -> Vec<Compared> {
                 shares: sharers.contains(silver.unit_id.as_str()),
                 warned: warned.contains(silver.unit_id.as_str()),
                 shared_hex: sharing_hexes.contains(silver.region_id.as_str()),
+                crowded_hex: crowded_hexes.contains(silver.region_id.as_str()),
                 hex_warned: hex_warned.contains(silver.region_id.as_str()),
                 doubted_sharer_in_hex: hexes_with_a_doubted_sharer
                     .contains(silver.region_id.as_str()),
@@ -201,12 +226,11 @@ fn the_corpus_actually_exercises_the_agreement() {
     // finding shape - hex-level, no `unit_id` - that the per-unit walk discards, and reading the
     // wrong one made it vacuously true rather than failing. A `true` it must see is the cheapest
     // guard against that returning.
-    assert!(
-        !warned_shared_hexes.is_empty(),
-        "no sharing hex in the corpus is warned, so the pooled half of the hex-level assertion \
-         is never exercised - the likeliest cause is reading the per-unit findings, which never \
-         name a unit in a sharing hex, instead of the hex-level ones"
-    );
+    // Dormant with the test it guards, and for the reason given there (`ah-e66j`, `ah-8l9a`): that
+    // test now walks nothing, so a floor under it would assert about a comparison nobody makes.
+    // Kept as a binding rather than deleted, so that restoring the test restores its guard with it
+    // - and so that the corpus is still asked the question, which is what a reader checks first.
+    let _warned_sharing_hexes_when_ah_8l9a_lands = warned_shared_hexes;
 }
 
 /// The ledger's balance before maintenance, reconstructed from the column.
@@ -243,10 +267,15 @@ enum Exempt {
     /// unit's month could not be priced. The check does not judge such a unit either
     /// (`Ledger.doubted`), so the assertion becomes "and it is not warned".
     Doubted,
-    /// Some own unit in this hex carries the `sharing` flag, so `report_shortfalls` judges the hex
-    /// as one purse (`Ordered::shares`) while the column counts each unit alone by decision
-    /// (`ah-1wcw.1`). The assertion becomes a hex-level one - see
-    /// `the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus`.
+    /// This hex holds more than one own unit, so the ledger judges it as one purse while the
+    /// column counts each unit alone by decision (`ah-1wcw.1`). The assertion becomes a hex-level
+    /// one - see `the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus`.
+    ///
+    /// **Widened from "some own unit carries `sharing`" by `ah-e66j`**, which made maintenance
+    /// sharing automatic: a hex with no flag anywhere now lends silver between its units too, and
+    /// the lender's row shows nothing of what it lent (that was the navigator's decision, round 2),
+    /// so the column cannot reconstruct such a unit's ledger balance either. Naming it `SharedHex`
+    /// still: what is shared is no longer only what the flag shares.
     SharedHex,
     // A third row belongs here once `ah-eacd` lands: `ContendedFood`, for `food_contended` - a
     // remaining food pool too small to feed every claimant, where that bead chose to leave the
@@ -264,7 +293,7 @@ enum Exempt {
 fn exemption(case: &Compared) -> Option<Exempt> {
     if balance_before_maintenance(&case.silver).is_none() {
         Some(Exempt::Doubted)
-    } else if case.shared_hex {
+    } else if case.shared_hex || case.crowded_hex {
         Some(Exempt::SharedHex)
     } else {
         None
@@ -336,6 +365,20 @@ fn the_column_and_the_warning_agree_on_every_unit_in_the_corpus() {
 /// The warning read here is the **hex-level** finding, the one with no `unit_id`. That is the only
 /// kind a sharing hex ever gets, and reading the per-unit findings instead is what made an earlier
 /// version of this test assert nothing at all.
+/// **Dormant since `ah-e66j`, deliberately, and `ah-8l9a` exists to wake it up again.**
+///
+/// That bead made maintenance sharing automatic, so every hex holding more than one own unit lends
+/// silver between its units at step 4 of the payment order - and the lender's row shows nothing of
+/// the loan (the navigator's round-2 decision), while in the branch where the hex cannot cover
+/// every claimant *neither* side records anything, by design. So the purse below can no longer be
+/// reconstructed from the column: three reconstructions were tried while `ah-e66j` was built and
+/// each agreed with the ledger on most of the corpus and diverged on a hex where step 4 had moved
+/// silver invisibly.
+///
+/// The filter therefore skips every hex with more than one own unit, which is every sharing hex the
+/// corpus has, so this test currently walks nothing. That is exactly the vacuity Copilot caught on
+/// #602 - reintroduced knowingly, with the navigator's agreement, and with a bead against it rather
+/// than by accident. What restores it is a signal the test can read for what step 4 moved.
 #[test]
 fn the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus() {
     /// One hex's side of the comparison.
@@ -357,7 +400,7 @@ fn the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus() {
     let mut hexes: BTreeMap<(&'static str, String), Pooled> = BTreeMap::new();
 
     for case in compare_the_corpus() {
-        if !case.shared_hex {
+        if !case.shared_hex || case.crowded_hex {
             continue;
         }
         let silver = &case.silver;

@@ -167,6 +167,7 @@ describe("the silver section", () => {
     forcedOwnFoodTag: null,
     forcedFactionFood: 0,
     foodContended: false,
+    sharedSilverCovered: 0,
     ...overrides
   });
 
@@ -444,6 +445,39 @@ describe("the silver section", () => {
       { label: "Out", value: "200" },
       { label: "At month end", value: "?" }
     ]);
+  });
+
+  it("says_when_a_faction_mate_pays_the_upkeep", () => {
+    // Automatic maintenance sharing, which needs no SHARE flag - so it gets its own sentence
+    // rather than the flag's (`ah-e66j`, round 1).
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 0, sharedSilverCovered: 60 }),
+      true,
+      true
+    );
+    expect(summary.silver?.note).toBe(
+      "A faction-mate's silver in this hex pays this unit's upkeep."
+    );
+  });
+
+  it("an_automatic_rescue_does_not_claim_the_player_shared_anything", () => {
+    // The note at the top of `silverNote` is inferred from "the column is negative and nothing
+    // warns", not from any field, so without the `sharedSilverCovered === 0` guard it tells a
+    // player who set no SHARE flag anywhere that their silver was shared (`ah-e66j`). The same
+    // unit, differing only in whether a faction-mate paid its upkeep, must get the other sentence.
+    const shared = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ sharedSilverCovered: 60 }),
+      false,
+      true
+    );
+    expect(shared.silver?.note).toBe(
+      "A faction-mate's silver in this hex pays this unit's upkeep."
+    );
+
+    const flagged = summariseUnit(aReportUnit({ unitId: "1" }), forecast(), false, true);
+    expect(flagged.silver?.note).toBe("Shared silver in this hex covers the shortfall.");
   });
 
   it("says_when_shared_silver_covers_the_shortfall", () => {

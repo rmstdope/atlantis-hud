@@ -139,6 +139,14 @@ pub struct UnitSilver {
     /// Silver that faction food held by *other* units in this hex paid off, at step 2 of the
     /// payment order (`ah-7cdt`). `0` for every unit the pool did not feed, which is most of them.
     pub faction_food_covered: i64,
+    /// Silver of this unit's upkeep paid by other own units in the same hex, at step 4 of the
+    /// payment order. `0` for every unit its neighbours did not feed - and `0`, deliberately, for
+    /// every unit in a hex whose sharing fell short, where which unit was fed cannot be told and
+    /// the figure stays pessimistic (`ah-e66j`).
+    ///
+    /// Automatic and unconditional: the `SHARE` flag governs discretionary spending only, so this
+    /// is not the same thing as the `sharing` pool `report_shortfalls` uses.
+    pub shared_silver_covered: i64,
     /// Silver of this unit's upkeep paid by food it holds itself, at step 1 of the payment order.
     /// `0` when the unit is not set to consume, holds no food, or owes nothing.
     ///
@@ -460,6 +468,7 @@ pub fn forecast_unit(
             received: 0,
             givers: Vec::new(),
             faction_food_covered: 0,
+            shared_silver_covered: 0,
             own_food_covered: 0,
             forced_own_food: 0,
             forced_own_food_tag: None,
@@ -757,6 +766,7 @@ pub fn forecast_unit(
         received: receipts.silver,
         givers: receipts.givers.clone(),
         faction_food_covered: 0,
+        shared_silver_covered: 0,
         own_food_covered,
         forced_own_food: 0,
         forced_own_food_tag: None,

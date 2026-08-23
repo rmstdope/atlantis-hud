@@ -394,7 +394,8 @@ describe("silverShown", () => {
       forcedOwnFood: 0,
       forcedOwnFoodTag: null,
       forcedFactionFood: 0,
-      foodContended: false
+      foodContended: false,
+      sharedSilverCovered: 0
     }) satisfies UnitSilver;
 
   it("subtracts upkeep only when the setting is on", () => {
