@@ -693,7 +693,9 @@ test("with no ruleset there is no door: F2 does nothing and the palette does not
   // A game with a ruleset that will not load - which is the state the palette already answers
   // with no game data at all, and both doors must answer the same way.
   await page.route("**/ruleset.json", (route) => route.fulfill({ status: 404, body: "" }));
-  await loadReport(page);
+  // Without the rules the load says so rather than counting the turn (ah-6yj2), so that - not the
+  // counts - is what tells this walk the turn is on screen.
+  await loadReport(page, "Smoke game", undefined, "The rules could not be loaded");
 
   await page.keyboard.press("F2");
   await expect(page.getByTestId("game-data-dialog")).toHaveCount(0);

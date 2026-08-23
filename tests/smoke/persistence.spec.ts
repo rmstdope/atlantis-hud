@@ -290,10 +290,16 @@ test("a slow ruleset fetch cannot wipe orders typed after an import", async ({ p
   await fillOrders(page, "@work");
   await expectOrders(page, /^@work\n?$/u);
 
-  // The restore lands - the status says so - and the words the player typed still stand.
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 71", {
+  // Both the restore and the import wait on the same fetch, and since ah-6yj2 the import waits
+  // too - so the counts, not "restored turn 71", are what the header settles on. Either way the
+  // fetch has landed and the restore has had its chance to clobber, which is what this walk is
+  // about: the words the player typed still stand.
+  await expect(page.getByTestId("import-status")).toContainText("11 regions", {
     timeout: 20_000
   });
+  await expectOrders(page, /^@work\n?$/u);
+  // A moment past the fetch, in case the restore resolves a tick behind the import.
+  await page.waitForTimeout(500);
   await expectOrders(page, /^@work\n?$/u);
 });
 

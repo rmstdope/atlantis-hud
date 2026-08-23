@@ -109,7 +109,14 @@ const TURN_71 = readReport("g7f95t71");
  * version kept, because it is the correct one: both hold in every walk, since every walk starts
  * from `clearGames`, and both are waits rather than claims about the walk under test.
  */
-export async function loadReport(page: Page, gameName = "Smoke game", report = TURN_71) {
+export async function loadReport(
+  page: Page,
+  gameName = "Smoke game",
+  report = TURN_71,
+  // What the header says once the turn is on screen. The counts, unless the walk deliberately
+  // withholds the ruleset - a load without it now says so instead of counting (ah-6yj2).
+  expectedStatus = "11 regions"
+) {
   await clearGames(page);
   await expect(page.getByTestId("game-gate")).toBeVisible();
   await createGame(page, gameName);
@@ -117,7 +124,7 @@ export async function loadReport(page: Page, gameName = "Smoke game", report = T
 
   await importReport(page, "turn-71.rep", report);
 
-  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+  await expect(page.getByTestId("import-status")).toContainText(expectedStatus);
 }
 
 /**
