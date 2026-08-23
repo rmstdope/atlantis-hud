@@ -299,7 +299,16 @@ export function isOffScreen(
   );
 }
 
-export function neighbour(coordinate: Coordinate, key: ArrowKey): Coordinate {
+export function neighbour(
+  coordinate: Coordinate,
+  key: ArrowKey,
+  /** The map's shape, when the view knows it - the step folds onto it, as the movement planner's does. */
+  shape: MapShape | null | undefined = null
+): Coordinate {
+  return foldCoordinate(step(coordinate, key), shape);
+}
+
+function step(coordinate: Coordinate, key: ArrowKey): Coordinate {
   const { x, y, z } = coordinate;
   switch (key) {
     case "ArrowUp":
@@ -315,7 +324,15 @@ export function neighbour(coordinate: Coordinate, key: ArrowKey): Coordinate {
   }
 }
 
-export type Tick = { index: number; offset: number };
+/**
+ * One ruler mark: where it sits, and what it is called.
+ *
+ * `index` is the lattice position and stays unique across the whole panned range, which is what
+ * makes it usable as a React key when the map repeats. `label` is what the player reads, folded
+ * into the map's own range - so panning east past a 72-wide seam reads `70, 71, 0, 1` while the two
+ * ticks called `0` remain different ticks.
+ */
+export type Tick = { index: number; offset: number; label: number };
 
 /**
  * Which coordinates a ruler should label, and where they fall.
@@ -327,7 +344,9 @@ export function rulerTicks(
   axis: "x" | "y",
   viewport: Viewport,
   size: number,
-  minPixels: number
+  minPixels: number,
+  /** The map's extent on this axis, when it repeats; `null` when it does not. */
+  extent: number | null = null
 ): Tick[] {
   const pitch = axis === "x" ? COLUMN_PITCH : ROW_PITCH;
   const strides = axis === "x" ? COLUMN_STRIDES : ROW_STRIDES;
@@ -344,7 +363,12 @@ export function rulerTicks(
 
   const ticks: Tick[] = [];
   for (let index = Math.ceil(first / stride) * stride; index <= last; index += stride) {
-    ticks.push({ index, offset: index * screenPitch });
+    ticks.push({
+      index,
+      offset: index * screenPitch,
+      // Panning west gives negative indices immediately, and `-1 % 72` is `-1` in JavaScript.
+      label: extent !== null && extent > 0 ? remEuclid(index, extent) : index
+    });
   }
   return ticks;
 }
