@@ -1,4 +1,34 @@
 
+## A plan's *Out of scope* asserted an interaction as fact, and the fact was false
+
+**What happened.** The plan's *Out of scope* section ruled out `PILLAGE` emptying the tax base with
+a reason rather than a boundary: "a pillaged hex yields nothing to any taxer, so there is no pool to
+oversubscribe and the two findings do not both fire." I read that as settled and wrote no test for
+it. It is true of the *column* - `silver.rs`'s `Intent::Tax` arm short-circuits on `region.pillaged`
+before it ever looks at the settlement - but not of the settlement itself, which read the region's
+stated tax base and knew nothing about pillaging. Two taxers beside a pillager in a hex with a
+stated base got both `taxed-a-pillaged-hex` and my new `region-pool-oversubscribed`, the second one
+promising a division of a pool that no longer exists. Copilot's review carried no comments but named
+"interaction with pillaged-hex taxing" as the thing warranting a human look; writing the test it
+implied is what found this. The defect survived `ah-t2pn.2`'s refactor of the settlement into
+`pool_shares_for`, so the same test caught the same bug twice, on two different shapes of the code.
+
+**Why.** Established. An *Out of scope* entry that carries a justification reads as a check already
+made, so nothing in the increments asked for a test of it - and the justification was about a
+neighbouring code path (the column) rather than the one this bead added (the settlement).
+
+**Cost.** About ten minutes the first time, five the second. No CI cycle: both were caught before a
+CI wait, and the fix is one line and one test.
+
+**Prevent by.** Where a plan's *Out of scope* claims two findings cannot both fire, `plan-bead`
+should require that claim as a named test in the *Test plan* rather than a sentence in *Out of
+scope*. It is an assertion about behaviour, and every other assertion about behaviour in a plan is
+written as a test.
+
+**Seen before.** `ah-ycuj` names the same pillage divergence as the reason its corpus-agreement
+guard exists - a second surface pricing `TAX` differently in a pillaged hex - so this is that same
+seam being crossed for the second time by a bead that did not expect to touch it.
+
 ## Two siblings merged during my CI wait, and the second one rewrote the code I had built on
 
 **What happened.** `ah-t2pn.4` is the reporting bead of a four-bead family. When I claimed it, `.2`

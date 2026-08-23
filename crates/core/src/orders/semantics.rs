@@ -427,7 +427,12 @@ fn pool_shares_for(hex: &Hex<'_>, region: RegionWages) -> PoolSettlement {
         Contended {
             want_of: |want| want.tax,
             share_of: |into| &mut into.tax,
-            pool: region.tax_base,
+            // A pillage empties the hex before any TAX reaches it (`ah-cxxa`), so there is no
+            // pool left for anybody to draw on, let alone oversubscribe: every taxer here
+            // collects a certain nothing whatever the settlement would have said, and
+            // `taxed-a-pillaged-hex` is the finding that fits. `ah-t2pn.4` found the two firing
+            // together.
+            pool: region.tax_base.filter(|_| !region.pillaged),
             names: ContendedPool::Tax,
         },
         Contended {
@@ -4694,6 +4699,23 @@ mod tests {
             assert_eq!(messages.len(), 2, "{:?}", review.findings);
             assert!(messages.iter().all(|message| message.contains("horse")));
             assert!(!messages.iter().any(|message| message.contains("sword")));
+        }
+
+        /// `ah-cxxa` empties the hex before any TAX reaches it, so there is no pool left to
+        /// oversubscribe and this check must stay quiet - the pillage finding is the one to read.
+        #[test]
+        fn a_pillaged_hex_has_no_pool_to_oversubscribe() {
+            let review = review(
+                Some(2500),
+                vec![taxer("2390", 10), taxer("2391", 50), taxer("2392", 1)],
+                "unit 2390\nTAX\nunit 2391\nTAX\nunit 2392\nPILLAGE\n",
+            );
+
+            assert!(
+                oversubscriptions(&review).is_empty(),
+                "{:?}",
+                review.findings
+            );
         }
 
         /// The guard that the sentence and the column come from one computation: `wanted` is what
