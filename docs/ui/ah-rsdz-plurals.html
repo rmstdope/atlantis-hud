@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Counts and item names (ah-rsdz)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  table.t { border-collapse:collapse; font-size:12.5px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+  table.t th, table.t td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--edge-soft); }
+  table.t th:first-child, table.t td:first-child { text-align:left; }
+  table.t th { color:var(--brass); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+  table.t td { font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+  table.t td.num { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  table.t td.q { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink-dim); }
+  table.t td.good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+  .unit { display:grid; gap:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:5px; }
+  .rowset { display:grid; gap:2px; font-size:12px; }
+  .row { display:flex; justify-content:space-between; gap:14px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .row .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .row .v.q { color:var(--ink-dim); }
+  .row.total { border-top:1px solid var(--edge); margin-top:4px; padding-top:4px; }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:7px; line-height:1.5; font-style:italic; }
+  .cap { color:var(--ink-soft); font-size:12.5px; } .cap b { color:var(--ink); }
+  .absent { color:var(--ink-dim); font-size:12px; font-style:italic; padding:8px 0; max-width:94ch; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-rsdz</span> — &ldquo;buys 200 horse&rdquo;</h1>
+  <p>The ruleset stores item names in the <strong>singular</strong>, and several messages put a
+  count immediately in front of one:</p>
+  <blockquote><code>your units here buy 120 <b>horse</b> between them and this market has 100</code><br>
+  <code>this unit buys 200 <b>horse</b> and this market has 100</code><br>
+  <code>short 5 <b>horse</b>: this unit can have 0 and its orders spend 5</code></blockquote>
+  <p>These are the sentences a player reads when the app is telling them something is wrong, so
+  reading like a bad translation costs more here than elsewhere.</p>
+
+  <h2 class="rule"><em>Measured</em> what a fix has to cope with</h2>
+  <ul style="color:var(--ink-soft);font-size:14px;max-width:94ch;line-height:1.7">
+    <li><b>A naive &ldquo;add an s&rdquo; is definitively wrong.</b> Of 114 items seen in the
+      corpus with a count above one, <b>84</b> pluralise irregularly &mdash;
+      <code>amulet of protection</code> &rarr; <code>amulets of protection</code>,
+      <code>book of exorcism</code> &rarr; <code>books of exorcism</code>. &ldquo;+s&rdquo; gives
+      <em>amulet of protections</em>.</li>
+    <li><b>30 are invariant.</b> <code>grain</code>, <code>iron</code>, <code>fish</code>,
+      <code>livestock</code>, <code>chain armor</code> &mdash; &ldquo;10 grain&rdquo; is already
+      correct and must not become &ldquo;10 grains&rdquo;.</li>
+    <li><b>No source is complete.</b> The report's own item lines carry the engine's plurals and
+      cover <b>114 of 171</b> items here; the data page carries them only incidentally, in prose,
+      for about <b>91</b>. Neither covers everything.</li>
+    <li><b>There is already a precedent.</b> <code>not-traded-here</code> reads its names from the
+      report's market lines and so already prints plurals: <em>&ldquo;its market has perfume, gems
+      and hill dwarves&rdquo;</em>.</li>
+  </ul>
+</header>
+<main>
+<section>
+  <h2 class="rule"><em>Question 1</em> where does the plural come from?</h2>
+  <table class="q">
+    <tr><th>Option</th><th></th><th></th></tr>
+    <tr><td class="k">A — the report</td>
+        <td>Read the plural from the report's own item lines, which is where
+        <code>not-traded-here</code> already gets its names. <code>item_name</code> already falls
+        back to them; today the ruleset's singular shadows it.</td>
+        <td>The engine's own words, so never wrong. No scraping. Covers only items somebody in the
+        report holds &mdash; and a message about goods a unit is <em>buying</em> may name something
+        nobody holds yet.</td></tr>
+    <tr><td class="k">B — scrape plurals</td>
+        <td>Add <code>plural</code> to the ruleset from the data page, as
+        <code>ah-19l2.1</code> and <code>ah-1ad6.1</code> did for recipes and weapons.</td>
+        <td>One catalogue, available whether or not anyone holds the item. The page states plurals
+        only incidentally, inside prose &mdash; noisy to extract and about 91 of 171.</td></tr>
+    <tr><td class="k">C — both</td>
+        <td>Report first, scraped plural second, singular last.</td>
+        <td>Best coverage. Two sources to keep in step, and a bead that is really two.</td></tr>
+    <tr><td class="k">D — never abut them</td>
+        <td>Reword every message so a count never sits against a name:
+        <em>&ldquo;this unit buys 200, and this market has 100 horse&rdquo;</em> &mdash; or the
+        count and the goods separated some other way.</td>
+        <td>Needs no data at all and is right for all 171 items. Changes sentences that are
+        otherwise fine, and the awkwardness moves rather than leaves.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Question 2</em> when no plural is known</h2>
+  <p>Whatever the source, some item will have none &mdash; a new item, or one nobody holds.</p>
+  <table class="q">
+    <tr><th>Option</th><th>What prints</th></tr>
+    <tr><td class="k">Fall back to the singular</td>
+        <td><code>buys 200 horse</code> &mdash; today's behaviour, for the residue only. Wrong, but
+        wrong in one place instead of everywhere, and never <em>invented</em>.</td></tr>
+    <tr><td class="k">Fall back to &ldquo;+s&rdquo;</td>
+        <td><code>buys 200 horses</code> &mdash; right far more often than not, and confidently
+        wrong on <em>amulet of protections</em>.</td></tr>
+    <tr><td class="k">Name it once, without a count</td>
+        <td><code>buys more horse than this market has</code> &mdash; drops the numbers for the
+        residue, which are the useful part of the sentence.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Question 3</em> how wide</h2>
+  <table class="q">
+    <tr><th>Option</th><th></th></tr>
+    <tr><td class="k">Every message that pairs a count with a name</td>
+        <td>One helper, and every call site moved to it &mdash; today
+        <code>region-pool-oversubscribed</code> and <code>not-enough-items</code>, and whatever
+        else the grep finds. The acceptance criteria ask for exactly this: the rule in one place, so
+        the next message inherits it.</td></tr>
+    <tr><td class="k">Only the two named</td>
+        <td>Smaller diff. Leaves the next message to make the same mistake, which is the thing the
+        bead says is cheap to get wrong again.</td></tr>
+  </table>
+</section>
+</main>
+</body>
+</html>
