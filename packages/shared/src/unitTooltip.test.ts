@@ -477,6 +477,27 @@ describe("the silver section", () => {
     );
   });
 
+  it("an_idle_unit_whose_income_is_a_gift_is_not_told_it_will_earn_wages", () => {
+    // Total income carries gifts and claims as well as wages, so an idle unit in a region with no
+    // wage line that was given silver has `income > 0` and no wages at all. For an idle unit the
+    // wage is exactly its late income, which is what the note is gated on (`ah-gjq4`, review).
+    const gifted = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        income: 40,
+        lateIncome: 0,
+        worksByDefault: true,
+        received: 40,
+        givers: ["Lender (100)"]
+      }),
+      true,
+      true
+    );
+    expect(gifted.silver?.note).toBe(
+      "Includes 40 given by Lender (100) in this hex."
+    );
+  });
+
   it("an_idle_unit_that_faction_food_also_fed_shows_the_food_note", () => {
     // The ordering decided in planning: the food note is the rarer, more specific fact, and a zero
     // in the Upkeep row is a sharper surprise than a positive income figure (`ah-gjq4`).

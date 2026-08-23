@@ -517,9 +517,15 @@ pub fn spends_the_month(intent: &Intent) -> bool {
 
 /// Whether a unit with these orders will be set to work by default.
 ///
-/// A unit that spends its month on nothing is made to `WORK`, and work pays the region's wage. The
-/// same predicate the `unit-does-nothing` advisory uses, so the two surfaces cannot disagree about
-/// which units are idle (`ah-gjq4`).
+/// A unit that spends its month on nothing is made to `WORK`, and work pays the region's wage.
+/// Built on the same [`spends_the_month`] the `unit-does-nothing` advisory uses, so neither
+/// surface can grow its own private list of what a month's work is (`ah-gjq4`).
+///
+/// The advisory is still the narrower of the two: it declines to judge a unit whose orders could
+/// not be read, and one with no men, where this predicate looks only at what the orders spend. A
+/// unit whose sole order is an unreadable line is therefore credited wages while the advisory stays
+/// silent - a cost the navigator accepted, and one
+/// `semantics::tests::an_unread_order_line_does_not_stop_the_default` records deliberately.
 #[must_use]
 pub fn works_by_default(intents: &[PlacedIntent]) -> bool {
     !intents

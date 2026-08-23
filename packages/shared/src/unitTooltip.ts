@@ -308,7 +308,10 @@ function silverNote(
   // fund notes because each of those is the rarer, more specific fact, and a zero in a row is a
   // sharper surprise than a positive income figure the `In too late to spend` row already half
   // explains - so an idle unit that faction food also fed shows the food note and not this one.
-  if (silver.worksByDefault && silver.income !== null && silver.income > 0) {
+  // Gated on `lateIncome` rather than `income`: for an idle unit the wage IS the whole of its late
+  // income - entertaining would spend the month - while total income also carries gifts and claims,
+  // which are not wages and would make this sentence say something untrue about them.
+  if (silver.worksByDefault && silver.lateIncome !== null && silver.lateIncome > 0) {
     return "This unit has no month-long order, so it will work and earn wages.";
   }
   // A gift is the one part of the figure that comes from somebody else's orders, so it is the one
