@@ -4103,6 +4103,7 @@ mod tests {
             RegionWages::default(),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             None,
         );
@@ -4125,6 +4126,7 @@ mod tests {
             RegionWages::default(),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             None,
         );
