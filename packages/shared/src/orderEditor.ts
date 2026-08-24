@@ -198,7 +198,13 @@ export function findingsForHex(
   if (regionId === null) {
     return [];
   }
-  return diagnostics.filter((diagnostic) => diagnostic.regionId === regionId);
+  // `part-of-hex-shortfall` exists only to mark the order lines claiming against a short pool;
+  // the hex's own finding is already in this list, so letting the pointers in too would count
+  // every pooled shortfall once more per contributing line (`ah-eurs`).
+  return diagnostics.filter(
+    (diagnostic) =>
+      diagnostic.regionId === regionId && diagnostic.code !== "part-of-hex-shortfall"
+  );
 }
 
 /** One hex's worth of findings, for the map-wide list. */
@@ -221,7 +227,11 @@ export function findingsByHex(diagnostics: OrderDiagnostic[]): HexFindings[] {
   const byHex = new Map<string, OrderDiagnostic[]>();
 
   for (const diagnostic of diagnostics) {
-    if (diagnostic.regionId === null) {
+    // The same exclusion `findingsForHex` makes, and for the same reason: a pointer is the hex
+    // finding's mark on one order line, not a finding of its own. Counted here it would inflate
+    // the header chip once per contributing line and put "See Problems for the hex" into the very
+    // list it points at (`ah-eurs`).
+    if (diagnostic.regionId === null || diagnostic.code === "part-of-hex-shortfall") {
       continue;
     }
     const found = byHex.get(diagnostic.regionId);

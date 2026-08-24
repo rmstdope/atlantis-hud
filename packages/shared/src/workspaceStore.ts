@@ -233,6 +233,12 @@ export type WorkspaceState = {
   toggleBadge: (badge: BadgeName) => void;
   /** Shows or hides the region panel's Problems section. */
   toggleRegionProblems: () => void;
+  /**
+   * Opens the region panel's Problems section, leaving it open when it already is. The pointer at
+   * an order line claiming against a short pool offers this as a button, and a toggle there would
+   * shut the very section the reader asked to see (`ah-eurs`).
+   */
+  showRegionProblems: () => void;
   /** Shows or hides the whole set at once, which is what a nine-box panel owes the player. */
   setAllBadges: (on: boolean) => void;
   /** Arms destination picking for exactly one click. */
@@ -485,6 +491,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       toggleRegionProblems: () =>
         set((state) => ({ regionProblemsShown: !state.regionProblemsShown })),
+      showRegionProblems: () => set({ regionProblemsShown: true }),
 
       armPlanner: () => set((state) => ({ planner: { ...state.planner, armed: true } })),
       planTo: (destinationId) => set(() => ({ planner: { armed: false, destinationId } })),

@@ -406,6 +406,38 @@ describe("findings that belong to a hex", () => {
   });
 
   /**
+   * The pointer at a line contributing to a pooled shortfall exists for the editor alone; letting
+   * it into the panel as well would count every hex shortfall twice over (`ah-eurs`).
+   */
+  it("keeps the editor-only pointer out of the hex's findings", () => {
+    const all = [
+      hexFinding("not-enough-items", "1:7,53"),
+      { ...unitFinding("13401", 5, "1:7,53"), code: "part-of-hex-shortfall" }
+    ];
+
+    expect(findingsForHex(all, "1:7,53").map((finding) => finding.code)).toEqual([
+      "not-enough-items"
+    ]);
+  });
+
+  /**
+   * The map-wide list is the pooled shortfall's other counter, and the pointer is no more a
+   * finding of its own there than it is in the region panel: leaving it in would count every
+   * pooled shortfall once per contributing line and render each pointer's "See Problems for the
+   * hex" as an entry pointing at itself (`ah-eurs`).
+   */
+  it("keeps the editor-only pointer out of the map-wide list", () => {
+    const all = [
+      hexFinding("not-enough-items", "1:7,53"),
+      { ...unitFinding("13401", 5, "1:7,53"), code: "part-of-hex-shortfall" }
+    ];
+
+    expect(findingsByHex(all)).toEqual([
+      { regionId: "1:7,53", findings: [hexFinding("not-enough-items", "1:7,53")] }
+    ]);
+  });
+
+  /**
    * The header chip counts what is wrong across the whole map, so a mistake in a hex nobody is
    * looking at cannot reach the server unnoticed. Syntax diagnostics belong to no hex and are
    * counted separately, by the orders panel.

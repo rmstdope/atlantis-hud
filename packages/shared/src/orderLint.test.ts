@@ -1,5 +1,5 @@
 import type { OrderDiagnostic } from "@atlantis/core-client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { toEditorDiagnostics } from "./orderLint";
 
 /**
@@ -123,5 +123,38 @@ describe("toEditorDiagnostics", () => {
     expect(result).toHaveLength(2);
     expect(text.slice(result[0].from, result[0].to)).toBe("WROK");
     expect(text.slice(result[1].from, result[1].to)).toBe("STUFY");
+  });
+});
+
+/**
+ * A pooled shortfall is reported against the hex, so its pointer on an order line has to send the
+ * reader to the region panel - as a button, because an anchor inside a lint tooltip cannot be
+ * reached from the keyboard (`ah-eurs`).
+ */
+describe("the pooled-shortfall pointer's action", () => {
+  it("attaches a Show problems action to a hex shortfall pointer", () => {
+    const shown = vi.fn();
+    const result = toEditorDiagnostics(
+      "GIVE 0 20000 HORS",
+      [problem({ code: "part-of-hex-shortfall", severity: "warning" })],
+      shown
+    );
+
+    expect(result[0].actions).toHaveLength(1);
+    expect(result[0].actions?.[0].name).toBe("Show problems");
+    result[0].actions?.[0].apply({} as never, 0, 0);
+    expect(shown).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves every other code without an action", () => {
+    const result = toEditorDiagnostics("WROK", [problem({ code: "parse" })], vi.fn());
+    expect(result[0].actions).toBeUndefined();
+  });
+
+  it("is silent when no handler is given", () => {
+    const result = toEditorDiagnostics("GIVE 0 20000 HORS", [
+      problem({ code: "part-of-hex-shortfall" })
+    ]);
+    expect(result[0].actions).toBeUndefined();
   });
 });

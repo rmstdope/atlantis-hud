@@ -308,6 +308,22 @@ describe("the region panel's problems toggle", () => {
     expect(persisted.regionProblemsShown).toBe(false);
   });
 
+  /**
+   * The `Show problems` button on a pooled-shortfall pointer must open the section, never close
+   * it: a toggle called from an already-open panel shuts the very thing it was meant to reveal
+   * (`ah-eurs`).
+   */
+  it("showing the problems section is idempotent", () => {
+    expect(store().regionProblemsShown).toBe(true);
+    store().showRegionProblems();
+    expect(store().regionProblemsShown).toBe(true);
+
+    store().toggleRegionProblems();
+    expect(store().regionProblemsShown).toBe(false);
+    store().showRegionProblems();
+    expect(store().regionProblemsShown).toBe(true);
+  });
+
   it("a stored layout written before this flag existed still shows the problems", () => {
     // The upgrade case: a record persisted before this flag existed rehydrates with the key
     // absent, and a missing key must read as shown - the dangerous direction is hiding every
