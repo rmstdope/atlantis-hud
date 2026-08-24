@@ -298,6 +298,7 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         taken_from: Vec::new(),
         faction_food_covered: 0,
         shared_silver_covered,
+        shared_silver_for_orders: 0,
         taxes_by_flag: false,
         own_food_covered: 0,
         forced_own_food: 0,
@@ -487,7 +488,7 @@ fn the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus() {
     // Keyed by fixture and hex, because two fixtures of the same game carry the same region ids.
     let mut hexes: BTreeMap<(&'static str, String), Pooled> = BTreeMap::new();
 
-    for case in compare_the_corpus() {
+    for case in &compare_the_corpus() {
         // Judged: every hex the ledger pools maintenance across (`crowded_hex`), plus the lone
         // `sharing` unit whose hex pools nothing, where the two arms coincide.
         //
@@ -498,6 +499,18 @@ fn the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus() {
         // unreconstructable from the column and stays unguarded here, deliberately: this test
         // restores the maintenance guard, which is what `ah-e66j` broke, and guarding the orders
         // pool would need the lending exposed (`ah-8l9a`, *Out of scope*).
+        //
+        // **`ah-moq3` narrowed what is missing, and it is not yet nothing.** The borrower's side
+        // is on the column now (`shared_silver_for_orders`) and the lender pays for it out of its
+        // own `expense`, so the two surfaces agree about *who is short* - which is the defect that
+        // bead fixed, and which the per-unit walk above now covers for these hexes too. What the
+        // column still does not say is **which** lender paid: the loan is inside one `expense`
+        // among several, so the purse this test sums over the sharers cannot be told apart from
+        // the money they spent on themselves. Attempted here and reverted: letting these hexes in
+        // fails `G3_F42_T40 1:35,9`, where the reconstruction reads a purse of 10,477 against
+        // claims of 3,290 while the ledger's `SHARE` arm - the one that actually judges a flagged
+        // crowded hex - warns. Removing this needs the lender's share of the loan on the column,
+        // which is a field and a decision of its own.
         if case.shared_hex && case.crowded_hex {
             continue;
         }
