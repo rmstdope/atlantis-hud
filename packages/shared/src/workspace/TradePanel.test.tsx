@@ -2,50 +2,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { aTradeRoute, aTradedGood, type TradeRoute } from "@atlantis/core-client";
 import { TradePanel } from "./TradePanel";
+import { findByTestId } from "../testing/elementTree";
 
 const labelFor = (regionId: string) => `hex ${regionId}`;
-
-/**
- * Finds the first element in an already-created (unrendered) React element tree carrying the
- * given `data-testid`, without a DOM - this package has no `@testing-library/react` or jsdom, so
- * a click is exercised by calling the button's own `onClick` prop directly rather than dispatching
- * a real event.
- */
-function findByTestId(node: unknown, testId: string): { props: Record<string, unknown> } | null {
-  if (node === null || typeof node !== "object") {
-    return null;
-  }
-  if (Array.isArray(node)) {
-    for (const child of node) {
-      const found = findByTestId(child, testId);
-      if (found) {
-        return found;
-      }
-    }
-    return null;
-  }
-  const element = node as {
-    type?: unknown;
-    props?: Record<string, unknown>;
-  };
-  if (element.props?.["data-testid"] === testId) {
-    return element as { props: Record<string, unknown> };
-  }
-  // A function component (like `TradePanel` itself) has to be called to see what it renders; a
-  // host element's children are already fully-formed React elements, needing no such call.
-  if (typeof element.type === "function") {
-    // Calling a component outside a renderer is only possible while it uses no hooks, and
-    // `PopoverFrame` now does (ah-pdly: it takes focus when it opens). React throws in that case,
-    // and every id this walk is asked for sits inside such a frame rather than on it - so falling
-    // through to the children is the whole of the recovery.
-    try {
-      return findByTestId((element.type as (props: unknown) => unknown)(element.props), testId);
-    } catch {
-      return findByTestId(element.props?.children, testId);
-    }
-  }
-  return findByTestId(element.props?.children, testId);
-}
 
 describe("TradePanel", () => {
   it("lists a route with its goods and its journey", () => {
@@ -143,7 +102,6 @@ describe("TradePanel", () => {
       />
     );
     const row = findByTestId(element, "trade-route-0");
-    expect(row).not.toBeNull();
     (row!.props.onClick as () => void)();
     expect(onSelectHex).toHaveBeenCalledWith("1:49,3");
     expect(onDismiss).toHaveBeenCalled();
@@ -186,7 +144,6 @@ describe("TradePanel hover", () => {
       />
     );
     const found = findByTestId(element, "trade-route-0");
-    expect(found).not.toBeNull();
     return found!.props as Record<string, () => void>;
   }
 

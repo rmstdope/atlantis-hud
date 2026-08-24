@@ -47,6 +47,24 @@ const markup = renderWithStoreState(<GlobalSettings />, useSettingsStore, { them
 Call it with no patch after driving the store through its own actions, and put
 `restoreStoresForTest` in an `afterEach` as before. `storeState.ts` has the detail.
 
+## Finding an element without a DOM — `elementTree.ts`
+
+A click here is exercised by calling the button's own `onClick` prop, which means finding the button
+in the unrendered element tree. `queryByTestId` walks that tree; `findByTestId` is the same walk that
+throws when it misses, and its message names every component the walk could not enter — a component
+is entered by *calling* it, which works only while it uses no hooks, so an id inside `PopoverFrame`
+is an id no test in this package can reach. That distinction is why the throwing form exists: a
+*unreachable* id and an *absent* one are different problems and used to produce the same
+`expected null not to be null`.
+
+```tsx
+findByTestId(panel(), "dossier-unit-104").props.onClick as () => void; // present, or a real message
+expect(queryByTestId(panel(), "dossier-back")).toBeNull();             // asserting absence
+```
+
+Two test files carried a private copy of that walk until ah-2ihm; a hook added below them reddened
+both at once. There is one copy now.
+
 ## Nothing here ships
 
 **No module in this directory may be imported by production code, and `src/index.ts` must not
