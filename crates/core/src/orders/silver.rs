@@ -809,10 +809,7 @@ pub fn forecast_unit(
                 // deliberately the other way; `claims-exceed-unclaimed` (`ah-wur4`) is what carries
                 // the overrun. A purse the report does not state leaves only the limit unknown, not
                 // the amount, so the stated figure is counted and nothing is doubted.
-                income = income.saturating_add(match purse.unclaimed {
-                    Some(available) => (*amount).min(available),
-                    None => *amount,
-                });
+                income = income.saturating_add(price_claim(*amount, purse.unclaimed).earns);
             }
             // Priced once above, as a unit-level term rather than per line: a unit may tax by
             // its flag with no `TAX` order at all, and one with both must be counted once
@@ -847,8 +844,8 @@ pub fn forecast_unit(
                     // where nothing was settled (`ah-t2pn.3`).
                     let allowed =
                         (lookups.market_share)(item, MarketSide::Selling).unwrap_or(market_takes);
-                    let sold = asked.min(allowed).min(unit_holds).max(0);
-                    income = income.saturating_add(sold.saturating_mul(price));
+                    income =
+                        income.saturating_add(price_sale(asked, unit_holds, price, allowed).earns);
                 }
                 // Goods this market does not want are unsellable, so the order earns nothing. That
                 // is the answer rather than a guess, and the shipped `not-traded-here` finding is
@@ -953,7 +950,7 @@ pub fn forecast_unit(
                         // navigator's decision, recorded in the bead's plan (`ah-t2pn.3`).
                         let allowed =
                             (lookups.market_share)(item, MarketSide::Buying).unwrap_or(*count);
-                        let charged = (*count).min(allowed).max(0).saturating_mul(price);
+                        let charged = price_purchase(*count, price, allowed).spends;
                         expense = expense.saturating_add(charged);
                         if charged > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Buy));
