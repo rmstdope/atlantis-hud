@@ -1926,12 +1926,23 @@ fn is_set_to_work(flags: &[String], intents: &[PlacedIntent]) -> bool {
 ///
 /// **A predicate, not a count.** A unit carrying the flag *and* given a `TAX` this turn still
 /// taxes once, and this returns `true` for it exactly as for either alone.
+///
+/// **The flag only taxes a free month.** Taxing is itself a month-long order, and an explicit
+/// month-long order takes precedence over the flag - so a flagged unit ordered `MOVE` or `STUDY`
+/// taxes nowhere: not here, because it leaves, and not where it arrives, because the explicit
+/// order spent its month (`ah-v8zh`). An explicit `TAX` is tested first and is unaffected: it is
+/// itself a month-long order, so [`works_by_default`] is false for it.
 #[must_use]
 pub fn taxes(flags: &[String], intents: &[PlacedIntent]) -> bool {
-    intents
+    if intents
         .iter()
         .any(|placed| matches!(placed.intent, Intent::Tax))
-        || flags.iter().any(|flag| {
+    {
+        return true;
+    }
+
+    works_by_default(intents)
+        && flags.iter().any(|flag| {
             TAXING_FLAGS
                 .iter()
                 .any(|known| flag.eq_ignore_ascii_case(known))
@@ -2529,6 +2540,31 @@ mod tests {
 
     #[test]
     fn a_unit_with_both_taxes_once() {
+        assert!(taxes(&flags(&["taxing"]), &[placed(Intent::Tax)]));
+    }
+
+    /// Taxing is itself a month-long order, and an explicit month-long order takes precedence over
+    /// the flag: a flagged unit ordered `MOVE` or `STUDY` taxes nowhere - not the hex it leaves,
+    /// and not the hex it arrives in, because the explicit order spent its month (`ah-v8zh`).
+    #[test]
+    fn a_flagged_unit_given_a_month_long_order_does_not_tax() {
+        assert!(!taxes(
+            &flags(&["taxing"]),
+            &[placed(Intent::Move { steps: Vec::new() })]
+        ));
+        assert!(!taxes(
+            &flags(&["autotax"]),
+            &[placed(Intent::Study {
+                skill: "COMB".to_string()
+            })]
+        ));
+
+        // The flag still taxes a free month, in both spellings.
+        assert!(taxes(&flags(&["taxing"]), &[]));
+        assert!(taxes(&flags(&["autotax"]), &[]));
+
+        // And an explicit TAX is unaffected, whatever else the unit carries.
+        assert!(taxes(&[], &[placed(Intent::Tax)]));
         assert!(taxes(&flags(&["taxing"]), &[placed(Intent::Tax)]));
     }
 
