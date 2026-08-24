@@ -1,4 +1,5 @@
 import type { OrderDiagnostic, OrderValidationResult, UnitSilver } from "@atlantis/core-client";
+import { SILVER_TROUBLE_CODES } from "@atlantis/core-client";
 import { findUnitBlocks } from "./ordersDocument";
 
 export type OrderValidationSummary = {
@@ -235,6 +236,16 @@ export function findingsByHex(diagnostics: OrderDiagnostic[]): HexFindings[] {
 }
 
 /**
+ * The codes the core says put a unit's own silver in trouble.
+ *
+ * `codes::SILVER_TROUBLE` in `crates/core/src/orders/semantics.rs`, generated into TypeScript, so
+ * the property is declared beside the finding rather than as a per-code allowlist here that nothing
+ * links back to the code list (`ah-v9p2`). Built once at module load: this runs per validation over
+ * every diagnostic, and a `Set` says "membership".
+ */
+const SILVER_TROUBLE = new Set<string>(SILVER_TROUBLE_CODES);
+
+/**
  * The own units the Silver column marks with a ⚠, by id.
  *
  * Two checks put a unit in trouble over silver and both belong on the row. `not-enough-silver` is
@@ -249,11 +260,7 @@ export function findingsByHex(diagnostics: OrderDiagnostic[]): HexFindings[] {
 export function unitsWarnedAboutSilver(diagnostics: OrderDiagnostic[]): Set<string> {
   return new Set(
     diagnostics
-      .filter(
-        (diagnostic) =>
-          diagnostic.code === "not-enough-silver" ||
-          diagnostic.code === "upkeep-exceeds-unclaimed"
-      )
+      .filter((diagnostic) => SILVER_TROUBLE.has(diagnostic.code))
       .map((diagnostic) => diagnostic.unitId)
       .filter((unitId): unitId is string => unitId !== null)
   );

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SILVER_TROUBLE_CODES } from "@atlantis/core-client";
 import type { OrderValidationResult } from "@atlantis/core-client";
 import type { OrderDiagnostic } from "@atlantis/core-client";
 import {
@@ -453,6 +454,17 @@ describe("the units the silver column marks", () => {
 
   it("marks nobody for a finding anchored to the hex rather than a unit", () => {
     expect(unitsWarnedAboutSilver([hexFinding("not-enough-silver")])).toEqual(new Set());
+  });
+
+  // `ah-v9p2`. The set the column marks is now the core's own `codes::SILVER_TROUBLE`, generated
+  // into TypeScript, rather than two string literals in this package. This is the test that goes
+  // red when a code joins that list and the filter does not follow.
+  it("marks every code the core calls silver trouble", () => {
+    for (const code of SILVER_TROUBLE_CODES) {
+      expect(unitsWarnedAboutSilver([{ ...hexFinding(code), unitId: "101" }])).toEqual(
+        new Set(["101"])
+      );
+    }
   });
 
   it("marks nobody for a finding about something other than silver", () => {

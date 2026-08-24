@@ -6,7 +6,27 @@ import { renderWithStoreState, restoreStoresForTest } from "../testing/storeStat
 import { RULESETS } from "../rulesets";
 import { UNSUPPORTED_UPDATES } from "./appUpdate";
 import { mapCommitOf } from "../mapShape";
-import { About, GameMapSettings, GlobalSettings, WarningSettings } from "./SettingsDialog";
+import {
+  About,
+  GameMapSettings,
+  GlobalSettings,
+  WARNING_GROUPS,
+  WarningSettings
+} from "./SettingsDialog";
+
+/**
+ * `ah-v9p2`. The titles and descriptions are user-facing copy and stay here, but a code that has no
+ * entry at all is a gap nothing used to notice: the dialog simply did not offer a toggle for it.
+ * A typo was already caught by `AdvisoryCheckCode`; an omission was not.
+ */
+describe("the warnings tab's coverage of the core's codes", () => {
+  it("lists every advisory check code exactly once", () => {
+    const listed = WARNING_GROUPS.flatMap((group) => group.entries.map((entry) => entry.code));
+
+    expect([...listed].sort()).toEqual([...ADVISORY_CHECK_CODES].sort());
+    expect(listed.length).toBe(new Set(listed).size);
+  });
+});
 
 /**
  * `renderToStaticMarkup` runs with no `window`, so React's server branch reads the store's

@@ -39,6 +39,12 @@ export const ADVISORY_CHECK_CODES = [
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
 
+/** Codes that mark a unit's Silver figure: `codes::SILVER_TROUBLE` in crates/core/src/orders/semantics.rs. */
+export const SILVER_TROUBLE_CODES = [
+  "not-enough-silver",
+  "upkeep-exceeds-unclaimed"
+] as const;
+
 /** The order words that move a unit: `MOVEMENT_ORDER_COMMANDS` in crates/core/src/movement/orders.rs. */
 export const MOVEMENT_ORDER_COMMANDS = [
   "MOVE",

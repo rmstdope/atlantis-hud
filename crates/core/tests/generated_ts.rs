@@ -30,6 +30,20 @@ fn render() -> String {
     out.push_str("export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];\n\n");
 
     out.push_str(
+        "/** Codes that mark a unit's Silver figure: `codes::SILVER_TROUBLE` in crates/core/src/orders/semantics.rs. */\n",
+    );
+    out.push_str("export const SILVER_TROUBLE_CODES = [\n");
+    let silver: Vec<&str> = codes::SILVER_TROUBLE
+        .iter()
+        .map(|code| code.as_str())
+        .collect();
+    for (index, code) in silver.iter().enumerate() {
+        let comma = if index + 1 == silver.len() { "" } else { "," };
+        out.push_str(&format!("  \"{code}\"{comma}\n"));
+    }
+    out.push_str("] as const;\n\n");
+
+    out.push_str(
         "/** The order words that move a unit: `MOVEMENT_ORDER_COMMANDS` in crates/core/src/movement/orders.rs. */\n",
     );
     out.push_str("export const MOVEMENT_ORDER_COMMANDS = [\n");

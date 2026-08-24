@@ -471,6 +471,7 @@ export type ReportImportPreview = {
 export {
   ADVISORY_CHECK_CODES,
   MOVEMENT_ORDER_COMMANDS,
+  SILVER_TROUBLE_CODES,
   type AdvisoryCheckCode,
   type MovementOrderCommand
 } from "./coreVocabulary.generated";

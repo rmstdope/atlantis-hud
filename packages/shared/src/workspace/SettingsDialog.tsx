@@ -416,7 +416,7 @@ export function GlobalSettings() {
  * produces the finding - counts, chip, panels and editor underlines all agree, nothing anywhere
  * says "hidden".
  */
-const WARNING_GROUPS: readonly {
+export const WARNING_GROUPS: readonly {
   heading: string;
   entries: readonly { code: AdvisoryCheckCode; title: string; description: string }[];
 }[] = [
