@@ -10,12 +10,20 @@ import type { OrderDiagnostic } from "@atlantis/core-client";
  * keystroke behind `text`: a line that has left the document is dropped rather than pointed at
  * whatever now sits there, and a span running past its line is clamped to it.
  *
+ * `showRegionProblems` opens the region panel's Problems section, and is what the pointer at a
+ * line contributing to a pooled shortfall offers as a button. Omitting it leaves the pointer
+ * without one, which is what a caller with no panel to open wants.
+ *
  * A diagnostic with no columns - or whose columns collapse to nothing - covers its whole line: an
  * underline that marks nothing reads as no problem at all. On an empty line there is nothing to
  * cover, and the span collapses to a point on purpose: CodeMirror renders a zero-width diagnostic
  * as a point marker, which is exactly what "this empty line is the problem" should look like.
  */
-export function toEditorDiagnostics(text: string, problems: OrderDiagnostic[]): Diagnostic[] {
+export function toEditorDiagnostics(
+  text: string,
+  problems: OrderDiagnostic[],
+  showRegionProblems?: () => void
+): Diagnostic[] {
   const lines = text.split("\n");
 
   // Where each line starts in the whole text, so a line/column pair becomes one offset.
@@ -51,7 +59,14 @@ export function toEditorDiagnostics(text: string, problems: OrderDiagnostic[]): 
       from: start + from,
       to: start + to,
       severity: problem.severity,
-      message: problem.message
+      message: problem.message,
+      // A pooled shortfall is reported against the hex, so this line's own mark can only point at
+      // where the numbers are. CodeMirror renders an action as a button in the tooltip, which is
+      // reachable from the keyboard where an anchor in the message would not be (`ah-eurs`).
+      actions:
+        problem.code === "part-of-hex-shortfall" && showRegionProblems !== undefined
+          ? [{ name: "Show problems", apply: () => showRegionProblems() }]
+          : undefined
     });
   }
   return result;

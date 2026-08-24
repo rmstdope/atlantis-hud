@@ -114,6 +114,7 @@ pub mod codes {
     pub const REGION_POOL_OVERSUBSCRIBED: Code = Code("region-pool-oversubscribed");
     pub const PILLAGE_WITHOUT_MEN: Code = Code("pillage-without-men");
     pub const TAXED_A_GUARDED_HEX: Code = Code("taxed-a-guarded-hex");
+    pub const PART_OF_HEX_SHORTFALL: Code = Code("part-of-hex-shortfall");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -122,7 +123,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 32] = [
+    pub const ALL: [Code; 33] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -155,6 +156,7 @@ pub mod codes {
         REGION_POOL_OVERSUBSCRIBED,
         PILLAGE_WITHOUT_MEN,
         TAXED_A_GUARDED_HEX,
+        PART_OF_HEX_SHORTFALL,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -2957,6 +2959,45 @@ fn report_shortfalls(
     }
 
     for PoolShortfall { tag, short, held } in pool_shortfalls(hex, ledger, &sharing, &verdicts) {
+        // ... and a pointer on every order line that claims against that pool (`ah-eurs`). The
+        // hex finding is right to be hex-anchored (`ah-sdda`), but it reaches no editor, so the
+        // player typing the order that overdrew the hex is told nothing where they are looking.
+        // Gated on its own code, so silencing one of the two never silences the other; a sharer
+        // claims nothing against the pool, so its line is not marked.
+        if options.emits(codes::PART_OF_HEX_SHORTFALL) {
+            let name = plurals
+                .get(&tag.to_ascii_uppercase())
+                .cloned()
+                .unwrap_or_else(|| item_name(&tag, hex, ruleset));
+            for verdict in &verdicts {
+                let Verdict::DeferredToPool {
+                    unit_id,
+                    tag: claimed,
+                    claims_pool: true,
+                    ..
+                } = verdict
+                else {
+                    continue;
+                };
+                if claimed != &tag {
+                    continue;
+                }
+                let Some(ordered) = hex.find(unit_id) else {
+                    continue;
+                };
+                let at = ledger.charged_at.get(&(unit_id.clone(), tag.clone()));
+                findings.push(ordered.finding(
+                    hex,
+                    codes::PART_OF_HEX_SHORTFALL,
+                    format!(
+                        "This hex is short of {name} between its units. \
+                         See Problems for the hex."
+                    ),
+                    at,
+                ));
+            }
+        }
+
         let code = if tag == SILVER {
             codes::NOT_ENOUGH_SILVER
         } else {
@@ -5272,7 +5313,7 @@ mod tests {
                 unit("5"),
                 sharing(with_item(unit("7"), 20, "swords", "SWOR")),
             ])];
-            let finding = only(check_ignoring_transfer_targets(
+            let finding = hex_anchored(check_ignoring_transfer_targets(
                 regions,
                 "unit 5\nGIVE 9 30 swords\n",
             ));
@@ -8492,6 +8533,21 @@ mod tests {
         assert_eq!(code.to_string(), "hex-unguarded");
     }
 
+    /// The hex-anchored finding among several, for a pooled fixture that also emits
+    /// `part-of-hex-shortfall` pointers at the lines claiming against the pool (`ah-eurs`).
+    fn hex_anchored(findings: Vec<Finding>) -> Finding {
+        let mut hex_findings = findings.iter().filter(|finding| finding.unit_id.is_none());
+        let finding = hex_findings
+            .next()
+            .unwrap_or_else(|| panic!("expected a hex-anchored finding: {findings:?}"))
+            .clone();
+        assert!(
+            hex_findings.next().is_none(),
+            "expected one hex-anchored finding: {findings:?}"
+        );
+        finding
+    }
+
     fn only(findings: Vec<Finding>) -> Finding {
         assert_eq!(findings.len(), 1, "expected one finding: {findings:?}");
         findings.into_iter().next().expect("just counted")
@@ -8863,6 +8919,161 @@ mod tests {
             "the units in this hex are short 10 swords between them: they can have 20 \
              and their orders spend 30"
         );
+    }
+
+    // --- pointers at the lines that claim against a short pool (`ah-eurs`) ----------------------
+    //
+    // A pooled shortfall is hex-anchored, and rightly so (`ah-sdda`): the pool is not one line's
+    // fault. But nothing then reaches the editor, so a player typing the order that overdrew the
+    // hex sees no mark at all. These pin one pointer per contributing line, saying the hex is
+    // short and sending the reader to the region panel.
+
+    #[test]
+    fn points_at_every_line_that_claims_against_a_short_pool() {
+        let found = check_ignoring_transfer_targets(
+            vec![region(vec![
+                sharing(with_item(unit("9"), 20, "sword", "SWOR")),
+                unit("5"),
+                unit("7"),
+            ])],
+            "unit 5\nGIVE 4 30 swords\nunit 7\nGIVE 4 30 swords\n",
+        );
+
+        let pointers: Vec<&Finding> = found
+            .iter()
+            .filter(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL)
+            .collect();
+        assert_eq!(pointers.len(), 2, "one per contributing line: {found:?}");
+        assert_eq!(pointers[0].unit_id.as_deref(), Some("5"));
+        assert_eq!(pointers[0].line, Some(2));
+        assert_eq!(pointers[1].unit_id.as_deref(), Some("7"));
+        assert_eq!(pointers[1].line, Some(4));
+
+        // The hex's own finding is untouched, and still anchored to nothing.
+        let hex_finding = found
+            .iter()
+            .find(|finding| finding.code == codes::NOT_ENOUGH_ITEMS)
+            .expect("the pooled finding still stands");
+        assert_eq!(hex_finding.unit_id, None);
+        assert_eq!(hex_finding.line, None);
+    }
+
+    #[test]
+    fn a_pool_that_covers_its_claims_points_at_nothing() {
+        let found = check_ignoring_transfer_targets(
+            vec![region(vec![
+                sharing(with_item(unit("9"), 100, "sword", "SWOR")),
+                unit("5"),
+            ])],
+            "unit 5\nGIVE 4 30 swords\n",
+        );
+
+        assert!(
+            !found
+                .iter()
+                .any(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL),
+            "the pool covers the claim: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_sharers_own_overdraft_is_not_pointed_at() {
+        let found = check_ignoring_transfer_targets(
+            vec![region(vec![
+                sharing(unit("5")),
+                sharing(with_item(unit("7"), 20, "sword", "SWOR")),
+            ])],
+            "unit 5\nGIVE 9 30 swords\n",
+        );
+
+        assert!(
+            !found
+                .iter()
+                .any(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL),
+            "a sharer's stock is inside the pool's sum: {found:?}"
+        );
+    }
+
+    #[test]
+    fn says_which_goods_the_hex_is_short_of() {
+        let items = check_ignoring_transfer_targets(
+            vec![region(vec![
+                sharing(with_item(unit("9"), 20, "swords", "SWOR")),
+                unit("5"),
+            ])],
+            "unit 5\nGIVE 4 30 swords\n",
+        );
+        let pointer = items
+            .iter()
+            .find(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL)
+            .expect("a pointer: {items:?}");
+        assert_eq!(
+            pointer.message,
+            "This hex is short of swords between its units. See Problems for the hex."
+        );
+
+        let silver = check_ignoring_transfer_targets(
+            vec![region(vec![
+                sharing(with_silver(unit("9"), 20)),
+                with_silver(unit("5"), 0),
+            ])],
+            "unit 5\nGIVE 4 300 SILV\n",
+        );
+        let pointer = silver
+            .iter()
+            .find(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL)
+            .expect("a pointer: {silver:?}");
+        assert_eq!(
+            pointer.message,
+            "This hex is short of silver between its units. See Problems for the hex."
+        );
+    }
+
+    /// The pointer is its own code, so a player who silences it still gets the hex's finding - and
+    /// one who silences the hex finding does not silently keep the pointers.
+    #[test]
+    fn the_pointer_and_the_hex_finding_are_gated_apart() {
+        let regions = || {
+            vec![region(vec![
+                sharing(with_item(unit("9"), 20, "sword", "SWOR")),
+                unit("5"),
+            ])]
+        };
+        let orders = "unit 5\nGIVE 4 30 swords\n";
+
+        let without_pointer = check_turn(
+            &report(regions()),
+            orders,
+            Some(&ruleset()),
+            disabling_all(&[
+                codes::PART_OF_HEX_SHORTFALL,
+                codes::GIVE_TARGET_NOT_HERE,
+                codes::UNIT_DOES_NOTHING,
+            ]),
+        );
+        assert!(without_pointer
+            .iter()
+            .any(|finding| finding.code == codes::NOT_ENOUGH_ITEMS));
+        assert!(!without_pointer
+            .iter()
+            .any(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL));
+
+        let without_hex_finding = check_turn(
+            &report(regions()),
+            orders,
+            Some(&ruleset()),
+            disabling_all(&[
+                codes::NOT_ENOUGH_ITEMS,
+                codes::GIVE_TARGET_NOT_HERE,
+                codes::UNIT_DOES_NOTHING,
+            ]),
+        );
+        assert!(!without_hex_finding
+            .iter()
+            .any(|finding| finding.code == codes::NOT_ENOUGH_ITEMS));
+        assert!(without_hex_finding
+            .iter()
+            .any(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL));
     }
 
     /// One doubted sharer makes the pool's sum untrustworthy, so the whole pooled pass falls
@@ -11243,7 +11454,7 @@ mod tests {
             sharing(with_item(unit("7"), 20, "sword", "SWOR")),
         ])];
 
-        let finding = only(check_ignoring_transfer_targets(
+        let finding = hex_anchored(check_ignoring_transfer_targets(
             regions,
             "unit 5\nGIVE 9 30 swords\n",
         ));
@@ -11270,7 +11481,7 @@ mod tests {
             sharing(unit("9")),
         ])];
 
-        let finding = only(check_ignoring_transfer_targets(
+        let finding = hex_anchored(check_ignoring_transfer_targets(
             regions,
             "unit 7\nGIVE 8 10 swords\n",
         ));
@@ -14263,6 +14474,16 @@ mod tests {
                     ..region(vec![with_silver(unit("683"), 0), foreign_guard("14")])
                 }],
                 orders: "unit 683\nTAX\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::PART_OF_HEX_SHORTFALL,
+                regions: vec![region(vec![
+                    sharing(with_item(unit("683"), 20, "sword", "SWOR")),
+                    unit("684"),
+                ])],
+                orders: "unit 684\nGIVE 0 30 swords\n",
                 allowance: None,
                 unclaimed: None,
             },

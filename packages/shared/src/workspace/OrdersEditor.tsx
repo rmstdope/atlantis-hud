@@ -23,6 +23,7 @@ import {
 import { shownUnitText } from "../orderEditor";
 import { orderArgumentCompletions, orderCommandCompletions, type CaretLookup } from "../orderCompletion";
 import { toEditorDiagnostics } from "../orderLint";
+import { useWorkspaceStore } from "../workspaceStore";
 import { snippetCompletionSource, type OrderSnippet } from "../orderSnippets";
 
 /** What the shell may do to the editor from outside: the shortcut layer lands here. */
@@ -517,6 +518,10 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     }
   }, [savedAt, unitId]);
 
+  // The `Show problems` button on a pooled-shortfall pointer opens the region panel's Problems
+  // section, wherever the reader had left it (`ah-eurs`).
+  const showRegionProblems = useWorkspaceStore((state) => state.showRegionProblems);
+
   // Diagnostics are pushed rather than pulled: validation already runs debounced in the shell,
   // and CodeMirror's own lint scheduler would only add a second debounce on top of it. Only when
   // the problems themselves move - the lint extension maps the spans it holds through document
@@ -527,9 +532,12 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       return;
     }
     editor.dispatch(
-      setDiagnostics(editor.state, toEditorDiagnostics(editor.state.doc.toString(), problems))
+      setDiagnostics(
+        editor.state,
+        toEditorDiagnostics(editor.state.doc.toString(), problems, showRegionProblems)
+      )
     );
-  }, [problems, unitId]);
+  }, [problems, unitId, showRegionProblems]);
 
   useImperativeHandle(ref, () => ({
     focus() {

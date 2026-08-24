@@ -481,6 +481,12 @@ export const WARNING_GROUPS: readonly {
         description: "Orders spend more of an item than the unit or the hex holds."
       },
       {
+        code: "part-of-hex-shortfall",
+        title: "Orders in a hex that is short between its units",
+        description:
+          "Marks each order line contributing to a shortfall that is reported against the whole hex rather than one unit."
+      },
+      {
         code: "claims-exceed-unclaimed",
         title: "Claiming more than the faction has",
         description:

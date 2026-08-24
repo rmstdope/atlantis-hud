@@ -198,7 +198,13 @@ export function findingsForHex(
   if (regionId === null) {
     return [];
   }
-  return diagnostics.filter((diagnostic) => diagnostic.regionId === regionId);
+  // `part-of-hex-shortfall` exists only to mark the order lines claiming against a short pool;
+  // the hex's own finding is already in this list, so letting the pointers in too would count
+  // every pooled shortfall once more per contributing line (`ah-eurs`).
+  return diagnostics.filter(
+    (diagnostic) =>
+      diagnostic.regionId === regionId && diagnostic.code !== "part-of-hex-shortfall"
+  );
 }
 
 /** One hex's worth of findings, for the map-wide list. */
