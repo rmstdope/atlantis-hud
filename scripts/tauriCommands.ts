@@ -88,8 +88,45 @@ export function splitTopLevel(text: string): string[] {
   return pieces.filter((piece) => piece.length > 0);
 }
 
+/** One wire parameter of a Tauri command. */
+export interface CommandParameter {
+  /** The wire name, exactly as a caller must send it. */
+  name: string;
+  /**
+   * False when the Rust type is written literally as `Option<…>`, which Tauri lets a caller omit;
+   * true otherwise. The test is textual rather than semantic, so a spelling no command uses today
+   * (`std::option::Option<…>`, a type alias) would read as required — which fails strict, asking
+   * the sweep for an argument it could have omitted, rather than letting a missing one through.
+   *
+   * A required parameter that nothing sends is `missing required key <name>` at runtime, and
+   * before ah-enik that was only ever seen in CI's Linux-only `native` job (ah-0w7w).
+   */
+  required: boolean;
+}
+
 /**
- * The wire parameter names of every Tauri command, in order, keyed by frontend name.
+ * Reads one `name: Type` piece of a Rust parameter list.
+ *
+ * Split on the **first** `:` only: the name is the half before it and the type the half after.
+ * Splitting on every `:` would put `Foo::Bar`'s tail in the type half; the name half was always
+ * correct, but the type half is what is new here.
+ *
+ * Only a parameter list ever reaches this — never a return type — because both callers capture with
+ * `\(([^)]*)\)`, which stops at the first `)`. That is what keeps `command_load_order_draft`'s
+ * `Result<Option<OrderDraftRecordDto>, String>` from making a required parameter look optional, and
+ * it is why that capture must not be widened. (It also truncates a parameter list containing its
+ * own `)`, which no command has; such a list would drop its later parameters and fail the
+ * `TAURI_COMMANDS` key check rather than pass quietly.)
+ */
+function readParameter(piece: string): CommandParameter {
+  const separator = piece.indexOf(":");
+  const name = (separator === -1 ? piece : piece.slice(0, separator)).trim();
+  const type = separator === -1 ? "" : piece.slice(separator + 1).trim();
+  return { name, required: !type.startsWith("Option<") };
+}
+
+/**
+ * The wire parameters of every Tauri command, in declaration order, keyed by frontend name.
  *
  * From `main.rs`: each `#[tauri::command(rename_all = "snake_case")] fn name(params)`, minus an
  * `app: tauri::AppHandle` parameter (the shell's own, not the frontend's). From core-tauri: each
@@ -99,16 +136,19 @@ export function splitTopLevel(text: string): string[] {
  * set of commands, so an overlap means one of them has drifted — and this throws rather than
  * silently letting one shadow the other.
  */
-export function commandParameters(mainRs: string, coreTauriLibRs: string): Record<string, string[]> {
-  const parameters: Record<string, string[]> = {};
+export function commandParameters(
+  mainRs: string,
+  coreTauriLibRs: string
+): Record<string, CommandParameter[]> {
+  const parameters: Record<string, CommandParameter[]> = {};
 
   for (const match of mainRs.matchAll(
     /#\[tauri::command\(rename_all = "snake_case"\)\]\s*(?:pub\s+)?fn\s+([a-z_]+)\s*\(([^)]*)\)/gu
   )) {
     const [, name, params] = match;
     parameters[name] = splitTopLevel(params)
-      .map((param) => param.split(":")[0].trim())
-      .filter((param) => param !== "app");
+      .map(readParameter)
+      .filter((parameter) => parameter.name !== "app");
   }
 
   for (const [fn, wire] of commandRenames(coreTauriLibRs)) {
@@ -119,7 +159,7 @@ export function commandParameters(mainRs: string, coreTauriLibRs: string): Recor
     if (!signature) {
       throw new Error(`could not find the signature of ${fn} in core-tauri's lib.rs`);
     }
-    parameters[wire] = splitTopLevel(signature[1]).map((param) => param.split(":")[0].trim());
+    parameters[wire] = splitTopLevel(signature[1]).map(readParameter);
   }
 
   return parameters;
