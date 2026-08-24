@@ -1311,9 +1311,6 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
     }
 
     let pillaged = own_unit_pillages(hex);
-    // Once per hex, not once per pillaging unit: `apply` runs per intent and this path runs per
-    // keystroke, so a city of forty units would otherwise rebuild the sum forty times.
-    let hex_combat_ready = combat_ready_in(hex, ruleset);
     // The same settlement the Silver column reads, so both surfaces charge for goods that exist
     // (`ah-lu0f.2`). The overruns are discarded: the silver pass records them already, and
     // emitting them here as well would duplicate every `region-pool-oversubscribed` finding.
@@ -1322,8 +1319,9 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
     // the two passes are separate entry points, and threading one computation between them means
     // restructuring both together.
     let market_shares = market_shares_for(hex, ruleset, &mut Vec::new());
-    // Once per hex, not once per intent: `price_cast` needs it, `apply` runs per intent, and this
-    // path runs on every keystroke (`ah-lu0f.3`).
+    // Once per hex, not once per intent - `apply` runs per intent and this path runs on every
+    // keystroke, so a city of forty units would otherwise walk its own units forty times for the
+    // combat-ready sum alone (`ah-1ad6.2`, `ah-lu0f.3`).
     let region = region_wages(hex, ruleset);
     for (index, ordered) in hex.units.iter().enumerate() {
         for placed in ordered.intents {
@@ -1333,10 +1331,7 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
                 ordered,
                 placed,
                 ruleset,
-                HexPricing {
-                    combat_ready: hex_combat_ready,
-                    region,
-                },
+                region,
                 MarketStanding {
                     shares: &market_shares,
                     actor_index: index,
@@ -1660,29 +1655,17 @@ fn credit_tax(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>, pilla
 }
 
 /// Applies one order to the ledger.
-/// What the hex itself says about every order priced in it, gathered once rather than per intent.
-///
-/// Both figures cost a walk of the hex - the combat-ready sum a pass over its units (`ah-1ad6.2`),
-/// the wages a read of the region and the ruleset - and [`apply`] runs for every placed intent of
-/// every unit, on every keystroke. They travel together because they are the same kind of fact,
-/// the way [`MarketStanding`] carries the hex's market settlement (`ah-lu0f.3`).
-#[derive(Clone, Copy)]
-struct HexPricing {
-    /// Combat ready men this faction has in this hex, or `None` where nothing could say.
-    combat_ready: Option<i64>,
-    /// What the hex pays a worker and what its entertainment pool holds - what `CAST` prices the
-    /// two earning spells from.
-    region: RegionWages,
-}
-
 fn apply(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
     actor: &Ordered<'_>,
     placed: &PlacedIntent,
     ruleset: Option<&Ruleset>,
-    // What the hex as a whole says about the orders in it - built once per hex by the caller.
-    hex_facts: HexPricing,
+    // What this hex says about every order priced in it: the wages and entertainment pool `CAST`
+    // prices the two earning spells from, and the combat-ready sum `PILLAGE` needs. Built once per
+    // hex by the caller, because this runs for every placed intent of every unit on every
+    // keystroke and the combat-ready sum is itself a walk of the hex (`ah-1ad6.2`, `ah-lu0f.3`).
+    region: RegionWages,
     // How the hex's market lines are split between the faction's own units, and which of them
     // this actor is - the same settlement the Silver column reads (`ah-lu0f.2`).
     standing: MarketStanding<'_>,
@@ -1738,7 +1721,7 @@ fn apply(
         // exists). The two differ only in how they express the doubt - a typed variant there, the
         // unit's sums no longer trusted here.
         Intent::Pillage => {
-            let priced = price_pillage(hex.region.tax_base, hex_facts.combat_ready);
+            let priced = price_pillage(hex.region.tax_base, region.combat_ready);
             if priced.doubt.is_some() {
                 ledger.doubted.insert(who.clone());
             } else {
@@ -1769,15 +1752,7 @@ fn apply(
         }
         Intent::Study { skill } => study(ledger, actor, placed, skill, ruleset),
         Intent::Cast { spell, arguments } => {
-            cast(
-                ledger,
-                actor,
-                placed,
-                spell,
-                arguments,
-                ruleset,
-                hex_facts.region,
-            );
+            cast(ledger, actor, placed, spell, arguments, ruleset, region);
         }
         // The fund pays, not the unit (`ah-tdsi`). Nothing is charged here, and an unpriceable
         // withdrawal no longer doubts the unit: what cannot be counted is the *faction's* total,
