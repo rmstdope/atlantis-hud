@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { aBattle, aBattleUnit, aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "./builders";
+import {
+  aBattle,
+  aBattleUnit,
+  aParsedReport,
+  aReportHeaderInfo,
+  aReportRegion,
+  aReportUnit,
+  aUnitSilver
+} from "./builders";
 
 describe("the report builders", () => {
   it("a region's id follows its coordinate", () => {
@@ -17,6 +25,18 @@ describe("the report builders", () => {
     expect(aReportUnit({ items: [item] }).items).toEqual([item]);
     expect(aReportUnit({ own: false }).own).toBe(false);
     expect(aParsedReport({ regions: [aReportRegion()] }).regions.length).toBe(1);
+    expect(aUnitSilver({ upkeep: 50 }).upkeep).toBe(50);
+  });
+
+  it("a unit's silver starts at nothing", () => {
+    expect(aUnitSilver().atMonthEnd).toBe(0);
+    expect(aUnitSilver().doubt).toBeNull();
+    expect(aUnitSilver().givers).toEqual([]);
+  });
+
+  it("a unit's silver belongs to the default unit", () => {
+    expect(aUnitSilver().unitId).toBe(aReportUnit().unitId);
+    expect(aUnitSilver().regionId).toBe(aReportUnit().regionId);
   });
 
   it("a report's header is the default header", () => {

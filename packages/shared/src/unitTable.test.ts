@@ -1,5 +1,5 @@
 import type { ReportUnit, StructureInfo, UnitSilver } from "@atlantis/core-client";
-import { aReportUnit } from "@atlantis/core-client";
+import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SORT,
@@ -370,40 +370,10 @@ describe("sorts by the long order, ignoring case and a leading @", () => {
  * arithmetically impossible for a column to be pushed off the right edge (ah-1owr.2).
  */
 describe("silverShown", () => {
+  // `1:6,52` is this file's existing fixture region; `aUnitSilver` defaults to the builders'
+  // own world.
   const forecast = (atMonthEnd: number | null, upkeep: number | null): UnitSilver =>
-    ({
-      unitId: "1",
-      regionId: "1:6,52",
-      held: 0,
-      income: 0,
-      lateIncome: 0,
-      expense: 0,
-      atMonthEnd,
-      shortForOrders: 0,
-      shortOn: null,
-      upkeep,
-      doubt: null,
-      doubtSubject: null,
-      received: 0,
-      givers: [],
-      givenToNobody: 0,
-      factionFoodCovered: 0,
-      ownFoodCovered: 0,
-      unclaimedCovered: 0,
-      unclaimedContended: false,
-      forcedOwnFood: 0,
-      forcedOwnFoodTag: null,
-      forcedFactionFood: 0,
-      foodContended: false,
-      sharedSilverCovered: 0,
-      withdrawing: false,
-      produced: 0,
-      producedName: null,
-      productionWanted: 0,
-      productionCappedBy: null,
-      worksByDefault: false,
-      taxesByFlag: false
-    }) satisfies UnitSilver;
+    aUnitSilver({ regionId: "1:6,52", atMonthEnd, upkeep });
 
   it("subtracts upkeep only when the setting is on", () => {
     expect(silverShown(forecast(100, 50), true)).toBe(50);

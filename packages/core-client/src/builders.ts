@@ -21,6 +21,7 @@ import type { ParsedReport } from "./generated/ParsedReport";
 import type { ReportHeaderInfo } from "./generated/ReportHeaderInfo";
 import type { ReportRegion } from "./generated/ReportRegion";
 import type { ReportUnit } from "./generated/ReportUnit";
+import type { UnitSilver } from "./generated/UnitSilver";
 import type { TradeRoute, TradedGood } from "./index";
 
 /** The mountain at (7,53) on the surface, where the default unit stands. */
@@ -170,6 +171,51 @@ export function aTradeRoute(overrides: Partial<TradeRoute> = {}): TradeRoute {
     inbound: [],
     worth: 10_209,
     turns: { walk: 14, ride: 7, fly: 4 },
+    ...overrides
+  };
+}
+
+/**
+ * A unit's silver forecast, all zeroes and nulls: a month in which nothing is earned, nothing is
+ * spent and nothing is doubted. Every test that is about a figure sets that figure and leaves the
+ * other thirty alone.
+ *
+ * The unit is the same one `aReportUnit` describes, standing in the same region, so a test can
+ * pair them without restating either (ah-uhnd).
+ */
+export function aUnitSilver(overrides: Partial<UnitSilver> = {}): UnitSilver {
+  return {
+    unitId: "1",
+    regionId: regionIdOf(DEFAULT_COORDINATE),
+    held: 0,
+    income: 0,
+    lateIncome: 0,
+    expense: 0,
+    atMonthEnd: 0,
+    shortForOrders: 0,
+    shortOn: null,
+    upkeep: 0,
+    doubt: null,
+    doubtSubject: null,
+    received: 0,
+    givers: [],
+    givenToNobody: 0,
+    factionFoodCovered: 0,
+    ownFoodCovered: 0,
+    unclaimedCovered: 0,
+    unclaimedContended: false,
+    forcedOwnFood: 0,
+    forcedOwnFoodTag: null,
+    forcedFactionFood: 0,
+    foodContended: false,
+    sharedSilverCovered: 0,
+    withdrawing: false,
+    produced: 0,
+    producedName: null,
+    productionWanted: 0,
+    productionCappedBy: null,
+    worksByDefault: false,
+    taxesByFlag: false,
     ...overrides
   };
 }

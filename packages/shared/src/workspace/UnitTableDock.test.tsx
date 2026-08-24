@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RegionPreview, ReportRegion, ReportUnit, UnitSilver } from "@atlantis/core-client";
-import { aReportRegion, aReportUnit } from "@atlantis/core-client";
+import { aReportRegion, aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { DEFAULT_COLUMN_SHARES, UNIT_COLUMNS, type UnitColumn } from "../unitTable";
 import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
@@ -515,40 +515,10 @@ describe("a skill's study points in the units-in-hex list (ah-ded4)", () => {
  * bead's plan is the contract, and each row of it is a test here.
  */
 describe("the Silver column", () => {
-  const forecast = (overrides: Partial<UnitSilver> = {}): UnitSilver => ({
-    unitId: "1",
-    regionId: "1:6,52",
-    held: 0,
-    income: 0,
-    expense: 0,
-    atMonthEnd: 0,
-    lateIncome: 0,
-    shortForOrders: 0,
-    shortOn: null,
-    upkeep: 0,
-    doubt: null,
-    doubtSubject: null,
-    received: 0,
-    givers: [],
-    givenToNobody: 0,
-    factionFoodCovered: 0,
-    ownFoodCovered: 0,
-    unclaimedCovered: 0,
-    unclaimedContended: false,
-    forcedOwnFood: 0,
-    forcedOwnFoodTag: null,
-    forcedFactionFood: 0,
-    foodContended: false,
-    sharedSilverCovered: 0,
-    withdrawing: false,
-    produced: 0,
-    producedName: null,
-    productionWanted: 0,
-    productionCappedBy: null,
-    worksByDefault: false,
-    taxesByFlag: false,
-    ...overrides
-  });
+  // `1:6,52` is this file's existing fixture region; `aUnitSilver` defaults to the builders'
+  // own world.
+  const forecast = (overrides: Partial<UnitSilver> = {}): UnitSilver =>
+    aUnitSilver({ regionId: "1:6,52", ...overrides });
 
   function drawSilver(
     silver: UnitSilver | null,

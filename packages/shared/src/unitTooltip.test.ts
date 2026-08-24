@@ -1,5 +1,5 @@
 import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
-import { aReportUnit } from "@atlantis/core-client";
+import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import { HOVER_DELAY_MS, placeTooltip, summariseUnit } from "./unitTooltip";
 
@@ -143,40 +143,17 @@ describe("a skill's study points in the unit tooltip (ah-ded4)", () => {
  * `packages/shared` has no jsdom and a component test could never read them back.
  */
 describe("the silver section", () => {
-  const forecast = (overrides: Partial<UnitSilver> = {}): UnitSilver => ({
-    unitId: "1",
-    regionId: "1:6,52",
-    held: 60,
-    income: 0,
-    lateIncome: 0,
-    expense: 200,
-    atMonthEnd: -140,
-    shortForOrders: 0,
-    shortOn: null,
-    upkeep: 50,
-    doubt: null,
-    doubtSubject: null,
-    received: 0,
-    givers: [],
-    givenToNobody: 0,
-    factionFoodCovered: 0,
-    ownFoodCovered: 0,
-    unclaimedCovered: 0,
-    unclaimedContended: false,
-    forcedOwnFood: 0,
-    forcedOwnFoodTag: null,
-    forcedFactionFood: 0,
-    foodContended: false,
-    sharedSilverCovered: 0,
-    withdrawing: false,
-    produced: 0,
-    producedName: null,
-    productionWanted: 0,
-    productionCappedBy: null,
-    worksByDefault: false,
-    taxesByFlag: false,
-    ...overrides
-  });
+  // `1:6,52` is this file's existing fixture region; `aUnitSilver` defaults to the builders'
+  // own world.
+  const forecast = (overrides: Partial<UnitSilver> = {}): UnitSilver =>
+    aUnitSilver({
+      regionId: "1:6,52",
+      held: 60,
+      expense: 200,
+      atMonthEnd: -140,
+      upkeep: 50,
+      ...overrides
+    });
 
   it("says_when_a_unit_taxes_by_its_flag", () => {
     const summary = summariseUnit(
