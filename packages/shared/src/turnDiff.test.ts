@@ -247,7 +247,7 @@ describe("diffTurns: regions", () => {
     const newer = report([
       region(at(7, 53), {
         structures: [
-          { structureId: "1", name: "Tower", kind: "tower", description: null, needs: null }
+          { structureId: "1", name: "Tower", kind: "tower", baseKind: "tower", qualifiers: [], vessels: [], description: null, needs: null }
         ]
       })
     ]);

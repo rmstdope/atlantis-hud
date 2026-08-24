@@ -11,7 +11,7 @@
  */
 
 import type { Coordinate, ReportRegion, ReportUnit, StructureInfo } from "@atlantis/core-client";
-import { aReportRegion, aReportUnit } from "@atlantis/core-client";
+import { aReportRegion, aReportUnit, aStructure } from "@atlantis/core-client";
 import type { HexKnowledge, HexNode } from "../../hexMapModel";
 
 const LEVEL = 1;
@@ -21,7 +21,7 @@ function at(x: number, y: number): Coordinate {
 }
 
 function structure(kind: string): StructureInfo {
-  return { structureId: `${kind}-1`, name: kind, kind, description: null, needs: null };
+  return aStructure(kind);
 }
 
 const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit =>

@@ -21,6 +21,8 @@ import type { ParsedReport } from "./generated/ParsedReport";
 import type { ReportHeaderInfo } from "./generated/ReportHeaderInfo";
 import type { ReportRegion } from "./generated/ReportRegion";
 import type { ReportUnit } from "./generated/ReportUnit";
+import type { StructureInfo } from "./generated/StructureInfo";
+import type { VesselEntry } from "./generated/VesselEntry";
 import type { UnitSilver } from "./generated/UnitSilver";
 import type { TradeRoute, TradedGood } from "./index";
 
@@ -50,6 +52,37 @@ export function aReportUnit(overrides: Partial<ReportUnit> = {}): ReportUnit {
     weight: null,
     capacity: null,
     structureId: null,
+    ...overrides
+  };
+}
+
+/**
+ * A structure as the report writes it, with the split fields the parser derives from its kind.
+ *
+ * A FIXTURE builder: it mirrors `split_kind` (`crates/core/src/report/region.rs`) so a test can
+ * name a structure the way a report does — `aStructure("Galley, 40 Galleons")` — instead of
+ * spelling out four fields. No production reader splits a kind; that is the whole point of
+ * `ah-nmts`, and the parser's own tests live beside `split_kind`.
+ */
+export function aStructure(kind: string, overrides: Partial<StructureInfo> = {}): StructureInfo {
+  const [base, ...clauses] = kind.split(",");
+  const qualifiers = clauses.map((clause) => clause.trim()).filter((clause) => clause !== "");
+  const vessels = qualifiers.flatMap<VesselEntry>((clause) => {
+    const counted = /^(\d+)\s+(.+)$/u.exec(clause);
+    if (counted) {
+      return [{ count: Number(counted[1]), name: counted[2] }];
+    }
+    return /^\p{Lu}/u.test(clause) ? [{ count: null, name: clause }] : [];
+  });
+  return {
+    structureId: `${kind}-1`,
+    name: base.trim(),
+    kind,
+    baseKind: base.trim(),
+    qualifiers,
+    vessels,
+    description: null,
+    needs: null,
     ...overrides
   };
 }

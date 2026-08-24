@@ -18,6 +18,7 @@
 
 use super::model::{
     Exit, ItemAmount, MarketItem, ReportRegion, Structure, UnreadableKind, UnreadableLine,
+    VesselEntry,
 };
 use super::scan::{
     is_none_list, parse_coordinate, parse_item_amount, parse_market_item, parse_money,
@@ -162,13 +163,125 @@ pub fn parse_structure(body: &str) -> Option<Structure> {
         None => (kind_text, None),
     };
 
+    let (base_kind, qualifiers, vessels) = split_kind(kind);
+
     Some(Structure {
         structure_id,
         name,
         kind: kind.to_string(),
+        base_kind,
+        qualifiers,
+        vessels,
         description,
         needs,
     })
+}
+
+/// Splits a structure's kind clause into the kind itself, its qualifiers and its vessels.
+///
+/// `parse_structure` used to hand the whole clause over as `kind`, and four separate readers
+/// re-parsed it — the map's bare-word sets, its ship test, its vessel count and the region pane's
+/// links — which is how four defects were fixed in one surface on one day (`ah-nmts`).
+///
+/// The kind is everything before the first comma; each comma-separated clause after it is a
+/// qualifier. A qualifier is *also* a vessel when it names one, and the report distinguishes the
+/// two by how it writes them: a vessel carries a count (`40 Galleons`) or is an item name, which
+/// Atlantis always capitalises (`Longboat`), while a state clause is prose in lower case
+/// (`closed to player units`). Anything that is not recognisably a vessel stays a qualifier only,
+/// so a clause this rule has never seen is never miscounted as a ship.
+///
+/// Pass a kind that has already had its `, needs N` clause removed: a build cost would otherwise
+/// become a vessel called `needs 560`.
+#[must_use]
+fn split_kind(kind_text: &str) -> (String, Vec<String>, Vec<VesselEntry>) {
+    let mut clauses = kind_text.split(',');
+    let base_kind = clauses.next().unwrap_or_default().trim().to_string();
+
+    let mut qualifiers = Vec::new();
+    let mut vessels = Vec::new();
+    for clause in clauses {
+        let clause = clause.trim();
+        if clause.is_empty() {
+            continue;
+        }
+        if let Some(vessel) = parse_vessel(clause) {
+            vessels.push(vessel);
+        }
+        qualifiers.push(clause.to_string());
+    }
+
+    (base_kind, qualifiers, vessels)
+}
+
+/// Reads one manifest clause as a vessel, or `None` where it is prose rather than a vessel.
+fn parse_vessel(clause: &str) -> Option<VesselEntry> {
+    let digits: String = clause.chars().take_while(char::is_ascii_digit).collect();
+    if digits.is_empty() {
+        // No count, so this is a vessel only if it is written as an item name. Atlantis capitalises
+        // every item, and never a state clause such as `closed to player units`.
+        let first = clause.chars().next()?;
+        if !first.is_uppercase() {
+            return None;
+        }
+        return Some(VesselEntry {
+            count: None,
+            name: clause.to_string(),
+        });
+    }
+
+    let name = clause[digits.len()..].trim();
+    if name.is_empty() {
+        return None;
+    }
+    Some(VesselEntry {
+        count: digits.parse::<i64>().ok(),
+        name: name.to_string(),
+    })
+}
+
+/// Fills the split fields of every structure in a stored region payload written before they existed.
+///
+/// A remembered hex is stored as the region's own JSON and crosses to a shell as that JSON, never
+/// round-tripped through `ReportRegion` - deliberately, so a payload written by a build with fields
+/// this one has never heard of survives (`sighting_from_payload` says the same thing). So the
+/// back-fill works on the JSON too, and both shells run it at the one place each holds the payload.
+///
+/// Only a structure whose `baseKind` is missing or empty is filled. A real `baseKind` is never
+/// empty - a kindless line still yields the whole string - so an already-split structure is left
+/// exactly as it is, rather than being split a second time from a `kind` that is no longer a
+/// sentence.
+pub fn backfill_structure_kinds(region: &mut serde_json::Value) {
+    let Some(structures) = region
+        .get_mut("structures")
+        .and_then(serde_json::Value::as_array_mut)
+    else {
+        return;
+    };
+
+    for structure in structures {
+        let Some(object) = structure.as_object_mut() else {
+            continue;
+        };
+        let already_split = object
+            .get("baseKind")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|base| !base.is_empty());
+        if already_split {
+            continue;
+        }
+        let kind = object
+            .get("kind")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let (base_kind, qualifiers, vessels) = split_kind(&kind);
+        object.insert("baseKind".to_string(), serde_json::json!(base_kind));
+        object.insert("qualifiers".to_string(), serde_json::json!(qualifiers));
+        object.insert(
+            "vessels".to_string(),
+            serde_json::to_value(&vessels).unwrap_or_else(|_| serde_json::json!([])),
+        );
+    }
 }
 
 /// Applies one indented economy line to a region.
@@ -429,6 +542,110 @@ mod tests {
             .as_deref()
             .is_some_and(|d| d.contains("camel corrals")));
         assert_eq!(structure.needs, None);
+    }
+
+    #[test]
+    fn an_unqualified_kind_is_its_own_base_kind() {
+        let structure = parse_structure("+ Building [21] : Magical Citadel.").expect("structure");
+
+        assert_eq!(structure.base_kind, "Magical Citadel");
+        assert!(structure.qualifiers.is_empty());
+        assert!(structure.vessels.is_empty());
+    }
+
+    #[test]
+    fn a_qualified_lair_keeps_its_clause_as_a_qualifier() {
+        let structure =
+            parse_structure("+ Lair [0] : Lair, closed to player units.").expect("structure");
+
+        assert_eq!(structure.kind, "Lair, closed to player units");
+        assert_eq!(structure.base_kind, "Lair");
+        assert_eq!(
+            structure.qualifiers,
+            vec!["closed to player units".to_string()]
+        );
+        assert!(structure.vessels.is_empty());
+    }
+
+    #[test]
+    fn a_fleets_manifest_becomes_vessels() {
+        let structure =
+            parse_structure("+ Ship [623] : Galley, 40 Galleons, 11 Galleys.").expect("structure");
+
+        assert_eq!(structure.base_kind, "Galley");
+        assert_eq!(
+            structure.vessels,
+            vec![
+                VesselEntry {
+                    count: Some(40),
+                    name: "Galleons".to_string()
+                },
+                VesselEntry {
+                    count: Some(11),
+                    name: "Galleys".to_string()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_vessel_with_no_number_has_no_count() {
+        let structure = parse_structure("+ Ship [7] : Fleet, Longboat.").expect("structure");
+
+        assert_eq!(structure.base_kind, "Fleet");
+        assert_eq!(
+            structure.vessels,
+            vec![VesselEntry {
+                count: None,
+                name: "Longboat".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn a_needs_clause_is_not_a_qualifier() {
+        let structure =
+            parse_structure("+ Building [21] : Magical Tower, needs 560.").expect("structure");
+
+        assert_eq!(structure.needs, Some(560));
+        assert_eq!(structure.base_kind, "Magical Tower");
+        assert!(structure.qualifiers.is_empty());
+        assert!(structure.vessels.is_empty());
+    }
+
+    #[test]
+    fn a_payload_without_the_split_fields_is_filled_from_its_kind() {
+        let mut region = serde_json::json!({
+            "structures": [{ "structureId": "623", "kind": "Galley, 40 Galleons" }]
+        });
+
+        backfill_structure_kinds(&mut region);
+
+        let structure = &region["structures"][0];
+        assert_eq!(structure["baseKind"], "Galley");
+        assert_eq!(structure["qualifiers"], serde_json::json!(["40 Galleons"]));
+        assert_eq!(
+            structure["vessels"],
+            serde_json::json!([{ "count": 40, "name": "Galleons" }])
+        );
+    }
+
+    #[test]
+    fn a_payload_that_already_has_them_is_left_alone() {
+        let mut region = serde_json::json!({
+            "structures": [{
+                "structureId": "623",
+                "kind": "Galley, 40 Galleons",
+                "baseKind": "Galley",
+                "qualifiers": ["40 Galleons"],
+                "vessels": [{ "count": 40, "name": "Galleons" }]
+            }]
+        });
+        let before = region.clone();
+
+        backfill_structure_kinds(&mut region);
+
+        assert_eq!(region, before);
     }
 
     #[test]

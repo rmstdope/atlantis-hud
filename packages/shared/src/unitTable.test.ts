@@ -190,9 +190,9 @@ describe("sortUnits", () => {
 
   it("sorts the structure column by name, with the number breaking ties", () => {
     const structures = [
-      { structureId: "20", name: "Anvil", kind: "Fort", description: null, needs: null },
-      { structureId: "3", name: "Wavecrest", kind: "Longship", description: null, needs: null },
-      { structureId: "9", name: "Anvil", kind: "Fort", description: null, needs: null }
+      { structureId: "20", name: "Anvil", kind: "Fort", baseKind: "Fort", qualifiers: [], vessels: [], description: null, needs: null },
+      { structureId: "3", name: "Wavecrest", kind: "Longship", baseKind: "Longship", qualifiers: [], vessels: [], description: null, needs: null },
+      { structureId: "9", name: "Anvil", kind: "Fort", baseKind: "Fort", qualifiers: [], vessels: [], description: null, needs: null }
     ];
     const units = [
       unit("a", false, { structureId: "3" }),
@@ -206,7 +206,7 @@ describe("sortUnits", () => {
 
   it("puts a structure the region never described after the named ones, not before them", () => {
     const structures = [
-      { structureId: "20", name: "Anvil", kind: "Fort", description: null, needs: null }
+      { structureId: "20", name: "Anvil", kind: "Fort", baseKind: "Fort", qualifiers: [], vessels: [], description: null, needs: null }
     ];
     const units = [
       unit("a", false, { structureId: "77" }),
@@ -312,7 +312,7 @@ describe("filterUnits", () => {
 
   it("the filter finds a structure by its name as well as its number", () => {
     const structures = [
-      { structureId: "194", name: "Wavecrest", kind: "Longship", description: null, needs: null }
+      { structureId: "194", name: "Wavecrest", kind: "Longship", baseKind: "Longship", qualifiers: [], vessels: [], description: null, needs: null }
     ];
 
     expect(ids(filterUnits(units, "wavecrest", structures))).toEqual(["18642"]);

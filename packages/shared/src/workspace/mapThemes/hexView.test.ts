@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Coordinate, ReportRegion, ReportUnit, StructureInfo } from "@atlantis/core-client";
-import { aReportRegion, aReportUnit } from "@atlantis/core-client";
+import { aReportRegion, aReportUnit, aStructure } from "@atlantis/core-client";
 import type { HexKnowledge, HexNode } from "../../hexMapModel";
 import { COLUMN_PITCH, ROW_PITCH } from "../mapViewport";
 import {
@@ -20,7 +20,7 @@ function at(x: number, y: number, z = 1): Coordinate {
 }
 
 function structure(kind: string, name = kind): StructureInfo {
-  return { structureId: `${kind}-1`, name, kind, description: null, needs: null };
+  return aStructure(kind, { name });
 }
 
 const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit =>
@@ -383,6 +383,18 @@ describe("structures, split by what they mean rather than counted together", () 
     ]) {
       expect(withStructures([kind]).buildings).toBe(0);
     }
+  });
+
+  it("draws a fleet as a hull because it carries vessels, not because of a word in its name", () => {
+    // The one case the old `isShip(structure.kind) || isShip(kind)` double guard existed for, now
+    // answered from a field. `Flotilla` is in no ship set and contains neither "ship" nor "boat",
+    // so nothing but `vessels` can make this a hull (ah-3pr9, ah-nmts).
+    const flotilla = aStructure("Flotilla, 6 Corsairs");
+
+    expect(flotilla.baseKind).toBe("Flotilla");
+    expect(
+      viewOf(hex({ knowledge: "current", region: region({ structures: [flotilla] }) })).ships
+    ).toBe(6);
   });
 
   it("counts the vessels a fleet holds rather than the one structure naming them", () => {

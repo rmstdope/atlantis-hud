@@ -333,6 +333,7 @@ mod tests {
             kind: kind.to_owned(),
             description: None,
             needs: None,
+            ..Default::default()
         }
     }
 

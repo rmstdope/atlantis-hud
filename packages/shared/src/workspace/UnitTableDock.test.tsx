@@ -140,7 +140,7 @@ describe("the structure column", () => {
   const WAVECREST = {
     structureId: "329",
     name: "Wavecrest",
-    kind: "Longship",
+    kind: "Longship", baseKind: "Longship", qualifiers: [], vessels: [],
     description: null,
     needs: null
   };

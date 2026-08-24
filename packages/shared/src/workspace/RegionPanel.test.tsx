@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
-import { aReportRegion } from "@atlantis/core-client";
+import { aReportRegion, aStructure } from "@atlantis/core-client";
 import type { GameDataEntry, GameDataIndex } from "../gameData";
 import { SURFACE, type HexNode } from "../hexMapModel";
 import { resetHexNotesStore } from "../hexNotesStore";
@@ -246,7 +246,7 @@ describe("the region panel's structure list", () => {
           {
             structureId: "12",
             name: "Odds and Ends",
-            kind: "Fort",
+            kind: "Fort", baseKind: "Fort", qualifiers: [], vessels: [],
             description: null,
             needs: null
           }
@@ -385,7 +385,7 @@ describe("a fleet's vessels are each their own link (ah-t5fk)", () => {
     region: aReportRegion({
       ...HEX.region!,
       structures: [
-        { structureId: "194", name: "Frozen Tomb", kind, description: null, needs }
+        aStructure(kind, { structureId: "194", name: "Frozen Tomb", needs })
       ]
     })
   });

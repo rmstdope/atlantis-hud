@@ -233,6 +233,20 @@ pub fn hydrate_parse_result_state(parsed_payload_json: String) -> Result<JsValue
     to_js(&ReportParseResultWire::from(parsed))
 }
 
+/// Fills the split structure fields of a stored region payload written before they existed.
+///
+/// A remembered hex crosses to the workspace as its own JSON, never round-tripped through
+/// `ReportRegion`, so this is the one place the web shell holds a stored payload and the one place
+/// the back-fill belongs. The desktop runs the same core function at its own equivalent
+/// (`command_load_region_sightings`), so both shells agree about an old snapshot (`ah-nmts`).
+#[wasm_bindgen]
+pub fn hydrate_remembered_region(payload_json: String) -> Result<JsValue, JsValue> {
+    let mut region = serde_json::from_str::<serde_json::Value>(&payload_json)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    atlantis_hud_core::report::region::backfill_structure_kinds(&mut region);
+    to_js(&region)
+}
+
 /// Compares a prepared import candidate against the stored snapshot, if any.
 ///
 /// Pass `null` for `existing` when nothing is stored under the key.

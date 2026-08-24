@@ -7,6 +7,7 @@ import {
   type ImportedTurnSummary,
   type ParsedReport,
   type ReportParseResult,
+  type ReportRegion,
   type TradeRoute
 } from "@atlantis/core-client";
 import { createMemoryWebStore, type StoredTurnSnapshot } from "./webStore";
@@ -173,6 +174,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       };
     },
     hydrate_parse_result_state: (json: string) => ({ ...EMPTY_PARSE_RESULT, hydratedFrom: json }),
+    hydrate_remembered_region: (json: string) => JSON.parse(json) as ReportRegion,
     // Self-consistent, not correct: the real rule (and its tie-break) is the core's, pinned in
     // `reopen.rs` and against the real module in `reopen.wasm.test.ts`. This stand-in only has to
     // agree with itself so the routing tests below - which check the adapter hands over every

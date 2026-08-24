@@ -7916,6 +7916,7 @@ mod tests {
             kind: "Longship".to_string(),
             description: Some("Load: 110/150; Sailors: 4/4; MaxSpeed: 4.".to_string()),
             needs: None,
+            ..Default::default()
         }
     }
 
@@ -11453,6 +11454,7 @@ mod tests {
             kind: "Timber Yard".to_string(),
             description: None,
             needs: None,
+            ..Default::default()
         }
     }
 
@@ -11465,6 +11467,7 @@ mod tests {
             kind: "Stockade".to_string(),
             description: None,
             needs: None,
+            ..Default::default()
         }
     }
 
@@ -11475,6 +11478,7 @@ mod tests {
             kind: "Stockade".to_string(),
             description: None,
             needs: Some(45),
+            ..Default::default()
         }
     }
 
@@ -11486,6 +11490,7 @@ mod tests {
             kind: "Citadel".to_string(),
             description: None,
             needs: Some(200),
+            ..Default::default()
         }
     }
 
@@ -11497,6 +11502,7 @@ mod tests {
             kind: "Tower".to_string(),
             description: None,
             needs: Some(10),
+            ..Default::default()
         }
     }
 
@@ -11508,6 +11514,7 @@ mod tests {
             kind: "Mine".to_string(),
             description: None,
             needs: Some(20),
+            ..Default::default()
         }
     }
 
@@ -12227,6 +12234,7 @@ mod tests {
             kind: kind.to_string(),
             description: None,
             needs: None,
+            ..Default::default()
         }
     }
 
@@ -13907,6 +13915,7 @@ mod tests {
             kind: "Raft".to_string(),
             description: Some("Load: 70/450; Sailors: 2/2; MaxSpeed: 2.".to_string()),
             needs: None,
+            ..Default::default()
         }
     }
 
@@ -14262,6 +14271,7 @@ mod tests {
             kind: "Raft".to_string(),
             description: Some("Load: 70/450; Sailors: 2/2; MaxSpeed: 2.".to_string()),
             needs: None,
+            ..Default::default()
         };
         let two_gnolls = with_men(aboard("9508", "218", 20, 1), 2);
         let region = ReportRegion {
@@ -14662,6 +14672,7 @@ mod tests {
                 kind: "Fleet, 2 Galleons".to_string(),
                 description: None,
                 needs: None,
+                ..Default::default()
             }],
             ..region(vec![aboard("11125", "1121", 5401, 30)])
         };
@@ -14680,6 +14691,7 @@ mod tests {
                 kind: "Longship".to_string(),
                 description: None,
                 needs: None,
+                ..Default::default()
             }],
             ..region(vec![aboard("11125", "1", 200, 0)])
         };
