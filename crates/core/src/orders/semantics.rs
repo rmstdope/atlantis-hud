@@ -2355,6 +2355,112 @@ impl<'a> Sharing<'a> {
     }
 }
 
+/// What the shortfall pass decided about one unit and one item tag.
+///
+/// Every negative balance produces exactly one of these, so a test can assert *which* reading a
+/// hex used rather than inferring it from whether a message appeared (`ah-3ddq`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Verdict {
+    /// Judged on the unit's own balance, and short. Anchored to the unit and its order line.
+    UnitShort {
+        unit_id: String,
+        tag: String,
+        short: i64,
+    },
+    /// The tag pools in this hex, so this overdraft is a claim against the pool rather than a
+    /// finding of its own. A sharer's own overdraft is already inside the pool's sum and claims
+    /// nothing (`claims_pool: false`).
+    DeferredToPool {
+        unit_id: String,
+        tag: String,
+        short: i64,
+        claims_pool: bool,
+    },
+    /// Silver, in an unflagged hex, whose whole overdraft is maintenance nothing could pay. The
+    /// unit is not named in the message: it may well be one the engine feeds (`ah-e66j`).
+    DeferredToMaintenance { unit_id: String, short: i64 },
+}
+
+/// Every verdict this hex reaches, in hex order and then tag order.
+///
+/// Reaches no decision about messages and emits nothing: `report_shortfalls` renders it. Doubted
+/// units produce no verdict at all, here as everywhere else in this module - not a verdict saying
+/// "doubted".
+///
+/// Takes no [`CheckOptions`]: a disabled code still puts a tag up for pooled judgement and still
+/// adds to the maintenance shortfall today, because the `emits` test sits *after* the branches
+/// that do both. Filtering here would quietly change which hexes report a pooled shortfall.
+fn judge_shortfalls(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    sharing: &Sharing<'_>,
+    ruleset: Option<&Ruleset>,
+) -> Vec<Verdict> {
+    let mut verdicts = Vec::new();
+
+    for ordered in &hex.units {
+        let who = &ordered.unit.unit_id;
+        if ledger.doubted.contains(who) {
+            continue;
+        }
+
+        // The ledger is keyed by unit and then by tag, so this unit's entries are one contiguous
+        // run of it. Scanning the whole map of balances once per unit would be quadratic in the
+        // size of a hex, and a city holds a great many units.
+        let mine = ledger
+            .balance
+            .range((who.clone(), String::new())..)
+            .take_while(|((unit_id, _), _)| unit_id == who);
+
+        let mine: Vec<(String, String, i64)> = mine
+            .map(|((unit_id, tag), _)| {
+                let balance = relieved_balance(ledger, unit_id, tag);
+                (unit_id.clone(), tag.clone(), balance)
+            })
+            .collect();
+
+        for (unit_id, tag, balance) in &mine {
+            let (unit_id, tag, balance) = (unit_id, tag, *balance);
+            if balance >= 0 {
+                continue;
+            }
+            let short = -balance;
+
+            if sharing.reading(tag, ruleset) == Reading::Pooled {
+                verdicts.push(Verdict::DeferredToPool {
+                    unit_id: unit_id.clone(),
+                    tag: tag.clone(),
+                    short,
+                    // A sharer's own overdraft is already inside the pool's sum, so it claims
+                    // nothing against it - but its tag still goes up for judgement.
+                    claims_pool: !ordered.shares(),
+                });
+                continue;
+            }
+
+            // A unit whose overdraft is *entirely* the maintenance an unflagged hex could not pay
+            // between its units is not named: it may well be one the engine feeds. One that also
+            // overspends on its orders keeps its own finding, its line and its name, because
+            // nothing shared that silver for it (`ah-e66j`).
+            if tag == SILVER && ledger.maintenance_pooled && short <= unpaid_upkeep(ledger, who) {
+                verdicts.push(Verdict::DeferredToMaintenance {
+                    unit_id: unit_id.clone(),
+                    short,
+                });
+                continue;
+            }
+
+            verdicts.push(Verdict::UnitShort {
+                unit_id: unit_id.clone(),
+                tag: tag.clone(),
+                short,
+            });
+        }
+    }
+
+    verdicts
+}
+
 /// Silver and items a unit is short of, and what the hex's sharing units can cover for it.
 ///
 /// The engine's `Unit::GetSharedNum` counts a unit's own holdings plus every same-faction unit in
@@ -2393,89 +2499,70 @@ fn report_shortfalls(
     // Every pooled tag any unit is short of, so the pool pass below knows what to judge.
     let mut pooled_tags: BTreeSet<String> = BTreeSet::new();
 
-    for ordered in &hex.units {
-        let who = &ordered.unit.unit_id;
-        if ledger.doubted.contains(who) {
-            continue;
-        }
-
-        // The ledger is keyed by unit and then by tag, so this unit's entries are one contiguous
-        // run of it. Scanning the whole map of balances once per unit would be quadratic in the
-        // size of a hex, and a city holds a great many units.
-        let mine = ledger
-            .balance
-            .range((who.clone(), String::new())..)
-            .take_while(|((unit_id, _), _)| unit_id == who);
-
-        let mine: Vec<(String, String, i64)> = mine
-            .map(|((unit_id, tag), _)| {
-                let balance = relieved_balance(ledger, unit_id, tag);
-                (unit_id.clone(), tag.clone(), balance)
-            })
-            .collect();
-
-        for (unit_id, tag, balance) in &mine {
-            let (unit_id, tag, balance) = (unit_id, tag, *balance);
-            if balance >= 0 {
-                continue;
-            }
-
-            if pooled(tag) {
+    for verdict in judge_shortfalls(hex, ledger, &sharing, ruleset) {
+        let (unit_id, tag, short) = match verdict {
+            Verdict::DeferredToPool {
+                tag,
+                short,
+                claims_pool,
+                ..
+            } => {
                 pooled_tags.insert(tag.clone());
-                if !ordered.shares() {
-                    *claims.entry(tag.clone()).or_insert(0) += -balance;
+                if claims_pool {
+                    *claims.entry(tag).or_insert(0) += short;
                 }
                 continue;
             }
-
-            let short = -balance;
-
-            // A unit whose overdraft is *entirely* the maintenance an unflagged hex could not pay
-            // between its units is not named: it may well be one the engine feeds. One that also
-            // overspends on its orders keeps its own finding, its line and its name, because
-            // nothing shared that silver for it (`ah-e66j`).
-            if tag == SILVER && ledger.maintenance_pooled && short <= unpaid_upkeep(ledger, who) {
+            Verdict::DeferredToMaintenance { short, .. } => {
                 maintenance_short += short;
                 continue;
             }
+            Verdict::UnitShort {
+                unit_id,
+                tag,
+                short,
+            } => (unit_id, tag, short),
+        };
 
-            let code = if tag == SILVER {
-                codes::NOT_ENOUGH_SILVER
-            } else {
-                codes::NOT_ENOUGH_ITEMS
-            };
-            if !options.emits(code) {
-                continue;
-            }
-
-            let at = ledger.charged_at.get(&(unit_id.clone(), tag.clone()));
-            let finding = if tag == SILVER {
-                ordered.finding(
-                    hex,
-                    codes::NOT_ENOUGH_SILVER,
-                    format!(
-                        "short ${short}: this unit can have ${} and its {} spend ${}",
-                        ordered.holding(SILVER),
-                        spenders(upkeep_still_drawn(ledger, who)),
-                        ordered.holding(SILVER) + short,
-                    ),
-                    at,
-                )
-            } else {
-                let short_of = counted_item(short, tag, hex, ruleset, plurals);
-                ordered.finding(
-                    hex,
-                    codes::NOT_ENOUGH_ITEMS,
-                    format!(
-                        "short {short_of}: this unit can have {} and its orders spend {}",
-                        ordered.holding(tag),
-                        ordered.holding(tag) + short,
-                    ),
-                    at,
-                )
-            };
-            findings.push(finding);
+        let code = if tag == SILVER {
+            codes::NOT_ENOUGH_SILVER
+        } else {
+            codes::NOT_ENOUGH_ITEMS
+        };
+        if !options.emits(code) {
+            continue;
         }
+
+        let Some(ordered) = hex.find(&unit_id) else {
+            continue;
+        };
+        let at = ledger.charged_at.get(&(unit_id.clone(), tag.clone()));
+        let finding = if tag == SILVER {
+            ordered.finding(
+                hex,
+                codes::NOT_ENOUGH_SILVER,
+                format!(
+                    "short ${short}: this unit can have ${} and its {} spend ${}",
+                    ordered.holding(SILVER),
+                    spenders(upkeep_still_drawn(ledger, &unit_id)),
+                    ordered.holding(SILVER) + short,
+                ),
+                at,
+            )
+        } else {
+            let short_of = counted_item(short, &tag, hex, ruleset, plurals);
+            ordered.finding(
+                hex,
+                codes::NOT_ENOUGH_ITEMS,
+                format!(
+                    "short {short_of}: this unit can have {} and its orders spend {}",
+                    ordered.holding(&tag),
+                    ordered.holding(&tag) + short,
+                ),
+                at,
+            )
+        };
+        findings.push(finding);
     }
 
     if !pool_trusted {
@@ -7815,6 +7902,54 @@ mod tests {
             sharing.reading("ORC", None),
             Reading::Pooled,
             "without a catalogue there is nothing to tell men from anything else"
+        );
+    }
+
+    /// The verdicts one hex reaches, for a test that wants the reading rather than the message.
+    fn verdicts(hex_region: ReportRegion, orders: &str) -> Vec<Verdict> {
+        let ordered = OrderedUnits::read(orders);
+        let hex = Hex::read(&hex_region, &ordered);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+        let sharing = Sharing::read(&hex);
+        judge_shortfalls(&hex, &ledger, &sharing, Some(&rules))
+    }
+
+    #[test]
+    fn a_hex_that_shares_nothing_names_the_unit_itself() {
+        let found = verdicts(
+            region(vec![unit("5"), with_item(unit("7"), 20, "swords", "SWOR")]),
+            "unit 5\nGIVE 9 30 swords\n",
+        );
+
+        assert_eq!(
+            found,
+            vec![Verdict::UnitShort {
+                unit_id: "5".to_string(),
+                tag: "SWOR".to_string(),
+                short: 30,
+            }]
+        );
+    }
+
+    #[test]
+    fn a_hex_that_shares_defers_a_shortfall_to_its_pool() {
+        let found = verdicts(
+            region(vec![
+                unit("5"),
+                sharing(with_item(unit("7"), 20, "swords", "SWOR")),
+            ]),
+            "unit 5\nGIVE 9 30 swords\n",
+        );
+
+        assert_eq!(
+            found,
+            vec![Verdict::DeferredToPool {
+                unit_id: "5".to_string(),
+                tag: "SWOR".to_string(),
+                short: 30,
+                claims_pool: true,
+            }]
         );
     }
 
