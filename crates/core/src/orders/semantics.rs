@@ -8431,16 +8431,16 @@ mod tests {
         unit
     }
 
-    /// Gives the unit this much of the goods - *replacing* any line it already carries for the
-    /// tag rather than adding a second one. `unit` already hands out a grain, so pushing
-    /// unconditionally left fixtures holding two `GRAI` lines, which the two silver surfaces then
-    /// read differently: `Ordered::holding` takes the first match and the ledger's balance map
-    /// takes the last (`ah-lu0f.2`). A real report never lists a tag twice.
     fn with_flag(mut unit: ReportUnit, flag: &str) -> ReportUnit {
         unit.flags.push(flag.to_string());
         unit
     }
 
+    /// Gives the unit this much of the goods - *replacing* any line it already carries for the
+    /// tag rather than adding a second one. `unit` already hands out a grain, so pushing
+    /// unconditionally left fixtures holding two `GRAI` lines, which the two silver surfaces then
+    /// read differently: `Ordered::holding` takes the first match and the ledger's balance map
+    /// takes the last (`ah-lu0f.2`). A real report never lists a tag twice.
     fn with_item(mut unit: ReportUnit, amount: i64, name: &str, tag: &str) -> ReportUnit {
         unit.items
             .retain(|item| !item.tag.eq_ignore_ascii_case(tag));
