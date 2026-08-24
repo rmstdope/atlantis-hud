@@ -7217,6 +7217,45 @@ mod tests {
         );
     }
 
+    /// A behaviour change that follows from the rule rather than being asked for, and so worth
+    /// pinning: a flagged unit ordered `MOVE` no longer contends for the region's tax base, so the
+    /// unit that stays gets the whole of what it asks for instead of a split (`ah-v8zh`).
+    #[test]
+    fn a_flagged_taxer_that_moves_does_not_contend_for_the_region() {
+        // Two ten-man flagged taxers each want $500, and the region has $500 to give - contended,
+        // until one of them is told to walk away.
+        let contended = ReportRegion {
+            tax_base: Some(500),
+            ..region(vec![
+                with_men(with_silver(taxing_by_flag(unit("1")), 0), 10),
+                with_men(with_silver(taxing_by_flag(unit("2")), 0), 10),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![contended]),
+            "unit 2\nMOVE N\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let stayer = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "1")
+            .expect("the staying taxer is priced");
+        assert_eq!(
+            stayer.at_month_end,
+            Some(500),
+            "the full ask rather than a split: {:?}",
+            stayer.at_month_end
+        );
+        assert!(
+            !codes(&review.findings).contains(&codes::REGION_POOL_OVERSUBSCRIBED.as_str()),
+            "and nothing is oversubscribed: {:?}",
+            codes(&review.findings)
+        );
+    }
+
     /// A flagged unit ordered `MOVE` taxes nowhere - not the hex it leaves, and not the hex it
     /// arrives in, because the explicit order spent its month. So the ledger must not credit it
     /// this hex's tax income, and neither tax warning is about a hex it is walking out of
