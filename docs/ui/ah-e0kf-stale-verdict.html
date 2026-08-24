@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stale verdicts in the fleet view (ah-e0kf) — Option A</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1000px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; margin:36px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p, main > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); } code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .opt { display:inline-block; margin-top:14px; padding:6px 12px; border:1px solid var(--brass); border-radius:4px;
+     color:var(--brass-bright); font:12px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.4px; text-transform:uppercase; }
+  .fv { background:#0c1016; border:1px solid var(--edge); border-radius:6px; padding:14px 16px; margin-top:14px;
+     font:13px/1.85 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; }
+  .fv .sect { color:var(--brass); letter-spacing:1.2px; }
+  .fv .new { color:var(--ink); }
+  .fv .p0 { color:var(--warn); }
+  .fv .dim { color:var(--ink-dim); }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  .note { color:var(--ink-dim); font-size:12.5px; margin-top:14px; font-style:italic; max-width:94ch; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-e0kf</span> — a verdict written against a commit main has moved past</h1>
+  <p>Psylocke fails a bead against one commit. On a fast day the fleet merges several beads while
+  she is verifying, so a sibling can deliver the very thing she found missing before the verdict
+  reaches anybody. Nothing compares the two, so a stale verdict looks exactly like a live one — and
+  the cost lands on whoever picks it up: an implementer that builds a no-op, or a planner that
+  rewrites a sound plan. Three beads in one day.</p>
+  <p>The fix is a sixth Cerebro sweep, in the family of the five already there. This page is about
+  the one line it puts in front of you.</p>
+  <div class="opt">Chosen 2026-08-24 — the count of merges since</div>
+</header>
+<main>
+<h2 class="rule"><em>The fleet view</em> Sweeps, with the new line among its neighbours</h2>
+<p>The three shipped lines below are real. The new ones are the three cases from 2026-08-23,
+rendered in this option's wording. A stale verdict on a <strong>P0</strong> renders in the warning
+colour, as a stranded assignee already does.</p>
+<div class="fv">
+<div class="sect">SWEEPS</div>
+<div class="dim">  close ah-xxxx &mdash; delivered by Storm, on main 14m</div>
+<div class="dim">  unclaim ah-xxxx &mdash; Gambit stalled, no commit for 71m</div>
+<div class="dim">  unassign ah-fjty &mdash; Cyclops is on ah-gjq4</div>
+<div class="new p0">  recheck ah-t2pn.3 &mdash; verdict at ce9d2817, 4 merges since</div>
+<div class="new">  recheck ah-vocw &mdash; verdict at 0b444332, 2 merges since</div>
+<div class="new">  recheck ah-fjty &mdash; verdict at dd3f67bd, 6 merges since</div>
+</div>
+
+<h2 class="rule"><em>The three cases</em> what each line is about</h2>
+<blockquote><code>ah-t2pn.3</code> failed for having no user-visible warning. Its own plan gave that
+surface to <code>ah-t2pn.4</code>, which landed four commits later carrying exactly the wording the
+verification called the sharper half. Storm picked it up as a P0, found nothing to build, handed it
+back &mdash; two sessions and a planner pass.</blockquote>
+<blockquote><code>ah-vocw</code> was filed from a verification and shipped by <code>ah-gjq4</code>,
+which merged afterwards. Closed unbuilt.</blockquote>
+<blockquote><code>ah-fjty</code> failed for a warning that never fires. The planner's audit found
+the shipped code matched the plan exactly, and named two causes that are correct behaviour
+introduced by beads that landed after this one was planned.</blockquote>
+<p class="note">Matches the family's shape exactly: verb, id, em dash, reason. The number is the whole evidence &mdash; how far main has moved since anybody looked. Cheap to compute and impossible to misread. It does not say whether any of those merges touched this bead's files.</p>
+</main>
+</body>
+</html>
