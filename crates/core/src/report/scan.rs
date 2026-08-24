@@ -61,13 +61,31 @@ fn top_level_separators(input: &str, separator: char) -> Vec<usize> {
     let stray = unmatched_brackets(input);
 
     scan_depths(input, &stray)
-        .filter(|scanned| {
-            !matches!(scanned.character, '(' | '[' | ')' | ']')
-                && scanned.character == separator
-                && scanned.before <= 0
-        })
+        .filter(|scanned| is_top_level_separator(scanned, separator))
         .map(|scanned| scanned.index)
         .collect()
+}
+
+/// The byte index of the first top-level `separator`, for callers that need only that one.
+///
+/// [`next_top_level_field`] is called in a loop over a shrinking remainder, so building the whole
+/// list per call would walk the line once per field. This stops at the first hit.
+fn first_top_level_separator(input: &str, separator: char) -> Option<usize> {
+    let stray = unmatched_brackets(input);
+
+    // Bound rather than returned directly: the opaque iterator would otherwise outlive `stray`.
+    let index = scan_depths(input, &stray)
+        .find(|scanned| is_top_level_separator(scanned, separator))
+        .map(|scanned| scanned.index);
+    index
+}
+
+/// A separator counts only outside every bracket, and a bracket is never a separator - matching the
+/// order the hand-written scanners used before they shared this model.
+fn is_top_level_separator(scanned: &Scanned, separator: char) -> bool {
+    !matches!(scanned.character, '(' | '[' | ')' | ']')
+        && scanned.character == separator
+        && scanned.before <= 0
 }
 
 /// Splits on a separator, ignoring separators nested inside brackets or parentheses.
@@ -201,7 +219,7 @@ fn scan_leading_id<'a>(
 /// `None` when `input` is empty or all whitespace.
 #[must_use]
 pub fn next_top_level_field(input: &str, separator: char) -> Option<(&str, &str)> {
-    if let Some(index) = top_level_separators(input, separator).first().copied() {
+    if let Some(index) = first_top_level_separator(input, separator) {
         let field = input[..index].trim();
         let rest = input[index + separator.len_utf8()..].trim_start();
         return Some((field, rest));

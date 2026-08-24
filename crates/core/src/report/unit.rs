@@ -464,16 +464,16 @@ mod tests {
     // is kept because it is the only test that ties the module's depth model to something a player
     // would notice, and it pins the behaviour against a future change to that path.
     fn reads_the_items_of_a_unit_whose_faction_is_named_with_an_unclosed_bracket() {
-        let faction = parse_unit(
+        let unit = parse_unit(
             "* Scout (100), Wanderers :( (29), 10 humans [HUMN].",
             true,
             "1:7,53",
             None,
         )
         .expect("unit should parse");
-        assert_eq!(faction.faction_name.as_deref(), Some("Wanderers :("));
-        assert_eq!(faction.faction_id.as_deref(), Some("29"));
-        assert_eq!(faction.men, 10);
+        assert_eq!(unit.faction_name.as_deref(), Some("Wanderers :("));
+        assert_eq!(unit.faction_id.as_deref(), Some("29"));
+        assert_eq!(unit.men, 10);
     }
 
     #[test]
