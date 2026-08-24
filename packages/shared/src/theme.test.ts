@@ -367,6 +367,20 @@ describe("pane type scale", () => {
     expect(dialogRule).toMatch(/overflow\s*:/);
   });
 
+  it("caps a modal without outranking the modal's own sizing", () => {
+    // `ah-y4zb`: the cap is a default, not a ceiling. Wrapped in `:where()` it contributes zero
+    // specificity, so a dialog's own `max-h-[80vh]` wins with no `!`. Unwrapped, the attribute pair
+    // scores 0,2,0, beats every utility, and a component's own sizing is silently inert — which
+    // `ah-vwdi` shipped, and paid a verification cycle and a P0 reopen for.
+    expect(css).toMatch(/:where\(\s*\[role="dialog"\]\[aria-modal="true"\]\s*\)\s*\{/);
+
+    // And it must sit in `@layer base`: an unlayered rule beats every layered one whatever its
+    // specificity, and Tailwind's utilities are layered - so `:where()` alone still wins.
+    expect(css).toMatch(
+      /@layer base \{\s*:where\(\s*\[role="dialog"\]\[aria-modal="true"\]\s*\)/
+    );
+  });
+
   it("declares --ui-scale with a default of 1, outside the @theme block", () => {
     // Somewhere in the stylesheet, the panes must render correctly before `settingsStore` has
     // stamped anything and in any test that mounts a component alone.
