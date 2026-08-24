@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The pillage warning (ah-cw75) — Option A</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63;
+    --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1020px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:16px; margin:30px 0 4px; border-top:1px solid var(--edge); padding-top:16px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  p { color:var(--ink-soft); max-width:94ch; margin-top:9px; font-size:14px; }
+  strong { color:var(--ink); } code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:.9em; color:var(--brass-bright); }
+  .opt { display:inline-block; margin-top:14px; padding:6px 12px; border:1px solid var(--brass); border-radius:4px;
+     color:var(--brass-bright); font:12px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.4px; text-transform:uppercase; }
+  .ed { background:#0c1016; border:1px solid var(--edge); border-radius:5px; padding:10px 12px; margin-top:12px;
+     font:12.5px/1.9 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; }
+  .ed b { color:var(--ink); font-weight:normal; }
+  .wavy { text-decoration:underline wavy var(--warn); text-underline-offset:4px; color:var(--ink); }
+  .msg { display:block; margin-top:6px; padding-left:2px; color:var(--warn); font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .unit { color:var(--ink-dim); font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; margin-top:8px; font-style:italic; }
+  .note { color:var(--ink-dim); font-size:12.5px; margin-top:14px; font-style:italic; max-width:94ch; }
+  .old { color:var(--danger); }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-cw75</span> — why 19 men count as none</h1>
+  <p>Giving <code>PILLAGE</code> to <strong>Taxers (10116)</strong> in forest (36,0) of Reprau
+  produces:</p>
+  <div class="ed"><span class="old">cannot pillage here: needs 24 combat ready men, this faction has 0</span></div>
+  <p>The unit visibly holds <strong>19 high elves</strong>, so being told <strong>0</strong> reads as
+  a counting bug. <strong>It is not.</strong> The unit carries the <em>avoiding</em> flag &mdash; an
+  avoiding unit has no combat ready men whatever it holds &mdash; <em>and</em>, independently, it
+  holds no weapons at all. Both are true of this one unit. The threshold of 24 is right too.</p>
+  <p>Two things are wrong with the sentence: it never says <strong>why</strong>, and the count is
+  over the <strong>region</strong>, not the faction &mdash; so &ldquo;this faction has&rdquo; could
+  send a player looking at units in another hex.</p>
+  <div class="opt">Chosen 2026-08-24 — name both reasons when both are true, about the marked unit</div>
+</header>
+<main>
+
+<h2 class="rule"><em>The case you hit</em> avoiding <em>and</em> unarmed</h2>
+<div class="ed"><b>unit 10116</b>
+<span class="wavy">PILLAGE</span>
+<span class="msg">cannot pillage here: needs 24 combat ready men, this region has 0 &mdash; this unit is avoiding combat, and its 19 men hold no weapons they can wield</span></div>
+<p class="unit">Taxers (10116) &mdash; avoiding, 19 high elves [HELF], 13257 silver, no weapons.</p>
+
+<h2 class="rule"><em>Avoiding only</em> armed, but set to avoid combat</h2>
+<p>One order fixes this: clear the flag.</p>
+<div class="ed"><b>unit 10116</b>
+<span class="wavy">PILLAGE</span>
+<span class="msg">cannot pillage here: needs 24 combat ready men, this region has 0 &mdash; this unit is avoiding combat, so none of its 19 men count</span></div>
+
+<h2 class="rule"><em>Unarmed only</em> not avoiding, but nothing to wield</h2>
+<p>A different problem entirely: the unit needs weapons.</p>
+<div class="ed"><b>unit 10116</b>
+<span class="wavy">PILLAGE</span>
+<span class="msg">cannot pillage here: needs 24 combat ready men, this region has 0 &mdash; this unit's 19 men hold no weapons they can wield</span></div>
+
+<h2 class="rule"><em>Unchanged</em> genuinely armed, region simply short</h2>
+<p>Nothing is wrong with the unit &mdash; the region needs more men than it has. No explanation is
+owed, and the figures are untouched on every option.</p>
+<div class="ed"><b>unit 10116</b>
+<span class="wavy">PILLAGE</span>
+<span class="msg">cannot pillage here: needs 24 combat ready men, this region has 12</span></div>
+<p class="note">The only option that is honest about the case you actually hit. A player who clears the avoiding flag on this unit still gets 0, and this is the one wording that says so in advance. The cost: the longest sentence of the three, on the case where the reader is already confused.</p>
+</main>
+</body>
+</html>
