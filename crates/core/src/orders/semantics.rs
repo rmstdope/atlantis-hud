@@ -2294,6 +2294,67 @@ fn charge(ledger: &mut Ledger<'_>, unit_id: &str, tag: &str, amount: i64, placed
     }
 }
 
+/// How one item tag is judged in one hex.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reading {
+    /// Nothing in the hex shares, or the tag is men - which the engine never pools.
+    PerUnit,
+    /// Something in the hex carries `sharing`, so the tag is one purse across it.
+    Pooled,
+}
+
+/// The hex's sharing units, read once, and the rule for whether a tag pools in it.
+///
+/// The single home of "does this hex pool this tag?". Four plans in a row have assumed a hex is
+/// judged unit by unit; this is the thing they should have been able to find (`ah-3ddq`).
+struct Sharing<'a> {
+    /// The units carrying `sharing`, in hex order.
+    sharers: Vec<&'a Ordered<'a>>,
+}
+
+impl<'a> Sharing<'a> {
+    fn read(hex: &'a Hex<'a>) -> Self {
+        Self {
+            sharers: hex.units.iter().filter(|o| o.shares()).collect(),
+        }
+    }
+
+    /// Whether the pool's sum can be trusted at all: the pool is the sharers' sum, so one sharer
+    /// whose sums cannot be trusted makes the sum untrustworthy. Read once, and applied only after
+    /// the per-unit pass, which must still run so a doubted sharer does not also silence a
+    /// non-pooled (men) finding.
+    fn pool_trusted(&self, ledger: &Ledger<'_>) -> bool {
+        !self
+            .sharers
+            .iter()
+            .any(|o| ledger.doubted.contains(&o.unit.unit_id))
+    }
+
+    /// `Pooled` only when something shares AND the tag is not men.
+    ///
+    /// Without a ruleset every tag pools; with one, men never do (the engine's one exception).
+    ///
+    /// Maintenance is **not** pooled here, even though `ah-e66j` made sharing it automatic: this
+    /// pool is what a `SHARE` flag lends for *orders*, and folding a hex's maintenance into it
+    /// would put a unit's overspending on a purse the rules never open for it. The maintenance
+    /// shortfall of an unflagged hex is collected separately.
+    fn reading(&self, tag: &str, ruleset: Option<&Ruleset>) -> Reading {
+        if !self.sharers.is_empty() && !ruleset.is_some_and(|ruleset| ruleset.is_man(tag)) {
+            Reading::Pooled
+        } else {
+            Reading::PerUnit
+        }
+    }
+
+    /// The pool's balance for one tag: the sharers' `relieved_balance`s, summed.
+    fn pool(&self, ledger: &Ledger<'_>, tag: &str) -> i64 {
+        self.sharers
+            .iter()
+            .map(|o| relieved_balance(ledger, &o.unit.unit_id, tag))
+            .sum()
+    }
+}
+
 /// Silver and items a unit is short of, and what the hex's sharing units can cover for it.
 ///
 /// The engine's `Unit::GetSharedNum` counts a unit's own holdings plus every same-faction unit in
@@ -2316,22 +2377,9 @@ fn report_shortfalls(
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    let sharers: Vec<&Ordered<'_>> = hex.units.iter().filter(|o| o.shares()).collect();
-    // The pool is their sum, so one sharer whose sums cannot be trusted makes the sum
-    // untrustworthy - checked once here and applied after the per-unit pass below, which must
-    // still run so a doubted sharer does not also silence a non-pooled (men) finding.
-    let pool_trusted = !sharers
-        .iter()
-        .any(|o| ledger.doubted.contains(&o.unit.unit_id));
-    // Without a ruleset every tag pools; with one, men never do (the engine's one exception).
-    //
-    // Maintenance is **not** pooled here, even though `ah-e66j` made sharing it automatic: this
-    // pool is what a `SHARE` flag lends for *orders*, and folding a hex's maintenance into it would
-    // put a unit's overspending on a purse the rules never open for it. The maintenance shortfall
-    // of an unflagged hex is collected separately below.
-    let pooled = |tag: &str| -> bool {
-        !sharers.is_empty() && !ruleset.is_some_and(|ruleset| ruleset.is_man(tag))
-    };
+    let sharing = Sharing::read(hex);
+    let pool_trusted = sharing.pool_trusted(ledger);
+    let pooled = |tag: &str| -> bool { sharing.reading(tag, ruleset) == Reading::Pooled };
 
     // What the hex owes in maintenance that nothing in it could pay, gathered across the units
     // whose whole overdraft is that fee. Which of them the engine actually leaves unpaid cannot be
@@ -2443,10 +2491,7 @@ fn report_shortfalls(
             continue;
         }
 
-        let pool: i64 = sharers
-            .iter()
-            .map(|o| relieved_balance(ledger, &o.unit.unit_id, &tag))
-            .sum();
+        let pool: i64 = sharing.pool(ledger, &tag);
         let short = claims.get(&tag).copied().unwrap_or(0) - pool;
         if short <= 0 {
             continue;
@@ -7731,6 +7776,46 @@ mod tests {
     fn sharing(mut unit: ReportUnit) -> ReportUnit {
         unit.flags.push("sharing".to_string());
         unit
+    }
+
+    // --- how a hex reads one tag (`ah-3ddq`) ----------------------------------------------------
+    //
+    // `Sharing` is the one home of "does this hex pool this tag?", and these pin the rule directly
+    // rather than through a message - four plans in a row assumed a hex is judged unit by unit.
+
+    #[test]
+    fn a_hex_with_no_sharing_unit_reads_every_tag_per_unit() {
+        let hex_region = region(vec![with_item(unit("1"), 1, "horse", "HORS")]);
+        let ordered = OrderedUnits::read("");
+        let hex = Hex::read(&hex_region, &ordered);
+        let rules = ruleset();
+
+        let sharing = Sharing::read(&hex);
+
+        assert_eq!(sharing.reading("HORS", Some(&rules)), Reading::PerUnit);
+        assert_eq!(sharing.reading("HORS", None), Reading::PerUnit);
+    }
+
+    #[test]
+    fn a_sharing_hex_pools_goods_but_never_men() {
+        let hex_region = region(vec![sharing(with_item(unit("1"), 1, "horse", "HORS"))]);
+        let ordered = OrderedUnits::read("");
+        let hex = Hex::read(&hex_region, &ordered);
+        let rules = ruleset();
+
+        let sharing = Sharing::read(&hex);
+
+        assert_eq!(sharing.reading("HORS", Some(&rules)), Reading::Pooled);
+        assert_eq!(
+            sharing.reading("ORC", Some(&rules)),
+            Reading::PerUnit,
+            "men are the engine's one exception"
+        );
+        assert_eq!(
+            sharing.reading("ORC", None),
+            Reading::Pooled,
+            "without a catalogue there is nothing to tell men from anything else"
+        );
     }
 
     #[test]
