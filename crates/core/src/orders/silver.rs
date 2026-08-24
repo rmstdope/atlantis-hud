@@ -264,6 +264,20 @@ pub enum SilverSpender {
     Give,
 }
 
+/// What one order does to a unit's silver this month, before either surface decides what to do
+/// about it.
+///
+/// The two surfaces differ in how they *react* - the column shows a reason, the ledger stops
+/// trusting the unit's sums - but never in the number. Adding a field here is how a new order kind
+/// joins the seam (`ah-lu0f`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Priced {
+    /// Silver the order earns. Never negative.
+    pub earns: i64,
+    /// Why it could not be priced, or `None`. A doubt and a non-zero `earns` never occur together.
+    pub doubt: Option<SilverDoubt>,
+}
+
 /// Why a unit's month could not be priced. One variant per sentence the interface shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
@@ -598,6 +612,11 @@ pub fn parse_wage_centis(wages: Option<&str>) -> Option<i64> {
 /// `semantics::charge_upkeep` both read it, because two copies of this rule is exactly the drift
 /// that `ah-uwa3` was filed to remove.
 ///
+/// **This is already `ah-lu0f`'s shared pricing seam for `WORK` and `ENTERTAIN`**, alongside
+/// [`price_tax`] and [`price_pillage`]: the empty `Intent::Work | Intent::Entertain => {}` arms in
+/// [`forecast_unit`] and in `semantics::apply` are that sharing rather than an omission, and
+/// neither order needs moving onto anything.
+///
 /// **Neither earning spell is here**, and that is not an omission: `CAST` resolves before every
 /// spend order, so a mage's takings can fund the same month's `BUY` (`ah-e77q`, correcting
 /// `ah-uwa3`'s classification of Phantasmal Entertainment). [`forecast_unit`] prices both - which
@@ -769,35 +788,12 @@ pub fn forecast_unit(
     // Placing it before the loop makes a tax doubt win over a later order's, whichever line the
     // player typed first. Deliberate, and tested.
     if taxes(unit_flags, intents) {
-        if region.pillaged {
-            // Zero, and never a doubt: a pillage empties the hex whatever the base was, so
-            // this collects nothing even where the base itself is unknown (`ah-cxxa`).
-            // This branch must stay *before* the settlement below, or a hex with no stated
-            // base raises `UnknownTaxBase`, and a contended one raises
-            // `ContestedRegionPool`, where the certain zero is the better answer.
-        } else {
-            match shares.tax {
-                // A unit nobody contends with, exactly as it was before the settlement
-                // existed.
-                PoolShare::Uncontended => match region.tax_base {
-                    Some(base) => {
-                        income = income.saturating_add(men.saturating_mul(TAX_PER_MAN).min(base))
-                    }
-                    None => income_doubt = income_doubt.or(Some(SilverDoubt::UnknownTaxBase)),
-                },
-                // Already capped by the settlement, and already no larger than this unit's
-                // ask. Drawn once however many times the block says `TAX`, because this term
-                // runs once per unit: the settlement counted the unit's men once, so drawing
-                // per line would promise the region's pool twice over - the very thing the
-                // split exists to stop.
-                PoolShare::Share(share) => income = income.saturating_add(share),
-                // Only income is doubted: this unit's own men are known, so what it spends
-                // is still exactly priceable - which separates this from `EstimatedMen`.
-                PoolShare::Unknowable => {
-                    income_doubt = income_doubt.or(Some(SilverDoubt::ContestedRegionPool))
-                }
-            }
-        }
+        // The settlement is what the column shows: this unit's actual take once its faction-mates
+        // in the hex are settled against it. `semantics::credit_tax` passes `Uncontended` instead,
+        // and that difference is deliberate - see [`price_tax`].
+        let priced = price_tax(men, region.tax_base, region.pillaged, shares.tax);
+        income = income.saturating_add(priced.earns);
+        income_doubt = income_doubt.or(priced.doubt);
     }
 
     for placed in intents {
@@ -825,21 +821,11 @@ pub fn forecast_unit(
             // "This requires the faction to have enough combat ready men in the region to tax half
             // of the available money in the region" - so a faction short of the threshold earns
             // nothing at all from the order (`ah-1ad6.2`).
-            Intent::Pillage => match (region.tax_base, region.combat_ready) {
-                // No tax base: unchanged, and the older doubt wins - what the region holds is
-                // unknown before the question of who may take it arises.
-                (None, _) => income_doubt = income_doubt.or(Some(SilverDoubt::UnknownTaxBase)),
-                // A guessed headcount somewhere in the hex: the threshold cannot be tested at all.
-                // `EstimatedMen` is reused rather than a variant added - its sentence stays true.
-                (Some(_), None) => {
-                    income_doubt = income_doubt.or(Some(SilverDoubt::EstimatedMen));
-                }
-                (Some(base), Some(ready)) if ready >= pillage_threshold(base) => {
-                    income = income.saturating_add(base.saturating_mul(2));
-                }
-                // Short of the threshold: the order earns nothing, exactly.
-                (Some(_), Some(_)) => {}
-            },
+            Intent::Pillage => {
+                let priced = price_pillage(region.tax_base, region.combat_ready);
+                income = income.saturating_add(priced.earns);
+                income_doubt = income_doubt.or(priced.doubt);
+            }
             // `WORK` and `ENTERTAIN` earn nothing but late income, so [`late_income`] prices them
             // both - once, for this function and for `semantics::charge_upkeep` alike.
             Intent::Work | Intent::Entertain => {}
@@ -1820,6 +1806,100 @@ pub fn combat_ready(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<
     Some(facts.men.max(0).min(armed))
 }
 
+/// What a unit's taxing earns this month: `men * TAX_PER_MAN`, capped.
+///
+/// **A unit-level term, not a per-line one** - the taxing flag makes a unit tax with no `TAX` order
+/// at all, and a unit carrying both taxes once (`ah-fvzu`). Call it once per unit, never inside an
+/// intent loop.
+///
+/// `share` is the caller's policy about a contended regional pool, and it is a parameter precisely
+/// because **the two surfaces disagree about it on purpose**:
+///
+/// - The Silver column passes the `ah-t2pn` settlement (`shares.tax`), because it is showing the
+///   player what this unit will actually collect.
+/// - The ledger passes [`PoolShare::Uncontended`], because `semantics`' policy is *accept on doubt*:
+///   a shortfall is reported only when the unit is short even in the best case, and "no other own
+///   unit competes" is that best case. Passing the settlement there would produce a false
+///   `not-enough-silver` in every contended tax hex.
+///
+/// `pillaged` is a certain zero and never a doubt: a pillage empties the hex whatever the base was,
+/// so this collects nothing even where the base itself is unknown (`ah-cxxa`). It is tested before
+/// `share`, or a hex with no stated base would raise [`SilverDoubt::UnknownTaxBase`], and a
+/// contended one [`SilverDoubt::ContestedRegionPool`], where the certain zero is the better answer.
+#[must_use]
+pub fn price_tax(men: i64, tax_base: Option<i64>, pillaged: bool, share: PoolShare) -> Priced {
+    if pillaged {
+        return Priced {
+            earns: 0,
+            doubt: None,
+        };
+    }
+    match share {
+        // A unit nobody contends with, exactly as it was before the settlement existed.
+        PoolShare::Uncontended => match tax_base {
+            Some(base) => Priced {
+                earns: men.saturating_mul(TAX_PER_MAN).min(base),
+                doubt: None,
+            },
+            None => Priced {
+                earns: 0,
+                doubt: Some(SilverDoubt::UnknownTaxBase),
+            },
+        },
+        // Already capped by the settlement, and already no larger than this unit's ask. Drawn
+        // once however many times the block says `TAX`, because this term runs once per unit:
+        // the settlement counted the unit's men once, so drawing per line would promise the
+        // region's pool twice over - the very thing the split exists to stop.
+        PoolShare::Share(share) => Priced {
+            earns: share,
+            doubt: None,
+        },
+        // Only income is doubted: this unit's own men are known, so what it spends is still
+        // exactly priceable - which separates this from `EstimatedMen`.
+        PoolShare::Unknowable => Priced {
+            earns: 0,
+            doubt: Some(SilverDoubt::ContestedRegionPool),
+        },
+    }
+}
+
+/// What a `PILLAGE` earns: twice the region's available tax money, and nothing at all where the
+/// faction is short of the combat-ready threshold.
+///
+/// "The amount of money collected is equal to twice the available tax money", and "this requires
+/// the faction to have enough combat ready men in the region to tax half of the available money"
+/// (`ah-1ad6.2`). Short of that the order earns a *certain* zero, so the unit is not doubted.
+///
+/// Both surfaces call this - [`forecast_unit`] and `semantics::apply` - because two surfaces
+/// reading one order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj` exists).
+#[must_use]
+pub fn price_pillage(tax_base: Option<i64>, combat_ready: Option<i64>) -> Priced {
+    match (tax_base, combat_ready) {
+        // No tax base: what the region holds is unknown before the question of who may take it
+        // arises, so the older doubt wins.
+        (None, _) => Priced {
+            earns: 0,
+            doubt: Some(SilverDoubt::UnknownTaxBase),
+        },
+        // A guessed headcount somewhere in the hex: the threshold cannot be tested at all.
+        // `EstimatedMen` is reused rather than a variant added - its sentence stays true.
+        (Some(_), None) => Priced {
+            earns: 0,
+            doubt: Some(SilverDoubt::EstimatedMen),
+        },
+        (Some(base), Some(ready)) if ready >= pillage_threshold(base) => Priced {
+            earns: base.saturating_mul(2),
+            doubt: None,
+        },
+        // Short of the threshold: the order earns nothing, exactly - a certain zero, so the unit
+        // is not doubted.
+        (Some(_), Some(_)) => Priced {
+            earns: 0,
+            doubt: None,
+        },
+    }
+}
+
 /// Combat ready men a faction needs in a region before it may pillage it.
 ///
 /// "enough combat ready men in the region to tax half of the available money" - a taxer collects
@@ -2200,6 +2280,89 @@ mod production_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prices_a_units_tax_once_and_leaves_the_pool_policy_to_the_caller() {
+        assert_eq!(
+            price_tax(10, Some(8963), false, PoolShare::Uncontended),
+            Priced {
+                earns: 500,
+                doubt: None
+            }
+        );
+        // capped by the base
+        assert_eq!(
+            price_tax(10, Some(200), false, PoolShare::Uncontended),
+            Priced {
+                earns: 200,
+                doubt: None
+            }
+        );
+        // a pillaged hex is a certain zero even with no stated base (`ah-cxxa`)
+        assert_eq!(
+            price_tax(10, None, true, PoolShare::Uncontended),
+            Priced {
+                earns: 0,
+                doubt: None
+            }
+        );
+        // no base, not pillaged
+        assert_eq!(
+            price_tax(10, None, false, PoolShare::Uncontended),
+            Priced {
+                earns: 0,
+                doubt: Some(SilverDoubt::UnknownTaxBase)
+            }
+        );
+        // the settlement wins where the caller passes one
+        assert_eq!(
+            price_tax(10, Some(8963), false, PoolShare::Share(120)),
+            Priced {
+                earns: 120,
+                doubt: None
+            }
+        );
+        assert_eq!(
+            price_tax(10, Some(8963), false, PoolShare::Unknowable),
+            Priced {
+                earns: 0,
+                doubt: Some(SilverDoubt::ContestedRegionPool)
+            }
+        );
+    }
+
+    #[test]
+    fn prices_a_pillage_from_the_base_and_the_threshold() {
+        assert_eq!(
+            price_pillage(None, Some(100)),
+            Priced {
+                earns: 0,
+                doubt: Some(SilverDoubt::UnknownTaxBase)
+            }
+        );
+        assert_eq!(
+            price_pillage(Some(8963), None),
+            Priced {
+                earns: 0,
+                doubt: Some(SilverDoubt::EstimatedMen)
+            }
+        );
+        assert_eq!(
+            price_pillage(Some(100), Some(0)),
+            Priced {
+                earns: 0,
+                doubt: None
+            }
+        );
+        let base = 100;
+        assert_eq!(
+            price_pillage(Some(base), Some(pillage_threshold(base))),
+            Priced {
+                earns: 200,
+                doubt: None
+            }
+        );
+    }
 
     #[test]
     fn parses_the_wage_the_report_prints() {
