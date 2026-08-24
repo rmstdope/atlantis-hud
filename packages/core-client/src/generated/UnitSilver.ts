@@ -78,6 +78,15 @@ received: number,
  */
 givers: Array<string>, 
 /**
+ * Silver counted into `income` because this unit's own `TAKE` orders pull it from units the
+ * report shows in this hex.
+ */
+taken: number, 
+/**
+ * Those sources, as `<name> (<id>)`, so the hover can name them.
+ */
+takenFrom: Array<string>, 
+/**
  * Silver that faction food held by *other* units in this hex paid off, at step 2 of the
  * payment order (`ah-7cdt`). `0` for every unit the pool did not feed, which is most of them.
  */

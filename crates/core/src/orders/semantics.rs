@@ -915,6 +915,25 @@ fn gather_receipts(
         };
 
         for placed in &orders.intents {
+            if let Intent::Take {
+                from: Party::Unit(source_id),
+                what: Selector::Item(text),
+                amount,
+            } = &placed.intent
+            {
+                if names_silver(text, ruleset) {
+                    read_take(
+                        receipts_of(&mut receipts, giver_id),
+                        units.get(source_id.as_str()).copied(),
+                        located
+                            .get(source_id.as_str())
+                            .map(|region| &region.region_id)
+                            == Some(from),
+                        amount,
+                    );
+                }
+                continue;
+            }
             let Intent::Give {
                 to: Party::Unit(recipient),
                 what: Selector::Item(text),
@@ -950,7 +969,7 @@ fn gather_receipts(
                 continue;
             }
 
-            let entry = receipts.entry(recipient.clone()).or_default();
+            let entry = receipts_of(&mut receipts, recipient);
             entry.silver = entry.silver.saturating_add(quantity);
             let label = format!("{} ({})", giver.name, giver.unit_id);
             if !entry.givers.contains(&label) {
@@ -960,6 +979,47 @@ fn gather_receipts(
     }
 
     receipts
+}
+
+/// One unit's entry in the receipts, created empty the first time it is named.
+fn receipts_of<'a>(
+    receipts: &'a mut BTreeMap<String, Receipts>,
+    unit_id: &str,
+) -> &'a mut Receipts {
+    receipts.entry(unit_id.to_string()).or_default()
+}
+
+/// Credits one `TAKE ... SILV` to the taker, or records why it could not be counted.
+///
+/// A source the report does not show in this hex is skipped entirely and raises no doubt, which is
+/// a deliberate divergence from the ledger: the ledger is generous so it never warns falsely, and
+/// the column is exact so it never shows money that is not there (`ah-awcm`).
+fn read_take(
+    entry: &mut Receipts,
+    source: Option<&ReportUnit>,
+    in_this_hex: bool,
+    amount: &Amount,
+) {
+    let (Some(source), true) = (source, in_this_hex) else {
+        return;
+    };
+    match transfer_shape(&Selector::Item(SILVER.to_string()), amount) {
+        // What the source will have left to give depends on its own month, which this pass has
+        // not run.
+        TransferShape::All { .. } => entry.take_all_unpriceable = true,
+        TransferShape::Exact(quantity) => {
+            if quantity <= 0 {
+                return;
+            }
+            entry.taken = entry.taken.saturating_add(quantity);
+            let label = format!("{} ({})", source.name, source.unit_id);
+            if !entry.taken_from.contains(&label) {
+                entry.taken_from.push(label);
+            }
+        }
+        // `Selector::Item` above never reads as a whole class.
+        TransferShape::Unpriceable => {}
+    }
 }
 
 /// Whether an order's item argument names silver, by the catalogue where there is one and by the
@@ -6178,6 +6238,74 @@ mod tests {
         assert_eq!(forecast("4001").income, Some(0));
         assert_eq!(forecast("4001").received, 0);
         assert_eq!(forecast("4001").doubt, None);
+    }
+
+    /// `ah-awcm`: a `TAKE` of a stated quantity from a unit the report shows in this hex is the
+    /// taker's income, exactly as a gift written from the other end would be.
+    #[test]
+    fn a_take_from_a_unit_in_this_hex_is_counted() {
+        let report = ParsedReport {
+            regions: vec![region(vec![with_silver(unit("2390"), 500), unit("2391")])],
+            ..Default::default()
+        };
+        let source = "unit 2391\nTAKE FROM 2390 100 SILV\n";
+
+        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()));
+
+        let taker = receipts.get("2391").expect("the taker has receipts");
+        assert_eq!(taker.taken, 100);
+        assert_eq!(taker.taken_from, vec!["Unit 2390 (2390)".to_string()]);
+        assert!(!taker.take_all_unpriceable);
+    }
+
+    /// `ah-awcm`: the ledger credits a stated take from a unit it cannot see; the column does not.
+    #[test]
+    fn a_take_from_a_unit_the_report_does_not_show_here_is_not_counted() {
+        let report = ParsedReport {
+            regions: vec![region(vec![unit("2391")])],
+            ..Default::default()
+        };
+        let source = "unit 2391\nTAKE FROM 999 100 SILV\n";
+
+        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()));
+
+        let taker = receipts.get("2391").cloned().unwrap_or_default();
+        assert_eq!(taker.taken, 0);
+        assert!(taker.taken_from.is_empty());
+        assert!(!taker.take_all_unpriceable);
+    }
+
+    /// `ah-awcm`: what another unit will have left to give depends on its own month.
+    #[test]
+    fn a_take_of_all_silver_cannot_be_priced() {
+        let report = ParsedReport {
+            regions: vec![region(vec![with_silver(unit("2390"), 500), unit("2391")])],
+            ..Default::default()
+        };
+        let source = "unit 2391\nTAKE FROM 2390 ALL SILV\n";
+
+        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()));
+
+        let taker = receipts.get("2391").expect("the taker has receipts");
+        assert!(taker.take_all_unpriceable);
+        assert_eq!(taker.taken, 0);
+    }
+
+    /// `ah-awcm`: the column models silver, so a take of goods is no more its business than a gift
+    /// of goods is.
+    #[test]
+    fn a_take_of_goods_is_not_silver() {
+        let report = ParsedReport {
+            regions: vec![region(vec![with_silver(unit("2390"), 500), unit("2391")])],
+            ..Default::default()
+        };
+        let source = "unit 2391\nTAKE FROM 2390 10 GRAI\n";
+
+        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()));
+
+        let taker = receipts.get("2391").cloned().unwrap_or_default();
+        assert_eq!(taker.taken, 0);
+        assert!(!taker.take_all_unpriceable);
     }
 
     #[test]
