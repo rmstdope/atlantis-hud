@@ -28,11 +28,11 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
     combat_ready, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
-    late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants, recipe_for,
-    settle_unclaimed, split_pool, taxes, unit_upkeep, ContendedPool, FactionFoodPass, FactionPurse,
-    FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, PoolOverrun, PoolShare,
-    PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt,
-    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS, TAX_PER_MAN,
+    late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants, price_pillage,
+    price_tax, recipe_for, settle_unclaimed, split_pool, taxes, unit_upkeep, ContendedPool,
+    FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide,
+    PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages,
+    SaleAnswer, SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -1585,23 +1585,28 @@ fn market_list(lines: &[MarketItem]) -> String {
 ///
 /// A unit-level term because taxing is a property of the unit: the taxing flag makes it tax every
 /// turn with no order at all, and a unit carrying both the flag and a `TAX` taxes once
-/// (`ah-fvzu`). Mirrors `silver::forecast_unit`'s own term exactly - two surfaces reading one
-/// order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj` exists).
+/// (`ah-fvzu`). Priced by `silver::price_tax`, which `silver::forecast_unit` calls too - two
+/// surfaces reading one order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj`
+/// exists). "PILLAGE comes before TAX", so a pillage leaves every own taxer with nothing
+/// (`ah-cxxa`), and that rule lives in `price_tax` as well.
 fn credit_tax(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>, pillaged: bool) {
-    // "PILLAGE comes before TAX", so a pillage in this hex leaves every own taxer with nothing
-    // (`ah-cxxa`).
-    if pillaged || !taxes(&actor.unit.flags, actor.intents) {
+    if !taxes(&actor.unit.flags, actor.intents) {
         return;
     }
     // "Each taxing character collects $50", capped by what the region has to give - and
-    // optimistically, none of what is left goes to any *foreign* unit.
-    let ceiling = hex.region.tax_base.unwrap_or(i64::MAX);
-    credit(
-        ledger,
-        &actor.unit.unit_id,
-        SILVER,
-        actor.unit.men.saturating_mul(TAX_PER_MAN).min(ceiling),
+    // optimistically, none of what is left goes to any *foreign* unit, nor to any own one.
+    // [`PoolShare::Uncontended`] is this module's *accept on doubt* policy rather than an
+    // oversight: see `price_tax`'s doc comment, and
+    // `the_ledger_stays_optimistic_about_a_contended_tax_pool`.
+    let priced = price_tax(
+        actor.unit.men,
+        hex.region.tax_base,
+        pillaged,
+        PoolShare::Uncontended,
     );
+    credit(ledger, &actor.unit.unit_id, SILVER, priced.earns);
+    // A tax doubt is not the ledger's to raise: an unknown tax base credits nothing, which is
+    // already the pessimistic direction for a shortfall. Behaviour on `main` today.
 }
 
 /// Applies one order to the ledger.
@@ -1656,23 +1661,18 @@ fn apply(
         // Credited once per unit by `credit_tax` in `ledger_for`, not per line: a unit may tax by
         // its flag with no `TAX` order at all, and one carrying both taxes once (`ah-fvzu`).
         Intent::Tax => {}
-        // Mirrors `silver::forecast_unit`'s own arm exactly, down to the doubt: two surfaces
+        // Priced by `silver::price_pillage`, which `silver::forecast_unit` calls too: two surfaces
         // reading one order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj`
-        // exists).
-        Intent::Pillage => match (hex.region.tax_base, hex_combat_ready) {
-            // "The amount of money collected is equal to twice the available tax money."
-            (Some(base), Some(ready)) if ready >= pillage_threshold(base) => {
-                credit(ledger, who, SILVER, base.saturating_mul(2));
-            }
-            // Short of the threshold the order earns nothing, exactly - a certain zero, so the
-            // unit is not doubted.
-            (Some(_), Some(_)) => {}
-            // No tax base, or a guessed headcount in the hex: nothing can be credited or ruled
-            // out, so the unit's sums are not trusted.
-            (None, _) | (Some(_), None) => {
+        // exists). The two differ only in how they express the doubt - a typed variant there, the
+        // unit's sums no longer trusted here.
+        Intent::Pillage => {
+            let priced = price_pillage(hex.region.tax_base, hex_combat_ready);
+            if priced.doubt.is_some() {
                 ledger.doubted.insert(who.clone());
+            } else {
+                credit(ledger, who, SILVER, priced.earns);
             }
-        },
+        }
         Intent::Buy { amount, item } => buy(ledger, hex, actor, placed, amount, item, ruleset),
         Intent::Sell { amount, item } => sell(ledger, hex, actor, placed, amount, item, ruleset),
         Intent::Study { skill } => study(ledger, actor, placed, skill, ruleset),
@@ -6380,6 +6380,61 @@ mod tests {
     /// The pair is the point, exactly as `ah-abwx` and `ah-ycuj` require: before this bead the
     /// taxer looked solvent on both surfaces, so a single-surface fix passes its own tests and
     /// fails the corpus agreement test.
+    /// The one place the two silver surfaces disagree on purpose (`ah-lu0f.1`).
+    ///
+    /// `silver::forecast_unit` shows the player the `ah-t2pn` settlement of a contended tax pool -
+    /// what this unit will actually collect once its faction-mates are settled against it. This
+    /// module does not: its policy is *accept on doubt* (see the module doc), so a shortfall is
+    /// reported only when the unit is short even in the best case, and "no other own unit competes
+    /// for the pool" is that best case. Passing the settlement here instead would fire a false
+    /// `not-enough-silver` in every contended tax hex.
+    #[test]
+    fn the_ledger_stays_optimistic_about_a_contended_tax_pool() {
+        let hex_region = ReportRegion {
+            // Two ten-man taxers each want $500, and the region has $500 to give: contended.
+            tax_base: Some(500),
+            for_sale: vec![MarketItem {
+                amount: 100,
+                name: "sword".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region(vec![
+                with_men(with_silver(unit("1"), 100), 10),
+                with_men(with_silver(unit("2"), 100), 10),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1\nTAX\nBUY 4 sword\n\nunit 2\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        // The column, which shows the settled figure, has unit 1 short.
+        let buyer = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "1")
+            .expect("the buyer is priced");
+        assert!(
+            buyer.at_month_end.is_some_and(|end| end < 0),
+            "the settled column shows the shortfall: {:?}",
+            buyer.at_month_end
+        );
+
+        // The warning, which stays optimistic, does not.
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("1")),
+            "no shortfall is claimed on the optimistic reading: {:?}",
+            codes(&review.findings)
+        );
+    }
+
     #[test]
     fn the_column_and_the_warning_agree_about_a_taxer_in_a_pillaged_hex() {
         let hex_region = ReportRegion {
