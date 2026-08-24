@@ -19,7 +19,7 @@ describe("queryByTestId", () => {
     expect((found?.props.onClick as () => string)()).toBe("clicked");
   });
 
-  it("returns null for an id that is not in the tree", () => {
+  it("returns_null_for_an_id_that_is_not_in_the_tree", () => {
     const tree = createElement("div", null, createElement("span", { "data-testid": "other" }));
 
     expect(queryByTestId(tree, wanted)).toBeNull();
@@ -70,7 +70,7 @@ describe("findByTestId", () => {
     expect(message).not.toContain("could not enter");
   });
 
-  it("returns the element when it is there", () => {
+  it("returns_the_element_when_it_is_there", () => {
     const tree = createElement("span", { "data-testid": wanted });
 
     expect(findByTestId(tree, wanted).props["data-testid"]).toBe(wanted);
