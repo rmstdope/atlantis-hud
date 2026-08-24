@@ -3,6 +3,7 @@ import { createWebCoreAdapter, type CoreWasmModule } from "./webCoreAdapter";
 import {
   aReportHeaderInfo,
   type GameManifest,
+  type ManifestEdit,
   type HexNoteRecord,
   type ImportedTurnSummary,
   type ParsedReport,
@@ -165,6 +166,34 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         createdAt: now,
         lastOpenedAt: now
       } satisfies GameManifest;
+    },
+    // Echoes rather than decides, like the reset above: what one edit does to a manifest is the
+    // core's rule, pinned in `backup.rs` and against the real module in manifestEdit.wasm.test.ts.
+    edit_game_manifest_state: (manifestJson: string, editJson: string) => {
+      const manifest = JSON.parse(manifestJson) as GameManifest;
+      const edit = JSON.parse(editJson) as ManifestEdit;
+      const metadata = { ...manifest.metadata };
+      switch (edit.kind) {
+        case "opened":
+          return { ...manifest, lastOpenedAt: edit.value } satisfies GameManifest;
+        case "ruleset":
+          metadata.rulesetId = edit.value;
+          break;
+        case "name":
+          metadata.gameName = edit.value;
+          break;
+        case "activeFaction":
+          metadata.activeFactionId = edit.value ?? undefined;
+          break;
+        case "map":
+          if (edit.value === null) {
+            delete metadata.map;
+          } else {
+            metadata.map = edit.value;
+          }
+          break;
+      }
+      return { ...manifest, metadata } satisfies GameManifest;
     },
     // Echoes rather than decides: the adapter must hand the stored stamp and the seen hexes
     // across and write back what returns. The rules themselves are the core's, tested in Rust and

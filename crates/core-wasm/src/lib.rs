@@ -7,6 +7,7 @@
 //! which turn a game reopens on (`latest_turn_state`): the rules live in the core, and the web's
 //! store calls through here rather than deciding them itself.
 
+use atlantis_hud_core::backup::ManifestEdit;
 use atlantis_hud_core::reopen::{latest_turn, TurnRef};
 use atlantis_hud_core::report::import::{import_writes, SeenRegion};
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
@@ -175,6 +176,35 @@ pub fn reset_game_manifest_state(manifest_json: String, now: String) -> Result<J
     let previous: atlantis_hud_core::backup::GameManifest = serde_json::from_str(&manifest_json)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
     to_js(&atlantis_hud_core::backup::reset_manifest(&previous, &now))
+}
+
+/// The manifest after one edit, given the one the store holds now.
+///
+/// One export for every edit, because the edits are one list ([`ManifestEdit`]) - see
+/// `ah-8z4y.3.1`. The browser hands over its stored manifest and writes back what comes out,
+/// exactly as it does for a reset (`reset_game_manifest_state`).
+///
+/// This is also what makes the browser's hand-coded `delete metadata.map` unnecessary: the result
+/// goes out through serde, and `skip_serializing_if = "Option::is_none"` on `GameMetadata::map`
+/// means a cleared map comes back as an object with **no `map` key at all** rather than
+/// `map: null` - the rule the settings dialog reads, obtained in one place.
+///
+/// # Errors
+///
+/// Returns an error when either argument cannot be read, or when the result cannot be handed back
+/// to JavaScript.
+#[wasm_bindgen]
+pub fn edit_game_manifest_state(
+    manifest_json: String,
+    edit_json: String,
+) -> Result<JsValue, JsValue> {
+    let mut manifest: atlantis_hud_core::backup::GameManifest =
+        serde_json::from_str(&manifest_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let edit: ManifestEdit =
+        serde_json::from_str(&edit_json).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    atlantis_hud_core::backup::apply_manifest_edit(&mut manifest, &edit);
+    to_js(&manifest)
 }
 
 /// Folds an allied report into a stored map and returns the rows to write.

@@ -11,6 +11,7 @@ import type {
   CoreAdapter,
   EngineInfo,
   GameManifest,
+  ManifestEdit,
   MapShape,
   HexNoteRecord,
   KnownMap,
@@ -101,6 +102,7 @@ export type CoreWasmModule = {
     rulesetJson: string | null
   ): PreparedImport;
   reset_game_manifest_state(manifestJson: string, now: string): GameManifest;
+  edit_game_manifest_state(manifestJson: string, editJson: string): GameManifest;
   report_import_writes_state(
     rawReport: string,
     rulesetJson: string | null,
@@ -566,13 +568,14 @@ export function createWebCoreAdapter(
         throw new Error(`no game with id ${gameId}`);
       }
 
-      // Opening stamps the manifest, exactly as the desktop does, because that stamp is what
-      // decides which game reopens next launch. Storing it only on the desktop would make the
-      // two platforms disagree about which game the player was last in.
-      const manifest = {
-        ...(game.manifest as GameManifest),
-        lastOpenedAt: openedAt
-      };
+      // What an edit does to a manifest is the core's, and so is this one: the stamp is what
+      // decides which game reopens next launch, so the two platforms cannot be allowed to
+      // disagree about it (`ah-8z4y.3.1`).
+      const edit: ManifestEdit = { kind: "opened", value: openedAt };
+      const manifest = wasm.edit_game_manifest_state(
+        JSON.stringify(game.manifest),
+        JSON.stringify(edit)
+      );
       const opened = { ...game, manifest };
       await store.putGame(opened);
       return { ...opened, gameFilePath: opened.databasePath };
@@ -651,11 +654,13 @@ export function createWebCoreAdapter(
       }
 
       // The registry's copy of the manifest is what every later open reads, so the change lands
-      // there — the web's counterpart of the desktop rewriting the JSON manifest on disk.
-      const manifest = {
-        ...(game.manifest as GameManifest),
-        metadata: { ...(game.manifest as GameManifest).metadata, rulesetId }
-      };
+      // there. What the change itself is belongs to the core, which the desktop calls too
+      // (`ah-8z4y.3.1`).
+      const edit: ManifestEdit = { kind: "ruleset", value: rulesetId };
+      const manifest = wasm.edit_game_manifest_state(
+        JSON.stringify(game.manifest),
+        JSON.stringify(edit)
+      );
       await store.putGame({ ...game, manifest });
       return manifest;
     },
@@ -666,17 +671,17 @@ export function createWebCoreAdapter(
         throw new Error(`no game with id ${gameId}`);
       }
 
-      // The registry's copy of the manifest is what every later open reads, as it is for the
-      // ruleset. An empty string removes the key rather than storing a null: absence is what tells
-      // the settings dialog the ruleset's default is only assumed, so it has to stay absence.
-      const previous = game.manifest as GameManifest;
-      const metadata = { ...previous.metadata };
-      if (mapJson === "") {
-        delete metadata.map;
-      } else {
-        metadata.map = JSON.parse(mapJson) as MapShape;
-      }
-      const manifest: GameManifest = { ...previous, metadata };
+      // An empty string means "no map" — this adapter's own contract with its caller. That an
+      // absent map stays absent rather than becoming a null is the core's rule, kept by
+      // `skip_serializing_if` on the way out (`ah-8z4y.3.1`).
+      const edit: ManifestEdit = {
+        kind: "map",
+        value: mapJson === "" ? null : (JSON.parse(mapJson) as MapShape)
+      };
+      const manifest = wasm.edit_game_manifest_state(
+        JSON.stringify(game.manifest),
+        JSON.stringify(edit)
+      );
       await store.putGame({ ...game, manifest });
       return manifest;
     },
@@ -688,11 +693,13 @@ export function createWebCoreAdapter(
       }
 
       // The registry's copy of the manifest is what every later open reads, so the change lands
-      // there — the web's counterpart of the desktop rewriting the JSON manifest on disk.
-      const manifest = {
-        ...(game.manifest as GameManifest),
-        metadata: { ...(game.manifest as GameManifest).metadata, gameName }
-      };
+      // there. What the change itself is belongs to the core (`ah-8z4y.3.1`); trimming and
+      // validating the name stays the shell's.
+      const edit: ManifestEdit = { kind: "name", value: gameName };
+      const manifest = wasm.edit_game_manifest_state(
+        JSON.stringify(game.manifest),
+        JSON.stringify(edit)
+      );
       await store.putGame({ ...game, manifest });
       return manifest;
     },
@@ -704,11 +711,12 @@ export function createWebCoreAdapter(
       }
 
       // The registry's copy of the manifest is what every later open reads, so the change lands
-      // there — the web's counterpart of the desktop rewriting the JSON manifest on disk.
-      const manifest = {
-        ...(game.manifest as GameManifest),
-        metadata: { ...(game.manifest as GameManifest).metadata, activeFactionId: factionId }
-      };
+      // there. What the change itself is belongs to the core (`ah-8z4y.3.1`).
+      const edit: ManifestEdit = { kind: "activeFaction", value: factionId };
+      const manifest = wasm.edit_game_manifest_state(
+        JSON.stringify(game.manifest),
+        JSON.stringify(edit)
+      );
       await store.putGame({ ...game, manifest });
       return manifest;
     },

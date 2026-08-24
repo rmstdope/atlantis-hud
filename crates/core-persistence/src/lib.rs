@@ -4,8 +4,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use atlantis_hud_core::backup::{
-    encode_game_backup, GameBackupContent, GameBackupHexNote, GameBackupImportedTurn,
-    GameBackupMergedReport, GameBackupOrderDraft, GameBackupRegionSighting,
+    apply_manifest_edit, encode_game_backup, GameBackupContent, GameBackupHexNote,
+    GameBackupImportedTurn, GameBackupMergedReport, GameBackupOrderDraft, GameBackupRegionSighting,
+    ManifestEdit,
 };
 use atlantis_hud_core::movement::graph::MapGeometry;
 use atlantis_hud_core::reopen::{latest_turn, TurnRef};
@@ -302,7 +303,7 @@ pub fn open_game(
 
     let mut manifest = load_game_manifest(&game_file_path)?;
     ensure_supported_manifest_version(manifest.manifest_version)?;
-    manifest.last_opened_at = opened_at.to_string();
+    apply_manifest_edit(&mut manifest, &ManifestEdit::Opened(opened_at.to_string()));
 
     let database_path = sidecar_database_path(&game_file_path);
     let mut connection = open_database(&database_path)?;
@@ -340,7 +341,10 @@ pub fn set_game_ruleset(
 
     let mut manifest = load_game_manifest(&game_file_path)?;
     ensure_supported_manifest_version(manifest.manifest_version)?;
-    manifest.metadata.ruleset_id = ruleset_id.to_string();
+    apply_manifest_edit(
+        &mut manifest,
+        &ManifestEdit::Ruleset(ruleset_id.to_string()),
+    );
 
     // Database first, manifest second — the order `open_game` writes in, so a failure between the
     // two leaves the manifest (which the frontends read) still agreeing with itself.
@@ -377,7 +381,7 @@ pub fn set_game_map(
 
     let mut manifest = load_game_manifest(&game_file_path)?;
     ensure_supported_manifest_version(manifest.manifest_version)?;
-    manifest.metadata.map = map;
+    apply_manifest_edit(&mut manifest, &ManifestEdit::Map(map));
     save_game_manifest(&game_file_path, &manifest)?;
 
     Ok(manifest)
@@ -404,7 +408,7 @@ pub fn set_game_name(
 
     let mut manifest = load_game_manifest(&game_file_path)?;
     ensure_supported_manifest_version(manifest.manifest_version)?;
-    manifest.metadata.game_name = game_name.to_string();
+    apply_manifest_edit(&mut manifest, &ManifestEdit::Name(game_name.to_string()));
 
     // Database first, manifest second — the order `open_game` writes in, so a failure between the
     // two leaves the manifest (which the frontends read) still agreeing with itself.
@@ -439,7 +443,10 @@ pub fn set_active_faction(
 
     let mut manifest = load_game_manifest(&game_file_path)?;
     ensure_supported_manifest_version(manifest.manifest_version)?;
-    manifest.metadata.active_faction_id = Some(faction_id.to_string());
+    apply_manifest_edit(
+        &mut manifest,
+        &ManifestEdit::ActiveFaction(Some(faction_id.to_string())),
+    );
 
     // Database first, manifest second — the order `open_game` writes in, so a failure between the
     // two leaves the manifest (which the frontends read) still agreeing with itself.
