@@ -18,8 +18,6 @@ import {
   coordinateAt,
   fitTo,
   foldCoordinate,
-  ghostShift,
-  ghostSpread,
   HEX_RADIUS,
   isOffScreen,
   neighbour,
@@ -37,7 +35,13 @@ import {
 } from "./mapViewport";
 import { rectFromCorners, rectPixels, type MapRect } from "./mapMarquee";
 import { isRecentreGesture } from "./mapRecentre";
-import { mapViewDecision, travelsToSelection, type FollowedSelection } from "./mapViewState";
+import { travelsToSelection, type FollowedSelection } from "./mapViewState";
+import {
+  followViewport,
+  framingViewport,
+  ghostPlacements,
+  ghostSlots as slotsForGhosts
+} from "./mapFraming";
 import { useOverlayInsets } from "./useOverlayInsets";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { RouteOverlay } from "./routeOverlay";
@@ -258,11 +262,6 @@ export type MapCanvasHandle = {
  *   it arrives before the first fit and is the only insets any path reads. A pane changing later
  *   moves nothing until the next level or game (ah-lfo).
  */
-/** The repeats `-spread .. +spread`, in order, as the multiples the ghost copies stand at. */
-function repeatsEitherSide(spread: number): number[] {
-  return Array.from({ length: spread * 2 + 1 }, (_, index) => index - spread);
-}
-
 export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function MapCanvas(
   {
     gameId,
@@ -386,15 +385,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
    * camera has got to; the slot standing where the world itself is drawn hides, since drawing a
    * second copy over the original would double every translucent pass.
    */
-  const ghostSlots = useMemo(() => {
-    if (spans.x === null && spans.y === null) {
-      return [];
-    }
-    const scale = scaleOf(view.step);
-    const xs = spans.x === null ? [0] : repeatsEitherSide(ghostSpread(spans.x, scale, size.width));
-    const ys = spans.y === null ? [0] : repeatsEitherSide(ghostSpread(spans.y, scale, size.height));
-    return xs.flatMap((mx) => ys.map((my) => ({ mx, my })));
-  }, [spans, view.step, size]);
+  const ghostSlots = useMemo(
+    () => slotsForGhosts(spans, view.step, size),
+    [spans, view.step, size]
+  );
 
   /**
    * Moves the world's copies to the repeats either side of wherever the camera is.
@@ -408,23 +402,29 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       if (world === null || (spans.x === null && spans.y === null)) {
         return;
       }
-      const scale = scaleOf(view.step);
-      const shiftX = ghostShift(view.tx, spans.x, scale, size.width);
-      const shiftY = ghostShift(view.ty, spans.y, scale, size.height);
-      for (const ghost of world.querySelectorAll<SVGUseElement>(":scope > use")) {
-        const mx = Number(ghost.dataset.ghostX) + shiftX;
-        const my = Number(ghost.dataset.ghostY) + shiftY;
+      const ghosts = [...world.querySelectorAll<SVGUseElement>(":scope > use")];
+      const placements = ghostPlacements(
+        view,
+        spans,
+        size,
+        ghosts.map((ghost) => ({
+          mx: Number(ghost.dataset.ghostX),
+          my: Number(ghost.dataset.ghostY)
+        }))
+      );
+      ghosts.forEach((ghost, index) => {
+        const placement = placements[index];
         // The slot standing where the world itself is drawn would be a copy on top of the
         // original, doubling every translucent pass. Written as the attribute React renders rather
         // than as a style, so the markup only ever says one thing about whether a copy is drawn.
-        if (mx === 0 && my === 0) {
+        if (placement.hidden) {
           ghost.setAttribute("display", "none");
         } else {
           ghost.removeAttribute("display");
         }
-        ghost.setAttribute("x", String(mx * (spans.x ?? 0)));
-        ghost.setAttribute("y", String(my * (spans.y ?? 0)));
-      }
+        ghost.setAttribute("x", String(placement.x));
+        ghost.setAttribute("y", String(placement.y));
+      });
     },
     [spans, size]
   );
@@ -519,36 +519,16 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   // `mapView` - a restore pending from opening the game, or the level this game last framed - so
   // there is nothing here keyed on effect order to get wrong.
   useEffect(() => {
-    if (size.width === 0 || size.height === 0) {
-      return;
-    }
-    const decision = mapViewDecision({
+    const next = framingViewport({
+      size,
       view: mapView,
       gameId,
       level,
-      hasHexes: onLevel.length > 0,
-      stripKnown: insets !== null
+      coordinates: onLevel.map((hex) => hex.coordinate),
+      insets
     });
-
-    if (decision.kind === "hold") {
-      return;
-    }
-
-    if (decision.kind === "restore") {
-      commit(decision.viewport);
-      return;
-    }
-
-    const fitted = fitTo(
-      onLevel.map((hex) => hex.coordinate),
-      size.width,
-      size.height,
-      insets ?? NO_INSETS
-    );
-    // Only a view that actually reached the screen counts as framed. `fitTo` declines an empty
-    // set, and committing anyway would leave the first report to arrive unframed.
-    if (fitted) {
-      commit(fitted);
+    if (next) {
+      commit(next);
     }
   }, [gameId, level, onLevel, size, commit, insets, mapView]);
 
@@ -573,17 +553,17 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     const current = { selectedRegionId, restoredRegionId: mapView.restoredRegionId };
     const travels = travelsToSelection(current, lastFollowed.current);
     lastFollowed.current = current;
-    if (!travels) {
-      return;
-    }
 
-    const coordinate = selectedRegionId === null ? null : parseRegionId(selectedRegionId);
-    if (!coordinate || coordinate.z !== level || size.width === 0) {
-      return;
-    }
-    const currentInsets = insets ?? NO_INSETS;
-    if (isOffScreen(coordinate, viewRef.current, size.width, size.height, currentInsets)) {
-      commit(centreOn(coordinate, viewRef.current, size.width, size.height, currentInsets));
+    const next = followViewport({
+      travels,
+      selectedRegionId,
+      level,
+      size,
+      view: viewRef.current,
+      insets
+    });
+    if (next) {
+      commit(next);
     }
   }, [selectedRegionId, level, size, commit, insets, mapView.restoredRegionId]);
 
