@@ -308,6 +308,18 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     })
   },
   {
+    id: "doubt-takes-all-from-another",
+    when: ({ silver }) => silver.doubt === "takes-all-from-another",
+    say: () =>
+      "Taking all of another unit's silver cannot be counted until that unit's own month is settled.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "takes-all-from-another" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  {
     id: "doubt-contested-region-pool",
     when: ({ silver }) => silver.doubt === "contested-region-pool",
     say: () =>
@@ -575,6 +587,25 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     example: () => ({
       unit: aReportUnit(),
       silver: aUnitSilver({ taxesByFlag: true, income: 40000, atMonthEnd: 40000 }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  // Money the unit's own `TAKE` orders pull in, and the first of the three transfer notes: money
+  // in before money out, and a taking is the unit's own order so it leads (`ah-awcm`).
+  {
+    id: "includes-take",
+    when: ({ silver }) => silver.taken > 0 && silver.takenFrom.length > 0,
+    say: ({ silver }) =>
+      `Includes ${silver.taken} taken from ${namesInAList(silver.takenFrom)} in this hex.`,
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({
+        taken: 100,
+        takenFrom: ["Workers (6567)"],
+        income: 100,
+        atMonthEnd: 100
+      }),
       warned: false,
       countUpkeep: true
     })
