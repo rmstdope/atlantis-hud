@@ -33,8 +33,8 @@ use crate::orders::silver::{
     quantity_bought, quantity_sold, recipe_for, settle_unclaimed, split_pool, taxes, unit_upkeep,
     ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief,
     Lookups, MarketSide, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts,
-    RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
-    FOOD_TAGS,
+    transfer_shape, RegionWages, SaleAnswer, SilverDoubt, TransferShape, UnitFacts, UnitSilver, UpkeepClaim,
+    UpkeepSettlement, FOOD_TAGS,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -1798,9 +1798,11 @@ fn transfer(
     from: String,
     to: Option<String>,
 ) {
-    let Selector::Item(text) = what else {
-        // A whole class of items, or the unit itself. Either moves an amount that depends on
-        // classifying everything the unit holds, which is not modelled.
+    // The same reading `silver::forecast_unit` gets, so the two surfaces cannot classify one
+    // order two ways (`ah-lu0f`). `Unpriceable` is a whole class of items, or the unit itself:
+    // either moves an amount that depends on classifying everything the unit holds, which is not
+    // modelled.
+    let (shape, Selector::Item(text)) = (transfer_shape(what, amount), what) else {
         ledger.doubted.insert(actor.unit.unit_id.clone());
         return;
     };
@@ -1810,10 +1812,16 @@ fn transfer(
         return;
     };
 
-    let quantity = match amount {
-        Amount::Exact(count) => *count,
+    let quantity = match shape {
+        // Unreachable: a `Selector::Item` is never unpriceable. Doubting is what the arm above
+        // would have done, so a future variant that lands here loses nothing.
+        TransferShape::Unpriceable => {
+            ledger.doubted.insert(actor.unit.unit_id.clone());
+            return;
+        }
+        TransferShape::Exact(count) => count,
         // Giving all of something can never overdraw it, whatever the reserve.
-        Amount::All { except } => (balance_of(ledger, &from, &tag) - except).max(0),
+        TransferShape::All { except } => (balance_of(ledger, &from, &tag) - except).max(0),
     };
 
     if !from.is_empty() {
