@@ -1,7 +1,7 @@
 import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
-import { HOVER_DELAY_MS, placeTooltip, summariseUnit } from "./unitTooltip";
+import { HOVER_DELAY_MS, SILVER_NOTES, placeTooltip, summariseUnit } from "./unitTooltip";
 
 const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit =>
   aReportUnit({ unitId: "18642", name: "Seven of Eight", ...overrides });
@@ -809,4 +809,71 @@ describe("the silver section", () => {
     );
     expect(summary.silver?.note).toBeNull();
   });
+});
+
+describe("the silver notes' precedence (ah-hvt8)", () => {
+  it.each(SILVER_NOTES.map((note) => [note.id, note] as const))(
+    "%s wins for its own example",
+    (id, note) => {
+      const facts = note.example();
+      expect(SILVER_NOTES.find((candidate) => candidate.when(facts))?.id).toBe(id);
+    }
+  );
+
+  it.each(SILVER_NOTES.map((note) => [note.id, note] as const))(
+    "%s carries an example that satisfies its own condition",
+    (_id, note) => {
+      expect(note.when(note.example())).toBe(true);
+    }
+  );
+
+  /** What each note said before it was lifted out of the chain, read off `HEAD~1`. */
+  const SAID_BEFORE: Record<string, string> = {
+    "shared-silver-covers-shortfall": "Shared silver in this hex covers the shortfall.",
+    "doubt-unknown-tax-base": "The report never said what this region's tax base is.",
+    "doubt-unpriced-production": "The ruleset does not say what producing mithril costs.",
+    "doubt-unpriced-skill": "The ruleset does not say what studying this skill costs.",
+    "doubt-unknown-goods":
+      "The report does not say what widgets are, so what this sale earns cannot be said.",
+    "doubt-estimated-men": "This unit's headcount is an estimate, so its month cannot be priced.",
+    "doubt-contested-region-pool":
+      "Another of your units here draws on the same pool and its headcount is an estimate, so this unit's share cannot be worked out.",
+    "doubt-market-does-not-sell":
+      "This region is not selling horses, so what the purchase costs cannot be said.",
+    "doubt-gives-a-whole-class":
+      "This unit is giving away a whole class of goods, which cannot be counted.",
+    "doubt-contested-faction-food":
+      "There is not enough faction food here to feed every unit set to eat it.",
+    "wages-too-late":
+      "Wages arrive too late to pay for this month's orders, so this unit is 40 short when it buys.",
+    "production-capped":
+      "This unit has silver for 1 catapult, not the 3 its men could make.",
+    "food-contended":
+      "There is not enough food here to feed every unit that needs it, so this unit may yet be fed.",
+    "unclaimed-contended": "There is not enough unclaimed silver to feed every unit that needs it.",
+    "own-food-covers-upkeep": "This unit's own food covers 10 of its upkeep.",
+    "forced-own-food": "This unit has no silver for its upkeep, so 2 grain will be eaten.",
+    "faction-food-covers-upkeep": "Faction food in this hex covers 60 of this unit's upkeep.",
+    "forced-faction-food":
+      "This unit has no silver for its upkeep, so 3 faction food items in this hex will be eaten.",
+    "shared-silver-pays-upkeep": "A faction-mate's silver in this hex pays this unit's upkeep.",
+    "unclaimed-covers-upkeep": "The faction's unclaimed silver covers 10 of this unit's upkeep.",
+    "works-by-default": "This unit has no month-long order, so it will work and earn wages.",
+    "taxes-by-flag": "This unit is set to tax every turn, so it taxes without an order.",
+    "includes-gift": "Includes 25 given by Quartermaster (18500) in this hex.",
+    "given-to-nobody": "Includes 10 given away to nobody.",
+    withdrawing: "This unit's withdrawal is paid from the faction's unclaimed silver.",
+    "nothing-moves-silver": "Nothing this unit is ordered to do moves silver."
+  };
+
+  it("has an expected sentence recorded for every note, and no more", () => {
+    expect(Object.keys(SAID_BEFORE).sort()).toEqual(SILVER_NOTES.map((n) => n.id).sort());
+  });
+
+  it.each(SILVER_NOTES.map((note) => [note.id, note] as const))(
+    "%s says what it said before",
+    (id, note) => {
+      expect(note.say(note.example())).toBe(SAID_BEFORE[id]);
+    }
+  );
 });
