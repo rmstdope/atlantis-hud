@@ -1811,30 +1811,52 @@ fn is_avoiding(flags: &[String]) -> bool {
         .any(|flag| flag.eq_ignore_ascii_case("avoiding"))
 }
 
-/// How many of one unit's men are combat ready, in the sense `PILLAGE` needs.
+/// Why a unit's men are or are not combat ready, alongside how many are.
+///
+/// [`combat_ready`] answers the number and nothing else, which is all `PILLAGE`'s threshold needs -
+/// but a player told `0` about a unit visibly holding nineteen men needs the reason, and the two
+/// reasons want opposite actions: clearing `avoiding` is one order, arming the unit is a different
+/// problem (`ah-cw75`).
+///
+/// `armed` deliberately ignores the `avoiding` flag: it is `min(men, weapons the unit can wield)`
+/// as if the unit were willing to fight, which is what makes "avoiding **and** unarmed"
+/// distinguishable from "avoiding but otherwise ready". `ready` is the number `PILLAGE` uses and is
+/// unchanged: zero when avoiding, `armed` otherwise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Readiness {
+    /// The unit's headcount, for the sentence.
+    pub men: i64,
+    pub avoiding: bool,
+    /// `min(men, wieldable weapons)`, computed as though the unit were not avoiding.
+    pub armed: i64,
+    /// What `PILLAGE` counts: `0` when avoiding, `armed` otherwise.
+    pub ready: i64,
+}
+
+/// How many of one unit's men are combat ready, and why.
 ///
 /// The rules page never defines the phrase - it uses it three times and explains it nowhere - so
 /// this is the navigator's reading, settled 2026-08-23 (`ah-1ad6.2`): **a man is combat ready when
 /// he has a weapon he can wield**, and a unit set to avoid combat has none who are.
 ///
-/// - `avoiding` in `flags` - zero, whatever the unit holds.
+/// - `avoiding` in `flags` - zero ready, whatever the unit holds. The flag does **not** short the
+///   computation: `armed` is worked out anyway, because the two causes are separate things to say.
 /// - otherwise `min(men, weapons the unit can wield)`, where a weapon needing a skill counts only
 ///   for a unit that has that skill at level 1 or better.
 ///
 /// `behind` is not consulted: a unit in the back rank still fights.
 ///
 /// `None` when the headcount is estimated - a guessed headcount cannot be compared against a
-/// threshold - and when there is no ruleset, since nothing says which items are weapons.
+/// threshold - and when there is no ruleset, since nothing says which items are weapons. The order
+/// of those two checks is deliberate and matches what `combat_ready` has always done.
 #[must_use]
-pub fn combat_ready(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<i64> {
+pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Readiness> {
     if facts.men_estimated {
         return None;
     }
-    if is_avoiding(facts.flags) {
-        return Some(0);
-    }
+    let avoiding = is_avoiding(facts.flags);
     let ruleset = ruleset?;
-    let mut armed = 0i64;
+    let mut weapons = 0i64;
     for held in facts.items {
         let Some(entry) = ruleset.items.get(&held.tag.to_uppercase()) else {
             continue;
@@ -1848,10 +1870,68 @@ pub fn combat_ready(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<
             Some(skill) => skill_level(facts.skills, skill) >= 1,
         };
         if wieldable {
-            armed = armed.saturating_add(held.amount.max(0));
+            weapons = weapons.saturating_add(held.amount.max(0));
         }
     }
-    Some(facts.men.max(0).min(armed))
+    let men = facts.men.max(0);
+    let armed = men.min(weapons);
+    Some(Readiness {
+        men,
+        avoiding,
+        armed,
+        ready: if avoiding { 0 } else { armed },
+    })
+}
+
+/// How many of one unit's men are combat ready, in the sense `PILLAGE` needs.
+///
+/// The number alone, which is all the threshold needs; [`readiness`] is the same answer with the
+/// reason attached, and this is a one-line delegate to it so there is only ever one count.
+#[must_use]
+pub fn combat_ready(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<i64> {
+    readiness(facts, ruleset).map(|readiness| readiness.ready)
+}
+
+/// Why this unit's men do not count, as the tail of the pillage warning, or `""` when they do.
+///
+/// Empty for a unit that is genuinely armed and not avoiding: the region is simply short, nothing
+/// about this unit is wrong, and an explanation would be noise (`ah-cw75`). Empty too for a unit
+/// with no men at all - "its 0 men hold no weapons" explains nothing, and a unit with no men has a
+/// different problem than this warning is about.
+#[must_use]
+pub fn because_clause(readiness: &Readiness) -> String {
+    let men = readiness.men;
+    if men <= 0 {
+        return String::new();
+    }
+    let one = men == 1;
+    match (readiness.avoiding, readiness.armed == 0) {
+        (false, false) => String::new(),
+        (true, true) => {
+            if one {
+                " — this unit is avoiding combat, and its 1 man holds no weapons he can wield"
+                    .to_string()
+            } else {
+                format!(
+                    " — this unit is avoiding combat, and its {men} men hold no weapons they can wield"
+                )
+            }
+        }
+        (true, false) => {
+            if one {
+                " — this unit is avoiding combat, so its 1 man does not count".to_string()
+            } else {
+                format!(" — this unit is avoiding combat, so none of its {men} men count")
+            }
+        }
+        (false, true) => {
+            if one {
+                " — this unit's 1 man holds no weapons he can wield".to_string()
+            } else {
+                format!(" — this unit's {men} men hold no weapons they can wield")
+            }
+        }
+    }
 }
 
 /// What a unit's taxing earns this month: `men * TAX_PER_MAN`, capped.
@@ -5107,6 +5187,134 @@ mod combat_ready_tests {
         assert_eq!(
             combat_ready(&unit(50, &items, &[], &[], &receipts), None),
             None
+        );
+    }
+
+    fn read(men: i64, items: &[ItemAmount], flags: &[&str], skills: &[Skill]) -> Option<Readiness> {
+        let receipts = Receipts::default();
+        let flags: Vec<String> = flags.iter().map(|flag| (*flag).to_string()).collect();
+        readiness(
+            &unit(men, items, &flags, skills, &receipts),
+            Some(&ruleset()),
+        )
+    }
+
+    /// The case that does not exist in `combat_ready`'s answer: avoiding *and* armed, which is
+    /// what makes "clear the flag" a useful thing to say.
+    #[test]
+    fn an_avoiding_unit_with_weapons_is_armed_but_not_ready() {
+        let read = read(19, &[item("SWOR", 19)], &["avoiding"], &[]).expect("countable");
+        assert_eq!(read.men, 19);
+        assert!(read.avoiding);
+        assert_eq!(read.armed, 19);
+        assert_eq!(read.ready, 0);
+    }
+
+    #[test]
+    fn an_avoiding_unit_with_no_weapons_is_neither() {
+        let read = read(19, &[], &["avoiding"], &[]).expect("countable");
+        assert!(read.avoiding);
+        assert_eq!(read.armed, 0);
+        assert_eq!(read.ready, 0);
+    }
+
+    #[test]
+    fn an_unarmed_unit_that_is_not_avoiding_is_not_ready() {
+        let read = read(19, &[], &[], &[]).expect("countable");
+        assert!(!read.avoiding);
+        assert_eq!(read.armed, 0);
+        assert_eq!(read.ready, 0);
+    }
+
+    #[test]
+    fn an_armed_unit_that_is_not_avoiding_is_ready() {
+        let read = read(19, &[item("SWOR", 10)], &[], &[]).expect("countable");
+        assert!(!read.avoiding);
+        assert_eq!(read.armed, 10);
+        assert_eq!(read.ready, 10);
+    }
+
+    /// `men_estimated` is checked before the ruleset, as `combat_ready` always has.
+    #[test]
+    fn an_estimated_headcount_answers_nothing() {
+        let receipts = Receipts::default();
+        let items = [item("SWOR", 50)];
+        let facts = UnitFacts {
+            men_estimated: true,
+            ..unit(50, &items, &[], &[], &receipts)
+        };
+        assert_eq!(readiness(&facts, Some(&ruleset())), None);
+        assert_eq!(readiness(&facts, None), None);
+    }
+
+    #[test]
+    fn no_ruleset_answers_nothing() {
+        let receipts = Receipts::default();
+        let items = [item("SWOR", 50)];
+        assert_eq!(
+            readiness(&unit(50, &items, &[], &[], &receipts), None),
+            None
+        );
+    }
+
+    fn clause(men: i64, avoiding: bool, armed: i64) -> String {
+        because_clause(&Readiness {
+            men,
+            avoiding,
+            armed,
+            ready: if avoiding { 0 } else { armed },
+        })
+    }
+
+    #[test]
+    fn an_avoiding_unarmed_unit_is_told_both_reasons() {
+        assert_eq!(
+            clause(19, true, 0),
+            " — this unit is avoiding combat, and its 19 men hold no weapons they can wield"
+        );
+    }
+
+    #[test]
+    fn an_avoiding_armed_unit_is_told_about_the_flag() {
+        assert_eq!(
+            clause(19, true, 19),
+            " — this unit is avoiding combat, so none of its 19 men count"
+        );
+    }
+
+    #[test]
+    fn an_unarmed_unit_is_told_about_its_weapons() {
+        assert_eq!(
+            clause(19, false, 0),
+            " — this unit's 19 men hold no weapons they can wield"
+        );
+    }
+
+    #[test]
+    fn an_armed_unit_that_is_not_avoiding_explains_nothing() {
+        assert_eq!(clause(19, false, 19), "");
+    }
+
+    #[test]
+    fn a_unit_with_no_men_explains_nothing() {
+        assert_eq!(clause(0, true, 0), "");
+        assert_eq!(clause(0, false, 0), "");
+        assert_eq!(clause(0, true, 5), "");
+    }
+
+    #[test]
+    fn a_single_man_is_described_in_the_singular() {
+        assert_eq!(
+            clause(1, true, 0),
+            " — this unit is avoiding combat, and its 1 man holds no weapons he can wield"
+        );
+        assert_eq!(
+            clause(1, true, 1),
+            " — this unit is avoiding combat, so its 1 man does not count"
+        );
+        assert_eq!(
+            clause(1, false, 0),
+            " — this unit's 1 man holds no weapons he can wield"
         );
     }
 }
