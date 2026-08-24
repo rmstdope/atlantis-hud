@@ -319,8 +319,43 @@ const STUDY_COST = /This skill costs (\d+) silver per month of study/i;
  */
 const STUDY_REQUIREMENT = /This skill requires (.+?) to begin to study\./i;
 
-/** The tag and level of one requirement: `force [FORC] 1`. */
-const REQUIREMENT_CLAUSE = /\[([A-Z0-9]{2,6})\]\s+(\d+)/g;
+/**
+ * Reading the data page's `[TAG]` clauses.
+ *
+ * Every one of these is matched globally, straight out of the whole clause, and **never looks at a
+ * separator**. The `[TAG]` pairs delimit themselves, so `a and b`, `a, b and c` and whatever the
+ * page adopts next all read alike. Assuming a separator has shipped a wrong catalogue twice -
+ * `ah-6qp` lost ENGR's energy shield by splitting on ` and `, and `ah-bet5` fixed the same
+ * assumption in the casting costs three days later - and a third copy of the same loop was written
+ * by hand after both (`ah-19l2.1`). Hence one home (`ah-3rxk`).
+ */
+
+/** One `N name [TAG]` pair: the count, defaulting to 1 where the page states a bare name. */
+export type TaggedAmount = { tag: string; amount: number };
+
+const TAGGED_AMOUNT = /(?:(\d+) )?[a-z][a-z ]*\[([A-Z0-9]{2,6})\]/gi;
+
+/** Every `N name [TAG]` in a clause, in the order the page wrote them. */
+export function taggedAmounts(clause: string): TaggedAmount[] {
+  return [...clause.matchAll(TAGGED_AMOUNT)].map(([, amount, tag]) => ({
+    tag,
+    amount: amount === undefined ? 1 : Number.parseInt(amount, 10)
+  }));
+}
+
+/** One `name [TAG] N` pair, where `N` is a skill level rather than a count. */
+export type TaggedLevel = { tag: string; level: number };
+
+const TAGGED_LEVEL = /\[([A-Z0-9]{2,6})\]\s+(\d+)/g;
+
+/** Every `name [TAG] N` in a clause. A clause stating no level is passed over, not guessed at. */
+export function taggedLevels(clause: string): TaggedLevel[] {
+  return [...clause.matchAll(TAGGED_LEVEL)].map(([, tag, level]) => ({
+    tag,
+    level: Number.parseInt(level, 10)
+  }));
+}
+
 
 /**
  * Reads the prerequisites out of a skill's own paragraph.
@@ -334,10 +369,7 @@ function readRequirements(paragraph: string): SkillRequirement[] {
   if (!stated) {
     return [];
   }
-  return [...stated[1].matchAll(REQUIREMENT_CLAUSE)].map((part) => ({
-    tag: part[1],
-    level: Number.parseInt(part[2], 10)
-  }));
+  return taggedLevels(stated[1]);
 }
 
 /**
@@ -366,15 +398,6 @@ const MAGIC_WORDS = /\b(?:mage|magic|spell|cast(?!le)|summon|enchant|Foundation)
  * this spell ...", and no input name in the fixture carries a dot of its own.
  */
 const CAST_COST = /via magic at a cost of ([^.]+)\./i;
-/**
- * One input inside the list `CAST_COST` captures: an optional number, a name, the tag.
- *
- * Global, and read straight out of the clause rather than out of a piece split off it: the pairs
- * are self-delimiting, so `a and b`, `a, b and c` and whatever the page adopts next all read the
- * same, because the separator is never looked at. `readRequirements` was rewritten this way by
- * `ah-6qp` after the same assumption - a fixed separator - shipped a wrong catalogue.
- */
-const CAST_INPUT = /(?:(\d+) )?[a-z][a-z ]*\[([A-Z0-9]{2,6})\]/gi;
 /** "the attempt costs 1000 silver." (Construct Gate) */
 const ATTEMPT_COST = /the attempt costs (\d+) silver/i;
 /** "2 stone [STON] times the skill level into rootstone [ROOT]" - the source and what it becomes. */
@@ -384,7 +407,7 @@ const TRANSMUTE = /\d+ [a-z ]+ \[([A-Z0-9]{2,6})\] times the skill level into [a
  * Reads what a single level's paragraph says CASTing the skill consumes, or `null` when it says
  * nothing - true of most spells (summons, lores, combat effects state no cost at all).
  *
- * An input inside the `CAST_COST` list that does not match `CAST_INPUT` throws rather than being
+ * An input inside the `CAST_COST` list that `taggedAmounts` cannot read throws rather than being
  * silently dropped: the page has changed shape, and a cost quietly missing is exactly the failure
  * this catalogue exists to prevent - see `RulesetScrapeError`.
  */
@@ -393,7 +416,7 @@ function readCastCost(tag: string, paragraph: string): CastCost | null {
 
   const costMatch = paragraph.match(CAST_COST);
   if (costMatch) {
-    const stated = [...costMatch[1].matchAll(CAST_INPUT)];
+    const stated = taggedAmounts(costMatch[1]);
     // A cost sentence naming no input at all is the page having changed shape, and must stay loud:
     // a scraper that reads nothing and says nothing is a worse version of the bug this prevents.
     if (stated.length === 0) {
@@ -401,9 +424,7 @@ function readCastCost(tag: string, paragraph: string): CastCost | null {
         `could not read the casting cost of skill ${tag}: "${costMatch[1].trim()}" in "${costMatch[0]}"`
       );
     }
-    for (const [, amount, inputTag] of stated) {
-      costs.push({ tag: inputTag, amount: amount === undefined ? 1 : Number.parseInt(amount, 10) });
-    }
+    costs.push(...stated);
   }
 
   const attemptCost = readNumber(paragraph, ATTEMPT_COST);
@@ -436,14 +457,6 @@ const PRODUCTION = /may PRODUCE ([^.]*)\./i;
 const PRODUCTION_SEGMENT = /(.*?)at a rate of (\d+) per (?:(\d+) )?man-months?/gis;
 /** The tag in `swords [SWOR]`, `a number of meals [MEAL]`. */
 const PRODUCED_TAG = /\[([A-Z0-9]{2,6})\]/;
-/**
- * One material inside the ` from ` tail: an optional number, a name, the tag.
- *
- * Global, and read straight out of the tail rather than out of pieces split off it - the same
- * reasoning as `CAST_INPUT`: the pairs are self-delimiting, so `a and b`, `a, b and c` and
- * whatever separator the page adopts next all read alike, because the separator is never looked at.
- */
-const PRODUCTION_INPUT = /(?:(\d+) )?[a-z][a-z ]*\[([A-Z0-9]{2,6})\]/gi;
 /** `from any of grain [GRAI], livestock [LIVE] and fish [FISH]` - one of the list, not all of it. */
 const ANY_OF = /^any of /i;
 /** `a number of meals [MEAL] equal to skill level divided by 2, rounded up` - a formula, not a count. */
@@ -455,13 +468,14 @@ const FORMULA_OUTPUT = /\bequal to\b/i;
  *
  * The whole difficulty is telling a product from its materials: `swords [SWOR] from iron [IRON]`
  * names two items and the skill makes only the first. So the clause is cut into one segment per
- * production - the rate phrase is what ends each - and the segment is split at its first ` from `:
+ * production - the rate phrase is what ends each - and the segment is split at its last ` from `:
  * the head names the product, the tail lists what it consumes. A segment carrying no tag is
  * skipped; a clause that yields no production at all is the page having changed shape, and throws.
  *
- * Cooking says ` from ` twice - `... rounded up from any of grain [GRAI]` - and splitting on the
- * first occurrence happens to give the right answer on both sides. That is luck rather than
- * design, and `data.test.ts` pins it by name.
+ * The cut is the segment's LAST ` from `, because the material list is what the final one
+ * introduces - a sentence that says ` from ` twice, as cooking's shape does, keeps its formula
+ * phrase in the head where `FORMULA_OUTPUT` can see it (`ah-3rxk`, which replaced a
+ * first-occurrence split that gave the right answer by luck).
  */
 function readProduction(tag: string, paragraph: string, level: number): Production[] {
   const clause = paragraph.match(PRODUCTION);
@@ -472,7 +486,10 @@ function readProduction(tag: string, paragraph: string, level: number): Producti
   const made: Production[] = [];
   for (const segment of clause[1].matchAll(PRODUCTION_SEGMENT)) {
     const [, stated, outputs, manMonths] = segment;
-    const [head, ...rest] = stated.split(" from ");
+    // The LAST " from ", not the first: the materials are what the final one introduces, in both
+    // the one-`from` and the two-`from` shapes (`ah-3rxk`).
+    const cut = stated.lastIndexOf(" from ");
+    const head = cut === -1 ? stated : stated.slice(0, cut);
     const found = head.match(PRODUCED_TAG);
     if (!found) {
       continue;
@@ -487,12 +504,9 @@ function readProduction(tag: string, paragraph: string, level: number): Producti
       );
     }
 
-    const tail = rest.join(" from ").trim();
+    const tail = cut === -1 ? "" : stated.slice(cut + " from ".length).trim();
     const inputsAreAlternatives = ANY_OF.test(tail);
-    const inputs: ProductionInput[] = [];
-    for (const [, amount, inputTag] of tail.replace(ANY_OF, "").matchAll(PRODUCTION_INPUT)) {
-      inputs.push({ tag: inputTag, amount: amount === undefined ? 1 : Number.parseInt(amount, 10) });
-    }
+    const inputs: ProductionInput[] = taggedAmounts(tail.replace(ANY_OF, ""));
 
     made.push({
       tag: found[1],

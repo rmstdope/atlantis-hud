@@ -5,7 +5,9 @@ import {
   parseBuildingReference,
   parseItemReference,
   parseSkillReference,
-  RulesetScrapeError
+  RulesetScrapeError,
+  taggedAmounts,
+  taggedLevels
 } from "./data";
 import { preformattedText } from "./html";
 
@@ -838,10 +840,35 @@ describe("parseSkillReference", () => {
     const skills = parseSkillReference(DATA_HTML);
 
     // "a number of meals [MEAL] equal to skill level divided by 2, rounded up from any of grain
-    //  [GRAI], ..." - splitting on the FIRST " from " happens to leave [MEAL] in the head and the
-    // material list in the tail. That is luck, not design: this test is what keeps a later tidy-up
-    // of the split from breaking it unnoticed.
+    //  [GRAI], ..." - the materials are what the LAST " from " introduces, which is the rule
+    // (`ah-3rxk`) rather than the luck the old first-occurrence split relied on.
     expect(skills.COOK.produces.map((p) => p.tag)).toEqual(["MEAL"]);
+  });
+
+  it("takes the materials from the last from, not the first", () => {
+    // Two " from "s with the formula phrase between them: splitting on the first leaves "equal to"
+    // in the tail, which reads the formula as a count of one and the material list as an exact
+    // requirement rather than alternatives.
+    const html =
+      "<html><body><pre>cookery [COOX] 1: A unit with this skill may PRODUCE a number of " +
+      "meals [MEAL] from cooking equal to skill level from any of grain [GRAI] at a rate of 1 " +
+      "per man-month. This skill costs 10 silver per month of study.</pre></body></html>";
+
+    const produced = parseSkillReference(html).COOX.produces;
+
+    expect(produced).toMatchObject([
+      { tag: "MEAL", outputs: null, inputsAreAlternatives: true, inputs: [{ tag: "GRAI", amount: 1 }] }
+    ]);
+  });
+
+  it("leaves a production stating one from unchanged", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "swords [SWOR] from iron [IRON] at a rate of 1 per man-month" - the common shape.
+    expect(skills.WEAP.produces.find((p) => p.tag === "SWOR")).toMatchObject({
+      outputs: 1,
+      inputs: [{ tag: "IRON", amount: 1 }]
+    });
   });
 
   it("fails loudly on a production it cannot read", () => {
@@ -1316,5 +1343,49 @@ describe("parseBuildingReference build requirements", () => {
       ([, entry]) => (entry.buildSkill === undefined) !== (entry.buildLevel === undefined)
     );
     expect(halfFilled).toEqual([]);
+  });
+});
+
+/**
+ * The data page's `[TAG]` clauses, read in one place. The principle these pin - that the separator
+ * is never looked at - had been written into three comments and asserted nowhere, after the same
+ * assumption shipped a wrong catalogue twice (`ah-6qp`, `ah-bet5`).
+ */
+describe("taggedAmounts", () => {
+  it("reads a clause with one pair", () => {
+    expect(taggedAmounts("2 stone [STON]")).toEqual([{ tag: "STON", amount: 2 }]);
+  });
+
+  it("counts a bare name as one", () => {
+    expect(taggedAmounts("iron [IRON]")).toEqual([{ tag: "IRON", amount: 1 }]);
+  });
+
+  it("never looks at the separator", () => {
+    const expected = [
+      { tag: "STON", amount: 2 },
+      { tag: "IRON", amount: 1 },
+      { tag: "WOOD", amount: 3 }
+    ];
+    expect(taggedAmounts("2 stone [STON] and iron [IRON] and 3 wood [WOOD]")).toEqual(expected);
+    expect(taggedAmounts("2 stone [STON], iron [IRON] and 3 wood [WOOD]")).toEqual(expected);
+    expect(taggedAmounts("2 stone [STON]; iron [IRON]; 3 wood [WOOD]")).toEqual(expected);
+  });
+
+  it("reads nothing from a clause naming no pair", () => {
+    // Not a throw: what an empty clause means is the caller's policy, and the two callers differ.
+    expect(taggedAmounts("skill level divided by 2, rounded up")).toEqual([]);
+  });
+});
+
+describe("taggedLevels", () => {
+  it("reads each requirement's level", () => {
+    expect(taggedLevels("force [FORC] 1 and pattern [PATT] 2")).toEqual([
+      { tag: "FORC", level: 1 },
+      { tag: "PATT", level: 2 }
+    ]);
+  });
+
+  it("passes over a clause stating no level", () => {
+    expect(taggedLevels("force [FORC]")).toEqual([]);
   });
 });
