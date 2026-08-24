@@ -53,7 +53,8 @@ export {
   aReportRegion,
   aReportUnit,
   aTradeRoute,
-  aTradedGood
+  aTradedGood,
+  aUnitSilver
 } from "./builders";
 
 import type { Coordinate } from "./generated/Coordinate";
