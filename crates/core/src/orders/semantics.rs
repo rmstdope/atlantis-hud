@@ -28,8 +28,9 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
     combat_ready, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
-    late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants, price_claim,
-    price_pillage, price_purchase, price_sale, price_tax, quantity_bought, quantity_sold,
+    late_income, parse_wage_centis, pillage_threshold, pool_wants, price_claim, price_pillage,
+    price_production, price_purchase, price_sale, price_study, price_tax, quantity_bought,
+    quantity_sold,
     recipe_for, settle_unclaimed, split_pool, taxes, unit_upkeep, ContendedPool, FactionFoodPass,
     FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, PoolOverrun,
     PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
@@ -1897,9 +1898,8 @@ fn produce(
     ruleset: Option<&Ruleset>,
 ) {
     let who = &actor.unit.unit_id;
-    let plan = resolve_item(item, hex, actor, ruleset)
-        .and_then(|tag| recipe_for(ruleset, &tag))
-        .and_then(|recipe| plan_production(recipe, actor.unit.men, &actor.unit.items));
+    let recipe = resolve_item(item, hex, actor, ruleset).and_then(|tag| recipe_for(ruleset, &tag));
+    let (priced, plan) = price_production(recipe, actor.unit.men, &actor.unit.items);
     let Some(plan) = plan else {
         // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
         // same posture `buy` takes for goods the market does not carry.
@@ -1907,7 +1907,7 @@ fn produce(
         return;
     };
 
-    charge(ledger, who, SILVER, plan.silver, placed);
+    charge(ledger, who, SILVER, priced.spends, placed);
     for material in &plan.materials {
         charge(ledger, who, &material.tag, material.amount, placed);
     }
@@ -1968,18 +1968,12 @@ fn study(
         .and_then(|ruleset| ruleset.find_skill(skill))
         .and_then(|skill| skill.cost);
 
-    match cost {
-        Some(cost) => charge(
-            ledger,
-            who,
-            SILVER,
-            cost.saturating_mul(actor.unit.men),
-            placed,
-        ),
-        None => {
-            ledger.doubted.insert(who.clone());
-        }
+    let priced = price_study(cost, actor.unit.men);
+    if priced.doubt.is_some() {
+        ledger.doubted.insert(who.clone());
+        return;
     }
+    charge(ledger, who, SILVER, priced.spends, placed);
 }
 
 /// Charges what the ruleset says a cast consumes. A spell the ruleset does not know, or knows no
