@@ -27,11 +27,11 @@ use crate::movement::mode::{
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
-    combat_ready, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
-    late_income, parse_wage_centis, pillage_threshold, pool_wants, price_cast, price_claim,
-    price_pillage, price_production, price_purchase, price_sale, price_study, price_tax,
-    quantity_bought, quantity_sold, recipe_for, settle_unclaimed, split_pool, taxes,
-    transfer_shape, unit_upkeep, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim,
+    because_clause, combat_ready, feed_after_silver, feed_from_faction_food, food_claim,
+    forecast_unit, late_income, parse_wage_centis, pillage_threshold, pool_wants, price_cast,
+    price_claim, price_pillage, price_production, price_purchase, price_sale, price_study,
+    price_tax, quantity_bought, quantity_sold, readiness, recipe_for, settle_unclaimed, split_pool,
+    taxes, transfer_shape, unit_upkeep, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim,
     LateFoodClaim, LateFoodRelief, Lookups, MarketSide, PoolOverrun, PoolShare, PoolShares,
     PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, TransferShape,
     UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
@@ -3789,7 +3789,11 @@ fn check_pillage_men(
         return;
     }
 
-    for ordered in &hex.units {
+    // The same facts `combat_ready_in` counted from, so the reason and the number are one reading
+    // of one unit rather than two descriptions of it (`ah-cw75`).
+    let nothing = Receipts::default();
+    let facts = hex_facts(hex, &nothing);
+    for (ordered, facts) in hex.units.iter().zip(&facts) {
         // One warning per unit, on the first PILLAGE in the block, as the BUILD checks do.
         let Some(placed) = ordered
             .intents
@@ -3798,11 +3802,15 @@ fn check_pillage_men(
         else {
             continue;
         };
+        // Why *this* unit's men do not count - the unit whose order is marked, and the one the
+        // player can act on. Empty where it is armed and willing: the region is simply short.
+        let because =
+            readiness(facts, ruleset).map_or_else(String::new, |read| because_clause(&read));
         findings.push(ordered.finding(
             hex,
             codes::PILLAGE_WITHOUT_MEN,
             format!(
-                "cannot pillage here: needs {needed} combat ready men, this faction has {ready}"
+                "cannot pillage here: needs {needed} combat ready men, this region has {ready}{because}"
             ),
             Some(placed),
         ));
@@ -6986,7 +6994,126 @@ mod tests {
         assert_eq!(told[0].line, Some(2), "on the PILLAGE line");
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this faction has 0"
+            "cannot pillage here: needs 90 combat ready men, this region has 0 — this unit's 1 man holds no weapons he can wield"
+        );
+    }
+
+    /// The count is a sum over own units **in this hex**, so `this faction` could send a player
+    /// looking at units in another region entirely (`ah-cw75`).
+    #[test]
+    fn the_pillage_warning_names_the_region_not_the_faction() {
+        let pillager = with_item(
+            with_men(with_silver(unit("683"), 0), 12),
+            12,
+            "sword",
+            "SWOR",
+        );
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![pillager])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            told[0].message,
+            "cannot pillage here: needs 90 combat ready men, this region has 12"
+        );
+    }
+
+    /// The reported case (`ah-cw75`): both causes are true, and clearing the flag alone would not
+    /// have helped, so the warning says both.
+    #[test]
+    fn an_avoiding_unarmed_unit_is_told_both_reasons() {
+        let pillager = with_flag(with_men(with_silver(unit("683"), 0), 19), "avoiding");
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![pillager])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            told[0].message,
+            "cannot pillage here: needs 90 combat ready men, this region has 0 — this unit is avoiding combat, and its 19 men hold no weapons they can wield"
+        );
+    }
+
+    #[test]
+    fn an_avoiding_armed_unit_is_told_about_the_flag() {
+        let pillager = with_flag(
+            with_item(
+                with_men(with_silver(unit("683"), 0), 19),
+                19,
+                "sword",
+                "SWOR",
+            ),
+            "avoiding",
+        );
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![pillager])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            told[0].message,
+            "cannot pillage here: needs 90 combat ready men, this region has 0 — this unit is avoiding combat, so none of its 19 men count"
+        );
+    }
+
+    /// A unit that is genuinely armed and not avoiding gets the threshold and nothing else: the
+    /// region is simply short, and there is nothing wrong with this unit to explain.
+    #[test]
+    fn a_unit_whose_men_count_is_told_only_the_threshold() {
+        let pillager = with_item(with_men(with_silver(unit("683"), 0), 5), 5, "sword", "SWOR");
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![pillager])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            told[0].message,
+            "cannot pillage here: needs 90 combat ready men, this region has 5"
         );
     }
 
@@ -8342,6 +8469,11 @@ mod tests {
             name: "silver".to_string(),
             tag: SILVER.to_string(),
         });
+        unit
+    }
+
+    fn with_flag(mut unit: ReportUnit, flag: &str) -> ReportUnit {
+        unit.flags.push(flag.to_string());
         unit
     }
 
