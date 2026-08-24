@@ -1409,7 +1409,7 @@ mod test_support {
     /// The shell's clock, which is where an import's timestamp comes from.
     pub const IMPORTED_AT: &str = "2026-08-09T10:00:00Z";
 
-    pub fn manifest_dto(game_id: &str, game_name: &str) -> GameManifest {
+    pub fn a_manifest(game_id: &str, game_name: &str) -> GameManifest {
         GameManifest {
             manifest_version: 1,
             metadata: GameMetadata {
@@ -1428,7 +1428,7 @@ mod test_support {
 
 #[cfg(test)]
 mod ruleset_command_tests {
-    use super::test_support::manifest_dto;
+    use super::test_support::a_manifest;
     use super::*;
     use tempfile::tempdir;
 
@@ -1438,7 +1438,7 @@ mod ruleset_command_tests {
     fn changing_a_games_ruleset_returns_the_updated_manifest() {
         let dir = tempdir().expect("tempdir");
         let root = dir.path().to_str().expect("a path");
-        command_create_game(root, manifest_dto("faction-95", "Borg TNG")).expect("created");
+        command_create_game(root, a_manifest("faction-95", "Borg TNG")).expect("created");
 
         let updated = command_set_game_ruleset(root, "faction-95", "magicdeep")
             .expect("the ruleset change should succeed");
@@ -1463,7 +1463,7 @@ mod ruleset_command_tests {
 
 #[cfg(test)]
 mod rename_command_tests {
-    use super::test_support::manifest_dto;
+    use super::test_support::a_manifest;
     use super::*;
     use tempfile::tempdir;
 
@@ -1473,7 +1473,7 @@ mod rename_command_tests {
     fn renaming_a_game_returns_the_updated_manifest() {
         let dir = tempdir().expect("tempdir");
         let root = dir.path().to_str().expect("a path");
-        command_create_game(root, manifest_dto("faction-95", "Borg TNG")).expect("created");
+        command_create_game(root, a_manifest("faction-95", "Borg TNG")).expect("created");
 
         let updated = command_set_game_name(root, "faction-95", "Binding of the North")
             .expect("the rename should succeed");
@@ -1488,7 +1488,7 @@ mod rename_command_tests {
     fn setting_the_active_faction_returns_the_updated_manifest() {
         let dir = tempdir().expect("tempdir");
         let root = dir.path().to_str().expect("a path");
-        command_create_game(root, manifest_dto("faction-95", "Borg TNG")).expect("created");
+        command_create_game(root, a_manifest("faction-95", "Borg TNG")).expect("created");
 
         let updated = command_set_active_faction(root, "faction-95", "95")
             .expect("recording the active faction should succeed");
@@ -1514,7 +1514,7 @@ mod rename_command_tests {
     fn resetting_a_game_returns_the_fresh_game() {
         let dir = tempdir().expect("tempdir");
         let root = dir.path().to_str().expect("a path");
-        command_create_game(root, manifest_dto("faction-95", "Borg TNG")).expect("created");
+        command_create_game(root, a_manifest("faction-95", "Borg TNG")).expect("created");
         command_set_active_faction(root, "faction-95", "95").expect("faction recorded");
 
         let reset = command_reset_game(root, "faction-95", "2026-08-17T09:00:00Z")
@@ -1535,7 +1535,7 @@ mod rename_command_tests {
 
 #[cfg(test)]
 mod sightings_tests {
-    use super::test_support::{manifest_dto, IMPORTED_AT};
+    use super::test_support::{a_manifest, IMPORTED_AT};
     use super::*;
     use tempfile::tempdir;
 
@@ -1547,7 +1547,7 @@ mod sightings_tests {
     fn game(directory: &std::path::Path) -> OpenedGameDto {
         command_create_game(
             directory.to_str().expect("a path"),
-            manifest_dto("faction-95", "Borg TNG"),
+            a_manifest("faction-95", "Borg TNG"),
         )
         .expect("the game is created")
     }
@@ -1783,7 +1783,7 @@ fn units_still_estimated(remembered: &[RememberedRegionDto]) -> Vec<String> {
 
 #[cfg(test)]
 mod merge_tests {
-    use super::test_support::{manifest_dto, IMPORTED_AT};
+    use super::test_support::{a_manifest, IMPORTED_AT};
     use super::*;
     use tempfile::tempdir;
 
@@ -1797,7 +1797,7 @@ mod merge_tests {
     fn game_with_turn_71(directory: &std::path::Path) -> OpenedGameDto {
         let created = command_create_game(
             directory.to_str().expect("a path"),
-            manifest_dto("faction-95", "Borg TNG"),
+            a_manifest("faction-95", "Borg TNG"),
         )
         .expect("the game is created");
 
@@ -1860,7 +1860,7 @@ mod merge_tests {
         let directory = tempdir().expect("a temporary directory");
         let created = command_create_game(
             directory.path().to_str().expect("a path"),
-            manifest_dto("faction-95", "Borg TNG"),
+            a_manifest("faction-95", "Borg TNG"),
         )
         .expect("the game is created");
 
@@ -2026,7 +2026,7 @@ mod merge_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::test_support::{manifest_dto, IMPORTED_AT, OPENED_AT};
+    use super::test_support::{a_manifest, IMPORTED_AT, OPENED_AT};
     use super::*;
     use tempfile::tempdir;
 
@@ -2061,7 +2061,7 @@ mod tests {
     fn tauri_adapter_creates_and_reopens_a_game() {
         let dir = tempdir().expect("tempdir");
         let root = dir.path().to_str().expect("a path");
-        let mut manifest = manifest_dto("faction-12", "Faction 12");
+        let mut manifest = a_manifest("faction-12", "Faction 12");
         manifest.report_sources = vec![ReportSourceRef {
             source_id: "report-12".to_string(),
             label: "Turn 12 report".to_string(),
@@ -2091,7 +2091,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let created = command_create_game(
             dir.path().to_str().expect("a path"),
-            manifest_dto("faction-12", "Faction 12"),
+            a_manifest("faction-12", "Faction 12"),
         )
         .expect("create game");
         let report = "\
@@ -2144,7 +2144,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let dir = tempdir().expect("tempdir");
         let created = command_create_game(
             dir.path().to_str().expect("a path"),
-            manifest_dto("faction-12", "Faction 12"),
+            a_manifest("faction-12", "Faction 12"),
         )
         .expect("create game");
 
@@ -2203,7 +2203,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let dir = tempdir().expect("tempdir");
         let created = command_create_game(
             dir.path().to_str().expect("a path"),
-            manifest_dto("faction-12", "Faction 12"),
+            a_manifest("faction-12", "Faction 12"),
         )
         .expect("create game");
 
@@ -2243,7 +2243,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let dir = tempdir().expect("tempdir");
         let created = command_create_game(
             dir.path().to_str().expect("a path"),
-            manifest_dto("faction-12", "Faction 12"),
+            a_manifest("faction-12", "Faction 12"),
         )
         .expect("create game");
 
@@ -2286,7 +2286,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let dir = tempdir().expect("tempdir");
         let created = command_create_game(
             dir.path().to_str().expect("a path"),
-            manifest_dto("faction-12", "Faction 12"),
+            a_manifest("faction-12", "Faction 12"),
         )
         .expect("create game");
         let report = "\
@@ -2331,7 +2331,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let dir = tempdir().expect("tempdir");
         let created = command_create_game(
             dir.path().to_str().expect("a path"),
-            manifest_dto("faction-12", "Faction 12"),
+            a_manifest("faction-12", "Faction 12"),
         )
         .expect("create game");
         let march = "\
