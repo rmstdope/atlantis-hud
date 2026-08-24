@@ -164,9 +164,11 @@ describe("parseItemReference", () => {
     expect(byKind).toEqual({ man: 14, mount: 4, equipment: 86, ship: 9, monster: 58 });
   });
 
-  // `ah-gdfe`: Rust's ItemKind carries a tolerant `Unknown` fallback the scraper must never
-  // produce - it means "this build has never heard of this kind" (rules.rs:117-119). The
-  // generated union includes it; the scraped data must not.
+  // `ah-gdfe`: Rust's `ItemKind` carries a tolerant `Unknown` fallback the scraper must never
+  // produce - it means "this build has never heard of this kind", and its hand-written
+  // `Deserialize` in `crates/core/src/movement/rules.rs` maps every unrecognised string to it so
+  // one strange item cannot fail a whole ruleset. The generated union includes it; the scraped
+  // data must not.
   it("gives no scraped item an unknown kind", () => {
     const items = parseItemReference(DATA_HTML);
 
