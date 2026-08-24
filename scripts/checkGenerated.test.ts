@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { staleFiles } from "./checkGenerated";
+import { GENERATED_DIRS, staleFiles } from "./checkGenerated";
 
 describe("staleFiles", () => {
   it("names each path git reports as changed or new under the generated directory", () => {
@@ -14,5 +14,14 @@ describe("staleFiles", () => {
 
   it("names nothing when git reports a clean tree", () => {
     expect(staleFiles("")).toEqual([]);
+  });
+});
+
+describe("GENERATED_DIRS", () => {
+  it("covers both generated directories, so the ruleset schema is checked too", () => {
+    expect(GENERATED_DIRS).toEqual([
+      "packages/core-client/src/generated",
+      "packages/ruleset/src/generated"
+    ]);
   });
 });

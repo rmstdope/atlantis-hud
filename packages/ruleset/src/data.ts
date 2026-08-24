@@ -10,223 +10,39 @@
  * monster phrasing its attacks unusually should not cost us the other four hundred entries.
  */
 
+export type { BuildingEntry } from "./generated/BuildingEntry";
+export type { CastCost } from "./generated/CastCost";
+export type { CastInput } from "./generated/CastInput";
+export type { SkillEntry } from "./generated/SkillEntry";
+export type { SkillLevel } from "./generated/SkillLevel";
+export type { SkillRequirement } from "./generated/SkillRequirement";
+export type { ItemCapacity } from "./generated/ItemCapacity";
+export type { ItemEntry } from "./generated/ItemEntry";
+export type { ItemKind } from "./generated/ItemKind";
+export type { MonsterCombat } from "./generated/MonsterCombat";
+export type { Production } from "./generated/Production";
+export type { ProductionInput } from "./generated/ProductionInput";
+export type { SelfMobility } from "./generated/SelfMobility";
+export type { Weapon } from "./generated/Weapon";
+
+import type { BuildingEntry } from "./generated/BuildingEntry";
+import type { SkillEntry } from "./generated/SkillEntry";
+import type { SkillLevel } from "./generated/SkillLevel";
+import type { SkillRequirement } from "./generated/SkillRequirement";
+import type { CastCost } from "./generated/CastCost";
+import type { CastInput } from "./generated/CastInput";
+import type { ItemCapacity } from "./generated/ItemCapacity";
+import type { ItemEntry } from "./generated/ItemEntry";
+import type { ItemKind } from "./generated/ItemKind";
+import type { MonsterCombat } from "./generated/MonsterCombat";
+import type { Production } from "./generated/Production";
+import type { ProductionInput } from "./generated/ProductionInput";
+import type { SelfMobility } from "./generated/SelfMobility";
+import type { Weapon } from "./generated/Weapon";
 import { preformattedText } from "./html";
 import { RulesetScrapeError } from "./rules";
 
-export type ItemKind = "man" | "mount" | "monster" | "ship" | "equipment";
-
-export type ItemCapacity = {
-  walk: number;
-  ride: number;
-  fly: number;
-  swim: number;
-};
-
-export type MonsterCombat = {
-  skill: number;
-  attacksPerRound: number;
-  hitsToKill: number;
-  damagePerAttack: number;
-};
-
-/** Which modes an item can move itself in, whether or not it has spare capacity to carry anything. */
-export type SelfMobility = {
-  walk: boolean;
-  ride: boolean;
-  fly: boolean;
-  swim: boolean;
-};
-
-/**
- * A weapon, as the data page describes one - an item whose description states how it is wielded.
- *
- * Absent from every item that is not a weapon, including the four races whose description lists
- * weaponsmith among the skills they may study; `kind` is what excludes those, not the word
- * "weapon" (`ah-1ad6.1`).
- */
-export type Weapon = {
-  /**
-   * The skill tag needed to wield it, or `null` for the twelve that need none. `null` and not an
-   * absent field: "no skill is needed" is a thing the page states, and an absence would be
-   * indistinguishable from a weapon whose clause this parser failed to read.
-   */
-  needs: string | null;
-};
-
-export type ItemEntry = {
-  tag: string;
-  name: string;
-  kind: ItemKind;
-  weight: number;
-  capacity: ItemCapacity;
-  /**
-   * Capability, kept separate from capacity because the page states them separately.
-   *
-   * Most entries give a number (`walking capacity 20`), but thirteen state the bare capability
-   * instead (`livestock [LIVE], weight 50, can walk`). Recording only the number left those
-   * looking like items that cannot move at all.
-   */
-  selfMobile: SelfMobility;
-  /** Hexes per month this item can carry itself, when the page says. */
-  moves: number;
-  /** Present only for monsters, and only when the page stated all four numbers. */
-  combat?: MonsterCombat;
-  /**
-   * Cargo a ship carries, which is a different thing from an item carrying itself about.
-   *
-   * Ships state no weight of their own, so `weight` is 0 for all of them - not stated rather than
-   * measured. Fleet movement is out of scope for the planner; this is recorded so it is not lost.
-   */
-  cargoCapacity?: number;
-  /**
-   * The qualifier attached to a capacity, when the page attaches one.
-   *
-   * A wagon reads "walking capacity 200 when hitched to a horse", and the rules page adds that
-   * "the excess wagons count as weight, not capacity". Storing 200 with the condition thrown away
-   * would be exactly the sort of plausible-but-wrong number this package exists to avoid.
-   */
-  capacityCondition?: string;
-  /**
-   * Levels of sailing skill a ship's crew must hold between them to sail it, as the page states:
-   * "This ship requires a total of 4 levels of sailing skill to sail." Present only for ships.
-   *
-   * Not to be confused with Summon Wind or the windchime, which each add movement points "to ships
-   * requiring up to N sailing skill points" - close wording, but neither states a ship's own
-   * requirement, and the ship-only guard below keeps them from being mistaken for one.
-   */
-  sailingSkill?: number;
-  /**
-   * What WITHDRAW costs per unit of this item, in silver - `costs 37 silver to withdraw`.
-   *
-   * Absent for anything the page states no price for, which is every item that is not a basic one:
-   * "If you do not have sufficient unclaimed, or if you try withdraw any other than a basic item,
-   * an error will be given." Absent, never zero - a zero would claim the page had said so.
-   */
-  withdrawCost?: number;
-  /** Present only for weapons - an item whose description states how it is wielded. */
-  weapon?: Weapon;
-  /**
-   * What the page says about it, after the preamble of name, tag, weight and capacity that the
-   * fields above already carry. Absent when the entry is nothing but that preamble.
-   *
-   * The preamble ends at the first full stop after the `[TAG]`, which holds for every shape the
-   * page uses: `chain armor [CARM], weight 1, costs 150 silver to withdraw.` then the prose;
-   * `Longship [LONG].` then the prose; `leader [LEAD], weight 10, ... month.` then the prose.
-   */
-  description?: string;
-};
-
 export type ItemReference = Record<string, ItemEntry>;
-
-/**
- * A skill, and what a month of studying it costs.
- *
- * Kept apart from the item catalogue rather than merged into it: ten tags mean one thing as a
- * skill and another as an item - FISH is fishing and also fish, HERB is herb lore and also herbs -
- * so one map would have each pair overwrite the other.
- */
-/** One thing a cast consumes: an item tag and how many, silver being `SILV`. */
-export type CastInput = { tag: string; amount: number };
-
-/**
- * What CASTing the skill consumes, as the data page states it: `costs`, each taken once per cast
- * (an input with no number is one), and for transmutation the output tag -> the source tag it is
- * made from. `null` when the page states no cost - most spells.
- */
-export type CastCost = { costs: CastInput[]; transmute: Record<string, string> };
-
-/** One thing a production recipe consumes: an item tag and how many, silver being `SILV`. */
-export type ProductionInput = { tag: string; amount: number };
-
-/** One thing a skill can make, the level at which it can first be made, and what it takes. */
-export type Production = {
-  tag: string;
-  level: number;
-  /**
-   * What one output consumes, in the order the page lists it. Empty for a recipe that takes
-   * nothing but labour - which is most of them: iron, wood, herbs and every other raw resource
-   * are produced from the region itself.
-   *
-   * An input the page writes without a number is one: `swords [SWOR] from iron [IRON]`.
-   */
-  inputs: ProductionInput[];
-  /**
-   * Whether `inputs` are alternatives rather than requirements - the page's `from any of grain
-   * [GRAI], livestock [LIVE] and fish [FISH]`, which consumes one of the three and not all three.
-   *
-   * True for cooking alone today. Carried as a flag rather than a different shape because one
-   * irregular recipe does not earn a union type, and a consumer that ignores it over-states what a
-   * recipe costs - the safe direction for a warning, and the wrong one silently for a forecast.
-   */
-  inputsAreAlternatives: boolean;
-  /** Man-months per `outputs`. 1 for `at a rate of 1 per man-month`, 4 for `1 per 4 man-months`. */
-  manMonths: number;
-  /**
-   * How many the recipe makes per `manMonths`. Every recipe on the page today makes exactly one.
-   *
-   * `null` for cooking, whose output the page states as a formula rather than a number - "a number
-   * of meals [MEAL] equal to skill level divided by 2, rounded up". Null rather than a guess: this
-   * type does not model formulae, and a 1 there would be wrong at every level above 2.
-   */
-  outputs: number | null;
-};
-
-/** A skill a unit must already have, at a level, before it may begin to study another. */
-export type SkillRequirement = { tag: string; level: number };
-
-/** What a skill's page says at one level, once the placeholders are dropped. */
-export type SkillLevel = { level: number; description: string };
-
-export type SkillEntry = {
-  tag: string;
-  name: string;
-  /**
-   * Silver per man per month, or null for a skill the page prices nowhere.
-   *
-   * Only annihilation, which "cannot be studied via normal means". A null is what lets a consumer
-   * stay silent about it; a 0 would say studying it is free, and a 10 would invent a figure.
-   */
-  cost: number | null;
-  /** The highest level the page gives the skill an entry for. */
-  maxLevel: number;
-  /** What CASTing this skill consumes, or null for the (large majority) that state no cost. */
-  cast: CastCost | null;
-  /**
-   * What a unit with this skill may PRODUCE, in the order the page lists it, each with the level
-   * at which it becomes available. Empty for the great majority of skills, which make nothing.
-   */
-  produces: Production[];
-  /**
-   * What the page says at each level, in level order, with the levels that say nothing left out.
-   *
-   * A list rather than a string because the page writes a skill five times, once per level, and
-   * the interesting part is usually not level 1: mining reaches mithril at 3 and admantium at 5,
-   * which is exactly what a reader opens the entry to find out. Levels the page fills with
-   * `No skill report.` carry no information and are dropped, so a skill that says something only
-   * at 1 and 3 has two entries here and not five.
-   *
-   * Absent rather than `[]` when the skill says nothing anywhere - the rule ah-3cj4.1 set for a
-   * building's `size` and `cost`, applied here so the file reads consistently.
-   */
-  levels?: SkillLevel[];
-  /**
-   * Whether this is one of the magic skills.
-   *
-   * The data page marks magic nowhere - no flag, no grouping, no "may only be studied by a mage"
-   * phrase - so this is read from the skill's own level-1 description instead: a skill whose
-   * opening paragraph speaks of mages, magic, spells, casting, summoning, enchanting or the
-   * Foundations is magic. Measured over the committed fixture this separates the catalogue
-   * exactly: seventy magic, twenty-six mundane, and the twenty-six are armorer, building,
-   * carpenter, combat and their kind. See `committed.test.ts` for the pinned classification.
-   */
-  magic: boolean;
-  /**
-   * What a unit must already have before it may begin this skill, as the data page's own `This
-   * skill requires force [FORC] 1 to begin to study.` sentence states it. Empty - never absent -
-   * for the majority of the catalogue, which states none.
-   */
-  requires: SkillRequirement[];
-};
 
 export type SkillReference = Record<string, SkillEntry>;
 
@@ -802,50 +618,6 @@ export function parseSkillReference(html: string): SkillReference {
 
   return skills;
 }
-
-/** One structure as the data page describes it. */
-export type BuildingEntry = {
-  /**
-   * The description the page gives it, from the name onwards, verbatim and whitespace-collapsed -
-   * `This is a building. Units may enter this structure. This trade structure increases the
-   * amount of iron available in the region.`
-   *
-   * Kept because a reference entry that can only show numbers is most of the way to useless
-   * (ah-3cj4), and because it is already in front of the parser: the numbers are read out of this
-   * very text.
-   */
-  description: string;
-  /** What a trade structure increases the supply of, in the page's own word: `iron`, `yew`. */
-  produces?: string;
-  /**
-   * Men the structure protects - the rules table's "Size". Absent for a Mine, a road or a lair,
-   * which state no defence because they give none, and an absent field says that where a `0`
-   * would claim the page had said so.
-   */
-  size?: number;
-  /** What building it costs, from the skill that builds it. Absent for anything no skill builds. */
-  cost?: number;
-  /**
-   * What it is built from, in the page's own order. A list because the page offers alternatives -
-   * `an Inn from 10 wood [WOOD] or stone [STON]` - which one string cannot hold.
-   */
-  materials?: string[];
-  /**
-   * Mages who may study above level 2 inside it. `0` when the entry says nothing: the data page
-   * lists every structure and states the capacity wherever there is one, so silence is a
-   * statement - and a Tower, which says nothing, really does seat none.
-   */
-  mages: number;
-  /**
-   * The tag of the skill that builds it - `BUIL`, `MINI` - taken from the opening of that skill's
-   * own entry. Absent for a structure no skill's entry names, which is 22 of the 58: the lairs,
-   * and everything the page says cannot be built by players. Absent means the catalogue does not
-   * say, never that no skill is needed.
-   */
-  buildSkill?: string;
-  /** The lowest level of `buildSkill` that can build it. Absent exactly when `buildSkill` is. */
-  buildLevel?: number;
-};
 
 export type BuildingReference = Record<string, BuildingEntry>;
 

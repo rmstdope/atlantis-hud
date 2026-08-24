@@ -22,6 +22,11 @@ use serde::{Deserialize, Serialize};
 /// cost is likewise its own rule (see [`SailingRule`]) rather than another entry doubled for a
 /// mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/MovementMode.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub enum MovementMode {
     Fly,
@@ -32,6 +37,11 @@ pub enum MovementMode {
 
 /// Movement points a unit gets per month, by mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/MovementPoints.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MovementPoints {
     pub walk: u32,
@@ -41,6 +51,11 @@ pub struct MovementPoints {
 
 /// What entering a region costs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/TerrainCosts.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TerrainCosts {
     pub normal: u32,
@@ -57,6 +72,11 @@ pub struct TerrainCosts {
 
 /// What a connected road does to a cost.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/RoadRule.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RoadRule {
     pub divisor: u32,
@@ -65,6 +85,11 @@ pub struct RoadRule {
 
 /// The water rule, including the terrain name it is about.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/OceanRule.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OceanRule {
     pub requires_ship_unless_flying: bool,
@@ -79,6 +104,11 @@ pub struct OceanRule {
 /// region only costs one movement point; the cost of two movement points for entering, say, a
 /// forest coastal region, does not apply."
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/SailingRule.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SailingRule {
     /// Movement points a fleet spends entering any region, whatever the terrain.
@@ -92,6 +122,11 @@ pub struct SailingRule {
 
 /// The sentence each scraped value came from, kept so a reader can check the scraper's work.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/Provenance.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Provenance {
     pub movement_points: String,
@@ -102,6 +137,11 @@ pub struct Provenance {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/MovementRules.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MovementRules {
     pub movement_points: MovementPoints,
@@ -118,6 +158,11 @@ pub struct MovementRules {
 /// costs, so a ruleset that invents a sixth kind should cost the same routes as before rather than
 /// refuse to plan at all. `is_man` only needs to know that an unknown kind is not a race.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/ItemKind.ts")
+)]
 #[serde(rename_all = "lowercase")]
 pub enum ItemKind {
     Man,
@@ -145,6 +190,11 @@ impl<'de> Deserialize<'de> for ItemKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/ItemCapacity.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ItemCapacity {
     pub walk: i64,
@@ -155,6 +205,11 @@ pub struct ItemCapacity {
 
 /// Which modes an item can carry itself in, whether or not it has spare capacity to carry more.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/SelfMobility.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SelfMobility {
     pub walk: bool,
@@ -165,6 +220,11 @@ pub struct SelfMobility {
 
 /// A monster's fighting numbers, which is all the risk heuristic weighs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/MonsterCombat.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MonsterCombat {
     pub skill: i64,
@@ -175,6 +235,11 @@ pub struct MonsterCombat {
 
 /// What wielding a weapon needs, as the data page's wield clause states it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/Weapon.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Weapon {
     /// The skill tag needed to wield it, or `None` where the page says none is needed.
@@ -183,6 +248,11 @@ pub struct Weapon {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/ItemEntry.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ItemEntry {
     pub tag: String,
@@ -193,30 +263,42 @@ pub struct ItemEntry {
     pub self_mobile: SelfMobility,
     pub moves: u32,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub combat: Option<MonsterCombat>,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub cargo_capacity: Option<i64>,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub capacity_condition: Option<String>,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub sailing_skill: Option<i64>,
     /// What WITHDRAW costs per unit of this item, in silver. `None` for an item the page prices
     /// nowhere - anything that is not a basic item - and for a ruleset cached before `ah-1wcw.6`.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub withdraw_cost: Option<i64>,
     /// Present only for weapons - an item whose page description states how it is wielded. `None`
     /// for everything else, and for a ruleset cached before `ah-1ad6.1`.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub weapon: Option<Weapon>,
     /// What the data page says about it, after the preamble of name, tag, weight and capacity the
     /// fields above already carry. `None` for an entry that is nothing but that preamble, and for
     /// a ruleset cached before ah-3cj4.2, which carried no prose at all.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub description: Option<String>,
 }
 
 /// Thresholds for the risk heuristic. Ours, not the game's, which is why they carry `scraped`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/RiskThresholds.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RiskThresholds {
     pub scraped: bool,
@@ -227,6 +309,11 @@ pub struct RiskThresholds {
 
 /// Where the ruleset came from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/RulesetSource.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RulesetSource {
     pub rules_url: String,
@@ -240,6 +327,11 @@ pub struct RulesetSource {
 /// Carried rather than dropped so the planner can say so. A gap that is known and stated is a
 /// caveat; the same gap unstated is a wrong answer presented as a right one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/Gap.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Gap {
     pub modelled: bool,
@@ -252,6 +344,11 @@ pub struct Gap {
 
 /// Every gap the ruleset knows about itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/Gaps.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Gaps {
     /// Winter raises movement costs by an amount the rules page never states.
@@ -287,6 +384,11 @@ pub fn item_spellings(written: &str) -> [Option<&str>; 3] {
 
 /// One thing a cast consumes: an item tag (`SILV` for silver) and how many.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/CastInput.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CastInput {
     pub tag: String,
@@ -296,6 +398,11 @@ pub struct CastInput {
 /// What CASTing a skill consumes, as the data page states it and as ah-dbb.2 charges it: `costs`
 /// once per cast, and for transmutation the output tag -> the source tag it is made from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/CastCost.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CastCost {
     pub costs: Vec<CastInput>,
@@ -304,6 +411,14 @@ pub struct CastCost {
 
 /// One thing a production recipe consumes: an item tag (`SILV` for silver) and how many.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(
+        export,
+        export_to = "../../../ruleset/src/generated/ProductionInput.ts"
+    )
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProductionInput {
     pub tag: String,
@@ -312,6 +427,11 @@ pub struct ProductionInput {
 
 /// One thing a skill can make, the level at which it can first be made, and what it takes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/Production.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Production {
     pub tag: String,
@@ -336,6 +456,14 @@ pub struct Production {
 
 /// A skill a unit must already have, at a level, before it may begin to study another.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(
+        export,
+        export_to = "../../../ruleset/src/generated/SkillRequirement.ts"
+    )
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SkillRequirement {
     pub tag: String,
@@ -347,6 +475,11 @@ pub struct SkillRequirement {
 /// Separate from the item catalogue rather than merged into it, because ten tags mean one thing as
 /// a skill and another as an item: FISH is fishing and also fish, HERB is herb lore and also herbs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/SkillEntry.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SkillEntry {
     pub tag: String,
@@ -379,11 +512,19 @@ pub struct SkillEntry {
     /// What the page says at each level, in level order, with the levels it fills with `No skill
     /// report.` left out. Empty for a ruleset cached before ah-3cj4.2.
     #[serde(default)]
+    // The scraper omits this rather than writing `[]` for a skill that says nothing anywhere, so
+    // TypeScript must see it as optional; `serde(default)` already accepts the absence in Rust.
+    #[cfg_attr(test, ts(as = "Option<Vec<SkillLevel>>", optional))]
     pub levels: Vec<SkillLevel>,
 }
 
 /// What a skill's page says at one level, once the placeholders are dropped.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/SkillLevel.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SkillLevel {
     pub level: u32,
@@ -396,6 +537,11 @@ pub struct SkillLevel {
 /// carries a `name` and a single `material` string, and refusing those would turn an old cache
 /// into a failed load rather than a ruleset that knows a little less.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/BuildingEntry.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildingEntry {
     /// The description the data page gives it, verbatim and whitespace-collapsed. Empty for a
@@ -405,27 +551,33 @@ pub struct BuildingEntry {
     /// What a trade structure increases the supply of, in the page's own word - `iron`, `yew`.
     /// `None` for anything that is not one.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub produces: Option<String>,
     /// Men the structure protects. `None` for a Mine, a road or a lair, which state no defence
     /// because they give none - an absence, not a zero, which would claim the page had said so.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub size: Option<i64>,
     /// What building it costs. `None` for anything no skill can build.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub cost: Option<i64>,
     /// What it is built from, in the page's own order - a list because a structure can offer
     /// alternatives (`an Inn from 10 wood or stone`). `None` for anything no skill can build, and
     /// for a ruleset cached before ah-9js, which wrote a single `material` string this no longer
     /// reads.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub materials: Option<Vec<String>>,
     /// The tag of the skill that builds it - `BUIL`, `MINI`. `None` for a structure no skill's
     /// entry names, and for a ruleset cached before ah-bwly.1: the catalogue not saying, never
     /// "no skill needed".
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub build_skill: Option<String>,
     /// The lowest level of `build_skill` that can build it. `None` exactly when `build_skill` is.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub build_level: Option<i64>,
     /// How many mages the building provides study facilities for. **Zero for a Tower**, which is
     /// the ruleset's own answer and not an oversight: a mage studying in one gets half a month.
@@ -433,6 +585,11 @@ pub struct BuildingEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/Ruleset.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Ruleset {
     pub source: RulesetSource,
