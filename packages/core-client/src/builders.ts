@@ -21,8 +21,8 @@ import type { ParsedReport } from "./generated/ParsedReport";
 import type { ReportHeaderInfo } from "./generated/ReportHeaderInfo";
 import type { ReportRegion } from "./generated/ReportRegion";
 import type { ReportUnit } from "./generated/ReportUnit";
-import type { TradeRoute, TradedGood } from "./index";
 import type { UnitSilver } from "./generated/UnitSilver";
+import type { TradeRoute, TradedGood } from "./index";
 
 /** The mountain at (7,53) on the surface, where the default unit stands. */
 const DEFAULT_COORDINATE: Coordinate = { x: 7, y: 53, z: 1 };
