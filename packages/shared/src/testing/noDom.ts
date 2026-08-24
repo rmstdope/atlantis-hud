@@ -43,7 +43,7 @@ export const NO_DOM_GUIDANCE = [
  * as well as the bare import because a file that moved to the helper no longer names `react-dom`
  * anywhere, and it is exactly the kind of file the guidance is for.
  */
-const RENDERS_COMPONENTS = ["react-dom/server", "renderWithStoreState"];
+const RENDERS_COMPONENTS = ["react-dom/server", "renderWithStoreState", "queryByTestId"];
 
 /**
  * The guidance, if this failing test is one the guidance could plausibly be about, and only the

@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { FactionDossier } from "../factionDossier";
 import { FactionDossierPanel } from "./FactionDossierPanel";
+import { findByTestId, queryByTestId } from "../testing/elementTree";
 
 const labelFor = (regionId: string) => `hex ${regionId}`;
 
@@ -19,42 +20,6 @@ const DOSSIER: FactionDossier = {
     { unitId: "104", name: "Trader", regionId: "1:8,54" }
   ]
 };
-
-/**
- * Finds the first element in an unrendered React element tree carrying the given `data-testid` -
- * the same walk `TradePanel.test.tsx` uses, and for the same reason: this package has no jsdom, so
- * a hover or a click is exercised by calling the button's own prop rather than dispatching an event.
- */
-function findByTestId(node: unknown, testId: string): { props: Record<string, unknown> } | null {
-  if (node === null || typeof node !== "object") {
-    return null;
-  }
-  if (Array.isArray(node)) {
-    for (const child of node) {
-      const found = findByTestId(child, testId);
-      if (found) {
-        return found;
-      }
-    }
-    return null;
-  }
-  const element = node as { type?: unknown; props?: Record<string, unknown> };
-  if (element.props?.["data-testid"] === testId) {
-    return element as { props: Record<string, unknown> };
-  }
-  if (typeof element.type === "function") {
-    // Calling a component outside a renderer is only possible while it uses no hooks, and
-    // `PopoverFrame` now does (ah-pdly: it takes focus when it opens). React throws in that case,
-    // and every id this walk is asked for sits inside such a frame rather than on it - so falling
-    // through to the children is the whole of the recovery.
-    try {
-      return findByTestId((element.type as (props: unknown) => unknown)(element.props), testId);
-    } catch {
-      return findByTestId(element.props?.children, testId);
-    }
-  }
-  return findByTestId(element.props?.children, testId);
-}
 
 const panel = (overrides: Partial<Parameters<typeof FactionDossierPanel>[0]> = {}) => (
   <FactionDossierPanel
@@ -175,7 +140,7 @@ describe("the way back, when the dossier replaced the faction popover's contents
   });
 
   it("offers no back control when the dossier stands on its own", () => {
-    expect(findByTestId(panel(), "dossier-back")).toBeNull();
+    expect(queryByTestId(panel(), "dossier-back")).toBeNull();
   });
 });
 
