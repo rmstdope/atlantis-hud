@@ -294,8 +294,8 @@ pub struct MergedReportRecord {
 /// platforms is two applications.
 ///
 /// The desktop's `ORDER BY merged_at ASC, merged_faction_id ASC`
-/// (`core-persistence/src/lib.rs:1543`) implements this and keeps doing so, because a sort a
-/// database can do with an index is worth having. **This is the definition it implements**, and
+/// (`core-persistence`'s `load_merged_reports`) implements this and keeps doing so, because a sort
+/// a database can do with an index is worth having. **This is the definition it implements**, and
 /// `the_sql_orders_merged_reports_the_way_the_core_says` is the test that they still agree
 /// (`ah-8z4y.3.2`). Deleting either one leaves the rule stated in one place and applied in the
 /// other.

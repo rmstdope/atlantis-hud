@@ -160,9 +160,9 @@ pub struct RememberedSighting {
 /// the map as one stored today.
 ///
 /// Ordered `last_seen_turn` descending then `region_id` ascending - the desktop's own `ORDER BY`
-/// (`core-persistence/src/lib.rs:1457`), which the browser never applied at all. The SQL keeps that
-/// clause because an index-backed sort is worth having; this is the definition it implements, and a
-/// pre-sorted input is what a stable sort here wants.
+/// (`core-persistence`'s `load_region_sightings`), which the browser never applied at all. The SQL
+/// keeps that clause because an index-backed sort is worth having; this is the definition it
+/// implements, and a pre-sorted input is what a stable sort here wants.
 #[must_use]
 pub fn remembered_regions(stored: Vec<StoredSighting>) -> Vec<RememberedSighting> {
     let mut remembered: Vec<(String, RememberedSighting)> = stored
