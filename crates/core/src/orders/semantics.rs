@@ -2029,10 +2029,13 @@ fn relieved_balance(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
 
 /// Every unit that owes maintenance its faction-mates' silver cannot cover, across the report.
 ///
-/// Read a hex exactly as `report_shortfalls` reads it, or the fund and the warnings will disagree
-/// about the same turn: each unit on its own where nobody shares, and the whole hex as one purse
-/// where somebody does. The two branches below are those two readings, and the body of each says
-/// what it is doing and why.
+/// Every hex's claims, from [`unpayable_upkeep`], which reads each unit on its own balance and
+/// consults no sharing at all: step 4 (`share_silver_for_upkeep`) has already done the lending for
+/// real, so by the time this is asked the neighbours' silver is spent and inside the balance
+/// (`ah-e66j`). This once said the function had two branches, one per reading; it has had one
+/// since `ah-e66j`. The pooling rule `report_shortfalls` applies to *orders* has a single home in
+/// [`Sharing::reading`] (`ah-3ddq`) - a second implementation of it here is how the column and the
+/// warning drifted apart before (`ah-ycuj`).
 ///
 /// A shared hex allocates its shortfall to its units in report order, which decides *which* of
 /// several fee-owing units is named when the shortfall runs out before the fees do. That order is
