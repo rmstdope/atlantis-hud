@@ -282,6 +282,38 @@ pub struct Priced {
     pub doubt: Option<SilverDoubt>,
 }
 
+/// What shape of transfer a `GIVE` names, once the selector and the amount are read.
+///
+/// The two surfaces price a transfer from different information - the column has no running
+/// balance and the ledger does - so what they must agree on is not the number but *which* of these
+/// three cases they are in. A new [`Selector`] variant lands here once instead of in two arms that
+/// would silently disagree (`ah-lu0f`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferShape {
+    /// A whole class of goods, or the unit itself. What leaves depends on classifying everything
+    /// the unit holds, which neither surface models: the column doubts, the ledger doubts.
+    Unpriceable,
+    /// A stated quantity of one item. The one shape both surfaces price identically.
+    Exact(i64),
+    /// `ALL`, less a reserve. Each surface resolves it against its own notion of what the unit
+    /// has: the column defers to its running total ([`Deferred::GiveAllSilver`]), the ledger reads
+    /// its balance. Deliberately *not* resolved here, and deliberately not clamped - there is no
+    /// holding here to clamp against, so each caller keeps its own `.max(0)`.
+    All { except: i64 },
+}
+
+/// Reads a transfer's selector and amount into the shape both surfaces must agree about.
+#[must_use]
+pub fn transfer_shape(what: &Selector, amount: &Amount) -> TransferShape {
+    match what {
+        Selector::Class(_) | Selector::WholeUnit => TransferShape::Unpriceable,
+        Selector::Item(_) => match amount {
+            Amount::Exact(count) => TransferShape::Exact(*count),
+            Amount::All { except } => TransferShape::All { except: *except },
+        },
+    }
+}
+
 /// Why a unit's month could not be priced. One variant per sentence the interface shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
@@ -815,9 +847,10 @@ pub fn forecast_unit(
             // its flag with no `TAX` order at all, and one with both must be counted once
             // (`ah-fvzu`).
             Intent::Tax => {}
-            // "The amount of money collected is equal to twice the available tax money." Mirrors
-            // `semantics::apply`'s own arm exactly, down to the doubt: two surfaces reading one
-            // order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj` exists).
+            // "The amount of money collected is equal to twice the available tax money." Both
+            // surfaces call `price_pillage`, so the rule that two surfaces reading one order must
+            // not price it two ways is enforced by the code rather than by a comment asking
+            // somebody to remember it (`ah-lu0f`).
             //
             // "This requires the faction to have enough combat ready men in the region to tax half
             // of the available money in the region" - so a faction short of the threshold earns
@@ -935,34 +968,36 @@ pub fn forecast_unit(
                 }
             },
             Intent::Give { to, what, amount } => {
-                let tag = match what {
-                    Selector::Item(text) => (lookups.item_tag)(text),
-                    // A whole class of goods, or the unit itself: what leaves depends on
-                    // classifying everything the unit holds, exactly as `semantics::transfer`
-                    // declines to model.
-                    Selector::Class(_) | Selector::WholeUnit => {
-                        expense_doubt = expense_doubt.or(Some(SilverDoubt::GivesAWholeClass));
-                        continue;
-                    }
+                // The shape is read before the tag is, so a gift of a whole class doubts even
+                // where no tag was ever resolved - and `semantics::transfer` reads the same
+                // shape, so the two surfaces cannot classify one order two ways (`ah-lu0f`).
+                let shape = transfer_shape(what, amount);
+                if shape == TransferShape::Unpriceable {
+                    expense_doubt = expense_doubt.or(Some(SilverDoubt::GivesAWholeClass));
+                    continue;
+                }
+                let Selector::Item(text) = what else {
+                    continue;
                 };
-                if !tag.is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER_TAG)) {
+                if !(lookups.item_tag)(text).is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER_TAG))
+                {
                     continue;
                 }
                 let to_nobody = matches!(to, Party::Discard);
-                match amount {
-                    Amount::Exact(count) => {
-                        expense = expense.saturating_add(*count);
-                        if *count > 0 {
+                match shape {
+                    TransferShape::Unpriceable => {}
+                    TransferShape::Exact(count) => {
+                        expense = expense.saturating_add(count);
+                        if count > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Give));
                         }
                         if to_nobody {
-                            given_to_nobody = given_to_nobody.saturating_add(*count);
+                            given_to_nobody = given_to_nobody.saturating_add(count);
                         }
                     }
-                    Amount::All { except } => deferred.push(Deferred::GiveAllSilver {
-                        except: *except,
-                        to_nobody,
-                    }),
+                    TransferShape::All { except } => {
+                        deferred.push(Deferred::GiveAllSilver { except, to_nobody })
+                    }
                 }
             }
             // WITHDRAW draws on the faction's unclaimed fund, never the unit's own silver, so it is
@@ -2452,6 +2487,32 @@ mod production_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_the_shape_of_a_transfer() {
+        assert_eq!(
+            transfer_shape(&Selector::WholeUnit, &Amount::Exact(5)),
+            TransferShape::Unpriceable
+        );
+        assert_eq!(
+            transfer_shape(
+                &Selector::Class("men".to_string()),
+                &Amount::All { except: 0 }
+            ),
+            TransferShape::Unpriceable
+        );
+        assert_eq!(
+            transfer_shape(&Selector::Item("SILV".to_string()), &Amount::Exact(100)),
+            TransferShape::Exact(100)
+        );
+        assert_eq!(
+            transfer_shape(
+                &Selector::Item("SILV".to_string()),
+                &Amount::All { except: 20 }
+            ),
+            TransferShape::All { except: 20 }
+        );
+    }
 
     #[test]
     fn prices_a_units_tax_once_and_leaves_the_pool_policy_to_the_caller() {
