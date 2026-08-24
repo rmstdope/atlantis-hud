@@ -1593,20 +1593,29 @@ fn credit_tax(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>, pilla
     if !taxes(&actor.unit.flags, actor.intents) {
         return;
     }
-    // "Each taxing character collects $50", capped by what the region has to give - and
-    // optimistically, none of what is left goes to any *foreign* unit, nor to any own one.
-    // [`PoolShare::Uncontended`] is this module's *accept on doubt* policy rather than an
-    // oversight: see `price_tax`'s doc comment, and
+    // "Each taxing character collects $50", capped by what the region has to give. Both of the
+    // arguments below are this module's *accept on doubt* policy rather than oversights, and both
+    // are the caller's to choose precisely because the Silver column chooses differently - see
+    // `price_tax`'s doc comment.
+    //
+    // A region that states no tax base is not a region with nothing to give: it is one whose
+    // figure we do not have, so it is read as no cap at all and the taxer is credited its full
+    // ask. The column raises `SilverDoubt::UnknownTaxBase` instead, because it must show a number
+    // rather than a guess. Pinned by `the_ledger_stays_optimistic_about_an_unstated_tax_base`.
+    let ceiling = hex.region.tax_base.unwrap_or(i64::MAX);
+    // And none of what is left goes to any *foreign* unit, nor to any own one - pinned by
     // `the_ledger_stays_optimistic_about_a_contended_tax_pool`.
     let priced = price_tax(
         actor.unit.men,
-        hex.region.tax_base,
+        Some(ceiling),
         pillaged,
         PoolShare::Uncontended,
     );
+    debug_assert!(
+        priced.doubt.is_none(),
+        "the ledger's optimism leaves nothing for `price_tax` to doubt"
+    );
     credit(ledger, &actor.unit.unit_id, SILVER, priced.earns);
-    // A tax doubt is not the ledger's to raise: an unknown tax base credits nothing, which is
-    // already the pessimistic direction for a shortfall. Behaviour on `main` today.
 }
 
 /// Applies one order to the ledger.
@@ -6380,6 +6389,97 @@ mod tests {
     /// The pair is the point, exactly as `ah-abwx` and `ah-ycuj` require: before this bead the
     /// taxer looked solvent on both surfaces, so a single-surface fix passes its own tests and
     /// fails the corpus agreement test.
+    #[test]
+    fn the_column_and_the_warning_agree_about_a_taxer_in_a_pillaged_hex() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            for_sale: vec![MarketItem {
+                amount: 100,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 100,
+            }],
+            ..region(vec![with_silver(unit("1"), 0), with_silver(unit("2"), 0)])
+        };
+        // Unit 2 taxes and then spends 1,000 it will not have, because unit 1 empties the hex.
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1\nPILLAGE\n\nunit 2\nTAX\nBUY 10 grain\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let taxer = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "2")
+            .expect("the taxer is priced");
+        assert!(
+            taxer.at_month_end.is_some_and(|end| end < 0),
+            "the column shows the shortfall: {:?}",
+            taxer.at_month_end
+        );
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("2")),
+            "the warning fires too: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// The ledger's other optimism, and the one this bead nearly lost (`ah-lu0f.1`, PR #647).
+    ///
+    /// A region whose report states no tax base is not a region with nothing to give: it is a
+    /// region whose figure we do not have. `semantics` accepts on doubt, so it reads an unstated
+    /// base as no cap at all and credits the taxer its full ask - and a shortfall is reported only
+    /// where the unit is short even then. The Silver column, which must show a number rather than
+    /// a guess, raises `SilverDoubt::UnknownTaxBase` instead. Green on `main`, and the reviewer
+    /// caught this going red.
+    #[test]
+    fn the_ledger_stays_optimistic_about_an_unstated_tax_base() {
+        let hex_region = ReportRegion {
+            tax_base: None,
+            for_sale: vec![MarketItem {
+                amount: 100,
+                name: "sword".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region(vec![with_men(with_silver(unit("1"), 100), 10)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1\nTAX\nBUY 4 sword\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        // The column cannot price the tax at all, so it shows no month-end figure.
+        let taxer = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "1")
+            .expect("the taxer is priced");
+        assert_eq!(
+            taxer.at_month_end, None,
+            "the column doubts an unstated base: {taxer:?}"
+        );
+
+        // The ledger credits the full optimistic ask, so nothing is claimed against the unit.
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("1")),
+            "no shortfall is claimed on the optimistic reading: {:?}",
+            codes(&review.findings)
+        );
+    }
+
     /// The one place the two silver surfaces disagree on purpose (`ah-lu0f.1`).
     ///
     /// `silver::forecast_unit` shows the player the `ah-t2pn` settlement of a contended tax pool -
@@ -6431,47 +6531,6 @@ mod tests {
                 .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
                     && finding.unit_id.as_deref() == Some("1")),
             "no shortfall is claimed on the optimistic reading: {:?}",
-            codes(&review.findings)
-        );
-    }
-
-    #[test]
-    fn the_column_and_the_warning_agree_about_a_taxer_in_a_pillaged_hex() {
-        let hex_region = ReportRegion {
-            tax_base: Some(2500),
-            for_sale: vec![MarketItem {
-                amount: 100,
-                name: "grain".to_string(),
-                tag: "GRAI".to_string(),
-                price: 100,
-            }],
-            ..region(vec![with_silver(unit("1"), 0), with_silver(unit("2"), 0)])
-        };
-        // Unit 2 taxes and then spends 1,000 it will not have, because unit 1 empties the hex.
-        let review = review_turn(
-            &report(vec![hex_region]),
-            "unit 1\nPILLAGE\n\nunit 2\nTAX\nBUY 10 grain\n",
-            Some(&ruleset()),
-            CheckOptions::default(),
-        );
-
-        let taxer = review
-            .silver
-            .iter()
-            .find(|row| row.unit_id == "2")
-            .expect("the taxer is priced");
-        assert!(
-            taxer.at_month_end.is_some_and(|end| end < 0),
-            "the column shows the shortfall: {:?}",
-            taxer.at_month_end
-        );
-        assert!(
-            review
-                .findings
-                .iter()
-                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
-                    && finding.unit_id.as_deref() == Some("2")),
-            "the warning fires too: {:?}",
             codes(&review.findings)
         );
     }
