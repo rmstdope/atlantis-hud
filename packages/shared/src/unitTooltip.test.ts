@@ -752,6 +752,60 @@ describe("the silver section", () => {
     expect(note("estimated-men")).toBe(
       "This unit's headcount is an estimate, so its month cannot be priced."
     );
+    expect(note("takes-all-from-another")).toBe(
+      "Taking all of another unit's silver cannot be counted until that unit's own month is settled."
+    );
+  });
+
+  it("says_what_a_unit_took_and_from_whom", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ income: 100, expense: 0, atMonthEnd: 160, taken: 100, takenFrom: ["Workers (6567)"] })
+    );
+
+    expect(summary.silver?.note).toBe("Includes 100 taken from Workers (6567) in this hex.");
+  });
+
+  it("names_two_sources_the_way_gifts_are_named", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        income: 210,
+        expense: 0,
+        atMonthEnd: 270,
+        taken: 210,
+        takenFrom: ["Workers (6567)", "MinersA (16435)"]
+      })
+    );
+
+    expect(summary.silver?.note).toBe(
+      "Includes 210 taken from Workers (6567) and MinersA (16435) in this hex."
+    );
+  });
+
+  /// `ah-awcm`: money in before money out, and `silverNote` is a first-match chain, so a sentence
+  /// in the wrong slot silently swallows the one below it (`ah-hvt8`).
+  it("a_unit_that_takes_is_given_and_gives_away_reads_in_that_order", () => {
+    const all = {
+      income: 125,
+      expense: 30,
+      atMonthEnd: 155,
+      taken: 100,
+      takenFrom: ["Workers (6567)"],
+      received: 25,
+      givers: ["ArmorerA (5671)"],
+      givenToNobody: 30
+    };
+    const note = (silver: Partial<UnitSilver>) =>
+      summariseUnit(aReportUnit({ unitId: "1" }), forecast(silver)).silver?.note;
+
+    expect(note(all)).toBe("Includes 100 taken from Workers (6567) in this hex.");
+    expect(note({ ...all, taken: 0, takenFrom: [] })).toBe(
+      "Includes 25 given by ArmorerA (5671) in this hex."
+    );
+    expect(note({ ...all, taken: 0, takenFrom: [], received: 0, givers: [] })).toBe(
+      "Includes 30 given away to nobody."
+    );
   });
 
   it("the_note_explains_a_pool_contended_by_a_guessed_headcount", () => {
@@ -971,7 +1025,10 @@ describe("the silver notes' precedence (ah-hvt8)", () => {
     "unclaimed-covers-upkeep": "The faction's unclaimed silver covers 10 of this unit's upkeep.",
     "works-by-default": "This unit has no month-long order, so it will work and earn wages.",
     "taxes-by-flag": "This unit is set to tax every turn, so it taxes without an order.",
+    "includes-take": "Includes 100 taken from Workers (6567) in this hex.",
     "includes-gift": "Includes 25 given by Quartermaster (18500) in this hex.",
+    "doubt-takes-all-from-another":
+      "Taking all of another unit's silver cannot be counted until that unit's own month is settled.",
     "given-to-nobody": "Includes 10 given away to nobody.",
     withdrawing: "This unit's withdrawal is paid from the faction's unclaimed silver.",
     "nothing-moves-silver": "Nothing this unit is ordered to do moves silver."
