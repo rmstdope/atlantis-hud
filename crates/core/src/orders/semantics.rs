@@ -7217,6 +7217,51 @@ mod tests {
         );
     }
 
+    /// A flagged unit ordered `MOVE` taxes nowhere - not the hex it leaves, and not the hex it
+    /// arrives in, because the explicit order spent its month. So the ledger must not credit it
+    /// this hex's tax income, and neither tax warning is about a hex it is walking out of
+    /// (`ah-v8zh`). The test above is the same fixture without the `MOVE`, and it still gets the
+    /// mark - so this cannot pass by the checks having been switched off.
+    #[test]
+    fn a_flagged_taxer_that_moves_is_not_credited_or_warned() {
+        let review = review_turn(
+            &report(vec![guarded_hex(vec![
+                armed_to_pillage(with_silver(unit("1"), 0), 8963),
+                with_silver(taxing_by_flag(unit("2")), 0),
+            ])]),
+            "unit 1\nPILLAGE\n\nunit 2\nMOVE N\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let against_the_mover: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.unit_id.as_deref() == Some("2"))
+            .map(|finding| finding.code.as_str())
+            .collect();
+        assert!(
+            !against_the_mover.contains(&codes::TAXED_A_PILLAGED_HEX.as_str()),
+            "no warning about a hex it is leaving: {against_the_mover:?}"
+        );
+        assert!(
+            !against_the_mover.contains(&codes::TAXED_A_GUARDED_HEX.as_str()),
+            "nor the weaker one: {against_the_mover:?}"
+        );
+
+        let mover = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "2")
+            .expect("the mover is priced");
+        assert_eq!(
+            mover.at_month_end,
+            Some(0),
+            "no tax income it will never earn: {:?}",
+            mover.at_month_end
+        );
+    }
+
     /// The mark is about taxing, not about standing in a guarded hex (`ah-leeg`).
     #[test]
     fn an_unflagged_unit_without_orders_is_not_marked() {
