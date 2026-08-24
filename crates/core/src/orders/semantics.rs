@@ -6269,10 +6269,10 @@ mod tests {
 
         let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()));
 
-        let taken = receipts.get("2391").cloned().unwrap_or_default();
-        assert_eq!(taken.taken, 0);
-        assert!(taken.taken_from.is_empty());
-        assert!(!taken.take_all_unpriceable);
+        let taker = receipts.get("2391").cloned().unwrap_or_default();
+        assert_eq!(taker.taken, 0);
+        assert!(taker.taken_from.is_empty());
+        assert!(!taker.take_all_unpriceable);
     }
 
     /// `ah-awcm`: what another unit will have left to give depends on its own month.
@@ -6303,9 +6303,9 @@ mod tests {
 
         let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()));
 
-        let taken = receipts.get("2391").cloned().unwrap_or_default();
-        assert_eq!(taken.taken, 0);
-        assert!(!taken.take_all_unpriceable);
+        let taker = receipts.get("2391").cloned().unwrap_or_default();
+        assert_eq!(taker.taken, 0);
+        assert!(!taker.take_all_unpriceable);
     }
 
     #[test]
