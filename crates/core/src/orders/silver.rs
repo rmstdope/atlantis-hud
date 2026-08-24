@@ -864,21 +864,19 @@ pub fn forecast_unit(
             // `plan_production` the ledger uses - one function, two callers, which is what keeps
             // this column and the `not-enough-silver` warning from drifting apart (`ah-ycuj`).
             Intent::Produce { item } => {
-                let recipe = (lookups.item_tag)(item)
-                    .and_then(|tag| recipe_for(ruleset, &tag))
-                    .and_then(|recipe| {
-                        plan_production(recipe, men, facts.items).map(|plan| (recipe, plan))
-                    });
-                match recipe {
-                    Some((recipe, plan)) => {
-                        expense = expense.saturating_add(plan.silver);
-                        if plan.silver > 0 {
+                let recipe = (lookups.item_tag)(item).and_then(|tag| recipe_for(ruleset, &tag));
+                let (priced, plan) = price_production(recipe, men, facts.items);
+                match plan.zip(recipe) {
+                    Some((plan, recipe)) => {
+                        expense = expense.saturating_add(priced.spends);
+                        if priced.spends > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Produce));
                         }
                         production = Some(((lookups.item_name)(&recipe.tag), plan));
                     }
                     None => {
-                        expense_doubt = expense_doubt.or(Some(SilverDoubt::UnpricedProduction));
+                        expense_doubt = expense_doubt.or(priced.doubt);
+                        // The order's own text: the pricing function never sees it.
                         doubt_subject = doubt_subject.or(Some(item.to_lowercase()));
                     }
                 }
@@ -887,16 +885,12 @@ pub fn forecast_unit(
                 let cost = ruleset
                     .and_then(|ruleset| ruleset.find_skill(skill))
                     .and_then(|skill| skill.cost);
-                match cost {
-                    Some(cost) => {
-                        let charged = cost.saturating_mul(men);
-                        expense = expense.saturating_add(charged);
-                        if charged > 0 {
-                            spent_on = spent_on.or(Some(SilverSpender::Study));
-                        }
-                    }
-                    None => expense_doubt = expense_doubt.or(Some(SilverDoubt::UnpricedSkill)),
+                let priced = price_study(cost, men);
+                expense = expense.saturating_add(priced.spends);
+                if priced.spends > 0 {
+                    spent_on = spent_on.or(Some(SilverSpender::Study));
                 }
+                expense_doubt = expense_doubt.or(priced.doubt);
             }
             Intent::Cast { spell, .. } => {
                 // Resolved once: this runs per keystroke, and `find_skill` walks the catalogue.
@@ -2012,6 +2006,59 @@ fn is_consuming(flags: &[String]) -> bool {
     })
 }
 
+/// What a `STUDY` costs: the ruleset's price for the skill, once per man.
+///
+/// `cost` is `None` where the ruleset prices the skill nowhere - or where there is no ruleset, or
+/// where the headcount is a guess and nothing per-man can be multiplied out. Resolving which of
+/// those is the caller's, because the two surfaces reach the ruleset differently; what they must
+/// not do twice is the arithmetic and the doubt.
+#[must_use]
+pub fn price_study(cost: Option<i64>, men: i64) -> Priced {
+    match cost {
+        Some(cost) => Priced {
+            spends: cost.saturating_mul(men),
+            ..Priced::default()
+        },
+        None => Priced {
+            doubt: Some(SilverDoubt::UnpricedSkill),
+            ..Priced::default()
+        },
+    }
+}
+
+/// What a `PRODUCE` costs, and the run it describes.
+///
+/// Returns the plan as well as the price because the two surfaces need different parts of it: the
+/// ledger charges `plan.materials` tag by tag, and the column names what is made. `None` for the
+/// plan means the ruleset prices it nowhere - an unknown item, an item no skill makes, a recipe of
+/// alternatives rather than requirements - which is a doubt on both surfaces.
+///
+/// The caller resolves the item to a recipe, because the column has a `Lookups` closure and the
+/// ledger has the hex; [`plan_production`] is the shared part and stays the only recipe reader.
+#[must_use]
+pub fn price_production(
+    recipe: Option<&Production>,
+    men: i64,
+    held: &[ItemAmount],
+) -> (Priced, Option<ProductionPlan>) {
+    match recipe.and_then(|recipe| plan_production(recipe, men, held)) {
+        Some(plan) => (
+            Priced {
+                spends: plan.silver,
+                ..Priced::default()
+            },
+            Some(plan),
+        ),
+        None => (
+            Priced {
+                doubt: Some(SilverDoubt::UnpricedProduction),
+                ..Priced::default()
+            },
+            None,
+        ),
+    }
+}
+
 /// The level a unit has in one skill, by tag, or 0 for a skill it does not have.
 fn skill_level(skills: &[Skill], tag: &str) -> i64 {
     skills
@@ -2239,6 +2286,54 @@ mod production_tests {
             vec![("WOOD", 500), ("IRWD", 60), ("FUR", 160)]
         );
         assert_eq!(plan.capped_by, None);
+    }
+
+    #[test]
+    fn prices_a_study_and_a_production() {
+        assert_eq!(
+            price_study(Some(30), 10),
+            Priced {
+                spends: 300,
+                ..Priced::default()
+            }
+        );
+        assert_eq!(
+            price_study(None, 10),
+            Priced {
+                doubt: Some(SilverDoubt::UnpricedSkill),
+                ..Priced::default()
+            }
+        );
+
+        let (priced, plan) = price_production(None, 5, &[]);
+        assert_eq!(
+            priced,
+            Priced {
+                doubt: Some(SilverDoubt::UnpricedProduction),
+                ..Priced::default()
+            }
+        );
+        assert!(plan.is_none());
+
+        let recipe = catapult();
+        let (priced, plan) = price_production(
+            Some(&recipe),
+            10,
+            &held(&[
+                ("SILV", 100_000),
+                ("WOOD", 9999),
+                ("IRWD", 999),
+                ("FUR", 999),
+            ]),
+        );
+        assert_eq!(
+            priced,
+            Priced {
+                spends: 6000,
+                ..Priced::default()
+            }
+        );
+        assert_eq!(plan.expect("a priceable recipe").made, 2);
     }
 
     #[test]
