@@ -1515,6 +1515,11 @@ fn check_pillaged_tax(
 /// says the money is certainly gone - so this weaker restatement is suppressed there. On a
 /// `PILLAGE` line both still fire: our own pillage does not stop our own pillager, but the guard
 /// may.
+///
+/// A unit that taxes by its flag has no `TAX` line to hang the mark on, so it is marked on its
+/// block instead, in the same words - but only when it has no `TAX` line of its own, so one unit
+/// never reads the same sentence twice, and only in a hex nobody is pillaging, for the same reason
+/// a `TAX` line is spared there (`ah-leeg`).
 fn check_guarded_tax(
     hex: &Hex<'_>,
     guarded: bool,
@@ -1527,17 +1532,33 @@ fn check_guarded_tax(
     }
 
     for ordered in &hex.units {
+        let mut ordered_to_tax = false;
         for placed in ordered.intents {
             let order = match placed.intent {
                 Intent::Tax if !pillaged => "TAX",
                 Intent::Pillage => "PILLAGE",
                 _ => continue,
             };
+            if matches!(placed.intent, Intent::Tax) {
+                ordered_to_tax = true;
+            }
             findings.push(ordered.finding(
                 hex,
                 codes::TAXED_A_GUARDED_HEX,
                 format!("a foreign unit is guarding this hex, so this {order} may collect nothing"),
                 Some(placed),
+            ));
+        }
+        // A unit that taxes by its flag collects nothing here either, and has no line to hang the
+        // mark on - so it hangs on the block, which is what `finding_at_block` is for (`ah-fvzu`).
+        // Suppressed in a pillaged hex for the same reason the `TAX` line is: `taxed-a-pillaged-hex`
+        // already says the money is certainly gone, and `check_pillaged_tax` marks this same block
+        // with it (`ah-cxxa`).
+        if !pillaged && !ordered_to_tax && taxes(&ordered.unit.flags, ordered.intents) {
+            findings.push(ordered.finding_at_block(
+                hex,
+                codes::TAXED_A_GUARDED_HEX,
+                "a foreign unit is guarding this hex, so this TAX may collect nothing".to_string(),
             ));
         }
     }
@@ -6810,6 +6831,157 @@ mod tests {
                 .any(|finding| finding.code == codes::TAXED_A_GUARDED_HEX
                     && finding.unit_id.as_deref() == Some("1")),
             "our own pillage does not stop our pillager, but the guard may: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    // --- a unit that taxes by its flag, in a guarded hex (`ah-leeg`) ----------------------------
+
+    /// A flagged unit has no `TAX` line to hang the mark on, so it hangs on its block
+    /// (`semantics::finding_at_block`) - `ah-leeg`, mirroring what `ah-fvzu` did for the
+    /// pillaged-hex mark.
+    #[test]
+    fn a_flagged_taxer_in_a_guarded_hex_is_marked_on_its_block() {
+        let region = guarded_hex(vec![with_silver(taxing_by_flag(unit("683")), 0)]);
+        let ordered = OrderedUnits::read("");
+        let hex = Hex::read(&region, &ordered);
+        let mut findings = Vec::new();
+        check_guarded_tax(&hex, true, false, &CheckOptions::default(), &mut findings);
+
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(
+            findings[0].message,
+            "a foreign unit is guarding this hex, so this TAX may collect nothing"
+        );
+        assert_eq!(findings[0].unit_id.as_deref(), Some("683"));
+        assert_eq!(findings[0].column_start, None);
+        assert_eq!(findings[0].column_end, None);
+    }
+
+    /// One sentence, once: a unit carrying both the flag and a `TAX` line is marked on the line
+    /// only, never on the line and its block together (`ah-leeg`).
+    #[test]
+    fn a_flagged_taxer_with_a_tax_order_is_marked_only_on_its_line() {
+        let region = guarded_hex(vec![with_silver(taxing_by_flag(unit("683")), 0)]);
+        let ordered = OrderedUnits::read("unit 683\nTAX\n");
+        let hex = Hex::read(&region, &ordered);
+        let mut findings = Vec::new();
+        check_guarded_tax(&hex, true, false, &CheckOptions::default(), &mut findings);
+
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(
+            findings[0].column_start.is_some(),
+            "anchored on the TAX line: {findings:?}"
+        );
+    }
+
+    /// `taxed-a-pillaged-hex` already says the money is certainly gone, and `check_pillaged_tax`
+    /// marks this same block with it - so the weaker "may" is suppressed here too (`ah-leeg`).
+    #[test]
+    fn a_flagged_taxer_in_a_pillaged_and_guarded_hex_is_not_told_twice() {
+        let review = review_turn(
+            &report(vec![guarded_hex(vec![
+                armed_to_pillage(with_silver(unit("1"), 0), 8963),
+                with_silver(taxing_by_flag(unit("2")), 0),
+            ])]),
+            "unit 1\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let against_the_flagged_unit: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.unit_id.as_deref() == Some("2"))
+            .map(|finding| finding.code.as_str())
+            .collect();
+        assert!(
+            against_the_flagged_unit.contains(&codes::TAXED_A_PILLAGED_HEX.as_str()),
+            "the stronger warning is what it gets instead: {against_the_flagged_unit:?}"
+        );
+        assert!(
+            !against_the_flagged_unit.contains(&codes::TAXED_A_GUARDED_HEX.as_str()),
+            "and it gets that one alone: {against_the_flagged_unit:?}"
+        );
+    }
+
+    /// The mark is about taxing, not about standing in a guarded hex (`ah-leeg`).
+    #[test]
+    fn an_unflagged_unit_without_orders_is_not_marked() {
+        let region = guarded_hex(vec![with_silver(unit("683"), 0)]);
+        let ordered = OrderedUnits::read("");
+        let hex = Hex::read(&region, &ordered);
+        let mut findings = Vec::new();
+        check_guarded_tax(&hex, true, false, &CheckOptions::default(), &mut findings);
+
+        assert!(findings.is_empty(), "{findings:?}");
+    }
+
+    /// The real corpus case: a flagged unit with no orders block at all. `finding_at_block` then
+    /// gives `line: None`, and the mark lives in the problems panel - which the navigator chose
+    /// knowingly (`ah-leeg`). Asserted end to end, because nothing else proves the hex's other
+    /// checks leave it alone.
+    #[test]
+    fn a_flagged_taxer_is_warned_through_review_turn() {
+        let review = review_turn(
+            &report(vec![guarded_hex(vec![with_silver(
+                taxing_by_flag(unit("683")),
+                0,
+            )])]),
+            "",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::TAXED_A_GUARDED_HEX)
+            .collect();
+        assert_eq!(told.len(), 1, "one, on the block: {told:?}");
+        assert_eq!(
+            told[0].message,
+            "a foreign unit is guarding this hex, so this TAX may collect nothing"
+        );
+        assert_eq!(told[0].unit_id.as_deref(), Some("683"));
+    }
+
+    /// A flagged unit whose orders block holds no `TAX` is still marked on that block - and there
+    /// the block is in the document, so the mark carries its line and reaches the editor as well as
+    /// the problems panel. The empty-orders case above is the other half of this (`ah-leeg`).
+    #[test]
+    fn a_flagged_taxer_with_other_orders_is_marked_on_the_block_it_has() {
+        let region = guarded_hex(vec![with_silver(taxing_by_flag(unit("683")), 0)]);
+        let ordered = OrderedUnits::read("unit 683\nAVOID 1\n");
+        let hex = Hex::read(&region, &ordered);
+        let mut findings = Vec::new();
+        check_guarded_tax(&hex, true, false, &CheckOptions::default(), &mut findings);
+
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].line, Some(1), "on the block: {findings:?}");
+        assert_eq!(findings[0].column_start, None);
+    }
+
+    /// One code, one toggle: a player who turned this advisory off has turned it off (`ah-leeg`).
+    #[test]
+    fn the_guarded_hex_toggle_silences_the_flagged_case_too() {
+        let mut options = CheckOptions::default();
+        options
+            .disabled
+            .insert(codes::TAXED_A_GUARDED_HEX.as_str().to_string());
+        let review = review_turn(
+            &report(vec![guarded_hex(vec![with_silver(
+                taxing_by_flag(unit("683")),
+                0,
+            )])]),
+            "",
+            Some(&ruleset()),
+            options,
+        );
+
+        assert!(
+            !codes(&review.findings).contains(&codes::TAXED_A_GUARDED_HEX.as_str()),
+            "silenced: {:?}",
             codes(&review.findings)
         );
     }
