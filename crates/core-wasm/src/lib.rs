@@ -178,6 +178,49 @@ pub fn reset_game_manifest_state(manifest_json: String, now: String) -> Result<J
     to_js(&atlantis_hud_core::backup::reset_manifest(&previous, &now))
 }
 
+/// The faction's remembered map, from the rows the store holds.
+///
+/// The counterpart of the desktop's own call into
+/// [`atlantis_hud_core::report::sighting::remembered_regions`]: the browser hands over its stored
+/// rows and draws exactly what comes out, so neither platform holds an opinion about which hexes
+/// are dropped or what order they come back in (`ah-8z4y.3.2`).
+///
+/// Replaces `hydrate_remembered_region`'s one-hex-at-a-time shape, which left the browser deciding
+/// *which* hexes to drop by catching a throw - and it does not throw on a stored `null`.
+///
+/// # Errors
+///
+/// Returns an error when `stored_json` cannot be read as a list of stored sightings, or when the
+/// result cannot be handed back to JavaScript.
+#[wasm_bindgen]
+pub fn remembered_regions_state(stored_json: String) -> Result<JsValue, JsValue> {
+    let stored: Vec<atlantis_hud_core::report::merge::StoredSighting> =
+        serde_json::from_str(&stored_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    to_js(&atlantis_hud_core::report::sighting::remembered_regions(
+        stored,
+    ))
+}
+
+/// The merged reports of one turn, in the order both platforms list them in.
+///
+/// The desktop gets this order from its `ORDER BY` and the core states it once
+/// ([`atlantis_hud_core::report::merge::order_merged_reports`]); the browser, whose store has no
+/// `ORDER BY`, calls the definition rather than writing the comparator out again (`ah-8z4y.3.2`).
+///
+/// # Errors
+///
+/// Returns an error when `records_json` cannot be read as a list of merged reports, or when the
+/// result cannot be handed back to JavaScript.
+#[wasm_bindgen]
+pub fn ordered_merged_reports_state(records_json: String) -> Result<JsValue, JsValue> {
+    let mut records: Vec<atlantis_hud_core::report::merge::MergedReportRecord> =
+        serde_json::from_str(&records_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    atlantis_hud_core::report::merge::order_merged_reports(&mut records);
+    to_js(&records)
+}
+
 /// The manifest after one edit, given the one the store holds now.
 ///
 /// One export for every edit, because the edits are one list ([`ManifestEdit`]) - see
@@ -214,6 +257,10 @@ pub fn edit_game_manifest_state(
 /// comes out - while every rule about which account of a hex wins stays in the core, so a hex
 /// merged in the browser and the same hex merged on the desktop cannot come out different.
 ///
+/// `viewer_faction_id` is whose map is being merged into. The core needs it to refuse a faction's
+/// own report - a refusal both shells used to make themselves, in the same words, only because the
+/// core was never told (`ah-8z4y.3.2`).
+///
 /// `existing_sightings_json` is what the store already holds for the *viewer*, as
 /// `[{ regionId, lastSeenTurn, payloadJson }]`. That is the whole of what a merge reads, and the
 /// whole of what the browser's own row shape can offer.
@@ -227,6 +274,7 @@ pub fn edit_game_manifest_state(
 pub fn prepare_report_merge_state(
     raw_report: String,
     viewer_turn_number: u32,
+    viewer_faction_id: String,
     existing_sightings_json: String,
     ruleset_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
@@ -243,7 +291,7 @@ pub fn prepare_report_merge_state(
     // `reject_merge`, never `reject_import`. The latter asks whether a report may be filed under a
     // faction, and answers from a candidate list that holds only the reporting faction - so it
     // refuses every ally there is.
-    if let Some(rejection) = reject_merge(&parse_result, viewer_turn_number) {
+    if let Some(rejection) = reject_merge(&parse_result, viewer_turn_number, &viewer_faction_id) {
         return to_js(&PreparedMergeDto {
             turn_number: parse_result.turn_header.as_ref().map(|it| it.turn_number),
             merged_faction_id: None,
@@ -279,20 +327,6 @@ pub fn hydrate_parse_result_state(parsed_payload_json: String) -> Result<JsValue
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
     to_js(&ReportParseResultWire::from(parsed))
-}
-
-/// Fills the split structure fields of a stored region payload written before they existed.
-///
-/// A remembered hex crosses to the workspace as its own JSON, never round-tripped through
-/// `ReportRegion`, so this is the one place the web shell holds a stored payload and the one place
-/// the back-fill belongs. The desktop runs the same core function at its own equivalent
-/// (`command_load_region_sightings`), so both shells agree about an old snapshot (`ah-nmts`).
-#[wasm_bindgen]
-pub fn hydrate_remembered_region(payload_json: String) -> Result<JsValue, JsValue> {
-    let mut region = serde_json::from_str::<serde_json::Value>(&payload_json)
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
-    atlantis_hud_core::report::region::backfill_structure_kinds(&mut region);
-    to_js(&region)
 }
 
 /// Compares a prepared import candidate against the stored snapshot, if any.

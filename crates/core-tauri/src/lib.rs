@@ -702,24 +702,18 @@ pub mod commands {
         let sightings = load_region_sightings(Path::new(database_path), game_id, faction_id)
             .map_err(|error| error.to_string())?;
 
-        Ok(sightings
-            .into_iter()
-            .filter_map(|sighting| {
-                serde_json::from_str::<serde_json::Value>(&sighting.payload_json)
-                    .ok()
-                    .filter(|payload| !payload.is_null())
-                    .map(|mut region| {
-                        // A hex remembered before `ah-nmts` carries only `kind`; fill the split
-                        // fields here, so a snapshot from last week reaches the map as one from
-                        // today and no reader downstream needs to know the difference.
-                        atlantis_hud_core::report::region::backfill_structure_kinds(&mut region);
-                        RememberedRegionDto {
-                            region,
-                            last_seen_turn: sighting.last_seen_turn,
-                        }
-                    })
-            })
-            .collect())
+        // Which hexes survive, what a stored payload is back-filled with, and the order they come
+        // back in are all the core's (`ah-8z4y.3.2`); the SQL's `ORDER BY` above implements that
+        // order with an index and hands this a list already in it.
+        Ok(atlantis_hud_core::report::sighting::remembered_regions(
+            sightings.iter().map(StoredSighting::from).collect(),
+        )
+        .into_iter()
+        .map(|hex| RememberedRegionDto {
+            region: hex.region,
+            last_seen_turn: hex.last_seen_turn,
+        })
+        .collect())
     }
 
     /// Folds an allied report for the same turn into the viewer's remembered map.
@@ -755,7 +749,8 @@ pub mod commands {
             cache.classified_when_possible(raw_report, ruleset_json)
         });
         let parse_result = atlantis_hud_core::summarize(&report);
-        if let Some(rejection) = reject_merge(&parse_result, viewer_turn_number) {
+        if let Some(rejection) = reject_merge(&parse_result, viewer_turn_number, viewer_faction_id)
+        {
             return Err(rejection);
         }
 
@@ -764,10 +759,6 @@ pub mod commands {
             .detected_factions
             .first()
             .ok_or_else(|| "parsed report does not name the faction it belongs to".to_string())?;
-        if ally.faction_id == viewer_faction_id {
-            return Err("a faction's own report is loaded rather than merged".to_string());
-        }
-
         let existing: Vec<StoredSighting> =
             load_region_sightings(Path::new(database_path), game_id, viewer_faction_id)
                 .map_err(|error| error.to_string())?

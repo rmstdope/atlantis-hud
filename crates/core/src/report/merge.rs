@@ -269,6 +269,44 @@ fn merge_units(existing: &[ReportUnit], incoming: &[ReportUnit]) -> Vec<ReportUn
     merged
 }
 
+/// One allied report folded into a faction's map for one turn.
+///
+/// A merge writes the ally's regions under the viewer's own faction and stores no turn of the
+/// ally's, so this row is the only thing that remembers it happened. `faction_id` is the map that
+/// grew; `merged_faction_id` is whose report grew it.
+///
+/// Lives here rather than in the desktop's store because the browser has one too, and the order
+/// they are listed in is one rule (`order_merged_reports`, `ah-8z4y.3.2`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergedReportRecord {
+    pub game_id: String,
+    pub faction_id: String,
+    pub turn_number: u32,
+    pub merged_faction_id: String,
+    pub merged_faction_name: String,
+    pub merged_at: String,
+}
+
+/// Merged reports oldest first, then by faction id: the order both platforms list them in.
+///
+/// The panel lists them in the order they happened, and a list that reorders itself between
+/// platforms is two applications.
+///
+/// The desktop's `ORDER BY merged_at ASC, merged_faction_id ASC`
+/// (`core-persistence`'s `load_merged_reports`) implements this and keeps doing so, because a sort
+/// a database can do with an index is worth having. **This is the definition it implements**, and
+/// `the_sql_orders_merged_reports_the_way_the_core_says` is the test that they still agree
+/// (`ah-8z4y.3.2`). Deleting either one leaves the rule stated in one place and applied in the
+/// other.
+pub fn order_merged_reports(records: &mut [MergedReportRecord]) {
+    records.sort_by(|left, right| {
+        left.merged_at
+            .cmp(&right.merged_at)
+            .then_with(|| left.merged_faction_id.cmp(&right.merged_faction_id))
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -560,5 +598,53 @@ mod tests {
         let restored: ReportRegion =
             serde_json::from_str(&outcome.sightings[0].payload_json).expect("a region");
         assert_eq!(restored.population, Some(1980));
+    }
+
+    fn merge_of(merged_faction_id: &str, merged_at: &str) -> MergedReportRecord {
+        MergedReportRecord {
+            game_id: "alpha".to_owned(),
+            faction_id: "95".to_owned(),
+            turn_number: 71,
+            merged_faction_id: merged_faction_id.to_owned(),
+            merged_faction_name: format!("Ally {merged_faction_id}"),
+            merged_at: merged_at.to_owned(),
+        }
+    }
+
+    #[test]
+    fn merged_reports_are_oldest_first() {
+        let mut records = vec![
+            merge_of("12", "2026-08-01T12:00:00Z"),
+            merge_of("13", "2026-08-01T09:00:00Z"),
+        ];
+
+        order_merged_reports(&mut records);
+
+        assert_eq!(
+            records
+                .iter()
+                .map(|record| record.merged_faction_id.as_str())
+                .collect::<Vec<_>>(),
+            ["13", "12"]
+        );
+    }
+
+    #[test]
+    fn two_merges_at_the_same_instant_are_ordered_by_faction() {
+        let mut records = vec![
+            merge_of("9", "2026-08-01T09:00:00Z"),
+            merge_of("13", "2026-08-01T09:00:00Z"),
+            merge_of("12", "2026-08-01T09:00:00Z"),
+        ];
+
+        order_merged_reports(&mut records);
+
+        assert_eq!(
+            records
+                .iter()
+                .map(|record| record.merged_faction_id.as_str())
+                .collect::<Vec<_>>(),
+            ["12", "13", "9"]
+        );
     }
 }

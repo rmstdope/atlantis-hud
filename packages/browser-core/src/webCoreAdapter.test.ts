@@ -6,6 +6,7 @@ import {
   type ManifestEdit,
   type HexNoteRecord,
   type ImportedTurnSummary,
+  type MergedReportRecord,
   type ParsedReport,
   type ReportParseResult,
   type ReportRegion,
@@ -219,7 +220,26 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       };
     },
     hydrate_parse_result_state: (json: string) => ({ ...EMPTY_PARSE_RESULT, hydratedFrom: json }),
-    hydrate_remembered_region: (json: string) => JSON.parse(json) as ReportRegion,
+    ordered_merged_reports_state: (recordsJson: string) =>
+      (JSON.parse(recordsJson) as MergedReportRecord[]).sort(
+        (left, right) =>
+          left.mergedAt.localeCompare(right.mergedAt) ||
+          left.mergedFactionId.localeCompare(right.mergedFactionId)
+      ),
+    // Self-consistent, not correct: dropping, back-filling and ordering are the core's, pinned in
+    // `sighting.rs` and against the real module in `rememberedRegions.wasm.test.ts`. This stand-in
+    // only has to agree with itself so the routing tests below read true.
+    remembered_regions_state: (storedJson: string) =>
+      (JSON.parse(storedJson) as Array<{ lastSeenTurn: number; payloadJson: string }>).flatMap(
+        (sighting) => {
+          try {
+            const region = JSON.parse(sighting.payloadJson) as ReportRegion | null;
+            return region === null ? [] : [{ region, lastSeenTurn: sighting.lastSeenTurn }];
+          } catch {
+            return [];
+          }
+        }
+      ),
     // Self-consistent, not correct: the real rule (and its tie-break) is the core's, pinned in
     // `reopen.rs` and against the real module in `reopen.wasm.test.ts`. This stand-in only has to
     // agree with itself so the routing tests below - which check the adapter hands over every
@@ -243,6 +263,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
     prepare_report_merge_state: (
       raw: string,
       viewerTurnNumber: number,
+      viewerFactionId: string,
       existingSightingsJson: string
     ) => {
       const [, factionId, turn, regionList] = /MERGE: (\S+) (\d+) (\S+)/u.exec(raw) ?? [];
@@ -255,6 +276,17 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           mergedRegionCount: 0,
           newRegionCount: 0,
           rejection: "parsed report did not meet minimum import threshold"
+        };
+      }
+      if (factionId === viewerFactionId) {
+        return {
+          turnNumber: Number(turn),
+          mergedFactionId: null,
+          mergedFactionName: null,
+          regionSightings: [],
+          mergedRegionCount: 0,
+          newRegionCount: 0,
+          rejection: "a faction's own report is loaded rather than merged"
         };
       }
       if (Number(turn) !== viewerTurnNumber) {
@@ -495,6 +527,7 @@ describe("web core adapter", () => {
         prepare_report_merge_state: (
           raw: string,
           viewerTurnNumber: number,
+          viewerFactionId: string,
           existingSightingsJson: string,
           rulesetJson: string | null
         ) => {
@@ -502,6 +535,7 @@ describe("web core adapter", () => {
           return fakeWasm().prepare_report_merge_state(
             raw,
             viewerTurnNumber,
+            viewerFactionId,
             existingSightingsJson,
             rulesetJson
           );

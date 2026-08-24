@@ -11,6 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::report::merge::StoredSighting;
 use crate::report::model::region_label;
 use crate::report::ParsedReport;
 
@@ -131,6 +132,66 @@ pub fn sighting_from_payload(
     })
 }
 
+/// One remembered region as a shell wants it back: the stored payload, back-filled, and its turn.
+///
+/// The payload stays `serde_json::Value` rather than becoming a
+/// [`crate::movement::graph::RememberedRegion`], whose `region` is a typed `ReportRegion`. A payload
+/// written by an older build may lack fields this one has, and `sighting_from_payload`'s comment
+/// says why that must survive: a remembered hex crosses to a shell as its own JSON and is never
+/// round-tripped through `ReportRegion`. Deserializing here would drop exactly the hexes this
+/// function exists to keep.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RememberedSighting {
+    pub region: serde_json::Value,
+    pub last_seen_turn: u32,
+}
+
+/// The remembered regions of one faction, in the order both platforms show them.
+///
+/// Drops a sighting whose payload will not parse, or whose payload is `null` - a stored `null` is
+/// valid JSON (`region_sightings` writes one for a region that would not serialize) and would
+/// otherwise become a region that is not one. **Dropping one remembered hex beats losing the whole
+/// map**, which is the rule both stores were applying separately and by different tests: the
+/// desktop filtered `null` explicitly, the browser relied on its hydrator throwing, and it does not
+/// (`ah-8z4y.3.2`).
+///
+/// Back-fills each region's split structure fields (`ah-nmts`), so a hex stored last week reaches
+/// the map as one stored today.
+///
+/// Ordered `last_seen_turn` descending then `region_id` ascending - the desktop's own `ORDER BY`
+/// (`core-persistence`'s `load_region_sightings`), which the browser never applied at all. The SQL
+/// keeps that clause because an index-backed sort is worth having; this is the definition it
+/// implements, and a pre-sorted input is what a stable sort here wants.
+#[must_use]
+pub fn remembered_regions(stored: Vec<StoredSighting>) -> Vec<RememberedSighting> {
+    let mut remembered: Vec<(String, RememberedSighting)> = stored
+        .into_iter()
+        .filter_map(|sighting| {
+            let mut region = serde_json::from_str::<serde_json::Value>(&sighting.payload_json)
+                .ok()
+                .filter(|payload| !payload.is_null())?;
+            crate::report::region::backfill_structure_kinds(&mut region);
+            Some((
+                sighting.region_id,
+                RememberedSighting {
+                    region,
+                    last_seen_turn: sighting.last_seen_turn,
+                },
+            ))
+        })
+        .collect();
+
+    remembered.sort_by(|(left_id, left), (right_id, right)| {
+        right
+            .last_seen_turn
+            .cmp(&left.last_seen_turn)
+            .then_with(|| left_id.cmp(right_id))
+    });
+
+    remembered.into_iter().map(|(_, hex)| hex).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,5 +286,68 @@ mod tests {
         let error = sighting_from_payload("1:7,53", 71, &payload).unwrap_err();
 
         assert!(error.contains("is missing its coordinate"));
+    }
+
+    fn stored(region_id: &str, last_seen_turn: u32, payload_json: &str) -> StoredSighting {
+        StoredSighting {
+            region_id: region_id.to_owned(),
+            last_seen_turn,
+            payload_json: payload_json.to_owned(),
+        }
+    }
+
+    #[test]
+    fn a_sighting_whose_payload_will_not_parse_is_dropped() {
+        assert!(remembered_regions(vec![stored("1:7,53", 71, "{not json")]).is_empty());
+    }
+
+    /// The divergence this function exists to settle: a stored `null` is valid JSON, so the browser
+    /// kept it and handed the map a region that is not one, while the desktop dropped it. The
+    /// stricter behaviour wins (`ah-8z4y.3.2`).
+    #[test]
+    fn a_sighting_whose_payload_is_null_is_dropped() {
+        assert!(remembered_regions(vec![stored("1:7,53", 71, "null")]).is_empty());
+    }
+
+    #[test]
+    fn the_rest_of_the_map_survives_one_bad_hex() {
+        let report = parse_report_full(TURN_71);
+        let good = &region_sightings(&report, 71)[0];
+
+        let remembered = remembered_regions(vec![
+            stored("0:0,0", 71, "null"),
+            stored(&good.region_id, 71, &good.payload_json),
+        ]);
+
+        assert_eq!(remembered.len(), 1);
+        assert_eq!(remembered[0].region["regionId"], good.region_id.as_str());
+    }
+
+    #[test]
+    fn hexes_come_back_newest_first_then_by_region_id() {
+        let remembered = remembered_regions(vec![
+            stored("1:9,9", 70, r#"{"regionId":"1:9,9"}"#),
+            stored("1:1,1", 71, r#"{"regionId":"1:1,1"}"#),
+            stored("1:0,0", 71, r#"{"regionId":"1:0,0"}"#),
+        ]);
+
+        let order: Vec<_> = remembered
+            .iter()
+            .map(|hex| hex.region["regionId"].as_str().expect("a region id"))
+            .collect();
+
+        assert_eq!(order, ["1:0,0", "1:1,1", "1:9,9"]);
+    }
+
+    #[test]
+    fn a_hex_stored_before_the_structure_split_is_backfilled() {
+        let payload = r#"{"regionId":"1:7,53","structures":[{"kind":"Mine"}]}"#;
+
+        let remembered = remembered_regions(vec![stored("1:7,53", 71, payload)]);
+
+        let structure = &remembered[0].region["structures"][0];
+        assert_eq!(structure["baseKind"], "Mine");
+        assert_eq!(structure["qualifiers"], serde_json::json!([]));
+        assert_eq!(structure["vessels"], serde_json::json!([]));
     }
 }
