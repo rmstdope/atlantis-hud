@@ -10,8 +10,12 @@
  * monster phrasing its attacks unusually should not cost us the other four hundred entries.
  */
 
+export type { BuildingEntry } from "./generated/BuildingEntry";
 export type { CastCost } from "./generated/CastCost";
 export type { CastInput } from "./generated/CastInput";
+export type { SkillEntry } from "./generated/SkillEntry";
+export type { SkillLevel } from "./generated/SkillLevel";
+export type { SkillRequirement } from "./generated/SkillRequirement";
 export type { ItemCapacity } from "./generated/ItemCapacity";
 export type { ItemEntry } from "./generated/ItemEntry";
 export type { ItemKind } from "./generated/ItemKind";
@@ -21,6 +25,10 @@ export type { ProductionInput } from "./generated/ProductionInput";
 export type { SelfMobility } from "./generated/SelfMobility";
 export type { Weapon } from "./generated/Weapon";
 
+import type { BuildingEntry } from "./generated/BuildingEntry";
+import type { SkillEntry } from "./generated/SkillEntry";
+import type { SkillLevel } from "./generated/SkillLevel";
+import type { SkillRequirement } from "./generated/SkillRequirement";
 import type { CastCost } from "./generated/CastCost";
 import type { CastInput } from "./generated/CastInput";
 import type { ItemCapacity } from "./generated/ItemCapacity";
@@ -35,63 +43,6 @@ import { preformattedText } from "./html";
 import { RulesetScrapeError } from "./rules";
 
 export type ItemReference = Record<string, ItemEntry>;
-
-/** A skill a unit must already have, at a level, before it may begin to study another. */
-export type SkillRequirement = { tag: string; level: number };
-
-/** What a skill's page says at one level, once the placeholders are dropped. */
-export type SkillLevel = { level: number; description: string };
-
-export type SkillEntry = {
-  tag: string;
-  name: string;
-  /**
-   * Silver per man per month, or null for a skill the page prices nowhere.
-   *
-   * Only annihilation, which "cannot be studied via normal means". A null is what lets a consumer
-   * stay silent about it; a 0 would say studying it is free, and a 10 would invent a figure.
-   */
-  cost: number | null;
-  /** The highest level the page gives the skill an entry for. */
-  maxLevel: number;
-  /** What CASTing this skill consumes, or null for the (large majority) that state no cost. */
-  cast: CastCost | null;
-  /**
-   * What a unit with this skill may PRODUCE, in the order the page lists it, each with the level
-   * at which it becomes available. Empty for the great majority of skills, which make nothing.
-   */
-  produces: Production[];
-  /**
-   * What the page says at each level, in level order, with the levels that say nothing left out.
-   *
-   * A list rather than a string because the page writes a skill five times, once per level, and
-   * the interesting part is usually not level 1: mining reaches mithril at 3 and admantium at 5,
-   * which is exactly what a reader opens the entry to find out. Levels the page fills with
-   * `No skill report.` carry no information and are dropped, so a skill that says something only
-   * at 1 and 3 has two entries here and not five.
-   *
-   * Absent rather than `[]` when the skill says nothing anywhere - the rule ah-3cj4.1 set for a
-   * building's `size` and `cost`, applied here so the file reads consistently.
-   */
-  levels?: SkillLevel[];
-  /**
-   * Whether this is one of the magic skills.
-   *
-   * The data page marks magic nowhere - no flag, no grouping, no "may only be studied by a mage"
-   * phrase - so this is read from the skill's own level-1 description instead: a skill whose
-   * opening paragraph speaks of mages, magic, spells, casting, summoning, enchanting or the
-   * Foundations is magic. Measured over the committed fixture this separates the catalogue
-   * exactly: seventy magic, twenty-six mundane, and the twenty-six are armorer, building,
-   * carpenter, combat and their kind. See `committed.test.ts` for the pinned classification.
-   */
-  magic: boolean;
-  /**
-   * What a unit must already have before it may begin this skill, as the data page's own `This
-   * skill requires force [FORC] 1 to begin to study.` sentence states it. Empty - never absent -
-   * for the majority of the catalogue, which states none.
-   */
-  requires: SkillRequirement[];
-};
 
 export type SkillReference = Record<string, SkillEntry>;
 
@@ -667,50 +618,6 @@ export function parseSkillReference(html: string): SkillReference {
 
   return skills;
 }
-
-/** One structure as the data page describes it. */
-export type BuildingEntry = {
-  /**
-   * The description the page gives it, from the name onwards, verbatim and whitespace-collapsed -
-   * `This is a building. Units may enter this structure. This trade structure increases the
-   * amount of iron available in the region.`
-   *
-   * Kept because a reference entry that can only show numbers is most of the way to useless
-   * (ah-3cj4), and because it is already in front of the parser: the numbers are read out of this
-   * very text.
-   */
-  description: string;
-  /** What a trade structure increases the supply of, in the page's own word: `iron`, `yew`. */
-  produces?: string;
-  /**
-   * Men the structure protects - the rules table's "Size". Absent for a Mine, a road or a lair,
-   * which state no defence because they give none, and an absent field says that where a `0`
-   * would claim the page had said so.
-   */
-  size?: number;
-  /** What building it costs, from the skill that builds it. Absent for anything no skill builds. */
-  cost?: number;
-  /**
-   * What it is built from, in the page's own order. A list because the page offers alternatives -
-   * `an Inn from 10 wood [WOOD] or stone [STON]` - which one string cannot hold.
-   */
-  materials?: string[];
-  /**
-   * Mages who may study above level 2 inside it. `0` when the entry says nothing: the data page
-   * lists every structure and states the capacity wherever there is one, so silence is a
-   * statement - and a Tower, which says nothing, really does seat none.
-   */
-  mages: number;
-  /**
-   * The tag of the skill that builds it - `BUIL`, `MINI` - taken from the opening of that skill's
-   * own entry. Absent for a structure no skill's entry names, which is 22 of the 58: the lairs,
-   * and everything the page says cannot be built by players. Absent means the catalogue does not
-   * say, never that no skill is needed.
-   */
-  buildSkill?: string;
-  /** The lowest level of `buildSkill` that can build it. Absent exactly when `buildSkill` is. */
-  buildLevel?: number;
-};
 
 export type BuildingReference = Record<string, BuildingEntry>;
 

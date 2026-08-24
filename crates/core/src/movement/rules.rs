@@ -393,6 +393,11 @@ pub struct Production {
 
 /// A skill a unit must already have, at a level, before it may begin to study another.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/SkillRequirement.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SkillRequirement {
     pub tag: String,
@@ -404,6 +409,11 @@ pub struct SkillRequirement {
 /// Separate from the item catalogue rather than merged into it, because ten tags mean one thing as
 /// a skill and another as an item: FISH is fishing and also fish, HERB is herb lore and also herbs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/SkillEntry.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SkillEntry {
     pub tag: String,
@@ -436,11 +446,19 @@ pub struct SkillEntry {
     /// What the page says at each level, in level order, with the levels it fills with `No skill
     /// report.` left out. Empty for a ruleset cached before ah-3cj4.2.
     #[serde(default)]
+    // The scraper omits this rather than writing `[]` for a skill that says nothing anywhere, so
+    // TypeScript must see it as optional; `serde(default)` already accepts the absence in Rust.
+    #[cfg_attr(test, ts(as = "Option<Vec<SkillLevel>>", optional))]
     pub levels: Vec<SkillLevel>,
 }
 
 /// What a skill's page says at one level, once the placeholders are dropped.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/SkillLevel.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SkillLevel {
     pub level: u32,
@@ -453,6 +471,11 @@ pub struct SkillLevel {
 /// carries a `name` and a single `material` string, and refusing those would turn an old cache
 /// into a failed load rather than a ruleset that knows a little less.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/BuildingEntry.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildingEntry {
     /// The description the data page gives it, verbatim and whitespace-collapsed. Empty for a
@@ -462,27 +485,33 @@ pub struct BuildingEntry {
     /// What a trade structure increases the supply of, in the page's own word - `iron`, `yew`.
     /// `None` for anything that is not one.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub produces: Option<String>,
     /// Men the structure protects. `None` for a Mine, a road or a lair, which state no defence
     /// because they give none - an absence, not a zero, which would claim the page had said so.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub size: Option<i64>,
     /// What building it costs. `None` for anything no skill can build.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub cost: Option<i64>,
     /// What it is built from, in the page's own order - a list because a structure can offer
     /// alternatives (`an Inn from 10 wood or stone`). `None` for anything no skill can build, and
     /// for a ruleset cached before ah-9js, which wrote a single `material` string this no longer
     /// reads.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub materials: Option<Vec<String>>,
     /// The tag of the skill that builds it - `BUIL`, `MINI`. `None` for a structure no skill's
     /// entry names, and for a ruleset cached before ah-bwly.1: the catalogue not saying, never
     /// "no skill needed".
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub build_skill: Option<String>,
     /// The lowest level of `build_skill` that can build it. `None` exactly when `build_skill` is.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub build_level: Option<i64>,
     /// How many mages the building provides study facilities for. **Zero for a Tower**, which is
     /// the ruleset's own answer and not an oversight: a mage studying in one gets half a month.
