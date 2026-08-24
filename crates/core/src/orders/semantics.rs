@@ -28,8 +28,9 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
     combat_ready, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
-    late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants, price_pillage,
-    price_tax, recipe_for, settle_unclaimed, split_pool, taxes, unit_upkeep, ContendedPool,
+    late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants, price_claim,
+    price_pillage, price_purchase, price_sale, price_tax, quantity_bought, quantity_sold,
+    recipe_for, settle_unclaimed, split_pool, taxes, unit_upkeep, ContendedPool,
     FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide,
     PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages,
     SaleAnswer, SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
@@ -1312,9 +1313,26 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
     // Once per hex, not once per pillaging unit: `apply` runs per intent and this path runs per
     // keystroke, so a city of forty units would otherwise rebuild the sum forty times.
     let hex_combat_ready = combat_ready_in(hex, ruleset);
-    for ordered in &hex.units {
+    // The same settlement the Silver column reads, so both surfaces charge for goods that exist
+    // (`ah-lu0f.2`). The overruns are discarded: the silver pass records them already, and
+    // emitting them here as well would duplicate every `region-pool-oversubscribed` finding.
+    //
+    // This computes the settlement a second time for the hex. Accepted rather than overlooked -
+    // the two passes are separate entry points, and threading one computation between them means
+    // restructuring both together.
+    let market_shares = market_shares_for(hex, ruleset, &mut Vec::new());
+    for (index, ordered) in hex.units.iter().enumerate() {
         for placed in ordered.intents {
-            apply(&mut ledger, hex, ordered, placed, ruleset, hex_combat_ready);
+            apply(
+                &mut ledger,
+                hex,
+                ordered,
+                placed,
+                ruleset,
+                hex_combat_ready,
+                &market_shares,
+                index,
+            );
         }
         credit_tax(&mut ledger, hex, ordered, pillaged);
     }
@@ -1642,6 +1660,11 @@ fn apply(
     // Combat ready men this faction has in this hex - computed once per hex by the caller, because
     // this function runs for every placed intent of every unit (`ah-1ad6.2`).
     hex_combat_ready: Option<i64>,
+    // How the hex's market lines are split between the faction's own units here, and which of
+    // them this actor is. Index-aligned with `hex.units`, exactly as the Silver column reads it
+    // (`ah-lu0f.2`).
+    market_shares: &BTreeMap<(String, MarketSide), Vec<i64>>,
+    actor_index: usize,
 ) {
     let who = &actor.unit.unit_id;
 
@@ -1680,7 +1703,12 @@ fn apply(
                 Some(who.clone()),
             );
         }
-        Intent::Claim(amount) => credit(ledger, who, SILVER, *amount),
+        // Priced by `silver::price_claim`, which `silver::forecast_unit` calls too. The `None`
+        // is this surface's policy and is deliberate: the ledger does not cap a claim at the
+        // faction purse, because the overrun has its own finding, `claims-exceed-unclaimed`
+        // (`ah-wur4`), computed faction-wide - and warning twice about one mistake is worse than
+        // warning once (`ah-bumi`).
+        Intent::Claim(amount) => credit(ledger, who, SILVER, price_claim(*amount, None).earns),
         // Credited once per unit by `credit_tax` in `ledger_for`, not per line: a unit may tax by
         // its flag with no `TAX` order at all, and one carrying both taxes once (`ah-fvzu`).
         Intent::Tax => {}
@@ -1696,13 +1724,37 @@ fn apply(
                 credit(ledger, who, SILVER, priced.earns);
             }
         }
-        Intent::Buy { amount, item } => buy(ledger, hex, actor, placed, amount, item, ruleset),
-        Intent::Sell { amount, item } => sell(ledger, hex, actor, placed, amount, item, ruleset),
+        Intent::Buy { amount, item } => buy(
+            ledger,
+            hex,
+            actor,
+            placed,
+            amount,
+            item,
+            ruleset,
+            market_shares,
+            actor_index,
+        ),
+        Intent::Sell { amount, item } => sell(
+            ledger,
+            hex,
+            actor,
+            placed,
+            amount,
+            item,
+            ruleset,
+            market_shares,
+            actor_index,
+        ),
         Intent::Study { skill } => study(ledger, actor, placed, skill, ruleset),
         Intent::Cast { spell, arguments } => cast(ledger, actor, placed, spell, arguments, ruleset),
         // The fund pays, not the unit (`ah-tdsi`). Nothing is charged here, and an unpriceable
         // withdrawal no longer doubts the unit: what cannot be counted is the *faction's* total,
         // which is `check_claims`'s to decline on.
+        //
+        // Deliberately not part of the `Priced` seam (`ah-lu0f.2`): the unit is charged nothing
+        // and the Silver column only sets a flag for a hover sentence, so there is no shared
+        // arithmetic for a `price_withdrawal` to hold.
         Intent::Withdraw { .. } => {}
         // Wages and takings from entertaining are paid in the last phase of the turn, after study
         // has been paid for, so they can fund nothing this month.
@@ -1774,6 +1826,8 @@ fn buy(
     amount: &Amount,
     item: &str,
     ruleset: Option<&Ruleset>,
+    market_shares: &BTreeMap<(String, MarketSide), Vec<i64>>,
+    actor_index: usize,
 ) {
     let who = &actor.unit.unit_id;
     let Some(offer) = market(&hex.region.for_sale, item, hex, actor, ruleset) else {
@@ -1787,14 +1841,33 @@ fn buy(
         return;
     };
 
-    charge(
-        ledger,
-        who,
-        SILVER,
-        count.saturating_mul(offer.price),
-        placed,
-    );
-    credit(ledger, who, &offer.tag.to_ascii_uppercase(), *count);
+    let tag = offer.tag.to_ascii_uppercase();
+    // What this hex's other own buyers left of the line, or the ask itself where nothing was
+    // settled. The settled figure is already capped by what the market has, so this is also what
+    // stops a lone unit being charged for goods that do not exist (`ah-t2pn.3`).
+    let allowed = share_of(market_shares, &tag, MarketSide::Buying, actor_index).unwrap_or(*count);
+    let priced = price_purchase(*count, offer.price, allowed);
+
+    charge(ledger, who, SILVER, priced.spends, placed);
+    credit(ledger, who, &tag, quantity_bought(*count, allowed));
+}
+
+/// This unit's own share of a settled market line, or `None` where nothing was settled - goods
+/// this market does not trade, or a hex that could not be settled at all. The caller then falls
+/// back to what the market line itself says.
+///
+/// Index-aligned with `hex.units` rather than keyed by unit id, because two units may carry the
+/// same id and a map would merge them - the same reason [`market_shares_for`] builds it that way,
+/// and the same lookup the Silver column's `market_share` closure makes.
+fn share_of(
+    market_shares: &BTreeMap<(String, MarketSide), Vec<i64>>,
+    tag: &str,
+    side: MarketSide,
+    actor_index: usize,
+) -> Option<i64> {
+    market_shares
+        .get(&(tag.to_ascii_uppercase(), side))
+        .and_then(|shares| shares.get(actor_index).copied())
 }
 
 /// `PRODUCE <item>`: what the run costs comes off the unit's silver and its materials.
@@ -1837,6 +1910,8 @@ fn sell(
     amount: &Amount,
     item: &str,
     ruleset: Option<&Ruleset>,
+    market_shares: &BTreeMap<(String, MarketSide), Vec<i64>>,
+    actor_index: usize,
 ) {
     let who = &actor.unit.unit_id;
     let Some(demand) = market(&hex.region.wanted, item, hex, actor, ruleset) else {
@@ -1845,16 +1920,20 @@ fn sell(
     };
 
     let tag = demand.tag.to_ascii_uppercase();
-    let quantity = match amount {
+    let holds = balance_of(ledger, who, &tag);
+    let asked = match amount {
         Amount::Exact(count) => *count,
-        // As much as the market will take, or as much as the unit has - whichever runs out first.
-        Amount::All { except } => (balance_of(ledger, who, &tag) - except)
-            .max(0)
-            .min(demand.amount),
+        Amount::All { except } => holds - except,
     };
+    // What this hex's other own sellers left of the line, or the line itself where nothing was
+    // settled - so a lone unit is credited only for what the market will actually take
+    // (`ah-t2pn.3`).
+    let allowed =
+        share_of(market_shares, &tag, MarketSide::Selling, actor_index).unwrap_or(demand.amount);
+    let quantity = quantity_sold(asked, holds, allowed);
 
     charge(ledger, who, &tag, quantity, placed);
-    credit(ledger, who, SILVER, quantity.saturating_mul(demand.price));
+    credit(ledger, who, SILVER, price_sale(asked, holds, demand.price, allowed).earns);
 }
 
 fn study(
@@ -7869,7 +7948,13 @@ mod tests {
         unit
     }
 
+    /// Gives the unit this much of the goods - *replacing* any line it already carries for the
+    /// tag rather than adding a second one. `unit` already hands out a grain, so pushing
+    /// unconditionally left fixtures holding two `GRAI` lines, which the two silver surfaces then
+    /// read differently: `Ordered::holding` takes the first match and the ledger's balance map
+    /// takes the last (`ah-lu0f.2`). A real report never lists a tag twice.
     fn with_item(mut unit: ReportUnit, amount: i64, name: &str, tag: &str) -> ReportUnit {
+        unit.items.retain(|item| !item.tag.eq_ignore_ascii_case(tag));
         unit.items.push(ItemAmount {
             amount,
             name: name.to_string(),
@@ -8780,6 +8865,78 @@ mod tests {
         let finding = only(check(vec![hex], "unit 5\nBUY 2 horses\n"));
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert!(finding.message.contains("140"), "{}", finding.message);
+    }
+
+    #[test]
+    fn a_lone_over_buyer_is_not_charged_for_goods_that_do_not_exist() {
+        // The navigator settled on 2026-08-23 that the market settlement applies whenever anyone
+        // buys or sells, not only when two units contend (`ah-t2pn.3`). The Silver column has read
+        // it that way since; the ledger charged for the whole ask, which is a false warning.
+        let mut hex = region(vec![with_silver(unit("5"), 500)]);
+        hex.for_sale.push(MarketItem {
+            amount: 100,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 5,
+        });
+
+        assert!(
+            !codes(&check(vec![hex], "unit 5\nBUY 200 horses\n")).contains(&"not-enough-silver"),
+            "only the 100 horses that exist are bought, and $500 covers them"
+        );
+    }
+
+    #[test]
+    fn an_over_seller_is_credited_only_for_what_the_market_takes() {
+        // The mirror of the case above, and wrong in the other direction: income the unit will not
+        // receive was suppressing a warning that should fire.
+        let mut hex = region(vec![with_item(
+            with_silver(unit("5"), 0),
+            100,
+            "grain",
+            "GRAI",
+        )]);
+        hex.wanted.push(MarketItem {
+            amount: 20,
+            name: "grain".to_string(),
+            tag: "GRAI".to_string(),
+            price: 3,
+        });
+        hex.for_sale.push(MarketItem {
+            amount: 60,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 5,
+        });
+
+        // The oversubscription finding fires too, and correctly: the market wants 20 and the
+        // unit offered 100. What this bead adds is the second one.
+        assert!(
+            codes(&check(vec![hex], "unit 5\nSELL 100 grain\nBUY 60 horses\n"))
+                .contains(&"not-enough-silver"),
+            "the sale earns $60, not $300, so the $300 of horses is not covered"
+        );
+    }
+
+    #[test]
+    fn a_claim_is_still_uncapped_in_the_ledger() {
+        // Deliberately divergent from the Silver column, which caps a CLAIM at the purse. The
+        // overrun has its own finding, `claims-exceed-unclaimed` (`ah-wur4`), computed
+        // faction-wide, and warning twice about one mistake is worse than warning once
+        // (`ah-bumi`). Do not "finish the job" by capping this.
+        let mut hex = region(vec![with_silver(unit("5"), 0)]);
+        hex.for_sale.push(MarketItem {
+            amount: 10,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 70,
+        });
+
+        assert!(
+            !codes(&check(vec![hex], "unit 5\nCLAIM 1000\nBUY 2 horses\n"))
+                .contains(&"not-enough-silver"),
+            "the claim funds the purchase here whatever the faction purse holds"
+        );
     }
 
     #[test]
