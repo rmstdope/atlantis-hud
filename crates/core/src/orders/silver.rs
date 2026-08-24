@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::movement::rules::{Production, Ruleset};
+use crate::movement::rules::{Production, Ruleset, SkillEntry};
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::report::model::{ItemAmount, Skill};
@@ -896,44 +896,11 @@ pub fn forecast_unit(
                 // Resolved once: this runs per keystroke, and `find_skill` walks the catalogue.
                 let spell = ruleset.and_then(|ruleset| ruleset.find_skill(spell));
 
-                match spell.map(|skill| skill.tag.to_ascii_uppercase()) {
-                    // Both earning spells arrive in time to be spent: `CAST` resolves before every
-                    // spend order, so neither is [`late_income`]'s business. What each cast
-                    // *costs* is still charged below - the arm earns and falls through.
-                    Some(tag) if tag == PHANTASMAL_TAG => {
-                        let earned = skill_level(facts.skills, PHANTASMAL_TAG)
-                            .saturating_mul(PHANTASMAL_PER_LEVEL);
-                        income =
-                            income.saturating_add(earned.min(region.entertainment.unwrap_or(0)));
-                    }
-                    Some(tag) if tag == EARTH_LORE_TAG => {
-                        // W is the region's wage, which `RegionWages` carries in hundredths - so
-                        // the division by 100 is the same shape `WORK` uses, and floors for the
-                        // same reason. Multiplied out before dividing, so a fractional wage is not
-                        // lost. A hex that states no wage pays nothing and raises no doubt, again
-                        // exactly as `WORK` treats one: the formula multiplies by W, and W is
-                        // nothing.
-                        let earned = skill_level(facts.skills, EARTH_LORE_TAG)
-                            .saturating_mul(EARTH_LORE_PER_LEVEL_PER_WAGE)
-                            .saturating_mul(region.wage_centis.unwrap_or(0))
-                            / 100;
-                        income = income.saturating_add(earned);
-                    }
-                    // Every other spell earns nothing here; what it *costs* is charged below.
-                    _ => {}
-                }
-
-                // A cast consumes what the ruleset says it consumes, and only its `SILV` entries
-                // move silver: item costs and the whole `transmute` map are another ledger's
-                // business. A spell the ruleset does not know, or knows no cost for, costs nothing
-                // and doubts nothing - which is the truth about most spells.
-                if let Some(cost) = spell.and_then(|skill| skill.cast.as_ref()) {
-                    for input in &cost.costs {
-                        if input.tag.eq_ignore_ascii_case(SILVER_TAG) && input.amount > 0 {
-                            expense = expense.saturating_add(input.amount);
-                            spent_on = spent_on.or(Some(SilverSpender::Cast));
-                        }
-                    }
+                let priced = price_cast(spell, facts.skills, region);
+                income = income.saturating_add(priced.earns);
+                expense = expense.saturating_add(priced.spends);
+                if priced.spends > 0 {
+                    spent_on = spent_on.or(Some(SilverSpender::Cast));
                 }
             }
             Intent::Buy { amount, item } => match (lookups.purchase)(item) {
@@ -2059,6 +2026,51 @@ pub fn price_production(
     }
 }
 
+/// What a `CAST` earns and costs.
+///
+/// **Two spells earn**, and both arrive in time to be spent: `CAST` resolves before every spend
+/// order, so neither is [`late_income`]'s business. Phantasmal Entertainment pays
+/// `level x PHANTASMAL_PER_LEVEL`, capped by what the region's entertainment pool holds; Earth Lore
+/// pays `level x EARTH_LORE_PER_LEVEL_PER_WAGE x W`, where W is the region's wage - carried in
+/// hundredths, so the multiplication comes before the division by 100 and a fractional wage is not
+/// lost. A hex stating no wage pays nothing and raises no doubt, exactly as `WORK` treats one.
+///
+/// **Every spell may cost.** Only the `SILV` entries of the cast cost move silver here; item costs
+/// and the whole `transmute` map are the item ledger's business and are not this function's.
+///
+/// A spell the ruleset does not know, or knows no cost for, earns nothing, costs nothing and doubts
+/// nothing - which is the truth about most spells.
+#[must_use]
+pub fn price_cast(spell: Option<&SkillEntry>, skills: &[Skill], region: RegionWages) -> Priced {
+    let earns = match spell.map(|spell| spell.tag.to_ascii_uppercase()) {
+        Some(tag) if tag == PHANTASMAL_TAG => skill_level(skills, PHANTASMAL_TAG)
+            .saturating_mul(PHANTASMAL_PER_LEVEL)
+            .min(region.entertainment.unwrap_or(0)),
+        Some(tag) if tag == EARTH_LORE_TAG => {
+            skill_level(skills, EARTH_LORE_TAG)
+                .saturating_mul(EARTH_LORE_PER_LEVEL_PER_WAGE)
+                .saturating_mul(region.wage_centis.unwrap_or(0))
+                / 100
+        }
+        _ => 0,
+    };
+
+    let spends = spell
+        .and_then(|spell| spell.cast.as_ref())
+        .map_or(0, |cost| {
+            cost.costs
+                .iter()
+                .filter(|input| input.tag.eq_ignore_ascii_case(SILVER_TAG) && input.amount > 0)
+                .fold(0i64, |total, input| total.saturating_add(input.amount))
+        });
+
+    Priced {
+        earns,
+        spends,
+        doubt: None,
+    }
+}
+
 /// The level a unit has in one skill, by tag, or 0 for a skill it does not have.
 fn skill_level(skills: &[Skill], tag: &str) -> i64 {
     skills
@@ -2721,6 +2733,87 @@ mod tests {
     /// Flags as the report prints them, for the taxing-flag rules.
     fn flags(names: &[&str]) -> Vec<String> {
         names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    use crate::movement::rules::{CastCost, CastInput};
+
+    /// A spell entry as the catalogue would carry one, with an optional `SILV` cast cost.
+    fn spell(tag: &str, silver: Option<i64>) -> SkillEntry {
+        SkillEntry {
+            tag: tag.to_string(),
+            name: tag.to_lowercase(),
+            cost: None,
+            max_level: 5,
+            cast: silver.map(|amount| CastCost {
+                costs: vec![CastInput {
+                    tag: SILVER_TAG.to_string(),
+                    amount,
+                }],
+                transmute: BTreeMap::new(),
+            }),
+            produces: Vec::new(),
+            magic: true,
+            requires: Vec::new(),
+            levels: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn prices_a_cast_that_earns_and_one_that_costs() {
+        let phantasmal = spell(PHANTASMAL_TAG, None);
+        let earth_lore = spell(EARTH_LORE_TAG, None);
+        let skills = [skill(PHANTASMAL_TAG, 3), skill(EARTH_LORE_TAG, 2)];
+
+        // Level 3 wants 1800; the region's pool holds 500, so 500 is what it earns.
+        assert_eq!(
+            price_cast(
+                Some(&phantasmal),
+                &skills,
+                RegionWages {
+                    entertainment: Some(500),
+                    ..RegionWages::default()
+                }
+            ),
+            Priced {
+                earns: 500,
+                ..Priced::default()
+            }
+        );
+
+        // A hex stating no entertainment pool pays nothing, and doubts nothing.
+        assert_eq!(
+            price_cast(Some(&phantasmal), &skills, RegionWages::default()),
+            Priced::default()
+        );
+
+        // Earth Lore at level 2 with a wage of 13.5: 2 x 2 x 1350 / 100 = 54. Multiplied out
+        // before the divide, so the fractional wage is not lost - 2 x 2 x 13 would be 52.
+        assert_eq!(
+            price_cast(
+                Some(&earth_lore),
+                &skills,
+                RegionWages {
+                    wage_centis: Some(1350),
+                    ..RegionWages::default()
+                }
+            ),
+            Priced {
+                earns: 54,
+                ..Priced::default()
+            }
+        );
+
+        // A spell that costs silver to cast, and earns nothing.
+        assert_eq!(
+            price_cast(Some(&spell("FIRE", Some(60))), &skills, RegionWages::default()),
+            Priced {
+                spends: 60,
+                ..Priced::default()
+            }
+        );
+
+        // A spell the ruleset does not know earns nothing, costs nothing and doubts nothing.
+        assert_eq!(price_cast(None, &skills, RegionWages::default()), Priced::default());
     }
 
     #[test]
