@@ -117,7 +117,10 @@ describe("commandParameters", () => {
     `;
 
     expect(commandParameters(mainRs, "")).toEqual({
-      open_game: ["game_id", "opened_at"]
+      open_game: [
+        { name: "game_id", required: true },
+        { name: "opened_at", required: true }
+      ]
     });
   });
 
@@ -131,7 +134,63 @@ describe("commandParameters", () => {
     `;
 
     expect(commandParameters("", coreTauriLibRs)).toEqual({
-      parse_report_classified: ["raw_report", "ruleset_json"]
+      parse_report_classified: [
+        { name: "raw_report", required: true },
+        { name: "ruleset_json", required: true }
+      ]
+    });
+  });
+
+  it("reads whether each parameter may be omitted", () => {
+    const coreTauriLibRs = `
+      #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "order_vocabulary")
+      )]
+      pub fn command_order_vocabulary(ruleset_json: Option<&str>) -> Vocabulary {
+    `;
+    const mainRs = `
+      #[tauri::command(rename_all = "snake_case")]
+      fn set_game_map(app: tauri::AppHandle, game_id: String, map_json: String) -> Result<(), String> {
+    `;
+
+    expect(commandParameters(mainRs, coreTauriLibRs)).toEqual({
+      order_vocabulary: [{ name: "ruleset_json", required: false }],
+      set_game_map: [
+        { name: "game_id", required: true },
+        { name: "map_json", required: true }
+      ]
+    });
+  });
+
+  it("keeps a required parameter whose type contains a top-level-safe comma", () => {
+    const coreTauriLibRs = `
+      #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "validate_orders")
+      )]
+      pub fn command_validate_orders(raw: &str, disabled_codes: Option<Vec<String>>) -> Report {
+    `;
+
+    expect(commandParameters("", coreTauriLibRs)).toEqual({
+      validate_orders: [
+        { name: "raw", required: true },
+        { name: "disabled_codes", required: false }
+      ]
+    });
+  });
+
+  it("does not read the return type when deciding requiredness", () => {
+    const coreTauriLibRs = `
+      #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "load_order_draft")
+      )]
+      pub fn command_load_order_draft(game_id: &str) -> Result<Option<OrderDraftRecordDto>, String> {
+    `;
+
+    expect(commandParameters("", coreTauriLibRs)).toEqual({
+      load_order_draft: [{ name: "game_id", required: true }]
     });
   });
 
@@ -250,15 +309,46 @@ describe("the live Tauri command lockstep", () => {
 
     // Keys: every row's keys are the Rust parameter names, in order.
     for (const [command, keys] of Object.entries(table)) {
-      expect(keys, command).toEqual(parameters[command]);
+      expect(keys, command).toEqual(parameters[command].map((parameter) => parameter.name));
     }
 
-    // The sweep names only real parameters (it may omit an Option; it may not invent one).
+    // Both directions of the sweep's arguments, in one pass over each entry's args().
+    //
+    // The sweep names only real parameters (it may omit an Option; it may not invent one), and it
+    // supplies every required one — omitting a required parameter is `missing required key <name>`
+    // in CI's Linux-only native job 25 minutes later (ah-0w7w), and this is what makes it a local
+    // failure in seconds instead. The `Object.keys(table)`/`registered` equality above, together
+    // with `lockstep`, is what guarantees `parameters` has a row for every swept command, so
+    // indexing it unguarded here is deliberate: a missing row must throw, not silently skip.
     for (const entry of SWEEP) {
-      for (const key of Object.keys(entry.args())) {
-        expect(parameters[entry.command], `${entry.command}.${key}`).toContain(key);
+      const declared = parameters[entry.command];
+      expect(declared, `${entry.command} is declared`).toBeDefined();
+      const supplied = new Set(Object.keys(entry.args()));
+      const names = declared.map((parameter) => parameter.name);
+      for (const key of supplied) {
+        expect(names, `${entry.command}.${key}`).toContain(key);
+      }
+      for (const parameter of declared) {
+        if (parameter.required) {
+          expect(supplied.has(parameter.name), `${entry.command}.${parameter.name}`).toBe(true);
+        }
       }
     }
+
+    // The required/optional split is not vacuous. The counts are pinned near their live values
+    // rather than merely above zero, so a rule that misclassified most of one side would fail
+    // here too — a loose threshold is how a corpus assertion stayed vacuously true for 758 of
+    // 1,392 units for a year (ah-ycuj). One command with a mixed signature is then pinned in
+    // full, which catches an inverted or partial rule by name rather than by count.
+    const allParameters = Object.values(parameters).flat();
+    expect(allParameters.filter((parameter) => parameter.required).length).toBeGreaterThan(80);
+    expect(allParameters.filter((parameter) => !parameter.required).length).toBeGreaterThan(10);
+    expect(parameters["validate_orders"], "validate_orders is declared").toEqual([
+      { name: "raw_orders", required: true },
+      { name: "ruleset_json", required: false },
+      { name: "raw_report", required: false },
+      { name: "disabled_codes", required: false }
+    ]);
 
     // The wasm boundary: same exports, same arity, both ways.
     expect(wasmModuleMembers(webCoreAdapterTs)).toEqual(wasmExports(coreWasmLibRs));
