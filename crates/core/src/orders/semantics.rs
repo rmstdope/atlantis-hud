@@ -154,6 +154,20 @@ pub mod codes {
         PILLAGE_WITHOUT_MEN,
         TAXED_A_GUARDED_HEX,
     ];
+
+    /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
+    /// warning marker on the unit table's row.
+    ///
+    /// A property of the finding, declared beside the finding, rather than a per-code allowlist in
+    /// TypeScript that nothing links back to [`ALL`] (`ah-v9p2`). `upkeep-exceeds-unclaimed`
+    /// shipped producing 29 findings with every planned test green and the column marking none of
+    /// them (`ah-fjty`), because the allowlist lived in another package.
+    ///
+    /// **Not derivable from anything else, and deliberately so.** `not-enough-items` is
+    /// unit-anchored too and does *not* belong here: the marker is on the Silver figure, not on the
+    /// row. Adding a code that belongs here is still one hand edit - but it is one edit, in this
+    /// file, three lines below where the code was just declared.
+    pub const SILVER_TROUBLE: [Code; 2] = [NOT_ENOUGH_SILVER, UPKEEP_EXCEEDS_UNCLAIMED];
 }
 
 /// Which checks to run.
@@ -4798,6 +4812,21 @@ mod tests {
     use crate::report::model::{Coordinate, Skill};
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
+
+    /// `ah-v9p2`. The Silver column's warning marker is a property of the finding, declared beside
+    /// the findings; this pins that the list cannot name a code that does not exist, and cannot be
+    /// vacuously empty.
+    #[test]
+    fn every_silver_trouble_code_is_a_real_code() {
+        assert!(!codes::SILVER_TROUBLE.is_empty());
+        for code in codes::SILVER_TROUBLE {
+            assert!(
+                codes::ALL.contains(&code),
+                "{} is not in codes::ALL",
+                code.as_str()
+            );
+        }
+    }
 
     fn ruleset() -> Ruleset {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
