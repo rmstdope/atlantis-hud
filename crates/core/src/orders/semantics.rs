@@ -28,12 +28,13 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
     combat_ready, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
-    late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants, price_claim,
-    price_pillage, price_purchase, price_sale, price_tax, quantity_bought, quantity_sold,
-    recipe_for, settle_unclaimed, split_pool, taxes, unit_upkeep, ContendedPool, FactionFoodPass,
-    FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, PoolOverrun,
-    PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
-    SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
+    late_income, parse_wage_centis, pillage_threshold, pool_wants, price_cast, price_claim,
+    price_pillage, price_production, price_purchase, price_sale, price_study, price_tax,
+    quantity_bought, quantity_sold, recipe_for, settle_unclaimed, split_pool, taxes, unit_upkeep,
+    ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief,
+    Lookups, MarketSide, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts,
+    RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
+    FOOD_TAGS,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -1310,9 +1311,6 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
     }
 
     let pillaged = own_unit_pillages(hex);
-    // Once per hex, not once per pillaging unit: `apply` runs per intent and this path runs per
-    // keystroke, so a city of forty units would otherwise rebuild the sum forty times.
-    let hex_combat_ready = combat_ready_in(hex, ruleset);
     // The same settlement the Silver column reads, so both surfaces charge for goods that exist
     // (`ah-lu0f.2`). The overruns are discarded: the silver pass records them already, and
     // emitting them here as well would duplicate every `region-pool-oversubscribed` finding.
@@ -1321,6 +1319,10 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
     // the two passes are separate entry points, and threading one computation between them means
     // restructuring both together.
     let market_shares = market_shares_for(hex, ruleset, &mut Vec::new());
+    // Once per hex, not once per intent - `apply` runs per intent and this path runs on every
+    // keystroke, so a city of forty units would otherwise walk its own units forty times for the
+    // combat-ready sum alone (`ah-1ad6.2`, `ah-lu0f.3`).
+    let region = region_wages(hex, ruleset);
     for (index, ordered) in hex.units.iter().enumerate() {
         for placed in ordered.intents {
             apply(
@@ -1329,7 +1331,7 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
                 ordered,
                 placed,
                 ruleset,
-                hex_combat_ready,
+                region,
                 MarketStanding {
                     shares: &market_shares,
                     actor_index: index,
@@ -1659,9 +1661,11 @@ fn apply(
     actor: &Ordered<'_>,
     placed: &PlacedIntent,
     ruleset: Option<&Ruleset>,
-    // Combat ready men this faction has in this hex - computed once per hex by the caller, because
-    // this function runs for every placed intent of every unit (`ah-1ad6.2`).
-    hex_combat_ready: Option<i64>,
+    // What this hex says about every order priced in it: the wages and entertainment pool `CAST`
+    // prices the two earning spells from, and the combat-ready sum `PILLAGE` needs. Built once per
+    // hex by the caller, because this runs for every placed intent of every unit on every
+    // keystroke and the combat-ready sum is itself a walk of the hex (`ah-1ad6.2`, `ah-lu0f.3`).
+    region: RegionWages,
     // How the hex's market lines are split between the faction's own units, and which of them
     // this actor is - the same settlement the Silver column reads (`ah-lu0f.2`).
     standing: MarketStanding<'_>,
@@ -1717,7 +1721,7 @@ fn apply(
         // exists). The two differ only in how they express the doubt - a typed variant there, the
         // unit's sums no longer trusted here.
         Intent::Pillage => {
-            let priced = price_pillage(hex.region.tax_base, hex_combat_ready);
+            let priced = price_pillage(hex.region.tax_base, region.combat_ready);
             if priced.doubt.is_some() {
                 ledger.doubted.insert(who.clone());
             } else {
@@ -1747,7 +1751,9 @@ fn apply(
             );
         }
         Intent::Study { skill } => study(ledger, actor, placed, skill, ruleset),
-        Intent::Cast { spell, arguments } => cast(ledger, actor, placed, spell, arguments, ruleset),
+        Intent::Cast { spell, arguments } => {
+            cast(ledger, actor, placed, spell, arguments, ruleset, region);
+        }
         // The fund pays, not the unit (`ah-tdsi`). Nothing is charged here, and an unpriceable
         // withdrawal no longer doubts the unit: what cannot be counted is the *faction's* total,
         // which is `check_claims`'s to decline on.
@@ -1897,9 +1903,8 @@ fn produce(
     ruleset: Option<&Ruleset>,
 ) {
     let who = &actor.unit.unit_id;
-    let plan = resolve_item(item, hex, actor, ruleset)
-        .and_then(|tag| recipe_for(ruleset, &tag))
-        .and_then(|recipe| plan_production(recipe, actor.unit.men, &actor.unit.items));
+    let recipe = resolve_item(item, hex, actor, ruleset).and_then(|tag| recipe_for(ruleset, &tag));
+    let (priced, plan) = price_production(recipe, actor.unit.men, &actor.unit.items);
     let Some(plan) = plan else {
         // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
         // same posture `buy` takes for goods the market does not carry.
@@ -1907,7 +1912,7 @@ fn produce(
         return;
     };
 
-    charge(ledger, who, SILVER, plan.silver, placed);
+    charge(ledger, who, SILVER, priced.spends, placed);
     for material in &plan.materials {
         charge(ledger, who, &material.tag, material.amount, placed);
     }
@@ -1968,23 +1973,17 @@ fn study(
         .and_then(|ruleset| ruleset.find_skill(skill))
         .and_then(|skill| skill.cost);
 
-    match cost {
-        Some(cost) => charge(
-            ledger,
-            who,
-            SILVER,
-            cost.saturating_mul(actor.unit.men),
-            placed,
-        ),
-        None => {
-            ledger.doubted.insert(who.clone());
-        }
+    let priced = price_study(cost, actor.unit.men);
+    if priced.doubt.is_some() {
+        ledger.doubted.insert(who.clone());
+        return;
     }
+    charge(ledger, who, SILVER, priced.spends, placed);
 }
 
-/// Charges what the ruleset says a cast consumes. A spell the ruleset does not know, or knows no
-/// cost for, charges nothing and doubts nothing: most spells cost nothing to cast, and a unit's
-/// other sums are still good.
+/// Credits what an earning spell raises, and charges what the ruleset says a cast consumes. A
+/// spell the ruleset does not know, or knows no cost for, charges nothing and doubts nothing: most
+/// spells cost nothing to cast, and a unit's other sums are still good.
 fn cast(
     ledger: &mut Ledger<'_>,
     actor: &Ordered<'_>,
@@ -1992,17 +1991,27 @@ fn cast(
     spell: &str,
     arguments: &[String],
     ruleset: Option<&Ruleset>,
+    region: RegionWages,
 ) {
     let who = &actor.unit.unit_id;
+    let spell = ruleset.and_then(|ruleset| ruleset.find_skill(spell));
 
-    let Some(cost) = ruleset
-        .and_then(|ruleset| ruleset.find_skill(spell))
-        .and_then(|skill| skill.cast.as_ref())
-    else {
+    // Both surfaces price the cast from one function, so the Silver column and the
+    // `not-enough-silver` warning cannot disagree about a mage's month (`ah-lu0f.3`). Silver is
+    // charged from `spends` alone - the loop below skips `SILV` for exactly that reason.
+    let priced = price_cast(spell, &actor.unit.skills, region);
+    credit(ledger, who, SILVER, priced.earns);
+    charge(ledger, who, SILVER, priced.spends, placed);
+
+    let Some(cost) = spell.and_then(|skill| skill.cast.as_ref()) else {
         return;
     };
 
     for input in &cost.costs {
+        // `SILV` is `price_cast`'s, and charging it here as well would charge it twice.
+        if input.tag.eq_ignore_ascii_case(SILVER) {
+            continue;
+        }
         charge(ledger, who, &input.tag, input.amount, placed);
     }
 
@@ -6868,6 +6877,85 @@ mod tests {
                 .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
             "the warning stays quiet: {:?}",
             codes(&paid.findings)
+        );
+    }
+
+    /// The column has always counted what an earning spell raises; the ledger never did, so a mage
+    /// spending the proceeds was warned about money it will have (`ah-lu0f.3`).
+    #[test]
+    fn a_mage_casting_an_earning_spell_can_spend_what_it_raises() {
+        let hex_region = ReportRegion {
+            entertainment: Some(5000),
+            for_sale: vec![MarketItem {
+                amount: 100,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 100,
+            }],
+            ..region(vec![with_skill(with_silver(unit("683"), 0), "PHEN", 2)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nCAST Phantasmal_Entertainment\nBUY 10 grain\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+            "the cast pays for the grain: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// Narrowing `cast`'s cost loop and adding the shared charge is exactly the edit that charges
+    /// silver twice, and nothing else would notice (`ah-lu0f.3`).
+    #[test]
+    fn a_cast_is_not_charged_twice_for_its_silver() {
+        let spell = ruleset()
+            .skills
+            .iter()
+            .find(|(_, skill)| {
+                skill.cast.as_ref().is_some_and(|cast| {
+                    cast.costs
+                        .iter()
+                        .any(|input| input.tag.eq_ignore_ascii_case(SILVER) && input.amount > 0)
+                })
+            })
+            .map(|(_, skill)| skill.clone())
+            .expect("the committed ruleset prices at least one cast in silver");
+        let cost: i64 = spell
+            .cast
+            .as_ref()
+            .expect("a cast cost")
+            .costs
+            .iter()
+            .filter(|input| input.tag.eq_ignore_ascii_case(SILVER))
+            .map(|input| input.amount)
+            .sum();
+
+        let hex_region = region(vec![with_skill(
+            with_silver(unit("683"), cost),
+            &spell.tag,
+            5,
+        )]);
+        let review = review_turn(
+            &report(vec![hex_region]),
+            &format!("unit 683\nCAST {}\n", spell.name.replace(' ', "_")),
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+            "exactly the cost is charged, not twice it: {:?}",
+            codes(&review.findings)
         );
     }
 
