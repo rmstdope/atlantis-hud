@@ -49,6 +49,7 @@ export type { MapShape } from "./generated/MapShape";
 export type { GameMetadata } from "./generated/GameMetadata";
 export type { ReportSourceRef } from "./generated/ReportSourceRef";
 export type { GameManifest } from "./generated/GameManifest";
+export type { ManifestEdit } from "./generated/ManifestEdit";
 
 export {
   aBattle,

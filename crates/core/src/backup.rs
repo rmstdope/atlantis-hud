@@ -115,6 +115,49 @@ pub fn reset_manifest(previous: &GameManifest, now: &str) -> GameManifest {
     }
 }
 
+/// One change that may be made to an existing game's manifest.
+///
+/// The list is the point: every edit either platform makes is a variant here, so a sixth is one
+/// variant and one arm rather than a field assignment in Rust and an object spread in TypeScript
+/// that have to be written in the same commit and are guaranteed only by a comment (`ah-8z4y.3.1`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "ManifestEdit", export_to = "ManifestEdit.ts")
+)]
+#[serde(rename_all = "camelCase", tag = "kind", content = "value")]
+pub enum ManifestEdit {
+    /// Stamped every time the game is opened. This is what decides which game reopens next launch.
+    Opened(String),
+    /// Which ruleset the game is played under, by identifier.
+    Ruleset(String),
+    /// `None` **removes** the key. A game that was never told a map is not the same as one told
+    /// `null`: the absence is what makes the settings dialog say the ruleset's default is only
+    /// assumed, and `skip_serializing_if` on the field is what keeps it absent on the way out.
+    Map(Option<MapGeometry>),
+    /// The game's display name. Trimming and validating it is the shell's, not this function's.
+    Name(String),
+    /// `None` for a game that has never had a report imported. Unlike the map, this one writes a
+    /// `null` - deliberately, and there is a test for each.
+    ActiveFaction(Option<String>),
+}
+
+/// Applies one edit. Every other field is left exactly as it was.
+///
+/// Unlike [`reset_manifest`] this does **not** touch `manifest_version`: an edit rewrites one
+/// field of a document already in the current shape, while a reset rewrites the whole document.
+/// Do not make the two consistent - there is a test named for it.
+pub fn apply_manifest_edit(manifest: &mut GameManifest, edit: &ManifestEdit) {
+    match edit {
+        ManifestEdit::Opened(at) => manifest.last_opened_at = at.clone(),
+        ManifestEdit::Ruleset(id) => manifest.metadata.ruleset_id = id.clone(),
+        ManifestEdit::Map(map) => manifest.metadata.map = *map,
+        ManifestEdit::Name(name) => manifest.metadata.game_name = name.clone(),
+        ManifestEdit::ActiveFaction(id) => manifest.metadata.active_faction_id = id.clone(),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameBackupImportedTurn {
@@ -545,6 +588,104 @@ mod tests {
 
         assert_eq!(fresh.created_at, "2026-02-02T00:00:00Z");
         assert_eq!(fresh.last_opened_at, "2026-02-02T00:00:00Z");
+    }
+
+    #[test]
+    fn an_edit_changes_one_field_and_nothing_else() {
+        let mut edited = manifest();
+
+        apply_manifest_edit(&mut edited, &ManifestEdit::Name("Renamed".to_string()));
+
+        assert_eq!(edited.metadata.game_name, "Renamed");
+        let mut expected = manifest();
+        expected.metadata.game_name = "Renamed".to_string();
+        assert_eq!(edited, expected);
+    }
+
+    /// The difference from `reset_manifest`: an edit rewrites one field of a document that is
+    /// already in the current shape, so it never restamps the version.
+    #[test]
+    fn an_edit_does_not_touch_the_manifest_version() {
+        let mut edited = manifest();
+        edited.manifest_version = 0;
+
+        apply_manifest_edit(&mut edited, &ManifestEdit::Name("Renamed".to_string()));
+
+        assert_eq!(edited.manifest_version, 0);
+    }
+
+    #[test]
+    fn an_edit_stamps_the_open_and_sets_the_ruleset() {
+        let mut edited = manifest();
+
+        apply_manifest_edit(
+            &mut edited,
+            &ManifestEdit::Opened("2026-03-03T00:00:00Z".to_string()),
+        );
+        apply_manifest_edit(&mut edited, &ManifestEdit::Ruleset("standard".to_string()));
+
+        assert_eq!(edited.last_opened_at, "2026-03-03T00:00:00Z");
+        assert_eq!(edited.metadata.ruleset_id, "standard");
+    }
+
+    #[test]
+    fn setting_the_map_records_it() {
+        let mut edited = manifest();
+        let map = MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: false,
+        };
+
+        apply_manifest_edit(&mut edited, &ManifestEdit::Map(Some(map)));
+
+        assert_eq!(edited.metadata.map, Some(map));
+    }
+
+    #[test]
+    fn clearing_the_map_removes_the_key() {
+        let mut edited = manifest();
+        edited.metadata.map = Some(MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: false,
+        });
+
+        apply_manifest_edit(&mut edited, &ManifestEdit::Map(None));
+
+        let json = serde_json::to_value(&edited.metadata).expect("serialises");
+        let object = json.as_object().expect("an object");
+        assert!(!object.contains_key("map"), "got {object:?}");
+    }
+
+    /// The mirror of the map: an unstated faction really does write `null`, and the two must not
+    /// be "harmonised" - the settings dialog reads the difference.
+    #[test]
+    fn clearing_the_active_faction_records_the_absence() {
+        let mut edited = manifest();
+        edited.metadata.active_faction_id = Some("f1".to_string());
+
+        apply_manifest_edit(&mut edited, &ManifestEdit::ActiveFaction(None));
+
+        let json = serde_json::to_value(&edited.metadata).expect("serialises");
+        assert_eq!(
+            json.as_object().expect("an object").get("activeFactionId"),
+            Some(&serde_json::Value::Null)
+        );
+    }
+
+    #[test]
+    fn setting_the_active_faction_records_it() {
+        let mut edited = manifest();
+
+        apply_manifest_edit(
+            &mut edited,
+            &ManifestEdit::ActiveFaction(Some("f2".to_string())),
+        );
+
+        assert_eq!(edited.metadata.active_faction_id, Some("f2".to_string()));
     }
 
     fn manifest() -> GameManifest {
