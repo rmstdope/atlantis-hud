@@ -331,12 +331,13 @@ pub fn review_turn(
     let settlement = settle_unclaimed(&claims, available);
     apply_relief(&mut hexes, &settlement);
 
-    for (hex, ledger) in &hexes {
+    for priced in &hexes {
+        let (hex, ledger) = priced;
         // Per hex, because the pools are: what one region's units ask of its tax base says nothing
         // about the next region's.
         let mut overruns: Vec<PoolOverrun> = Vec::new();
         forecast_hex(
-            hex,
+            priced,
             &receipts,
             purse,
             ruleset,
@@ -675,7 +676,9 @@ fn combat_ready_in(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Option<i64> {
 /// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
 /// already filtered them out, so their cell is blank for free.
 fn forecast_hex(
-    hex: &Hex<'_>,
+    // The hex and the ledger built from it, as `review_turn` already holds them - one argument
+    // rather than two, which is also what keeps a hex from being priced against another's ledger.
+    (hex, ledger): &(Hex<'_>, Ledger<'_>),
     receipts: &BTreeMap<String, Receipts>,
     purse: FactionPurse,
     ruleset: Option<&Ruleset>,
@@ -700,6 +703,11 @@ fn forecast_hex(
     // A market line is shared the same way, and the rules say so outright: oversupply and
     // oversubscription split in proportion to what each unit tried to trade (`ah-t2pn.3`).
     let market_shares = market_shares_for(hex, ruleset, overruns);
+
+    // What this hex's `SHARE` flags lend for orders, settled once and read by both surfaces: the
+    // same function `report_shortfalls` judges against, so the column cannot call a unit short
+    // that the warning knows a faction-mate is paying for (`ah-moq3`).
+    let purse_for_orders = sharing_purse(hex, ledger);
 
     // Step 2 of the payment order runs across the whole hex, so it needs every unit's step-1
     // leftovers before it can settle any of them. Gathered here, applied once the loop is done.
@@ -774,6 +782,7 @@ fn forecast_hex(
             region,
             shares[index],
             purse,
+            purse_for_orders.lends_to[index],
             Lookups {
                 sale: &sale,
                 purchase: &purchase,
@@ -783,6 +792,30 @@ fn forecast_hex(
             },
             ruleset,
         ));
+    }
+
+    // A sharer that lends 50 spends 50: what the purse settled out of it is an expense of its
+    // own, so the hex's total silver is unchanged and a player adding their hex up finds it
+    // (`ah-moq3`). Drained in hex order rather than split proportionally - the engine drains its
+    // sharers in whatever order it iterates them, so no split is truer than another, and a whole
+    // number needs no rounding rule.
+    let mut owing: i64 = into[start..]
+        .iter()
+        .map(|forecast| forecast.shared_silver_for_orders)
+        .sum();
+    if owing > 0 {
+        for (index, forecast) in into[start..].iter_mut().enumerate() {
+            if owing == 0 {
+                break;
+            }
+            let lent = purse_for_orders.lendable[index].min(owing);
+            if lent == 0 {
+                continue;
+            }
+            owing -= lent;
+            forecast.expense = forecast.expense.map(|spent| spent.saturating_add(lent));
+            forecast.at_month_end = forecast.at_month_end.map(|end| end.saturating_sub(lent));
+        }
     }
 
     // One claim was pushed per unit, in the same loop that pushed its forecast, so the two are
@@ -2511,6 +2544,89 @@ impl<'a> Sharing<'a> {
             .iter()
             .map(|o| relieved_balance(ledger, &o.unit.unit_id, tag))
             .sum()
+    }
+}
+
+/// What this hex's `SHARE` flags lend for orders, and how it is settled between claimants.
+///
+/// The pool is the sharers' own silver, after what their own orders spend: a sharer cannot lend
+/// what it is spending itself. Claimants are the units whose orders cost more than they hold.
+///
+/// **All or nothing, deliberately** - the rule `ah-e66j` set for maintenance sharing and for the
+/// same reason: where the pool cannot cover every claimant, which unit is fed cannot be told, so
+/// none is credited and every figure stays pessimistic. A player then sees a shortfall that is
+/// real for *somebody* rather than a guess about who.
+///
+/// Both vectors are index-aligned with `hex.units`, which is what keeps two report units sharing an
+/// id from being confused for one another - a lookup by id could not.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct SharingPurse {
+    /// What the purse lends each unit for its orders. `0` for a sharer - a sharer's own overdraft
+    /// is already inside the purse's sum rather than a claim against it - and `0` for every unit
+    /// in a hex whose purse could not cover every claimant.
+    lends_to: Vec<i64>,
+    /// What each sharer has to lend, before anything is drawn. `0` for every non-sharer, and `0`
+    /// for every unit in a hex that lends nothing at all.
+    lendable: Vec<i64>,
+}
+
+/// The purse this hex's `SHARE` flags open for orders, settled between the units that claim it.
+///
+/// **The same computation `report_shortfalls` judges against** - [`Sharing`], [`Sharing::pool`]
+/// and [`Sharing::pool_trusted`], reused rather than re-derived. Two implementations of this
+/// question is exactly the defect this exists to fix: the silver column said a unit was short
+/// while the warning, reading the hex, said it was not (`ah-moq3`).
+///
+/// Silver only. Items pool too (`Sharing::reading`), but the silver column is what a player reads
+/// and what this bead was filed from.
+fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
+    let nothing = SharingPurse {
+        lends_to: vec![0; hex.units.len()],
+        lendable: vec![0; hex.units.len()],
+    };
+
+    let sharing = Sharing::read(hex);
+    if sharing.sharers.is_empty() || !sharing.pool_trusted(ledger) {
+        return nothing;
+    }
+
+    let pool = sharing.pool(ledger, SILVER);
+    if pool <= 0 {
+        return nothing;
+    }
+
+    // A doubted unit is judged nowhere in this module, so it claims nothing here either: lending
+    // against a sum with a hole in it would put a figure on the screen nothing stands behind.
+    let mut claims = vec![0i64; hex.units.len()];
+    for (index, ordered) in hex.units.iter().enumerate() {
+        if ordered.shares() || ledger.doubted.contains(&ordered.unit.unit_id) {
+            continue;
+        }
+        let balance = relieved_balance(ledger, &ordered.unit.unit_id, SILVER);
+        if balance < 0 {
+            claims[index] = -balance;
+        }
+    }
+
+    if claims.iter().sum::<i64>() > pool {
+        return nothing;
+    }
+
+    let lendable = hex
+        .units
+        .iter()
+        .map(|ordered| {
+            if ordered.shares() {
+                relieved_balance(ledger, &ordered.unit.unit_id, SILVER).max(0)
+            } else {
+                0
+            }
+        })
+        .collect();
+
+    SharingPurse {
+        lends_to: claims,
+        lendable,
     }
 }
 
@@ -8647,6 +8763,212 @@ mod tests {
             pool_shortfalls(&hex, &ledger, &sharing, &verdicts),
             vec![],
             "one doubted sharer silences the pool"
+        );
+    }
+
+    // --- what a hex's `SHARE` flags lend for orders (`ah-moq3`) ---------------------------------
+    //
+    // The same purse `report_shortfalls` judges against, read once so the silver column and the
+    // warning cannot disagree about who is short.
+
+    /// The purse one hex settles, for a test that wants the lending rather than a message.
+    fn purse_of(hex_region: &ReportRegion, orders: &str) -> SharingPurse {
+        let ordered = OrderedUnits::read(orders);
+        let hex = Hex::read(hex_region, &ordered);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+        sharing_purse(&hex, &ledger)
+    }
+
+    #[test]
+    fn a_hex_with_no_sharer_lends_nothing() {
+        let hex_region = region(vec![with_silver(unit("5"), 0), with_silver(unit("7"), 500)]);
+
+        let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\n");
+
+        assert_eq!(purse.lends_to, vec![0, 0]);
+        assert_eq!(purse.lendable, vec![0, 0]);
+    }
+
+    #[test]
+    fn a_sharer_lends_what_it_is_not_spending_itself() {
+        let hex_region = region(vec![
+            with_silver(unit("5"), 0),
+            sharing(with_silver(unit("7"), 500)),
+        ]);
+
+        let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\n");
+
+        assert_eq!(purse.lends_to, vec![10, 0], "the studier's whole shortfall");
+        assert_eq!(purse.lendable, vec![0, 500], "and the sharer can cover it");
+    }
+
+    /// The all-or-nothing rule `ah-e66j` set for maintenance, and for the same reason: where the
+    /// purse cannot cover every claimant, which unit is fed cannot be told.
+    #[test]
+    fn a_purse_that_cannot_cover_every_claimant_lends_nothing_to_anybody() {
+        let hex_region = region(vec![
+            with_silver(unit("5"), 0),
+            with_silver(unit("9"), 0),
+            sharing(with_silver(unit("7"), 15)),
+        ]);
+
+        let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\nunit 9\nSTUDY combat\n");
+
+        assert_eq!(purse.lends_to, vec![0, 0, 0]);
+    }
+
+    #[test]
+    fn a_doubted_sharer_makes_the_purse_untrustworthy() {
+        let hex_region = region(vec![
+            with_silver(unit("5"), 0),
+            sharing(with_silver(unit("7"), 500)),
+        ]);
+        let ordered = OrderedUnits::read("unit 5\nSTUDY combat\n");
+        let hex = Hex::read(&hex_region, &ordered);
+        let rules = ruleset();
+        let mut ledger = ledger_for(&hex, Some(&rules));
+
+        assert_eq!(
+            sharing_purse(&hex, &ledger).lends_to,
+            vec![10, 0],
+            "it lends before anything is doubted"
+        );
+
+        ledger.doubted.insert("7".to_string());
+
+        assert_eq!(
+            sharing_purse(&hex, &ledger).lends_to,
+            vec![0, 0],
+            "one doubted sharer silences the purse"
+        );
+    }
+
+    // --- what the purse does to the silver column (`ah-moq3`) -----------------------------------
+    //
+    // The bead's own defect: a studying unit whose neighbour was lending it the money was told it
+    // was 50 short and shown a negative month end, while the warning - which reads the hex - said
+    // nothing at all.
+
+    /// One hex, priced end to end, so the column and the warning are both on show.
+    fn shared_review(units: Vec<ReportUnit>, orders: &str) -> TurnReview {
+        review_turn(
+            &report(vec![region(units)]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        )
+    }
+
+    fn forecast_for(review: &TurnReview, id: &str) -> UnitSilver {
+        review
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == id)
+            .cloned()
+            .unwrap_or_else(|| panic!("no forecast for {id}: {:?}", review.silver))
+    }
+
+    #[test]
+    fn a_studying_unit_in_a_sharing_hex_is_not_short() {
+        let review = shared_review(
+            vec![
+                with_silver(unit("5"), 0),
+                sharing(with_silver(unit("7"), 500)),
+            ],
+            "unit 5\nSTUDY combat\n",
+        );
+        let studier = forecast_for(&review, "5");
+
+        assert_eq!(studier.short_for_orders, Some(0), "a faction-mate pays it");
+        assert_eq!(
+            studier.at_month_end,
+            Some(0),
+            "and the figure is not negative"
+        );
+        assert_eq!(studier.short_on, None);
+        assert_eq!(studier.shared_silver_for_orders, 10);
+    }
+
+    #[test]
+    fn the_sharer_pays_what_it_lends() {
+        let review = shared_review(
+            vec![
+                with_silver(unit("5"), 0),
+                sharing(with_silver(unit("7"), 500)),
+            ],
+            "unit 5\nSTUDY combat\n",
+        );
+        let sharer = forecast_for(&review, "7");
+
+        assert_eq!(sharer.expense, Some(10), "what the purse settled out of it");
+        assert_eq!(sharer.at_month_end, Some(490));
+        assert_eq!(
+            sharer.shared_silver_for_orders, 0,
+            "it lends, it does not borrow"
+        );
+    }
+
+    #[test]
+    fn the_hexs_silver_is_unchanged() {
+        let units = || {
+            vec![
+                with_silver(unit("5"), 0),
+                sharing(with_silver(unit("7"), 500)),
+            ]
+        };
+        let idle = shared_review(units(), "");
+        let studying = shared_review(units(), "unit 5\nSTUDY combat\n");
+
+        let total = |review: &TurnReview| -> i64 {
+            review
+                .silver
+                .iter()
+                .map(|forecast| forecast.at_month_end.expect("a number"))
+                .sum()
+        };
+
+        assert_eq!(
+            total(&studying),
+            total(&idle) - 10,
+            "the study, and nothing else"
+        );
+    }
+
+    #[test]
+    fn a_unit_in_a_hex_with_no_sharer_is_still_short() {
+        let review = shared_review(
+            vec![with_silver(unit("5"), 0), with_silver(unit("7"), 500)],
+            "unit 5\nSTUDY combat\n",
+        );
+        let studier = forecast_for(&review, "5");
+
+        assert_eq!(studier.short_for_orders, Some(10));
+        assert_eq!(studier.at_month_end, Some(-10));
+        assert_eq!(studier.shared_silver_for_orders, 0);
+    }
+
+    #[test]
+    fn a_purse_that_falls_short_leaves_every_figure_as_it_was() {
+        let review = shared_review(
+            vec![
+                with_silver(unit("5"), 0),
+                with_silver(unit("9"), 0),
+                sharing(with_silver(unit("7"), 15)),
+            ],
+            "unit 5\nSTUDY combat\nunit 9\nSTUDY combat\n",
+        );
+
+        for id in ["5", "9"] {
+            let short = forecast_for(&review, id);
+            assert_eq!(short.short_for_orders, Some(10), "unit {id}");
+            assert_eq!(short.at_month_end, Some(-10), "unit {id}");
+            assert_eq!(short.shared_silver_for_orders, 0, "unit {id}");
+        }
+        assert_eq!(
+            forecast_for(&review, "7").expense,
+            Some(0),
+            "and nothing was lent"
         );
     }
 

@@ -38,10 +38,14 @@ atMonthEnd: number | null,
 /**
  * What this unit's orders spend that no silver reaching it *in time* can cover.
  *
- * `max(0, expense - (held + income - late_income))`. `Some(0)` means its orders are
- * affordable; anything positive means the game will refuse something, however healthy
- * `at_month_end` looks. Counted for this unit alone, like every other figure in this column -
- * the hex's shared purse is the advisory check's business (`ah-1wcw.1`).
+ * `max(0, expense - (held + income + shared_silver_for_orders - late_income))`. `Some(0)`
+ * means its orders are affordable; anything positive means the game will refuse something,
+ * however healthy `at_month_end` looks.
+ *
+ * **Counts the hex's shared purse.** `ah-1wcw.1` decided the opposite - this unit alone, with
+ * the purse left to the advisory check - and the navigator reversed that on seeing what it
+ * looks like on the screen: a unit whose neighbour is lending it the money is not short, and
+ * saying so on the one column a player reads is wrong (`ah-moq3`). Do not restore it.
  */
 shortForOrders: number | null, 
 /**
@@ -92,6 +96,18 @@ factionFoodCovered: number,
  * is not the same thing as the `sharing` pool `report_shortfalls` uses.
  */
 sharedSilverCovered: number, 
+/**
+ * What a faction-mate's `SHARE` lends this unit for its orders, at the hex's discretionary
+ * purse. `0` for every unit nothing lent to, and `0`, deliberately, for every unit in a hex
+ * whose purse could not cover every claimant - where which unit was fed cannot be told and
+ * the figure stays pessimistic, exactly as `shared_silver_covered` does for maintenance
+ * (`ah-moq3`).
+ *
+ * Discretionary, unlike its maintenance twin above: the `SHARE` flag is what opens this
+ * purse, and `semantics::sharing_purse` settles it - the same computation the
+ * `not-enough-silver` warning is judged against, so the two surfaces cannot disagree.
+ */
+sharedSilverForOrders: number, 
 /**
  * Silver of this unit's upkeep paid by food it holds itself, at step 1 of the payment order.
  * `0` when the unit is not set to consume, holds no food, or owes nothing.

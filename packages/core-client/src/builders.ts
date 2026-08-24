@@ -242,6 +242,7 @@ export function aUnitSilver(overrides: Partial<UnitSilver> = {}): UnitSilver {
     forcedFactionFood: 0,
     foodContended: false,
     sharedSilverCovered: 0,
+    sharedSilverForOrders: 0,
     withdrawing: false,
     produced: 0,
     producedName: null,

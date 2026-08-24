@@ -232,9 +232,7 @@ describe("the silver section", () => {
       true
     );
 
-    expect(both.silver?.note).toBe(
-      "Wages arrive too late to pay for this month's orders, so this unit is 200 short when it produces."
-    );
+    expect(both.silver?.note).toBe("This unit cannot pay the 200 its production costs.");
   });
 
   it("says_nothing_when_a_production_runs_at_full_rate", () => {
@@ -596,6 +594,116 @@ describe("the silver section", () => {
     ]);
   });
 
+  // `ah-moq3`. A studying unit earns no wages, so telling it that wages arrived too late describes
+  // money that was never coming. The wages sentence is narrowed to the case `ah-uwa3` wrote it for,
+  // and a shortfall with nothing on its way is named by the order it bites on instead.
+  it("a_short_studier_is_not_told_about_wages", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        held: 0,
+        income: 0,
+        lateIncome: 0,
+        expense: 50,
+        atMonthEnd: -50,
+        shortForOrders: 50,
+        shortOn: "study"
+      }),
+      true,
+      true
+    );
+
+    expect(summary.silver?.note).toBe("This unit cannot pay the 50 its study costs.");
+  });
+
+  it("a_worker_whose_wages_arrive_late_still_is", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        held: 0,
+        income: 120,
+        lateIncome: 120,
+        expense: 60,
+        atMonthEnd: 60,
+        shortForOrders: 60,
+        shortOn: "buy"
+      }),
+      true,
+      true
+    );
+
+    expect(summary.silver?.note).toBe(
+      "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys."
+    );
+  });
+
+  it("names_the_cost_a_short_unit_cannot_pay_for_every_kind_of_order", () => {
+    const note = (shortOn: UnitSilver["shortOn"]) =>
+      summariseUnit(
+        aReportUnit({ unitId: "1" }),
+        forecast({
+          held: 0,
+          income: 0,
+          lateIncome: 0,
+          expense: 50,
+          atMonthEnd: -50,
+          shortForOrders: 50,
+          shortOn
+        }),
+        true,
+        true
+      ).silver?.note;
+
+    expect(note("study")).toBe("This unit cannot pay the 50 its study costs.");
+    expect(note("buy")).toBe("This unit cannot pay the 50 its purchase costs.");
+    expect(note("produce")).toBe("This unit cannot pay the 50 its production costs.");
+    expect(note("cast")).toBe("This unit cannot pay the 50 its casting costs.");
+    expect(note("give")).toBe("This unit cannot pay the 50 it gives away.");
+    expect(note(null)).toBe("This unit cannot pay the 50 its orders cost.");
+  });
+
+  it("says_when_a_faction_mate_pays_for_this_units_orders", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        held: 0,
+        income: 0,
+        lateIncome: 0,
+        expense: 50,
+        atMonthEnd: 0,
+        shortForOrders: 0,
+        upkeep: 0,
+        sharedSilverForOrders: 50
+      }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.note).toBe(
+      "A faction-mate's silver in this hex pays for this unit's orders."
+    );
+  });
+
+  it("a_unit_paying_for_itself_says_nothing_extra", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        held: 100,
+        income: 0,
+        lateIncome: 0,
+        expense: 50,
+        atMonthEnd: 50,
+        shortForOrders: 0,
+        upkeep: 0,
+        sharedSilverForOrders: 0
+      }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.note ?? null).toBeNull();
+  });
+
   it("says_when_a_faction_mate_pays_the_upkeep", () => {
     // Automatic maintenance sharing, which needs no SHARE flag - so it gets its own sentence
     // rather than the flag's (`ah-e66j`, round 1).
@@ -846,6 +954,9 @@ describe("the silver notes' precedence (ah-hvt8)", () => {
       "There is not enough faction food here to feed every unit set to eat it.",
     "wages-too-late":
       "Wages arrive too late to pay for this month's orders, so this unit is 40 short when it buys.",
+    "cannot-pay": "This unit cannot pay the 50 its study costs.",
+    "shared-silver-pays-orders":
+      "A faction-mate's silver in this hex pays for this unit's orders.",
     "production-capped":
       "This unit has silver for 1 catapult, not the 3 its men could make.",
     "food-contended":

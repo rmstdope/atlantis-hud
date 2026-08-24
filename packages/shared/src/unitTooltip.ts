@@ -162,6 +162,20 @@ const SPENDS: Record<NonNullable<UnitSilver["shortOn"]>, string> = {
 };
 
 /**
+ * The tail of the `cannot-pay` sentence, per order kind. `give` is not a cost - "it gives away",
+ * not "its X costs" - so these are complete tails rather than a noun interpolated into one
+ * template, which would produce `its give costs` and typecheck (`ah-moq3`).
+ */
+const CANNOT_PAY: Record<NonNullable<UnitSilver["shortOn"]> | "orders", string> = {
+  study: "its study costs",
+  buy: "its purchase costs",
+  produce: "its production costs",
+  cast: "its casting costs",
+  give: "it gives away",
+  orders: "its orders cost"
+};
+
+/**
  * `1 catapult`, `0 catapults`. The core carries the catalogue's singular, because the unit does
  * not hold the thing yet and nothing in its inventory could be read for a plural; English belongs
  * out here, the way `ah-eacd`'s step-6 sentence already puts it.
@@ -364,7 +378,13 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // worth more of the reader's attention than an upkeep that was quietly paid.
   {
     id: "wages-too-late",
-    when: ({ silver }) => silver.shortForOrders !== null && silver.shortForOrders > 0,
+    // Only where wages are actually coming: a studying unit earns none, and telling it that wages
+    // arrived too late describes money that never existed (`ah-moq3`).
+    when: ({ silver }) =>
+      silver.shortForOrders !== null &&
+      silver.shortForOrders > 0 &&
+      silver.lateIncome !== null &&
+      silver.lateIncome > 0,
     say: ({ silver }) => {
       const spends = silver.shortOn ? ` when it ${SPENDS[silver.shortOn]}` : "";
       return `Wages arrive too late to pay for this month's orders, so this unit is ${silver.shortForOrders} short${spends}.`;
@@ -380,6 +400,31 @@ export const SILVER_NOTES: readonly SilverNote[] = [
         shortOn: "buy"
       }),
       warned: false,
+      countUpkeep: true
+    })
+  },
+  // The same shortfall with nothing on its way, so `ah-uwa3`'s explanation is not true of it.
+  // Named by the order it bites on, because the reader can act on knowing which one the game will
+  // refuse (`ah-moq3`). Below `wages-too-late`, so the more specific case still wins.
+  {
+    id: "cannot-pay",
+    when: ({ silver }) => silver.shortForOrders !== null && silver.shortForOrders > 0,
+    say: ({ silver }) =>
+      `This unit cannot pay the ${silver.shortForOrders} ${CANNOT_PAY[silver.shortOn ?? "orders"]}.`,
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({
+        held: 0,
+        income: 0,
+        lateIncome: 0,
+        expense: 50,
+        atMonthEnd: -50,
+        shortForOrders: 50,
+        shortOn: "study"
+      }),
+      // A unit that really is short is warned - and the inferred `shared-silver-covers-shortfall`
+      // note above reads exactly that silence, so an unwarned example would be shadowed by it.
+      warned: true,
       countUpkeep: true
     })
   },
@@ -519,6 +564,24 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     example: () => ({
       unit: aReportUnit(),
       silver: aUnitSilver({ sharedSilverCovered: 10, upkeep: 0 }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  // The `SHARE` flag's own purse, and the discretionary twin of the upkeep note above - which is
+  // the more specific of the two and so keeps its place ahead of this one. Money appearing from
+  // nowhere is exactly what the upkeep, food and unclaimed-fund notes all exist to explain, so a
+  // unit a faction-mate paid for is told so (`ah-moq3`).
+  //
+  // Not gated on `countUpkeep`: it explains the `Out` row and the month end, which are on show
+  // whatever that setting says - the same reasoning `withdrawing` and `works-by-default` use.
+  {
+    id: "shared-silver-pays-orders",
+    when: ({ silver }) => silver.sharedSilverForOrders > 0,
+    say: () => "A faction-mate's silver in this hex pays for this unit's orders.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ sharedSilverForOrders: 50, upkeep: 0 }),
       warned: false,
       countUpkeep: true
     })

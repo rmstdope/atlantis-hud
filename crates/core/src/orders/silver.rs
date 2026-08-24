@@ -134,10 +134,14 @@ pub struct UnitSilver {
     pub at_month_end: Option<i64>,
     /// What this unit's orders spend that no silver reaching it *in time* can cover.
     ///
-    /// `max(0, expense - (held + income - late_income))`. `Some(0)` means its orders are
-    /// affordable; anything positive means the game will refuse something, however healthy
-    /// `at_month_end` looks. Counted for this unit alone, like every other figure in this column -
-    /// the hex's shared purse is the advisory check's business (`ah-1wcw.1`).
+    /// `max(0, expense - (held + income + shared_silver_for_orders - late_income))`. `Some(0)`
+    /// means its orders are affordable; anything positive means the game will refuse something,
+    /// however healthy `at_month_end` looks.
+    ///
+    /// **Counts the hex's shared purse.** `ah-1wcw.1` decided the opposite - this unit alone, with
+    /// the purse left to the advisory check - and the navigator reversed that on seeing what it
+    /// looks like on the screen: a unit whose neighbour is lending it the money is not short, and
+    /// saying so on the one column a player reads is wrong (`ah-moq3`). Do not restore it.
     pub short_for_orders: Option<i64>,
     /// Which kind of order the shortfall bites on, for the sentence the hover shows - the first
     /// order in the unit's block that actually moves silver out. A `GIVE` of items and a costless
@@ -171,6 +175,16 @@ pub struct UnitSilver {
     /// Automatic and unconditional: the `SHARE` flag governs discretionary spending only, so this
     /// is not the same thing as the `sharing` pool `report_shortfalls` uses.
     pub shared_silver_covered: i64,
+    /// What a faction-mate's `SHARE` lends this unit for its orders, at the hex's discretionary
+    /// purse. `0` for every unit nothing lent to, and `0`, deliberately, for every unit in a hex
+    /// whose purse could not cover every claimant - where which unit was fed cannot be told and
+    /// the figure stays pessimistic, exactly as `shared_silver_covered` does for maintenance
+    /// (`ah-moq3`).
+    ///
+    /// Discretionary, unlike its maintenance twin above: the `SHARE` flag is what opens this
+    /// purse, and `semantics::sharing_purse` settles it - the same computation the
+    /// `not-enough-silver` warning is judged against, so the two surfaces cannot disagree.
+    pub shared_silver_for_orders: i64,
     /// Silver of this unit's upkeep paid by food it holds itself, at step 1 of the payment order.
     /// `0` when the unit is not set to consume, holds no food, or owes nothing.
     ///
@@ -733,6 +747,7 @@ pub fn forecast_unit(
     region: RegionWages,
     shares: PoolShares,
     purse: FactionPurse,
+    shared_for_orders: i64,
     lookups: Lookups<'_>,
     ruleset: Option<&Ruleset>,
 ) -> UnitSilver {
@@ -775,6 +790,7 @@ pub fn forecast_unit(
             givers: Vec::new(),
             faction_food_covered: 0,
             shared_silver_covered: 0,
+            shared_silver_for_orders: 0,
             own_food_covered: 0,
             forced_own_food: 0,
             forced_own_food_tag: None,
@@ -1081,11 +1097,9 @@ pub fn forecast_unit(
     let late_income = income.map(|_| late);
     let expense = expense_doubt.is_none().then_some(expense);
     let doubt = income_doubt.or(expense_doubt);
-    let at_month_end = match (income, expense) {
-        (Some(income), Some(expense)) => Some(held.saturating_add(income).saturating_sub(expense)),
-        _ => None,
-    };
-    let short_for_orders = match (income, expense) {
+    // What the hex's `SHARE` purse actually lends this unit: never more than it is short of, so an
+    // allowance settled from the ledger cannot inflate a figure here (`ah-moq3`).
+    let short_before_sharing = match (income, expense) {
         (Some(income), Some(expense)) => Some(
             expense
                 .saturating_sub(held.saturating_add(income).saturating_sub(late))
@@ -1093,6 +1107,16 @@ pub fn forecast_unit(
         ),
         _ => None,
     };
+    let shared = short_before_sharing.map_or(0, |short| shared_for_orders.clamp(0, short));
+    let at_month_end = match (income, expense) {
+        (Some(income), Some(expense)) => Some(
+            held.saturating_add(income)
+                .saturating_add(shared)
+                .saturating_sub(expense),
+        ),
+        _ => None,
+    };
+    let short_for_orders = short_before_sharing.map(|short| short.saturating_sub(shared));
 
     UnitSilver {
         unit_id: unit_id.to_string(),
@@ -1118,6 +1142,7 @@ pub fn forecast_unit(
         givers: receipts.givers.clone(),
         faction_food_covered: 0,
         shared_silver_covered: 0,
+        shared_silver_for_orders: shared,
         own_food_covered,
         forced_own_food: 0,
         forced_own_food_tag: None,
@@ -2750,6 +2775,7 @@ mod tests {
             region,
             PoolShares::default(),
             purse,
+            0,
             no_market(),
             None,
         )
@@ -2954,6 +2980,7 @@ mod tests {
             region,
             shares,
             FactionPurse::default(),
+            0,
             no_market(),
             None,
         )
@@ -3033,6 +3060,7 @@ mod tests {
                 taxable(None),
                 PoolShares::default(),
                 FactionPurse::default(),
+                0,
                 Lookups {
                     sale: &unknown_goods,
                     ..no_market()
@@ -3426,6 +3454,7 @@ mod tests {
             paying("$12.0", None),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             None,
         );
@@ -3450,6 +3479,7 @@ mod tests {
             paying("$12.0", None),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             None,
         );
@@ -3478,6 +3508,7 @@ mod tests {
             RegionWages::default(),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             Some(&ruleset),
         );
@@ -3501,6 +3532,7 @@ mod tests {
             RegionWages::default(),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             Some(&ruleset),
         );
@@ -3523,6 +3555,7 @@ mod tests {
             taxable(Some(100_000)),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             None,
         );
@@ -3548,6 +3581,7 @@ mod tests {
             RegionWages::default(),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             Lookups {
                 sale,
                 ..no_market()
@@ -3683,6 +3717,7 @@ mod tests {
             RegionWages::default(),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             Lookups {
                 sale: &sale,
                 ..no_market()
@@ -3801,6 +3836,7 @@ mod tests {
             },
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             None,
         )
@@ -3854,6 +3890,7 @@ mod tests {
             },
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             Some(&ruleset),
         )
@@ -3918,6 +3955,7 @@ mod tests {
             region,
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             Some(ruleset),
         )
@@ -4014,6 +4052,7 @@ mod tests {
             RegionWages::default(),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             None,
         );
@@ -4035,6 +4074,7 @@ mod tests {
             taxable(Some(100_000)),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             None,
         );
@@ -4067,6 +4107,7 @@ mod tests {
             RegionWages::default(),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             Lookups {
                 sale: &wanted(24, 40, 40),
                 ..no_market()
@@ -4088,6 +4129,7 @@ mod tests {
             taxable(Some(100_000)),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             None,
         );
@@ -4124,6 +4166,7 @@ mod tests {
             region,
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             Lookups {
                 purchase,
                 ..no_market()
@@ -4547,6 +4590,7 @@ mod tests {
             RegionWages::default(),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             None,
         );
@@ -4561,6 +4605,7 @@ mod tests {
             RegionWages::default(),
             PoolShares::default(),
             FactionPurse::default(),
+            0,
             no_market(),
             None,
         )
