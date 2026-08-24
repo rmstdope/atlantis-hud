@@ -34,24 +34,31 @@ packages/browser-core/src/wasm/
 !.claude/agents/
 !.claude/settings.json
 !.claude/cerebro
-# The consumer's own project facts, read by .claude/cerebro/scripts/project-conf (ah-qled.1).
-# Tracked on purpose: unlike the personal .cerebro/models.conf these are facts every clone needs,
-# and an ignored copy would vanish on a fresh clone and take the install step with it.
-!.claude/cerebro-project.conf
+
+# Cerebro's own bookkeeping - agent state files, stop flags and the agents' worktrees. Live
+# machine state, never part of the project (ah-v82).
+#
+# `.cerebro/*` rather than `.cerebro/`, because git cannot re-include a file whose parent
+# DIRECTORY is excluded - the three exceptions below would silently do nothing (ah-7l1c).
+.cerebro/*
+
+# The consumer's own project facts, read by .claude/cerebro/scripts/project-conf (ah-qled.1,
+# moved here by cerebro's cb-epr). Tracked on purpose: unlike the personal .cerebro/models.conf
+# these are facts every clone needs, and an ignored copy would vanish on a fresh clone and take
+# the install step with it.
+!.cerebro/project.conf
+
 # The consumer's own fleet, read by .claude/cerebro/scripts/roster (ah-qled.5.1). Tracked for the
 # same reason: which agents exist is a fact every clone needs, and a git-ignored file would vanish
 # on a fresh clone and silently revert the fleet to cerebro's own names. This repository ships no
 # such file - it wants the built-in fleet - but the path must stay trackable for one to be added.
-!.claude/cerebro-roster
+!.cerebro/roster.conf
+
 # The traps this project has already paid for, read by plan-bead and implement-bead before work
 # starts (ah-qled.10.5). Tracked for the same reason: a trap the whole team has paid for is a fact
 # every clone needs, and an ignored copy would vanish on a fresh clone and let each new machine pay
 # for it again.
-!.claude/cerebro-traps.md
-
-# Cerebro's own bookkeeping - agent state files, stop flags and the agents' worktrees. Live
-# machine state, never part of the project (ah-v82).
-.cerebro/
+!.cerebro/traps.md
 
 # Games live in the platform application data directory, never in the repository. This is a
 # backstop against a stray relative path putting one here again, as one did before issue #33.

@@ -71,7 +71,7 @@ function runLeg(leg: Leg): LegResult {
  */
 function reportDisk(): void {
   // The check is cerebro's, and the floor it reads is this project's own `disk_floor_gb` in
-  // .claude/cerebro-project.conf (ah-qled.7.2). It used to be scripts/diskPreflight.ts, reached
+  // .cerebro/project.conf (ah-qled.7.2). It used to be scripts/diskPreflight.ts, reached
   // through this package's own tsx - which meant a consumer of the fleet without a JavaScript
   // toolchain had an agent instruction it could not run.
   const here = dirname(fileURLToPath(import.meta.url));
