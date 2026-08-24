@@ -18,6 +18,11 @@ pub const CURRENT_MANIFEST_VERSION: u32 = 1;
 
 /// Game metadata stored in the game manifest and database.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "GameMetadata", export_to = "GameMetadata.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct GameMetadata {
     pub game_id: String,
@@ -33,6 +38,7 @@ pub struct GameMetadata {
     /// such key. Set only when the player says so at an import (ah-do8.3); read when the game is
     /// reopened (ah-do8.2).
     #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub active_faction_id: Option<String>,
     /// The map this game is played on, or `None` for a game that was never told one - which is
     /// every game created before the app asked, and every backup restored from before it.
@@ -42,11 +48,17 @@ pub struct GameMetadata {
     /// the way out as well: a `"map": null` written into an old game's manifest would be a claim
     /// nobody made.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub map: Option<MapGeometry>,
 }
 
 /// Logical report source stored in the game manifest and database.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "ReportSourceRef", export_to = "ReportSourceRef.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportSourceRef {
     pub source_id: String,
@@ -55,6 +67,11 @@ pub struct ReportSourceRef {
 
 /// Game manifest contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "GameManifest", export_to = "GameManifest.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct GameManifest {
     pub manifest_version: u32,
@@ -434,6 +451,24 @@ pub fn decode_game_backup(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The wire contract the generated TypeScript mirrors (ah-8z4y.2): an unstated map leaves *no*
+    /// key, so "never said" cannot be read back as "said nothing", while an unstated active faction
+    /// really does write `null` - which is why the two fields carry different ts-rs attributes.
+    #[test]
+    fn an_unstated_map_leaves_no_key_and_an_unstated_faction_writes_null() {
+        let json = serde_json::to_value(manifest().metadata).expect("serialises");
+        let object = json.as_object().expect("an object");
+
+        assert!(!object.contains_key("map"), "got {object:?}");
+        assert_eq!(
+            object.get("activeFactionId"),
+            Some(&serde_json::Value::Null)
+        );
+
+        let round_tripped: GameMetadata = serde_json::from_value(json).expect("reads back");
+        assert_eq!(round_tripped, manifest().metadata);
+    }
 
     fn manifest() -> GameManifest {
         GameManifest {

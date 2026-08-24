@@ -5,7 +5,7 @@
 use atlantis_hud_core_tauri::{
     command_create_game, command_delete_game, command_export_game, command_import_game,
     command_list_games, command_open_game, command_reset_game, command_set_active_faction,
-    command_set_game_map, command_set_game_name, command_set_game_ruleset, GameManifestDto,
+    command_set_game_map, command_set_game_name, command_set_game_ruleset, GameManifest,
     OpenedGameDto,
 };
 
@@ -35,7 +35,7 @@ fn games_root(app: &tauri::AppHandle) -> Result<String, String> {
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
-fn create_game(app: tauri::AppHandle, manifest: GameManifestDto) -> Result<OpenedGameDto, String> {
+fn create_game(app: tauri::AppHandle, manifest: GameManifest) -> Result<OpenedGameDto, String> {
     command_create_game(&games_root(&app)?, manifest)
 }
 
@@ -57,7 +57,7 @@ fn open_game(
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
-fn list_games(app: tauri::AppHandle) -> Result<Vec<GameManifestDto>, String> {
+fn list_games(app: tauri::AppHandle) -> Result<Vec<GameManifest>, String> {
     command_list_games(&games_root(&app)?)
 }
 
@@ -118,7 +118,7 @@ fn set_game_ruleset(
     app: tauri::AppHandle,
     game_id: String,
     ruleset_id: String,
-) -> Result<GameManifestDto, String> {
+) -> Result<GameManifest, String> {
     command_set_game_ruleset(&games_root(&app)?, &game_id, &ruleset_id)
 }
 
@@ -131,7 +131,7 @@ fn set_game_map(
     app: tauri::AppHandle,
     game_id: String,
     map_json: String,
-) -> Result<GameManifestDto, String> {
+) -> Result<GameManifest, String> {
     command_set_game_map(&games_root(&app)?, &game_id, &map_json)
 }
 
@@ -144,7 +144,7 @@ fn set_game_name(
     app: tauri::AppHandle,
     game_id: String,
     game_name: String,
-) -> Result<GameManifestDto, String> {
+) -> Result<GameManifest, String> {
     command_set_game_name(&games_root(&app)?, &game_id, &game_name)
 }
 
@@ -157,7 +157,7 @@ fn set_active_faction(
     app: tauri::AppHandle,
     game_id: String,
     faction_id: String,
-) -> Result<GameManifestDto, String> {
+) -> Result<GameManifest, String> {
     command_set_active_faction(&games_root(&app)?, &game_id, &faction_id)
 }
 

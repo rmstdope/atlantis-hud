@@ -25,45 +25,14 @@ use atlantis_hud_core_persistence::{
     load_latest_imported_turn, load_merged_reports, load_order_draft, load_region_sightings,
     open_game, preview_imported_turn, reset_game, set_active_faction, set_game_map, set_game_name,
     set_game_ruleset, upsert_hex_note, upsert_imported_turn, upsert_merged_report,
-    upsert_order_draft, upsert_region_sightings, GameManifest, GameMetadata, HexNote,
-    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame,
-    OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
+    upsert_order_draft, upsert_region_sightings, HexNote, ImportedTurnKey, ImportedTurnPreview,
+    ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey, OrderDraftRecord,
+    PersistenceError,
 };
+/// The manifest types cross to the shell as themselves: `core-tauri` used to carry a field-for-field
+/// `…Dto` copy of each, whose own comments said so (ah-8z4y.2).
+pub use atlantis_hud_core_persistence::{GameManifest, GameMetadata, ReportSourceRef};
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GameMetadataDto {
-    pub game_id: String,
-    pub game_name: String,
-    pub ruleset_id: String,
-    /// Which faction in this game is the player's, absent on a manifest written before the field
-    /// existed - hence `#[serde(default)]`, exactly as on `GameMetadata`.
-    #[serde(default)]
-    pub active_faction_id: Option<String>,
-    /// The map this game is played on, absent on a manifest written before the app asked - hence
-    /// `skip_serializing_if`, exactly as on `GameMetadata`: writing `null` into an old game's
-    /// manifest would turn "never said" into a claim.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub map: Option<atlantis_hud_core::movement::graph::MapGeometry>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReportSourceRefDto {
-    pub source_id: String,
-    pub label: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GameManifestDto {
-    pub manifest_version: u32,
-    pub metadata: GameMetadataDto,
-    pub report_sources: Vec<ReportSourceRefDto>,
-    pub created_at: String,
-    pub last_opened_at: String,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,7 +40,7 @@ pub struct OpenedGameDto {
     pub game_file_path: String,
     pub database_path: String,
     pub schema_version: u32,
-    pub manifest: GameManifestDto,
+    pub manifest: GameManifest,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,79 +136,13 @@ impl From<HexNoteDto> for HexNote {
     }
 }
 
-impl From<GameMetadataDto> for GameMetadata {
-    fn from(value: GameMetadataDto) -> Self {
-        Self {
-            game_id: value.game_id,
-            game_name: value.game_name,
-            ruleset_id: value.ruleset_id,
-            active_faction_id: value.active_faction_id,
-            map: value.map,
-        }
-    }
-}
-
-impl From<ReportSourceRefDto> for ReportSourceRef {
-    fn from(value: ReportSourceRefDto) -> Self {
-        Self {
-            source_id: value.source_id,
-            label: value.label,
-        }
-    }
-}
-
-impl From<GameManifestDto> for GameManifest {
-    fn from(value: GameManifestDto) -> Self {
-        Self {
-            manifest_version: value.manifest_version,
-            metadata: value.metadata.into(),
-            report_sources: value.report_sources.into_iter().map(Into::into).collect(),
-            created_at: value.created_at,
-            last_opened_at: value.last_opened_at,
-        }
-    }
-}
-
-impl From<GameMetadata> for GameMetadataDto {
-    fn from(value: GameMetadata) -> Self {
-        Self {
-            game_id: value.game_id,
-            game_name: value.game_name,
-            ruleset_id: value.ruleset_id,
-            active_faction_id: value.active_faction_id,
-            map: value.map,
-        }
-    }
-}
-
-impl From<ReportSourceRef> for ReportSourceRefDto {
-    fn from(value: ReportSourceRef) -> Self {
-        Self {
-            source_id: value.source_id,
-            label: value.label,
-        }
-    }
-}
-
-impl From<GameManifest> for GameManifestDto {
-    fn from(value: GameManifest) -> Self {
-        Self {
-            manifest_version: value.manifest_version,
-            metadata: value.metadata.into(),
-            report_sources: value.report_sources.into_iter().map(Into::into).collect(),
-            created_at: value.created_at,
-            last_opened_at: value.last_opened_at,
-        }
-    }
-}
-
 impl From<OpenedGame> for OpenedGameDto {
     fn from(value: OpenedGame) -> Self {
         Self {
             game_file_path: value.game_file_path.to_string_lossy().to_string(),
             database_path: value.database_path.to_string_lossy().to_string(),
             schema_version: value.schema_version,
-            manifest: value.manifest.into(),
+            manifest: value.manifest,
         }
     }
 }
@@ -1148,9 +1051,9 @@ pub use commands::{
 /// Returns an error when a game already exists under this id, or when it cannot be written.
 pub fn command_create_game(
     games_root: &str,
-    manifest: GameManifestDto,
+    manifest: GameManifest,
 ) -> Result<OpenedGameDto, String> {
-    create_game(Path::new(games_root), &GameManifest::from(manifest))
+    create_game(Path::new(games_root), &manifest)
         .map(OpenedGameDto::from)
         .map_err(|error| error.to_string())
 }
@@ -1160,10 +1063,8 @@ pub fn command_create_game(
 /// # Errors
 ///
 /// Returns an error when the games directory exists but cannot be read.
-pub fn command_list_games(games_root: &str) -> Result<Vec<GameManifestDto>, String> {
-    list_games(Path::new(games_root))
-        .map(|games| games.into_iter().map(GameManifestDto::from).collect())
-        .map_err(|error| error.to_string())
+pub fn command_list_games(games_root: &str) -> Result<Vec<GameManifest>, String> {
+    list_games(Path::new(games_root)).map_err(|error| error.to_string())
 }
 
 /// Changes which ruleset a game is played under, returning the updated manifest.
@@ -1175,10 +1076,8 @@ pub fn command_set_game_ruleset(
     games_root: &str,
     game_id: &str,
     ruleset_id: &str,
-) -> Result<GameManifestDto, String> {
-    set_game_ruleset(Path::new(games_root), game_id, ruleset_id)
-        .map(GameManifestDto::from)
-        .map_err(|error| error.to_string())
+) -> Result<GameManifest, String> {
+    set_game_ruleset(Path::new(games_root), game_id, ruleset_id).map_err(|error| error.to_string())
 }
 
 /// Records the map a game is played on, returning the updated manifest.
@@ -1194,11 +1093,9 @@ pub fn command_set_game_map(
     games_root: &str,
     game_id: &str,
     map_json: &str,
-) -> Result<GameManifestDto, String> {
+) -> Result<GameManifest, String> {
     let map = atlantis_hud_core::movement::graph::geometry_from_json(map_json)?;
-    set_game_map(Path::new(games_root), game_id, map)
-        .map(GameManifestDto::from)
-        .map_err(|error| error.to_string())
+    set_game_map(Path::new(games_root), game_id, map).map_err(|error| error.to_string())
 }
 
 /// Renames a game, returning the updated manifest.
@@ -1210,10 +1107,8 @@ pub fn command_set_game_name(
     games_root: &str,
     game_id: &str,
     game_name: &str,
-) -> Result<GameManifestDto, String> {
-    set_game_name(Path::new(games_root), game_id, game_name)
-        .map(GameManifestDto::from)
-        .map_err(|error| error.to_string())
+) -> Result<GameManifest, String> {
+    set_game_name(Path::new(games_root), game_id, game_name).map_err(|error| error.to_string())
 }
 
 /// Records which faction in this game is the player's, returning the updated manifest.
@@ -1225,9 +1120,8 @@ pub fn command_set_active_faction(
     games_root: &str,
     game_id: &str,
     faction_id: &str,
-) -> Result<GameManifestDto, String> {
+) -> Result<GameManifest, String> {
     set_active_faction(Path::new(games_root), game_id, faction_id)
-        .map(GameManifestDto::from)
         .map_err(|error| error.to_string())
 }
 
@@ -1509,16 +1403,16 @@ mod plan_route_command_tests {
 /// one place rather than six.
 #[cfg(test)]
 mod test_support {
-    use super::{GameManifestDto, GameMetadataDto};
+    use super::{GameManifest, GameMetadata};
 
     pub const OPENED_AT: &str = "2026-08-09T09:00:00Z";
     /// The shell's clock, which is where an import's timestamp comes from.
     pub const IMPORTED_AT: &str = "2026-08-09T10:00:00Z";
 
-    pub fn manifest_dto(game_id: &str, game_name: &str) -> GameManifestDto {
-        GameManifestDto {
+    pub fn a_manifest(game_id: &str, game_name: &str) -> GameManifest {
+        GameManifest {
             manifest_version: 1,
-            metadata: GameMetadataDto {
+            metadata: GameMetadata {
                 game_id: game_id.to_string(),
                 game_name: game_name.to_string(),
                 ruleset_id: "neworigins".to_string(),
@@ -1534,7 +1428,7 @@ mod test_support {
 
 #[cfg(test)]
 mod ruleset_command_tests {
-    use super::test_support::manifest_dto;
+    use super::test_support::a_manifest;
     use super::*;
     use tempfile::tempdir;
 
@@ -1544,7 +1438,7 @@ mod ruleset_command_tests {
     fn changing_a_games_ruleset_returns_the_updated_manifest() {
         let dir = tempdir().expect("tempdir");
         let root = dir.path().to_str().expect("a path");
-        command_create_game(root, manifest_dto("faction-95", "Borg TNG")).expect("created");
+        command_create_game(root, a_manifest("faction-95", "Borg TNG")).expect("created");
 
         let updated = command_set_game_ruleset(root, "faction-95", "magicdeep")
             .expect("the ruleset change should succeed");
@@ -1569,7 +1463,7 @@ mod ruleset_command_tests {
 
 #[cfg(test)]
 mod rename_command_tests {
-    use super::test_support::manifest_dto;
+    use super::test_support::a_manifest;
     use super::*;
     use tempfile::tempdir;
 
@@ -1579,7 +1473,7 @@ mod rename_command_tests {
     fn renaming_a_game_returns_the_updated_manifest() {
         let dir = tempdir().expect("tempdir");
         let root = dir.path().to_str().expect("a path");
-        command_create_game(root, manifest_dto("faction-95", "Borg TNG")).expect("created");
+        command_create_game(root, a_manifest("faction-95", "Borg TNG")).expect("created");
 
         let updated = command_set_game_name(root, "faction-95", "Binding of the North")
             .expect("the rename should succeed");
@@ -1594,7 +1488,7 @@ mod rename_command_tests {
     fn setting_the_active_faction_returns_the_updated_manifest() {
         let dir = tempdir().expect("tempdir");
         let root = dir.path().to_str().expect("a path");
-        command_create_game(root, manifest_dto("faction-95", "Borg TNG")).expect("created");
+        command_create_game(root, a_manifest("faction-95", "Borg TNG")).expect("created");
 
         let updated = command_set_active_faction(root, "faction-95", "95")
             .expect("recording the active faction should succeed");
@@ -1620,7 +1514,7 @@ mod rename_command_tests {
     fn resetting_a_game_returns_the_fresh_game() {
         let dir = tempdir().expect("tempdir");
         let root = dir.path().to_str().expect("a path");
-        command_create_game(root, manifest_dto("faction-95", "Borg TNG")).expect("created");
+        command_create_game(root, a_manifest("faction-95", "Borg TNG")).expect("created");
         command_set_active_faction(root, "faction-95", "95").expect("faction recorded");
 
         let reset = command_reset_game(root, "faction-95", "2026-08-17T09:00:00Z")
@@ -1641,7 +1535,7 @@ mod rename_command_tests {
 
 #[cfg(test)]
 mod sightings_tests {
-    use super::test_support::{manifest_dto, IMPORTED_AT};
+    use super::test_support::{a_manifest, IMPORTED_AT};
     use super::*;
     use tempfile::tempdir;
 
@@ -1653,7 +1547,7 @@ mod sightings_tests {
     fn game(directory: &std::path::Path) -> OpenedGameDto {
         command_create_game(
             directory.to_str().expect("a path"),
-            manifest_dto("faction-95", "Borg TNG"),
+            a_manifest("faction-95", "Borg TNG"),
         )
         .expect("the game is created")
     }
@@ -1889,7 +1783,7 @@ fn units_still_estimated(remembered: &[RememberedRegionDto]) -> Vec<String> {
 
 #[cfg(test)]
 mod merge_tests {
-    use super::test_support::{manifest_dto, IMPORTED_AT};
+    use super::test_support::{a_manifest, IMPORTED_AT};
     use super::*;
     use tempfile::tempdir;
 
@@ -1903,7 +1797,7 @@ mod merge_tests {
     fn game_with_turn_71(directory: &std::path::Path) -> OpenedGameDto {
         let created = command_create_game(
             directory.to_str().expect("a path"),
-            manifest_dto("faction-95", "Borg TNG"),
+            a_manifest("faction-95", "Borg TNG"),
         )
         .expect("the game is created");
 
@@ -1966,7 +1860,7 @@ mod merge_tests {
         let directory = tempdir().expect("a temporary directory");
         let created = command_create_game(
             directory.path().to_str().expect("a path"),
-            manifest_dto("faction-95", "Borg TNG"),
+            a_manifest("faction-95", "Borg TNG"),
         )
         .expect("the game is created");
 
@@ -2132,7 +2026,7 @@ mod merge_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::test_support::{manifest_dto, IMPORTED_AT, OPENED_AT};
+    use super::test_support::{a_manifest, IMPORTED_AT, OPENED_AT};
     use super::*;
     use tempfile::tempdir;
 
@@ -2167,8 +2061,8 @@ mod tests {
     fn tauri_adapter_creates_and_reopens_a_game() {
         let dir = tempdir().expect("tempdir");
         let root = dir.path().to_str().expect("a path");
-        let mut manifest = manifest_dto("faction-12", "Faction 12");
-        manifest.report_sources = vec![ReportSourceRefDto {
+        let mut manifest = a_manifest("faction-12", "Faction 12");
+        manifest.report_sources = vec![ReportSourceRef {
             source_id: "report-12".to_string(),
             label: "Turn 12 report".to_string(),
         }];
@@ -2197,7 +2091,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let created = command_create_game(
             dir.path().to_str().expect("a path"),
-            manifest_dto("faction-12", "Faction 12"),
+            a_manifest("faction-12", "Faction 12"),
         )
         .expect("create game");
         let report = "\
@@ -2250,7 +2144,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let dir = tempdir().expect("tempdir");
         let created = command_create_game(
             dir.path().to_str().expect("a path"),
-            manifest_dto("faction-12", "Faction 12"),
+            a_manifest("faction-12", "Faction 12"),
         )
         .expect("create game");
 
@@ -2309,7 +2203,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let dir = tempdir().expect("tempdir");
         let created = command_create_game(
             dir.path().to_str().expect("a path"),
-            manifest_dto("faction-12", "Faction 12"),
+            a_manifest("faction-12", "Faction 12"),
         )
         .expect("create game");
 
@@ -2349,7 +2243,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let dir = tempdir().expect("tempdir");
         let created = command_create_game(
             dir.path().to_str().expect("a path"),
-            manifest_dto("faction-12", "Faction 12"),
+            a_manifest("faction-12", "Faction 12"),
         )
         .expect("create game");
 
@@ -2392,7 +2286,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let dir = tempdir().expect("tempdir");
         let created = command_create_game(
             dir.path().to_str().expect("a path"),
-            manifest_dto("faction-12", "Faction 12"),
+            a_manifest("faction-12", "Faction 12"),
         )
         .expect("create game");
         let report = "\
@@ -2437,7 +2331,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let dir = tempdir().expect("tempdir");
         let created = command_create_game(
             dir.path().to_str().expect("a path"),
-            manifest_dto("faction-12", "Faction 12"),
+            a_manifest("faction-12", "Faction 12"),
         )
         .expect("create game");
         let march = "\
