@@ -5,9 +5,10 @@ retrospective, a CI cycle or an hour of somebody's confusion. Planners and imple
 file at the top of their work (`skills/plan-bead`, `skills/implement-bead`); it is a list of facts,
 not rules, so if a bead touches one, say so and say what to do about it.
 
-**Tracked on purpose**, beside `.claude/cerebro-project.conf` and `.claude/cerebro-roster`. A trap
-the whole team has already paid for is a fact every clone needs, and a file under the git-ignored
-`.cerebro/` would vanish on a fresh clone and take the traps with it.
+**Tracked on purpose**, beside `.cerebro/project.conf` and `.cerebro/roster.conf`. A trap the whole
+team has already paid for is a fact every clone needs, and an ignored copy would vanish on a fresh
+clone and take the traps with it — which is why `.gitignore` names this file as an exception to the
+otherwise ignored `.cerebro/`.
 
 **Curated, not appended to.** Forge proposes an entry during its sweep, quoting the retrospective's
 `**Prevent by.**` that produced it, and the navigator accepts or declines. Nothing else writes here —
