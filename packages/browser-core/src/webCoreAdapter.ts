@@ -100,6 +100,7 @@ export type CoreWasmModule = {
     confirmedFactionId: string,
     rulesetJson: string | null
   ): PreparedImport;
+  reset_game_manifest_state(manifestJson: string, now: string): GameManifest;
   report_import_writes_state(
     rawReport: string,
     rulesetJson: string | null,
@@ -592,20 +593,9 @@ export function createWebCoreAdapter(
       }
 
       const previous = game.manifest as GameManifest;
-      // Built field by field, never spread from `previous`: most of a manifest does *not* survive a
-      // reset, and a spread would carry every field added later through it silently. `activeFactionId`
-      // is simply absent, which is how the optional field says "none".
-      const manifest: GameManifest = {
-        manifestVersion: previous.manifestVersion,
-        metadata: {
-          gameId: previous.metadata.gameId,
-          gameName: previous.metadata.gameName,
-          rulesetId: previous.metadata.rulesetId
-        },
-        reportSources: [],
-        createdAt: now,
-        lastOpenedAt: now
-      };
+      // The rule lives in the core and is the desktop's too - `ah-8z4y.1`. What a reset keeps is
+      // not this adapter's opinion.
+      const manifest = wasm.reset_game_manifest_state(JSON.stringify(previous), now);
       // The registry row first — the opposite order from the desktop's rename-aside, and for the same
       // reason: a failure after this leaves an empty game, which is what was asked for, while a
       // failure the other way round would leave a full game the picker no longer lists. Do not "make

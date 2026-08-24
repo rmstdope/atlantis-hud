@@ -2,7 +2,8 @@
 //! bundle. Persistence is not part of this crate: the desktop reads and writes through
 //! `core-tauri`'s Tauri commands, and the web has its own store in `@atlantis/browser-core`, over
 //! IndexedDB. The exceptions are the game backup codec (`encode_game_backup_state`,
-//! `decode_game_backup_state`), what one report import writes (`report_import_writes_state`), and
+//! `decode_game_backup_state`), what one report import writes (`report_import_writes_state`), what a reset keeps
+//! (`reset_game_manifest_state`), and
 //! which turn a game reopens on (`latest_turn_state`): the rules live in the core, and the web's
 //! store calls through here rather than deciding them itself.
 
@@ -157,6 +158,23 @@ pub fn report_import_writes_state(
     );
 
     to_js(&writes)
+}
+
+/// The manifest a reset leaves behind, given the one the store holds now.
+///
+/// The counterpart of the desktop's own call into [`atlantis_hud_core::backup::reset_manifest`]:
+/// the browser store hands over the game's current manifest and writes back exactly what comes
+/// out, so neither platform holds an opinion about what a reset keeps (`ah-8z4y.1`).
+///
+/// # Errors
+///
+/// Returns an error when `manifest_json` cannot be read as a `GameManifest`, or when the result
+/// cannot be handed back to JavaScript.
+#[wasm_bindgen]
+pub fn reset_game_manifest_state(manifest_json: String, now: String) -> Result<JsValue, JsValue> {
+    let previous: atlantis_hud_core::backup::GameManifest = serde_json::from_str(&manifest_json)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    to_js(&atlantis_hud_core::backup::reset_manifest(&previous, &now))
 }
 
 /// Folds an allied report into a stored map and returns the rows to write.

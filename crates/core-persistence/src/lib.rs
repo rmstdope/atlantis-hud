@@ -537,22 +537,7 @@ pub fn reset_game(
     let manifest = load_game_manifest(&game_file_path)?;
     ensure_supported_manifest_version(manifest.manifest_version)?;
 
-    // Written field by field on purpose, *not* as `GameManifest { ..manifest }`: a struct-update
-    // expression carries every future field through a reset silently, and the next field added to a
-    // manifest is exactly the one that should not survive.
-    let fresh = GameManifest {
-        manifest_version: atlantis_hud_core::backup::CURRENT_MANIFEST_VERSION,
-        metadata: GameMetadata {
-            game_id: manifest.metadata.game_id.clone(),
-            game_name: manifest.metadata.game_name.clone(),
-            ruleset_id: manifest.metadata.ruleset_id.clone(),
-            active_faction_id: None,
-            map: None,
-        },
-        report_sources: Vec::new(),
-        created_at: now.to_string(),
-        last_opened_at: now.to_string(),
-    };
+    let fresh = atlantis_hud_core::backup::reset_manifest(&manifest, now);
 
     // Move the old directory aside rather than deleting it: a failure between a delete and a create
     // would leave the player with no game at all, while the panel that offers **Try again** on
