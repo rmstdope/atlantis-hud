@@ -87,6 +87,34 @@ pub struct GameManifest {
     pub last_opened_at: String,
 }
 
+/// The manifest a reset leaves behind: the game's identity, and nothing else.
+///
+/// Written field by field on purpose, *not* as `GameManifest { ..previous }`: a struct-update
+/// expression carries every future field through a reset silently, and the next field added to a
+/// manifest is exactly the one that should not survive. Both platforms carried their own copy of
+/// this rule and their own copy of that warning, and the two had already drifted apart on
+/// `manifest_version` (`ah-8z4y.1`).
+///
+/// What survives is the identity a player would recognise the game by - its id, its name and its
+/// ruleset. What does not: the active faction, the map, the report sources, and the timestamps,
+/// which are both set to `now` because a reset game is a new game in every way but its name.
+#[must_use]
+pub fn reset_manifest(previous: &GameManifest, now: &str) -> GameManifest {
+    GameManifest {
+        manifest_version: CURRENT_MANIFEST_VERSION,
+        metadata: GameMetadata {
+            game_id: previous.metadata.game_id.clone(),
+            game_name: previous.metadata.game_name.clone(),
+            ruleset_id: previous.metadata.ruleset_id.clone(),
+            active_faction_id: None,
+            map: None,
+        },
+        report_sources: Vec::new(),
+        created_at: now.to_string(),
+        last_opened_at: now.to_string(),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameBackupImportedTurn {
@@ -468,6 +496,55 @@ mod tests {
 
         let round_tripped: GameMetadata = serde_json::from_value(json).expect("reads back");
         assert_eq!(round_tripped, manifest().metadata);
+    }
+
+    #[test]
+    fn a_reset_keeps_the_games_identity() {
+        let fresh = reset_manifest(&manifest(), "2026-02-02T00:00:00Z");
+
+        assert_eq!(fresh.metadata.game_id, "g1");
+        assert_eq!(fresh.metadata.game_name, "Game One");
+        assert_eq!(fresh.metadata.ruleset_id, "newOrigins");
+    }
+
+    #[test]
+    fn a_reset_forgets_the_faction_the_map_and_the_sources() {
+        let mut previous = manifest();
+        previous.metadata.active_faction_id = Some("f1".to_string());
+        previous.metadata.map = Some(MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: false,
+        });
+        previous.report_sources = vec![ReportSourceRef {
+            source_id: "s1".to_string(),
+            label: "turn 1".to_string(),
+        }];
+
+        let fresh = reset_manifest(&previous, "2026-02-02T00:00:00Z");
+
+        assert_eq!(fresh.metadata.active_faction_id, None);
+        assert_eq!(fresh.metadata.map, None);
+        assert!(fresh.report_sources.is_empty());
+    }
+
+    #[test]
+    fn a_reset_stamps_the_current_manifest_version() {
+        let mut previous = manifest();
+        previous.manifest_version = 0;
+
+        let fresh = reset_manifest(&previous, "2026-02-02T00:00:00Z");
+
+        assert_eq!(fresh.manifest_version, CURRENT_MANIFEST_VERSION);
+    }
+
+    #[test]
+    fn a_reset_sets_both_timestamps_to_now() {
+        let fresh = reset_manifest(&manifest(), "2026-02-02T00:00:00Z");
+
+        assert_eq!(fresh.created_at, "2026-02-02T00:00:00Z");
+        assert_eq!(fresh.last_opened_at, "2026-02-02T00:00:00Z");
     }
 
     fn manifest() -> GameManifest {

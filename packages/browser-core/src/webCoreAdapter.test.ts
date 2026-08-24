@@ -150,6 +150,22 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
             : "confirmed faction does not exist in parsed report candidates"
       };
     },
+    // Echoes rather than decides, like the rest of this stand-in: what a reset actually keeps is
+    // the core's rule, pinned in `backup.rs` and against the real module in resetGame.wasm.test.ts.
+    reset_game_manifest_state: (manifestJson: string, now: string) => {
+      const previous = JSON.parse(manifestJson) as GameManifest;
+      return {
+        manifestVersion: previous.manifestVersion,
+        metadata: {
+          gameId: previous.metadata.gameId,
+          gameName: previous.metadata.gameName,
+          rulesetId: previous.metadata.rulesetId
+        },
+        reportSources: [],
+        createdAt: now,
+        lastOpenedAt: now
+      } satisfies GameManifest;
+    },
     // Echoes rather than decides: the adapter must hand the stored stamp and the seen hexes
     // across and write back what returns. The rules themselves are the core's, tested in Rust and
     // against the real module in reportImport.wasm.test.ts.
