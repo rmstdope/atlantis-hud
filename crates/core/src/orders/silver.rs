@@ -274,7 +274,11 @@ pub enum SilverSpender {
 pub struct Priced {
     /// Silver the order earns. Never negative.
     pub earns: i64,
-    /// Why it could not be priced, or `None`. A doubt and a non-zero `earns` never occur together.
+    /// Silver the order spends. Never negative. An order does not both earn and spend, but the
+    /// field is separate rather than a signed `earns` so a caller that tracks the two totals apart
+    /// - which [`forecast_unit`] does, as `income` and `expense` - needs no sign convention.
+    pub spends: i64,
+    /// Why it could not be priced, or `None`. A doubt and a non-zero figure never occur together.
     pub doubt: Option<SilverDoubt>,
 }
 
@@ -1829,21 +1833,18 @@ pub fn combat_ready(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<
 #[must_use]
 pub fn price_tax(men: i64, tax_base: Option<i64>, pillaged: bool, share: PoolShare) -> Priced {
     if pillaged {
-        return Priced {
-            earns: 0,
-            doubt: None,
-        };
+        return Priced::default();
     }
     match share {
         // A unit nobody contends with, exactly as it was before the settlement existed.
         PoolShare::Uncontended => match tax_base {
             Some(base) => Priced {
                 earns: men.saturating_mul(TAX_PER_MAN).min(base),
-                doubt: None,
+                ..Priced::default()
             },
             None => Priced {
-                earns: 0,
                 doubt: Some(SilverDoubt::UnknownTaxBase),
+                ..Priced::default()
             },
         },
         // Already capped by the settlement, and already no larger than this unit's ask. Drawn
@@ -1852,13 +1853,13 @@ pub fn price_tax(men: i64, tax_base: Option<i64>, pillaged: bool, share: PoolSha
         // region's pool twice over - the very thing the split exists to stop.
         PoolShare::Share(share) => Priced {
             earns: share,
-            doubt: None,
+            ..Priced::default()
         },
         // Only income is doubted: this unit's own men are known, so what it spends is still
         // exactly priceable - which separates this from `EstimatedMen`.
         PoolShare::Unknowable => Priced {
-            earns: 0,
             doubt: Some(SilverDoubt::ContestedRegionPool),
+            ..Priced::default()
         },
     }
 }
@@ -1878,25 +1879,81 @@ pub fn price_pillage(tax_base: Option<i64>, combat_ready: Option<i64>) -> Priced
         // No tax base: what the region holds is unknown before the question of who may take it
         // arises, so the older doubt wins.
         (None, _) => Priced {
-            earns: 0,
             doubt: Some(SilverDoubt::UnknownTaxBase),
+            ..Priced::default()
         },
         // A guessed headcount somewhere in the hex: the threshold cannot be tested at all.
         // `EstimatedMen` is reused rather than a variant added - its sentence stays true.
         (Some(_), None) => Priced {
-            earns: 0,
             doubt: Some(SilverDoubt::EstimatedMen),
+            ..Priced::default()
         },
         (Some(base), Some(ready)) if ready >= pillage_threshold(base) => Priced {
             earns: base.saturating_mul(2),
-            doubt: None,
+            ..Priced::default()
         },
         // Short of the threshold: the order earns nothing, exactly - a certain zero, so the unit
         // is not doubted.
-        (Some(_), Some(_)) => Priced {
-            earns: 0,
-            doubt: None,
+        (Some(_), Some(_)) => Priced::default(),
+    }
+}
+
+/// How many of the goods a `BUY` actually takes: what was asked, capped by what the settlement
+/// leaves this unit of the market's line.
+///
+/// `allowed` is the settled share, or the asked count where the hex could not be settled - which is
+/// what [`Lookups::market_share`] returning `None` means, and is the behaviour before `ah-t2pn.3`.
+#[must_use]
+pub fn quantity_bought(count: i64, allowed: i64) -> i64 {
+    count.min(allowed).max(0)
+}
+
+/// What a `BUY` costs.
+///
+/// Both surfaces call this - [`forecast_unit`] and `semantics::buy` - because two surfaces reading
+/// one order must not price it two ways (`ah-lu0f.2`).
+#[must_use]
+pub fn price_purchase(count: i64, price: i64, allowed: i64) -> Priced {
+    Priced {
+        spends: quantity_bought(count, allowed).saturating_mul(price),
+        ..Priced::default()
+    }
+}
+
+/// How many of the goods a `SELL` actually moves: what was asked, capped by the settled share and
+/// by what the unit holds. The three caps are applied in this order and the `max(0)` last, because
+/// `Amount::All { except }` can make `asked` negative.
+#[must_use]
+pub fn quantity_sold(asked: i64, unit_holds: i64, allowed: i64) -> i64 {
+    asked.min(allowed).min(unit_holds).max(0)
+}
+
+/// What a `SELL` earns.
+#[must_use]
+pub fn price_sale(asked: i64, unit_holds: i64, price: i64, allowed: i64) -> Priced {
+    Priced {
+        earns: quantity_sold(asked, unit_holds, allowed).saturating_mul(price),
+        ..Priced::default()
+    }
+}
+
+/// What a `CLAIM` earns.
+///
+/// `unclaimed` is the caller's policy about the faction purse, and the two surfaces differ on
+/// purpose. The Silver column passes `purse.unclaimed`, because it shows what the unit will actually
+/// have. The ledger passes `None`: the overrun has its own finding, `claims-exceed-unclaimed`
+/// (`ah-wur4`), computed faction-wide, and warning twice about one mistake is worse than once
+/// (`ah-bumi` settled the purse the other way from the regional pools). A purse the report does not
+/// state also arrives as `None`, and means the same thing here - the limit is unknown, the stated
+/// figure is counted, nothing is doubted.
+#[must_use]
+pub fn price_claim(amount: i64, unclaimed: Option<i64>) -> Priced {
+    Priced {
+        earns: match unclaimed {
+            Some(available) => amount.min(available),
+            None => amount,
         },
+        ..Priced::default()
     }
 }
 
@@ -2298,7 +2355,7 @@ mod tests {
             price_tax(10, Some(8963), false, PoolShare::Uncontended),
             Priced {
                 earns: 500,
-                doubt: None
+                ..Priced::default()
             }
         );
         // capped by the base
@@ -2306,7 +2363,7 @@ mod tests {
             price_tax(10, Some(200), false, PoolShare::Uncontended),
             Priced {
                 earns: 200,
-                doubt: None
+                ..Priced::default()
             }
         );
         // a pillaged hex is a certain zero even with no stated base (`ah-cxxa`)
@@ -2314,15 +2371,15 @@ mod tests {
             price_tax(10, None, true, PoolShare::Uncontended),
             Priced {
                 earns: 0,
-                doubt: None
+                ..Priced::default()
             }
         );
         // no base, not pillaged
         assert_eq!(
             price_tax(10, None, false, PoolShare::Uncontended),
             Priced {
-                earns: 0,
-                doubt: Some(SilverDoubt::UnknownTaxBase)
+                doubt: Some(SilverDoubt::UnknownTaxBase),
+                ..Priced::default()
             }
         );
         // the settlement wins where the caller passes one
@@ -2330,14 +2387,66 @@ mod tests {
             price_tax(10, Some(8963), false, PoolShare::Share(120)),
             Priced {
                 earns: 120,
-                doubt: None
+                ..Priced::default()
             }
         );
         assert_eq!(
             price_tax(10, Some(8963), false, PoolShare::Unknowable),
             Priced {
-                earns: 0,
-                doubt: Some(SilverDoubt::ContestedRegionPool)
+                doubt: Some(SilverDoubt::ContestedRegionPool),
+                ..Priced::default()
+            }
+        );
+    }
+
+    #[test]
+    fn prices_a_purchase_a_sale_and_a_claim() {
+        // a lone over-buyer is charged only for goods that exist (`ah-t2pn.3`)
+        assert_eq!(
+            price_purchase(200, 5, 100),
+            Priced {
+                spends: 500,
+                ..Priced::default()
+            }
+        );
+        assert_eq!(
+            price_purchase(50, 5, 100),
+            Priced {
+                spends: 250,
+                ..Priced::default()
+            }
+        );
+        // a sale is capped by the share and by what the unit holds
+        assert_eq!(
+            price_sale(100, 100, 3, 20),
+            Priced {
+                earns: 60,
+                ..Priced::default()
+            }
+        );
+        assert_eq!(
+            price_sale(100, 10, 3, 100),
+            Priced {
+                earns: 30,
+                ..Priced::default()
+            }
+        );
+        // `Amount::All { except }` can ask for a negative amount
+        assert_eq!(quantity_sold(-5, 10, 100), 0);
+        assert_eq!(quantity_bought(-5, 100), 0);
+        // the claim policy is the caller's
+        assert_eq!(
+            price_claim(500, Some(120)),
+            Priced {
+                earns: 120,
+                ..Priced::default()
+            }
+        );
+        assert_eq!(
+            price_claim(500, None),
+            Priced {
+                earns: 500,
+                ..Priced::default()
             }
         );
     }
@@ -2347,22 +2456,22 @@ mod tests {
         assert_eq!(
             price_pillage(None, Some(100)),
             Priced {
-                earns: 0,
-                doubt: Some(SilverDoubt::UnknownTaxBase)
+                doubt: Some(SilverDoubt::UnknownTaxBase),
+                ..Priced::default()
             }
         );
         assert_eq!(
             price_pillage(Some(8963), None),
             Priced {
-                earns: 0,
-                doubt: Some(SilverDoubt::EstimatedMen)
+                doubt: Some(SilverDoubt::EstimatedMen),
+                ..Priced::default()
             }
         );
         assert_eq!(
             price_pillage(Some(100), Some(0)),
             Priced {
                 earns: 0,
-                doubt: None
+                ..Priced::default()
             }
         );
         let base = 100;
@@ -2370,7 +2479,7 @@ mod tests {
             price_pillage(Some(base), Some(pillage_threshold(base))),
             Priced {
                 earns: 200,
-                doubt: None
+                ..Priced::default()
             }
         );
     }
