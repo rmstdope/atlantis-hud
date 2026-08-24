@@ -30,10 +30,10 @@ use crate::orders::silver::{
     combat_ready, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
     late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants, price_claim,
     price_pillage, price_purchase, price_sale, price_tax, quantity_bought, quantity_sold,
-    recipe_for, settle_unclaimed, split_pool, taxes, unit_upkeep, ContendedPool,
-    FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide,
-    PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages,
-    SaleAnswer, SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
+    recipe_for, settle_unclaimed, split_pool, taxes, unit_upkeep, ContendedPool, FactionFoodPass,
+    FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, PoolOverrun,
+    PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
+    SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -1330,8 +1330,10 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
                 placed,
                 ruleset,
                 hex_combat_ready,
-                &market_shares,
-                index,
+                MarketStanding {
+                    shares: &market_shares,
+                    actor_index: index,
+                },
             );
         }
         credit_tax(&mut ledger, hex, ordered, pillaged);
@@ -1660,11 +1662,9 @@ fn apply(
     // Combat ready men this faction has in this hex - computed once per hex by the caller, because
     // this function runs for every placed intent of every unit (`ah-1ad6.2`).
     hex_combat_ready: Option<i64>,
-    // How the hex's market lines are split between the faction's own units here, and which of
-    // them this actor is. Index-aligned with `hex.units`, exactly as the Silver column reads it
-    // (`ah-lu0f.2`).
-    market_shares: &BTreeMap<(String, MarketSide), Vec<i64>>,
-    actor_index: usize,
+    // How the hex's market lines are split between the faction's own units, and which of them
+    // this actor is - the same settlement the Silver column reads (`ah-lu0f.2`).
+    standing: MarketStanding<'_>,
 ) {
     let who = &actor.unit.unit_id;
 
@@ -1724,28 +1724,28 @@ fn apply(
                 credit(ledger, who, SILVER, priced.earns);
             }
         }
-        Intent::Buy { amount, item } => buy(
-            ledger,
-            hex,
-            actor,
-            placed,
-            amount,
-            item,
-            ruleset,
-            market_shares,
-            actor_index,
-        ),
-        Intent::Sell { amount, item } => sell(
-            ledger,
-            hex,
-            actor,
-            placed,
-            amount,
-            item,
-            ruleset,
-            market_shares,
-            actor_index,
-        ),
+        Intent::Buy { amount, item } => {
+            buy(
+                ledger,
+                hex,
+                actor,
+                placed,
+                (amount, item),
+                ruleset,
+                standing,
+            );
+        }
+        Intent::Sell { amount, item } => {
+            sell(
+                ledger,
+                hex,
+                actor,
+                placed,
+                (amount, item),
+                ruleset,
+                standing,
+            );
+        }
         Intent::Study { skill } => study(ledger, actor, placed, skill, ruleset),
         Intent::Cast { spell, arguments } => cast(ledger, actor, placed, spell, arguments, ruleset),
         // The fund pays, not the unit (`ah-tdsi`). Nothing is charged here, and an unpriceable
@@ -1823,11 +1823,10 @@ fn buy(
     hex: &Hex<'_>,
     actor: &Ordered<'_>,
     placed: &PlacedIntent,
-    amount: &Amount,
-    item: &str,
+    // What the order names, straight off the intent: how many, and of what.
+    (amount, item): (&Amount, &str),
     ruleset: Option<&Ruleset>,
-    market_shares: &BTreeMap<(String, MarketSide), Vec<i64>>,
-    actor_index: usize,
+    standing: MarketStanding<'_>,
 ) {
     let who = &actor.unit.unit_id;
     let Some(offer) = market(&hex.region.for_sale, item, hex, actor, ruleset) else {
@@ -1845,29 +1844,41 @@ fn buy(
     // What this hex's other own buyers left of the line, or the ask itself where nothing was
     // settled. The settled figure is already capped by what the market has, so this is also what
     // stops a lone unit being charged for goods that do not exist (`ah-t2pn.3`).
-    let allowed = share_of(market_shares, &tag, MarketSide::Buying, actor_index).unwrap_or(*count);
+    let allowed = standing
+        .share_of(&tag, MarketSide::Buying)
+        .unwrap_or(*count);
     let priced = price_purchase(*count, offer.price, allowed);
 
     charge(ledger, who, SILVER, priced.spends, placed);
     credit(ledger, who, &tag, quantity_bought(*count, allowed));
 }
 
-/// This unit's own share of a settled market line, or `None` where nothing was settled - goods
-/// this market does not trade, or a hex that could not be settled at all. The caller then falls
-/// back to what the market line itself says.
+/// How this hex's market lines are split between the faction's own units, and which of them is
+/// trading right now.
 ///
-/// Index-aligned with `hex.units` rather than keyed by unit id, because two units may carry the
-/// same id and a map would merge them - the same reason [`market_shares_for`] builds it that way,
-/// and the same lookup the Silver column's `market_share` closure makes.
-fn share_of(
-    market_shares: &BTreeMap<(String, MarketSide), Vec<i64>>,
-    tag: &str,
-    side: MarketSide,
+/// The two travel together everywhere - a share is meaningless without the unit it belongs to -
+/// so they are one value rather than two parameters threaded side by side (`ah-lu0f.2`).
+#[derive(Clone, Copy)]
+struct MarketStanding<'a> {
+    /// Index-aligned with `hex.units`, exactly as [`market_shares_for`] builds it.
+    shares: &'a BTreeMap<(String, MarketSide), Vec<i64>>,
+    /// Which of `hex.units` the order being priced belongs to.
     actor_index: usize,
-) -> Option<i64> {
-    market_shares
-        .get(&(tag.to_ascii_uppercase(), side))
-        .and_then(|shares| shares.get(actor_index).copied())
+}
+
+impl MarketStanding<'_> {
+    /// This unit's own share of a settled market line, or `None` where nothing was settled - goods
+    /// this market does not trade, or a hex that could not be settled at all. The caller then falls
+    /// back to what the market line itself says.
+    ///
+    /// Index-aligned rather than keyed by unit id, because two units may carry the same id and a
+    /// map would merge them - the same reason [`market_shares_for`] builds it that way, and the
+    /// same lookup the Silver column's `market_share` closure makes.
+    fn share_of(&self, tag: &str, side: MarketSide) -> Option<i64> {
+        self.shares
+            .get(&(tag.to_ascii_uppercase(), side))
+            .and_then(|shares| shares.get(self.actor_index).copied())
+    }
 }
 
 /// `PRODUCE <item>`: what the run costs comes off the unit's silver and its materials.
@@ -1907,11 +1918,10 @@ fn sell(
     hex: &Hex<'_>,
     actor: &Ordered<'_>,
     placed: &PlacedIntent,
-    amount: &Amount,
-    item: &str,
+    // What the order names, straight off the intent: how many, and of what.
+    (amount, item): (&Amount, &str),
     ruleset: Option<&Ruleset>,
-    market_shares: &BTreeMap<(String, MarketSide), Vec<i64>>,
-    actor_index: usize,
+    standing: MarketStanding<'_>,
 ) {
     let who = &actor.unit.unit_id;
     let Some(demand) = market(&hex.region.wanted, item, hex, actor, ruleset) else {
@@ -1928,12 +1938,18 @@ fn sell(
     // What this hex's other own sellers left of the line, or the line itself where nothing was
     // settled - so a lone unit is credited only for what the market will actually take
     // (`ah-t2pn.3`).
-    let allowed =
-        share_of(market_shares, &tag, MarketSide::Selling, actor_index).unwrap_or(demand.amount);
+    let allowed = standing
+        .share_of(&tag, MarketSide::Selling)
+        .unwrap_or(demand.amount);
     let quantity = quantity_sold(asked, holds, allowed);
 
     charge(ledger, who, &tag, quantity, placed);
-    credit(ledger, who, SILVER, price_sale(asked, holds, demand.price, allowed).earns);
+    credit(
+        ledger,
+        who,
+        SILVER,
+        price_sale(asked, holds, demand.price, allowed).earns,
+    );
 }
 
 fn study(
@@ -7954,7 +7970,8 @@ mod tests {
     /// read differently: `Ordered::holding` takes the first match and the ledger's balance map
     /// takes the last (`ah-lu0f.2`). A real report never lists a tag twice.
     fn with_item(mut unit: ReportUnit, amount: i64, name: &str, tag: &str) -> ReportUnit {
-        unit.items.retain(|item| !item.tag.eq_ignore_ascii_case(tag));
+        unit.items
+            .retain(|item| !item.tag.eq_ignore_ascii_case(tag));
         unit.items.push(ItemAmount {
             amount,
             name: name.to_string(),
