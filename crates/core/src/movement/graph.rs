@@ -120,7 +120,15 @@ impl Direction {
 ///
 /// The game server's world rather than the rules: the rules page never states a size, so this
 /// arrives from the game the player described rather than from a scrape.
+/// TypeScript calls this same shape `MapShape`, in 66 places across 19 files, so the generated
+/// binding keeps that name rather than renaming them all: one type, two names, by choice
+/// (ah-8z4y.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "MapShape", export_to = "MapShape.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct MapGeometry {
     /// Columns, in coordinate space. A map 72 wide runs `x` from 0 to 71.

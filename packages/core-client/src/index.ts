@@ -45,6 +45,10 @@ export type { OrderDiagnostic } from "./generated/OrderDiagnostic";
 export type { OrderValidationResult } from "./generated/OrderValidationResult";
 export type { UnitSilver } from "./generated/UnitSilver";
 export type { SilverDoubt } from "./generated/SilverDoubt";
+export type { MapShape } from "./generated/MapShape";
+export type { GameMetadata } from "./generated/GameMetadata";
+export type { ReportSourceRef } from "./generated/ReportSourceRef";
+export type { GameManifest } from "./generated/GameManifest";
 
 export {
   aBattle,
@@ -65,67 +69,9 @@ import type { ReportUnit } from "./generated/ReportUnit";
 import type { SettlementInfo } from "./generated/SettlementInfo";
 import type { ReportParseResult } from "./generated/ReportParseResult";
 import type { OrderValidationResult } from "./generated/OrderValidationResult";
+import type { GameManifest } from "./generated/GameManifest";
 import type { EngineInfo } from "./generated/EngineInfo";
 import type { ParsedReport } from "./generated/ParsedReport";
-
-export type GameMetadata = {
-  gameId: string;
-  gameName: string;
-  /**
-   * Which ruleset the game is played under, by identifier.
-   *
-   * The rules themselves are a served file handed to the core per call, so a game records which
-   * one it wants rather than a copy of it.
-   */
-  rulesetId: string;
-  /**
-   * Which faction in this game is the player's, if one has been chosen yet.
-   *
-   * Optional rather than `string | null` because it is genuinely absent on a game created before
-   * this field existed: the browser stores the manifest object as it stands, so an old record has
-   * no such key at all.
-   */
-  activeFactionId?: string | null;
-  /**
-   * The map this game is played on, when the player has said.
-   *
-   * Optional, and the absence carries meaning: a game whose manifest has no `map` was never told
-   * one, so the ruleset's declared default is only *assumed* for it - which is what Settings shows
-   * and what the core treats as "dimensions unknown". Writing a default in here would destroy that
-   * distinction permanently, so `newGameManifest` omits the key rather than filling it.
-   *
-   * No `manifestVersion` bump: an optional field an older manifest simply lacks is the migration.
-   */
-  map?: MapShape;
-};
-
-/** How far a map runs, and where it joins back onto itself. */
-export type MapShape = {
-  width: number;
-  height: number;
-  wrapX: boolean;
-  wrapY: boolean;
-};
-
-export type ReportSourceRef = {
-  sourceId: string;
-  label: string;
-};
-
-export type GameManifest = {
-  manifestVersion: number;
-  metadata: GameMetadata;
-  reportSources: ReportSourceRef[];
-  /** ISO 8601. */
-  createdAt: string;
-  /**
-   * ISO 8601, rewritten every time the game is opened.
-   *
-   * This decides which game reopens on the next launch. It lives on each game rather than in an
-   * index beside them, so there is no second copy to fall out of step.
-   */
-  lastOpenedAt: string;
-};
 
 export type OpenedGame = {
   gameFilePath: string;

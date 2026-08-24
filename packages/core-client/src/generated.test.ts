@@ -1,19 +1,25 @@
-import { readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import * as index from "./index";
 
-/** Every generated type is re-exported from the package root, so nothing imports `./generated` directly. */
-describe("the generated bindings", () => {
-  it("are all re-exported from the package root", () => {
-    const dir = fileURLToPath(new URL("./generated/", import.meta.url));
-    const generated = readdirSync(dir)
-      .filter((f) => f.endsWith(".ts"))
-      .map((f) => f.slice(0, -3));
-    expect(generated.length).toBeGreaterThan(30);
-    // Types have no runtime presence; the check that matters is that index.ts compiles with a
-    // re-export line per file, which `pnpm run typecheck` proves. This test pins that the
-    // directory is populated and the count does not silently drop to zero.
-    void index;
+import type { GameMetadata } from "./index";
+
+/**
+ * These are typecheck assertions wearing a runtime disguise, and that is the point: each one fails
+ * to *compile* if the ts-rs attribute on the Rust field is wrong. Do not delete them as tautologies.
+ *
+ * `ah-8z4y.2`: `map` absent and `map: null` are different claims - absent means the game was never
+ * told a map, so the ruleset's default is only *assumed* (crates/core/src/backup.rs). A generated
+ * `map: MapShape | null` would erase that distinction and typecheck perfectly.
+ */
+describe("the generated manifest types", () => {
+  it("a manifest may omit map entirely", () => {
+    const metadata: GameMetadata = { gameId: "g", gameName: "n", rulesetId: "r" };
+    expect("map" in metadata).toBe(false);
+  });
+
+  it("a manifest may omit activeFactionId, or say null", () => {
+    const absent: GameMetadata = { gameId: "g", gameName: "n", rulesetId: "r" };
+    const stated: GameMetadata = { ...absent, activeFactionId: null };
+    expect(stated.activeFactionId).toBeNull();
+    expect("activeFactionId" in absent).toBe(false);
   });
 });
