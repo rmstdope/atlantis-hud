@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-eurs — telling the player where a pooled shortfall came from</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63;
+    --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; --warn:#d9a441; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:5.2em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .notes li.core::before { content:"\2699  "; color:var(--select); }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  @media (max-width:1000px){ .cards2 { grid-template-columns:1fr; } }
+
+  /* the orders editor, as the app draws it */
+  .ed { background:#0c1118; border:1px solid var(--edge); border-radius:6px;
+        font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.75; }
+  .ed .tab { display:flex; gap:6px; padding:7px 9px 0; font-family:system-ui,sans-serif; font-size:11px; }
+  .ed .tab b { font-weight:normal; border:1px solid var(--edge); border-bottom:none; color:var(--ink-soft);
+               border-radius:4px 4px 0 0; padding:2px 8px; background:var(--raised); }
+  .ed .tab b.on { border-color:var(--brass); color:var(--brass); }
+  .ed .code { padding:8px 0 10px; }
+  .ed .ln { display:flex; gap:10px; padding:0 10px; }
+  .ed .ln .n { color:#3d4a5a; width:1.6em; text-align:right; user-select:none; flex:none; }
+  .ed .ln .t { color:var(--ink-soft); white-space:pre; }
+  .ed .ln .t b { color:var(--brass-bright); font-weight:normal; }
+  .ed .ln.gut .n { color:var(--warn); }
+  .squig { border-bottom:2px wavy var(--warn); padding-bottom:1px; }
+  .squig.dim { border-bottom-color:#7a6534; }
+  .tip { margin:4px 10px 2px 2.6em; background:var(--raised); border:1px solid var(--warn);
+         border-left-width:3px; border-radius:4px; padding:6px 9px; font-family:system-ui,sans-serif;
+         font-size:11.5px; color:var(--ink); max-width:62ch; }
+  .tip .k { color:var(--ink-dim); font-size:10px; letter-spacing:1.2px; text-transform:uppercase; display:block; margin-bottom:3px; }
+  .tip a { color:var(--select); text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+
+  /* the region panel */
+  .rp { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+        font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12px; }
+  .rp .hd { display:flex; justify-content:space-between; align-items:center; padding:8px 10px;
+            border-bottom:1px solid var(--edge); }
+  .rp .hd .ttl { color:var(--brass); font-size:11px; letter-spacing:1.5px; text-transform:uppercase; }
+  .rp .chip { border:1px solid var(--select); background:rgba(74,159,216,.15); color:var(--ink);
+              border-radius:4px; padding:1px 7px; font-size:11px; }
+  .rp .chip.off { border-color:var(--edge); background:none; color:var(--ink-dim); }
+  .rp .body { padding:9px 10px; }
+  .rp .prob { border-left:3px solid var(--warn); background:#0f141b; border-radius:3px;
+              padding:6px 9px; color:var(--ink-soft); }
+  .rp .prob + .prob { margin-top:6px; }
+  .lbl { font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin:12px 0 6px; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12px; border-top:1px solid var(--edge); padding-top:14px; }
+  .fact { background:#0f141b; border:1px solid var(--edge); border-left:3px solid var(--select);
+          border-radius:5px; padding:10px 12px; font-size:13px; color:var(--ink-soft); margin:10px 0 0; max-width:100ch; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-eurs — the pointer&rsquo;s <span>wording</span> — round 2</h1>
+  <p>In hex (36,4) three units carry <code>sharing</code>, so horses pool and the shortfall is judged
+     against the pool. The finding is hex-anchored — <code>unitId</code> and <code>line</code> are both
+     <code>null</code> — so <code>orderLint.ts:31</code> drops it and the order line carries no mark.
+     You went looking for it, did not find it, and read it as a regression.</p>
+  <p><b>ah-sdda already settled that the finding is right.</b> The pool genuinely is not that one line’s
+     fault. This is only about telling the reader, where they are typing, that something is being
+     reported elsewhere.</p>
+  <div class="fact"><b>One fact that decides how far we can go:</b> the contributing line
+     <em>is</em> knowable. <code>ledger.charged_at[(unit, tag)]</code> already holds the
+     <code>PlacedIntent</code> — line and columns — and the per-unit shortfall path already uses exactly
+     that to anchor its own finding. Nothing new has to be computed; the pooled path simply throws it
+     away today. Shapes A and B below are therefore both buildable.</div>
+</header>
+
+<main>
+  <div class="card" style="border-color:var(--ok);margin-bottom:8px">
+    <h2><em>SETTLED</em> Round 1</h2>
+    <ul class="notes">
+      <li><b>A</b> &mdash; a pointer on the line, not the finding itself. The pooled finding stays hex-anchored as it is.</li>
+      <li><b>Every contributing line</b> gets the mark, not just the largest or the first.</li>
+      <li><b>A sharer&rsquo;s line is not marked</b> &mdash; its stock is inside the pool, so it claims nothing against it.</li>
+    </ul>
+  </div>
+
+  <h3 class="sec">1 &middot; The exact words</h3>
+  <p>This ships. It is read in a tooltip, while typing, often in a half-width pane.</p>
+  <div class="cards2">
+    <div class="card">
+      <h2><em>W1</em> Names the goods and points</h2>
+      <div class="ed">
+        <div class="tab"><b class="on">WoodsmenY (15189)</b></div>
+        <div class="code"><div class="ln gut"><span class="n">2</span><span class="t"><b class="squig">GIVE 0 20000 HORS</b></span></div></div>
+        <div class="tip"><span class="k">warning</span>This hex is short of horses between its units. See <a>Problems</a> for the hex.</div>
+      </div>
+      <ul class="notes"><li>Says what is short and where to look.</li><li class="con">Two sentences.</li></ul>
+    </div>
+    <div class="card">
+      <h2><em>W2</em> Says the order is part of it</h2>
+      <div class="ed">
+        <div class="tab"><b class="on">WoodsmenY (15189)</b></div>
+        <div class="code"><div class="ln gut"><span class="n">2</span><span class="t"><b class="squig">GIVE 0 20000 HORS</b></span></div></div>
+        <div class="tip"><span class="k">warning</span>This order is part of a horse shortfall across this hex &mdash; see <a>Problems</a>.</div>
+      </div>
+      <ul class="notes"><li>Explains why <em>this</em> line is marked, which W1 leaves the reader to infer.</li><li class="con">&ldquo;part of&rdquo; is vaguer about what to do.</li></ul>
+    </div>
+  </div>
+  <div class="cards2" style="margin-top:18px">
+    <div class="card">
+      <h2><em>W3</em> Bare</h2>
+      <div class="ed">
+        <div class="tab"><b class="on">WoodsmenY (15189)</b></div>
+        <div class="code"><div class="ln gut"><span class="n">2</span><span class="t"><b class="squig">GIVE 0 20000 HORS</b></span></div></div>
+        <div class="tip"><span class="k">warning</span>This hex is short of horses between its units.</div>
+      </div>
+      <ul class="notes"><li>Shortest; wraps to two lines even in a narrow pane.</li><li class="con">Never tells the reader the numbers exist elsewhere &mdash; which is the whole complaint.</li></ul>
+    </div>
+    <div class="card">
+      <h2><em>W4</em> Carries the number</h2>
+      <div class="ed">
+        <div class="tab"><b class="on">WoodsmenY (15189)</b></div>
+        <div class="code"><div class="ln gut"><span class="n">2</span><span class="t"><b class="squig">GIVE 0 20000 HORS</b></span></div></div>
+        <div class="tip"><span class="k">warning</span>This hex is short 19,155 horses between its units. See <a>Problems</a> for the whole sum.</div>
+      </div>
+      <ul class="notes"><li>The number is the thing a player acts on.</li><li class="con">Halfway to shape B, which you rejected: it starts reading as this line&rsquo;s debt.</li></ul>
+    </div>
+  </div>
+
+  <h3 class="sec">2 &middot; One line, two shortfalls</h3>
+  <p>Horses and silver both pooled and both short, from the same order. CodeMirror stacks diagnostics on one line.</p>
+  <div class="cards2">
+    <div class="card">
+      <h2><em>S1</em> One mark per shortfall</h2>
+      <div class="ed">
+        <div class="tab"><b class="on">WoodsmenY (15189)</b></div>
+        <div class="code"><div class="ln gut"><span class="n">2</span><span class="t"><b class="squig">GIVE 0 20000 HORS</b></span></div></div>
+        <div class="tip"><span class="k">warning</span>This hex is short of horses between its units. See <a>Problems</a> for the hex.</div>
+        <div class="tip" style="margin-top:5px"><span class="k">warning</span>This hex is short of silver between its units. See <a>Problems</a> for the hex.</div>
+      </div>
+      <ul class="notes"><li>Each message stays specific, and matches one finding each.</li><li class="con">Two near-identical sentences stacked.</li></ul>
+    </div>
+    <div class="card">
+      <h2><em>S2</em> One mark, both named</h2>
+      <div class="ed">
+        <div class="tab"><b class="on">WoodsmenY (15189)</b></div>
+        <div class="code"><div class="ln gut"><span class="n">2</span><span class="t"><b class="squig">GIVE 0 20000 HORS</b></span></div></div>
+        <div class="tip"><span class="k">warning</span>This hex is short of horses and silver between its units. See <a>Problems</a> for the hex.</div>
+      </div>
+      <ul class="notes"><li>One sentence however many pools are short.</li><li class="con">One editor mark now stands for two findings, so the counts disagree.</li></ul>
+    </div>
+  </div>
+
+  <h3 class="sec">3 &middot; What &ldquo;Problems&rdquo; does, and what if it is switched off</h3>
+  <p>The region panel&rsquo;s Problems section has a toggle the player can turn off; the chip keeps the count.
+     A pointer to a section that is closed is a dead end.</p>
+  <div class="cards2">
+    <div class="card">
+      <h2><em>P1</em> Plain words, no link</h2>
+      <div class="rp">
+        <div class="hd"><span class="ttl">mountain (36,4)</span><span class="chip off">Problems 1</span></div>
+      </div>
+      <div class="tip" style="margin:10px 0 0"><span class="k">warning</span>This hex is short of horses between its units. See Problems for the hex.</div>
+      <ul class="notes"><li>Nothing to build, nothing to keep working.</li><li class="con">If Problems is toggled off, the reader is sent somewhere that shows nothing.</li></ul>
+    </div>
+    <div class="card">
+      <h2><em>P2</em> A link that opens it</h2>
+      <div class="rp">
+        <div class="hd"><span class="ttl">mountain (36,4)</span><span class="chip">Problems 1</span></div>
+        <div class="body"><div class="prob">the units in this hex are short 19155 horses between them: they can have 845 and their orders spend 20000</div></div>
+      </div>
+      <div class="tip" style="margin:10px 0 0"><span class="k">warning</span>This hex is short of horses between its units. See <a>Problems</a> for the hex.</div>
+      <ul class="notes"><li>Clicking turns the section on and scrolls to it &mdash; the pointer always lands.</li><li class="con">A tooltip with a working control in it is new here; needs keyboard reach too.</li></ul>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Mockup for <code>ah-eurs</code> — Xavier, planning session. Nothing here is built. The squiggle and
+  tooltip are drawn as CodeMirror renders a <code>warning</code> diagnostic today.
+</footer>
+</body>
+</html>
