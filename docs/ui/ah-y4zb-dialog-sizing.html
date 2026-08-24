@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dialog sizing (ah-y4zb) — Option A</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1120px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; margin:34px 0 4px; border-top:1px solid var(--edge); padding-top:18px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, main > p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); } code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:.9em; color:var(--brass-bright); }
+  .opt { display:inline-block; margin-top:14px; padding:6px 12px; border:1px solid var(--brass); border-radius:4px;
+     color:var(--brass-bright); font:12px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.4px; text-transform:uppercase; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:22px; margin-top:16px; }
+  @media (max-width:900px){ .pair{grid-template-columns:1fr;} }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.7px; text-transform:uppercase; margin-bottom:6px; }
+  /* a 1400x900 window, drawn at 0.36 scale => 504 x 324 */
+  .win { position:relative; width:504px; height:324px; background:#0b0f14; border:1px solid var(--edge);
+     border-radius:4px; overflow:hidden; }
+  .win .map { position:absolute; inset:0;
+     background:repeating-linear-gradient(60deg,#131a22 0 9px,#0f151b 9px 18px); opacity:.75; }
+  .dlg { position:absolute; background:var(--raised); border:1px solid var(--brass); border-radius:3px;
+     font:10px/1.3 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); padding:5px 6px; }
+  .dlg b { color:var(--brass-bright); font-weight:normal; display:block; font-size:9px; letter-spacing:.5px; }
+  .dlg .dim { color:var(--ink-dim); font-size:8.5px; font-family:'SF Mono',Menlo,monospace; }
+  .marg { position:absolute; left:0; right:0; background:rgba(217,112,112,.13); }
+  .cap { color:var(--ink-soft); font-size:12.5px; margin-top:8px; } .cap b { color:var(--ink); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:16px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .note { color:var(--ink-dim); font-size:12.5px; margin-top:14px; font-style:italic; max-width:94ch; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-y4zb</span> — a dialog's own sizing, and the global rule that beats it</h1>
+  <p><code>theme.css:361</code> caps every modal at <code>max-width: 95vw; max-height: 90vh</code>.
+  An attribute-pair selector scores 0,2,0 and a utility class scores 0,1,0, so <strong>a dialog
+  that sets its own size is silently overruled</strong>. The markup reads correct and does nothing.
+  It cost a full verification cycle, a P0 reopen and a second implementation session once already
+  (<code>ah-vwdi</code>), and the only dialog that wins today does so with a <code>!</code>.</p>
+  <p>The fix makes what a component writes about itself win. The question is what to do with the
+  sizing that has been inert all along.</p>
+  <div class="opt">Chosen 2026-08-24 — honour every sizing the markup already states</div>
+</header>
+<main>
+
+<h2 class="rule"><em>Getting around</em> the shortcut help, in a 1400 &times; 900 window</h2>
+<p>Its markup says <code>max-h-[85vh]</code> and <code>max-w-[calc(100vw-2rem)]</code>, with a
+comment explaining why. Both are dead today.</p>
+<div class="pair">
+  <div>
+    <div class="lab">today &mdash; the global rule wins</div>
+    <div class="win"><div class="map"></div>
+      <div class="dlg" style="left:50%;transform:translateX(-50%);top:16px;width:196px;height:292px;">
+        <b>Getting around</b><span class="dim">90vh &times; 34rem</span></div>
+    </div>
+    <p class="cap">Height <b>90vh</b> &mdash; the cap in <code>theme.css</code>.</p>
+  </div>
+  <div>
+    <div class="lab">option A</div>
+    <div class="win"><div class="map"></div>
+      <div class="dlg" style="left:50%;transform:translateX(-50%);top:38px;width:196px;height:248px;">
+        <b>Getting around</b><span class="dim">38px &mdash; see below</span></div>
+    </div>
+    <p class="cap">Height <b>85vh</b> and width <b>calc(100vw&nbsp;&minus;&nbsp;2rem)</b> &mdash; exactly what ShortcutHelp.tsx:77 has always said, and what its comment explains. The three wide dialogs narrow by one viewport percent. Nothing else moves. The <code>!</code> in GameDataDialog stops being load-bearing and goes.</p>
+  </div>
+</div>
+
+<h2 class="rule"><em>The wide dialogs</em> Battles, Changes and Game data</h2>
+<p>All three say <code>max-w-[94vw]</code>; the global rule gives them <strong>95vw</strong>. One
+viewport percent &mdash; about 14px in this window.</p>
+<div class="pair">
+  <div>
+    <div class="lab">today &mdash; 95vw</div>
+    <div class="win"><div class="map"></div>
+      <div class="dlg" style="left:2.5%;top:24px;width:95%;height:276px;">
+        <b>Battles</b><span class="dim">95vw</span></div>
+    </div>
+  </div>
+  <div>
+    <div class="lab">option A &mdash; 94%</div>
+    <div class="win"><div class="map"></div>
+      <div class="dlg" style="left:3%;top:24px;width:94%;height:276px;">
+        <b>Battles</b><span class="dim">94%</span></div>
+    </div>
+  </div>
+</div>
+
+<h2 class="rule"><em>What changes</em> per dialog</h2>
+<table class="q">
+  <tr><th>Dialog</th><th>Its markup says</th><th>Today</th><th>Option A</th></tr>
+  <tr><td class="k">ShortcutHelp</td><td class="k">max-h-[85vh], max-w-[calc(100vw-2rem)]</td><td>90vh, 95vw</td><td>38px</td></tr>
+  <tr><td class="k">BattlesDialog</td><td class="k">max-w-[94vw]</td><td>95vw</td><td>94%</td></tr>
+  <tr><td class="k">ChangesDialog</td><td class="k">max-w-[94vw]</td><td>95vw</td><td>94%</td></tr>
+  <tr><td class="k">GameDataDialog</td><td class="k">max-h-[80vh]!, max-w-[94vw]</td><td>80vh (wins via <code>!</code>), 95vw</td><td>80vh, 94%</td></tr>
+  <tr><td class="k">the other six</td><td class="k">nothing</td><td>90vh, 95vw</td><td>90vh, 95vw &mdash; unchanged</td></tr>
+</table>
+<p class="note">Height <b>85vh</b> and width <b>calc(100vw&nbsp;&minus;&nbsp;2rem)</b> &mdash; exactly what ShortcutHelp.tsx:77 has always said, and what its comment explains. The three wide dialogs narrow by one viewport percent. Nothing else moves. The <code>!</code> in GameDataDialog stops being load-bearing and goes.</p>
+</main>
+</body>
+</html>
