@@ -6,59 +6,15 @@
  * the served file and reloading - no rebuild.
  */
 
-import {
-  parseBuildingReference,
-  parseItemReference,
-  parseSkillReference,
-  type BuildingReference,
-  type ItemReference,
-  type SkillReference
-} from "./data";
-import { parseMovementRules, RulesetScrapeError, type MovementRules } from "./rules";
+export type { Gap } from "./generated/Gap";
+export type { RiskThresholds } from "./generated/RiskThresholds";
+export type { Ruleset } from "./generated/Ruleset";
 
-/**
- * How much stronger than us the opposition has to be before a hex is called dangerous.
- *
- * These are the only numbers in the file the game did not tell us, which is why they carry
- * `scraped: false`. Tune them freely; nothing about them claims to mirror the server.
- */
-export type RiskThresholds = {
-  scraped: false;
-  note: string;
-  mediumRatio: number;
-  highRatio: number;
-};
-
-/**
- * Something the game does that this ruleset cannot describe.
- *
- * Recorded rather than omitted, so the file never implies it covers more than it does. A consumer
- * can read `modelled: false` and say so in the interface instead of presenting a number as fact.
- */
-export type Gap = {
-  modelled: false;
-  /** What the rule is, as far as the page reveals it. */
-  note: string;
-  /** What goes wrong while it is unmodelled, in the direction it goes wrong. */
-  consequence: string;
-  /** The page's own words, so the claim can be checked rather than taken on trust. */
-  evidence: string;
-};
-
-export type Ruleset = {
-  source: {
-    rulesUrl: string;
-    dataUrl: string;
-    fetchedAt: string;
-    note: string;
-  };
-  movement: MovementRules;
-  risk: RiskThresholds;
-  gaps: { weather: Gap };
-  items: ItemReference;
-  skills: SkillReference;
-  buildings: BuildingReference;
-};
+import type { Gap } from "./generated/Gap";
+import type { RiskThresholds } from "./generated/RiskThresholds";
+import type { Ruleset } from "./generated/Ruleset";
+import { parseBuildingReference, parseItemReference, parseSkillReference } from "./data";
+import { parseMovementRules, RulesetScrapeError } from "./rules";
 
 export type BuildInput = {
   rulesHtml: string;

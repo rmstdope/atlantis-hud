@@ -9,85 +9,17 @@
  * others - a route costed against numbers this game does not use, presented as fact.
  */
 
+export type { MovementMode } from "./generated/MovementMode";
+export type { MovementPoints } from "./generated/MovementPoints";
+export type { MovementRules } from "./generated/MovementRules";
+export type { OceanRule } from "./generated/OceanRule";
+export type { RoadRule } from "./generated/RoadRule";
+export type { SailingRule } from "./generated/SailingRule";
+export type { TerrainCosts } from "./generated/TerrainCosts";
+
+import type { MovementMode } from "./generated/MovementMode";
+import type { MovementRules } from "./generated/MovementRules";
 import { htmlToText } from "./html";
-
-export type MovementPoints = {
-  walk: number;
-  ride: number;
-  fly: number;
-};
-
-export type TerrainCosts = {
-  /** What entering a region costs when nothing makes it harder. */
-  normal: number;
-  /** What the terrains listed below cost instead. */
-  doubledCost: number;
-  /** Lower-cased terrain names, in the order the page lists them. */
-  doubled: string[];
-  /**
-   * The modes of travel the premium applies to, lower-cased.
-   *
-   * The sentence names them - "take two movement points for riding or walking units to enter" -
-   * and flight is deliberately absent, so a flier pays the ordinary cost everywhere. Reading this
-   * rather than assuming it keeps the exception where the game put it.
-   */
-  doubledFor: string[];
-};
-
-export type RoadRule = {
-  /** What a connected road divides the cost by. */
-  divisor: number;
-  /** The floor that division may not go below. */
-  minimumCost: number;
-};
-
-export type OceanRule = {
-  requiresShipUnlessFlying: boolean;
-  flyingMustEndOnLand: boolean;
-  /**
-   * The terrain the rule is about, lower-cased.
-   *
-   * Taken from the rule's own sentence rather than assumed to be "ocean", so the planner can
-   * recognise a water hex from the terrain string a report prints without the core hardcoding a
-   * name that belongs to the game.
-   */
-  terrain: string;
-};
-
-export type SailingRule = {
-  /**
-   * Movement points a fleet spends entering any region, whatever the terrain.
-   *
-   * "For a fleet to enter any region only costs one movement point; the cost of two movement
-   * points for entering, say, a forest coastal region, does not apply." A fleet's own rule, not
-   * another entry on the terrain premium.
-   */
-  flatCost: number;
-  /**
-   * Whether a fleet may only enter a land region through a coastal one.
-   *
-   * "A coastal region is defined as a non-ocean region with at least one adjacent ocean region."
-   */
-  landNeedsCoast: boolean;
-  /** The terrain a fleet sails freely across, lower-cased. Mirrors {@link OceanRule.terrain}. */
-  terrain: string;
-};
-
-export type MovementRules = {
-  movementPoints: MovementPoints;
-  terrainCosts: TerrainCosts;
-  road: RoadRule;
-  ocean: OceanRule;
-  sailing: SailingRule;
-  /** The sentence each value was read from, so a reader can check our work against the page. */
-  provenance: {
-    movementPoints: string;
-    terrainCosts: string;
-    road: string;
-    ocean: string;
-    sailing: string;
-  };
-};
 
 /** Raised when the page does not say what the scraper needs, naming the value that is missing. */
 export class RulesetScrapeError extends Error {
@@ -246,11 +178,17 @@ export function parseMovementRules(html: string): MovementRules {
 
   // "riding or walking" names the modes as the page conjugates them; the ruleset speaks of ride,
   // walk and fly, so they are normalised to that vocabulary.
+  // `swimming` is deliberately absent: this ruleset gives swimming no allowance, so the core's
+  // MovementMode has no such variant and a scraped "swim" would fail every ruleset load.
+  const MODE_NAMES: Record<string, MovementMode | undefined> = {
+    riding: "ride",
+    walking: "walk",
+    flying: "fly"
+  };
   const doubledFor = terrain[3]
     .split(/,| and | or /i)
-    .map((mode) => mode.trim().toLowerCase())
-    .map((mode) => ({ riding: "ride", walking: "walk", flying: "fly", swimming: "swim" })[mode])
-    .filter((mode): mode is string => mode !== undefined);
+    .map((mode) => MODE_NAMES[mode.trim().toLowerCase()])
+    .filter((mode): mode is MovementMode => mode !== undefined);
 
   if (doubledFor.length === 0) {
     throw new RulesetScrapeError(

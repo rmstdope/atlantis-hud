@@ -22,6 +22,11 @@ use serde::{Deserialize, Serialize};
 /// cost is likewise its own rule (see [`SailingRule`]) rather than another entry doubled for a
 /// mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/MovementMode.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub enum MovementMode {
     Fly,
@@ -32,6 +37,11 @@ pub enum MovementMode {
 
 /// Movement points a unit gets per month, by mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/MovementPoints.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MovementPoints {
     pub walk: u32,
@@ -41,6 +51,11 @@ pub struct MovementPoints {
 
 /// What entering a region costs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/TerrainCosts.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TerrainCosts {
     pub normal: u32,
@@ -57,6 +72,11 @@ pub struct TerrainCosts {
 
 /// What a connected road does to a cost.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/RoadRule.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RoadRule {
     pub divisor: u32,
@@ -65,6 +85,11 @@ pub struct RoadRule {
 
 /// The water rule, including the terrain name it is about.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/OceanRule.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OceanRule {
     pub requires_ship_unless_flying: bool,
@@ -79,6 +104,11 @@ pub struct OceanRule {
 /// region only costs one movement point; the cost of two movement points for entering, say, a
 /// forest coastal region, does not apply."
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/SailingRule.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SailingRule {
     /// Movement points a fleet spends entering any region, whatever the terrain.
@@ -92,6 +122,11 @@ pub struct SailingRule {
 
 /// The sentence each scraped value came from, kept so a reader can check the scraper's work.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/Provenance.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Provenance {
     pub movement_points: String,
@@ -102,6 +137,11 @@ pub struct Provenance {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/MovementRules.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MovementRules {
     pub movement_points: MovementPoints,
@@ -254,6 +294,11 @@ pub struct ItemEntry {
 
 /// Thresholds for the risk heuristic. Ours, not the game's, which is why they carry `scraped`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/RiskThresholds.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RiskThresholds {
     pub scraped: bool,
@@ -264,6 +309,11 @@ pub struct RiskThresholds {
 
 /// Where the ruleset came from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/RulesetSource.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RulesetSource {
     pub rules_url: String,
@@ -277,6 +327,11 @@ pub struct RulesetSource {
 /// Carried rather than dropped so the planner can say so. A gap that is known and stated is a
 /// caveat; the same gap unstated is a wrong answer presented as a right one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/Gap.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Gap {
     pub modelled: bool,
@@ -289,6 +344,11 @@ pub struct Gap {
 
 /// Every gap the ruleset knows about itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/Gaps.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Gaps {
     /// Winter raises movement costs by an amount the rules page never states.
@@ -354,7 +414,10 @@ pub struct CastCost {
 #[cfg_attr(
     test,
     derive(ts_rs::TS),
-    ts(export, export_to = "../../../ruleset/src/generated/ProductionInput.ts")
+    ts(
+        export,
+        export_to = "../../../ruleset/src/generated/ProductionInput.ts"
+    )
 )]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProductionInput {
@@ -396,7 +459,10 @@ pub struct Production {
 #[cfg_attr(
     test,
     derive(ts_rs::TS),
-    ts(export, export_to = "../../../ruleset/src/generated/SkillRequirement.ts")
+    ts(
+        export,
+        export_to = "../../../ruleset/src/generated/SkillRequirement.ts"
+    )
 )]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SkillRequirement {
@@ -519,6 +585,11 @@ pub struct BuildingEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/Ruleset.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Ruleset {
     pub source: RulesetSource,
