@@ -145,6 +145,11 @@ impl<'de> Deserialize<'de> for ItemKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/ItemCapacity.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ItemCapacity {
     pub walk: i64,

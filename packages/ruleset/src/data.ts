@@ -10,17 +10,13 @@
  * monster phrasing its attacks unusually should not cost us the other four hundred entries.
  */
 
+export type { ItemCapacity } from "./generated/ItemCapacity";
+
+import type { ItemCapacity } from "./generated/ItemCapacity";
 import { preformattedText } from "./html";
 import { RulesetScrapeError } from "./rules";
 
 export type ItemKind = "man" | "mount" | "monster" | "ship" | "equipment";
-
-export type ItemCapacity = {
-  walk: number;
-  ride: number;
-  fly: number;
-  swim: number;
-};
 
 export type MonsterCombat = {
   skill: number;
