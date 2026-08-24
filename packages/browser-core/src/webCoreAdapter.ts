@@ -13,6 +13,7 @@ import type {
   GameManifest,
   ManifestEdit,
   MapShape,
+  MergedReportRecord,
   HexNoteRecord,
   KnownMap,
   MoveOrderTraceResponse,
@@ -113,6 +114,7 @@ export type CoreWasmModule = {
   prepare_report_merge_state(
     rawReport: string,
     viewerTurnNumber: number,
+    viewerFactionId: string,
     existingSightingsJson: string,
     rulesetJson: string | null
   ): PreparedMerge;
@@ -122,7 +124,10 @@ export type CoreWasmModule = {
   ): ImportedTurnDiff;
   hydrate_parse_result_state(parsedPayloadJson: string): ReportParseResult;
   /** Fills the split structure fields of a region payload remembered before `ah-nmts`. */
-  hydrate_remembered_region(payloadJson: string): ReportRegion;
+  ordered_merged_reports_state(recordsJson: string): MergedReportRecord[];
+  remembered_regions_state(
+    storedJson: string
+  ): Array<{ region: ReportRegion; lastSeenTurn: number }>;
   /**
    * Which turn a game reopens on, given every turn's `(factionId, turnNumber)` as a JSON array
    * and the faction the game remembers as the player's. Returns `{ factionId, turnNumber }` or
@@ -302,24 +307,19 @@ export function createWebCoreAdapter(
     async loadRegionSightings(databasePath: string, gameId: string, factionId: string) {
       const stored = await store.getRegionSightings(databasePath, gameId, factionId);
 
-      // A payload written by an older build may not parse. Dropping one remembered hex beats
-      // losing the whole map, which is what the desktop does too.
-      //
-      // The core hydrates rather than `JSON.parse` alone: a hex remembered before `ah-nmts` carries
-      // a structure's kind as one sentence, and the back-fill splits it there so the map layer sees
-      // the same fields whether a hex was stored last week or this turn.
-      return stored.flatMap((sighting) => {
-        try {
-          return [
-            {
-              region: wasm.hydrate_remembered_region(sighting.payloadJson),
-              lastSeenTurn: sighting.lastSeenTurn
-            }
-          ];
-        } catch {
-          return [];
-        }
-      });
+      // Which hexes survive, what an old payload is back-filled with, and the order they come back
+      // in are all the core's, and the desktop asks it the same question (`ah-8z4y.3.2`). Catching
+      // a throw per hex used to decide the first of those here, and decided it differently: the
+      // hydrator does not throw on a stored `null`, so the map was handed a region that was not one.
+      return wasm.remembered_regions_state(
+        JSON.stringify(
+          stored.map((sighting) => ({
+            regionId: sighting.regionId,
+            lastSeenTurn: sighting.lastSeenTurn,
+            payloadJson: sighting.payloadJson
+          }))
+        )
+      );
     },
     /**
      * Folds an allied report into the viewer's map: read, rule, write.
@@ -346,6 +346,9 @@ export function createWebCoreAdapter(
       const prepared = wasm.prepare_report_merge_state(
         rawReport,
         viewerTurnNumber,
+        // Whose map is being merged into: the core refuses a faction's own report, so this is the
+        // last thing it was missing to decide every merge rule itself (`ah-8z4y.3.2`).
+        viewerFactionId,
         // Three fields, because three fields are all a merge reads and all this store holds. The
         // coordinate and label a sighting also carries are derived from the payload, and the core
         // derives them again from the merged one.
@@ -365,15 +368,6 @@ export function createWebCoreAdapter(
       if (prepared.turnNumber === null || prepared.mergedFactionId === null) {
         throw new Error("merged report does not name its turn or its faction");
       }
-      // The desktop refuses this in the same words. It cannot be decided in the core, which is
-      // never told whose map is being merged into - only that a report is being folded into a turn
-      // - so the one place that knows both is here. Refused before anything is written: a faction's
-      // own report is loaded, not merged, and merging it would file its regions by a route that
-      // deliberately stores no turn.
-      if (prepared.mergedFactionId === viewerFactionId) {
-        throw new Error("a faction's own report is loaded rather than merged");
-      }
-
       await store.putRegionSightings(
         prepared.regionSightings.map((sighting) => ({
           databasePath,
@@ -412,22 +406,21 @@ export function createWebCoreAdapter(
     ) {
       const stored = await store.getMergedReports(databasePath, gameId, factionId, turnNumber);
 
-      // Oldest merge first, matching the desktop's ORDER BY. The panel lists them in the order
-      // they happened, and a list that reorders itself between platforms is two applications.
-      return [...stored]
-        .sort(
-          (left, right) =>
-            left.mergedAt.localeCompare(right.mergedAt) ||
-            left.mergedFactionId.localeCompare(right.mergedFactionId)
+      // The order is the core's, and the desktop's ORDER BY implements the same definition. The
+      // panel lists them in the order they happened, and a list that reorders itself between
+      // platforms is two applications (`ah-8z4y.3.2`).
+      return wasm.ordered_merged_reports_state(
+        JSON.stringify(
+          stored.map((record) => ({
+            gameId: record.gameId,
+            factionId: record.factionId,
+            turnNumber: record.turnNumber,
+            mergedFactionId: record.mergedFactionId,
+            mergedFactionName: record.mergedFactionName,
+            mergedAt: record.mergedAt
+          }))
         )
-        .map((record) => ({
-          gameId: record.gameId,
-          factionId: record.factionId,
-          turnNumber: record.turnNumber,
-          mergedFactionId: record.mergedFactionId,
-          mergedFactionName: record.mergedFactionName,
-          mergedAt: record.mergedAt
-        }));
+      );
     },
 
     async parseReportClassified(rawReport: string, rulesetJson: string) {

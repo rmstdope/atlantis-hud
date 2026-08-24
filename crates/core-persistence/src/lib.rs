@@ -9,10 +9,13 @@ use atlantis_hud_core::backup::{
     ManifestEdit,
 };
 use atlantis_hud_core::movement::graph::MapGeometry;
+// The row and the order it is listed in are the core's, so both platforms answer alike
+// (`ah-8z4y.3.2`). Re-exported here because this is where every caller already reaches for it.
 use atlantis_hud_core::reopen::{latest_turn, TurnRef};
+pub use atlantis_hud_core::report::merge::MergedReportRecord;
 use atlantis_hud_core::{diff_imported_turn_fields, ImportedTurnSnapshotRef};
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
@@ -165,22 +168,6 @@ pub struct HexNote {
     pub turn: u32,
     pub created_at: String,
     pub updated_at: String,
-}
-
-/// One allied report folded into a faction's map for one turn.
-///
-/// A merge writes the ally's regions under the viewer's own faction and stores no turn of the
-/// ally's, so this row is the only thing that remembers it happened. `faction_id` is the map that
-/// grew; `merged_faction_id` is whose report grew it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MergedReportRecord {
-    pub game_id: String,
-    pub faction_id: String,
-    pub turn_number: u32,
-    pub merged_faction_id: String,
-    pub merged_faction_name: String,
-    pub merged_at: String,
 }
 
 #[derive(Debug, Error)]
@@ -3552,6 +3539,34 @@ mod merged_report_tests {
         let loaded = load_merged_reports(&opened.database_path, GAME, "95", 71).expect("load");
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].merged_at, "2026-08-10T18:30:00Z");
+    }
+
+    /// The SQL states the order and the core defines it; this is what keeps them the same order.
+    ///
+    /// Deleting the `ORDER BY` would give up an index-backed sort for no reason; deleting
+    /// `order_merged_reports` would leave the browser writing the rule out again. So both stay, and
+    /// this asserts they agree over a set built to exercise the tie-break (`ah-8z4y.3.2`).
+    #[test]
+    fn the_sql_orders_merged_reports_the_way_the_core_says() {
+        let dir = tempdir().expect("tempdir");
+        let opened = game(dir.path());
+
+        let shuffled = [
+            merge_of("81", 71, "2026-08-10T11:00:00Z"),
+            merge_of("9", 71, "2026-08-10T10:00:00Z"),
+            merge_of("73", 71, "2026-08-10T10:00:00Z"),
+            merge_of("12", 71, "2026-08-10T10:00:00Z"),
+        ];
+        for record in &shuffled {
+            upsert_merged_report(&opened.database_path, record).expect("recorded");
+        }
+
+        let from_sql = load_merged_reports(&opened.database_path, GAME, "95", 71).expect("load");
+
+        let mut from_core = shuffled.to_vec();
+        atlantis_hud_core::report::merge::order_merged_reports(&mut from_core);
+
+        assert_eq!(from_sql, from_core);
     }
 
     #[test]

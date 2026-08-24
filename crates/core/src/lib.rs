@@ -432,8 +432,16 @@ pub fn reject_import(parsed: &ReportParseResult, confirmed_faction_id: &str) -> 
 ///
 /// A report that clears the threshold has already been found to name its faction, so the caller
 /// can read the faction off it without checking again.
+///
+/// `viewer_faction_id` is whose map is being merged into, and it is here so that the refusal of a
+/// faction's own report is decided once. Both shells used to decide it themselves, in the same
+/// words, only because the core was never told (`ah-8z4y.3.2`).
 #[must_use]
-pub fn reject_merge(parsed: &ReportParseResult, viewer_turn_number: u32) -> Option<String> {
+pub fn reject_merge(
+    parsed: &ReportParseResult,
+    viewer_turn_number: u32,
+    viewer_faction_id: &str,
+) -> Option<String> {
     if !parsed.meets_minimum_import_threshold() {
         return Some("parsed report did not meet minimum import threshold".to_string());
     }
@@ -447,6 +455,16 @@ pub fn reject_merge(parsed: &ReportParseResult, viewer_turn_number: u32) -> Opti
             "a report from turn {} cannot be merged into turn {viewer_turn_number}",
             turn_header.turn_number
         ));
+    }
+
+    // Refused before anything is written: a faction's own report is loaded, not merged, and merging
+    // it would file its regions by a route that deliberately stores no turn.
+    if parsed
+        .detected_factions
+        .first()
+        .is_some_and(|faction| faction.faction_id == viewer_faction_id)
+    {
+        return Some("a faction's own report is loaded rather than merged".to_string());
     }
 
     None
@@ -847,12 +865,12 @@ mod tests {
     /// The mini report is March, Year 1, which the header module numbers turn 2.
     #[test]
     fn a_report_for_the_turn_on_screen_may_be_merged() {
-        assert_eq!(reject_merge(&parse_report(MINI_REPORT), 2), None);
+        assert_eq!(reject_merge(&parse_report(MINI_REPORT), 2, "99"), None);
     }
 
     #[test]
     fn a_report_from_another_turn_cannot_be_merged() {
-        let rejection = reject_merge(&parse_report(MINI_REPORT), 71);
+        let rejection = reject_merge(&parse_report(MINI_REPORT), 71, "99");
         assert_eq!(
             rejection.as_deref(),
             Some("a report from turn 2 cannot be merged into turn 71"),
@@ -862,10 +880,24 @@ mod tests {
 
     #[test]
     fn a_merge_below_the_viability_threshold_is_rejected() {
-        let rejection = reject_merge(&parse_report("no report here at all"), 2);
+        let rejection = reject_merge(&parse_report("no report here at all"), 2, "99");
         assert_eq!(
             rejection.as_deref(),
             Some("parsed report did not meet minimum import threshold")
+        );
+    }
+
+    /// Rule D, and the wording is the assertion: this reaches a player.
+    ///
+    /// Decided here rather than in each shell because both shells were deciding it, in the same
+    /// words, and the core was simply never told whose map was being merged into (`ah-8z4y.3.2`).
+    #[test]
+    fn a_report_from_the_viewers_own_faction_is_rejected() {
+        let rejection = reject_merge(&parse_report(MINI_REPORT), 2, "17");
+
+        assert_eq!(
+            rejection.as_deref(),
+            Some("a faction's own report is loaded rather than merged")
         );
     }
 
@@ -875,7 +907,7 @@ mod tests {
     fn a_merge_is_not_refused_for_belonging_to_the_wrong_faction() {
         let parsed = parse_report(MINI_REPORT);
 
-        assert_eq!(reject_merge(&parsed, 2), None);
+        assert_eq!(reject_merge(&parsed, 2, "99"), None);
         assert!(
             reject_import(&parsed, "95").is_some(),
             "the same report filed under the viewer would be refused"
