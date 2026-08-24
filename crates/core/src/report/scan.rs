@@ -8,6 +8,68 @@ use std::collections::BTreeSet;
 use super::level;
 use super::model::{Coordinate, ItemAmount, MarketItem, Settlement, Skill};
 
+/// One character of the input, with the bracket depth on either side of it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Scanned {
+    /// Byte index, as `char_indices` reports it.
+    index: usize,
+    character: char,
+    /// Depth before this character is applied: `(` or `[` here at `before <= 0` opens the top level.
+    before: i32,
+    /// Depth after it is applied: `)` or `]` here at `after <= 0` closes the top level.
+    after: i32,
+}
+
+/// Walks `input` once, reporting every character with the bracket depth on either side.
+///
+/// **The one depth model in this module.** `(`, `[`, `)` and `]` are interchangeable, deliberately:
+/// every scanner here must agree about the same string, and a scanner hardened alone is how the
+/// same defect gets found twice. A byte index in `ignore` is an ordinary character that changes no
+/// depth, which is how a stray bracket inside a player's name is stepped over rather than derailing
+/// the scan.
+fn scan_depths<'a>(
+    input: &'a str,
+    ignore: &'a BTreeSet<usize>,
+) -> impl Iterator<Item = Scanned> + 'a {
+    let mut depth = 0i32;
+
+    input.char_indices().map(move |(index, character)| {
+        let before = depth;
+        if !ignore.contains(&index) {
+            match character {
+                '(' | '[' => depth += 1,
+                ')' | ']' => depth -= 1,
+                _ => {}
+            }
+        }
+        Scanned {
+            index,
+            character,
+            before,
+            after: depth,
+        }
+    })
+}
+
+/// The byte index of every top-level `separator` in `input`, with stray brackets stepped over.
+///
+/// Unlike [`split_leading_id`], a splitter has no failure to detect - every input yields *some*
+/// answer - so it cannot try the cheap walk and retry. `unmatched_brackets` is therefore computed
+/// on every call: one extra O(n) pass whose `BTreeSet` stays empty for well-formed input, against a
+/// function that already allocates a `String` per field.
+fn top_level_separators(input: &str, separator: char) -> Vec<usize> {
+    let stray = unmatched_brackets(input);
+
+    scan_depths(input, &stray)
+        .filter(|scanned| {
+            !matches!(scanned.character, '(' | '[' | ')' | ']')
+                && scanned.character == separator
+                && scanned.before <= 0
+        })
+        .map(|scanned| scanned.index)
+        .collect()
+}
+
 /// Splits on a separator, ignoring separators nested inside brackets or parentheses.
 ///
 /// A flat `split(',')` would tear `Skills: observation [OBSE] 1 (35), force [FORC] 1 (35)` apart at
@@ -15,29 +77,17 @@ use super::model::{Coordinate, ItemAmount, MarketItem, Settlement, Skill};
 #[must_use]
 pub fn split_top_level(input: &str, separator: char) -> Vec<String> {
     let mut parts = Vec::new();
-    let mut current = String::new();
-    let mut depth = 0i32;
+    let mut start = 0usize;
 
-    for character in input.chars() {
-        match character {
-            '(' | '[' => {
-                depth += 1;
-                current.push(character);
-            }
-            ')' | ']' => {
-                depth -= 1;
-                current.push(character);
-            }
-            _ if character == separator && depth <= 0 => {
-                parts.push(current.trim().to_string());
-                current.clear();
-            }
-            _ => current.push(character),
-        }
+    for index in top_level_separators(input, separator) {
+        parts.push(input[start..index].trim().to_string());
+        start = index + separator.len_utf8();
     }
 
-    if !current.trim().is_empty() {
-        parts.push(current.trim().to_string());
+    // A blank final field is dropped, so `"a, b,"` is two fields and not three.
+    let last = input[start..].trim();
+    if !last.is_empty() {
+        parts.push(last.to_string());
     }
 
     parts
@@ -110,34 +160,28 @@ fn scan_leading_id<'a>(
     input: &'a str,
     ignore: &BTreeSet<usize>,
 ) -> Option<(String, String, &'a str)> {
-    let mut depth = 0i32;
     let mut candidate_open: Option<usize> = None;
 
-    for (index, character) in input.char_indices() {
-        match character {
-            _ if ignore.contains(&index) => {}
-            '(' => {
-                if depth <= 0 {
-                    candidate_open = Some(index);
-                }
-                depth += 1;
-            }
-            '[' => depth += 1,
-            ')' | ']' => {
-                depth -= 1;
-                if depth <= 0 {
-                    if let Some(open) = candidate_open.take() {
-                        if character == ')' {
-                            let id = &input[open + 1..index];
-                            if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
-                                let name = input[..open].trim().to_string();
-                                let rest = input[index + 1..]
-                                    .trim_start()
-                                    .strip_prefix(',')
-                                    .unwrap_or_else(|| input[index + 1..].trim_start())
-                                    .trim_start();
-                                return Some((name, id.to_string(), rest));
-                            }
+    for scanned in scan_depths(input, ignore) {
+        if ignore.contains(&scanned.index) {
+            continue;
+        }
+
+        match scanned.character {
+            '(' if scanned.before <= 0 => candidate_open = Some(scanned.index),
+            ')' | ']' if scanned.after <= 0 => {
+                if let Some(open) = candidate_open.take() {
+                    if scanned.character == ')' {
+                        let id = &input[open + 1..scanned.index];
+                        if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
+                            let name = input[..open].trim().to_string();
+                            let after = &input[scanned.index + 1..];
+                            let rest = after
+                                .trim_start()
+                                .strip_prefix(',')
+                                .unwrap_or_else(|| after.trim_start())
+                                .trim_start();
+                            return Some((name, id.to_string(), rest));
                         }
                     }
                 }
@@ -157,19 +201,10 @@ fn scan_leading_id<'a>(
 /// `None` when `input` is empty or all whitespace.
 #[must_use]
 pub fn next_top_level_field(input: &str, separator: char) -> Option<(&str, &str)> {
-    let mut depth = 0i32;
-
-    for (index, character) in input.char_indices() {
-        match character {
-            '(' | '[' => depth += 1,
-            ')' | ']' => depth -= 1,
-            _ if character == separator && depth <= 0 => {
-                let field = input[..index].trim();
-                let rest = input[index + character.len_utf8()..].trim_start();
-                return Some((field, rest));
-            }
-            _ => {}
-        }
+    if let Some(index) = top_level_separators(input, separator).first().copied() {
+        let field = input[..index].trim();
+        let rest = input[index + separator.len_utf8()..].trim_start();
+        return Some((field, rest));
     }
 
     let field = input.trim();
@@ -181,6 +216,12 @@ pub fn next_top_level_field(input: &str, separator: char) -> Option<(&str, &str)
 }
 
 /// Reads a trailing parenthesised number, as in `Borg TNG (95)`, returning the name and the number.
+///
+/// Deliberately not a reading of [`scan_depths`] (ah-hlqc): this scanner is right-anchored - it
+/// takes the last `(` of a string that ends in `)` - which makes it correct on a name carrying a
+/// stray bracket without needing a depth model at all. `Smiley :( (95)` reads as `("Smiley :(",
+/// "95")` today, and rewriting it onto a left-to-right walk would trade a working strategy for one
+/// that then needs the stray pre-pass to get back to where it started.
 #[must_use]
 pub fn split_trailing_id(input: &str) -> Option<(String, String)> {
     let trimmed = input.trim().trim_end_matches('.');
@@ -325,6 +366,48 @@ pub fn is_none_list(input: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_depth_walk_reports_the_depth_on_either_side_of_each_bracket() {
+        let input = "a (b) c";
+        let open = input.find('(').unwrap();
+        let close = input.find(')').unwrap();
+
+        let walked: Vec<Scanned> = scan_depths(input, &BTreeSet::new()).collect();
+        let opening = walked.iter().find(|s| s.index == open).unwrap();
+        assert_eq!((opening.before, opening.after), (0, 1));
+        let closing = walked.iter().find(|s| s.index == close).unwrap();
+        assert_eq!((closing.before, closing.after), (1, 0));
+
+        let ignore: BTreeSet<usize> = [open].into_iter().collect();
+        let ignored: Vec<Scanned> = scan_depths(input, &ignore).collect();
+        let opening = ignored.iter().find(|s| s.index == open).unwrap();
+        assert_eq!((opening.before, opening.after), (0, 0));
+    }
+
+    #[test]
+    fn walks_past_a_field_whose_name_carries_an_unclosed_bracket() {
+        assert_eq!(
+            next_top_level_field("Smiley :( (100), Wanderers (29)", ','),
+            Some(("Smiley :( (100)", "Wanderers (29)"))
+        );
+    }
+
+    #[test]
+    fn splits_past_an_unclosed_bracket() {
+        assert_eq!(
+            split_top_level("Smiley :( (100), Wanderers (29)", ','),
+            vec!["Smiley :( (100)".to_string(), "Wanderers (29)".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_trailing_identifier_survives_an_unclosed_bracket_in_the_name() {
+        assert_eq!(
+            split_trailing_id("Smiley :( (95)"),
+            Some(("Smiley :(".to_string(), "95".to_string()))
+        );
+    }
 
     #[test]
     fn splits_only_at_the_top_level() {
