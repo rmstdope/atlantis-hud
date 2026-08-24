@@ -118,6 +118,11 @@ pub struct MovementRules {
 /// costs, so a ruleset that invents a sixth kind should cost the same routes as before rather than
 /// refuse to plan at all. `is_man` only needs to know that an unknown kind is not a race.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/ItemKind.ts")
+)]
 #[serde(rename_all = "lowercase")]
 pub enum ItemKind {
     Man,
@@ -160,6 +165,11 @@ pub struct ItemCapacity {
 
 /// Which modes an item can carry itself in, whether or not it has spare capacity to carry more.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/SelfMobility.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SelfMobility {
     pub walk: bool,
@@ -170,6 +180,11 @@ pub struct SelfMobility {
 
 /// A monster's fighting numbers, which is all the risk heuristic weighs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/MonsterCombat.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MonsterCombat {
     pub skill: i64,
@@ -180,6 +195,11 @@ pub struct MonsterCombat {
 
 /// What wielding a weapon needs, as the data page's wield clause states it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/Weapon.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Weapon {
     /// The skill tag needed to wield it, or `None` where the page says none is needed.
@@ -188,6 +208,11 @@ pub struct Weapon {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/ItemEntry.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ItemEntry {
     pub tag: String,
@@ -198,25 +223,32 @@ pub struct ItemEntry {
     pub self_mobile: SelfMobility,
     pub moves: u32,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub combat: Option<MonsterCombat>,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub cargo_capacity: Option<i64>,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub capacity_condition: Option<String>,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub sailing_skill: Option<i64>,
     /// What WITHDRAW costs per unit of this item, in silver. `None` for an item the page prices
     /// nowhere - anything that is not a basic item - and for a ruleset cached before `ah-1wcw.6`.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub withdraw_cost: Option<i64>,
     /// Present only for weapons - an item whose page description states how it is wielded. `None`
     /// for everything else, and for a ruleset cached before `ah-1ad6.1`.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub weapon: Option<Weapon>,
     /// What the data page says about it, after the preamble of name, tag, weight and capacity the
     /// fields above already carry. `None` for an entry that is nothing but that preamble, and for
     /// a ruleset cached before ah-3cj4.2, which carried no prose at all.
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub description: Option<String>,
 }
 
@@ -292,6 +324,11 @@ pub fn item_spellings(written: &str) -> [Option<&str>; 3] {
 
 /// One thing a cast consumes: an item tag (`SILV` for silver) and how many.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/CastInput.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CastInput {
     pub tag: String,
@@ -301,6 +338,11 @@ pub struct CastInput {
 /// What CASTing a skill consumes, as the data page states it and as ah-dbb.2 charges it: `costs`
 /// once per cast, and for transmutation the output tag -> the source tag it is made from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/CastCost.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CastCost {
     pub costs: Vec<CastInput>,
@@ -309,6 +351,11 @@ pub struct CastCost {
 
 /// One thing a production recipe consumes: an item tag (`SILV` for silver) and how many.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/ProductionInput.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProductionInput {
     pub tag: String,
@@ -317,6 +364,11 @@ pub struct ProductionInput {
 
 /// One thing a skill can make, the level at which it can first be made, and what it takes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/Production.ts")
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Production {
     pub tag: String,

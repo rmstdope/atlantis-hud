@@ -10,162 +10,31 @@
  * monster phrasing its attacks unusually should not cost us the other four hundred entries.
  */
 
+export type { CastCost } from "./generated/CastCost";
+export type { CastInput } from "./generated/CastInput";
 export type { ItemCapacity } from "./generated/ItemCapacity";
+export type { ItemEntry } from "./generated/ItemEntry";
+export type { ItemKind } from "./generated/ItemKind";
+export type { MonsterCombat } from "./generated/MonsterCombat";
+export type { Production } from "./generated/Production";
+export type { ProductionInput } from "./generated/ProductionInput";
+export type { SelfMobility } from "./generated/SelfMobility";
+export type { Weapon } from "./generated/Weapon";
 
+import type { CastCost } from "./generated/CastCost";
+import type { CastInput } from "./generated/CastInput";
 import type { ItemCapacity } from "./generated/ItemCapacity";
+import type { ItemEntry } from "./generated/ItemEntry";
+import type { ItemKind } from "./generated/ItemKind";
+import type { MonsterCombat } from "./generated/MonsterCombat";
+import type { Production } from "./generated/Production";
+import type { ProductionInput } from "./generated/ProductionInput";
+import type { SelfMobility } from "./generated/SelfMobility";
+import type { Weapon } from "./generated/Weapon";
 import { preformattedText } from "./html";
 import { RulesetScrapeError } from "./rules";
 
-export type ItemKind = "man" | "mount" | "monster" | "ship" | "equipment";
-
-export type MonsterCombat = {
-  skill: number;
-  attacksPerRound: number;
-  hitsToKill: number;
-  damagePerAttack: number;
-};
-
-/** Which modes an item can move itself in, whether or not it has spare capacity to carry anything. */
-export type SelfMobility = {
-  walk: boolean;
-  ride: boolean;
-  fly: boolean;
-  swim: boolean;
-};
-
-/**
- * A weapon, as the data page describes one - an item whose description states how it is wielded.
- *
- * Absent from every item that is not a weapon, including the four races whose description lists
- * weaponsmith among the skills they may study; `kind` is what excludes those, not the word
- * "weapon" (`ah-1ad6.1`).
- */
-export type Weapon = {
-  /**
-   * The skill tag needed to wield it, or `null` for the twelve that need none. `null` and not an
-   * absent field: "no skill is needed" is a thing the page states, and an absence would be
-   * indistinguishable from a weapon whose clause this parser failed to read.
-   */
-  needs: string | null;
-};
-
-export type ItemEntry = {
-  tag: string;
-  name: string;
-  kind: ItemKind;
-  weight: number;
-  capacity: ItemCapacity;
-  /**
-   * Capability, kept separate from capacity because the page states them separately.
-   *
-   * Most entries give a number (`walking capacity 20`), but thirteen state the bare capability
-   * instead (`livestock [LIVE], weight 50, can walk`). Recording only the number left those
-   * looking like items that cannot move at all.
-   */
-  selfMobile: SelfMobility;
-  /** Hexes per month this item can carry itself, when the page says. */
-  moves: number;
-  /** Present only for monsters, and only when the page stated all four numbers. */
-  combat?: MonsterCombat;
-  /**
-   * Cargo a ship carries, which is a different thing from an item carrying itself about.
-   *
-   * Ships state no weight of their own, so `weight` is 0 for all of them - not stated rather than
-   * measured. Fleet movement is out of scope for the planner; this is recorded so it is not lost.
-   */
-  cargoCapacity?: number;
-  /**
-   * The qualifier attached to a capacity, when the page attaches one.
-   *
-   * A wagon reads "walking capacity 200 when hitched to a horse", and the rules page adds that
-   * "the excess wagons count as weight, not capacity". Storing 200 with the condition thrown away
-   * would be exactly the sort of plausible-but-wrong number this package exists to avoid.
-   */
-  capacityCondition?: string;
-  /**
-   * Levels of sailing skill a ship's crew must hold between them to sail it, as the page states:
-   * "This ship requires a total of 4 levels of sailing skill to sail." Present only for ships.
-   *
-   * Not to be confused with Summon Wind or the windchime, which each add movement points "to ships
-   * requiring up to N sailing skill points" - close wording, but neither states a ship's own
-   * requirement, and the ship-only guard below keeps them from being mistaken for one.
-   */
-  sailingSkill?: number;
-  /**
-   * What WITHDRAW costs per unit of this item, in silver - `costs 37 silver to withdraw`.
-   *
-   * Absent for anything the page states no price for, which is every item that is not a basic one:
-   * "If you do not have sufficient unclaimed, or if you try withdraw any other than a basic item,
-   * an error will be given." Absent, never zero - a zero would claim the page had said so.
-   */
-  withdrawCost?: number;
-  /** Present only for weapons - an item whose description states how it is wielded. */
-  weapon?: Weapon;
-  /**
-   * What the page says about it, after the preamble of name, tag, weight and capacity that the
-   * fields above already carry. Absent when the entry is nothing but that preamble.
-   *
-   * The preamble ends at the first full stop after the `[TAG]`, which holds for every shape the
-   * page uses: `chain armor [CARM], weight 1, costs 150 silver to withdraw.` then the prose;
-   * `Longship [LONG].` then the prose; `leader [LEAD], weight 10, ... month.` then the prose.
-   */
-  description?: string;
-};
-
 export type ItemReference = Record<string, ItemEntry>;
-
-/**
- * A skill, and what a month of studying it costs.
- *
- * Kept apart from the item catalogue rather than merged into it: ten tags mean one thing as a
- * skill and another as an item - FISH is fishing and also fish, HERB is herb lore and also herbs -
- * so one map would have each pair overwrite the other.
- */
-/** One thing a cast consumes: an item tag and how many, silver being `SILV`. */
-export type CastInput = { tag: string; amount: number };
-
-/**
- * What CASTing the skill consumes, as the data page states it: `costs`, each taken once per cast
- * (an input with no number is one), and for transmutation the output tag -> the source tag it is
- * made from. `null` when the page states no cost - most spells.
- */
-export type CastCost = { costs: CastInput[]; transmute: Record<string, string> };
-
-/** One thing a production recipe consumes: an item tag and how many, silver being `SILV`. */
-export type ProductionInput = { tag: string; amount: number };
-
-/** One thing a skill can make, the level at which it can first be made, and what it takes. */
-export type Production = {
-  tag: string;
-  level: number;
-  /**
-   * What one output consumes, in the order the page lists it. Empty for a recipe that takes
-   * nothing but labour - which is most of them: iron, wood, herbs and every other raw resource
-   * are produced from the region itself.
-   *
-   * An input the page writes without a number is one: `swords [SWOR] from iron [IRON]`.
-   */
-  inputs: ProductionInput[];
-  /**
-   * Whether `inputs` are alternatives rather than requirements - the page's `from any of grain
-   * [GRAI], livestock [LIVE] and fish [FISH]`, which consumes one of the three and not all three.
-   *
-   * True for cooking alone today. Carried as a flag rather than a different shape because one
-   * irregular recipe does not earn a union type, and a consumer that ignores it over-states what a
-   * recipe costs - the safe direction for a warning, and the wrong one silently for a forecast.
-   */
-  inputsAreAlternatives: boolean;
-  /** Man-months per `outputs`. 1 for `at a rate of 1 per man-month`, 4 for `1 per 4 man-months`. */
-  manMonths: number;
-  /**
-   * How many the recipe makes per `manMonths`. Every recipe on the page today makes exactly one.
-   *
-   * `null` for cooking, whose output the page states as a formula rather than a number - "a number
-   * of meals [MEAL] equal to skill level divided by 2, rounded up". Null rather than a guess: this
-   * type does not model formulae, and a 1 there would be wrong at every level above 2.
-   */
-  outputs: number | null;
-};
 
 /** A skill a unit must already have, at a level, before it may begin to study another. */
 export type SkillRequirement = { tag: string; level: number };
