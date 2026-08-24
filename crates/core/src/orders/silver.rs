@@ -160,6 +160,11 @@ pub struct UnitSilver {
     pub received: i64,
     /// Those givers, as `<name> (<id>)`, so the hover can name them.
     pub givers: Vec<String>,
+    /// Silver counted into `income` because this unit's own `TAKE` orders pull it from units the
+    /// report shows in this hex.
+    pub taken: i64,
+    /// Those sources, as `<name> (<id>)`, so the hover can name them.
+    pub taken_from: Vec<String>,
     /// Silver that faction food held by *other* units in this hex paid off, at step 2 of the
     /// payment order (`ah-7cdt`). `0` for every unit the pool did not feed, which is most of them.
     pub faction_food_covered: i64,
@@ -321,6 +326,10 @@ pub fn transfer_shape(what: &Selector, amount: &Amount) -> TransferShape {
 pub enum SilverDoubt {
     /// `TAX` where the report stated no tax base for the region.
     UnknownTaxBase,
+    /// `TAKE ... ALL SILV` from another unit: what that unit will have left to give depends on its
+    /// own month, which this per-unit pass has not run. Not the same as a source the report never
+    /// shows - that is not counted at all and raises no doubt (`ah-awcm`).
+    TakesAllFromAnother,
     /// A headcount that is itself a guess, so nothing per-man can be multiplied out.
     EstimatedMen,
     /// `STUDY` of a skill the ruleset prices nowhere, or no ruleset at all.
@@ -537,6 +546,15 @@ pub struct Receipts {
     pub silver: i64,
     /// The givers, as `<name> (<id>)`, for the hover to name them. In document order.
     pub givers: Vec<String>,
+    /// Silver this unit's own `TAKE` orders pull from units the report shows in this hex.
+    pub taken: i64,
+    /// Those sources, as `<name> (<id>)`, so the hover can name them. In document order.
+    pub taken_from: Vec<String>,
+    /// Whether a `TAKE ... ALL SILV` could not be priced, which silences the unit's whole figure.
+    ///
+    /// A bool rather than the source's name, because the sentence the interface shows names the
+    /// rule rather than the unit (`ah-awcm`).
+    pub take_all_unpriceable: bool,
 }
 
 /// Everything about one unit that the arithmetic needs, so the call site reads as a description of
@@ -773,6 +791,8 @@ pub fn forecast_unit(
             doubt_subject: None,
             received: 0,
             givers: Vec::new(),
+            taken: 0,
+            taken_from: Vec::new(),
             faction_food_covered: 0,
             shared_silver_covered: 0,
             own_food_covered: 0,
@@ -795,9 +815,13 @@ pub fn forecast_unit(
 
     // A gift is in the giver's block, so it arrives already gathered. It is income whatever the
     // unit itself is ordered to do, including nothing.
-    let mut income = receipts.silver;
+    let mut income = receipts.silver.saturating_add(receipts.taken);
     let mut expense = 0i64;
-    let mut income_doubt = None;
+    // A `TAKE ... ALL SILV` is in this unit's own block, but what it will yield depends on the
+    // source unit's month, which this per-unit pass has not run (`ah-awcm`).
+    let mut income_doubt = receipts
+        .take_all_unpriceable
+        .then_some(SilverDoubt::TakesAllFromAnother);
     let mut expense_doubt = None;
     let mut doubt_subject = None;
     let mut given_to_nobody = 0i64;
@@ -1116,6 +1140,8 @@ pub fn forecast_unit(
         }),
         received: receipts.silver,
         givers: receipts.givers.clone(),
+        taken: receipts.taken,
+        taken_from: receipts.taken_from.clone(),
         faction_food_covered: 0,
         shared_silver_covered: 0,
         own_food_covered,
@@ -4008,6 +4034,7 @@ mod tests {
         let receipts = Receipts {
             silver: 200,
             givers: vec!["Paymaster (2390)".to_string()],
+            ..Receipts::default()
         };
         let unit = forecast_unit(
             facts(5, &[], &receipts),
@@ -4023,11 +4050,56 @@ mod tests {
         assert_eq!(unit.doubt, None);
     }
 
+    /// `ah-awcm`: silver a unit takes from a neighbour is income, and the hover can name where it
+    /// came from.
+    #[test]
+    fn a_taker_counts_what_it_takes() {
+        let receipts = Receipts {
+            taken: 100,
+            taken_from: vec!["Workers (6567)".to_string()],
+            ..Receipts::default()
+        };
+        let unit = forecast_unit(
+            facts(5, &[], &receipts),
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            no_market(),
+            None,
+        );
+        assert_eq!(unit.income, Some(100));
+        assert_eq!(unit.taken, 100);
+        assert_eq!(unit.taken_from, vec!["Workers (6567)".to_string()]);
+        assert_eq!(unit.doubt, None);
+    }
+
+    /// `ah-awcm`: what the source will have left to give depends on its own month, so the taker's
+    /// whole figure goes unsaid.
+    #[test]
+    fn a_take_of_all_silver_doubts_the_unit() {
+        let receipts = Receipts {
+            take_all_unpriceable: true,
+            ..Receipts::default()
+        };
+        let unit = forecast_unit(
+            facts(5, &[], &receipts),
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            no_market(),
+            None,
+        );
+        assert_eq!(unit.doubt, Some(SilverDoubt::TakesAllFromAnother));
+        assert_eq!(unit.income, None);
+        assert_eq!(unit.at_month_end, None);
+    }
+
     #[test]
     fn a_gift_is_income_on_top_of_what_the_unit_earns_itself() {
         let receipts = Receipts {
             silver: 200,
             givers: vec!["Paymaster (2390)".to_string()],
+            ..Receipts::default()
         };
         let intents = [placed(Intent::Tax)];
         let unit = forecast_unit(

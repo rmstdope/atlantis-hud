@@ -294,6 +294,8 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         doubt_subject: None,
         received: 0,
         givers: Vec::new(),
+        taken: 0,
+        taken_from: Vec::new(),
         faction_food_covered: 0,
         shared_silver_covered,
         taxes_by_flag: false,
