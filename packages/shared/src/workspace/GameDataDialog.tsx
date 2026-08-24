@@ -132,10 +132,10 @@ export function GameDataDialog({
         aria-label="Game data"
         // 10vh below, matching the `pt-[10vh]` above (ah-vwdi). The two must be changed together:
         // top offset + max height must leave a real margin, or the dialog runs to the screen edge.
-        // The `!` is load-bearing: `[role="dialog"][aria-modal="true"]` in theme.css caps every
-        // modal at 90vh, and an attribute-pair selector outranks a utility class - so without it
-        // 90vh wins, 10vh + 90vh is the whole window, and the margin below is exactly zero.
-        className="grid max-h-[80vh]! w-[56rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
+        // theme.css caps every modal at 90vh, but as a `:where()` default at zero specificity
+        // (ah-y4zb) - so this 80vh simply wins, with no `!` needed. Left uncapped, 10vh + 90vh is
+        // the whole window and the margin below is exactly zero.
+        className="grid max-h-[80vh] w-[56rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
       >
         <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
           <span className="text-ink-soft">Game data</span>

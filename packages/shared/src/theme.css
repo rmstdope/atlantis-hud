@@ -353,15 +353,29 @@ html {
 /*
  * A dialog declares the width its content wants (`w-[64rem]` for Battles), and at 200% that is
  * twice the pixels - past the edge of a laptop window, taking the Close button with it. The
- * viewport is the last word: cap, and let the contents scroll (ah-ziv, navigator's choice O1).
- * On the role rather than on nine components, so a tenth dialog inherits it. `aria-modal` narrows
- * it to the centred modals: `PopoverFrame` carries `role="dialog"` too, but it is anchored, fluid
- * and out of scope - an `overflow` on it would give it scrollbars it never asked for.
+ * viewport is the last word unless the dialog says otherwise: cap, and let the contents scroll
+ * (ah-ziv, navigator's choice O1). On the role rather than on nine components, so a tenth dialog
+ * inherits it. `aria-modal` narrows it to the centred modals: `PopoverFrame` carries
+ * `role="dialog"` too, but it is anchored, fluid and out of scope - an `overflow` on it would give
+ * it scrollbars it never asked for.
+ *
+ * `:where()` is load-bearing and is the whole of `ah-y4zb`. The selector inside it contributes
+ * ZERO specificity, so this is a default a component overrides simply by saying otherwise -
+ * `max-h-[80vh]` on the dialog wins with no `!` and no ceremony. Without it the pair of attribute
+ * selectors scores 0,2,0, beats every utility at 0,1,0, and a component's own sizing is silently
+ * inert: `ah-vwdi` shipped exactly that and paid a P0 reopen for it.
+ *
+ * `@layer base` is load-bearing for the same reason and cannot be dropped: Tailwind emits utilities
+ * into `@layer utilities`, and an UNLAYERED rule beats every layered one whatever its specificity -
+ * so `:where()` on its own still wins and the utility is still inert. Inside `base`, which cascades
+ * before `utilities`, the utility wins.
  */
-[role="dialog"][aria-modal="true"] {
-  max-width: 95vw;
-  max-height: 90vh;
-  overflow: auto;
+@layer base {
+  :where([role="dialog"][aria-modal="true"]) {
+    max-width: 95vw;
+    max-height: 90vh;
+    overflow: auto;
+  }
 }
 
 .bg-pane {
