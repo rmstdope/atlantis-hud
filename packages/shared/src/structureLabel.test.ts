@@ -7,6 +7,9 @@ const aStructure = (overrides: Partial<StructureInfo> = {}): StructureInfo => ({
   structureId: "12",
   name: "Odds and Ends",
   kind: "Fort",
+  baseKind: "Fort",
+  qualifiers: [],
+  vessels: [],
   description: null,
   needs: null,
   ...overrides

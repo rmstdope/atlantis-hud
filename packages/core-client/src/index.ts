@@ -19,6 +19,7 @@ export type { MarketItem } from "./generated/MarketItem";
 export type { SettlementInfo } from "./generated/SettlementInfo";
 export type { RegionExit } from "./generated/RegionExit";
 export type { StructureInfo } from "./generated/StructureInfo";
+export type { VesselEntry } from "./generated/VesselEntry";
 export type { SkillInfo } from "./generated/SkillInfo";
 export type { ReportUnit } from "./generated/ReportUnit";
 export type { ReportRegion } from "./generated/ReportRegion";
@@ -52,6 +53,7 @@ export {
   aReportHeaderInfo,
   aReportRegion,
   aReportUnit,
+  aStructure,
   aTradeRoute,
   aTradedGood,
   aUnitSilver

@@ -446,6 +446,7 @@ mod tests {
             kind: "Longship".to_string(),
             description: Some("Load: 110/150; Sailors: 4/4; MaxSpeed: 4.".to_string()),
             needs: None,
+            ..Default::default()
         };
 
         assert_eq!(sailing_requirement(&fleet, Some(&ruleset())), Some(4));
@@ -462,6 +463,7 @@ mod tests {
             kind: "Longship".to_string(),
             description: None,
             needs: None,
+            ..Default::default()
         };
 
         assert_eq!(sailing_requirement(&fleet, Some(&ruleset())), Some(4));
@@ -477,6 +479,7 @@ mod tests {
             kind: "Fleet, 2 Galleons".to_string(),
             description: None,
             needs: None,
+            ..Default::default()
         };
 
         assert_eq!(sailing_requirement(&fleet, Some(&ruleset())), Some(30));
@@ -493,6 +496,7 @@ mod tests {
             kind: "Skiff".to_string(),
             description: None,
             needs: None,
+            ..Default::default()
         };
 
         assert_eq!(sailing_requirement(&fleet, Some(&ruleset())), None);
@@ -508,6 +512,7 @@ mod tests {
             kind: "Longship".to_string(),
             description: Some("Load: 110/150; Sailors: 4/4; MaxSpeed: 4.".to_string()),
             needs: None,
+            ..Default::default()
         };
 
         assert_eq!(sailing_requirement(&fleet, None), Some(4));
@@ -522,6 +527,7 @@ mod tests {
             kind: "Longship".to_string(),
             description: None,
             needs: None,
+            ..Default::default()
         };
 
         assert_eq!(sailing_requirement(&fleet, None), None);
@@ -536,6 +542,7 @@ mod tests {
             kind: "Longship".to_string(),
             description: Some("Load: 110/150; Sailors: 4/4; MaxSpeed: 4.".to_string()),
             needs: None,
+            ..Default::default()
         };
 
         assert_eq!(cargo_capacity(&fleet, Some(&ruleset())), Some(150));
@@ -550,6 +557,7 @@ mod tests {
             kind: "Fleet, 2 Galleons".to_string(),
             description: None,
             needs: None,
+            ..Default::default()
         };
 
         assert_eq!(cargo_capacity(&fleet, Some(&ruleset())), Some(5400));
@@ -564,6 +572,7 @@ mod tests {
             kind: "Fleet, 2 Barges".to_string(),
             description: None,
             needs: None,
+            ..Default::default()
         };
 
         assert_eq!(cargo_capacity(&fleet, Some(&ruleset())), None);
@@ -575,6 +584,7 @@ mod tests {
                     kind: "Longship".to_string(),
                     description: None,
                     needs: None,
+                    ..Default::default()
                 },
                 None
             ),
@@ -591,6 +601,7 @@ mod tests {
             kind: "Longship".to_string(),
             description: None,
             needs: None,
+            ..Default::default()
         };
 
         assert_eq!(fleet_label(&fleet), "Longship [329]");
@@ -605,6 +616,7 @@ mod tests {
             kind: "Fleet, 8 Corsairs".to_string(),
             description: None,
             needs: None,
+            ..Default::default()
         };
 
         assert_eq!(fleet_label(&fleet), "Fleet [988] (8 Corsairs)");
@@ -684,6 +696,7 @@ mod tests {
             kind: "Longship".to_string(),
             description: None,
             needs: None,
+            ..Default::default()
         };
         let hex = KnownHex {
             coordinate: crate::report::model::Coordinate { x: 1, y: 1, z: 1 },
@@ -770,6 +783,7 @@ mod tests {
             kind: "Longship".to_string(),
             description: None,
             needs: None,
+            ..Default::default()
         };
         let hex = KnownHex {
             coordinate: crate::report::model::Coordinate { x: 1, y: 1, z: 1 },

@@ -82,6 +82,23 @@ pub struct Exit {
     pub settlement: Option<Settlement>,
 }
 
+/// One vessel named inside a fleet's manifest: `40 Galleons`.
+///
+/// `count` is `None` where the report named a vessel without a number. The count is NOT assumed to
+/// be one here, because whether an unnumbered vessel counts as one is the *reader's* question, and
+/// `vesselCount` in the map layer already answers it its own way (`ah-nmts`).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "VesselEntry", export_to = "VesselEntry.ts")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct VesselEntry {
+    pub count: Option<i64>,
+    pub name: String,
+}
+
 /// A building, ship or road, as introduced by a `+` line.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(
@@ -93,8 +110,25 @@ pub struct Exit {
 pub struct Structure {
     pub structure_id: String,
     pub name: String,
-    /// `Fort`, `Caravanserai`, `Longship`, `Road N`, and so on.
+    /// The kind as the report wrote it, qualifiers and all: `Galley, 40 Galleons, 11 Galleys`,
+    /// `Lair, closed to player units`, `Fort`, `Road N`.
+    ///
+    /// Unchanged in meaning, and still what a player is shown - the three fields below are derived
+    /// from it. A remembered hex is stored as this region's own JSON and read back as it was
+    /// written, never re-parsed, so redefining this field would retroactively change what every
+    /// stored snapshot says (`ah-nmts`).
     pub kind: String,
+    /// The kind alone, before the first comma: `Galley`, `Lair`, `Road N`. Case as the report
+    /// wrote it; a reader that matches on bare words lower-cases it itself.
+    #[serde(default)]
+    pub base_kind: String,
+    /// Everything after the first comma, one trimmed clause per entry:
+    /// `["closed to player units"]`. The `, needs N` clause is not among them - it is `needs`.
+    #[serde(default)]
+    pub qualifiers: Vec<String>,
+    /// The qualifiers that name vessels, parsed. Empty for every structure that is not a fleet.
+    #[serde(default)]
+    pub vessels: Vec<VesselEntry>,
     pub description: Option<String>,
     /// Remaining build cost when the structure is unfinished.
     pub needs: Option<i64>,

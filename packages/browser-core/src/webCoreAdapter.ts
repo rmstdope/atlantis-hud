@@ -21,6 +21,7 @@ import type {
   OrdersPreviewResponse,
   ParsedReport,
   ReportParseResult,
+  ReportRegion,
   RoutePlanResponse,
   TradeRoute,
   TurnRef
@@ -117,6 +118,8 @@ export type CoreWasmModule = {
     candidate: StoredTurnSnapshot
   ): ImportedTurnDiff;
   hydrate_parse_result_state(parsedPayloadJson: string): ReportParseResult;
+  /** Fills the split structure fields of a region payload remembered before `ah-nmts`. */
+  hydrate_remembered_region(payloadJson: string): ReportRegion;
   /**
    * Which turn a game reopens on, given every turn's `(factionId, turnNumber)` as a JSON array
    * and the faction the game remembers as the player's. Returns `{ factionId, turnNumber }` or
@@ -298,9 +301,18 @@ export function createWebCoreAdapter(
 
       // A payload written by an older build may not parse. Dropping one remembered hex beats
       // losing the whole map, which is what the desktop does too.
+      //
+      // The core hydrates rather than `JSON.parse` alone: a hex remembered before `ah-nmts` carries
+      // a structure's kind as one sentence, and the back-fill splits it there so the map layer sees
+      // the same fields whether a hex was stored last week or this turn.
       return stored.flatMap((sighting) => {
         try {
-          return [{ region: JSON.parse(sighting.payloadJson), lastSeenTurn: sighting.lastSeenTurn }];
+          return [
+            {
+              region: wasm.hydrate_remembered_region(sighting.payloadJson),
+              lastSeenTurn: sighting.lastSeenTurn
+            }
+          ];
         } catch {
           return [];
         }

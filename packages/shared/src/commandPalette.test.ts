@@ -274,7 +274,7 @@ describe("structurePaletteLabel", () => {
   it("shows a named structure's name and hex", () => {
     expect(
       structurePaletteLabel(
-        { structureId: "12", name: "Arcane Mine", kind: "Mine", description: null, needs: null },
+        { structureId: "12", name: "Arcane Mine", kind: "Mine", baseKind: "Mine", qualifiers: [], vessels: [], description: null, needs: null },
         hexLabel()
       )
     ).toBe("Arcane Mine [12] · cavern (3,41)");
@@ -283,7 +283,7 @@ describe("structurePaletteLabel", () => {
   it("shows an unnamed structure's kind too", () => {
     expect(
       structurePaletteLabel(
-        { structureId: "4", name: "Building", kind: "Mine", description: null, needs: null },
+        { structureId: "4", name: "Building", kind: "Mine", baseKind: "Mine", qualifiers: [], vessels: [], description: null, needs: null },
         "plain (9,22)"
       )
     ).toBe("Building [4] · Mine · plain (9,22)");
@@ -292,7 +292,7 @@ describe("structurePaletteLabel", () => {
   it("treats a ship placeholder as unnamed", () => {
     expect(
       structurePaletteLabel(
-        { structureId: "218", name: "ship", kind: "Longship", description: null, needs: null },
+        { structureId: "218", name: "ship", kind: "Longship", baseKind: "Longship", qualifiers: [], vessels: [], description: null, needs: null },
         "ocean (1,1)"
       )
     ).toBe("ship [218] · Longship · ocean (1,1)");

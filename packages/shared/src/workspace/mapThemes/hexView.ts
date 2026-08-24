@@ -17,7 +17,6 @@
 import type { ReportRegion, ReportUnit, StructureInfo } from "@atlantis/core-client";
 import type { HexKnowledge, HexNode } from "../../hexMapModel";
 import { worldOf } from "../mapViewport";
-import { manifestSegments } from "../vesselManifest";
 import { hexPaint, terrainTexturePatternId, terrainTextureUrl } from "../mapHexView";
 
 /**
@@ -240,23 +239,19 @@ function isShip(kind: string): boolean {
 type StructureKind = "road" | "ship" | "shaft" | "gate" | "lair" | "building";
 
 function classify(structure: StructureInfo): StructureKind {
-  // The report sends a qualified kind - `Lair, closed to player units`, `Galley, 2 Galleys` - and
-  // `parse_structure` (crates/core/src/report/region.rs) only splits a description off `kind` on a
-  // semicolon, which a lair's line never carries. So the whole clause arrives here, while the sets
-  // below match bare words: the first segment is what they need. Before this, no theme had ever
-  // drawn a lair mark from a real report (ah-o0d3, found by PR #487).
-  const comma = structure.kind.indexOf(",");
-  const kind = (comma === -1 ? structure.kind : structure.kind.slice(0, comma))
-    .trim()
-    .toLowerCase();
+  // Every test below reads a FIELD. The parser splits a structure's kind where the line is read
+  // (`split_kind`, crates/core/src/report/region.rs), so nothing here re-parses a sentence - which
+  // is what four defects in one day were made of (ah-o0d3, ah-3pr9, ah-lcyn, ah-t5fk, ah-nmts).
+  const kind = structure.baseKind.trim().toLowerCase();
+  // A road's direction is written in the clause itself, so this is the one reader that wants the
+  // kind as the report wrote it. That is a use of the sentence, not a re-parse of the kind.
   if (roadDirection(structure.kind) !== null) {
     return "road";
   }
-  // `isShip` reads the RAW kind as well as the cleaned one, deliberately: it scans the whole string
-  // for "ship"/"boat" to catch tails, and `Fleet, 6 Airships` is a ship only because of `Airships`.
-  // Cleaning that to `fleet` - in neither SHIP_KINDS nor the substring test - would turn a fleet
-  // that draws correctly today into a building. The six fleets this still misses are ah-3pr9.
-  if (isShip(structure.kind) || isShip(kind)) {
+  // A fleet is a hull because it carries vessels, not because of a word in its name. This is what
+  // `isShip(structure.kind) || isShip(kind)` was standing in for: `Fleet, 6 Airships` used to be a
+  // ship only on account of `Airships` (ah-3pr9).
+  if (structure.vessels.length > 0 || isShip(kind)) {
     return "ship";
   }
   if (SHAFT_KINDS.has(kind)) {
@@ -270,7 +265,10 @@ function classify(structure: StructureInfo): StructureKind {
   // has listed - and lengthening the list instead is the bug rather than the fix (ah-lcyn).
   // `LAIR_KINDS` stays as the fallback for a genuinely bare kind: no fixture sends one, but the
   // marker is this ruleset's phrasing and another's may differ.
-  if (structure.kind.toLowerCase().includes(CLOSED_TO_PLAYERS) || LAIR_KINDS.has(kind)) {
+  const closedToPlayers = structure.qualifiers.some((qualifier) =>
+    qualifier.toLowerCase().includes(CLOSED_TO_PLAYERS)
+  );
+  if (closedToPlayers || LAIR_KINDS.has(kind)) {
     return "lair";
   }
   return "building";
@@ -298,27 +296,19 @@ function noStructures(): StructureTally {
 /**
  * How many vessels a ship structure holds (ah-3pr9).
  *
- * The kind is a label followed by the fleet's inventory - `Cloudship, 14 Cloudships, 4 Airships`.
- * The label is NOT a vessel: that example would otherwise read 15 cloudships where the report says
- * 14. A kind with no inventory (`Galley`) is a fleet of exactly one.
+ * `vessels` is the fleet's inventory as the parser split it, and the structure's own label is NOT
+ * among them: `Cloudship, 14 Cloudships, 4 Airships` is eighteen vessels, not nineteen - the report
+ * says 14 cloudships, not 15.
  *
- * Only the leading integer of each segment is read, and a segment without one contributes nothing:
- * the counts in a real report are always written as numerals. A kind whose inventory yields no
+ * A hull with no inventory (`Galley`) is a fleet of exactly one, and an inventory that yields no
  * number at all still counts 1 rather than 0 - a ship that is on the map must never tally as
  * nothing, and under-counting a strange kind is far better than losing it.
- *
- * Read from the RAW kind: `classify` strips the inventory to match its bare-word sets, and the
- * inventory is exactly what this needs.
  */
-function vesselCount(kind: string): number {
-  // `manifestSegments` is shared with the region pane (ah-t5fk), which links EVERY segment while
-  // this drops the first: the leading word is the fleet's label, not a vessel. One parser, two
-  // deliberately different uses - see `vesselManifest.ts`.
-  const parts = manifestSegments(kind).slice(1);
-  if (parts.length === 0) {
+function vesselCount(structure: StructureInfo): number {
+  if (structure.vessels.length === 0) {
     return 1;
   }
-  const total = parts.reduce((sum, part) => sum + (part.count ?? 0), 0);
+  const total = structure.vessels.reduce((sum, vessel) => sum + (vessel.count ?? 0), 0);
   return total > 0 ? total : 1;
 }
 
@@ -334,7 +324,7 @@ function tallyStructures(region: ReportRegion | null): StructureTally {
         break;
       }
       case "ship":
-        tally.ships += vesselCount(structure.kind);
+        tally.ships += vesselCount(structure);
         break;
       case "shaft":
         tally.shafts += 1;

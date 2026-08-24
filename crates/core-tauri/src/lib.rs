@@ -805,9 +805,15 @@ pub mod commands {
                 serde_json::from_str::<serde_json::Value>(&sighting.payload_json)
                     .ok()
                     .filter(|payload| !payload.is_null())
-                    .map(|region| RememberedRegionDto {
-                        region,
-                        last_seen_turn: sighting.last_seen_turn,
+                    .map(|mut region| {
+                        // A hex remembered before `ah-nmts` carries only `kind`; fill the split
+                        // fields here, so a snapshot from last week reaches the map as one from
+                        // today and no reader downstream needs to know the difference.
+                        atlantis_hud_core::report::region::backfill_structure_kinds(&mut region);
+                        RememberedRegionDto {
+                            region,
+                            last_seen_turn: sighting.last_seen_turn,
+                        }
                     })
             })
             .collect())
