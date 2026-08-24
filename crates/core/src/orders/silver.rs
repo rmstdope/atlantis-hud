@@ -847,9 +847,10 @@ pub fn forecast_unit(
             // its flag with no `TAX` order at all, and one with both must be counted once
             // (`ah-fvzu`).
             Intent::Tax => {}
-            // "The amount of money collected is equal to twice the available tax money." Mirrors
-            // `semantics::apply`'s own arm exactly, down to the doubt: two surfaces reading one
-            // order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj` exists).
+            // "The amount of money collected is equal to twice the available tax money." Both
+            // surfaces call `price_pillage`, so the rule that two surfaces reading one order must
+            // not price it two ways is enforced by the code rather than by a comment asking
+            // somebody to remember it (`ah-lu0f`).
             //
             // "This requires the faction to have enough combat ready men in the region to tax half
             // of the available money in the region" - so a faction short of the threshold earns
@@ -994,10 +995,9 @@ pub fn forecast_unit(
                             given_to_nobody = given_to_nobody.saturating_add(count);
                         }
                     }
-                    TransferShape::All { except } => deferred.push(Deferred::GiveAllSilver {
-                        except,
-                        to_nobody,
-                    }),
+                    TransferShape::All { except } => {
+                        deferred.push(Deferred::GiveAllSilver { except, to_nobody })
+                    }
                 }
             }
             // WITHDRAW draws on the faction's unclaimed fund, never the unit's own silver, so it is
@@ -2495,7 +2495,10 @@ mod tests {
             TransferShape::Unpriceable
         );
         assert_eq!(
-            transfer_shape(&Selector::Class("men".to_string()), &Amount::All { except: 0 }),
+            transfer_shape(
+                &Selector::Class("men".to_string()),
+                &Amount::All { except: 0 }
+            ),
             TransferShape::Unpriceable
         );
         assert_eq!(
@@ -2503,7 +2506,10 @@ mod tests {
             TransferShape::Exact(100)
         );
         assert_eq!(
-            transfer_shape(&Selector::Item("SILV".to_string()), &Amount::All { except: 20 }),
+            transfer_shape(
+                &Selector::Item("SILV".to_string()),
+                &Amount::All { except: 20 }
+            ),
             TransferShape::All { except: 20 }
         );
     }
