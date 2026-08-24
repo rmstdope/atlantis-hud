@@ -28,13 +28,13 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
     combat_ready, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
-    late_income, parse_wage_centis, pillage_threshold, pool_wants, price_claim, price_pillage,
-    price_cast, price_production, price_purchase, price_sale, price_study, price_tax,
-    quantity_bought, quantity_sold,
-    recipe_for, settle_unclaimed, split_pool, taxes, unit_upkeep, ContendedPool, FactionFoodPass,
-    FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, PoolOverrun,
-    PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
-    SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
+    late_income, parse_wage_centis, pillage_threshold, pool_wants, price_cast, price_claim,
+    price_pillage, price_production, price_purchase, price_sale, price_study, price_tax,
+    quantity_bought, quantity_sold, recipe_for, settle_unclaimed, split_pool, taxes, unit_upkeep,
+    ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief,
+    Lookups, MarketSide, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts,
+    RegionWages, SaleAnswer, SilverDoubt, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
+    FOOD_TAGS,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -1333,12 +1333,14 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
                 ordered,
                 placed,
                 ruleset,
-                hex_combat_ready,
+                HexPricing {
+                    combat_ready: hex_combat_ready,
+                    region,
+                },
                 MarketStanding {
                     shares: &market_shares,
                     actor_index: index,
                 },
-                region,
             );
         }
         credit_tax(&mut ledger, hex, ordered, pillaged);
@@ -1658,21 +1660,32 @@ fn credit_tax(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>, pilla
 }
 
 /// Applies one order to the ledger.
+/// What the hex itself says about every order priced in it, gathered once rather than per intent.
+///
+/// Both figures cost a walk of the hex - the combat-ready sum a pass over its units (`ah-1ad6.2`),
+/// the wages a read of the region and the ruleset - and [`apply`] runs for every placed intent of
+/// every unit, on every keystroke. They travel together because they are the same kind of fact,
+/// the way [`MarketStanding`] carries the hex's market settlement (`ah-lu0f.3`).
+#[derive(Clone, Copy)]
+struct HexPricing {
+    /// Combat ready men this faction has in this hex, or `None` where nothing could say.
+    combat_ready: Option<i64>,
+    /// What the hex pays a worker and what its entertainment pool holds - what `CAST` prices the
+    /// two earning spells from.
+    region: RegionWages,
+}
+
 fn apply(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
     actor: &Ordered<'_>,
     placed: &PlacedIntent,
     ruleset: Option<&Ruleset>,
-    // Combat ready men this faction has in this hex - computed once per hex by the caller, because
-    // this function runs for every placed intent of every unit (`ah-1ad6.2`).
-    hex_combat_ready: Option<i64>,
+    // What the hex as a whole says about the orders in it - built once per hex by the caller.
+    hex_facts: HexPricing,
     // How the hex's market lines are split between the faction's own units, and which of them
     // this actor is - the same settlement the Silver column reads (`ah-lu0f.2`).
     standing: MarketStanding<'_>,
-    // What the hex pays a worker and what its entertainment pool holds - built once per hex by
-    // the caller, because `CAST` prices the two earning spells from it (`ah-lu0f.3`).
-    region: RegionWages,
 ) {
     let who = &actor.unit.unit_id;
 
@@ -1725,7 +1738,7 @@ fn apply(
         // exists). The two differ only in how they express the doubt - a typed variant there, the
         // unit's sums no longer trusted here.
         Intent::Pillage => {
-            let priced = price_pillage(hex.region.tax_base, hex_combat_ready);
+            let priced = price_pillage(hex.region.tax_base, hex_facts.combat_ready);
             if priced.doubt.is_some() {
                 ledger.doubted.insert(who.clone());
             } else {
@@ -1756,7 +1769,15 @@ fn apply(
         }
         Intent::Study { skill } => study(ledger, actor, placed, skill, ruleset),
         Intent::Cast { spell, arguments } => {
-            cast(ledger, actor, placed, spell, arguments, ruleset, region);
+            cast(
+                ledger,
+                actor,
+                placed,
+                spell,
+                arguments,
+                ruleset,
+                hex_facts.region,
+            );
         }
         // The fund pays, not the unit (`ah-tdsi`). Nothing is charged here, and an unpriceable
         // withdrawal no longer doubts the unit: what cannot be counted is the *faction's* total,
@@ -6896,11 +6917,7 @@ mod tests {
                 tag: "GRAI".to_string(),
                 price: 100,
             }],
-            ..region(vec![with_skill(
-                with_silver(unit("683"), 0),
-                "PHEN",
-                2,
-            )])
+            ..region(vec![with_skill(with_silver(unit("683"), 0), "PHEN", 2)])
         };
         let review = review_turn(
             &report(vec![hex_region]),

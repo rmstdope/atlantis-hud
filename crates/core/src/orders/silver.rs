@@ -2805,7 +2805,11 @@ mod tests {
 
         // A spell that costs silver to cast, and earns nothing.
         assert_eq!(
-            price_cast(Some(&spell("FIRE", Some(60))), &skills, RegionWages::default()),
+            price_cast(
+                Some(&spell("FIRE", Some(60))),
+                &skills,
+                RegionWages::default()
+            ),
             Priced {
                 spends: 60,
                 ..Priced::default()
@@ -2813,7 +2817,10 @@ mod tests {
         );
 
         // A spell the ruleset does not know earns nothing, costs nothing and doubts nothing.
-        assert_eq!(price_cast(None, &skills, RegionWages::default()), Priced::default());
+        assert_eq!(
+            price_cast(None, &skills, RegionWages::default()),
+            Priced::default()
+        );
     }
 
     #[test]
