@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Producing aboard a sailing boat (ah-jk9h) — Option A</title>
+<title>Producing aboard a sailing boat (ah-jk9h) — Option C</title>
 <style>
   :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
     --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63;
@@ -35,20 +35,21 @@
   <p>Reported in <strong>GitHub issue #679</strong> by a player running real turns. Fishermen and
   sailors board a boat, the sailors <code>SAIL</code> out to the ocean, the fishermen
   <code>PRODUCE fish</code> — and the fishermen are flagged as unable to fish where they are.</p>
-  <p>The HUD checks the region the unit is standing in <strong>now</strong>. It already works out
-  where the boat is going — that is the dashed arrow — but <strong>the order checks cannot see
-  it</strong>: the arrow is drawn by a different core call that is given the map, and the checks are
-  not. So this is a choice about what the checks should say when they cannot know the destination.</p>
+  <p>The HUD checks the region the unit is standing in <strong>now</strong>. The order checks are
+  given no map — the dashed arrow is drawn by a different core call that is — but they do not need
+  one: the parsed report carries every region's <code>exits</code>, each with a direction and the
+  neighbour's coordinate, and every region's own <code>products</code>. So the captain's
+  <code>SAIL</code> can be walked through the report itself.</p>
   <p>The reporter's own words for the cost: <em>&ldquo;a false error on a perfectly legal and quite
   ordinary fishing-fleet setup, which teaches players to distrust the order errors generally.&rdquo;</em></p>
-  <div class="opt">Chosen 2026-08-25 — stay silent for anyone aboard a sailing vessel</div>
+  <div class="opt">Chosen 2026-08-25 — follow the SAIL using the report's own regions</div>
 </header>
 <main>
 
 <h2 class="rule"><em>The reported case</em> fishermen aboard, sailors sailing to ocean</h2>
 <div class="ed"><b>unit 4102  (Fishermen, aboard Longboat [1801])</b>
 <span class="">PRODUCE fish</span>
-<span class="none">(no error — this unit is aboard a vessel that is leaving)</span>
+<span class="none">(no error — the ocean it is sailing to produces fish)</span>
 
 <b>unit 4103  (Sailors, aboard Longboat [1801])</b>
 SAIL S S</div>
@@ -63,9 +64,9 @@ SAIL S S</div>
 <p>The boat leaves; the unit orders <code>PRODUCE wood</code>. Nowhere it could be going produces
 wood, so the order is certainly wrong — but the HUD cannot see where it is going.</p>
 <div class="ed"><b>unit 4104  (Woodsmen, aboard Longboat [1801])</b>
-<span class="">PRODUCE wood</span>
-<span class="none">(no error — this unit is aboard a vessel that is leaving)</span></div>
-<p class="note">The false error goes, and nothing new has to reach the checks: check_sailing already works out which units are aboard a vessel whose captain has a SAIL order, so this reuses machinery that exists. The cost is the third case - a genuinely impossible PRODUCE goes unwarned whenever the unit is aboard a boat that is leaving.</p>
+<span class="wavy">PRODUCE wood</span>
+<span class="msg">cannot produce wood there: the region this vessel is sailing to produces fish</span></div>
+<p class="note">The only option that answers the real question, and the only one that still catches the third case. No map is needed, which is what settled it: the report already carries every region's exits, coordinates and products, so the captain's SAIL steps can be walked through the report itself. Where the sail leaves the regions the faction can see, the HUD says nothing rather than guessing - silence there is the honest answer, not a fallback.</p>
 </main>
 </body>
 </html>
