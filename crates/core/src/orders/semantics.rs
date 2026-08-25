@@ -385,7 +385,7 @@ pub fn review_turn(
             &options,
             &mut findings,
         );
-        check_pillage_men(hex, ruleset, &options, &mut findings);
+        check_pillage_men(hex, ruleset, &plurals, &options, &mut findings);
         check_guard(hex, &options, &mut findings);
         check_teaching(hex, ruleset, &options, &mut findings);
         check_building(hex, &options, &mut findings);
@@ -3159,7 +3159,7 @@ fn spenders(upkeep: i64) -> &'static str {
 /// `10 grain` is what an invariant noun looks like rather than a missing plural.
 ///
 /// A tag is absent when nobody in the report holds more than one of it.
-type Plurals = BTreeMap<String, String>;
+pub(crate) type Plurals = BTreeMap<String, String>;
 
 /// Reads the plural of every item any unit in the report holds more than one of.
 ///
@@ -3205,13 +3205,27 @@ fn counted_item(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
 ) -> String {
+    counted_with_singular(count, tag, &item_name(tag, hex, ruleset), plurals)
+}
+
+/// The same rule, for a caller that has already resolved the singular and has no [`Hex`] to hand.
+///
+/// [`super::silver::because_clause`] is one: `silver` states in its own header that it does not
+/// depend on this module's private hex types, and its near miss is always an item the ruleset
+/// knows, so the hex fallback in [`item_name`] could never fire for it anyway (`ah-deo5`).
+pub(crate) fn counted_with_singular(
+    count: i64,
+    tag: &str,
+    singular: &str,
+    plurals: &Plurals,
+) -> String {
     if count == 1 {
-        return format!("1 {}", item_name(tag, hex, ruleset));
+        return format!("1 {singular}");
     }
     let name = plurals
         .get(&tag.to_ascii_uppercase())
         .cloned()
-        .unwrap_or_else(|| item_name(tag, hex, ruleset));
+        .unwrap_or_else(|| singular.to_string());
     format!("{count} {name}")
 }
 
@@ -3805,6 +3819,7 @@ fn check_build_skill(
 fn check_pillage_men(
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
@@ -3837,8 +3852,8 @@ fn check_pillage_men(
         };
         // Why *this* unit's men do not count - the unit whose order is marked, and the one the
         // player can act on. Empty where it is armed and willing: the region is simply short.
-        let because =
-            readiness(facts, ruleset).map_or_else(String::new, |read| because_clause(&read));
+        let because = readiness(facts, ruleset)
+            .map_or_else(String::new, |read| because_clause(&read, ruleset, plurals));
         findings.push(ordered.finding(
             hex,
             codes::PILLAGE_WITHOUT_MEN,
@@ -7231,7 +7246,7 @@ mod tests {
         assert_eq!(told[0].line, Some(2), "on the PILLAGE line");
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this region has 0 — this unit's 1 man holds no weapons he can wield"
+            "cannot pillage here: needs 90 combat ready men, this region has 0 — it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
         );
     }
 
@@ -7291,7 +7306,40 @@ mod tests {
         assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this region has 0 — this unit's 19 men hold no weapons they can wield"
+            "cannot pillage here: needs 90 combat ready men, this region has 0 — it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
+        );
+    }
+
+    /// The whole sentence, head and tail, for a unit holding horses it cannot ride: the join has
+    /// to read as one sentence, and the tail has to name the horses rather than weapons
+    /// (`ah-deo5`).
+    #[test]
+    fn the_pillage_warning_names_the_mount_the_unit_cannot_ride() {
+        let pillager = with_item(
+            with_men(with_silver(unit("683"), 0), 19),
+            3,
+            "horses",
+            "HORS",
+        );
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![pillager])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            told[0].message,
+            "cannot pillage here: needs 90 combat ready men, this region has 0 — its 3 horses need riding 1, and it has no riding"
         );
     }
 
