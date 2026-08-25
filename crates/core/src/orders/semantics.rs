@@ -16513,8 +16513,10 @@ mod tests {
         );
     }
 
-    /// `parse_fleet_kind` is what makes a structure a vessel; a unit inside an ordinary building is
-    /// going nowhere, and without that filter every unit in a fort would stop being checked.
+    /// `sailing_requirement` is what makes a structure a vessel; a unit inside an ordinary
+    /// building is going nowhere, and without that filter every unit in a fort would stop being
+    /// checked. This is the test that caught `parse_fleet_kind` - which reads any non-empty kind
+    /// as a one-hull fleet - being the wrong question.
     #[test]
     fn a_unit_aboard_an_ordinary_building_is_still_told() {
         let fort = Structure {
