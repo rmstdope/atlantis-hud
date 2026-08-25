@@ -93,7 +93,12 @@ export function UnitTooltip({
             <Row key={row.label} label={row.label} value={row.value} />
           ))}
           {summary.silver.note ? (
-            <p className="m-0 mt-1 text-pane-sm text-ink-dim">{summary.silver.note}</p>
+            // `whitespace-pre-line` is what makes a second note a second line: the note joins every
+            // sentence that applies with a newline, and JSX would otherwise collapse it to a space
+            // (`ah-x36v`). Runs of spaces still collapse, so a single-sentence note is unaffected.
+            <p className="m-0 mt-1 whitespace-pre-line text-pane-sm text-ink-dim">
+              {summary.silver.note}
+            </p>
           ) : null}
         </Section>
       ) : null}

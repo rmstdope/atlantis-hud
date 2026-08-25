@@ -210,8 +210,13 @@ describe("the silver section", () => {
       true
     );
 
+    // Every sentence that holds, not the first (`ah-x36v`): no silver moves either, and that is
+    // now said alongside rather than swallowed.
     expect(capped.silver?.note).toBe(
-      "This unit has materials for 0 catapults, not the 2 its men could make."
+      [
+        "This unit has materials for 0 catapults, not the 2 its men could make.",
+        "Nothing this unit is ordered to do moves silver."
+      ].join("\n")
     );
   });
 
@@ -232,7 +237,13 @@ describe("the silver section", () => {
       true
     );
 
-    expect(both.silver?.note).toBe("This unit cannot pay the 200 its production costs.");
+    // The shortfall still reads first, and the capped count is no longer lost behind it (`ah-x36v`).
+    expect(both.silver?.note).toBe(
+      [
+        "This unit cannot pay the 200 its production costs.",
+        "This unit has silver for 1 catapult, not the 2 its men could make."
+      ].join("\n")
+    );
   });
 
   it("says_nothing_when_a_production_runs_at_full_rate", () => {
@@ -286,7 +297,7 @@ describe("the silver section", () => {
       true
     );
     expect(covered.silver?.note).toBe(
-      "Faction food in this hex covers 60 of this unit's upkeep."
+      "This unit's upkeep was paid by faction food here (60)."
     );
 
     const contested = summariseUnit(
@@ -378,7 +389,7 @@ describe("the silver section", () => {
       true,
       true
     );
-    expect(chosen.silver?.note).toBe("This unit's own food covers 60 of its upkeep.");
+    expect(chosen.silver?.note).toBe("This unit's upkeep was paid by its own food (60).");
   });
 
   it("the_silver_section_says_when_a_units_own_food_fed_it", () => {
@@ -388,7 +399,7 @@ describe("the silver section", () => {
       true,
       true
     );
-    expect(fed.silver?.note).toBe("This unit's own food covers 60 of its upkeep.");
+    expect(fed.silver?.note).toBe("This unit's upkeep was paid by its own food (60).");
   });
 
   it("a_unit_fed_by_both_names_its_own_food_first", () => {
@@ -400,7 +411,9 @@ describe("the silver section", () => {
       true,
       true
     );
-    expect(both.silver?.note).toBe("This unit's own food covers 50 of its upkeep.");
+    expect(both.silver?.note).toBe(
+      "This unit's upkeep was paid by its own food (50) and faction food here (10)."
+    );
   });
 
   it("neither_food_note_appears_when_upkeep_is_not_counted", () => {
@@ -424,7 +437,10 @@ describe("the silver section", () => {
       true
     );
     expect(fed.silver?.note).toBe(
-      "Faction food in this hex covers 60 of this unit's upkeep."
+      [
+        "This unit's upkeep was paid by faction food here (60).",
+        "Nothing this unit is ordered to do moves silver."
+      ].join("\n")
     );
   });
 
@@ -438,7 +454,7 @@ describe("the silver section", () => {
       true
     );
     expect(fed.silver?.note).toBe(
-      "The faction's unclaimed silver covers 60 of this unit's upkeep."
+      "This unit's upkeep was paid by the faction's unclaimed silver (60)."
     );
 
     const notCounting = summariseUnit(
@@ -510,7 +526,10 @@ describe("the silver section", () => {
       true
     );
     expect(fed.silver?.note).toBe(
-      "Faction food in this hex covers 60 of this unit's upkeep."
+      [
+        "This unit's upkeep was paid by faction food here (60).",
+        "This unit has no month-long order, so it will work and earn wages."
+      ].join("\n")
     );
   });
 
@@ -633,7 +652,10 @@ describe("the silver section", () => {
     );
 
     expect(summary.silver?.note).toBe(
-      "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys."
+      [
+        "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys.",
+        "This unit cannot pay the 60 its purchase costs."
+      ].join("\n")
     );
   });
 
@@ -714,7 +736,7 @@ describe("the silver section", () => {
       true
     );
     expect(summary.silver?.note).toBe(
-      "A faction-mate's silver in this hex pays this unit's upkeep."
+      "This unit's upkeep was paid by a faction-mate's silver (60)."
     );
   });
 
@@ -730,7 +752,7 @@ describe("the silver section", () => {
       true
     );
     expect(shared.silver?.note).toBe(
-      "A faction-mate's silver in this hex pays this unit's upkeep."
+      "This unit's upkeep was paid by a faction-mate's silver (60)."
     );
 
     const flagged = summariseUnit(aReportUnit({ unitId: "1" }), forecast(), false, true);
@@ -799,9 +821,20 @@ describe("the silver section", () => {
     const note = (silver: Partial<UnitSilver>) =>
       summariseUnit(aReportUnit({ unitId: "1" }), forecast(silver)).silver?.note;
 
-    expect(note(all)).toBe("Includes 100 taken from Workers (6567) in this hex.");
+    // All three now appear together, in this order - which is what `ah-awcm` was agreed to do and
+    // what the first-match contract could not honour (`ah-x36v`).
+    expect(note(all)).toBe(
+      [
+        "Includes 100 taken from Workers (6567) in this hex.",
+        "Includes 25 given by ArmorerA (5671) in this hex.",
+        "Includes 30 given away to nobody."
+      ].join("\n")
+    );
     expect(note({ ...all, taken: 0, takenFrom: [] })).toBe(
-      "Includes 25 given by ArmorerA (5671) in this hex."
+      [
+        "Includes 25 given by ArmorerA (5671) in this hex.",
+        "Includes 30 given away to nobody."
+      ].join("\n")
     );
     expect(note({ ...all, taken: 0, takenFrom: [], received: 0, givers: [] })).toBe(
       "Includes 30 given away to nobody."
@@ -844,7 +877,10 @@ describe("the silver section", () => {
       { label: "At month end", value: "10" }
     ]);
     expect(summary.silver?.note).toBe(
-      "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys."
+      [
+        "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys.",
+        "This unit cannot pay the 60 its purchase costs."
+      ].join("\n")
     );
   });
 
@@ -915,8 +951,12 @@ describe("the silver section", () => {
       ).silver?.note;
 
     // It explains `Out`, which is on show whatever the upkeep setting says (`ah-tdsi`).
-    expect(note(true)).toBe("This unit's withdrawal is paid from the faction's unclaimed silver.");
-    expect(note(false)).toBe("This unit's withdrawal is paid from the faction's unclaimed silver.");
+    const said = [
+      "This unit's withdrawal is paid from the faction's unclaimed silver.",
+      "Nothing this unit is ordered to do moves silver."
+    ].join("\n");
+    expect(note(true)).toBe(said);
+    expect(note(false)).toBe(said);
   });
 
   // The withdrawal note explains a contribution of zero; these two explain money that is on show,
@@ -932,9 +972,17 @@ describe("the silver section", () => {
 
     expect(
       noteFor({ income: 300, expense: 0, atMonthEnd: 360, received: 300, givers: ["2"] })
-    ).toBe("Includes 300 given by 2 in this hex.");
+    ).toBe(
+      [
+        "Includes 300 given by 2 in this hex.",
+        "This unit's withdrawal is paid from the faction's unclaimed silver."
+      ].join("\n")
+    );
     expect(noteFor({ income: 0, expense: 300, atMonthEnd: 60, givenToNobody: 300 })).toBe(
-      "Includes 300 given away to nobody."
+      [
+        "Includes 300 given away to nobody.",
+        "This unit's withdrawal is paid from the faction's unclaimed silver."
+      ].join("\n")
     );
   });
 
@@ -973,12 +1021,14 @@ describe("the silver section", () => {
   });
 });
 
-describe("the silver notes' precedence (ah-hvt8)", () => {
+describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
   it.each(SILVER_NOTES.map((note) => [note.id, note] as const))(
-    "%s wins for its own example",
+    "%s appears for its own example",
     (id, note) => {
       const facts = note.example();
-      expect(SILVER_NOTES.find((candidate) => candidate.when(facts))?.id).toBe(id);
+      expect(SILVER_NOTES.filter((candidate) => candidate.when(facts)).map((c) => c.id)).toContain(
+        id
+      );
     }
   );
 
@@ -989,7 +1039,10 @@ describe("the silver notes' precedence (ah-hvt8)", () => {
     }
   );
 
-  /** What each note said before it was lifted out of the chain, read off `HEAD~1`. */
+  /**
+   * What each note says for its own example. Read off `HEAD~1` when the chain became a table
+   * (`ah-hvt8`); `upkeep-paid-by` is the four upkeep-source notes collapsed into one (`ah-x36v`).
+   */
   const SAID_BEFORE: Record<string, string> = {
     "shared-silver-covers-shortfall": "Shared silver in this hex covers the shortfall.",
     "doubt-unknown-tax-base": "The report never said what this region's tax base is.",
@@ -1016,13 +1069,11 @@ describe("the silver notes' precedence (ah-hvt8)", () => {
     "food-contended":
       "There is not enough food here to feed every unit that needs it, so this unit may yet be fed.",
     "unclaimed-contended": "There is not enough unclaimed silver to feed every unit that needs it.",
-    "own-food-covers-upkeep": "This unit's own food covers 10 of its upkeep.",
+    "upkeep-paid-by":
+      "This unit's upkeep was paid by its own food (8), faction food here (12), a faction-mate's silver (20) and the faction's unclaimed silver (10).",
     "forced-own-food": "This unit has no silver for its upkeep, so 2 grain will be eaten.",
-    "faction-food-covers-upkeep": "Faction food in this hex covers 60 of this unit's upkeep.",
     "forced-faction-food":
       "This unit has no silver for its upkeep, so 3 faction food items in this hex will be eaten.",
-    "shared-silver-pays-upkeep": "A faction-mate's silver in this hex pays this unit's upkeep.",
-    "unclaimed-covers-upkeep": "The faction's unclaimed silver covers 10 of this unit's upkeep.",
     "works-by-default": "This unit has no month-long order, so it will work and earn wages.",
     "taxes-by-flag": "This unit is set to tax every turn, so it taxes without an order.",
     "includes-take": "Includes 100 taken from Workers (6567) in this hex.",
@@ -1044,4 +1095,201 @@ describe("the silver notes' precedence (ah-hvt8)", () => {
       expect(note.say(note.example())).toBe(SAID_BEFORE[id]);
     }
   );
+});
+
+describe("the hover says every sentence that holds (ah-x36v)", () => {
+  const forecast = (overrides: Partial<UnitSilver> = {}): UnitSilver =>
+    aUnitSilver({ regionId: "1:6,52", held: 60, expense: 200, atMonthEnd: 60, ...overrides });
+
+  it("a unit whose neighbour pays both ways is told both", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 50, sharedSilverCovered: 20, sharedSilverForOrders: 50 }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.note).toBe(
+      [
+        "This unit's upkeep was paid by a faction-mate's silver (20).",
+        "A faction-mate's silver in this hex pays for this unit's orders."
+      ].join("\n")
+    );
+  });
+
+  it("a unit that takes, receives and destroys is told all three", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        income: 125,
+        taken: 100,
+        takenFrom: ["Workers (6567)"],
+        received: 25,
+        givers: ["Quartermaster (18500)"],
+        givenToNobody: 10
+      })
+    );
+
+    expect(summary.silver?.note).toBe(
+      [
+        "Includes 100 taken from Workers (6567) in this hex.",
+        "Includes 25 given by Quartermaster (18500) in this hex.",
+        "Includes 10 given away to nobody."
+      ].join("\n")
+    );
+  });
+
+  it("a unit with one applicable note is unchanged", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ income: 40000, atMonthEnd: 39860, taxesByFlag: true })
+    );
+
+    expect(summary.silver?.note).toBe(
+      "This unit is set to tax every turn, so it taxes without an order."
+    );
+  });
+});
+
+describe("who paid this unit's upkeep, in one sentence (ah-x36v)", () => {
+  const forecast = (overrides: Partial<UnitSilver> = {}): UnitSilver =>
+    aUnitSilver({ regionId: "1:6,52", held: 60, expense: 200, atMonthEnd: 60, ...overrides });
+
+  const note = (overrides: Partial<UnitSilver>, countUpkeep = true) =>
+    summariseUnit(aReportUnit({ unitId: "1" }), forecast(overrides), false, countUpkeep).silver
+      ?.note;
+
+  it("one source reads as one", () => {
+    expect(note({ upkeep: 0, ownFoodCovered: 8 })).toBe(
+      "This unit's upkeep was paid by its own food (8)."
+    );
+  });
+
+  it("two sources read as a pair", () => {
+    expect(note({ upkeep: 0, factionFoodCovered: 12, sharedSilverCovered: 20 })).toBe(
+      "This unit's upkeep was paid by faction food here (12) and a faction-mate's silver (20)."
+    );
+  });
+
+  it("all four read in the game's payment order", () => {
+    expect(
+      note({
+        upkeep: 0,
+        ownFoodCovered: 8,
+        factionFoodCovered: 12,
+        sharedSilverCovered: 20,
+        unclaimedCovered: 10
+      })
+    ).toBe(
+      "This unit's upkeep was paid by its own food (8), faction food here (12), a faction-mate's silver (20) and the faction's unclaimed silver (10)."
+    );
+  });
+
+  it("a unit fed at step five is not also said to have paid with its own food", () => {
+    // `ah-eacd`: a unit fed at step 5 has a non-zero `ownFoodCovered` too, so the guard that kept
+    // the two sentences apart must survive into the collapsed one.
+    const said = note({
+      upkeep: 0,
+      ownFoodCovered: 10,
+      forcedOwnFood: 2,
+      forcedOwnFoodTag: "GRAI",
+      factionFoodCovered: 12
+    });
+
+    expect(said).toContain("This unit's upkeep was paid by faction food here (12).");
+    expect(said).not.toContain("its own food");
+  });
+
+  it("with upkeep counting off nothing is said", () => {
+    expect(note({ upkeep: 0, ownFoodCovered: 8, unclaimedCovered: 10 }, false) ?? "").not.toContain(
+      "upkeep was paid by"
+    );
+  });
+});
+
+describe("no note can be shadowed by another (ah-x36v)", () => {
+  // The old guard set one field per note, so no combination was ever tried and a note unreachable
+  // only alongside another was invisible to it - which is exactly how `ah-moq3` and `ah-awcm` both
+  // shipped a sentence nobody could see. With every fact true at once, every note whose condition
+  // is satisfied must appear, which tests every note against every other in a single case.
+  const DOUBTS: NonNullable<UnitSilver["doubt"]>[] = [
+    "unknown-tax-base",
+    "unpriced-production",
+    "unpriced-skill",
+    "unknown-goods",
+    "estimated-men",
+    "takes-all-from-another",
+    "contested-region-pool",
+    "market-does-not-sell",
+    "gives-a-whole-class",
+    "contested-faction-food"
+  ];
+
+  // Built with `aUnitSilver` (`ah-uhnd`) so a field added to `UnitSilver` later does not silently
+  // fall out of the case.
+  const everything = (doubt: UnitSilver["doubt"]): UnitSilver =>
+    aUnitSilver({
+      regionId: "1:6,52",
+      doubt,
+      doubtSubject: "mithril",
+      held: 60,
+      income: 400,
+      lateIncome: 200,
+      expense: 300,
+      atMonthEnd: 60,
+      upkeep: 50,
+      shortForOrders: 40,
+      shortOn: "buy",
+      received: 25,
+      givers: ["Quartermaster (18500)"],
+      taken: 100,
+      takenFrom: ["Workers (6567)"],
+      givenToNobody: 10,
+      ownFoodCovered: 8,
+      forcedOwnFood: 2,
+      forcedOwnFoodTag: "GRAI",
+      factionFoodCovered: 12,
+      forcedFactionFood: 3,
+      sharedSilverCovered: 20,
+      sharedSilverForOrders: 50,
+      unclaimedCovered: 10,
+      unclaimedContended: true,
+      foodContended: true,
+      withdrawing: true,
+      produced: 1,
+      producedName: "catapult",
+      productionWanted: 3,
+      productionCappedBy: "silver",
+      worksByDefault: true,
+      taxesByFlag: true
+    });
+
+  const unit = aReportUnit({ men: 6, items: [{ tag: "GRAI", name: "grain", amount: 4 }] });
+
+  it.each(DOUBTS)("every note appears when every fact is true (%s)", (doubt) => {
+    const silver = everything(doubt);
+    const facts = { unit, silver, warned: false, countUpkeep: true };
+    const expected = SILVER_NOTES.filter((note) => note.when(facts)).map((note) => note.say(facts));
+
+    // A case that exercises only a handful of notes would prove nothing about the rest.
+    expect(expected.length).toBeGreaterThan(10);
+    expect(summariseUnit(unit, silver, false, true).silver?.note).toBe(expected.join("\n"));
+  });
+
+  it("leaves no note unreachable but the two that read a silence", () => {
+    const appeared = new Set(
+      DOUBTS.flatMap((doubt) => {
+        const facts = { unit, silver: everything(doubt), warned: false, countUpkeep: true };
+        return SILVER_NOTES.filter((note) => note.when(facts)).map((note) => note.id);
+      })
+    );
+
+    // Two notes say that something did NOT happen, so an everything-is-true case cannot reach
+    // either: `shared-silver-covers-shortfall` is inferred from a negative month end nothing warns
+    // about and no faction-mate covered, and `nothing-moves-silver` from an income and an expense
+    // of zero. Each is covered by its own example above. Every other note must appear here.
+    expect(
+      SILVER_NOTES.map((note) => note.id).filter((id) => !appeared.has(id))
+    ).toEqual(["shared-silver-covers-shortfall", "nothing-moves-silver"]);
+  });
 });
