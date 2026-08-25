@@ -1651,7 +1651,10 @@ pub(crate) fn item_effects(
     let mut result: BTreeMap<String, UnitItemEffects> = BTreeMap::new();
 
     for region in &report.regions {
-        let hex = Hex::read(region, &ordered);
+        // `&[]`: a unit this month's `FORM` orders create is out of scope here, exactly as it was
+        // before `ah-jw85` gave `Hex::read` a third argument - `ah-agbm`'s own follow-up, not this
+        // bead's, if the ITEMS column is to project a formed unit's BUY or SELL too.
+        let hex = Hex::read(region, &ordered, &[]);
         let ledger = ledger_for(&hex, ruleset);
 
         for movement in ledger.movements {
@@ -9056,7 +9059,7 @@ mod tests {
             read: impl FnOnce(&Ledger<'_>) -> R,
         ) -> R {
             let ordered = OrderedUnits::read(orders);
-            let hex = Hex::read(&hex_region, &ordered);
+            let hex = Hex::read(&hex_region, &ordered, &[]);
             let rules = ruleset();
             let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
