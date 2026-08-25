@@ -22,10 +22,11 @@ use super::forms::{Amount, Party, Selector};
 use super::intents::{read_intents, spends_the_month, Intent, PlacedIntent, UnitIntents};
 use super::standing::{self, standing_after, Boarding};
 use crate::movement::mode::{
-    best_allowance, cargo_capacity, fleet_label, parse_fleet_kind, sailing_requirement,
+    best_allowance, capacities_from_items, cargo_capacity, fleet_label, parse_fleet_kind,
+    sailing_requirement, Capacities,
 };
 use crate::movement::orders::MoveStep;
-use crate::movement::rules::{item_spellings, Production, Ruleset, SkillEntry};
+use crate::movement::rules::{item_spellings, ItemKind, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
     because_clause, combat_ready, feed_after_silver, feed_from_faction_food, food_claim,
     forecast_unit, late_income, parse_wage_centis, pillage_threshold, pool_wants, price_cast,
@@ -4306,6 +4307,74 @@ fn weight_after_orders(
     Some(weight)
 }
 
+/// This unit's carrying capacity once the month's transfers have run, as `weight_after_orders`
+/// does for the other side of the same comparison.
+///
+/// The two must be computed at the same moment or the check compares a repriced load against a
+/// stale allowance - which warned a real player that a perfectly mobile caravan would not move
+/// (`ah-titf`, GitHub #677). The report's `Capacity:` line is printed before this month's orders
+/// run, and it is a sum whose composition is not recoverable, so the capacity is rebuilt from the
+/// unit's item list rather than adjusted.
+///
+/// `None` - and the caller then falls back to the report's own printed line - with no ruleset,
+/// when any tag the unit holds is not in it, or when the item list does not account for every man
+/// the unit has. Men carry, so a list that names fewer of them than the unit holds understates
+/// capacity, and understating capacity is what manufactures the false warning this exists to
+/// remove. That is the absence of information rather than a unit of no capacity, and the report's
+/// own printed line is the better answer to it.
+///
+/// A balance below zero is read as zero. Giving away more than the unit holds is its own finding,
+/// and a negative count would subtract capacity and so manufacture exactly the false warning this
+/// function exists to remove.
+fn capacity_after_orders(
+    ordered: &Ordered<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+) -> Option<Capacities> {
+    let ruleset = ruleset?;
+
+    let mut counts: Vec<(String, i64)> = ordered
+        .unit
+        .items
+        .iter()
+        .map(|item| (item.tag.to_ascii_uppercase(), item.amount))
+        .collect();
+
+    for ((unit_id, tag), balance) in &ledger.balance {
+        if unit_id != &ordered.unit.unit_id {
+            continue;
+        }
+        let moved = balance - ordered.holding(tag);
+        if moved == 0 {
+            continue;
+        }
+        let key = tag.to_ascii_uppercase();
+        if let Some(entry) = counts.iter_mut().find(|(held, _)| held == &key) {
+            entry.1 = entry.1.saturating_add(moved);
+        } else {
+            counts.push((key, moved));
+        }
+    }
+
+    let priced: Vec<(&str, i64)> = counts
+        .iter()
+        .map(|(tag, count)| (tag.as_str(), (*count).max(0)))
+        .collect();
+
+    let listed_men: i64 = priced
+        .iter()
+        .filter_map(|(tag, count)| {
+            let item = ruleset.find_item(tag)?;
+            (item.kind == ItemKind::Man).then_some(*count)
+        })
+        .sum();
+    if listed_men < ordered.unit.men {
+        return None;
+    }
+
+    capacities_from_items(&priced, ruleset)
+}
+
 /// The sailing levels one unit supplies once this month's transfers of men have run.
 ///
 /// A unit's skill level is held by each of its men - "the number of skill levels of the Sailing
@@ -4603,10 +4672,13 @@ fn check_sailing(
 /// ballast away and walking off in the same month is the ordinary fix for being overloaded, and a
 /// check reading the printed weight would warn about it.
 ///
-/// The allowance is the report's own, unrepriced. A unit that gives away the horses it was riding
-/// loses ride capacity as well as weight, and this does not follow that - the error runs towards
-/// saying nothing rather than towards a warning that is wrong, which is the trade this module
-/// makes everywhere.
+/// The allowance is repriced for the same month, by `capacity_after_orders`, because the printed
+/// `Capacity:` line was worked out before those same orders ran. A unit that buys pack animals
+/// gains their weight and, on that line, none of their capacity - which is how a real player was
+/// told a mobile caravan would not move (`ah-titf`, GitHub #677). The other direction is repaired
+/// with it: a unit that gives away the horses it was riding now loses their capacity too, so an
+/// overload that used to pass in silence is warned about. Where the ruleset cannot price what the
+/// unit holds, the report's own line is used, exactly as before.
 ///
 /// A unit riding a fleet says `SAIL`, which is its own intent, so a passenger is passed over here
 /// without needing to be excluded.
@@ -4630,10 +4702,13 @@ fn check_movement(
             continue;
         };
 
-        let (Some(allowance), Some(weight)) = (
-            best_allowance(ordered.unit),
-            weight_after_orders(ordered, ledger, ruleset),
-        ) else {
+        let allowance = capacity_after_orders(ordered, ledger, ruleset)
+            .map(|capacity| capacity.fly.max(capacity.ride).max(capacity.walk))
+            .or_else(|| best_allowance(ordered.unit));
+
+        let (Some(allowance), Some(weight)) =
+            (allowance, weight_after_orders(ordered, ledger, ruleset))
+        else {
             continue;
         };
 
@@ -15830,6 +15905,15 @@ mod tests {
         }
     }
 
+    /// `carrying`, where the capacity line is stated in full rather than as a walk figure alone.
+    fn carrying_with(id: &str, weight: i64, capacity: &str) -> ReportUnit {
+        ReportUnit {
+            weight: Some(weight),
+            capacity: Some(capacity.to_string()),
+            ..unit(id)
+        }
+    }
+
     #[test]
     fn an_overloaded_unit_ordered_to_move_is_warned_on_its_move_line() {
         let finding = only(check(
@@ -15917,6 +16001,110 @@ mod tests {
         };
         assert_eq!(
             codes(&check(vec![region(vec![unit])], "unit 13432\nMOVE S\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// The caravan the reporter of GitHub #677 was told would not move: 1 leader, 1 horse and 15
+    /// grain, printed `Capacity: 0/70/85/0`, which then takes sixteen more horses. The weight
+    /// follows the horses; the printed allowance does not, so the check compared 935 against 85
+    /// and called a perfectly mobile unit immobile.
+    #[test]
+    fn a_unit_that_buys_pack_animals_is_not_called_overloaded() {
+        let caravan = with_item(
+            with_item(
+                with_item(carrying_with("11619", 135, "0/70/85/0"), 1, "leader", "LEAD"),
+                1,
+                "horse",
+                "HORS",
+            ),
+            15,
+            "grain",
+            "GRAI",
+        );
+        let stable = with_item(unit("11992"), 16, "horses", "HORS");
+
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![caravan, stable])],
+                "unit 11992\nGIVE 11619 16 HORS\nunit 11619\nMOVE N\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// The other half of the same gap, and a warning that did not fire before: giving the horses
+    /// away costs their capacity as well as their weight. 1 leader + 15 grain can carry 15 and
+    /// weighs 135.
+    #[test]
+    fn a_unit_that_gives_its_horses_away_loses_their_capacity() {
+        let caravan = with_item(
+            with_item(
+                with_item(
+                    carrying_with("11619", 935, "0/1190/1205/0"),
+                    1,
+                    "leader",
+                    "LEAD",
+                ),
+                17,
+                "horses",
+                "HORS",
+            ),
+            15,
+            "grain",
+            "GRAI",
+        );
+
+        let finding = only(check(
+            vec![region(vec![caravan, unit("11992")])],
+            "unit 11619\nGIVE 11992 17 HORS\nMOVE N\n",
+        ));
+        assert_eq!(finding.code.as_str(), "unit-overloaded");
+        assert!(
+            finding
+                .message
+                .contains("it carries 85 and the most it can move with is 15"),
+            "{}",
+            finding.message
+        );
+    }
+
+    /// The fallback: with no ruleset, or holding a tag the ruleset cannot price, the check is
+    /// exactly what it is without this repair - the report's own printed allowance.
+    #[test]
+    fn a_unit_is_judged_by_the_printed_capacity_when_the_ruleset_cannot_price_it() {
+        let overloaded = carrying("12054", 1800, 150);
+
+        let findings = check_turn(
+            &report(vec![region(vec![overloaded.clone()])]),
+            "unit 12054\nMOVE S S\n",
+            None,
+            disabling(codes::UNIT_DOES_NOTHING),
+        );
+        assert_eq!(only(findings).code.as_str(), "unit-overloaded");
+
+        // a tag the catalogue does not carry silences the derived rule, not the check
+        let exotic = with_item(overloaded, 1, "thingummy", "ZZZZ");
+        let finding = only(check(vec![region(vec![exotic])], "unit 12054\nMOVE S S\n"));
+        assert_eq!(finding.code.as_str(), "unit-overloaded");
+        assert!(
+            finding
+                .message
+                .contains("the most it can move with is 150"),
+            "{}",
+            finding.message
+        );
+    }
+
+    /// An item list that does not name the unit's men cannot price it: men carry, and counting a
+    /// unit's capacity without them understates it. The printed line answers instead.
+    #[test]
+    fn a_unit_whose_items_do_not_account_for_its_men_keeps_the_printed_capacity() {
+        // one man by the headcount, no man item in the list - so 15 grain alone would derive a
+        // capacity of 0 and invent an overload; the printed 150 is used instead
+        let hauler = with_item(carrying("12054", 100, 150), 15, "grain", "GRAI");
+        assert_eq!(
+            codes(&check(vec![region(vec![hauler])], "unit 12054\nMOVE S S\n")),
             Vec::<&str>::new()
         );
     }
