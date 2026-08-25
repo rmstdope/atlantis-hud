@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlantis lookup skill (ah-97ij)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:22px; align-items:start; }
+  .cards.two { grid-template-columns:repeat(2,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:11px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .card h3 .recd { color:var(--ground); background:var(--brass); border-radius:3px; font:10px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px; text-transform:uppercase; padding:1px 5px; margin-left:6px; vertical-align:2px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; padding:0; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"2 "; color:var(--danger); }
+  pre.ev { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:2px; white-space:pre-wrap; max-height:340px; }
+  pre.ev b { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; color:var(--ink-soft); }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+</style></head><body>
+<header><h1><span>ah-97ij</span> &mdash; a skill that looks the Atlantis rules up</h1>
+<p><strong>The problem.</strong> Every role here reasons about Atlantis constantly and answers
+from recall. <code>docs/order-checks/README.md:41</code> admits it outright about the STUDY rules:
+&ldquo;Source: the rules text at atlantis-pbem.com/rules, <strong>unread for this
+investigation</strong>.&rdquo; Bead ah-9js cost an implementation, a ruleset regeneration and a round
+of test edits because a plan and its expected result disagreed about what the data page calls a
+building &mdash; and the data page, the arbiter, was never opened.</p>
+<p><strong>What I found.</strong> Both pages are plain server-rendered HTML, no JavaScript.
+The rules page carries <strong>129 named anchors</strong> &mdash; one per section, per table and per
+order &mdash; so it slices exactly. The data page is one <code>&lt;pre&gt;</code> block of
+<strong>711 entries</strong> (480 skill levels, 171 items, 60 objects), median 105 characters each.
+<strong>And this repository already commits both pages verbatim</strong> as
+<code>tests/fixtures/ruleset/neworigins-rules.html</code> and <code>-data.html</code> &mdash; which I
+checked byte-for-byte against the live site just now: <b>identical today</b>.</p></header>
+<main><section><h2 class="rule"><em>the point</em>A lookup is small enough to be free</h2>
+<p>This is what makes the idea work at all. The median rules slice is 620 characters and the
+largest is 5.2&nbsp;KB, against 126&nbsp;KB if an agent read the whole page. Four real lookups,
+verbatim output &mdash; nothing here is illustrative:</p>
+<div class="cards two">
+<div class="card"><h3><em>rules</em>the TRANSPORT order</h3><p class="concept"><code>atlantis rules transport</code> &mdash; 1,201 characters</p><pre class="ev">TRANSPORT [unit] [num] [item]
+TRANSPORT [unit] ALL [item]
+TRANSPORT [unit] ALL [item] EXCEPT [amount]
+Transport the specified items to the given target. In the second form
+all of the specified item is transported. In the last form, all of the
+specified item except for the specified amount is transported. Long
+distance transportation of goods between 2 and 3 hexes away has an
+associated cost. This cost is based on the weight of the items being
+transported. At higher skill levels of the quartermaster skill, the cost
+for transporting goods will be less. At higher skill levels of the
+quartermaster skill, the maximum distance goods can be transported
+increases over the above. The target of the transport unit must be a
+unit with the quartermaster skill and must be the owner of a transport
+structure. For long distance transport between quartermasters, the
+issuing unit must also be a quartermast
+…</pre></div>
+<div class="card"><h3><em>rules</em>the economy section on transport</h3><p class="concept"><code>atlantis rules economy_transport</code> &mdash; 1,585 characters</p><pre class="ev">Transportation of goods
+Martial factions may train Quartermaster units. A Quartermaster unit may
+accept TRANSPORT ed items from any unit within 2
+hexes distance from the hex containing the quartermaster. Quartermasters
+may also TRANSPORT items to any unit within 2
+hexes distance from the hex containing the quartermaster and may TRANSPORT items to another quartermaster up to 3
+hexes distant. The distance a quartermaster can TRANSPORT items to another quartermaster will
+increase with the level of skill possessed by the quartermaster unit.
+In order to accomplish this function, a quartermaster must be the owner
+of a structure which allows transportation of items. The structures
+which allow this 
+…</pre></div>
+<div class="card"><h3><em>data</em>the sailing skill, all levels</h3><p class="concept"><code>atlantis data SAIL</code> &mdash; 271 characters</p><pre class="ev">sailing [SAIL] 1: A unit with this skill may use the SAIL order to
+  sail ships. This skill costs 10 silver per month of study.
+
+sailing [SAIL] 2: No skill report.
+
+sailing [SAIL] 3: No skill report.
+
+sailing [SAIL] 4: No skill report.
+
+sailing [SAIL] 5: No skill report.</pre></div>
+<div class="card"><h3><em>data</em>what a Tower actually is</h3><p class="concept"><code>atlantis data Tower</code> &mdash; the ah-9js question, in 1.2 KB</p><pre class="ev">Tower: This is a building. Units may enter this structure. This
+  structure provides defense to the first 10 men inside it. This
+  structure gives a defensive bonus of 2 against melee attacks, 2
+  against energy attacks, 2 against spirit attacks, 2 against weather
+  attacks, 2 against riding attacks and 2 against ranged attacks. This
+  structure also protects in all adjacent regions.
+
+Magical Tower: This is a building. Units may enter this structure.
+  This structure provides defense to the first 10 men inside it. This
+  structure gives a defensive bonus of 3 against melee attacks, 3
+  against energy attacks, 3 against spirit attacks, 3 against weather
+  attacks, 3 against riding attacks and 3 against ranged attacks. This
+  structure also protects in all adjacent regions. Units in this
+  structure are not affected by an earthquake. This structure will
+  allow up to 3 mages to study above level 2.
+
+Magician&#x27;s Tower: This is a building. Evil magicians can potentially
+  lair in this structure. This structure cannot be built by players.
+
+Dark Mage Tower: This is a building. Dark mages can potentially lair
+  in this structure. This structure cannot be built by players.</pre></div>
+</div></section>
+<section><h2 class="rule"><em>question 1</em>Where the skill reads from</h2><div class="cards">
+<div class="card rec"><h3><em>A</em>The committed copy<span class="recd">recommended</span></h3><p class="concept">The skill reads <code>tests/fixtures/ruleset/*.html</code>, already in the repo. A refresh command re-fetches them when you ask.</p><ul class="notes"><li class="">Instant, offline, works at 2am with no network.</li><li class="">Deterministic &mdash; the same question gives the same answer twice.</li><li class="">A rules change arrives as a reviewable diff in a PR.</li><li class="">It is what <code>docs/ruleset-contract.md</code> already decided for <code>ruleset.json</code>.</li><li class="con">Goes stale silently unless something refreshes it &mdash; question 2.</li></ul></div>
+<div class="card"><h3><em>B</em>Live fetch every time</h3><p class="concept">The skill fetches the page on every lookup and slices the response.</p><ul class="notes"><li class="">Never stale.</li><li class="con">284&nbsp;KB per lookup, and WebFetch summarises &mdash; the agent gets a paraphrase, not the rule.</li><li class="con">A network dependency inside an unattended implementer.</li><li class="con">No diff, so nobody ever learns the rules changed.</li></ul></div>
+<div class="card"><h3><em>C</em>Live, falling back to the copy</h3><p class="concept">Try the network; use the committed copy when it fails.</p><ul class="notes"><li class="">Current when it can be.</li><li class="con">Two code paths, and the agent cannot tell which answer it got.</li><li class="con">The same summariser loss as B on the good path.</li></ul></div>
+</div></section>
+<section><h2 class="rule"><em>question 2</em>How anyone notices the game changed</h2>
+<p>The rules page says <code>Last Change: Jun 20, 2025</code> and opens with &ldquo;Changes from
+New Origins v7: <strong>Meals are now 50 silver each (was 30 silver)</strong>.&rdquo; That is exactly
+the kind of number this application prices things with. The committed copy is current today; nothing
+guarantees it stays so.</p><div class="cards">
+<div class="card rec"><h3><em>A</em>A scheduled job opens a PR<span class="recd">recommended</span></h3><p class="concept">A weekly GitHub Action re-fetches both pages and opens a PR when they differ.</p><ul class="notes"><li class="">Rules drift becomes a reviewed diff nobody has to remember to look for.</li><li class="">Never blocks unrelated work.</li><li class="con">One more workflow to own.</li></ul></div>
+<div class="card"><h3><em>B</em>A CI check that fails</h3><p class="concept">CI re-fetches on every run and fails the build when the pages differ.</p><ul class="notes"><li class="">Impossible to ignore.</li><li class="con">Blocks every unrelated PR the day the site is edited.</li><li class="con">Puts the network on the critical path of every build.</li></ul></div>
+<div class="card"><h3><em>C</em>Nothing automated</h3><p class="concept">Every lookup prints the snapshot date; refreshing is manual.</p><ul class="notes"><li class="">No new machinery at all.</li><li class="con">In practice nobody refreshes until something is already wrong.</li></ul></div>
+</div></section>
+<section><h2 class="rule"><em>question 3</em>What the skill covers</h2>
+<p>ah-9js failed in the gap between <em>what the game says</em> and <em>what this repository
+believes</em>. The repo derives <code>config/public/ruleset.json</code> from these same two pages
+(171 items, 96 skills, 58 buildings) and the app shows it in the game-data dictionary.</p>
+<div class="cards two">
+<div class="card rec"><h3><em>A</em>The sources, and the repo&#x27;s own copy<span class="recd">recommended</span></h3><p class="concept">Lookups over the two pages, plus a short section naming <code>config/public/ruleset.json</code>, saying which side is the arbiter, and giving the command to check one against the other.</p><ul class="notes"><li class="">Addresses the recorded failure directly rather than its neighbourhood.</li><li class="">An agent that finds a disagreement knows which side is wrong.</li><li class="con">A longer skill, and one more thing to keep true.</li></ul></div>
+<div class="card"><h3><em>B</em>The two sources only</h3><p class="concept">Lookups, and nothing else.</p><ul class="notes"><li class="">Shorter; one job, done once.</li><li class="con">Leaves the exact gap ah-9js fell into.</li></ul></div>
+</div></section>
+<section><h2 class="rule"><em>question 4</em>Where agents are told to reach for it</h2>
+<p>A constraint worth knowing before you answer: <strong>every skill and agent file here except
+<code>.claude/skills/release/</code> is a symlink into the <code>cerebro</code> submodule</strong>,
+which is game-agnostic and shared with other projects. So the instruction cannot go into
+<code>plan-bead</code>, <code>implement-bead</code> or any role definition &mdash; that would put
+Atlantis knowledge into shared code, which is the one thing the bead rules out. It has to live in
+this repository's own files.</p>
+<table class="q">
+<tr><th>File</th><th>What is there now</th><th>What would change</th></tr>
+<tr><td class="k">CLAUDE.md:8-9</td><td>&ldquo;### Rules &mdash; The rules for the game can be found at https://atlantis-pbem.com/rules&rdquo; &mdash; a bare URL with no tooling behind it</td><td>Becomes a pointer to the skill, naming both pages and the lookup command</td></tr>
+<tr><td class="k">.github/copilot-instructions.md:8-9</td><td>The same sentence, duplicated for the PR reviewer</td><td>The same change, or left alone</td></tr>
+<tr><td class="k">the skill&rsquo;s own <code>description</code></td><td>&mdash;</td><td>The thing that actually makes Claude Code surface it unprompted</td></tr>
+</table></section>
+</main></body></html>

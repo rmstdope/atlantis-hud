@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlantis lookup skill (ah-97ij) — the words that ship</title>
+<style>  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); } em { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.88em; color:var(--brass-bright); }
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:22px; align-items:start; }
+  .cards.two { grid-template-columns:repeat(2,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:11px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .card h3 .recd { color:var(--ground); background:var(--brass); border-radius:3px; font:10px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px; text-transform:uppercase; padding:1px 5px; margin-left:6px; vertical-align:2px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; padding:0; margin-top:auto; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .term { border:1px solid var(--edge); border-radius:6px; overflow:hidden; margin-top:4px; }
+  .term.bad { border-color:#5a3236; } .term.warn { border-color:#5a4a2a; }
+  .cmdline { background:var(--raised); padding:6px 11px; font:12px/1.5 'SF Mono',Menlo,Consolas,monospace; color:var(--ink); border-bottom:1px solid var(--edge); }
+  .cmdline .ps { color:var(--brass); margin-right:7px; }
+  pre.out { background:var(--ground); padding:10px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; white-space:pre-wrap; margin:0; }
+  pre.out b { color:var(--ok); } pre.out i { color:var(--danger); font-style:normal; } pre.out u { color:var(--ink-dim); text-decoration:none; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; color:var(--ink-soft); }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+
+  .diff { border:1px solid var(--edge); border-radius:6px; overflow:hidden; margin-top:8px; }
+  .diff .fn { background:var(--raised); padding:5px 11px; font:11px/1.5 'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); border-bottom:1px solid var(--edge); }
+  pre.d { background:var(--ground); padding:10px 11px; font:11.5px/1.62 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; white-space:pre-wrap; margin:0; }
+  pre.d .add { color:var(--ok); display:block; } pre.d .del { color:var(--danger); display:block; }
+  pre.d .ctx { color:var(--ink-dim); display:block; }
+</style></head><body>
+<header><h1><span>ah-97ij</span> &mdash; round three: the words, and how hard the rule is</h1>
+<p>Settled so far: the committed copy, a weekly PR carrying both the pages and the regenerated
+ruleset, a P0 bead when the scraper throws, empty skill levels collapsed, and the names
+<code>atlantis-rules</code> / <code>pnpm run atlantis</code>. Three things left, and all three are
+yours because all three ship as text other agents obey.</p></header><main>
+<section><h2 class="rule"><em>question 1</em>How hard is the obligation?</h2>
+<p>This is the question the bead actually turns on. A skill that merely <em>exists</em> is
+reached for when an agent happens to think of it &mdash; and the whole problem is that an agent
+which misremembers a rule does not know it is misremembering, so it never thinks of it. The
+project&rsquo;s most repeated retrospective finding, <strong>161 sightings</strong>, is a plan
+asserting an interaction as fact where the fact was false. Here is what replaces
+<code>CLAUDE.md:8-9</code> under each option.</p><div class="cards">
+<div class="card"><h3><em>A</em>A pointer</h3><p class="concept">The bare URL becomes a pointer to the skill. Nothing is obliged.</p><div class="diff"><div class="fn">CLAUDE.md</div><pre class="d"><span class="ctx">### Rules</span><span class="del">-The rules for the game can be found at https://atlantis-pbem.com/rules</span><span class="add">+The rules are at https://atlantis-pbem.com/rules and the game data at</span><span class="add">+https://atlantis-pbem.com/data. Both are committed to this repository and</span><span class="add">+looked up with `pnpm run atlantis` — see the `atlantis-rules` skill.</span></pre></div><ul class="notes"><li class="">No new obligation on anybody; nothing to police.</li><li class="con">Relies on an agent suspecting it is wrong — which is exactly what a misremembered rule prevents.</li></ul></div>
+<div class="card rec"><h3><em>B</em>A citation rule<span class="recd">recommended</span></h3><p class="concept">Any Atlantis fact that gets written down must be looked up first, and the lookup named.</p><div class="diff"><div class="fn">CLAUDE.md</div><pre class="d"><span class="ctx">### Rules</span><span class="del">-The rules for the game can be found at https://atlantis-pbem.com/rules</span><span class="add">+The rules are at https://atlantis-pbem.com/rules and the game data at</span><span class="add">+https://atlantis-pbem.com/data. Both are committed to this repository and</span><span class="add">+looked up with `pnpm run atlantis` — see the `atlantis-rules` skill.</span><span class="add">+</span><span class="add">+ALWAYS look a rule up rather than recalling it. A statement about how</span><span class="add">+Atlantis behaves — in a plan, a test expectation, a code comment or a</span><span class="add">+bead — must come from a lookup, and must name it, e.g. `rules/give` or</span><span class="add">+`data/SWOR`. You do not know which of your Atlantis memories are wrong;</span><span class="add">+that is why this is a rule and not a suggestion.</span></pre></div><ul class="notes"><li class="">Turns "I recall" into "I checked", which is the whole point of the bead.</li><li class="">Checkable by a reviewer: the lookup is either named or it is not.</li><li class="con">An obligation on every session, including ones where it is obvious overkill.</li></ul></div>
+<div class="card"><h3><em>C</em>A citation rule, for a named list</h3><p class="concept">Same as B, but obliged only for order syntax, item/skill/structure numbers and the sequence of events.</p><ul class="notes"><li class="">Narrower, so less friction on prose that is only loosely about the game.</li><li class="con">An agent must first judge whether its claim is on the list — a judgement it makes with the same faulty memory.</li></ul></div>
+</div></section>
+<section><h2 class="rule"><em>question 2</em>When the app disagrees with the game</h2>
+<p>You asked for the skill to cover <code>config/public/ruleset.json</code> as well as the two
+pages, because ah-9js fell in that gap. The fork is whether &ldquo;the data page is the arbiter&rdquo;
+is <em>prose an agent reads</em> or <em>a command an agent runs</em>.</p><div class="cards two">
+<div class="card rec"><h3><em>A</em>A verify subcommand<span class="recd">recommended</span></h3><p class="concept"><code>atlantis verify</code> diffs the app&rsquo;s belief against the committed page and prints every disagreement.</p><div class="term warn"><div class="cmdline"><span class="ps">$</span> pnpm run atlantis verify</div><pre class="out">comparing config/public/ruleset.json against the committed data page
+
+<b>items      171 / 171 agree</b>
+<b>buildings   58 /  58 agree</b>
+skills      95 /  96 agree
+  <i>MINI  cost   ruleset 10, data page 12</i>
+
+<i>1 disagreement. The data page is the arbiter — regenerate with
+pnpm run atlantis refresh, do not edit ruleset.json by hand.</i>
+
+<u>exit 1</u></pre></div><ul class="notes"><li class="">An agent that suspects a mismatch gets an answer instead of an opinion.</li><li class="">It is the check the weekly PR should also run, so one thing serves both.</li><li class="con">More to build, and it can only compare what the scraper models — items, skills, buildings, movement — not the prose.</li></ul></div>
+<div class="card"><h3><em>B</em>Prose in the skill</h3><p class="concept">A short section in SKILL.md naming the file, saying the data page wins, and giving the regenerate command.</p><ul class="notes"><li class="">Costs almost nothing to write and cannot rot into a false pass.</li><li class="con">An agent still has to notice the disagreement by eye — which is what nobody did in ah-9js.</li></ul></div>
+</div></section>
+<section><h2 class="rule"><em>question 3</em>How this reaches the fleet</h2>
+<p>It is a P0 with the buffer empty, so how it is cut decides how fast an implementer can start.
+My reading is that it is two increments, not one: the lookup is useful the day it lands, and the
+weekly workflow is a different kind of work with different tests. I would split it and let the
+lookup go first.</p>
+<table class="q">
+<tr><th></th><th>Cut</th><th>What lands</th><th>Why</th></tr>
+<tr><td class="k">A</td><td class="k">two children</td>
+<td><strong>.1</strong> the <code>atlantis</code> command, its tests, the skill, and the CLAUDE.md and copilot-instructions edits &mdash; agents can look things up.<br><strong>.2</strong> the weekly workflow, <code>check</code>/<code>refresh</code> wiring and the P0-bead-on-failure path.</td>
+<td>The urgent half ships first and alone. .2 depends on .1 and is planned after it.</td></tr>
+<tr><td class="k">B</td><td class="k">one bead</td><td>All of it in a single PR.</td><td>Nothing is half-done, but it is a large unattended build and the workflow can only be tested by running it.</td></tr>
+<tr><td class="k">C</td><td class="k">three children</td><td>.1 the command and its tests &middot; .2 the skill and the doc pointers &middot; .3 the weekly workflow.</td><td>Smallest pieces, but .1 alone delivers nothing an agent can use.</td></tr>
+</table></section>
+</main></body></html>
