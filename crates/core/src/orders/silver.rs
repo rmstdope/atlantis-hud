@@ -1847,14 +1847,15 @@ pub struct Readiness {
 /// combat ready men are the taxing characters.
 ///
 /// - **Combat 1 makes every man count**, because a skill is held by the unit.
+/// - **So does knowing a spell that damages enemies**, at any level: the rules ask whether the
+///   mage knows the spell, not how well ([`SkillEntry::damages_enemies`], `ah-v585`).
 /// - otherwise `min(men, wieldable weapons + ridable mounts)` - a man either wields something or
 ///   rides something, so the two add up. A weapon needing a skill counts only for a unit holding
 ///   that skill at level 1 or better; a mount counts only for a unit holding the riding level its
 ///   description names ([`required_riding`]).
 ///
-/// **The mage case is not implemented**, by the navigator's decision on 2026-08-25: it is `ah-v585`
-/// rather than a delay to this P0. A combat mage is therefore under-counted here, which costs a
-/// missing warning and never a false one.
+/// A spell that states no damage - `FEAR`, `SSTO` - does not count, deliberately: that under-counts,
+/// which costs a missing warning and never a false one.
 ///
 /// **`avoiding` is not consulted.** `ah-1ad6.2` had it zero a unit's ready men; the navigator
 /// reversed that at `ah-cw75`'s verification, and the rules' taxing test does not mention the flag.
@@ -1870,7 +1871,17 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
     }
     let ruleset = ruleset?;
     let men = facts.men.max(0);
-    if skill_level(facts.skills, "COMB") >= 1 {
+    // The rules' fourth taxing character: "or is a mage who knows a spell which damages enemies"
+    // (`ah-v585`). Any level will do - the rules ask whether the mage knows the spell, not how
+    // well, unlike Combat's explicit "of at least level 1".
+    let knows_a_damaging_spell = facts.skills.iter().any(|held| {
+        held.level >= 1
+            && ruleset
+                .skills
+                .get(&held.tag.to_uppercase())
+                .is_some_and(|entry| entry.damages_enemies)
+    });
+    if skill_level(facts.skills, "COMB") >= 1 || knows_a_damaging_spell {
         return Some(Readiness { men, ready: men });
     }
     let mut mounted_or_armed = 0i64;
@@ -2947,6 +2958,7 @@ mod tests {
             }),
             produces: Vec::new(),
             magic: true,
+            damages_enemies: false,
             requires: Vec::new(),
             levels: Vec::new(),
         }
@@ -5273,6 +5285,23 @@ mod combat_ready_tests {
             &unit(men, items, &flags, skills, &receipts),
             Some(&ruleset()),
         )
+    }
+
+    /// The rules' fourth taxing character: "or is a mage who knows a spell which damages enemies".
+    /// A mage carrying no weapon at all still has every one of its men counted (`ah-v585`).
+    #[test]
+    fn a_mage_who_knows_a_damaging_spell_makes_every_man_count() {
+        let read = read(3, &[], &[], &[skill("FIRE", 1)]).expect("countable");
+        assert_eq!(read.men, 3);
+        assert_eq!(read.ready, 3);
+    }
+
+    /// The discriminator has to bite at the point of use, not only in the scraper: a shield spell
+    /// damages nobody, so its mage taxes on no account of it.
+    #[test]
+    fn a_mage_with_only_a_shield_spell_does_not() {
+        let read = read(3, &[], &[], &[skill("FSHI", 1)]).expect("countable");
+        assert_eq!(read.ready, 0);
     }
 
     #[test]

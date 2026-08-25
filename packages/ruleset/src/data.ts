@@ -393,6 +393,26 @@ function readRequirements(paragraph: string): SkillRequirement[] {
 const MAGIC_WORDS = /\b(?:mage|magic|spell|cast(?!le)|summon|enchant|Foundation)/i;
 
 /**
+ * Whether a spell damages enemies, which is one of the four ways the rules let a unit TAX - and so
+ * one of the ways its men count toward PILLAGE's threshold (`ah-v585`). The data page marks it
+ * nowhere, so it is read from the skill's own description, exactly as `magic` is.
+ *
+ * "deals N damage" is the discriminator, and it is chosen because it separates cleanly on the
+ * committed fixture where looser patterns do not:
+ *
+ *   matches 8 - FIRE, EQUA, STOR, CALL, SBLA, BUND, BDEM, DISP
+ *   the four shields say "shield against all ranged attacks" and match nothing here
+ *   the four summons say the creatures "aid in battle" and match nothing here
+ *
+ * A pattern on `attack` or `battle` would have caught both groups. Deliberately excluded: FEAR and
+ * SSTO, cast at enemies but stating no damage - under-counting, which costs a missing warning
+ * rather than a false one. Deliberately included: BUND, BDEM and DISP, which damage only undead,
+ * demons and illusions; they damage enemies when those enemies are present, and the rules draw no
+ * distinction.
+ */
+const DAMAGES_ENEMIES = /\bdeals? \d+ damage\b/i;
+
+/**
  * "via magic at a cost of 600 silver [SILV]." / "... of sword [SWOR]." / "... of 75 floater
  * hides [FLOA] and 75 ironwood [IRWD]." Stops at the first period: the sentence continues "To use
  * this spell ...", and no input name in the fixture carries a dot of its own.
@@ -619,6 +639,10 @@ export function parseSkillReference(html: string): SkillReference {
       magic:
         (existing?.magic ?? false) ||
         (Number.parseInt(level, 10) === 1 && MAGIC_WORDS.test(paragraph)),
+      // Level-1 only and `||`-accumulated, for the same reasons `magic` is.
+      damagesEnemies:
+        (existing?.damagesEnemies ?? false) ||
+        (Number.parseInt(level, 10) === 1 && DAMAGES_ENEMIES.test(paragraph)),
       ...(levels.length > 0 ? { levels } : {})
     };
   }

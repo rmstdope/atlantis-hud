@@ -504,6 +504,13 @@ pub struct SkillEntry {
     /// studied by ordinary means anyway.
     #[serde(default)]
     pub magic: bool,
+    /// Whether casting this skill damages enemies, which is one of the four ways the rules let a
+    /// unit TAX - and so one of the ways its men count toward `PILLAGE`'s threshold. The data page
+    /// marks it nowhere and the scraper reads it from the skill's own description, exactly as
+    /// `magic` is read. `false` for a ruleset scraped before this was added, which under-counts
+    /// rather than over-counts - a missing warning rather than a false one.
+    #[serde(default)]
+    pub damages_enemies: bool,
     /// What a unit must already have before it may begin this skill, as the data page's `This
     /// skill requires force [FORC] 1 to begin to study.` states it. Empty for a skill with no
     /// prerequisites, and for a ruleset cached before they were scraped.
