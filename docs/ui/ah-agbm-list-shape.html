@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-agbm &mdash; Q4: goods that appear and goods that run out</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+    --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; position:relative; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .ord { color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; }
+  .unk { color:var(--ink-dim); }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+</style></head><body>
+<header><h1>Q4 &mdash; <span>goods that appear, and goods that run out</span></h1>
+<p>Buying and withdrawing put goods in a unit's hands that its report never listed; selling and giving can empty a stock entirely. The ITEMS column is one comma-separated line, so both cases change its <i>shape</i>, not just its numbers.</p>
+<p><b>What <code>GIVE</code> does today.</b> A stock that reaches zero <b>disappears from the line</b> (the report never lists an empty stock, so the preview does not either), and a newly-acquired item is <b>appended at the end</b>. This question is whether those two rules are right now that four more orders can trigger them.</p>
+<p><b>The situation on this page.</b> <code>Farmhands (5518)</code> holds <code>120 SILV, 12 FUR, 4 LEAT</code>. It is told to sell every fur (the market wants fur at $32) and to buy 5 grain at $18.</p>
+<p class="mono" style="color:var(--brass-bright);font-size:13px;margin-top:12px">unit 5518<br>&nbsp;&nbsp;sell all FUR<br>&nbsp;&nbsp;buy 5 GRAI</p></header>
+<main>
+
+<h3 class="sec">Option A &mdash; exactly the rule GIVE uses today</h3>
+<p>The emptied stock vanishes; the new one is appended at the end of the line. Nothing about the existing behaviour changes.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:140px"><col></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5518</td><td>Farmhands</td><td class="colhi"><span class="pred">414 SILV, 4 LEAT, 5 GRAI</span></td></tr>
+</tbody></table>
+<div class="tip"><b>hover</b>was: 120 SILV, 12 FUR, 4 LEAT</div>
+</div>
+<ul class="notes">
+<li>One rule for every order that moves items &mdash; which is what this bead is for.</li>
+<li>The line reads like a report line, because that is what it will become next month.</li>
+<li class="con">The fur is simply <b>gone</b> from the line. A player scanning the column sees no trace of the sale; only the hover says the fur was ever there.</li>
+</ul></div>
+
+<h3 class="sec">Option B &mdash; an emptied stock stays, at zero</h3>
+<p>The sale is visible in the column itself: <code>0 FUR</code> says the fur went, rather than leaving a gap the eye slides over.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:140px"><col></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5518</td><td>Farmhands</td><td class="colhi"><span class="pred">414 SILV, 0 FUR, 4 LEAT, 5 GRAI</span></td></tr>
+</tbody></table>
+<div class="tip"><b>hover</b>was: 120 SILV, 12 FUR, 4 LEAT</div>
+</div>
+<ul class="notes">
+<li>The disappearance is the thing worth seeing, and this is the only option that shows it in the column.</li>
+<li class="con"><b>It changes what <code>GIVE</code> does today</b>, which the bead did not ask for &mdash; every existing gift row grows a <code>0 X</code>.</li>
+<li class="con">A unit that empties several stocks reads as a row of zeroes, crowding out what it does hold in a column that truncates.</li>
+<li class="con">The line no longer looks like a report line; no report ever prints <code>0 FUR</code>.</li>
+</ul></div>
+
+<h3 class="sec">Option C &mdash; emptied stocks vanish, new goods sorted in rather than appended</h3>
+<p>As Option A, except that grain is placed among the existing goods (alphabetically by tag) instead of tacked on the end.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:140px"><col></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5518</td><td>Farmhands</td><td class="colhi"><span class="pred">5 GRAI, 4 LEAT, 414 SILV</span></td></tr>
+</tbody></table>
+<div class="tip"><b>hover</b>was: 120 SILV, 12 FUR, 4 LEAT</div>
+</div>
+<ul class="notes">
+<li>Two rows of the same goods always read in the same order, whatever each unit did this month.</li>
+<li class="con"><b>Reorders the whole line</b>, so a row can go italic with no number having changed &mdash; and the "was:" hover no longer lines up with it left to right.</li>
+<li class="con">Diverges from the report's own ordering, which the column otherwise mirrors exactly.</li>
+<li class="con">Changes <code>GIVE</code>'s shipped behaviour, as Option B does.</li>
+</ul></div>
+
+</main>
+<footer>Mockup for <code>ah-agbm</code>. Worked through: 12 FUR at $32 = $384; 5 GRAI at $18 = $90; 120 + 384 &minus; 90 = 414 SILV.</footer>
+</body></html>

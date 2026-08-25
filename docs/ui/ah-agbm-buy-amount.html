@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-agbm &mdash; Q1: how much a BUY shows</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+    --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; position:relative; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .ord { color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; }
+  .unk { color:var(--ink-dim); }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+</style></head><body>
+<header><h1>Q1 &mdash; <span>how much a BUY puts in the ITEMS column</span></h1>
+<p>The ITEMS column already shows a pending <code>GIVE</code> in <span class="pred">italic brass</span>: the holding the unit will have once the order runs. This bead extends that to <code>BUY</code>, <code>SELL</code>, <code>WITHDRAW</code> and <code>TAKE</code>. The first question is what number a <code>BUY</code> contributes when the market cannot fill the order.</p>
+<p><b>The situation on this page.</b> The region's market states <code>For Sale: 12 grain [GRAI] at $18</code>. Two of our units in that hex both order grain &mdash; 20 and 10 &mdash; so 30 is asked of a line that carries 12. The rules split an oversubscribed line in proportion to what each unit tried to buy, so <b>Hunters get 8 and Farmhands 4</b>. The Silver column already settles it exactly this way and charges each unit for what it actually gets.</p></header>
+<main>
+
+<h3 class="sec">Option A &mdash; the settled figure: what the unit will actually hold</h3>
+<p>The column shows the outcome the market will produce. It is the same settlement the Silver column already charges against, so the two columns tell one story.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:150px"><col style="width:210px"><col><col style="width:110px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th><th>SILVER</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5512</td><td>Hunters</td><td class="ord">buy 20 GRAI</td><td class="colhi"><span class="pred">356 SILV, 3 SWOR, 8 GRAI</span></td><td>356</td></tr>
+<tr><td class="own">*</td><td class="uid">5518</td><td>Farmhands</td><td class="ord">buy 10 GRAI</td><td class="colhi"><span class="pred">78 SILV, 2 LEAT, 4 GRAI</span></td><td>78</td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>The ITEMS column and the Silver column cannot disagree: both read the one settlement.</li>
+<li>The player sees the real consequence of two of their own units competing for one line.</li>
+<li class="con">The column shows 8 where the order says 20, and nothing on the row says why. The hover (Q5, next round) is where that would be said.</li>
+</ul></div>
+
+<h3 class="sec">Option B &mdash; the asked figure: what the order says</h3>
+<p>The column takes the order at its word and shows the full quantity.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:150px"><col style="width:210px"><col><col style="width:110px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th><th>SILVER</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5512</td><td>Hunters</td><td class="ord">buy 20 GRAI</td><td class="colhi"><span class="pred">140 SILV, 3 SWOR, 20 GRAI</span></td><td>356</td></tr>
+<tr><td class="own">*</td><td class="uid">5518</td><td>Farmhands</td><td class="ord">buy 10 GRAI</td><td class="colhi"><span class="pred">30 SILV, 2 LEAT, 10 GRAI</span></td><td>78</td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>The column reads exactly like the order the player typed.</li>
+<li class="con"><b>The two columns now contradict each other on the same row</b> &mdash; ITEMS says 140 silver left, SILVER says 356. Both are on screen at once.</li>
+<li class="con">It shows grain the unit will not have, in the one place the player looks to check their orders did what they meant.</li>
+</ul></div>
+
+<h3 class="sec">Option C &mdash; refuse: a BUY the market cannot fill projects nothing</h3>
+<p>The cell falls back to what the report says, upright, exactly as an unreadable order does today.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:150px"><col style="width:210px"><col><col style="width:110px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th><th>SILVER</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5512</td><td>Hunters</td><td class="ord">buy 20 GRAI</td><td class="colhi">500 SILV, 3 SWOR</td><td>356</td></tr>
+<tr><td class="own">*</td><td class="uid">5518</td><td>Farmhands</td><td class="ord">buy 10 GRAI</td><td class="colhi">150 SILV, 2 LEAT</td><td>78</td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>Never shows a figure that is not certain.</li>
+<li class="con">An oversubscribed line is <b>the ordinary case</b> whenever two of your units buy the same goods, so this would leave the column blind most of the time.</li>
+<li class="con">The Silver column moves and the ITEMS column does not, which reads as a defect.</li>
+</ul></div>
+
+</main>
+<footer>Mockup for <code>ah-agbm</code>. The figures are worked through: 12 grain at $18, asked 20 and 10, split 8 and 4; Hunters hold 500 SILV and 3 SWOR before the month, Farmhands 150 SILV and 2 LEAT.</footer>
+</body></html>

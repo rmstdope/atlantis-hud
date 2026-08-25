@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-agbm &mdash; Q2: when one order cannot be counted</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+    --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; position:relative; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .ord { color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; }
+  .unk { color:var(--ink-dim); }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+</style></head><body>
+<header><h1>Q2 &mdash; <span>when one of a unit's orders cannot be counted</span></h1>
+<p>Some orders cannot be projected at all: <code>BUY ALL HORS</code> (how many depends on every other thing the month spends), a <code>BUY</code> of goods this market does not sell, <code>GIVE 5512 ALL ITEMS</code> (a whole class), a <code>TAKE FROM 999 ALL SILV</code> where 999 is not in this hex. The question is what that does to the <i>rest</i> of the unit's orders.</p>
+<p><b>The situation on this page.</b> <code>Traders (5530)</code> holds <code>300 SILV, 40 FUR, 6 HERB</code>. It is given three orders. Two can be counted exactly &mdash; the market wants fur at $32, and the gift is a plain quantity to a unit standing right here. One cannot be counted at all.</p>
+<p class="mono" style="color:var(--brass-bright);font-size:13px;margin-top:12px">unit 5530<br>&nbsp;&nbsp;sell 40 FUR<br>&nbsp;&nbsp;buy all HORS<br>&nbsp;&nbsp;give 5512 2 HERB</p></header>
+<main>
+
+<h3 class="sec">Option A &mdash; per order: count what can be counted, say nothing about the rest</h3>
+<p>This is exactly what <code>GIVE</code> does today: an order that cannot be read changes nothing, and the unit's other orders still apply.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:150px"><col></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5530</td><td>Traders</td><td class="colhi"><span class="pred">1580 SILV, 4 HERB</span></td></tr>
+</tbody></table>
+<div class="tip"><b>hover</b>was: 300 SILV, 40 FUR, 6 HERB</div>
+</div>
+<ul class="notes">
+<li>The two orders that <i>can</i> be checked are checked. The sale and the gift both read correctly.</li>
+<li>It is the rule the column already follows, so nothing about <code>GIVE</code> changes.</li>
+<li class="con"><b>Nothing on the row says a horse is missing.</b> The player sees a confident italic figure that silently omits one of their three orders.</li>
+</ul></div>
+
+<h3 class="sec">Option B &mdash; per unit: one unreadable order silences the whole cell</h3>
+<p>The cell falls back to the report, upright. This is the rule the silver ledger already uses internally: a unit whose orders touch something unpriceable is not judged at all.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:150px"><col></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5530</td><td>Traders</td><td class="colhi">300 SILV, 40 FUR, 6 HERB</td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>Never shows a projection with a hole in it. What is italic is always complete.</li>
+<li class="con">The unit vanishes from the column's usefulness entirely: the sale of 40 fur is perfectly knowable and is not shown.</li>
+<li class="con">One <code>BUY ALL</code> anywhere in a unit's block blanks everything else it does &mdash; and the row looks identical to a unit with no orders at all.</li>
+</ul></div>
+
+<h3 class="sec">Option C &mdash; per order, and the cell admits the gap</h3>
+<p>Everything countable is counted, and a trailing marker says part of the month could not be. The hover names the order.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:150px"><col></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5530</td><td>Traders</td><td class="colhi"><span class="pred">1580 SILV, 4 HERB</span> <span class="unk">+&nbsp;?</span></td></tr>
+</tbody></table>
+<div class="tip"><b>hover</b>was: 300 SILV, 40 FUR, 6 HERB<br><span style="color:var(--ink-soft)">and more that cannot be counted: <code style="font-size:11px">buy all HORS</code></span></div>
+</div>
+<ul class="notes">
+<li>Keeps everything Option A gets right, and stops the figure claiming to be the whole month.</li>
+<li>The <span class="unk">+&nbsp;?</span> matches the Silver column's existing <code>?</code> for a figure it will not guess at.</li>
+<li class="con">A new mark in a dense column, on a row that is already italic. It has to be quiet enough not to shout and visible enough to be seen.</li>
+<li class="n">The exact wording of that hover line is Q5, next round, if this option wins.</li>
+</ul></div>
+
+</main>
+<footer>Mockup for <code>ah-agbm</code>. Worked through: 40 FUR sold at $32 = $1280, so 300 + 1280 = 1580 SILV and no fur; 6 HERB less the 2 given = 4 HERB; <code>buy all HORS</code> contributes nothing in any option.</footer>
+</body></html>
