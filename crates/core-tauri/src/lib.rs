@@ -2152,6 +2152,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
                 // A misspelled keyword belongs to no hex and to no unit.
                 region_id: None,
                 unit_id: None,
+                formed: None,
                 severity: atlantis_hud_core::OrderDiagnosticSeverity::Error,
             }]
         );

@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::movement::rules::{ItemKind, Production, Ruleset, SkillEntry};
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
-use crate::orders::semantics::{counted_with_singular, Plurals};
+use crate::orders::semantics::{counted_with_singular, FormedSubject, Plurals};
 use crate::report::model::{ItemAmount, Skill};
 
 /// "Each taxing character collects $50."
@@ -274,6 +274,10 @@ pub struct UnitSilver {
     /// `false` for a unit that also carries an explicit `TAX`, which has an order on screen that
     /// explains itself.
     pub taxes_by_flag: bool,
+    /// Set when this unit is not one the report shows but one this month's `FORM` orders create -
+    /// see [`FormedSubject`]. The interface names the unit by its alias and sends a click to
+    /// `formed_by`, since a unit that does not exist cannot be selected.
+    pub formed: Option<FormedSubject>,
 }
 
 /// The kind of order a shortfall bites on, so the hover can name it (`ah-uwa3`).
@@ -607,6 +611,8 @@ pub struct UnitFacts<'a> {
     pub skills: &'a [Skill],
     pub intents: &'a [PlacedIntent],
     pub receipts: &'a Receipts,
+    /// Set when this unit is not one the report shows but one this month's `FORM` orders create.
+    pub formed: Option<&'a FormedSubject>,
 }
 
 /// Everything about the region that the arithmetic needs, lifted out so the function takes values.
@@ -787,6 +793,7 @@ pub fn forecast_unit(
     let own_food = own_food_pass(&facts);
     // Kept before the destructure below, which does not name the field.
     let unit_flags = facts.flags;
+    let formed = facts.formed.cloned();
     let upkeep = own_food.as_ref().map(|pass| pass.owed_after_own_food);
     let own_food_covered = own_food.as_ref().map_or(0, |pass| pass.own_food_covered);
     let UnitFacts {
@@ -842,6 +849,7 @@ pub fn forecast_unit(
             production_capped_by: None,
             works_by_default: is_set_to_work(unit_flags, intents),
             taxes_by_flag: false,
+            formed,
         };
     }
 
@@ -1208,6 +1216,7 @@ pub fn forecast_unit(
             && !intents
                 .iter()
                 .any(|placed| matches!(placed.intent, Intent::Tax)),
+        formed,
     }
 }
 
@@ -2925,6 +2934,7 @@ mod tests {
             skills: &[],
             intents,
             receipts,
+            formed: None,
         }
     }
 
@@ -4788,6 +4798,7 @@ mod tests {
             skills: &[],
             intents: &[],
             receipts: no_receipts(),
+            formed: None,
         }
     }
 
@@ -5244,6 +5255,7 @@ mod combat_ready_tests {
             skills,
             intents: &[],
             receipts,
+            formed: None,
         }
     }
 

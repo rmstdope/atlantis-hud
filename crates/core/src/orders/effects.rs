@@ -381,6 +381,36 @@ fn aboard_label(
     Some(format!("{} [{}]", structure.name, structure.structure_id))
 }
 
+/// The unit a `FORM n` creates, as it stands at the start of the turn.
+///
+/// No items, no skills, no men: everything it comes to hold arrives through this month's orders,
+/// exactly as it does for a unit the report shows. That is the whole of what makes it an ordinary
+/// unit to the checks, and it is why `semantics` builds it with this function rather than with one
+/// of its own - two readings of which units a document forms, and of what they are called, is how
+/// the table's rows and the column's figures come to disagree about one turn.
+pub(crate) fn formed_unit(parent: &ReportUnit, alias: &str) -> ReportUnit {
+    ReportUnit {
+        unit_id: format!("new-{alias}"),
+        name: format!("Unit (new {alias})"),
+        region_id: parent.region_id.clone(),
+        faction_id: parent.faction_id.clone(),
+        faction_name: parent.faction_name.clone(),
+        own: true,
+        on_guard: false,
+        flags: Vec::new(),
+        items: Vec::new(),
+        skills: Vec::new(),
+        men: 0,
+        // Nothing has been given yet, and what is given is counted exactly.
+        men_estimated: false,
+        men_by_race: Vec::new(),
+        weight: None,
+        capacity: None,
+        // The game creates the new unit in the same object as the unit forming it.
+        structure_id: parent.structure_id.clone(),
+    }
+}
+
 /// One unit as the walker holds it: the state being changed, and the report's word for diffing.
 struct WorkingUnit {
     unit: ReportUnit,
@@ -657,26 +687,7 @@ impl Working {
             return;
         }
 
-        let unit = ReportUnit {
-            unit_id: format!("new-{}", alias.text),
-            name: format!("Unit (new {})", alias.text),
-            region_id: parent.region_id.clone(),
-            faction_id: parent.faction_id.clone(),
-            faction_name: parent.faction_name.clone(),
-            own: true,
-            on_guard: false,
-            flags: Vec::new(),
-            items: Vec::new(),
-            skills: Vec::new(),
-            men: 0,
-            // Nothing has been given yet, and what is given is counted exactly.
-            men_estimated: false,
-            men_by_race: Vec::new(),
-            weight: None,
-            capacity: None,
-            // The game creates the new unit in the same object as the unit forming it.
-            structure_id: parent.structure_id.clone(),
-        };
+        let unit = formed_unit(parent, &alias.text);
 
         let reported = unit.structure_id.clone();
         let index = self.units.len();

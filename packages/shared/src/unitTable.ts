@@ -339,6 +339,15 @@ export function silverShown(silver: UnitSilver | null, countUpkeep: boolean): nu
   return silver.upkeep === null ? null : silver.atMonthEnd - silver.upkeep;
 }
 
+/**
+ * A silver forecast is found by hex and unit, because `new-1` is unique to a hex, not to a turn:
+ * two hexes can each hold a unit a `FORM 1` created this month (`ah-jw85`), and a lookup keyed on
+ * the unit id alone would hand one hex's figure to the other's row.
+ */
+export function silverKey(regionId: string, unitId: string): string {
+  return `${regionId} ${unitId}`;
+}
+
 export const DEFAULT_COLUMN_SHARES: Record<UnitColumn, number> = {
   own: 24 / NOMINAL_TABLE_PX,
   unitId: 64 / NOMINAL_TABLE_PX,

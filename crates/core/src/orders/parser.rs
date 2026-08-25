@@ -222,6 +222,7 @@ impl Document {
             column_end: Some(opened.column_end),
             region_id: None,
             unit_id: None,
+            formed: None,
             severity: OrderDiagnosticSeverity::Error,
         });
     }
@@ -319,6 +320,7 @@ impl Document {
             // keyword belongs to no hex.
             region_id: None,
             unit_id: None,
+            formed: None,
             severity,
         });
     }

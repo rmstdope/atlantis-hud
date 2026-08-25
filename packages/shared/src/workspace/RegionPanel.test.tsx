@@ -61,6 +61,7 @@ const PROBLEMS: OrderDiagnostic[] = [
     columnEnd: null,
     regionId: "1:7,53",
     unitId: null,
+    formed: null,
     severity: "warning"
   },
   {
@@ -72,6 +73,7 @@ const PROBLEMS: OrderDiagnostic[] = [
     columnEnd: null,
     regionId: "1:7,53",
     unitId: null,
+    formed: null,
     severity: "warning"
   },
   {
@@ -83,6 +85,7 @@ const PROBLEMS: OrderDiagnostic[] = [
     columnEnd: 4,
     regionId: "1:7,53",
     unitId: "18642",
+    formed: null,
     severity: "error"
   }
 ];

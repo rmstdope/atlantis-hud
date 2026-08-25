@@ -12,6 +12,8 @@
 //! turns, so the next divergence fails a test by name with the unit and both numbers in the message
 //! rather than reaching a player as two surfaces contradicting each other.
 
+use atlantis_hud_core::cache::ReportCache;
+use atlantis_hud_core::orders::effects::preview_orders_for_remembered_report;
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
 use atlantis_hud_core::orders::silver::UnitSilver;
 use atlantis_hud_core::report::orders::extract_orders_template;
@@ -316,6 +318,7 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         production_wanted: 0,
         production_capped_by: None,
         works_by_default: false,
+        formed: None,
     }
 }
 
@@ -728,4 +731,57 @@ fn a_hex_that_cannot_cover_its_own_upkeep_is_warned_once_for_the_hex() {
         pool > 0 && pool < claims,
         "the reconstruction must see a real pool that falls short - pool {pool}, claims {claims}"
     );
+}
+
+/// The table's rows and the Silver column's figures are two separate walks of one document
+/// (`effects::Working` and `intents::read_formed`), and they must classify every `FORM` block the
+/// same way or a unit shown in one surface could be silently missing from the other (`ah-jw85`).
+///
+/// Run over the whole corpus rather than a synthetic fixture built for the purpose: none of the 26
+/// committed turns happens to carry a `FORM` order, so this is the drift guard for whichever real
+/// document is the first to, and increment 2's own unit tests (`intents.rs`) already pin the
+/// nested, duplicate-alias and unreadable-alias rules this integration test cannot exercise without
+/// a fixture of its own.
+#[test]
+fn the_preview_and_the_review_form_the_same_units() {
+    let ruleset = ruleset();
+
+    for report in atlantis_hud_fixtures::ALL {
+        let mut parsed = parse_report_full(report.text);
+        classify_units(&mut parsed, &ruleset);
+        let orders = extract_orders_template(report.text)
+            .map(|template| template.text)
+            .unwrap_or_default();
+
+        let review = review_turn(&parsed, &orders, Some(&ruleset), CheckOptions::default());
+        let reviewed: BTreeSet<&str> = review
+            .silver
+            .iter()
+            .map(|silver| silver.unit_id.as_str())
+            .filter(|id| id.starts_with("new-"))
+            .collect();
+
+        let preview = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            atlantis_hud_fixtures::RULESET_JSON,
+            report.text,
+            "[]",
+            &orders,
+        )
+        .expect("the committed ruleset loads");
+        let previewed: BTreeSet<&str> = preview
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .map(|unit| unit.unit.unit_id.as_str())
+            .filter(|id| id.starts_with("new-"))
+            .collect();
+
+        assert_eq!(
+            reviewed, previewed,
+            "{}: the preview's rows and the review's silver entries disagree about which units \
+             this document's FORM blocks create",
+            report.name
+        );
+    }
 }
