@@ -6651,7 +6651,10 @@ mod tests {
         let taker = receipts.get("2391").expect("the taker has receipts");
         assert_eq!(taker.taken_unshown, 100);
         assert_eq!(taker.taken_unshown_from, vec!["unit 999".to_string()]);
-        assert_eq!(taker.taken, 0, "the source is not one the report shows here");
+        assert_eq!(
+            taker.taken, 0,
+            "the source is not one the report shows here"
+        );
         assert!(taker.taken_from.is_empty());
         assert!(!taker.take_all_unpriceable);
     }
@@ -11048,8 +11051,7 @@ mod tests {
             "and it is in the income the column shows"
         );
         assert!(
-            taker.income.unwrap_or(0) + taker.shared_silver_covered
-                >= taker.upkeep.unwrap_or(0),
+            taker.income.unwrap_or(0) + taker.shared_silver_covered >= taker.upkeep.unwrap_or(0),
             "the unit is never shown paying an upkeep nothing in the column pays for"
         );
     }
