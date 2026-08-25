@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::movement::rules::{ItemKind, Production, Ruleset, SkillEntry};
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
+use crate::orders::semantics::{counted_with_singular, Plurals};
 use crate::report::model::{ItemAmount, Skill};
 
 /// "Each taxing character collects $50."
@@ -1877,6 +1878,9 @@ pub struct NearMiss {
     pub skill: String,
     /// The level it needs.
     pub level: i64,
+    /// The unit's own level in that skill - `0` where it has none. The sentence's second clause
+    /// mirrors the shipped `has carpenter 2` (`ah-deo5`).
+    pub held: i64,
 }
 
 impl NearMiss {
@@ -1969,6 +1973,7 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
                 count: held.amount.max(0),
                 skill: skill.to_string(),
                 level,
+                held: skill_level(facts.skills, skill),
             };
             if nearest_miss.as_ref().is_none_or(|best| candidate.beats(best)) {
                 nearest_miss = Some(candidate);
@@ -2002,16 +2007,40 @@ pub fn combat_ready(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<
 /// at all - by Combat skill, or by a mount - and one with Combat 1 must not be told it holds no
 /// weapons while its men are being counted.
 #[must_use]
-pub fn because_clause(readiness: &Readiness) -> String {
-    let men = readiness.men;
-    if men <= 0 || readiness.ready > 0 {
+pub fn because_clause(
+    readiness: &Readiness,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+) -> String {
+    if readiness.men <= 0 || readiness.ready > 0 {
         return String::new();
     }
-    if men == 1 {
-        " — this unit's 1 man holds no weapons he can wield".to_string()
+    let Some(miss) = readiness.nearest_miss.as_ref() else {
+        return " — it has no combat skill, no weapon it can wield, no mount it can ride and no \
+                damaging spell"
+            .to_string();
+    };
+    let goods = counted_with_singular(
+        miss.count,
+        &miss.item,
+        &ruleset
+            .and_then(|ruleset| ruleset.find_item(&miss.item))
+            .map_or_else(|| miss.item.clone(), |entry| entry.name.clone()),
+        plurals,
+    );
+    // The messages print skill *names*, never tags: "needs building 1", never "needs BUIL 1".
+    let skill = ruleset
+        .and_then(|ruleset| ruleset.find_skill(&miss.skill))
+        .map_or_else(|| miss.skill.to_lowercase(), |entry| entry.name.clone());
+    let verb = if miss.count == 1 { "needs" } else { "need" };
+    let held = miss.held;
+    let has = if held > 0 {
+        format!("has {skill} {held}")
     } else {
-        format!(" — this unit's {men} men hold no weapons they can wield")
-    }
+        format!("has no {skill}")
+    };
+    let level = miss.level;
+    format!(" — its {goods} {verb} {skill} {level}, and it {has}")
 }
 
 /// What a unit's taxing earns this month: `men * TAX_PER_MAN`, capped.
@@ -5433,19 +5462,33 @@ mod combat_ready_tests {
         );
     }
 
+    fn plurals() -> Plurals {
+        let mut plurals = Plurals::new();
+        plurals.insert("HORS".to_string(), "horses".to_string());
+        plurals.insert("DBOW".to_string(), "double bows".to_string());
+        plurals.insert("WING".to_string(), "winged horses".to_string());
+        plurals
+    }
+
+    fn clause_for(read: &Readiness) -> String {
+        because_clause(read, Some(&ruleset()), &plurals())
+    }
+
     fn clause(men: i64, ready: i64) -> String {
-        because_clause(&Readiness {
+        clause_for(&Readiness {
             men,
             ready,
             nearest_miss: None,
         })
     }
 
+    /// The fallback, for a unit holding nothing a skill could have made count: the one case where
+    /// the reader genuinely does not know which of the four routes to take (`ah-deo5`).
     #[test]
-    fn an_unarmed_unit_is_told_about_its_weapons() {
+    fn a_unit_with_no_near_miss_is_told_about_all_four_routes() {
         assert_eq!(
             clause(19, 0),
-            " — this unit's 19 men hold no weapons they can wield"
+            " — it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
         );
     }
 
@@ -5461,10 +5504,48 @@ mod combat_ready_tests {
     }
 
     #[test]
-    fn a_single_man_is_described_in_the_singular() {
+    fn a_single_man_with_nothing_gets_the_same_fallback() {
         assert_eq!(
             clause(1, 0),
-            " — this unit's 1 man holds no weapons he can wield"
+            " — it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
+        );
+    }
+
+    #[test]
+    fn a_mount_it_cannot_ride_is_named_in_the_tail() {
+        let read = read(19, &[item("HORS", 3)], &[], &[]).expect("countable");
+        assert_eq!(
+            clause_for(&read),
+            " — its 3 horses need riding 1, and it has no riding"
+        );
+    }
+
+    #[test]
+    fn a_weapon_it_cannot_wield_is_named_in_the_tail() {
+        let read = read(19, &[item("DBOW", 10)], &[], &[]).expect("countable");
+        assert_eq!(
+            clause_for(&read),
+            " — its 10 double bows need longbow 1, and it has no longbow"
+        );
+    }
+
+    /// What pins `counted_item` rather than an invented `-s` (`ah-rsdz`), and the verb with it.
+    #[test]
+    fn a_single_mount_reads_in_the_singular() {
+        let read = read(19, &[item("HORS", 1)], &[], &[]).expect("countable");
+        assert_eq!(
+            clause_for(&read),
+            " — its 1 horse needs riding 1, and it has no riding"
+        );
+    }
+
+    /// Mirrors the shipped `has carpenter 2`: a unit part of the way there is told how far.
+    #[test]
+    fn a_unit_partway_to_the_skill_is_told_what_it_has() {
+        let read = read(19, &[item("WING", 2)], &[], &[skill("RIDI", 1)]).expect("countable");
+        assert_eq!(
+            clause_for(&read),
+            " — its 2 winged horses need riding 3, and it has riding 1"
         );
     }
 
@@ -5474,7 +5555,7 @@ mod combat_ready_tests {
     fn a_unit_with_combat_skill_and_no_weapons_is_not_told_it_holds_no_weapons() {
         let read = read(10, &[], &[], &[skill("COMB", 1)]).expect("countable");
         assert_eq!(read.ready, 10);
-        assert_eq!(because_clause(&read), "");
+        assert_eq!(clause_for(&read), "");
     }
 
     // --- the nearest miss (`ah-deo5`) ---------------------------------------------------------
@@ -5490,6 +5571,7 @@ mod combat_ready_tests {
                 count: 3,
                 skill: "RIDI".to_string(),
                 level: 1,
+                held: 0,
             })
         );
     }
@@ -5506,6 +5588,7 @@ mod combat_ready_tests {
                 count: 10,
                 skill: "LBOW".to_string(),
                 level: 1,
+                held: 0,
             })
         );
     }
