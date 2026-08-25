@@ -327,11 +327,24 @@ pub fn review_turn(
     let unit_by_id = units_by_id(report);
     // Every unit this month's orders create, built once and before `hexes` below so it outlives
     // every `Hex<'_>` that borrows from it (`Ordered` holds a reference into `formed[i].unit`).
+    //
+    // A nested `FORM`'s `formed_by` names the *outer* formed unit's synthetic id, which
+    // `unit_by_id` - the report's own units - has never heard of. `read_formed` returns blocks in
+    // document order and an outer block is always pushed before the inner one nested in it
+    // (`FormReader::open_form`), so the fallback map below always has the parent by the time a
+    // nested block asks for it - mirroring `effects::Working::open_form`, which resolves a nested
+    // parent from `self.units` for the same reason. Without this, a nested `FORM`'s unit is
+    // silently dropped from the review while the preview still shows its row.
+    let mut formed_units: BTreeMap<String, ReportUnit> = BTreeMap::new();
     let formed: Vec<Formed> = read_formed(source, &unit_regions)
         .into_iter()
         .filter_map(|block| {
-            let parent = *unit_by_id.get(block.formed_by.as_str())?;
+            let parent = unit_by_id
+                .get(block.formed_by.as_str())
+                .copied()
+                .or_else(|| formed_units.get(block.formed_by.as_str()))?;
             let unit = effects::formed_unit(parent, &block.alias);
+            formed_units.insert(unit.unit_id.clone(), unit.clone());
             Some(Formed { unit, block })
         })
         .collect();
@@ -17795,6 +17808,33 @@ mod tests {
 
             let silver = forecast(&review, "new-1");
             assert_eq!(silver.formed, Some(expected));
+        }
+
+        /// A nested `FORM`'s parent is the *outer* formed unit's synthetic id, which the report's
+        /// own units (`unit_by_id`) have never heard of - `review_turn` must resolve it against a
+        /// formed unit built earlier in the same pass, or the inner unit is silently dropped from
+        /// the review while the preview still shows its row. Caught by Copilot's review of this
+        /// bead's own PR.
+        #[test]
+        fn a_nested_forms_unit_also_gets_a_silver_entry() {
+            let review = review_turn(
+                &report(vec![region(vec![unit("1922")])]),
+                "unit 1922\nFORM 1\nFORM 2\nEND\nEND\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let outer = forecast(&review, "new-1");
+            let inner = forecast(&review, "new-2");
+            assert_eq!(outer.held, 0);
+            assert_eq!(inner.held, 0);
+            assert_eq!(
+                inner.formed,
+                Some(FormedSubject {
+                    alias: "2".to_string(),
+                    formed_by: "new-1".to_string(),
+                })
+            );
         }
     }
 }
