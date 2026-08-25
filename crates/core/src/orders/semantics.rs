@@ -11018,7 +11018,7 @@ mod tests {
     /// move, since a unit with 100 of its own no longer needs lending. What must hold is that the
     /// column shows where that 100 came from.
     #[test]
-    fn an_unshown_source_does_not_move_the_upkeep_settlement() {
+    fn an_unshown_source_is_counted_so_the_upkeep_settlement_stays_coherent() {
         let regions = || {
             vec![region(vec![
                 with_men(with_silver(starving(unit("5")), 500), 6),
