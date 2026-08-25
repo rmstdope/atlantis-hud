@@ -201,6 +201,25 @@ function namesInAList(names: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
+/**
+ * Who paid this unit's upkeep, in the game's own payment order, each with its figure.
+ *
+ * `ownFoodCovered` is guarded on `forcedOwnFood`, because a unit fed at step 5 has a non-zero
+ * `ownFoodCovered` too and both sentences would otherwise claim the same food (`ah-eacd`).
+ */
+function upkeepSources(silver: UnitSilver): string[] {
+  return [
+    silver.ownFoodCovered > 0 && silver.forcedOwnFood === 0
+      ? `its own food (${silver.ownFoodCovered})`
+      : null,
+    silver.factionFoodCovered > 0 && silver.forcedFactionFood === 0
+      ? `faction food here (${silver.factionFoodCovered})`
+      : null,
+    silver.sharedSilverCovered > 0 ? `a faction-mate's silver (${silver.sharedSilverCovered})` : null,
+    silver.unclaimedCovered > 0 ? `the faction's unclaimed silver (${silver.unclaimedCovered})` : null
+  ].filter((source): source is string => source !== null);
+}
+
 /** Everything a silver note may look at. One object, so a note's condition is a pure predicate. */
 export type SilverFacts = {
   unit: ReportUnit;
@@ -496,21 +515,23 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
-  // The two food notes are ordered by the game's own maintenance payment order: a unit spends its
-  // own food (step 1) before the hex's faction food (step 2), so a unit fed by both names the step
-  // that actually fed it first (`ah-p9z5`).
-  // Guarded on `forcedOwnFood`, because a unit fed at step 5 has a non-zero `ownFoodCovered` too
-  // and this branch would otherwise swallow the step-5 sentence below (`ah-eacd`).
+  // Who actually paid this unit's maintenance, in the game's own payment order: its own food
+  // (step 1), the hex's faction food (step 2), a faction-mate's silver (step 4), the faction's
+  // unclaimed fund (step 7). One note rather than four, because a unit fed by several sources
+  // satisfies several and would otherwise show four near-identical lines (`ah-x36v`).
   {
-    id: "own-food-covers-upkeep",
-    when: ({ silver, countUpkeep }) =>
-      countUpkeep && silver.ownFoodCovered > 0 && silver.forcedOwnFood === 0,
-    say: ({ silver }) => `This unit's own food covers ${silver.ownFoodCovered} of its upkeep.`,
+    id: "upkeep-paid-by",
+    when: ({ silver, countUpkeep }) => countUpkeep && upkeepSources(silver).length > 0,
+    say: ({ silver }) => `This unit's upkeep was paid by ${namesInAList(upkeepSources(silver))}.`,
     example: () => ({
-      unit: aReportUnit({
-        items: [{ tag: "GRAI", name: "grain", amount: 4 }]
+      unit: aReportUnit({ men: 6, items: [{ tag: "GRAI", name: "grain", amount: 4 }] }),
+      silver: aUnitSilver({
+        ownFoodCovered: 8,
+        factionFoodCovered: 12,
+        sharedSilverCovered: 20,
+        unclaimedCovered: 10,
+        upkeep: 0
       }),
-      silver: aUnitSilver({ ownFoodCovered: 10, upkeep: 0 }),
       warned: false,
       countUpkeep: true
     })
@@ -538,21 +559,6 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
-  // An Upkeep of 0 on a unit with six men reads as a defect until something says why: this is the
-  // only row a *neighbour's* holdings move (`ah-7cdt`).
-  {
-    id: "faction-food-covers-upkeep",
-    when: ({ silver, countUpkeep }) =>
-      countUpkeep && silver.factionFoodCovered > 0 && silver.forcedFactionFood === 0,
-    say: ({ silver }) =>
-      `Faction food in this hex covers ${silver.factionFoodCovered} of this unit's upkeep.`,
-    example: () => ({
-      unit: aReportUnit({ men: 6 }),
-      silver: aUnitSilver({ factionFoodCovered: 60, upkeep: 0 }),
-      warned: false,
-      countUpkeep: true
-    })
-  },
   // Step 6. Counted and never named: the pool is other units' inventory, and which items a shared,
   // all-or-nothing pool gives up is not this unit's to say (`ah-eacd`).
   {
@@ -571,20 +577,6 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
-  // Step 4 of the payment order: automatic, and unconditional on the `SHARE` flag, which governs
-  // discretionary spending only. Said of upkeep because upkeep is the only thing automatic sharing
-  // ever pays for (`ah-e66j`, round 1).
-  {
-    id: "shared-silver-pays-upkeep",
-    when: ({ silver, countUpkeep }) => countUpkeep && silver.sharedSilverCovered > 0,
-    say: () => "A faction-mate's silver in this hex pays this unit's upkeep.",
-    example: () => ({
-      unit: aReportUnit(),
-      silver: aUnitSilver({ sharedSilverCovered: 10, upkeep: 0 }),
-      warned: false,
-      countUpkeep: true
-    })
-  },
   // The `SHARE` flag's own purse, and the discretionary twin of the upkeep note above - which is
   // the more specific of the two and so keeps its place ahead of this one. Money appearing from
   // nowhere is exactly what the upkeep, food and unclaimed-fund notes all exist to explain, so a
@@ -599,21 +591,6 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     example: () => ({
       unit: aReportUnit(),
       silver: aUnitSilver({ sharedSilverForOrders: 50, upkeep: 0 }),
-      warned: false,
-      countUpkeep: true
-    })
-  },
-  // Step 7 of the payment order, and so the last of the three notes that explain an Upkeep the
-  // reader can see is smaller than the headcount owes: own food (step 1), the hex's faction food
-  // (step 2), then the faction's unclaimed fund (`ah-fjty`).
-  {
-    id: "unclaimed-covers-upkeep",
-    when: ({ silver, countUpkeep }) => countUpkeep && silver.unclaimedCovered > 0,
-    say: ({ silver }) =>
-      `The faction's unclaimed silver covers ${silver.unclaimedCovered} of this unit's upkeep.`,
-    example: () => ({
-      unit: aReportUnit(),
-      silver: aUnitSilver({ unclaimedCovered: 10, upkeep: 0 }),
       warned: false,
       countUpkeep: true
     })
