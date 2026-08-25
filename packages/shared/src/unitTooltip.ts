@@ -655,6 +655,28 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
+  // The same money, from a source this hex's report does not show. Counted, because the ledger
+  // counts it and the column displays figures the ledger settles - but said separately, because
+  // the reader cannot check this one against anything in front of them (`ah-awcm`).
+  {
+    id: "includes-take-unshown",
+    when: ({ silver }) => silver.takenUnshown > 0 && silver.takenUnshownFrom.length > 0,
+    say: ({ silver }) =>
+      `Includes ${silver.takenUnshown} taken from ${namesInAList(
+        silver.takenUnshownFrom
+      )}, which your report does not show here.`,
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({
+        takenUnshown: 100,
+        takenUnshownFrom: ["unit 999"],
+        income: 100,
+        atMonthEnd: 100
+      }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
   // A gift is the one part of the figure that comes from somebody else's orders, so it is the one
   // part a reader cannot find by looking at this unit's own block.
   {
