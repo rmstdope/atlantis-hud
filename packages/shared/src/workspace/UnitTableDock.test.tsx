@@ -678,3 +678,65 @@ describe("the items column", () => {
     expect(markup).not.toContain('data-predicted="true"');
   });
 });
+
+describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
+  const previewOf = (
+    unitOverrides: Partial<ReportUnit>,
+    previewOverrides: Partial<RegionPreview["units"][number]>
+  ): RegionPreview => ({
+    regionId: "1:6,52",
+    units: [
+      {
+        unit: unit(unitOverrides),
+        status: "present",
+        changes: [],
+        arrivingFrom: null,
+        departingTo: null,
+        aboard: null,
+        uncounted: [],
+        takenUnshown: [],
+        ...previewOverrides
+      }
+    ]
+  });
+
+  it("marks the cell predicted and names what the report said when skills changed", () => {
+    const markup = draw(
+      hex({
+        region: region({
+          units: [unit({ unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }] })]
+        })
+      }),
+      previewOf(
+        { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }] },
+        { changes: [{ field: "skills", original: "LUMB 1 (30)" }] }
+      )
+    );
+
+    expect(markup).toContain('data-predicted="true"');
+    expect(markup).toContain("italic text-brass");
+    expect(markup).toContain("LUMB 2 (80)");
+    expect(markup).toContain("was: LUMB 1 (30)");
+  });
+
+  it("leaves the cell unmarked when a GIVE moved men but skills did not change", () => {
+    // The giver's own row: a GIVE of men changes its Men and Items cells (asserted elsewhere) but
+    // never its Skills cell, so the preview names no "skills" change here.
+    const markup = draw(
+      hex({
+        region: region({
+          units: [unit({ unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 5, points: 450 }] })]
+        })
+      }),
+      previewOf(
+        { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 5, points: 450 }] },
+        { changes: [{ field: "men", original: "10" }] }
+      )
+    );
+
+    const skillsCell = /<td[^>]*>LUMB 5 \(450\)<\/td>/.exec(markup)?.[0];
+    expect(skillsCell).toBeTruthy();
+    expect(skillsCell).not.toContain("italic");
+    expect(skillsCell).not.toContain("data-predicted");
+  });
+});

@@ -757,6 +757,7 @@ function UnitRow({
   const guardChange = changeFor(unit, "onGuard");
   const menChange = changeFor(unit, "men");
   const itemsChange = changeFor(unit, "items");
+  const skillsChange = changeFor(unit, "skills");
   const structureChange = changeFor(unit, "structureId");
   // The cell truncates, so the whole label belongs in the tooltip whether or not it also changed;
   // when it did change, what the report said goes on a line beneath it.
@@ -863,7 +864,15 @@ function UnitRow({
         {describeMenBriefly(unit)}
       </Td>
     ),
-    skills: <Td className="truncate">{skills}</Td>,
+    skills: (
+      <Td
+        className={`truncate${skillsChange ? ` ${PREDICTED}` : ""}`}
+        predicted={Boolean(skillsChange)}
+        title={originalTooltip(skillsChange)}
+      >
+        {skills}
+      </Td>
+    ),
     items: (
       <Td
         className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`}
