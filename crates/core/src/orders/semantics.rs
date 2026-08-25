@@ -4027,7 +4027,10 @@ fn check_production(
                 } else {
                     in_a_list(&names)
                 };
-                let sentence = if sailing.is_some() {
+                // Keyed on the destination actually differing, not on there being a SAIL: a
+                // bare SAIL has no `Go` steps and ends where it started, and telling a player the
+                // vessel is sailing somewhere it is not is worse than the plain wording.
+                let sentence = if region.coordinate != hex.region.coordinate {
                     format!(
                         "cannot produce {label} there: the region this vessel is sailing to produces {has}"
                     )
@@ -16688,6 +16691,30 @@ mod tests {
                 .find(|finding| finding.code == codes::PRODUCE_NOT_HERE)
                 .map(|finding| finding.message.as_str()),
             Some("cannot produce fish there: the region this vessel is sailing to produces wood")
+        );
+    }
+
+    /// A bare `SAIL` has no route, so the vessel ends the month in the hex it started in and the
+    /// plain `here` wording is the true one. Keying the sentence on there being a `SAIL` at all
+    /// would tell the player the boat is sailing somewhere it is not.
+    #[test]
+    fn a_passenger_on_a_vessel_ordered_a_bare_sail_is_told_here() {
+        let findings = check(
+            fleet_sailing_north(one_product(20, "wood", "WOOD")),
+            "unit 4021\nPRODUCE fish\nunit 4022\nSAIL\n",
+        );
+
+        assert_eq!(
+            produce_codes(&findings),
+            ["produce-not-here"],
+            "{findings:?}"
+        );
+        assert_eq!(
+            findings
+                .iter()
+                .find(|finding| finding.code == codes::PRODUCE_NOT_HERE)
+                .map(|finding| finding.message.as_str()),
+            Some("cannot produce fish here: this region produces grain, wood and furs")
         );
     }
 
