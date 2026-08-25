@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ofpb.1 &mdash; Q2: a production the unit's own holdings cut short</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .stagelabel { font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin:14px 0 5px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .unk { color:var(--ink-dim); }
+  .cellbox { border:1px dashed var(--edge); }
+  .clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip.none { color:var(--ink-dim); font-style:italic; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright);
+            background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            margin:10px 0 0; white-space:pre; display:inline-block; }
+  .orders .c { color:var(--ink-dim); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-left:8px; }
+</style></head><body>
+<header><h1>Q2 &mdash; <span>a production the unit's own holdings cut short</span></h1>
+<p>The app already works out that a unit makes fewer than its men could, and the SILVER column's hover already says so: <i>&ldquo;This unit has silver for 1 catapult, not the 2 its men could make.&rdquo;</i> The figure is capped by whichever bites first &mdash; the silver the recipe wants, or the materials.</p>
+<p><b>Two things make this awkward.</b> First, the cap is measured against <b>what the report shows the unit holding</b>, not against a running total &mdash; deliberately, so that the ITEMS and SILVER columns cannot disagree. A unit ordered to <code>buy 10 IRON</code> and <i>then</i> produce really will make more than the figure says. Second, a unit capped all the way down to <b>none</b> moves nothing at all, so its row looks exactly like a unit given no orders.</p>
+<div class="orders">unit 5531  <span class="c">; Weaponsmiths, 8 men, holds 5 IRON, 350 SILV</span>
+  produce sword       <span class="c">; men could make 8; the iron allows 5</span>
+
+unit 5532  <span class="c">; Armourers, 8 men, holds 0 IRON, 350 SILV</span>
+  produce sword       <span class="c">; men could make 8; the iron allows none</span>
+
+unit 5533  <span class="c">; Smiths, 8 men, holds 5 IRON, 350 SILV</span>
+  buy 10 IRON         <span class="c">; the market has 10</span>
+  produce sword       <span class="c">; will really make 8; the report-time cap says 5</span></div>
+</header>
+<main>
+
+<h3 class="sec">C1 &mdash; show the settled figure, and leave the explaining to SILVER<span class="rec">recommended</span></h3>
+<p>The column shows what the unit will really make. Nothing extra is said in the ITEMS hover; the row's own SILVER hover already names the cap, one row-width away.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:118px"><col style="width:220px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5531</td><td>Weaponsmiths</td><td class="colhi cellbox"><span class="clip"><span class="pred">350 SILV, 5 SWOR</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5532</td><td>Armourers</td><td class="colhi cellbox"><span class="clip">350 SILV</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5533</td><td>Smiths</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 IRON, 350 SILV, 5 SWOR</span></span></td></tr>
+</tbody></table>
+</div>
+<div class="tip"><b>hover on unit 5531's ITEMS cell</b>was: 5 IRON, 350 SILV</div>
+<div class="tip none">unit 5532 &mdash; nothing moved, so the row is upright and its ITEMS hover says nothing</div>
+<ul class="notes">
+<li>One rule, and the two columns can never contradict each other.</li>
+<li>Nothing new to word, nothing new to maintain.</li>
+<li class="con">Unit 5532 &mdash; ordered to produce and producing nothing &mdash; is indistinguishable from a unit given no orders at all.</li>
+<li class="con">Unit 5533 will really end the month with 8 swords and 7 iron, not 5 and 10. The column is confidently a little wrong, and says nothing about it.</li>
+</ul></div>
+
+<h3 class="sec">C2 &mdash; show the settled figure and name the cap in the ITEMS hover too</h3>
+<p>Same cells; the hover repeats what stopped it, in the ITEMS column's own words.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:118px"><col style="width:220px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5531</td><td>Weaponsmiths</td><td class="colhi cellbox"><span class="clip"><span class="pred">350 SILV, 5 SWOR</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5532</td><td>Armourers</td><td class="colhi cellbox"><span class="clip">350 SILV</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5533</td><td>Smiths</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 IRON, 350 SILV, 5 SWOR</span></span></td></tr>
+</tbody></table>
+</div>
+<div class="tip"><b>hover on unit 5531's ITEMS cell</b>was: 5 IRON, 350 SILV
+This unit has materials for 5 swords, not the 8 its men could make.</div>
+<div class="tip"><b>hover on unit 5532's ITEMS cell</b>was: 350 SILV
+This unit has materials for no swords, not the 8 its men could make.</div>
+<ul class="notes">
+<li>The one row that shows nothing at least has something to say when hovered.</li>
+<li class="con">Unit 5532's row is still upright and unmarked, so nobody will ever hover it &mdash; there is nothing on screen inviting them to.</li>
+<li class="con">Says the same thing twice on one row, which is the duplication <code>ah-bumi</code> was filed to stop.</li>
+</ul></div>
+
+<h3 class="sec">C3 &mdash; show the settled figure, and mark the cell whenever a cap bit</h3>
+<p>The figure is a floor rather than a certainty, so the cell carries the <code>+ ?</code> it already uses for a month it could not fully count.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:118px"><col style="width:220px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5531</td><td>Weaponsmiths</td><td class="colhi cellbox"><span class="clip"><span class="pred">350 SILV, 5 SWOR</span> <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5532</td><td>Armourers</td><td class="colhi cellbox"><span class="clip">350 SILV <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5533</td><td>Smiths</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 IRON, 350 SILV, 5 SWOR</span> <span class="unk">+&nbsp;?</span></span></td></tr>
+</tbody></table>
+</div>
+<div class="tip"><b>hover on unit 5531's ITEMS cell</b>was: 5 IRON, 350 SILV
+and more that cannot be counted: produce sword</div>
+<ul class="notes">
+<li>Unit 5532 is finally distinguishable from a unit with no orders.</li>
+<li>Honest about unit 5533, whose real figure the column cannot reach.</li>
+<li class="con">A cap is the <i>ordinary</i> case &mdash; almost every producing unit is short of something &mdash; so most producing rows would carry a question mark, and the mark stops meaning anything.</li>
+<li class="con">The hover's wording is wrong here: the order <i>was</i> counted; it was counted to a smaller number.</li>
+</ul></div>
+
+</main>
+<footer>Recipe: <code>WEAP</code> makes 1 sword per man-month from 1 iron, so 8 men want 8 iron. The cap and the figure are the ones the SILVER column already computes and shows &mdash; this question is only about what the ITEMS column does with them. The ITEMS column does not track silver: a BUY records no <code>SILV</code> movement (<code>ah-agbm</code>), so the <code>SILV</code> entry stays at the figure the report printed and the SILVER column owns the money. An earlier draft of this page showed unit 5533's silver falling; it does not.</footer>
+</body></html>

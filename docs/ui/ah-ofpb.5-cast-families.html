@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ofpb.1 - round 2: what the rules really say a CAST creates</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .stagelabel { font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin:14px 0 5px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .unk { color:var(--ink-dim); }
+  .cellbox { border:1px dashed var(--edge); }
+  .clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip.none { color:var(--ink-dim); font-style:italic; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright);
+            background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            margin:10px 0 0; white-space:pre; display:inline-block; }
+  .orders .c { color:var(--ink-dim); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-left:8px; }
+
+  table.data { width:100%; border-collapse:collapse; font:12px/1.45 'Helvetica Neue',Arial,sans-serif; margin-top:6px; }
+  table.data th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); font-weight:400; padding:4px 8px; border-bottom:1px solid var(--edge); }
+  table.data td { padding:4px 8px; border-bottom:1px solid var(--edge-soft); color:var(--ink-soft); vertical-align:top; }
+  table.data td.t { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; white-space:nowrap; }
+  .quote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13px; margin:10px 0; max-width:96ch; font-style:italic; }
+  .bad { color:var(--danger); }
+</style></head><body>
+<header><h1>Round 2 &mdash; <span>what the rules really say a CAST creates</span></h1>
+<p>You were right, and my Q3 page was wrong on the facts. The data page states the output of every creating spell, with its tag and its quantity, in the skill's own level paragraph. <b>The scraper reads only the cost clause and throws the rest away</b> (<code>packages/ruleset/src/data.ts</code>: one regex for <code>via magic at a cost of &hellip;</code>, one for the transmutation pairs, and nothing else). So the app's ruleset genuinely cannot name an output today &mdash; but the source it was built from can.</p>
+<p>Reading all 25 priced spells, they fall into <b>two families that want opposite treatment</b>, and no amount of scraping merges them.</p>
+</header>
+<main>
+
+<h3 class="sec">Family A &mdash; certain, and scaled by the mage's level</h3>
+<p>Seven spells. The mage makes an exact number, every time, and pays per item made.</p>
+<div class="quote">&ldquo;A mage with this skill may create <b>5 times their level</b> in mithril swords [MSWO] via magic at a cost of sword [SWOR].&rdquo;</div>
+<div class="card">
+<table class="data">
+<thead><tr><th>Spell</th><th>Makes</th><th>How many</th><th>Costs, each</th></tr></thead>
+<tbody>
+<tr><td class="t">ESWO</td><td>enchant swords</td><td class="t">5 &times; level MSWO</td><td class="t">1 SWOR</td></tr>
+<tr><td class="t">EARM</td><td>enchant armor</td><td class="t">5 &times; level MARM</td><td class="t">1 PARM</td></tr>
+<tr><td class="t">ESHD</td><td>enchant shields</td><td class="t">5 &times; level MSHD</td><td class="t">1 ISHD</td></tr>
+<tr><td class="t">CRPA</td><td>create amulet of protection</td><td class="t">1 &times; level AMPR</td><td class="t">200 SILV</td></tr>
+<tr><td class="t">CRSS</td><td>create shieldstone</td><td class="t">1 &times; level SHST</td><td class="t">200 SILV</td></tr>
+<tr><td class="t">CRMA</td><td>create magic carpet</td><td class="t">1 &times; level CARP</td><td class="t">400 SILV</td></tr>
+<tr><td class="t">TRNS</td><td>transmutation, 7 outputs</td><td class="t">2 &times; level, or the number asked</td><td class="t">1 of the source</td></tr>
+</tbody></table>
+<ul class="notes">
+<li>Every figure is knowable: the mage's level is in the report and the holdings cap the rest.</li>
+<li class="con"><b>The app charges these wrongly today.</b> <code>cast()</code> charges the stated cost <i>once</i> &mdash; 200 silver, one sword &mdash; however high the level. A level-3 amulet maker really spends 600 silver and the SILVER column says 200. A level-3 sword enchanter really spends 15 swords and the app charges 1.</li>
+<li class="con">Transmutation is under-counted too: an unnumbered <code>CAST Transmutation mithril</code> makes <b>2 &times; level</b>, and the code counts 1 by explicit admission.</li>
+</ul></div>
+
+<h3 class="sec">Family B &mdash; one attempt, and a chance it works</h3>
+<p>Seventeen spells. The cost is paid whatever happens; the item appears on a dice roll.</p>
+<div class="quote">&ldquo;A mage with this skill has a <b>20 percent times their level chance</b> to create a ring of invisibility [RING] via magic at a cost of 600 silver [SILV].&rdquo;</div>
+<div class="card">
+<table class="data">
+<thead><tr><th>Chance per level</th><th>Spells</th><th>Makes</th></tr></thead>
+<tbody>
+<tr><td class="t">90% &times; level</td><td class="t">CRRU</td><td>runesword</td></tr>
+<tr><td class="t">60% &times; level</td><td class="t">CFSW</td><td>flaming sword</td></tr>
+<tr><td class="t">40% &times; level</td><td class="t">CRSF CRWC CRGC CRSH CRSO CRCO CRBX CRHS CRCN</td><td>staff of fire, windchime, gate crystal, staff of healing, scrying orb, cornucopia, book of exorcism, holy symbol, censer</td></tr>
+<tr><td class="t">20% &times; level</td><td class="t">CRRI CRCL CRTA CRAG CPOR CGAT SWIN&nbsp;L3</td><td>ring of invisibility, cloak, amulet of true seeing, aegis, portal, a Gate (not an item), cloudship</td></tr>
+</tbody></table>
+<ul class="notes">
+<li>The cost side is exact and can be shown: 600 silver leaves whether or not a ring appears.</li>
+<li class="con"><b>No scraping makes the arrival knowable.</b> This is a dice roll, not a data gap &mdash; a level-2 ring maker has a 40% chance and the column cannot print 0.4 of a ring.</li>
+<li class="n">This is the honest reason for the <code>+ ?</code> mark you chose in S1, and it is a better reason than the one I gave.</li>
+</ul></div>
+
+<h3 class="sec">What that would look like</h3>
+<p>A level-3 mage of each kind, drawn at the real 220&nbsp;px column width. Family A exact, Family B marked.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:130px"><col style="width:220px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8801</td><td>Swordwright L3</td><td class="colhi cellbox"><span class="clip"><span class="pred">5 SWOR, 15 MSWO</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8802</td><td>Alchemist L3</td><td class="colhi cellbox"><span class="clip"><span class="pred">2 IRON, 200 SILV, 6 MITH</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8803</td><td>Artificer L3</td><td class="colhi cellbox"><span class="clip">900 SILV <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8804</td><td>Seer L3</td><td class="colhi cellbox"><span class="clip">40 SILV</span></td></tr>
+</tbody></table>
+</div>
+<div class="orders">unit 8801  <span class="c">; enchant swords 3, holds 20 SWOR</span>
+  cast Enchant_Swords              <span class="c">; 5 x 3 = 15 swords enchanted -&gt; 15 MSWO, 5 SWOR left</span>
+
+unit 8802  <span class="c">; transmutation 3, holds 8 IRON, 200 SILV</span>
+  cast Transmutation mithril       <span class="c">; unnumbered = 2 x 3 = 6 -&gt; 6 MITH, 2 IRON left</span>
+
+unit 8803  <span class="c">; create ring of invisibility 3, holds 900 SILV</span>
+  cast Create_Ring_Of_Invisibility <span class="c">; 600 SILV certain, 60% chance of one RING</span>
+
+unit 8804  <span class="c">; farsight 3, holds 40 SILV</span>
+  cast Farsight                    <span class="c">; no cost, no item</span></div>
+<div class="tip"><b>hover on unit 8803's ITEMS cell</b>was: 900 SILV
+and more that cannot be counted: cast Create_Ring_Of_Invisibility</div>
+<ul class="notes">
+<li class="n">Unit 8801 and 8802 today would show <b>19 SWOR</b> and <b>7 IRON</b> respectively, and no magic items at all.</li>
+</ul></div>
+
+<h3 class="sec">What it costs to get there</h3>
+<p>Family A needs three things that do not exist:</p>
+<div class="card"><ul class="notes">
+<li class="n"><b>The scraper</b> must read the creation sentence: the output tag, the multiplier (<code>5 times their level</code>, <code>their level</code>, <code>2 &hellip; times the skill level</code>) and whether it is certain or a chance. Today <code>readCastCost</code> reads the cost clause and the transmutation pairs and nothing else.</li>
+<li class="n"><b>The ruleset type</b> must carry it, in Rust and in the generated TypeScript.</li>
+<li class="n"><b>The ledger</b> must charge the level-scaled cost rather than the flat one &mdash; which <b class="bad">changes the SILVER column and which units the shipped <code>not-enough-silver</code> and <code>not-enough-items</code> warnings fire on</b>. That is a correctness fix worth having, and it is not a change the ITEMS column should smuggle in.</li>
+</ul></div>
+
+</main>
+<footer>Every quotation is from <code>config/public/ruleset.json</code>, scraped from the NewOrigins data page on 2026-08-25. Family membership was read off all 25 spells that state a casting cost; <code>EARL</code>, <code>PHEN</code> and every other costless spell states no item and is untouched either way. The ITEMS column does not track silver (<code>ah-agbm</code>): the 600 silver a ring costs shows in the SILVER column, and unit 8803's <code>SILV</code> entry stays where the report left it. That is why its cell is upright with only the mark.</footer>
+</body></html>
