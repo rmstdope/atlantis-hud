@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Silver for a unit formed this month</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+    --predict:#8fa3bb;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1440px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:94ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; position:relative; }
+  .orders { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:9px 11px;
+            font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); white-space:pre; overflow-x:auto; }
+  .orders b { color:var(--brass-bright); font-weight:600; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); }
+  .uid { color:var(--select); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .num { text-align:right; }
+  .neg { color:var(--danger); }
+  .zero { color:var(--ink-dim); }
+  .pred { color:var(--predict); font-style:italic; }
+  .chip { color:var(--predict); font-size:11px; margin-left:6px; font-style:normal; }
+  .blank { outline:1px dashed var(--danger); outline-offset:-1px; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         min-width:250px; max-width:330px; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip .r { display:flex; justify-content:space-between; gap:24px; }
+  .tip .r span:last-child { font-variant-numeric:tabular-nums; }
+  .tip hr { border:0; border-top:1px solid var(--edge); margin:6px 0; }
+  .tip .note { color:var(--ink-dim); font-size:10.5px; margin-top:6px; line-height:1.45; }
+  .tip .sec2 { color:var(--brass); font-size:10px; letter-spacing:1.2px; text-transform:uppercase; margin:8px 0 3px; }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .pair { display:grid; grid-template-columns:minmax(280px,1fr) minmax(300px,340px); gap:16px; align-items:start; }
+  @media (max-width:900px) { .split, .split3, .pair { grid-template-columns:1fr; } }
+</style></head><body>
+<header><h1>The Silver column for a unit that does not exist yet &mdash; <span>as agreed in planning</span></h1>
+<p>Bead <code>ah-jw85</code>. A unit created this month by <code>FORM 1</code> already has a row in the units table &mdash; the one marked <span class="chip">new</span> &mdash; and that row's Items cell already shows the silver its parent is ordered to hand it. Only the Silver cell is blank.</p>
+<p><b>Option A: the new unit is priced exactly like any other unit, always.</b> Its figure is what it will hold when the month ends: nothing to start with, plus what it is given, less what its own orders spend. A new unit nobody has given anything shows a dim <code>0</code>, the same dim <code>0</code> any other penniless unit shows.</p>
+<p>This was chosen over the alternative of leaving the cell blank until something actually moves silver: on screen that blank is indistinguishable from the defect being fixed, and the hover then has no Silver section in which to explain itself.</p></header>
+<main>
+
+<h3 class="sec">1 &middot; The ordinary case &mdash; formed, funded, buying men</h3>
+<p>The parent hands over 500 and the new unit buys five Plainsmen at 40 each. The orders below are one unit's block; the <code>FORM</code> block's own orders belong to the new unit.</p>
+<div class="card">
+  <div class="pair">
+    <div>
+      <div class="orders">unit 1922
+  <b>GIVE NEW 1 500 SILV</b>
+  <b>FORM 1</b>
+    <b>BUY 5 PLAI</b>
+    WORK
+  END
+  @TAX
+</div>
+      <div class="stage" style="margin-top:12px">
+        <table class="units">
+      <colgroup>
+        <col style="width:2%"><col style="width:6%"><col style="width:19%"><col style="width:5%"><col style="width:12%"><col style="width:20%"><col style="width:10%"><col style="width:12%"><col style="width:9%">
+      </colgroup>
+      <thead><tr>
+        <th></th><th>Id</th><th>Unit</th><th class="num">Men</th><th>Skills</th><th>Items</th><th>Structure</th><th>Long order</th><th class="num colhi">Silver</th>
+      </tr></thead>
+          <tbody>
+          <tr><td class="own">*</td><td class="uid">1922</td><td>Tax Collector</td><td class="num">8</td><td>COMB 2 (90)</td><td>8 LEAT, <span class="pred">0 SILV</span></td><td>&mdash;</td><td>@tax</td><td class="num">300</td></tr>
+          <tr><td class="own">*</td><td class="uid">2101</td><td>Scholar</td><td class="num">2</td><td>STEA 1 (30)</td><td>2 LEAT, 60 SILV</td><td>Tower [3]</td><td>@study comb</td><td class="num">14</td></tr>
+          <tr><td class="own">*</td><td class="uid">new-1</td><td><span class="pred">Unit (new 1)</span><span class="chip">new</span></td><td class="num pred">0</td><td>&mdash;</td><td><span class="pred">500 SILV</span></td><td>&mdash;</td><td>@work</td><td class="num">300</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <div class="tip">
+        <b>Unit (new 1)</b>
+        <div class="sec2">Silver</div>
+        <div class="r"><span>Held now</span><span>0</span></div>
+        <div class="r"><span>In, in time</span><span>500</span></div>
+        <div class="r"><span>Out</span><span>200</span></div>
+        <hr>
+        <div class="r"><span>At month end</span><span>300</span></div>
+        <div class="note">Includes $500 given by Tax Collector (1922).</div>
+      </div>
+      <ul class="notes">
+        <li>The figure the player wants: what the recruits will be sitting on once they are bought.</li>
+        <li>Tax Collector's own 500 is already gone from its figure today &mdash; that half works.</li>
+        <li class="n">Silver 300 = 0 held + 500 given &minus; 200 spent on five Plainsmen.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">2 &middot; Formed and given nothing</h3>
+<p>The state the two options actually differ on. A bare <code>FORM</code>, or one whose parent has not been told to fund it yet &mdash; a half-written turn, which is most of the time a player is looking at this table.</p>
+<div class="card">
+  <div class="pair">
+    <div>
+      <div class="orders">unit 1922
+  <b>FORM 2</b>
+    BUY 5 PLAI
+  END
+  @TAX
+</div>
+      <div class="stage" style="margin-top:12px">
+        <table class="units">
+      <colgroup>
+        <col style="width:2%"><col style="width:6%"><col style="width:19%"><col style="width:5%"><col style="width:12%"><col style="width:20%"><col style="width:10%"><col style="width:12%"><col style="width:9%">
+      </colgroup>
+      <thead><tr>
+        <th></th><th>Id</th><th>Unit</th><th class="num">Men</th><th>Skills</th><th>Items</th><th>Structure</th><th>Long order</th><th class="num colhi">Silver</th>
+      </tr></thead>
+          <tbody>
+          <tr><td class="own">*</td><td class="uid">1922</td><td>Tax Collector</td><td class="num">8</td><td>COMB 2 (90)</td><td>8 LEAT, 500 SILV</td><td>&mdash;</td><td>@tax</td><td class="num">800</td></tr>
+          <tr><td class="own">*</td><td class="uid">new-2</td><td><span class="pred">Unit (new 2)</span><span class="chip">new</span></td><td class="num pred">0</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td class="num neg">&minus;200</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <div class="tip">
+        <b>Unit (new 2)</b>
+        <div class="sec2">Silver</div>
+        <div class="r"><span>Held now</span><span>0</span></div>
+        <div class="r"><span>In, in time</span><span>0</span></div>
+        <div class="r"><span>Out</span><span>200</span></div>
+        <hr>
+        <div class="r"><span>At month end</span><span>&minus;200</span></div>
+      </div>
+      <ul class="notes">
+        <li>Red, and correctly so: the game will refuse that <code>BUY</code>. This is the mistake the column exists to catch, and today it is invisible.</li>
+        <li class="n">A <code>FORM</code> with an empty block shows a dim <code>0</code> rather than a blank &mdash; see row 3 below.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">3 &middot; Every shape at once</h3>
+<p>What the column looks like across the states, in one hex. The dim <code>0</code> on <code>new 3</code> is the one Option B would leave blank.</p>
+<div class="card">
+  <div class="stage">
+    <table class="units">
+      <colgroup>
+        <col style="width:2%"><col style="width:6%"><col style="width:19%"><col style="width:5%"><col style="width:12%"><col style="width:20%"><col style="width:10%"><col style="width:12%"><col style="width:9%">
+      </colgroup>
+      <thead><tr>
+        <th></th><th>Id</th><th>Unit</th><th class="num">Men</th><th>Skills</th><th>Items</th><th>Structure</th><th>Long order</th><th class="num colhi">Silver</th>
+      </tr></thead>
+      <tbody>
+      <tr><td class="own">*</td><td class="uid">1922</td><td>Tax Collector</td><td class="num">8</td><td>COMB 2 (90)</td><td>8 LEAT, <span class="pred">0 SILV</span></td><td>&mdash;</td><td>@tax</td><td class="num">300</td></tr>
+      <tr><td class="own">*</td><td class="uid">new-1</td><td><span class="pred">Unit (new 1)</span><span class="chip">new</span></td><td class="num pred">0</td><td>&mdash;</td><td><span class="pred">500 SILV</span></td><td>&mdash;</td><td>@work</td><td class="num">300</td></tr>
+      <tr><td class="own">*</td><td class="uid">new-2</td><td><span class="pred">Unit (new 2)</span><span class="chip">new</span></td><td class="num pred">0</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td class="num neg">&minus;200</td></tr>
+      <tr><td class="own">*</td><td class="uid">new-3</td><td><span class="pred">Unit (new 3)</span><span class="chip">new</span></td><td class="num pred">0</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td class="num zero">0</td></tr>
+      <tr><td class="own">*</td><td class="uid">new-4</td><td><span class="pred">Unit (new 4)</span><span class="chip">new</span></td><td class="num pred">0</td><td>&mdash;</td><td><span class="pred">300 SILV</span></td><td>&mdash;</td><td>&mdash;</td><td class="num zero">?</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul class="notes">
+    <li class="n"><code>new 3</code> &mdash; <code>FORM 3</code> with an empty block: a dim <code>0</code>, exactly as any penniless reported unit reads.</li>
+    <li class="n"><code>new 4</code> &mdash; given 300 and told <code>BUY ALL PLAI</code> in a market whose price the report never printed: <code>?</code>, the same <code>?</code> any unpriceable month gets.</li>
+    <li class="con">Every <code>new</code> row now carries a number, so a glance down the column no longer skips them.</li>
+  </ul>
+</div>
+
+<h3 class="sec">4 &middot; Sorting on Silver</h3>
+<p>The column sorts. A new row sorts on its figure like everything else; under Option B a blank sorts last, with the units that have no forecast at all.</p>
+<div class="card">
+  <div class="stage">
+    <table class="units">
+      <colgroup>
+        <col style="width:2%"><col style="width:6%"><col style="width:19%"><col style="width:5%"><col style="width:12%"><col style="width:20%"><col style="width:10%"><col style="width:12%"><col style="width:9%">
+      </colgroup>
+      <thead><tr>
+        <th></th><th>Id</th><th>Unit</th><th class="num">Men</th><th>Skills</th><th>Items</th><th>Structure</th><th>Long order</th><th class="num colhi">Silver</th>
+      </tr></thead>
+      <tbody>
+      <tr><td class="own">*</td><td class="uid">new-2</td><td><span class="pred">Unit (new 2)</span><span class="chip">new</span></td><td class="num pred">0</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td class="num neg">&minus;200</td></tr>
+      <tr><td class="own">*</td><td class="uid">new-3</td><td><span class="pred">Unit (new 3)</span><span class="chip">new</span></td><td class="num pred">0</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td class="num zero">0</td></tr>
+      <tr><td class="own">*</td><td class="uid">2101</td><td>Scholar</td><td class="num">2</td><td>STEA 1 (30)</td><td>2 LEAT, 60 SILV</td><td>Tower [3]</td><td>@study comb</td><td class="num">14</td></tr>
+      <tr><td class="own">*</td><td class="uid">new-1</td><td><span class="pred">Unit (new 1)</span><span class="chip">new</span></td><td class="num pred">0</td><td>&mdash;</td><td><span class="pred">500 SILV</span></td><td>&mdash;</td><td>@work</td><td class="num">300</td></tr>
+      <tr><td class="own">*</td><td class="uid">1922</td><td>Tax Collector</td><td class="num">8</td><td>COMB 2 (90)</td><td>8 LEAT, <span class="pred">0 SILV</span></td><td>&mdash;</td><td>@tax</td><td class="num">300</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</main>
+<footer><p style="color:#8a97a8;font-size:12.5px;margin-top:26px">Every decision on this page was taken by the navigator during the planning of <code>ah-jw85</code>.</p></footer>
+</body></html>
