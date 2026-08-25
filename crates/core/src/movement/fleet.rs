@@ -397,6 +397,30 @@ mod tests {
         );
     }
 
+    /// **`ah-8myf`, the failed verification of 2026-08-25.** Frozen Tomb [194] in barren (32,50)
+    /// is written `Galley, 40 Galleons, 11 Galleys, 10 Balloons` and states no `MaxSpeed:`, so
+    /// whether it is a priceable hull falls to ruleset arithmetic - and the whole clause read as
+    /// one hull name matched no item, so only 13401, which wrote the SAIL, was projected as
+    /// moving. Everyone else aboard stood still on screen.
+    #[test]
+    fn a_passenger_on_a_fleet_that_leads_with_a_hull_follows_it() {
+        let mut cache = ReportCache::new();
+        let report = cache.classified(atlantis_hud_fixtures::G7_F95_T72.text, RULESET);
+        let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
+        let ordered = OrderedUnits::from_document("unit 13401\nsail sw\n");
+        let passenger = report
+            .units()
+            .find(|unit| unit.unit_id == "13848")
+            .expect("13848 is aboard Frozen Tomb [194]")
+            .clone();
+
+        assert_eq!(
+            steps_followed_by(&report, &ruleset, &ordered, &passenger),
+            Some(&[MoveStep::Go(crate::movement::graph::Direction::Southwest)][..]),
+            "13848 wrote nothing and stands in the vessel 13401 is sailing"
+        );
+    }
+
     /// A unit that writes SAIL and then LEAVE still gave the order - the server reads the SAIL
     /// line before running the LEAVE - so its passengers must still be carried. Asking where the
     /// captain *ends up* would strand them, which is why `could_captain` is a second predicate.

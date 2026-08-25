@@ -194,18 +194,43 @@ pub fn parse_fleet_kind(kind: &str) -> Option<Vec<(String, u32)>> {
         return None;
     }
 
-    if let Some(rest) = trimmed.strip_prefix("Fleet,") {
-        let hulls: Vec<(String, u32)> = rest
-            .split(',')
-            .filter_map(|part| {
-                let (count, name) = part.trim().split_once(' ')?;
-                Some((name.trim().to_string(), count.trim().parse::<u32>().ok()?))
-            })
-            .collect();
-        return if hulls.is_empty() { None } else { Some(hulls) };
+    let mut clauses = trimmed.split(',');
+    let lead = clauses.next().unwrap_or_default().trim();
+
+    // The lead clause is the word `Fleet` or it is the fleet's first hull. A report writes both:
+    // `Fleet, 8 Corsairs`, and `Galley, 40 Galleons, 11 Galleys, 10 Balloons` for a fleet led by a
+    // Galley (`ah-8myf`). Reading the second form as one hull name matched no item at all, so
+    // every unit aboard such a fleet went unpriced.
+    let mut hulls: Vec<(String, u32)> = Vec::new();
+    if !lead.is_empty() && lead != "Fleet" {
+        hulls.push((lead.to_string(), 1));
     }
 
-    Some(vec![(trimmed.to_string(), 1)])
+    for clause in clauses {
+        // Same rule `report::region::split_kind` reads vessels by: a hull carries a count, or is
+        // an item name, which Atlantis always capitalises. A state clause is prose in lower case.
+        let clause = clause.trim();
+        match clause.split_once(' ') {
+            Some((count, name)) if count.chars().all(|c| c.is_ascii_digit()) => {
+                let (Ok(count), name) = (count.parse::<u32>(), name.trim()) else {
+                    continue;
+                };
+                if !name.is_empty() {
+                    hulls.push((name.to_string(), count));
+                }
+            }
+            _ if clause.chars().next().is_some_and(char::is_uppercase) => {
+                hulls.push((clause.to_string(), 1));
+            }
+            _ => {}
+        }
+    }
+
+    if hulls.is_empty() {
+        None
+    } else {
+        Some(hulls)
+    }
 }
 
 /// The value after a `label: ` mark in a structure's description, up to the next `;` or `.`.
@@ -487,6 +512,33 @@ mod tests {
                 ("Galleons".to_string(), 4),
                 ("Balloon".to_string(), 1)
             ])
+        );
+    }
+
+    /// "+ Frozen Tomb [194] : Galley, 40 Galleons, 11 Galleys, 10 Balloons."
+    /// (neworigins-3.0.0-g7-f95-t72.rep:6211) - a fleet that names its lead hull instead of the
+    /// word `Fleet`, so the hulls follow a hull rather than a prefix. Read as one whole string it
+    /// matches no item, which is what left every unit aboard it unpriced (`ah-8myf`).
+    #[test]
+    fn a_fleet_that_leads_with_a_hull_instead_of_the_word_fleet_names_every_hull() {
+        assert_eq!(
+            parse_fleet_kind("Galley, 40 Galleons, 11 Galleys, 10 Balloons"),
+            Some(vec![
+                ("Galley".to_string(), 1),
+                ("Galleons".to_string(), 40),
+                ("Galleys".to_string(), 11),
+                ("Balloons".to_string(), 10)
+            ])
+        );
+    }
+
+    /// A state clause is prose in lower case and names no hull - the same rule `split_kind` reads
+    /// vessels by. Without it `closed to player units` would be priced as a ship called `to`.
+    #[test]
+    fn a_lower_case_state_clause_is_not_a_hull() {
+        assert_eq!(
+            parse_fleet_kind("Lair, closed to player units"),
+            Some(vec![("Lair".to_string(), 1)])
         );
     }
 

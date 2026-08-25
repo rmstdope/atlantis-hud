@@ -288,14 +288,38 @@ fn a_destination_far_out_in_the_fog_is_still_answered() {
     );
 }
 
-/// "Thirteen of Eight (13972) ... Weight: 17. Capacity: 0/0/15/0." - heavier than all four of its
-/// capacities, so the game will not give it a MOVE order at all.
+/// A unit heavier than all four of its capacities cannot be given a MOVE order at all, and the
+/// planner says so before it looks for a route.
+///
+/// Asked of a unit **ashore**: `plan_route` puts the fleet question first on purpose, so a
+/// passenger's refusal is the fleet's, not its own - see
+/// `a_passenger_on_an_unsailable_fleet_is_refused_for_the_fleet`. This used to ask it of 13972 in
+/// turn 71, which is aboard Frozen Tomb [194] and only answered `Overloaded` while that fleet
+/// could not be priced (`ah-8myf`). The unit-level fact itself is pinned by
+/// `movement_graph::a_unit_heavier_than_all_its_capacities_cannot_move`.
 #[test]
 fn an_overloaded_unit_is_refused_before_any_route_is_sought() {
-    let report = turn_71();
-    let problem = plan(&report, "13972", at(7, 51)).expect_err("it cannot move");
+    // "Weight: 10. Capacity: 0/0/0/0." - it can carry itself nowhere.
+    let report = corridor_with(&["plain", "plain"], "0/0/0/0");
+    let problem = plan(&report, "900", at(2, 2)).expect_err("it cannot move");
 
-    assert!(matches!(problem, RouteProblem::Overloaded));
+    assert!(matches!(problem, RouteProblem::Overloaded), "{problem:?}");
+}
+
+/// Frozen Tomb [194] is written `Galley, 40 Galleons, 11 Galleys, 10 Balloons` and states no
+/// `Sailors:` line, so its crew requirement is ruleset arithmetic over those hulls - 774 levels,
+/// against the nothing this faction has aboard. A unit standing in it goes where the fleet goes or
+/// nowhere, which is the answer the planner owes even for a passenger that is also overloaded
+/// (`ah-8myf`).
+#[test]
+fn a_passenger_on_an_unsailable_fleet_is_refused_for_the_fleet() {
+    let report = turn_71();
+    let problem = plan(&report, "13972", at(7, 51)).expect_err("the fleet cannot sail");
+
+    assert!(
+        matches!(problem, RouteProblem::CrewCannotSail { required: 774, .. }),
+        "{problem:?}"
+    );
 }
 
 /// Planning is for units you can actually give orders to. A foreign unit also has no stated weight
