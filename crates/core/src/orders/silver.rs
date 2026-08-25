@@ -1847,14 +1847,15 @@ pub struct Readiness {
 /// combat ready men are the taxing characters.
 ///
 /// - **Combat 1 makes every man count**, because a skill is held by the unit.
+/// - **So does knowing a spell that damages enemies**, at any level: the rules ask whether the
+///   mage knows the spell, not how well ([`SkillEntry::damages_enemies`], `ah-v585`).
 /// - otherwise `min(men, wieldable weapons + ridable mounts)` - a man either wields something or
 ///   rides something, so the two add up. A weapon needing a skill counts only for a unit holding
 ///   that skill at level 1 or better; a mount counts only for a unit holding the riding level its
 ///   description names ([`required_riding`]).
 ///
-/// **The mage case is not implemented**, by the navigator's decision on 2026-08-25: it is `ah-v585`
-/// rather than a delay to this P0. A combat mage is therefore under-counted here, which costs a
-/// missing warning and never a false one.
+/// A spell that states no damage - `FEAR`, `SSTO` - does not count, deliberately: that under-counts,
+/// which costs a missing warning and never a false one.
 ///
 /// **`avoiding` is not consulted.** `ah-1ad6.2` had it zero a unit's ready men; the navigator
 /// reversed that at `ah-cw75`'s verification, and the rules' taxing test does not mention the flag.
