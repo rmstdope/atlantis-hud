@@ -1870,7 +1870,17 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
     }
     let ruleset = ruleset?;
     let men = facts.men.max(0);
-    if skill_level(facts.skills, "COMB") >= 1 {
+    // The rules' fourth taxing character: "or is a mage who knows a spell which damages enemies"
+    // (`ah-v585`). Any level will do - the rules ask whether the mage knows the spell, not how
+    // well, unlike Combat's explicit "of at least level 1".
+    let knows_a_damaging_spell = facts.skills.iter().any(|held| {
+        held.level >= 1
+            && ruleset
+                .skills
+                .get(&held.tag.to_uppercase())
+                .is_some_and(|entry| entry.damages_enemies)
+    });
+    if skill_level(facts.skills, "COMB") >= 1 || knows_a_damaging_spell {
         return Some(Readiness { men, ready: men });
     }
     let mut mounted_or_armed = 0i64;
@@ -2947,6 +2957,7 @@ mod tests {
             }),
             produces: Vec::new(),
             magic: true,
+            damages_enemies: false,
             requires: Vec::new(),
             levels: Vec::new(),
         }
@@ -5273,6 +5284,23 @@ mod combat_ready_tests {
             &unit(men, items, &flags, skills, &receipts),
             Some(&ruleset()),
         )
+    }
+
+    /// The rules' fourth taxing character: "or is a mage who knows a spell which damages enemies".
+    /// A mage carrying no weapon at all still has every one of its men counted (`ah-v585`).
+    #[test]
+    fn a_mage_who_knows_a_damaging_spell_makes_every_man_count() {
+        let read = read(3, &[], &[], &[skill("FIRE", 1)]).expect("countable");
+        assert_eq!(read.men, 3);
+        assert_eq!(read.ready, 3);
+    }
+
+    /// The discriminator has to bite at the point of use, not only in the scraper: a shield spell
+    /// damages nobody, so its mage taxes on no account of it.
+    #[test]
+    fn a_mage_with_only_a_shield_spell_does_not() {
+        let read = read(3, &[], &[], &[skill("FSHI", 1)]).expect("countable");
+        assert_eq!(read.ready, 0);
     }
 
     #[test]
