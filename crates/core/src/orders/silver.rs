@@ -1975,7 +1975,10 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
                 level,
                 held: skill_level(facts.skills, skill),
             };
-            if nearest_miss.as_ref().is_none_or(|best| candidate.beats(best)) {
+            if nearest_miss
+                .as_ref()
+                .is_none_or(|best| candidate.beats(best))
+            {
                 nearest_miss = Some(candidate);
             }
         }

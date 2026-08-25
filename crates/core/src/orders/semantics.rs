@@ -3852,9 +3852,8 @@ fn check_pillage_men(
         };
         // Why *this* unit's men do not count - the unit whose order is marked, and the one the
         // player can act on. Empty where it is armed and willing: the region is simply short.
-        let because =
-            readiness(facts, ruleset)
-                .map_or_else(String::new, |read| because_clause(&read, ruleset, plurals));
+        let because = readiness(facts, ruleset)
+            .map_or_else(String::new, |read| because_clause(&read, ruleset, plurals));
         findings.push(ordered.finding(
             hex,
             codes::PILLAGE_WITHOUT_MEN,
