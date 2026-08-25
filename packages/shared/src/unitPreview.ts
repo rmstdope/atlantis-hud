@@ -1,7 +1,9 @@
 import type {
   FieldChange,
+  ItemAmount,
   RegionPreview,
   ReportUnit,
+  TakenUnshown,
   UnitPreviewStatus
 } from "@atlantis/core-client";
 
@@ -28,6 +30,13 @@ export type PreviewedUnit = ReportUnit & {
   departingTo?: string | null;
   /** The fleet carrying this unit away, as `<name> [<id>]`, when the ship it stands in departs. */
   aboard?: string | null;
+  /**
+   * This unit's orders whose effect on its items could not be counted, verbatim, in document
+   * order (`ah-agbm`).
+   */
+  uncounted?: string[];
+  /** Silver or goods taken from a unit the report does not show in this hex (`ah-agbm`). */
+  takenUnshown?: TakenUnshown[];
 };
 
 /**
@@ -58,7 +67,9 @@ export function mergePreview(
       previewChanges: previewed.changes,
       arrivingFrom: previewed.arrivingFrom,
       departingTo: previewed.departingTo,
-      aboard: previewed.aboard
+      aboard: previewed.aboard,
+      uncounted: previewed.uncounted,
+      takenUnshown: previewed.takenUnshown
     };
   });
 
@@ -70,7 +81,9 @@ export function mergePreview(
       previewChanges: previewed.changes,
       arrivingFrom: previewed.arrivingFrom,
       departingTo: previewed.departingTo,
-      aboard: previewed.aboard
+      aboard: previewed.aboard,
+      uncounted: previewed.uncounted,
+      takenUnshown: previewed.takenUnshown
     });
   }
 
@@ -83,6 +96,48 @@ export function changeFor(
   field: string
 ): FieldChange | undefined {
   return unit?.previewChanges?.find((change) => change.field === field);
+}
+
+/**
+ * The ITEMS cell's text: the same formatting the report uses, in one place so the cell and its
+ * hover cannot drift apart (`ah-agbm`).
+ */
+export function formatItems(items: readonly ItemAmount[]): string {
+  return items.map((item) => `${item.amount} ${item.tag}`).join(", ");
+}
+
+/**
+ * The ITEMS cell's hover: what the report said, what came from an unverifiable source, and what
+ * could not be counted - in that order, known before unknown. `undefined` when there is nothing
+ * to say, exactly today's behaviour for a cell the orders left alone (`ah-agbm`).
+ */
+export function itemsTooltip(unit: PreviewedUnit | undefined): string | undefined {
+  if (!unit) {
+    return undefined;
+  }
+
+  const change = changeFor(unit, "items");
+  const takenUnshown = unit.takenUnshown ?? [];
+  const uncounted = unit.uncounted ?? [];
+  if (!change && takenUnshown.length === 0 && uncounted.length === 0) {
+    return undefined;
+  }
+
+  // In the navigator's S1 state - a unit whose only order cannot be counted - nothing was
+  // projected, so the report's own list is still true and gives line 3's wording something to
+  // follow. Deliberately the same "was:" wording as a real change, not a second sentence for the
+  // same fact.
+  const original = change ? change.original : formatItems(unit.items);
+  const lines = [`was: ${original === "" ? "—" : original}`];
+  for (const taken of takenUnshown) {
+    lines.push(
+      `Includes ${taken.amount} ${taken.tag} taken from unit ${taken.from}, which your report does not show here.`
+    );
+  }
+  for (const order of uncounted) {
+    lines.push(`and more that cannot be counted: ${order}`);
+  }
+  return lines.join("\n");
 }
 
 /**

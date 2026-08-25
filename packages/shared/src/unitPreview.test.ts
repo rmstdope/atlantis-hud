@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { RegionPreview, ReportUnit } from "@atlantis/core-client";
 import { aReportUnit } from "@atlantis/core-client";
-import { changeFor, mergePreview, originalTooltip } from "./unitPreview";
+import { changeFor, formatItems, itemsTooltip, mergePreview, originalTooltip } from "./unitPreview";
+import type { PreviewedUnit } from "./unitPreview";
 
 const unit = (overrides: Partial<ReportUnit>): ReportUnit =>
   aReportUnit({ unitId: "900", name: "Walker", weight: 10, capacity: "0/0/15/0", ...overrides });
@@ -22,7 +23,9 @@ describe("mergePreview", () => {
           changes: [{ field: "name", original: "Walker" }],
           arrivingFrom: null,
           departingTo: null,
-          aboard: null
+          aboard: null,
+          uncounted: [],
+          takenUnshown: []
         }
       ])
     );
@@ -50,7 +53,9 @@ describe("mergePreview", () => {
           changes: [],
           arrivingFrom: "1:0,0",
           departingTo: null,
-          aboard: null
+          aboard: null,
+          uncounted: [],
+          takenUnshown: []
         },
         {
           unit: unit({ unitId: "new-1", name: "Recruits" }),
@@ -58,7 +63,9 @@ describe("mergePreview", () => {
           changes: [],
           arrivingFrom: null,
           departingTo: null,
-          aboard: null
+          aboard: null,
+          uncounted: [],
+          takenUnshown: []
         }
       ])
     );
@@ -79,7 +86,9 @@ describe("mergePreview", () => {
           changes: [],
           arrivingFrom: null,
           departingTo: "1:2,2",
-          aboard: "Wavecrest [329]"
+          aboard: "Wavecrest [329]",
+          uncounted: [],
+          takenUnshown: []
         },
         {
           unit: unit({ unitId: "901", name: "Passengers" }),
@@ -87,7 +96,9 @@ describe("mergePreview", () => {
           changes: [],
           arrivingFrom: null,
           departingTo: "1:2,2",
-          aboard: "Wavecrest [329]"
+          aboard: "Wavecrest [329]",
+          uncounted: [],
+          takenUnshown: []
         }
       ])
     );
@@ -106,7 +117,9 @@ describe("mergePreview", () => {
           changes: [],
           arrivingFrom: null,
           departingTo: "1:2,2",
-          aboard: null
+          aboard: null,
+          uncounted: [],
+          takenUnshown: []
         }
       ])
     );
@@ -130,7 +143,9 @@ describe("changeFor and originalTooltip", () => {
           ],
           arrivingFrom: null,
           departingTo: null,
-          aboard: null
+          aboard: null,
+          uncounted: [],
+          takenUnshown: []
         }
       ])
     );
@@ -141,5 +156,57 @@ describe("changeFor and originalTooltip", () => {
     // An original the report never had reads as absence rather than as an empty string.
     expect(originalTooltip(changeFor(rows[0], "structureId"))).toBe("was: —");
     expect(changeFor(rows[0], "men")).toBeUndefined();
+  });
+});
+
+describe("formatItems and itemsTooltip", () => {
+  // `ah-agbm`. Every string below is quoted verbatim in the plan and is the navigator's own
+  // wording - nothing here is left for the test to word differently.
+  const previewedUnit = (overrides: Partial<PreviewedUnit>): PreviewedUnit =>
+    ({ ...unit({}), previewChanges: [], uncounted: [], takenUnshown: [], ...overrides }) as PreviewedUnit;
+
+  it("formats an item list the same way the report does", () => {
+    expect(
+      formatItems([
+        { amount: 20, name: "silver", tag: "SILV" },
+        { amount: 6, name: "herbs", tag: "HERB" }
+      ])
+    ).toBe("20 SILV, 6 HERB");
+  });
+
+  it("words the hover for a unit that took from an unshown source and could not count an order", () => {
+    const row = previewedUnit({
+      items: [{ amount: 25, name: "silver", tag: "SILV" }, { amount: 6, name: "herbs", tag: "HERB" }],
+      previewChanges: [{ field: "items", original: "20 SILV, 6 HERB" }],
+      takenUnshown: [{ amount: 5, tag: "GRAI", from: "999" }],
+      uncounted: ["buy all HORS"]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 20 SILV, 6 HERB\n" +
+        "Includes 5 GRAI taken from unit 999, which your report does not show here.\n" +
+        "and more that cannot be counted: buy all HORS"
+    );
+  });
+
+  it("words the hover for a unit whose only order cannot be counted", () => {
+    const row = previewedUnit({
+      items: [{ amount: 20, name: "silver", tag: "SILV" }, { amount: 6, name: "herbs", tag: "HERB" }],
+      uncounted: ["buy all HORS"]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 20 SILV, 6 HERB\nand more that cannot be counted: buy all HORS"
+    );
+  });
+
+  it("says nothing for a unit the orders left alone", () => {
+    const row = previewedUnit({ items: [{ amount: 3, name: "swords", tag: "SWOR" }] });
+
+    expect(itemsTooltip(row)).toBeUndefined();
+  });
+
+  it("says nothing for no unit at all", () => {
+    expect(itemsTooltip(undefined)).toBeUndefined();
   });
 });
