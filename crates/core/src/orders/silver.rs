@@ -1849,12 +1849,41 @@ fn required_riding(description: &str) -> Option<(&str, i64)> {
 /// [`combat_ready`] answers the number and nothing else, which is all `PILLAGE`'s threshold needs -
 /// but a player told `0` about a unit visibly holding nineteen men needs to be told why, and that
 /// sentence needs the headcount beside the count (`ah-cw75`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Readiness {
     /// The unit's headcount, for the sentence.
     pub men: i64,
     /// What `PILLAGE` counts.
     pub ready: i64,
+    /// The cheapest thing standing between this unit and taxing, where it holds one.
+    ///
+    /// `None` for a unit whose men already count, and for one holding nothing that could ever have
+    /// counted - which is the fallback the sentence has to cover (`ah-deo5`).
+    pub nearest_miss: Option<NearMiss>,
+}
+
+/// An item the unit holds that would have counted but for a skill it lacks - the cheapest thing
+/// standing between this unit and being able to tax.
+///
+/// "Cheapest" is the lowest required level, ties broken by the largest holding: the advice that
+/// costs the player least (`ah-deo5`, the navigator's choice).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NearMiss {
+    /// The item tag, for `counted_item`.
+    pub item: String,
+    /// How many the unit holds.
+    pub count: i64,
+    /// The skill tag it needs - **not** the item's own: `DBOW` is wielded with `LBOW`.
+    pub skill: String,
+    /// The level it needs.
+    pub level: i64,
+}
+
+impl NearMiss {
+    /// Whether `self` is cheaper advice than `other`: the lower level, then the larger holding.
+    fn beats(&self, other: &Self) -> bool {
+        (self.level, -self.count) < (other.level, -other.count)
+    }
 }
 
 /// How many of one unit's men are combat ready, and its headcount alongside.
@@ -1902,35 +1931,54 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
                 .is_some_and(|entry| entry.damages_enemies)
     });
     if skill_level(facts.skills, "COMB") >= 1 || knows_a_damaging_spell {
-        return Some(Readiness { men, ready: men });
+        return Some(Readiness {
+            men,
+            ready: men,
+            nearest_miss: None,
+        });
     }
     let mut mounted_or_armed = 0i64;
+    // The cheapest item the unit holds that a skill would have made count (`ah-deo5`). The loop
+    // below already rejects each item for a reason and used to forget why.
+    let mut nearest_miss: Option<NearMiss> = None;
     for held in facts.items {
         let Some(entry) = ruleset.items.get(&held.tag.to_uppercase()) else {
             continue;
         };
-        let counts = if let Some(weapon) = entry.weapon.as_ref() {
+        // The skill this item would have needed, where it is a thing a skill could make count at
+        // all. A weapon needing nothing counts outright; a sack of grain never could have.
+        let wanted: Option<(&str, i64)> = if let Some(weapon) = entry.weapon.as_ref() {
             // `needs` is a *skill* tag, not the item's own: `DBOW` is wielded with `LBOW`.
-            match weapon.needs.as_deref() {
-                None => true,
-                Some(skill) => skill_level(facts.skills, skill) >= 1,
-            }
+            weapon.needs.as_deref().map(|skill| (skill, 1))
         } else if entry.kind == ItemKind::Mount {
-            entry
-                .description
-                .as_deref()
-                .and_then(required_riding)
-                .is_some_and(|(skill, level)| skill_level(facts.skills, skill) >= level)
+            entry.description.as_deref().and_then(required_riding)
         } else {
-            false
+            None
+        };
+        let counts = match wanted {
+            Some((skill, level)) => skill_level(facts.skills, skill) >= level,
+            // A weapon with no requirement counts; anything that is neither weapon nor mount does
+            // not, and is no near miss either.
+            None => entry.weapon.is_some(),
         };
         if counts {
             mounted_or_armed = mounted_or_armed.saturating_add(held.amount.max(0));
+        } else if let Some((skill, level)) = wanted {
+            let candidate = NearMiss {
+                item: held.tag.to_uppercase(),
+                count: held.amount.max(0),
+                skill: skill.to_string(),
+                level,
+            };
+            if nearest_miss.as_ref().is_none_or(|best| candidate.beats(best)) {
+                nearest_miss = Some(candidate);
+            }
         }
     }
     Some(Readiness {
         men,
         ready: men.min(mounted_or_armed),
+        nearest_miss,
     })
 }
 
@@ -5386,7 +5434,11 @@ mod combat_ready_tests {
     }
 
     fn clause(men: i64, ready: i64) -> String {
-        because_clause(&Readiness { men, ready })
+        because_clause(&Readiness {
+            men,
+            ready,
+            nearest_miss: None,
+        })
     }
 
     #[test]
@@ -5423,5 +5475,70 @@ mod combat_ready_tests {
         let read = read(10, &[], &[], &[skill("COMB", 1)]).expect("countable");
         assert_eq!(read.ready, 10);
         assert_eq!(because_clause(&read), "");
+    }
+
+    // --- the nearest miss (`ah-deo5`) ---------------------------------------------------------
+
+    #[test]
+    fn a_mount_the_unit_cannot_ride_is_the_nearest_miss() {
+        let read = read(19, &[item("HORS", 3)], &[], &[]).expect("countable");
+        assert_eq!(read.ready, 0);
+        assert_eq!(
+            read.nearest_miss,
+            Some(NearMiss {
+                item: "HORS".to_string(),
+                count: 3,
+                skill: "RIDI".to_string(),
+                level: 1,
+            })
+        );
+    }
+
+    /// The skill a weapon needs is not the weapon's own tag: `DBOW` is wielded with `LBOW`.
+    #[test]
+    fn a_weapon_the_unit_cannot_wield_is_a_near_miss() {
+        let read = read(19, &[item("DBOW", 10)], &[], &[]).expect("countable");
+        assert_eq!(read.ready, 0);
+        assert_eq!(
+            read.nearest_miss,
+            Some(NearMiss {
+                item: "DBOW".to_string(),
+                count: 10,
+                skill: "LBOW".to_string(),
+                level: 1,
+            })
+        );
+    }
+
+    /// The cheapest advice wins: a winged horse needs Riding 3, a double bow Longbow 1.
+    #[test]
+    fn the_lowest_level_wins() {
+        let read = read(19, &[item("WING", 5), item("DBOW", 2)], &[], &[]).expect("countable");
+        let miss = read.nearest_miss.expect("a miss");
+        assert_eq!(miss.item, "DBOW");
+        assert_eq!(miss.level, 1);
+    }
+
+    #[test]
+    fn a_tie_goes_to_the_larger_holding() {
+        let read = read(19, &[item("HORS", 3), item("DBOW", 10)], &[], &[]).expect("countable");
+        let miss = read.nearest_miss.expect("a miss");
+        assert_eq!(miss.item, "DBOW");
+        assert_eq!(miss.count, 10);
+    }
+
+    /// A sack of grain is not something the unit failed to qualify with.
+    #[test]
+    fn a_unit_holding_nothing_has_no_near_miss() {
+        let read = read(19, &[item("GRAI", 40)], &[], &[]).expect("countable");
+        assert_eq!(read.ready, 0);
+        assert_eq!(read.nearest_miss, None);
+    }
+
+    #[test]
+    fn a_unit_that_already_counts_has_no_near_miss() {
+        let read = read(10, &[item("HORS", 3)], &[], &[skill("COMB", 1)]).expect("countable");
+        assert_eq!(read.ready, 10);
+        assert_eq!(read.nearest_miss, None);
     }
 }
