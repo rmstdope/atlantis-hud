@@ -169,6 +169,11 @@ pub struct UnitSilver {
     pub taken: i64,
     /// Those sources, as `<name> (<id>)`, so the hover can name them.
     pub taken_from: Vec<String>,
+    /// Silver counted into `income` because this unit's own `TAKE` orders pull it from units the
+    /// report does **not** show in this hex (`ah-awcm`).
+    pub taken_unshown: i64,
+    /// Those sources, as `unit <id>`: a unit the report does not show has no name to give.
+    pub taken_unshown_from: Vec<String>,
     /// Silver that faction food held by *other* units in this hex paid off, at step 2 of the
     /// payment order (`ah-7cdt`). `0` for every unit the pool did not feed, which is most of them.
     pub faction_food_covered: i64,
@@ -564,6 +569,14 @@ pub struct Receipts {
     pub taken: i64,
     /// Those sources, as `<name> (<id>)`, so the hover can name them. In document order.
     pub taken_from: Vec<String>,
+    /// Silver this unit's own `TAKE` orders pull from units the report does **not** show in this
+    /// hex. Counted, because the ledger counts it: `shared_silver_covered` and `upkeep` are
+    /// ledger-derived, so a take the column ignored would still move what the column displays
+    /// (`ah-awcm`).
+    pub taken_unshown: i64,
+    /// Those sources, as `unit <id>` - the report gives no name for a unit it does not show. In
+    /// document order.
+    pub taken_unshown_from: Vec<String>,
     /// Whether a `TAKE ... ALL SILV` could not be priced, which silences the unit's whole figure.
     ///
     /// A bool rather than the source's name, because the sentence the interface shows names the
@@ -808,6 +821,8 @@ pub fn forecast_unit(
             givers: Vec::new(),
             taken: 0,
             taken_from: Vec::new(),
+            taken_unshown: 0,
+            taken_unshown_from: Vec::new(),
             faction_food_covered: 0,
             shared_silver_covered: 0,
             shared_silver_for_orders: 0,
@@ -831,7 +846,10 @@ pub fn forecast_unit(
 
     // A gift is in the giver's block, so it arrives already gathered. It is income whatever the
     // unit itself is ordered to do, including nothing.
-    let mut income = receipts.silver.saturating_add(receipts.taken);
+    let mut income = receipts
+        .silver
+        .saturating_add(receipts.taken)
+        .saturating_add(receipts.taken_unshown);
     let mut expense = 0i64;
     // A `TAKE ... ALL SILV` is in this unit's own block, but what it will yield depends on the
     // source unit's month, which this per-unit pass has not run (`ah-awcm`).
@@ -1166,6 +1184,8 @@ pub fn forecast_unit(
         givers: receipts.givers.clone(),
         taken: receipts.taken,
         taken_from: receipts.taken_from.clone(),
+        taken_unshown: receipts.taken_unshown,
+        taken_unshown_from: receipts.taken_unshown_from.clone(),
         faction_food_covered: 0,
         shared_silver_covered: 0,
         shared_silver_for_orders: shared,
@@ -1847,14 +1867,15 @@ pub struct Readiness {
 /// combat ready men are the taxing characters.
 ///
 /// - **Combat 1 makes every man count**, because a skill is held by the unit.
+/// - **So does knowing a spell that damages enemies**, at any level: the rules ask whether the
+///   mage knows the spell, not how well ([`SkillEntry::damages_enemies`], `ah-v585`).
 /// - otherwise `min(men, wieldable weapons + ridable mounts)` - a man either wields something or
 ///   rides something, so the two add up. A weapon needing a skill counts only for a unit holding
 ///   that skill at level 1 or better; a mount counts only for a unit holding the riding level its
 ///   description names ([`required_riding`]).
 ///
-/// **The mage case is not implemented**, by the navigator's decision on 2026-08-25: it is `ah-v585`
-/// rather than a delay to this P0. A combat mage is therefore under-counted here, which costs a
-/// missing warning and never a false one.
+/// A spell that states no damage - `FEAR`, `SSTO` - does not count, deliberately: that under-counts,
+/// which costs a missing warning and never a false one.
 ///
 /// **`avoiding` is not consulted.** `ah-1ad6.2` had it zero a unit's ready men; the navigator
 /// reversed that at `ah-cw75`'s verification, and the rules' taxing test does not mention the flag.
@@ -1870,7 +1891,17 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
     }
     let ruleset = ruleset?;
     let men = facts.men.max(0);
-    if skill_level(facts.skills, "COMB") >= 1 {
+    // The rules' fourth taxing character: "or is a mage who knows a spell which damages enemies"
+    // (`ah-v585`). Any level will do - the rules ask whether the mage knows the spell, not how
+    // well, unlike Combat's explicit "of at least level 1".
+    let knows_a_damaging_spell = facts.skills.iter().any(|held| {
+        held.level >= 1
+            && ruleset
+                .skills
+                .get(&held.tag.to_uppercase())
+                .is_some_and(|entry| entry.damages_enemies)
+    });
+    if skill_level(facts.skills, "COMB") >= 1 || knows_a_damaging_spell {
         return Some(Readiness { men, ready: men });
     }
     let mut mounted_or_armed = 0i64;
@@ -2947,6 +2978,7 @@ mod tests {
             }),
             produces: Vec::new(),
             magic: true,
+            damages_enemies: false,
             requires: Vec::new(),
             levels: Vec::new(),
         }
@@ -4194,6 +4226,31 @@ mod tests {
         assert_eq!(unit.doubt, None);
     }
 
+    /// `ah-awcm`: silver taken from a unit the report does not show here is income too - the
+    /// ledger credits it, and a column that did not would contradict the figures it displays.
+    #[test]
+    fn a_taker_counts_what_it_takes_from_a_source_the_report_does_not_show() {
+        let receipts = Receipts {
+            taken_unshown: 100,
+            taken_unshown_from: vec!["unit 999".to_string()],
+            ..Receipts::default()
+        };
+        let unit = forecast_unit(
+            facts(5, &[], &receipts),
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            None,
+        );
+        assert_eq!(unit.income, Some(100));
+        assert_eq!(unit.taken_unshown, 100);
+        assert_eq!(unit.taken_unshown_from, vec!["unit 999".to_string()]);
+        assert_eq!(unit.taken, 0);
+        assert_eq!(unit.doubt, None);
+    }
+
     /// `ah-awcm`: what the source will have left to give depends on its own month, so the taker's
     /// whole figure goes unsaid.
     #[test]
@@ -5273,6 +5330,23 @@ mod combat_ready_tests {
             &unit(men, items, &flags, skills, &receipts),
             Some(&ruleset()),
         )
+    }
+
+    /// The rules' fourth taxing character: "or is a mage who knows a spell which damages enemies".
+    /// A mage carrying no weapon at all still has every one of its men counted (`ah-v585`).
+    #[test]
+    fn a_mage_who_knows_a_damaging_spell_makes_every_man_count() {
+        let read = read(3, &[], &[], &[skill("FIRE", 1)]).expect("countable");
+        assert_eq!(read.men, 3);
+        assert_eq!(read.ready, 3);
+    }
+
+    /// The discriminator has to bite at the point of use, not only in the scraper: a shield spell
+    /// damages nobody, so its mage taxes on no account of it.
+    #[test]
+    fn a_mage_with_only_a_shield_spell_does_not() {
+        let read = read(3, &[], &[], &[skill("FSHI", 1)]).expect("countable");
+        assert_eq!(read.ready, 0);
     }
 
     #[test]

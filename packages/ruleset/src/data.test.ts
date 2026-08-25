@@ -943,6 +943,28 @@ describe("parseSkillReference", () => {
   });
 
   /**
+   * The rules give four ways a unit may TAX, and the fourth is being "a mage who knows a spell
+   * which damages enemies" - so a combat mage's men count toward the PILLAGE threshold like any
+   * other taxing character (`ah-v585`). The data page marks it nowhere, so it is read from the
+   * skill's own description, exactly as `magic` is.
+   *
+   * The negative cases are the point. A looser pattern on "attack" or "battle" would also select
+   * the four shields ("shield against all ranged attacks") and the four summons ("aid in battle"),
+   * eight skills whose mages cannot tax on their account.
+   */
+  it("reads which spells damage enemies", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    for (const tag of ["FIRE", "EQUA", "STOR", "CALL", "SBLA", "BUND", "BDEM", "DISP"]) {
+      expect(skills[tag].damagesEnemies, tag).toBe(true);
+    }
+    // A shield, a summon, two spells cast at enemies that state no damage, and a mundane skill.
+    for (const tag of ["FSHI", "DRAG", "FEAR", "SSTO", "COMB"]) {
+      expect(skills[tag].damagesEnemies, tag).toBe(false);
+    }
+  });
+
+  /**
    * Higher-level paragraphs describe effects and mention magic often enough to misclassify a
    * mundane skill if they were consulted - level 1 is where a skill says what it is.
    */

@@ -1077,6 +1077,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
     "works-by-default": "This unit has no month-long order, so it will work and earn wages.",
     "taxes-by-flag": "This unit is set to tax every turn, so it taxes without an order.",
     "includes-take": "Includes 100 taken from Workers (6567) in this hex.",
+    "includes-take-unshown":
+      "Includes 100 taken from unit 999, which your report does not show here.",
     "includes-gift": "Includes 25 given by Quartermaster (18500) in this hex.",
     "doubt-takes-all-from-another":
       "Taking all of another unit's silver cannot be counted until that unit's own month is settled.",
@@ -1136,6 +1138,40 @@ describe("the hover says every sentence that holds (ah-x36v)", () => {
         "Includes 25 given by Quartermaster (18500) in this hex.",
         "Includes 10 given away to nobody."
       ].join("\n")
+    );
+  });
+
+  it("a unit that takes and has no month-long order is told both", () => {
+    // The failure this bead was reopened for: under the old first-match hover the take sentence
+    // was swallowed by the no-month-long-order one, and adding WORK to the unit's orders made it
+    // reappear (`ah-awcm`).
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        worksByDefault: true,
+        income: 112,
+        lateIncome: 12,
+        taken: 100,
+        takenFrom: ["Workers (6567)"]
+      })
+    );
+
+    expect(summary.silver?.note).toBe(
+      [
+        "This unit has no month-long order, so it will work and earn wages.",
+        "Includes 100 taken from Workers (6567) in this hex."
+      ].join("\n")
+    );
+  });
+
+  it("a take from a source the report does not show says so", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ income: 100, takenUnshown: 100, takenUnshownFrom: ["unit 999"] })
+    );
+
+    expect(summary.silver?.note).toBe(
+      "Includes 100 taken from unit 999, which your report does not show here."
     );
   });
 
@@ -1244,6 +1280,8 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
       givers: ["Quartermaster (18500)"],
       taken: 100,
       takenFrom: ["Workers (6567)"],
+      takenUnshown: 100,
+      takenUnshownFrom: ["unit 999"],
       givenToNobody: 10,
       ownFoodCovered: 8,
       forcedOwnFood: 2,
