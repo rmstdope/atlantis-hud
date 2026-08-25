@@ -24,6 +24,7 @@ import {
   COLUMN_LABELS,
   columnWidthStyle,
   orderOf,
+  silverKey,
   silverShown,
   type ColumnOrder,
   type SortColumn,
@@ -106,7 +107,7 @@ export function UnitTableDock({
   /** The month-long order a unit's live orders carry, for the Long order column. */
   getLongOrder?: (unitId: string) => string | null;
   /** Each own unit's silver forecast, or null where there is none. `ah-1wcw.1`. */
-  getSilver?: (unitId: string) => UnitSilver | null;
+  getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
   silverWarnings?: ReadonlySet<string>;
   /** Selects a unit and opens its orders. Absent means the cell is not clickable. */
@@ -146,6 +147,8 @@ export function UnitTableDock({
   const [viewportHeight, setViewportHeight] = useState(0);
   const refocusWanted = useRef(false);
 
+  const regionId = hex?.regionId ?? null;
+
   // unitsForHex rather than hex.region.units: sorting it again is a no-op because Array.sort is
   // stable, and it guarantees the table cannot drift from the order AppShell picks defaults from.
   // The orders preview folds in on top, so everything below it - filter and sort - already
@@ -174,7 +177,10 @@ export function UnitTableDock({
     return new Map(
       units
         .filter((entry) => entry.own)
-        .map((entry) => [entry.unitId, silverShown(getSilver(entry.unitId), countUpkeep)])
+        .map((entry) => [
+          entry.unitId,
+          silverShown(getSilver(entry.unitId, regionId ?? ""), countUpkeep)
+        ])
     );
   }, [units, sort.column, getSilver, countUpkeep]);
   const visible = useMemo(
@@ -210,8 +216,6 @@ export function UnitTableDock({
     observer.observe(scroller);
     return () => observer.disconnect();
   }, [scroller, head]);
-
-  const regionId = hex?.regionId ?? null;
 
   /**
    * Decides where the table is scrolled to, and is the only thing that does.
@@ -514,7 +518,8 @@ export function UnitTableDock({
                   index={start + offset}
                   rowHeight={rowHeight}
                   selected={unit.unitId === selectedUnitId}
-                  onSelect={() => selectUnit(unit.unitId)}
+                  onSelect={selectUnit}
+                  regionId={regionId ?? ""}
                   getLongOrder={getLongOrder}
                   getSilver={getSilver}
                   silverWarnings={silverWarnings}
@@ -537,8 +542,10 @@ export function UnitTableDock({
             <UnitTooltip
               unit={hovered.unit}
               at={hovered.at}
-              silver={hovered.unit.own ? (getSilver?.(hovered.unit.unitId) ?? null) : null}
-              warned={silverWarnings?.has(hovered.unit.unitId) ?? false}
+              silver={
+                hovered.unit.own ? (getSilver?.(hovered.unit.unitId, regionId ?? "") ?? null) : null
+              }
+              warned={silverWarnings?.has(silverKey(regionId ?? "", hovered.unit.unitId)) ?? false}
             />
           ) : null}
         </div>
@@ -707,6 +714,7 @@ function UnitRow({
   rowHeight,
   selected,
   onSelect,
+  regionId,
   onKeyDown,
   onPointerRest,
   onPointerAt,
@@ -729,7 +737,11 @@ function UnitRow({
   index: number;
   rowHeight: number;
   selected: boolean;
-  onSelect: () => void;
+  /** Highlights a unit. Called with the formed unit's own id, or, for a formed row, its parent's
+   * (`ah-jw85`) - `UnitRow` decides which, since only it knows a formed row from an ordinary one. */
+  onSelect: (unitId: string) => void;
+  /** The hex this row stands in, so its silver forecast is looked up by the right key. */
+  regionId: string;
   onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>, index: number) => void;
   /** The pointer has arrived: start counting towards this unit's summary. */
   onPointerRest: (unit: ReportUnit) => void;
@@ -739,7 +751,7 @@ function UnitRow({
   /** The month-long order this unit's live orders carry, where it is one of ours. */
   getLongOrder?: (unitId: string) => string | null;
   /** This unit's silver forecast, where it is one of ours. `ah-1wcw.1`. */
-  getSilver?: (unitId: string) => UnitSilver | null;
+  getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
   silverWarnings?: ReadonlySet<string>;
   /** Whether the Silver column charges each unit its monthly maintenance (`ah-1wcw.4`). */
@@ -757,6 +769,7 @@ function UnitRow({
   const guardChange = changeFor(unit, "onGuard");
   const menChange = changeFor(unit, "men");
   const itemsChange = changeFor(unit, "items");
+  const skillsChange = changeFor(unit, "skills");
   const structureChange = changeFor(unit, "structureId");
   // The cell truncates, so the whole label belongs in the tooltip whether or not it also changed;
   // when it did change, what the report said goes on a line beneath it.
@@ -768,13 +781,17 @@ function UnitRow({
   const longOrder = unit.own ? (getLongOrder?.(unit.unitId) ?? null) : null;
   // Only our own units have a month to price; `getSilver` returns null for everyone else anyway,
   // and the cell is empty either way.
-  const silver = unit.own ? (getSilver?.(unit.unitId) ?? null) : null;
+  const silver = unit.own ? (getSilver?.(unit.unitId, regionId) ?? null) : null;
+  // A formed row's Id, ⚠ and Problems-panel clicks all land on the unit whose block wrote the
+  // `FORM` - a unit that does not exist cannot be selected, and its orders are typed there anyway
+  // (decisions C1, I2, `ah-jw85`).
+  const rowTarget = silver?.formed?.formedBy ?? unit.unitId;
   // The silver findings that name this unit - `not-enough-silver`, or `upkeep-exceeds-unclaimed`
   // where the faction's unclaimed fund could not reach it (`ah-fjty`). In a hex whose units share,
   // the shortfall finding is anchored to the hex and names no unit, and blaming one of several
   // would be as wrong there as it is in the Problems panel - so there is deliberately no fallback
   // to the hex.
-  const warned = silver !== null && (silverWarnings?.has(unit.unitId) ?? false);
+  const warned = silver !== null && (silverWarnings?.has(silverKey(regionId, unit.unitId)) ?? false);
   // The setting decides whether maintenance comes off the figure (`ah-1wcw.4`); the core computes
   // both answers, so switching it costs no round trip through the checks.
   const shownSilver = silverShown(silver, countUpkeep);
@@ -790,8 +807,8 @@ function UnitRow({
       <Td className={unit.own ? "text-select" : "text-unit-foreign/70"}>
         <button
           type="button"
-          onClick={onSelect}
-          aria-label={`unit ${unit.unitId}`}
+          onClick={() => onSelect(rowTarget)}
+          aria-label={`unit ${rowTarget}`}
           tabIndex={-1}
           className="focus-visible:outline focus-visible:outline-1 focus-visible:outline-select"
         >
@@ -863,7 +880,15 @@ function UnitRow({
         {describeMenBriefly(unit)}
       </Td>
     ),
-    skills: <Td className="truncate">{skills}</Td>,
+    skills: (
+      <Td
+        className={`truncate${skillsChange ? ` ${PREDICTED}` : ""}`}
+        predicted={Boolean(skillsChange)}
+        title={originalTooltip(skillsChange)}
+      >
+        {skills}
+      </Td>
+    ),
     items: (
       <Td
         className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`}
@@ -906,10 +931,10 @@ function UnitRow({
           <button
             type="button"
             data-testid={`unit-silver-${unit.unitId}`}
-            onClick={() => onSelectUnit?.(unit.unitId)}
+            onClick={() => onSelectUnit?.(rowTarget)}
             className={`inline-flex items-center gap-0.5 ${UNIT_LINK_CLASS}`}
           >
-            <span className="sr-only">unit {unit.unitId} </span>
+            <span className="sr-only">unit {rowTarget} </span>
             <SeverityMark severity="warning" />
             {silverFigure(shownSilver)}
           </button>
@@ -933,7 +958,7 @@ function UnitRow({
       data-testid={`unit-row-${unit.unitId}`}
       data-selected={selected}
       data-preview-status={unit.previewStatus}
-      onClick={onSelect}
+      onClick={() => onSelect(rowTarget)}
       onKeyDown={(event) => onKeyDown(event, index)}
       // Pointer events rather than mouse events, for the guard: a finger has no hover to leave,
       // so a touch would open a summary that never closed. Only a mouse can rest on something.

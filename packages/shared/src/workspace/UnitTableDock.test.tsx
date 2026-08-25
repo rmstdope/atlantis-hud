@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { RegionPreview, ReportRegion, ReportUnit, UnitSilver } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
-import { DEFAULT_COLUMN_SHARES, UNIT_COLUMNS, type UnitColumn } from "../unitTable";
+import { DEFAULT_COLUMN_SHARES, silverKey, UNIT_COLUMNS, type UnitColumn } from "../unitTable";
 import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
 import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
 import { UnitTableDock } from "./UnitTableDock";
@@ -533,7 +533,9 @@ describe("the Silver column", () => {
       <UnitTableDock
         hex={hex({ region: region({ units: [only] }), ownUnitCount: 1 })}
         getSilver={() => silver}
-        silverWarnings={new Set(warned)}
+        // Warned unit ids, keyed exactly as `unitsWarnedAboutSilver` keys them - by this fixture's
+        // one hex and the id (`silverKey`, `ah-jw85`).
+        silverWarnings={new Set(warned.map((unitId) => silverKey("1:6,52", unitId)))}
         onSelectUnit={() => {}}
       />
     );
@@ -621,6 +623,65 @@ describe("the Silver column", () => {
     expect(drawSilver(forecast({ atMonthEnd: -140 }))).not.toContain("unit-silver-1");
     expect(drawSilver(forecast({ atMonthEnd: -140 }), ["1"])).toContain("unit-silver-1");
   });
+
+  // `ah-jw85`: `new-1` is unique to a hex, not to a turn - two hexes can each hold a unit a
+  // `FORM 1` created this month, and each must show its own figure rather than one hex's borrowed
+  // from the other.
+  it("two_hexes_forming_the_same_alias_get_their_own_figures", () => {
+    const formedIn = (regionId: string, atMonthEnd: number) => {
+      const forming = aReportUnit({ unitId: "new-1", name: "Unit (new 1)", regionId, own: true });
+      const bySilverKey = new Map([
+        [silverKey(regionId, "new-1"), aUnitSilver({ unitId: "new-1", regionId, atMonthEnd })]
+      ]);
+      return renderToStaticMarkup(
+        <UnitTableDock
+          hex={hex({
+            regionId,
+            region: region({ regionId, units: [forming] }),
+            ownUnitCount: 1
+          })}
+          getSilver={(unitId, hexId) => bySilverKey.get(silverKey(hexId, unitId)) ?? null}
+        />
+      );
+    };
+
+    const first = formedIn("1:6,52", 300);
+    const second = formedIn("1:8,53", -25);
+
+    expect(first).toContain(">300<");
+    expect(first).not.toContain(">-25<");
+    expect(second).toContain(">-25<");
+    expect(second).not.toContain(">300<");
+  });
+
+  // Decisions C1 and I2 (`ah-jw85`): a formed row's ⚠ and Id cell both name and select the unit
+  // whose block wrote the FORM, not the row's own id - a unit that does not exist cannot be
+  // selected, and its orders are typed in its parent's block anyway. `packages/shared` has no
+  // jsdom (`ah-nass`), so what is checkable here is the markup a click would act on - the
+  // `aria-label`s both controls carry - not the click itself.
+  it("a_formed_row_names_the_unit_that_forms_it_on_both_its_id_and_its_warning", () => {
+    const forming = aReportUnit({ unitId: "new-1", name: "Unit (new 1)", regionId: "1:6,52", own: true });
+    const silver = aUnitSilver({
+      unitId: "new-1",
+      regionId: "1:6,52",
+      atMonthEnd: -50,
+      formed: { alias: "1", formedBy: "1922" }
+    });
+    const markup = renderToStaticMarkup(
+      <UnitTableDock
+        hex={hex({ region: region({ units: [forming] }), ownUnitCount: 1 })}
+        getSilver={() => silver}
+        silverWarnings={new Set([silverKey("1:6,52", "new-1")])}
+        onSelectUnit={() => {}}
+      />
+    );
+
+    // The Id cell's own aria-label - `rowTarget`, decision I2.
+    expect(markup).toContain('aria-label="unit 1922"');
+    // The ⚠ button's sr-only text - `rowTarget`, decision C1.
+    expect(markup).toContain("unit 1922");
+    expect(markup).not.toContain("unit new-1");
+  });
 });
 
 describe("the items column", () => {
@@ -676,5 +737,67 @@ describe("the items column", () => {
     // appear anywhere in this row's markup.
     expect(markup).not.toContain("italic text-brass");
     expect(markup).not.toContain('data-predicted="true"');
+  });
+});
+
+describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
+  const previewOf = (
+    unitOverrides: Partial<ReportUnit>,
+    previewOverrides: Partial<RegionPreview["units"][number]>
+  ): RegionPreview => ({
+    regionId: "1:6,52",
+    units: [
+      {
+        unit: unit(unitOverrides),
+        status: "present",
+        changes: [],
+        arrivingFrom: null,
+        departingTo: null,
+        aboard: null,
+        uncounted: [],
+        takenUnshown: [],
+        ...previewOverrides
+      }
+    ]
+  });
+
+  it("marks the cell predicted and names what the report said when skills changed", () => {
+    const markup = draw(
+      hex({
+        region: region({
+          units: [unit({ unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }] })]
+        })
+      }),
+      previewOf(
+        { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }] },
+        { changes: [{ field: "skills", original: "LUMB 1 (30)" }] }
+      )
+    );
+
+    expect(markup).toContain('data-predicted="true"');
+    expect(markup).toContain("italic text-brass");
+    expect(markup).toContain("LUMB 2 (80)");
+    expect(markup).toContain("was: LUMB 1 (30)");
+  });
+
+  it("leaves the cell unmarked when a GIVE moved men but skills did not change", () => {
+    // The giver's own row: a GIVE of men changes its Men and Items cells (asserted elsewhere) but
+    // never its Skills cell, so the preview names no "skills" change here.
+    const markup = draw(
+      hex({
+        region: region({
+          units: [unit({ unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 5, points: 450 }] })]
+        })
+      }),
+      previewOf(
+        { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 5, points: 450 }] },
+        { changes: [{ field: "men", original: "10" }] }
+      )
+    );
+
+    const skillsCell = /<td[^>]*>LUMB 5 \(450\)<\/td>/.exec(markup)?.[0];
+    expect(skillsCell).toBeTruthy();
+    expect(skillsCell).not.toContain("italic");
+    expect(skillsCell).not.toContain("data-predicted");
   });
 });

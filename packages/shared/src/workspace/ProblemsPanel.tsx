@@ -92,6 +92,7 @@ export function ProblemsPanel({
                   <SeverityMark severity={finding.severity} />
                   <ProblemWho
                     unitId={finding.unitId}
+                    formed={finding.formed}
                     known={known}
                     onSelectUnit={onSelectUnit}
                   />

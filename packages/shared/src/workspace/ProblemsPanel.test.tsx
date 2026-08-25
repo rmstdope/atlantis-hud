@@ -16,6 +16,7 @@ const HEXES: HexFindings[] = [
         columnEnd: 4,
         regionId: "1:7,53",
         unitId: "2042",
+        formed: null,
         severity: "warning"
       },
       {
@@ -27,6 +28,7 @@ const HEXES: HexFindings[] = [
         columnEnd: null,
         regionId: "1:7,53",
         unitId: null,
+        formed: null,
         severity: "warning"
       }
     ]
@@ -43,6 +45,7 @@ const HEXES: HexFindings[] = [
         columnEnd: 8,
         regionId: "1:12,48",
         unitId: "3310",
+        formed: null,
         severity: "error"
       }
     ]
@@ -116,5 +119,61 @@ describe("ProblemsPanel, a unit number is a way to go there (ah-87he)", () => {
 
   it("keeps the plain span when no handler is given", () => {
     expect(drawHexes()).not.toContain('data-testid="problem-unit-');
+  });
+});
+
+// Decisions N2 and C1 (`ah-jw85`): a formed unit has no number in the report, so the panel names it
+// by its alias rather than its synthetic id, and a click on it goes to the unit whose block wrote
+// the FORM.
+describe("ProblemsPanel, a formed unit's entry (ah-jw85)", () => {
+  const FORMED_HEXES: HexFindings[] = [
+    {
+      regionId: "1:7,53",
+      findings: [
+        {
+          code: "not-enough-silver",
+          message: "spends 200 silver it has not got",
+          lineStart: 3,
+          lineEnd: 3,
+          columnStart: 0,
+          columnEnd: 4,
+          regionId: "1:7,53",
+          unitId: "new-1",
+          formed: { alias: "1", formedBy: "1922" },
+          severity: "warning"
+        }
+      ]
+    }
+  ];
+
+  it("a_formed_unit_is_named_by_its_alias", () => {
+    const markup = renderToStaticMarkup(
+      <ProblemsPanel
+        hexes={FORMED_HEXES}
+        labelFor={(regionId) => regionId}
+        onSelectHex={() => {}}
+        onDismiss={() => {}}
+      />
+    );
+
+    expect(markup).toContain(">new 1<");
+    expect(markup).not.toContain(">new-1<");
+  });
+
+  it("clicking_a_formed_unit_selects_the_unit_that_forms_it", () => {
+    const markup = renderToStaticMarkup(
+      <ProblemsPanel
+        hexes={FORMED_HEXES}
+        labelFor={(regionId) => regionId}
+        onSelectHex={() => {}}
+        onDismiss={() => {}}
+        known={new Set(["1922"])}
+        onSelectUnit={() => {}}
+      />
+    );
+
+    // Clickable only because "1922" - the forming unit, not "new-1" - is in `known`.
+    expect(markup).toContain('data-testid="problem-unit-new-1"');
+    expect(markup).toContain(">new 1<");
   });
 });

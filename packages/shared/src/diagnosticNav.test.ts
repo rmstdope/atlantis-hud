@@ -18,6 +18,7 @@ function problem(overrides: Partial<OrderDiagnostic>): OrderDiagnostic {
     columnEnd: 4,
     regionId: null,
     unitId: null,
+    formed: null,
     severity: "error",
     ...overrides
   };
