@@ -1211,7 +1211,7 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
   // The old guard set one field per note, so no combination was ever tried and a note unreachable
   // only alongside another was invisible to it - which is exactly how `ah-moq3` and `ah-awcm` both
   // shipped a sentence nobody could see. With every fact true at once, every note whose condition
-  // that satisfies must appear, which tests every note against every other in a single case.
+  // is satisfied must appear, which tests every note against every other in a single case.
   const DOUBTS: NonNullable<UnitSilver["doubt"]>[] = [
     "unknown-tax-base",
     "unpriced-production",
