@@ -71,8 +71,10 @@
 # - linear.api_key  → use LINEAR_API_KEY env var instead
 # - github.token    → use GITHUB_TOKEN env var instead
 
-sync.remote: "git+https://github.com/rmstdope/atlantis-hud.git"
+# sync.remote: "git+https://github.com/rmstdope/atlantis-hud.git"
 # Off, which is beads' own default: the throttled auto-export has committed a stale snapshot, and
 # scripts/beadsExportGate.ts refreshes issues.jsonl at push time instead.
 export:
     auto: false
+sync:
+    remote: "git+https://github.com/rmstdope/atlantis-hud.git"
