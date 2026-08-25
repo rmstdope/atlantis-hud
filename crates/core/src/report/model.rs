@@ -149,6 +149,20 @@ pub struct Skill {
     pub points: u32,
 }
 
+/// The level `points` study points a man buys, as the rules count them: level 1 costs one month,
+/// level 2 two more, level 3 three more, so level `n` stands at `30 * n(n+1)/2` days - the figure
+/// a report prints in brackets, which is per man and not a unit total.
+///
+/// Checked against every skill reading in `tests/fixtures/reports` (ah-z73s.1).
+#[must_use]
+pub fn level_for_points(points: u32) -> u32 {
+    let mut level = 0;
+    while points >= 15 * (level + 1) * (level + 2) {
+        level += 1;
+    }
+    level
+}
+
 /// A unit as the report describes it.
 ///
 /// Ownership comes from the report's own marker: `*` for your units, `-` for everyone else's. It is
@@ -326,5 +340,18 @@ mod tests {
 
         assert_eq!(region.coordinate, Coordinate { x: 0, y: 0, z: 0 });
         assert!(region.units.is_empty());
+    }
+
+    #[test]
+    fn level_for_points_matches_the_rules_thresholds() {
+        assert_eq!(level_for_points(0), 0);
+        assert_eq!(level_for_points(29), 0);
+        assert_eq!(level_for_points(30), 1);
+        assert_eq!(level_for_points(89), 1);
+        assert_eq!(level_for_points(90), 2);
+        assert_eq!(level_for_points(180), 3);
+        assert_eq!(level_for_points(299), 3);
+        assert_eq!(level_for_points(300), 4);
+        assert_eq!(level_for_points(450), 5);
     }
 }

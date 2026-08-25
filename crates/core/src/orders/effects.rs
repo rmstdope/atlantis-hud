@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache::ReportCache;
 use crate::movement::rules::item_spellings;
 use crate::orders::standing::{standing_after, BoardingOrder};
-use crate::report::model::ReportUnit;
+use crate::report::model::{level_for_points, ReportUnit, Skill};
 
 /// How a previewed unit relates to the hex its row sits in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,8 +41,8 @@ pub enum UnitPreviewStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FieldChange {
-    /// The `ReportUnit` field, in its wire spelling: `name`, `onGuard`, `flags`, `items`, `men`,
-    /// `structureId`.
+    /// The `ReportUnit` field, in its wire spelling: `name`, `onGuard`, `flags`, `items`, `skills`,
+    /// `men`, `structureId`.
     pub field: String,
     pub original: String,
 }
@@ -451,6 +451,16 @@ impl WorkingUnit {
                 .join(", "),
         );
         change(
+            "skills",
+            self.unit.skills != original.skills,
+            original
+                .skills
+                .iter()
+                .map(|skill| format!("{} {} ({})", skill.tag, skill.level, skill.points))
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+        change(
             "men",
             self.unit.men != original.men,
             original.men.to_string(),
@@ -853,12 +863,65 @@ impl Working {
                 take_item(&mut unit.men_by_race, race, moved);
             }
             if let Some(receiver) = receiver {
+                let arriving = self.units[giver].unit.skills.clone();
                 let unit = &mut self.units[receiver].unit;
+                unit.skills = merge_skills(&unit.skills, unit.men, &arriving, moved);
                 unit.men += moved;
                 add_item(&mut unit.men_by_race, &name, &tag, moved);
             }
         }
     }
+}
+
+/// The receiving unit's skills once `moved` men arrive from a unit whose own skills are `arriving`.
+///
+/// Points are per man (`level_for_points`), so the merged figure is the headcount-weighted average:
+/// a skill either side lacks contributes zero for its men, which is why arriving men can LOWER a
+/// level. Integer division truncates, and the remainder is dropped rather than tracked: the report
+/// itself prints only a truncated per-man figure, so there is no exact total to preserve.
+///
+/// The giver is deliberately absent: dividing evenly among people leaves its points per man
+/// unchanged, so a GIVE never alters the giver's own skills.
+fn merge_skills(into: &[Skill], into_men: i64, arriving: &[Skill], moved: i64) -> Vec<Skill> {
+    if into_men + moved == 0 {
+        return into.to_vec();
+    }
+
+    let mut tags: Vec<&str> = into
+        .iter()
+        .chain(arriving.iter())
+        .map(|skill| skill.tag.as_str())
+        .collect();
+    tags.sort_unstable();
+    tags.dedup();
+
+    let mut merged: Vec<Skill> = tags
+        .into_iter()
+        .filter_map(|tag| {
+            let held = into.iter().find(|skill| skill.tag == tag);
+            let coming = arriving.iter().find(|skill| skill.tag == tag);
+            let held_points = held.map_or(0, |skill| i64::from(skill.points));
+            let coming_points = coming.map_or(0, |skill| i64::from(skill.points));
+            let points = (into_men * held_points + moved * coming_points) / (into_men + moved);
+            if points <= 0 {
+                return None;
+            }
+            let points = points as u32;
+            let name = held
+                .or(coming)
+                .map(|skill| skill.name.clone())
+                .unwrap_or_default();
+            Some(Skill {
+                name,
+                tag: tag.to_string(),
+                level: level_for_points(points),
+                points,
+            })
+        })
+        .collect();
+
+    merged.sort_by(|left, right| left.tag.cmp(&right.tag));
+    merged
 }
 
 /// Adds or removes a flag, in the report's own vocabulary, without disturbing the others' order.
@@ -1503,6 +1566,161 @@ mod tests {
         assert_eq!(giver.unit.men, 6);
         assert_eq!(receiver.unit.men, 5, "the leader plus four orcs");
         assert_eq!(change(giver, "men").original, "10");
+    }
+
+    #[test]
+    fn given_men_bring_their_skills_and_the_giver_is_untouched() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Teachers (1234), Foo (1), 10 humans [HUMN]. Weight: 100. Capacity: 0/0/150/0. Skills: lumberjack [LUMB] 3 (180).",
+            "* Students (2200), Foo (1), 10 humans [HUMN]. Weight: 100. Capacity: 0/0/150/0. Skills: lumberjack [LUMB] 1 (30).",
+            "",
+        ]
+        .join("\n");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 1234\nGIVE 2200 5 HUMN\n",
+        )
+        .expect("the ruleset loads");
+
+        let region = &response.regions[0];
+        let giver = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "1234")
+            .expect("the giver changed (men and items moved)");
+        let receiver = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "2200")
+            .expect("the receiver changed");
+
+        // Receiver: 10 men at (30) merge with 5 arriving at (180) -> (80), level 2.
+        assert_eq!(
+            receiver.unit.skills,
+            vec![lumberjack(80)],
+            "{:?}",
+            receiver.unit.skills
+        );
+        assert_eq!(change(receiver, "skills").original, "LUMB 1 (30)");
+
+        // The giver's own skills are untouched by giving men away.
+        assert_eq!(giver.unit.skills, vec![lumberjack(180)]);
+        assert!(
+            giver.changes.iter().all(|change| change.field != "skills"),
+            "the giver's skills must not be marked changed: {:?}",
+            giver.changes
+        );
+    }
+
+    #[test]
+    fn the_skills_merge_weighs_by_the_receivers_headcount_before_the_men_arrive() {
+        // Giver: 3 men at (30). Receiver: 7 men with no skill at all.
+        // Correct: (7 * 0 + 3 * 30) / (7 + 3) = 9. Weighing by the receiver's headcount AFTER the
+        // 3 men already arrived - the bug this test guards against - gives
+        // (10 * 0 + 3 * 30) / (10 + 3) = 6 instead: a different, wrong, number.
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Teachers (1234), Foo (1), 3 humans [HUMN]. Weight: 30. Capacity: 0/0/45/0. Skills: lumberjack [LUMB] 1 (30).",
+            "* Students (2200), Foo (1), 7 humans [HUMN]. Weight: 70. Capacity: 0/0/105/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 1234\nGIVE 2200 3 HUMN\n",
+        )
+        .expect("the ruleset loads");
+
+        let region = &response.regions[0];
+        let receiver = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "2200")
+            .expect("the receiver changed");
+
+        assert_eq!(receiver.unit.skills, vec![lumberjack(9)]);
+    }
+
+    fn skill(tag: &str, points: u32) -> Skill {
+        Skill {
+            name: tag.to_lowercase(),
+            tag: tag.to_string(),
+            level: level_for_points(points),
+            points,
+        }
+    }
+
+    /// `lumberjack [LUMB] n (points)`, as a real report line parses it - `name` is the spelled-out
+    /// word, not the tag lower-cased, which matters when a test's expected `Skill` is compared
+    /// against one actually read from report text.
+    fn lumberjack(points: u32) -> Skill {
+        Skill {
+            name: "lumberjack".to_string(),
+            tag: "LUMB".to_string(),
+            level: level_for_points(points),
+            points,
+        }
+    }
+
+    #[test]
+    fn men_arriving_at_an_empty_unit_keep_their_level() {
+        let merged = merge_skills(&[], 0, &[skill("LUMB", 30)], 5);
+
+        assert_eq!(merged, vec![skill("LUMB", 30)]);
+    }
+
+    #[test]
+    fn arriving_men_who_know_less_lower_the_level() {
+        let merged = merge_skills(&[skill("LUMB", 180)], 5, &[skill("LUMB", 30)], 5);
+
+        assert_eq!(merged, vec![skill("LUMB", 105)]);
+        assert_eq!(merged[0].level, 2);
+    }
+
+    #[test]
+    fn a_skill_only_the_arrivals_have_is_diluted_across_everyone() {
+        let merged = merge_skills(&[], 25, &[skill("LUMB", 30)], 5);
+
+        assert_eq!(merged, vec![skill("LUMB", 5)]);
+        assert_eq!(merged[0].level, 0);
+    }
+
+    #[test]
+    fn a_skill_worth_no_points_after_the_merge_is_dropped() {
+        let merged = merge_skills(&[], 999, &[skill("LUMB", 30)], 1);
+
+        assert!(merged.is_empty(), "{:?}", merged);
+    }
+
+    #[test]
+    fn the_result_is_ordered_by_tag() {
+        let merged = merge_skills(
+            &[skill("STEA", 30), skill("LUMB", 30)],
+            5,
+            &[skill("FORC", 30)],
+            5,
+        );
+
+        assert_eq!(
+            merged
+                .iter()
+                .map(|skill| skill.tag.clone())
+                .collect::<Vec<_>>(),
+            vec!["FORC", "LUMB", "STEA"]
+        );
     }
 
     #[test]
