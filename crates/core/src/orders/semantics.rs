@@ -16,11 +16,12 @@
 //! silences the unit's shortfall rather than guessing at it. A false warning costs the player their
 //! confidence in every other line on the screen, which is a far worse trade than a missed one.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::forms::{Amount, Party, Selector};
 use super::intents::{read_intents, spends_the_month, Intent, PlacedIntent, UnitIntents};
 use super::standing::{self, standing_after, Boarding};
+use crate::movement::graph::Direction;
 use crate::movement::mode::{
     best_allowance, capacities_from_items, cargo_capacity, fleet_label, parse_fleet_kind,
     sailing_requirement, Capacities,
@@ -37,7 +38,9 @@ use crate::orders::silver::{
     PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, TransferShape,
     UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
 };
-use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
+use crate::report::model::{
+    Coordinate, ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure,
+};
 use crate::report::ParsedReport;
 
 /// The report's name for the allowance this check reads from `Faction Status:`.
@@ -281,6 +284,19 @@ pub fn review_turn(
     } else {
         BTreeMap::new()
     };
+    // Same reasoning as `located` above: `review_turn` runs on every keystroke once typing
+    // settles, so the index a sailing passenger's produce check walks is built only when that
+    // check is actually enabled (`ah-8myf`).
+    let by_coordinate: HashMap<Coordinate, &ReportRegion> =
+        if options.emits(codes::PRODUCE_NOT_HERE) {
+            report
+                .regions
+                .iter()
+                .map(|region| (region.coordinate, region))
+                .collect()
+        } else {
+            HashMap::new()
+        };
     let mut findings = Vec::new();
     let mut silver = Vec::new();
 
@@ -376,7 +392,7 @@ pub fn review_turn(
         check_building_outside(hex, &options, &mut findings);
         check_build_help(hex, &options, &mut findings);
         check_build_skill(hex, ruleset, &options, &mut findings);
-        check_production(hex, ruleset, &options, &mut findings);
+        check_production(hex, &by_coordinate, ruleset, &options, &mut findings);
         check_studying(hex, ruleset, &options, &mut findings);
         check_magic_study(hex, ruleset, &options, &mut findings);
         check_forms(hex, &options, &mut findings);
@@ -3818,37 +3834,84 @@ fn check_pillage_men(
     }
 }
 
-/// Whether this unit will have left the hex aboard a vessel by the time production resolves.
+/// The `SAIL` that will carry this unit out of the hex, if one will.
 ///
 /// `PRODUCE` is phase 10 and movement is phase 9 (`weight_after_orders`), so a passenger produces
-/// in the region the vessel reaches, not the one it started in - and the order checks are given no
-/// map, so which region that is cannot be known here (`ah-jk9h`, `gh-679`).
+/// in the region the vessel reaches, not the one it started in (`ah-jk9h`, `gh-679`).
+///
+/// Returns the captain's placed `SAIL`, because the caller needs its steps to follow the boat
+/// through the report's own regions (`ah-8myf`). Replaces `sails_away`, which answered the same
+/// question as a bool because the destination was believed to be unknowable here.
 ///
 /// Assembled from pieces that already exist rather than re-derived: a structure this hex's report
-/// shows that is a vessel at all, carrying a unit that could captain it and has
-/// ordered SAIL, with this unit aboard by the same definition `check_sailing` uses - the report's
-/// units in the fleet, plus those that ENTER it this month, minus those that LEAVE.
+/// shows that is a vessel at all, carrying a unit that could captain it and has ordered SAIL, with
+/// this unit aboard by the same definition `check_sailing` uses - the report's units in the fleet,
+/// plus those that ENTER it this month, minus those that LEAVE.
 ///
-/// A SAIL that will certainly fail still suppresses. `check_sailing` may separately warn that the
+/// A SAIL that will certainly fail still counts. `check_sailing` may separately warn that the
 /// fleet is overloaded or short of crew, in which case the boat stays put and the produce check
 /// would have been right - but the player is already being told the sail will fail, and a second
 /// finding true only *because* of the first is two warnings for one mistake, and the wrong one to
 /// act on.
+///
 /// A vessel is one `sailing_requirement` can price - the server's own `Sailors: H/N`, or a hull the
 /// ruleset knows. `parse_fleet_kind` is not that test: it reads any non-empty kind as a one-hull
 /// fleet, so a fort would pass it and every unit inside a fort would stop being checked.
-fn sails_away(hex: &Hex<'_>, ordered: &Ordered<'_>, ruleset: &Ruleset) -> bool {
-    hex.region.structures.iter().any(|fleet| {
-        sailing_requirement(fleet, Some(ruleset)).is_some()
-            && is_aboard(ordered, &fleet.structure_id)
-            && hex.units.iter().any(|other| {
-                could_captain(other, &fleet.structure_id)
-                    && other
+fn carried_away<'a>(
+    hex: &Hex<'a>,
+    ordered: &Ordered<'_>,
+    ruleset: &Ruleset,
+) -> Option<&'a PlacedIntent> {
+    hex.region.structures.iter().find_map(|fleet| {
+        if sailing_requirement(fleet, Some(ruleset)).is_none()
+            || !is_aboard(ordered, &fleet.structure_id)
+        {
+            return None;
+        }
+        hex.units.iter().find_map(|other| {
+            could_captain(other, &fleet.structure_id)
+                .then(|| {
+                    other
                         .intents
                         .iter()
-                        .any(|placed| matches!(placed.intent, Intent::Sail { .. }))
-            })
+                        .find(|placed| matches!(placed.intent, Intent::Sail { .. }))
+                })
+                .flatten()
+        })
     })
+}
+
+/// Where a sail from `from` ends, as far as the report can say.
+///
+/// Walks the `Go` steps through each region's own `exits`, looking the neighbour up by coordinate
+/// in `regions`. `In` and `Out` steps move a unit within a hex, not across the map, so they are
+/// skipped.
+///
+/// `None` the moment the report cannot follow: an exit the region does not list (the coast the
+/// player is sailing off), or a neighbour the report does not carry (beyond what the faction can
+/// see). **`None` is "cannot say", never "did not move"** - the caller must stay silent for it,
+/// which is the whole reason this returns an `Option` rather than the last region it reached.
+///
+/// A sail with no `Go` steps ends where it started, which is the region already being checked.
+fn sail_destination<'a>(
+    from: &'a ReportRegion,
+    steps: &[MoveStep],
+    regions: &HashMap<Coordinate, &'a ReportRegion>,
+) -> Option<&'a ReportRegion> {
+    let mut here = from;
+    for step in steps {
+        let MoveStep::Go(direction) = step else {
+            continue;
+        };
+        // `Direction::parse` is how an exit's text becomes a direction everywhere else that reads
+        // exits (`movement::graph`); the report's own spelling is not matched on here.
+        let exit = here
+            .exits
+            .iter()
+            .find(|exit| Direction::parse(&exit.direction) == Some(*direction))?;
+        here = regions.get(&exit.coordinate).copied()?;
+    }
+    Some(here)
 }
 
 /// Both ways a `PRODUCE` order makes nothing: the unit cannot make the item anywhere, or not here.
@@ -3863,6 +3926,7 @@ fn sails_away(hex: &Hex<'_>, ordered: &Ordered<'_>, ruleset: &Ruleset) -> bool {
 /// loop below already reads as the "no skill produces it" sentence rather than as silence.
 fn check_production(
     hex: &Hex<'_>,
+    by_coordinate: &HashMap<Coordinate, &ReportRegion>,
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
@@ -3932,14 +3996,24 @@ fn check_production(
             }
         }
 
-        // A passenger produces where the vessel arrives, and the checks are given no map, so this
-        // one cannot be judged (`ah-jk9h`). `produce-without-skill` above is unaffected: whether
-        // the unit has the skill is a fact about the unit, not about the region.
         // Only a recipe with no material inputs comes from the hex itself. A sword is made *from*
         // iron and can be made wherever there is iron to hand, so running this on it would mark
         // every `@produce sword` in the game; a unit short of the iron is `not-enough-items`.
-        if says_here && recipe.inputs.is_empty() && !sails_away(hex, ordered, ruleset) {
-            let products = &hex.region.products;
+        if says_here && recipe.inputs.is_empty() {
+            // A passenger produces where the vessel arrives, so it is judged against *that*
+            // region - and silently where the report cannot follow the sail, because a guess about
+            // a region nobody can see is worse than no mark at all (`ah-jk9h`, `ah-8myf`).
+            // `produce-without-skill` above is unaffected: whether the unit has the skill is a
+            // fact about the unit, not about the region.
+            let sailing = carried_away(hex, ordered, ruleset);
+            let where_it_produces = match sailing.map(|placed| &placed.intent) {
+                Some(Intent::Sail { steps }) => sail_destination(hex.region, steps, by_coordinate),
+                _ => Some(hex.region),
+            };
+            let Some(region) = where_it_produces else {
+                continue;
+            };
+            let products = &region.products;
             if !products
                 .iter()
                 .any(|product| product.tag.eq_ignore_ascii_case(&tag))
@@ -3953,10 +4027,17 @@ fn check_production(
                 } else {
                     in_a_list(&names)
                 };
+                let sentence = if sailing.is_some() {
+                    format!(
+                        "cannot produce {label} there: the region this vessel is sailing to produces {has}"
+                    )
+                } else {
+                    format!("cannot produce {label} here: this region produces {has}")
+                };
                 findings.push(ordered.finding(
                     hex,
                     codes::PRODUCE_NOT_HERE,
-                    format!("cannot produce {label} here: this region produces {has}"),
+                    sentence,
                     Some(placed),
                 ));
             }
@@ -5266,7 +5347,7 @@ fn check_claims(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::report::model::{Coordinate, Skill};
+    use crate::report::model::{Exit, Skill};
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
@@ -16412,8 +16493,12 @@ mod tests {
         (region, orders)
     }
 
+    /// The fleet's hex lists no exits at all, so the report cannot follow the sail one step and
+    /// the honest answer is silence - the same rule as
+    /// `a_passenger_whose_sail_cannot_be_followed_is_told_nothing`, reached from the reporter's own
+    /// fixture (`ah-jk9h`).
     #[test]
-    fn a_passenger_on_a_sailing_vessel_is_not_told_it_cannot_produce_here() {
+    fn a_passenger_on_a_sailing_vessel_the_report_cannot_follow_is_told_nothing() {
         let (region, orders) = fishing_fleet(true, true);
         let findings = check(vec![region], &orders);
 
@@ -16545,6 +16630,190 @@ mod tests {
             ["produce-not-here"],
             "{findings:?}"
         );
+    }
+
+    /// `fishing_fleet`'s region, given an exit north, plus the region that exit leads to. The
+    /// fleet's hex produces grain, wood and furs; what the destination produces is the test's.
+    fn fleet_sailing_north(destination: Vec<ItemAmount>) -> Vec<ReportRegion> {
+        let (mut here, _) = fishing_fleet(true, true);
+        here.exits = vec![Exit {
+            direction: "North".to_string(),
+            coordinate: Coordinate { x: 7, y: 51, z: 1 },
+            ..Default::default()
+        }];
+        let there = ReportRegion {
+            products: destination,
+            ..region_at("1:7,51", 7, 51, Vec::new())
+        };
+        vec![here, there]
+    }
+
+    fn one_product(amount: i64, name: &str, tag: &str) -> Vec<ItemAmount> {
+        vec![ItemAmount {
+            amount,
+            name: name.to_string(),
+            tag: tag.to_string(),
+        }]
+    }
+
+    /// **`gh-679`.** The reported month: the destination the boat is sailing to does produce fish,
+    /// so the fisherman aboard is doing nothing wrong and hears nothing.
+    #[test]
+    fn a_passenger_is_judged_where_the_vessel_is_sailing_to() {
+        let findings = check(
+            fleet_sailing_north(one_product(50, "fish", "FISH")),
+            "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n",
+        );
+
+        assert_eq!(produce_codes(&findings), Vec::<&str>::new(), "{findings:?}");
+    }
+
+    /// The case the shipped suppression missed, and the reason this bead exists: the destination
+    /// cannot make the thing either, and the message names *there* rather than here.
+    #[test]
+    fn a_passenger_sailing_somewhere_that_cannot_make_it_is_told_so() {
+        let findings = check(
+            fleet_sailing_north(one_product(20, "wood", "WOOD")),
+            "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n",
+        );
+
+        assert_eq!(
+            produce_codes(&findings),
+            ["produce-not-here"],
+            "{findings:?}"
+        );
+        assert_eq!(
+            findings
+                .iter()
+                .find(|finding| finding.code == codes::PRODUCE_NOT_HERE)
+                .map(|finding| finding.message.as_str()),
+            Some("cannot produce fish there: the region this vessel is sailing to produces wood")
+        );
+    }
+
+    /// Beyond the report's horizon the honest answer is silence: a guess about a region nobody can
+    /// see is worse than no mark at all.
+    #[test]
+    fn a_passenger_whose_sail_cannot_be_followed_is_told_nothing() {
+        let mut regions = fleet_sailing_north(one_product(20, "wood", "WOOD"));
+        regions.truncate(1);
+        let findings = check(regions, "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n");
+
+        assert_eq!(produce_codes(&findings), Vec::<&str>::new(), "{findings:?}");
+    }
+
+    // --- following a SAIL through the report's own regions (`ah-8myf`) -------------------------
+
+    /// A region at `(x, y)` with an exit in `direction` leading to `to`.
+    fn region_with_exit(x: i32, y: i32, direction: &str, to: Coordinate) -> ReportRegion {
+        ReportRegion {
+            exits: vec![Exit {
+                direction: direction.to_string(),
+                coordinate: to,
+                ..Default::default()
+            }],
+            ..region_at(&format!("1:{x},{y}"), x, y, Vec::new())
+        }
+    }
+
+    fn at(x: i32, y: i32) -> Coordinate {
+        Coordinate { x, y, z: 1 }
+    }
+
+    /// The regions of a report, indexed the way `review_turn` indexes them.
+    fn by_coordinate(regions: &[ReportRegion]) -> HashMap<Coordinate, &ReportRegion> {
+        regions
+            .iter()
+            .map(|region| (region.coordinate, region))
+            .collect()
+    }
+
+    #[test]
+    fn a_one_step_sail_lands_in_the_neighbour_the_exit_names() {
+        let regions = vec![
+            region_with_exit(7, 53, "North", at(7, 51)),
+            region_at("1:7,51", 7, 51, Vec::new()),
+        ];
+        let index = by_coordinate(&regions);
+
+        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::North)], &index);
+
+        assert_eq!(end.map(|region| region.coordinate), Some(at(7, 51)));
+    }
+
+    #[test]
+    fn a_two_step_sail_follows_both() {
+        let regions = vec![
+            region_with_exit(7, 53, "North", at(7, 51)),
+            region_with_exit(7, 51, "Northeast", at(8, 50)),
+            region_at("1:8,50", 8, 50, Vec::new()),
+        ];
+        let index = by_coordinate(&regions);
+
+        let end = sail_destination(
+            &regions[0],
+            &[
+                MoveStep::Go(Direction::North),
+                MoveStep::Go(Direction::Northeast),
+            ],
+            &index,
+        );
+
+        assert_eq!(end.map(|region| region.coordinate), Some(at(8, 50)));
+    }
+
+    #[test]
+    fn a_sail_through_an_exit_the_region_does_not_list_cannot_be_followed() {
+        let regions = vec![
+            region_with_exit(7, 53, "North", at(7, 51)),
+            region_at("1:7,51", 7, 51, Vec::new()),
+        ];
+        let index = by_coordinate(&regions);
+
+        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::South)], &index);
+
+        assert_eq!(end.map(|region| region.coordinate), None);
+    }
+
+    #[test]
+    fn a_sail_into_a_region_the_report_does_not_carry_cannot_be_followed() {
+        let regions = vec![region_with_exit(7, 53, "North", at(7, 51))];
+        let index = by_coordinate(&regions);
+
+        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::North)], &index);
+
+        assert_eq!(end.map(|region| region.coordinate), None);
+    }
+
+    #[test]
+    fn a_sail_with_no_steps_stays_where_it_is() {
+        let regions = vec![region_with_exit(7, 53, "North", at(7, 51))];
+        let index = by_coordinate(&regions);
+
+        let end = sail_destination(&regions[0], &[], &index);
+
+        assert_eq!(end.map(|region| region.coordinate), Some(at(7, 53)));
+    }
+
+    #[test]
+    fn in_and_out_steps_do_not_move_the_boat_between_hexes() {
+        let regions = vec![
+            region_with_exit(7, 53, "North", at(7, 51)),
+            region_at("1:7,51", 7, 51, Vec::new()),
+        ];
+        let index = by_coordinate(&regions);
+
+        let end = sail_destination(
+            &regions[0],
+            &[
+                MoveStep::Out,
+                MoveStep::Go(Direction::North),
+                MoveStep::In(None),
+            ],
+            &index,
+        );
+
+        assert_eq!(end.map(|region| region.coordinate), Some(at(7, 51)));
     }
 
     // --- the faction's region allowance ---------------------------------------------------------
