@@ -114,6 +114,16 @@ export type WorkspaceState = {
    * is what keeps the pulse from firing on every launch.
    */
   selectionEpoch: number;
+  /**
+   * Bumped every time the player picks a hex or unit from somewhere OTHER than the map - a list,
+   * the palette, a problem in the panel. It exists so that picking the hex that is already selected
+   * is still observable: `selectRegion` short-circuits for an unchanged region, and the map would
+   * otherwise never learn the player asked to be taken there (ah-lqct).
+   *
+   * Separate from `selectionEpoch`, which drives the selection ring's remount: bumping that one for
+   * an unchanged hex would restart the ring's animation for no visible reason.
+   */
+  pickEpoch: number;
   /** Level being viewed. A report can describe more than one. */
   level: number;
   collapsed: Record<PanelName, boolean>;
@@ -199,7 +209,11 @@ export type WorkspaceState = {
    * with nothing selected leaves the detail and orders panels empty for no reason, so the first
    * unit is chosen straight away — the caller sorts its own faction first.
    */
-  selectRegion: (regionId: string | null, defaultUnitId?: string | null) => void;
+  selectRegion: (
+    regionId: string | null,
+    defaultUnitId?: string | null,
+    options?: { picked?: boolean }
+  ) => void;
   /**
    * Restores a selection without bumping `selectionEpoch` - the silent app-load restore is not a
    * user-initiated change, so it must not replay the lock-on pulse. Clears the selected unit the
@@ -351,6 +365,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       selectedRegionId: null,
       selectedUnitId: null,
       selectionEpoch: 0,
+      pickEpoch: 0,
       level: DEFAULT_LEVEL,
       collapsed: INITIAL_COLLAPSED,
       ordersHeightRem: null,
@@ -409,17 +424,28 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       // Moving to another hex abandons the unit that was selected in the old one: keeping it would
       // leave the detail panel and the orders editor describing a unit that is no longer in the list.
-      selectRegion: (regionId, defaultUnitId = null) =>
-        set((state) =>
-          state.selectedRegionId === regionId
-            ? state
-            : {
-                selectedRegionId: regionId,
-                selectedUnitId: defaultUnitId,
-                selectionEpoch: state.selectionEpoch + 1,
-                mapView: mapViewSelectionChanged(state.mapView, regionId)
-              }
-        ),
+      selectRegion: (regionId, defaultUnitId = null, options) =>
+        set((state) => {
+          if (state.selectedRegionId === regionId) {
+            // The hex is already selected. Nothing about the selection changes - but if the player
+            // ASKED for it, the map still owes them a look at it. An explicit pick ends the restore
+            // exemption too: the player has named this hex, which "leave it where they left it" no
+            // longer covers.
+            return options?.picked
+              ? {
+                  pickEpoch: state.pickEpoch + 1,
+                  mapView: { ...state.mapView, restoredRegionId: null }
+                }
+              : state;
+          }
+          return {
+            selectedRegionId: regionId,
+            selectedUnitId: defaultUnitId,
+            selectionEpoch: state.selectionEpoch + 1,
+            pickEpoch: options?.picked ? state.pickEpoch + 1 : state.pickEpoch,
+            mapView: mapViewSelectionChanged(state.mapView, regionId)
+          };
+        }),
 
       restoreSelection: (regionId) =>
         set((state) => ({
@@ -561,6 +587,7 @@ export function resetWorkspaceStore() {
     selectedRegionId: null,
     selectedUnitId: null,
     selectionEpoch: 0,
+    pickEpoch: 0,
     level: DEFAULT_LEVEL,
     collapsed: INITIAL_COLLAPSED,
     ordersHeightRem: null,

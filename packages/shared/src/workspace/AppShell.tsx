@@ -582,6 +582,7 @@ export function AppShell({
   const selectedRegionId = useWorkspaceStore((state) => state.selectedRegionId);
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectionEpoch = useWorkspaceStore((state) => state.selectionEpoch);
+  const pickEpoch = useWorkspaceStore((state) => state.pickEpoch);
   const selectRegion = useWorkspaceStore((state) => state.selectRegion);
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
   const level = useWorkspaceStore((state) => state.level);
@@ -844,7 +845,10 @@ export function AppShell({
       if (Number.isFinite(target) && target !== level) {
         setLevel(target);
       }
-      selectRegion(regionId, unitId);
+      // Every caller of `goToUnit` is a list, a panel or the palette - never a click on the map - so
+      // the pick is marked here rather than at each of the eight call sites. It is what makes the
+      // map travel even when the target is in the hex already selected (ah-lqct).
+      selectRegion(regionId, unitId, { picked: true });
       // And the unit itself, because `selectRegion` leaves the selection alone when the hex is
       // already the one on screen - which is exactly the case where a second message names a
       // different unit standing beside the first.
@@ -3332,6 +3336,7 @@ export function AppShell({
           level={level}
           selectedRegionId={selectedRegionId}
           selectionEpoch={selectionEpoch}
+          pickEpoch={pickEpoch}
           onSelectRegion={selectHex}
           showStaleness={layers.staleness}
           showTextures={showTextures}

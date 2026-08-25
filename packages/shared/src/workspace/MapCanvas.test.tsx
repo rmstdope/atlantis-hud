@@ -58,6 +58,7 @@ function draw(
       level={1}
       selectedRegionId={null}
       selectionEpoch={0}
+      pickEpoch={0}
       onSelectRegion={() => {}}
       showStaleness
       showTextures={false}
@@ -91,6 +92,7 @@ function drawSelected(selectedRegionId: string, selectionEpoch = 0): string {
       level={1}
       selectedRegionId={selectedRegionId}
       selectionEpoch={selectionEpoch}
+      pickEpoch={0}
       onSelectRegion={() => {}}
       showStaleness
       showTextures={false}
@@ -109,6 +111,7 @@ function drawHighlighted(highlightedRegionId: string | null, selectedRegionId: s
       level={1}
       selectedRegionId={selectedRegionId}
       selectionEpoch={0}
+      pickEpoch={0}
       onSelectRegion={() => {}}
       showStaleness
       showTextures={false}
@@ -128,6 +131,7 @@ function drawWithRoute(): string {
       level={1}
       selectedRegionId={null}
       selectionEpoch={0}
+      pickEpoch={0}
       onSelectRegion={() => {}}
       showStaleness
       showTextures={false}
@@ -228,6 +232,7 @@ describe("what the map hands a theme", () => {
         level={1}
         selectedRegionId={null}
         selectionEpoch={0}
+        pickEpoch={0}
         onSelectRegion={() => {}}
         showStaleness
         showTextures={false}
@@ -405,6 +410,7 @@ function drawWithArrow(twoWay: boolean): string {
       level={1}
       selectedRegionId={null}
       selectionEpoch={0}
+      pickEpoch={0}
       onSelectRegion={() => {}}
       showStaleness
       showTextures={false}
@@ -501,6 +507,7 @@ function drawShaped(shape: MapShape | null): string {
       level={1}
       selectedRegionId={null}
       selectionEpoch={0}
+      pickEpoch={0}
       onSelectRegion={() => {}}
       showStaleness
       showTextures={false}

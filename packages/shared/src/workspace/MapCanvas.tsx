@@ -190,6 +190,11 @@ type MapCanvasProps = {
    * and stays silent when it doesn't - see `selectionEpoch` on `workspaceStore.ts`.
    */
   selectionEpoch: number;
+  /**
+   * Counts picks made from somewhere other than the map - see `pickEpoch` on `workspaceStore.ts`.
+   * The travel effect reads it so that picking the hex already selected still brings the map to it.
+   */
+  pickEpoch: number;
   onSelectRegion: (regionId: string) => void;
   showStaleness: boolean;
   showTextures: boolean;
@@ -274,6 +279,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     highlightMode = "peek",
     keepClear = null,
     selectionEpoch,
+    pickEpoch,
     onSelectRegion,
     showStaleness,
     showTextures,
@@ -545,12 +551,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   // this effect too, for a reason that has nothing to do with the selection.
   const lastFollowed = useRef<FollowedSelection>({
     selectedRegionId: null,
-    restoredRegionId: null
+    restoredRegionId: null,
+    pickEpoch: 0
   });
   useEffect(() => {
     // The store already ended the restored hex's exemption in the same `set` that moved the
     // selection (see `mapViewSelectionChanged`), so there is nothing to clear here - only to read.
-    const current = { selectedRegionId, restoredRegionId: mapView.restoredRegionId };
+    const current = { selectedRegionId, restoredRegionId: mapView.restoredRegionId, pickEpoch };
     const travels = travelsToSelection(current, lastFollowed.current);
     lastFollowed.current = current;
 
@@ -565,7 +572,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     if (next) {
       commit(next);
     }
-  }, [selectedRegionId, level, size, commit, insets, mapView.restoredRegionId]);
+  }, [selectedRegionId, level, size, commit, insets, mapView.restoredRegionId, pickEpoch]);
 
   /**
    * Frames a hovered trade route while the pointer is on its row, and puts the view back exactly

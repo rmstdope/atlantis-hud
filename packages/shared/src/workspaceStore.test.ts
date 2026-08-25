@@ -778,3 +778,57 @@ describe("the workspace's record of an opened game", () => {
     });
   });
 });
+
+/**
+ * Picking a hex from a list, when that hex is already selected, must still tell the map the player
+ * asked to be taken there - `selectRegion` is otherwise a complete no-op for it, and the ring ends
+ * up somewhere nobody can see (ah-lqct).
+ */
+describe("picking the hex already selected", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("bumps the pick epoch", () => {
+    store().selectRegion("1:7,53", null, { picked: true });
+    const before = store().pickEpoch;
+
+    store().selectRegion("1:7,53", null, { picked: true });
+
+    expect(store().pickEpoch).toBe(before + 1);
+  });
+
+  it("leaves the state untouched for an ordinary re-selection", () => {
+    store().selectRegion("1:7,53");
+    const before = useWorkspaceStore.getState();
+
+    store().selectRegion("1:7,53");
+
+    expect(useWorkspaceStore.getState()).toBe(before);
+  });
+
+  it("does not bump the selection epoch, so the ring does not re-animate", () => {
+    store().selectRegion("1:7,53");
+    const before = store().selectionEpoch;
+
+    store().selectRegion("1:7,53", null, { picked: true });
+
+    expect(store().selectionEpoch).toBe(before);
+  });
+
+  it("ends the restore exemption", () => {
+    store().openGame(
+      {
+        gameId: "g1",
+        gameName: "Spring campaign",
+        databasePath: "idb://g1",
+        rulesetId: "neworigins"
+      },
+      { viewport: { tx: 5, ty: 6, step: 1 }, level: 2, regionId: "1:7,53" }
+    );
+    store().restoreSelection("1:7,53");
+    expect(store().mapView.restoredRegionId).toBe("1:7,53");
+
+    store().selectRegion("1:7,53", null, { picked: true });
+
+    expect(store().mapView.restoredRegionId).toBeNull();
+  });
+});
