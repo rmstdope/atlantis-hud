@@ -100,6 +100,45 @@ pub fn best_allowance(unit: &ReportUnit) -> Option<i64> {
     Some(capacity.fly.max(capacity.ride).max(capacity.walk))
 }
 
+/// What a bag of items can carry, per movement mode.
+///
+/// A self-mobile item carries **itself**, so its own weight joins its capacity - which is what
+/// `SelfMobility` means ("which modes an item can carry itself in"). A horse walking contributes
+/// its 20 of capacity plus the 50 it no longer makes anybody else carry; a man contributes 5 plus
+/// his own 10; a sack of grain contributes nothing and must be carried.
+///
+/// Derived rather than read off the report's `Capacity:` line because that line is printed before
+/// this month's orders run, so a unit that buys pack animals is judged against a capacity it has
+/// already outgrown (`ah-titf`, GitHub #677).
+///
+/// Reproduces the server's own line: 1 wood elf + 1 horse gives `walk 85, ride 70`, which is what
+/// `neworigins-3.0.0-g3-f42-t82.rep` prints for WoodsmenY (15189).
+///
+/// `None` if any tag is absent from the ruleset: a partial sum understates capacity, and
+/// understating capacity is exactly what produces a false overload warning.
+#[must_use]
+pub fn capacities_from_items(items: &[(&str, i64)], ruleset: &Ruleset) -> Option<Capacities> {
+    let mut total = Capacities {
+        fly: 0,
+        ride: 0,
+        walk: 0,
+        swim: 0,
+    };
+
+    for (tag, count) in items {
+        let item = ruleset.find_item(tag)?;
+        let contribution = |capacity: i64, self_mobile: bool| {
+            count * (capacity + if self_mobile { item.weight } else { 0 })
+        };
+        total.fly += contribution(item.capacity.fly, item.self_mobile.fly);
+        total.ride += contribution(item.capacity.ride, item.self_mobile.ride);
+        total.walk += contribution(item.capacity.walk, item.self_mobile.walk);
+        total.swim += contribution(item.capacity.swim, item.self_mobile.swim);
+    }
+
+    Some(total)
+}
+
 // ---------------------------------------------------------------- fleets
 
 /// Where this unit stands: after its own ENTER/LEAVE when a view of the orders is in hand, and as
@@ -388,6 +427,26 @@ mod tests {
     #[test]
     fn a_unit_with_no_stated_capacity_is_not_judged() {
         assert_eq!(best_allowance(&ReportUnit::default()), None);
+    }
+
+    // ------------------------------------------------------------ capacities_from_items
+
+    /// The rule against the server's own printed line, the reporter's figures, and an item the
+    /// catalogue cannot price.
+    #[test]
+    fn derives_the_capacity_the_server_prints() {
+        // 1 wood elf + 1 horse - what neworigins-3.0.0-g3-f42-t82.rep prints for WoodsmenY (15189)
+        let c = capacities_from_items(&[("WELF", 1), ("HORS", 1)], &ruleset()).expect("priced");
+        assert_eq!((c.walk, c.ride), (85, 70));
+
+        // the reporter's own unit (GitHub #677): grain is cargo - weight, no capacity, not mobile
+        let c = capacities_from_items(&[("LEAD", 1), ("HORS", 17), ("GRAI", 15)], &ruleset())
+            .expect("priced");
+        assert_eq!(c.walk, 1205);
+
+        // an item the catalogue does not carry gives no answer at all, because a partial sum
+        // understates capacity and understating it is what produces a false overload warning
+        assert!(capacities_from_items(&[("HORS", 1), ("ZZZZ", 1)], &ruleset()).is_none());
     }
 
     // ------------------------------------------------------------ fleets
