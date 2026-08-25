@@ -7247,7 +7247,7 @@ mod tests {
         assert_eq!(told[0].line, Some(2), "on the PILLAGE line");
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this region has 0 — this unit's 1 man holds no weapons he can wield"
+            "cannot pillage here: needs 90 combat ready men, this region has 0 — it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
         );
     }
 
@@ -7307,7 +7307,40 @@ mod tests {
         assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this region has 0 — this unit's 19 men hold no weapons they can wield"
+            "cannot pillage here: needs 90 combat ready men, this region has 0 — it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
+        );
+    }
+
+    /// The whole sentence, head and tail, for a unit holding horses it cannot ride: the join has
+    /// to read as one sentence, and the tail has to name the horses rather than weapons
+    /// (`ah-deo5`).
+    #[test]
+    fn the_pillage_warning_names_the_mount_the_unit_cannot_ride() {
+        let pillager = with_item(
+            with_men(with_silver(unit("683"), 0), 19),
+            3,
+            "horses",
+            "HORS",
+        );
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![pillager])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            told[0].message,
+            "cannot pillage here: needs 90 combat ready men, this region has 0 — its 3 horses need riding 1, and it has no riding"
         );
     }
 
