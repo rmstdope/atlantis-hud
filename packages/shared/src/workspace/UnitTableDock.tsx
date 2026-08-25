@@ -30,7 +30,14 @@ import {
   type SortState,
   type UnitColumn
 } from "../unitTable";
-import { changeFor, mergePreview, originalTooltip, type PreviewedUnit } from "../unitPreview";
+import {
+  changeFor,
+  formatItems,
+  itemsTooltip,
+  mergePreview,
+  originalTooltip,
+  type PreviewedUnit
+} from "../unitPreview";
 import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
 import { useSettingsStore } from "../settingsStore";
 import { useWorkspaceStore } from "../workspaceStore";
@@ -743,7 +750,7 @@ function UnitRow({
   renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
 }) {
   const skills = unit.skills.map((skill) => `${skill.tag} ${skill.level} (${skill.points})`).join(", ");
-  const items = unit.items.map((item) => `${item.amount} ${item.tag}`).join(", ");
+  const items = formatItems(unit.items);
 
   // Which cells the orders changed, so each one can say so and show what the report said.
   const nameChange = changeFor(unit, "name");
@@ -858,8 +865,15 @@ function UnitRow({
     ),
     skills: <Td className="truncate">{skills}</Td>,
     items: (
-      <Td className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`} title={originalTooltip(itemsChange)}>
+      <Td
+        className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`}
+        predicted={Boolean(itemsChange)}
+        title={itemsTooltip(unit)}
+      >
         {items}
+        {unit.uncounted && unit.uncounted.length > 0 ? (
+          <span className="text-ink-dim"> + ?</span>
+        ) : null}
       </Td>
     ),
     structure: (
@@ -958,15 +972,26 @@ function UnitRow({
 function Td({
   children,
   className = "",
-  title
+  title,
+  predicted
 }: {
   children?: ReactNode;
   className?: string;
   /** Hover text, used to explain a figure the cell has no room to qualify. */
   title?: string;
+  /**
+   * Marks the cell itself as a projection, for the smoke suite to find - exactly as `name`'s
+   * inner span already carries `data-predicted` (`ah-agbm`). Only the ITEMS cell has no inner
+   * wrapper to carry it, so it goes straight on the `<td>`.
+   */
+  predicted?: boolean;
 }) {
   return (
-    <td className={`border-b border-edge-soft px-2 py-0.5 ${className}`} title={title}>
+    <td
+      className={`border-b border-edge-soft px-2 py-0.5 ${className}`}
+      title={title}
+      data-predicted={predicted ? "true" : undefined}
+    >
       {children}
     </td>
   );

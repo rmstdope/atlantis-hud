@@ -1371,6 +1371,38 @@ struct Ledger<'a> {
     /// it already makes. Steps 5 and 6 draw on the same food, and a third call to
     /// `feed_from_faction_food` would be a third answer to one question.
     faction_food: FactionFoodPass,
+    /// What this month's `TAKE`, `BUY`, `SELL` and `WITHDRAW` move into or out of each unit's item
+    /// list. Deliberately **not** `GIVE`: the orders preview applies gifts itself, with the
+    /// receiver and men handling this ledger cannot express, and recording them here would
+    /// double-apply them (`ah-agbm`).
+    pub(crate) movements: Vec<ItemMovement>,
+    /// Lines whose effect on a unit's items could not be counted at all, by unit, in document
+    /// order (`ah-agbm`).
+    pub(crate) uncounted: BTreeMap<String, Vec<usize>>,
+}
+
+/// One item this month's orders move into or out of a unit (`ah-agbm`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ItemMovement {
+    pub unit_id: String,
+    /// The canonical tag, uppercased, as `Ledger::balance` keys it.
+    pub tag: String,
+    /// The catalogue's display name, resolved here because `item_name` needs the hex.
+    pub name: String,
+    /// Signed: positive into the unit, negative out of it.
+    pub delta: i64,
+    /// For a `TAKE` from a unit the report does not show in this hex, that unit's number - so the
+    /// hover can say the source is unverifiable. `None` for everything else.
+    pub from_unshown: Option<String>,
+}
+
+/// Whether a call to [`transfer`] should be recorded as a movement for the orders preview. `GIVE`
+/// is applied by the preview's own token walk, so recording it here would move the goods twice
+/// (`ah-agbm`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RecordMovement {
+    Yes,
+    No,
 }
 
 /// Whether any *foreign* unit in this hex is on guard.
@@ -1427,6 +1459,8 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
         upkeep_lent: BTreeMap::new(),
         maintenance_pooled: false,
         faction_food: FactionFoodPass::default(),
+        movements: Vec::new(),
+        uncounted: BTreeMap::new(),
     };
 
     for ordered in &hex.units {
@@ -1472,6 +1506,56 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
     charge_upkeep(&mut ledger, hex);
 
     ledger
+}
+
+/// What this month's `TAKE`, `BUY`, `SELL` and `WITHDRAW` do to each unit's item list.
+///
+/// Built from the same per-hex `Ledger` the warnings and the Silver column read, so the ITEMS
+/// column cannot settle an oversubscribed market line differently from the SILVER column beside it
+/// (`ah-lu0f`, `ah-abwx`, `ah-agbm`).
+pub(crate) fn item_effects(
+    report: &ParsedReport,
+    orders_document: &str,
+    ruleset: Option<&Ruleset>,
+) -> BTreeMap<String, UnitItemEffects> {
+    let ordered = OrderedUnits::read(orders_document);
+    let mut result: BTreeMap<String, UnitItemEffects> = BTreeMap::new();
+
+    for region in &report.regions {
+        let hex = Hex::read(region, &ordered);
+        let ledger = ledger_for(&hex, ruleset);
+
+        for movement in ledger.movements {
+            result
+                .entry(movement.unit_id.clone())
+                .or_default()
+                .moved
+                .push(movement);
+        }
+        for (unit_id, lines) in ledger.uncounted {
+            let entry = result.entry(unit_id).or_default();
+            for line_no in lines {
+                // `PlacedIntent::line` is 1-based.
+                let Some(text) = orders_document.lines().nth(line_no.saturating_sub(1)) else {
+                    continue;
+                };
+                let text = text.split(';').next().unwrap_or("").trim();
+                if !text.is_empty() {
+                    entry.uncounted.push(text.to_string());
+                }
+            }
+        }
+    }
+
+    result
+}
+
+/// One unit's share of [`item_effects`]'s answer (`ah-agbm`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct UnitItemEffects {
+    pub moved: Vec<ItemMovement>,
+    /// The orders that could not be counted, verbatim as the player wrote them, in document order.
+    pub uncounted: Vec<String>,
 }
 
 /// Charges every unit its monthly maintenance, after the orders have run.
@@ -1812,6 +1896,8 @@ fn apply(
                 amount,
                 who.clone(),
                 party_id(to, hex),
+                RecordMovement::No,
+                None,
             );
         }
         Intent::Take { from, what, amount } => {
@@ -1822,8 +1908,20 @@ fn apply(
             // caution: the order says how much, and optimism grants it.
             if source.is_none() && matches!(amount, Amount::All { .. }) {
                 ledger.doubted.insert(who.clone());
+                ledger
+                    .uncounted
+                    .entry(who.clone())
+                    .or_default()
+                    .push(placed.line);
                 return;
             }
+            // Named only when the order pointed at a real unit number the report does not show
+            // here (`ah-agbm`) - not for `NEW`, `FACTION`'s new unit, or `0`, none of which are
+            // "a source the report does not show".
+            let from_unshown = match (from, &source) {
+                (Party::Unit(id), None) => Some(id.clone()),
+                _ => None,
+            };
             transfer(
                 ledger,
                 hex,
@@ -1833,6 +1931,8 @@ fn apply(
                 amount,
                 source.unwrap_or_default(),
                 Some(who.clone()),
+                RecordMovement::Yes,
+                from_unshown,
             );
         }
         // Priced by `silver::price_claim`, which `silver::forecast_unit` calls too. The `None`
@@ -1889,7 +1989,22 @@ fn apply(
         // Deliberately not part of the `Priced` seam (`ah-lu0f.2`): the unit is charged nothing
         // and the Silver column only sets a flag for a hover sentence, so there is no shared
         // arithmetic for a `price_withdrawal` to hold.
-        Intent::Withdraw { .. } => {}
+        //
+        // A movement is still recorded, with no credit to `balance` (`ah-agbm`): crediting the
+        // goods here would change which units `not-enough-items` fires on, a shipped warning this
+        // bead was not asked to touch. Recording the movement without the credit gives the ITEMS
+        // column its projection and leaves every warning exactly as it is.
+        Intent::Withdraw { count, item } => {
+            if let Some(tag) = resolve_item(item, hex, actor, ruleset) {
+                ledger.movements.push(ItemMovement {
+                    unit_id: who.clone(),
+                    tag: tag.clone(),
+                    name: item_name(&tag, hex, ruleset),
+                    delta: *count,
+                    from_unshown: None,
+                });
+            }
+        }
         // Wages and takings from entertaining are paid in the last phase of the turn, after study
         // has been paid for, so they can fund nothing this month.
         Intent::Work | Intent::Entertain => {}
@@ -1925,6 +2040,10 @@ fn transfer(
     amount: &Amount,
     from: String,
     to: Option<String>,
+    record: RecordMovement,
+    // For `TAKE` from a unit the report does not show here: that unit's number, carried onto the
+    // `to` end's movement so the hover can say the source is unverifiable (`ah-agbm`).
+    from_unshown: Option<String>,
 ) {
     // The same reading `silver::forecast_unit` gets, so the two surfaces cannot classify one
     // order two ways (`ah-lu0f`). `Unpriceable` is a whole class of items, or the unit itself:
@@ -1932,11 +2051,21 @@ fn transfer(
     // modelled.
     let (shape, Selector::Item(text)) = (transfer_shape(what, amount), what) else {
         ledger.doubted.insert(actor.unit.unit_id.clone());
+        ledger
+            .uncounted
+            .entry(actor.unit.unit_id.clone())
+            .or_default()
+            .push(placed.line);
         return;
     };
 
     let Some(tag) = resolve_item(text, hex, actor, ledger.ruleset) else {
         ledger.doubted.insert(actor.unit.unit_id.clone());
+        ledger
+            .uncounted
+            .entry(actor.unit.unit_id.clone())
+            .or_default()
+            .push(placed.line);
         return;
     };
 
@@ -1954,9 +2083,27 @@ fn transfer(
 
     if !from.is_empty() {
         charge(ledger, &from, &tag, quantity, placed);
+        if record == RecordMovement::Yes && quantity != 0 {
+            ledger.movements.push(ItemMovement {
+                unit_id: from.clone(),
+                tag: tag.clone(),
+                name: item_name(&tag, hex, ledger.ruleset),
+                delta: -quantity,
+                from_unshown: None,
+            });
+        }
     }
     if let Some(to) = to {
         credit(ledger, &to, &tag, quantity);
+        if record == RecordMovement::Yes && quantity != 0 {
+            ledger.movements.push(ItemMovement {
+                unit_id: to,
+                tag: tag.clone(),
+                name: item_name(&tag, hex, ledger.ruleset),
+                delta: quantity,
+                from_unshown,
+            });
+        }
     }
 }
 
@@ -1973,12 +2120,23 @@ fn buy(
     let who = &actor.unit.unit_id;
     let Some(offer) = market(&hex.region.for_sale, item, hex, actor, ruleset) else {
         ledger.doubted.insert(who.clone());
+        ledger
+            .uncounted
+            .entry(who.clone())
+            .or_default()
+            .push(placed.line);
         return;
     };
 
     let Amount::Exact(count) = amount else {
         // "BUY ALL" takes as many as the unit can pay for, so it cannot overdraw. What it ends up
-        // holding is another matter, and not one any check here reads.
+        // holding is another matter, and not one any check here reads - and not one the ITEMS
+        // column can show either (`ah-agbm`).
+        ledger
+            .uncounted
+            .entry(who.clone())
+            .or_default()
+            .push(placed.line);
         return;
     };
 
@@ -1990,9 +2148,19 @@ fn buy(
         .share_of(&tag, MarketSide::Buying)
         .unwrap_or(*count);
     let priced = price_purchase(*count, offer.price, allowed);
+    let bought = quantity_bought(*count, allowed);
 
     charge(ledger, who, SILVER, priced.spends, placed);
-    credit(ledger, who, &tag, quantity_bought(*count, allowed));
+    credit(ledger, who, &tag, bought);
+    if bought != 0 {
+        ledger.movements.push(ItemMovement {
+            unit_id: who.clone(),
+            tag: tag.clone(),
+            name: item_name(&tag, hex, ledger.ruleset),
+            delta: bought,
+            from_unshown: None,
+        });
+    }
 }
 
 /// How this hex's market lines are split between the faction's own units, and which of them is
@@ -2067,6 +2235,11 @@ fn sell(
     let who = &actor.unit.unit_id;
     let Some(demand) = market(&hex.region.wanted, item, hex, actor, ruleset) else {
         ledger.doubted.insert(who.clone());
+        ledger
+            .uncounted
+            .entry(who.clone())
+            .or_default()
+            .push(placed.line);
         return;
     };
 
@@ -2091,6 +2264,15 @@ fn sell(
         SILVER,
         price_sale(asked, holds, demand.price, allowed).earns,
     );
+    if quantity != 0 {
+        ledger.movements.push(ItemMovement {
+            unit_id: who.clone(),
+            tag: tag.clone(),
+            name: item_name(&tag, hex, ledger.ruleset),
+            delta: -quantity,
+            from_unshown: None,
+        });
+    }
 }
 
 fn study(
@@ -8709,6 +8891,223 @@ mod tests {
                     "{id}"
                 );
             }
+        }
+    }
+
+    /// `ah-agbm`. The ITEMS column's projection reuses the ledger's own settlement rather than
+    /// re-deriving it, so these tests read `Ledger::movements` and `Ledger::uncounted` directly -
+    /// the same fields `item_effects` will drain.
+    mod item_movements {
+        use super::*;
+
+        /// `Ledger<'a>` borrows the ruleset it is built from, so a test that wants one hands it a
+        /// closure rather than receiving the ledger by value - the same shape `verdicts` above
+        /// would need if it read the ledger itself instead of judging it first.
+        fn with_ledger<R>(
+            hex_region: ReportRegion,
+            orders: &str,
+            read: impl FnOnce(&Ledger<'_>) -> R,
+        ) -> R {
+            let ordered = OrderedUnits::read(orders);
+            let hex = Hex::read(&hex_region, &ordered);
+            let rules = ruleset();
+            let ledger = ledger_for(&hex, Some(&rules));
+            read(&ledger)
+        }
+
+        fn line(amount: i64, price: i64, name: &str, tag: &str) -> MarketItem {
+            MarketItem {
+                amount,
+                name: name.to_string(),
+                tag: tag.to_string(),
+                price,
+            }
+        }
+
+        #[test]
+        fn a_take_records_the_movement_it_makes() {
+            let hex_region = region(vec![
+                with_item(unit("6567"), 500, "grain", "GRAI"),
+                unit("2391"),
+            ]);
+            with_ledger(
+                hex_region,
+                "unit 2391\nTAKE FROM 6567 100 GRAI\n",
+                |ledger| {
+                    assert!(
+                        ledger.movements.contains(&ItemMovement {
+                            unit_id: "2391".to_string(),
+                            tag: "GRAI".to_string(),
+                            name: "grain".to_string(),
+                            delta: 100,
+                            from_unshown: None,
+                        }),
+                        "the taker's own gain should be among the recorded movements: {:?}",
+                        ledger.movements
+                    );
+                },
+            );
+        }
+
+        #[test]
+        fn a_buy_records_only_what_the_market_settles() {
+            let hex = ReportRegion {
+                for_sale: vec![line(12, 10, "horse", "HORS")],
+                ..region(vec![unit("2390"), unit("2391")])
+            };
+            with_ledger(
+                hex,
+                "unit 2390\nBUY 20 horse\nunit 2391\nBUY 10 horse\n",
+                |ledger| {
+                    let movement_for = |id: &str| {
+                        ledger
+                            .movements
+                            .iter()
+                            .find(|m| m.unit_id == id && m.tag == "HORS")
+                            .cloned()
+                    };
+                    assert_eq!(
+                        movement_for("2390"),
+                        Some(ItemMovement {
+                            unit_id: "2390".to_string(),
+                            tag: "HORS".to_string(),
+                            name: "horse".to_string(),
+                            delta: 8,
+                            from_unshown: None,
+                        })
+                    );
+                    assert_eq!(
+                        movement_for("2391"),
+                        Some(ItemMovement {
+                            unit_id: "2391".to_string(),
+                            tag: "HORS".to_string(),
+                            name: "horse".to_string(),
+                            delta: 4,
+                            from_unshown: None,
+                        })
+                    );
+                },
+            );
+        }
+
+        #[test]
+        fn a_sell_records_what_leaves_the_unit() {
+            let hex = ReportRegion {
+                wanted: vec![line(100, 10, "fur", "FUR")],
+                ..region(vec![with_item(unit("2390"), 20, "fur", "FUR")])
+            };
+            with_ledger(hex, "unit 2390\nSELL 15 fur\n", |ledger| {
+                assert_eq!(
+                    ledger.movements,
+                    vec![ItemMovement {
+                        unit_id: "2390".to_string(),
+                        tag: "FUR".to_string(),
+                        name: "fur".to_string(),
+                        delta: -15,
+                        from_unshown: None,
+                    }]
+                );
+            });
+        }
+
+        #[test]
+        fn a_give_records_no_movement() {
+            let hex_region = region(vec![
+                with_item(unit("901"), 5, "sword", "SWOR"),
+                unit("902"),
+            ]);
+            with_ledger(hex_region, "unit 901\nGIVE 902 2 SWOR\n", |ledger| {
+                assert!(
+                    ledger.movements.is_empty(),
+                    "the preview's own `give` applies gifts; recording one here would move it twice"
+                );
+            });
+        }
+
+        #[test]
+        fn an_order_that_cannot_be_counted_is_named() {
+            let hex_region = region(vec![unit("2390")]);
+            with_ledger(hex_region, "unit 2390\nBUY ALL HORS\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("2390").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+                assert!(
+                    ledger.movements.is_empty(),
+                    "an uncounted BUY ALL records no movement"
+                );
+            });
+        }
+
+        #[test]
+        fn a_buy_of_goods_the_market_does_not_sell_cannot_be_counted() {
+            let hex_region = region(vec![unit("2390")]);
+            with_ledger(hex_region, "unit 2390\nBUY 10 HORS\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("2390").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+            });
+        }
+
+        #[test]
+        fn a_gift_of_a_whole_class_cannot_be_counted() {
+            let hex_region = region(vec![with_item(unit("901"), 5, "sword", "SWOR")]);
+            with_ledger(hex_region, "unit 901\nGIVE 902 ALL ITEMS\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("901").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+            });
+        }
+
+        #[test]
+        fn a_take_of_all_from_a_unit_not_shown_here_cannot_be_counted() {
+            let hex_region = region(vec![unit("2391")]);
+            with_ledger(
+                hex_region,
+                "unit 2391\nTAKE FROM 999 ALL GRAI\n",
+                |ledger| {
+                    assert_eq!(
+                        ledger.uncounted.get("2391").map(Vec::as_slice),
+                        Some([2].as_slice())
+                    );
+                    assert!(ledger.movements.is_empty());
+                },
+            );
+        }
+
+        #[test]
+        fn a_withdrawal_moves_goods_into_the_unit() {
+            let hex_region = region(vec![unit("2390")]);
+            with_ledger(hex_region, "unit 2390\nWITHDRAW 8 GRAI\n", |ledger| {
+                assert_eq!(
+                    ledger.movements,
+                    vec![ItemMovement {
+                        unit_id: "2390".to_string(),
+                        tag: "GRAI".to_string(),
+                        name: "grain".to_string(),
+                        delta: 8,
+                        from_unshown: None,
+                    }]
+                );
+            });
+        }
+
+        #[test]
+        fn a_withdrawal_still_charges_the_unit_nothing() {
+            let hex_region = region(vec![unit("2390")]);
+            with_ledger(hex_region, "unit 2390\nWITHDRAW 8 GRAI\n", |ledger| {
+                assert_eq!(
+                    balance_of(ledger, "2390", "GRAI"),
+                    1,
+                    "the fund pays, not the unit - the fixture's starting grain is untouched"
+                );
+                assert!(
+                    !ledger.doubted.contains("2390"),
+                    "no shipped warning may move because of this bead"
+                );
+            });
         }
     }
 
