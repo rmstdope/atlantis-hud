@@ -16013,7 +16013,12 @@ mod tests {
     fn a_unit_that_buys_pack_animals_is_not_called_overloaded() {
         let caravan = with_item(
             with_item(
-                with_item(carrying_with("11619", 135, "0/70/85/0"), 1, "leader", "LEAD"),
+                with_item(
+                    carrying_with("11619", 135, "0/70/85/0"),
+                    1,
+                    "leader",
+                    "LEAD",
+                ),
                 1,
                 "horse",
                 "HORS",
@@ -16088,9 +16093,7 @@ mod tests {
         let finding = only(check(vec![region(vec![exotic])], "unit 12054\nMOVE S S\n"));
         assert_eq!(finding.code.as_str(), "unit-overloaded");
         assert!(
-            finding
-                .message
-                .contains("the most it can move with is 150"),
+            finding.message.contains("the most it can move with is 150"),
             "{}",
             finding.message
         );
