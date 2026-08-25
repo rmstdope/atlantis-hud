@@ -62,6 +62,20 @@ pub struct UnitPreview {
     /// The fleet carrying this unit away, as `<name> [<id>]`, when it is departing because the ship
     /// it stands in is. Never set on an arriving row: an arrival says only where it came from.
     pub aboard: Option<String>,
+    /// This unit's orders whose effect on its items could not be counted, verbatim, in document
+    /// order (`ah-agbm`).
+    pub uncounted: Vec<String>,
+    /// Silver or goods taken from a unit the report does not show in this hex (`ah-agbm`).
+    pub taken_unshown: Vec<TakenUnshown>,
+}
+
+/// Goods taken from a unit the report does not show in this hex (`ah-agbm`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TakenUnshown {
+    pub amount: i64,
+    pub tag: String,
+    pub from: String,
 }
 
 /// Every previewed unit standing in (or bound for) one region.
@@ -138,6 +152,14 @@ pub fn preview_orders_on_map(
 
     let mut working = Working::over_own_units(&report, ruleset.clone());
     super::walk::walk(orders_document, |event| working.visit(event));
+
+    // What `BUY`, `SELL`, `WITHDRAW` and `TAKE` do to each unit's item list, read from the same
+    // ledger the Silver column and the shortfall warnings settle an oversubscribed market line
+    // from - so the ITEMS and SILVER cells on one row cannot disagree (`ah-agbm`). `GIVE` is not
+    // read here: the walk above already applied every gift through `Working::give`.
+    let item_effects =
+        super::semantics::item_effects(&report, orders_document, Some(ruleset.as_ref()));
+    working.apply_item_effects(&item_effects);
 
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
@@ -240,9 +262,18 @@ pub fn preview_orders_on_map(
     } in decided
     {
         let changes = entry.changes();
+        // Captured before `entry.unit` is moved below - the same data on both rows of a unit
+        // that is arriving and departing at once, since items are not a property of where the
+        // unit stands (`ah-agbm`).
+        let uncounted = entry.uncounted.clone();
+        let taken_unshown = entry.taken_unshown.clone();
 
         let departed = status == UnitPreviewStatus::Departing;
-        if changes.is_empty() && !departed && status != UnitPreviewStatus::Formed {
+        if changes.is_empty()
+            && !departed
+            && status != UnitPreviewStatus::Formed
+            && uncounted.is_empty()
+        {
             continue;
         }
 
@@ -270,6 +301,8 @@ pub fn preview_orders_on_map(
                     departing_to: None,
                     // An arrival says only where the unit came from.
                     aboard: None,
+                    uncounted: uncounted.clone(),
+                    taken_unshown: taken_unshown.clone(),
                 });
             regions
                 .entry(entry.unit.region_id.clone())
@@ -281,6 +314,8 @@ pub fn preview_orders_on_map(
                     changes,
                     arriving_from: None,
                     aboard,
+                    uncounted,
+                    taken_unshown,
                 });
         } else {
             regions
@@ -293,6 +328,8 @@ pub fn preview_orders_on_map(
                     arriving_from: None,
                     departing_to: None,
                     aboard,
+                    uncounted,
+                    taken_unshown,
                 });
         }
     }
@@ -390,6 +427,13 @@ struct WorkingUnit {
     /// after each one, so a FORM later in the block still inherits the structure the unit is
     /// standing in by then - `visit` is a mutating walk and other arms read `structure_id`.
     boardings: Vec<BoardingOrder>,
+    /// This unit's orders whose effect on its items could not be counted, verbatim, in document
+    /// order. Written once by `apply_item_effects`, after the walk that builds every unit here has
+    /// finished (`ah-agbm`).
+    uncounted: Vec<String>,
+    /// Silver or goods taken from a unit the report does not show in this hex. Written once by
+    /// `apply_item_effects` (`ah-agbm`).
+    taken_unshown: Vec<TakenUnshown>,
 }
 
 impl WorkingUnit {
@@ -483,6 +527,8 @@ impl Working {
                 move_steps: None,
                 reported: unit.structure_id.clone(),
                 boardings: Vec::new(),
+                uncounted: Vec::new(),
+                taken_unshown: Vec::new(),
             });
         }
         Self {
@@ -551,6 +597,64 @@ impl Working {
         }
     }
 
+    /// Applies what `BUY`, `SELL`, `WITHDRAW` and `TAKE` move into or out of each unit's item
+    /// list, and records what could not be counted at all - `super::semantics::item_effects`'s
+    /// seam onto the ledger the same settlement already prices (`ah-agbm`).
+    ///
+    /// `GIVE` is not read here: the walk that built `self.units` has already applied every gift
+    /// through `Working::give`, and the ledger records no movement for one (`RecordMovement::No`)
+    /// for exactly that reason - applying it again here would move it twice.
+    fn apply_item_effects(
+        &mut self,
+        effects: &BTreeMap<String, super::semantics::UnitItemEffects>,
+    ) {
+        for unit in &mut self.units {
+            let Some(effect) = effects.get(&unit.unit.unit_id) else {
+                continue;
+            };
+            for movement in &effect.moved {
+                match movement.delta.cmp(&0) {
+                    std::cmp::Ordering::Greater => {
+                        add_item(
+                            &mut unit.unit.items,
+                            &movement.name,
+                            &movement.tag,
+                            movement.delta,
+                        );
+                    }
+                    std::cmp::Ordering::Less => {
+                        // A stock can go negative here - the ledger clamps against a running
+                        // balance while `give` above clamped against the report's holding, so an
+                        // overdrawn unit can reach one. `take_item` already drops a stock at or
+                        // below zero, which is the clamp this column needs; an item already
+                        // absent (emptied by an earlier movement) has nothing left to remove.
+                        if let Some(index) = unit
+                            .unit
+                            .items
+                            .iter()
+                            .position(|item| item.tag.eq_ignore_ascii_case(&movement.tag))
+                        {
+                            take_item(&mut unit.unit.items, index, -movement.delta);
+                        }
+                    }
+                    std::cmp::Ordering::Equal => {}
+                }
+            }
+            unit.uncounted = effect.uncounted.clone();
+            unit.taken_unshown = effect
+                .moved
+                .iter()
+                .filter_map(|movement| {
+                    movement.from_unshown.as_ref().map(|from| TakenUnshown {
+                        amount: movement.delta,
+                        tag: movement.tag.clone(),
+                        from: from.clone(),
+                    })
+                })
+                .collect();
+        }
+    }
+
     fn open_form(&mut self, arguments: &[super::lexer::Token]) {
         // The alias has to be a number: `GIVE NEW n` is the only way to reach the formed unit, and
         // the grammar's `Arg::Unit` accepts `NEW 1` and never `NEW a`.
@@ -585,6 +689,8 @@ impl Working {
             move_steps: None,
             reported,
             boardings: Vec::new(),
+            uncounted: Vec::new(),
+            taken_unshown: Vec::new(),
         });
         self.forming.push(Some(index));
     }
@@ -847,6 +953,31 @@ mod tests {
         .expect("the ruleset loads")
     }
 
+    /// Like `report()`, but with a market line on each side and the giver holding fur, for the
+    /// `BUY`/`SELL`/`WITHDRAW`/`TAKE` increments (`ah-agbm`).
+    fn report_with_market() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 12 horses [HORS] at $10.",
+            "  Wanted: 100 fur [FUR] at $10.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Walker (900), Foo (1), behind, leader [LEAD], 3 swords [SWOR], 10 fur [FUR]. Weight: 20. Capacity: 0/0/15/0.",
+            "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
+    fn preview_over(report: &str, orders: &str) -> OrdersPreviewResponse {
+        preview_orders_for_remembered_report(&mut ReportCache::new(), RULESET, report, "[]", orders)
+            .expect("the ruleset loads")
+    }
+
     fn only_unit(response: &OrdersPreviewResponse) -> &UnitPreview {
         assert_eq!(response.regions.len(), 1, "one region changed");
         assert_eq!(response.regions[0].units.len(), 1, "one unit changed");
@@ -1074,38 +1205,63 @@ mod tests {
         );
     }
 
-    /// Handing over a whole unit is ownership, not a row's contents, and stays out of the preview.
-    /// Worth its own test now that the shared reader hands this over as a selector rather than
-    /// simply running out of arguments.
+    /// Handing over a whole unit is ownership, not a row's contents, so it moves none of the
+    /// giver's items - but `ah-agbm` still marks it uncounted, exactly as a whole class of items
+    /// is below: `transfer`'s selector guard cannot tell "ownership, deliberately out of scope"
+    /// from "a class this bead has not modelled" apart, and the navigator's Round 1 Q2 chose to
+    /// admit the gap rather than hide it (see the design's *Where each recording goes* table).
+    /// Renamed from `giving_the_unit_itself_previews_nothing`, whose old name and assertion
+    /// predate that decision - recorded as a deviation from the plan's regression net in the PR.
     #[test]
-    fn giving_the_unit_itself_previews_nothing() {
+    fn giving_the_unit_itself_moves_no_items_but_is_marked_uncounted() {
         let response = preview("unit 900\nGIVE 901 UNIT\n");
-        assert!(response.regions.is_empty(), "{:?}", response.regions);
-
-        // The control: the same giver and receiver, with a transfer the preview does model. An
-        // empty answer above has to mean "this selector is turned away", not "this GIVE never
-        // resolves anything".
-        let moved = preview("unit 900\nGIVE 901 1 SWOR\n");
+        let unit = only_unit(&response);
         assert!(
-            !moved.regions.is_empty(),
-            "the control must preview something"
+            !unit.changes.iter().any(|change| change.field == "items"),
+            "handing over the unit itself must move none of its items: {:?}",
+            unit.changes
         );
+        assert_eq!(unit.uncounted, vec!["GIVE 901 UNIT".to_string()]);
+
+        // The control: the same giver and receiver, with a transfer the preview does model and
+        // count, so the row above is not just every GIVE reading as uncounted. Both units change
+        // here (the giver loses a sword, the receiver gains one), so the giver is found by id
+        // rather than assumed to be the only row.
+        let moved = preview("unit 900\nGIVE 901 1 SWOR\n");
+        let giver = moved.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the giver changed");
+        assert!(giver.uncounted.is_empty());
     }
 
     /// Likewise a whole class of items: the shared reader recognises `ALL ITEMS` where the old
-    /// inline parse merely failed to find an item called "ITEMS".
+    /// inline parse merely failed to find an item called "ITEMS". `ah-agbm`'s Round 1 Q2 named
+    /// exactly this order as the example of one the ITEMS column cannot count, so it is now
+    /// admitted rather than silently dropped. Renamed from
+    /// `giving_a_class_of_items_previews_nothing`; see the sibling test above for why.
     #[test]
-    fn giving_a_class_of_items_previews_nothing() {
+    fn giving_a_class_of_items_moves_no_items_but_is_marked_uncounted() {
         let response = preview("unit 900\nGIVE 901 ALL ITEMS\n");
-        assert!(response.regions.is_empty(), "{:?}", response.regions);
-
-        // The control: `ALL` of one named item is modelled, so the emptiness above is the class
-        // being turned away rather than `ALL` failing to read.
-        let named = preview("unit 900\nGIVE 901 ALL SWOR\n");
+        let unit = only_unit(&response);
         assert!(
-            !named.regions.is_empty(),
-            "the control must preview something"
+            !unit.changes.iter().any(|change| change.field == "items"),
+            "a class the preview cannot classify must move nothing: {:?}",
+            unit.changes
         );
+        assert_eq!(unit.uncounted, vec!["GIVE 901 ALL ITEMS".to_string()]);
+
+        // The control: `ALL` of one named item is modelled and counted, so the row above is the
+        // class being turned away rather than `ALL` failing to read. Both units change here, so
+        // the giver is found by id rather than assumed to be the only row.
+        let named = preview("unit 900\nGIVE 901 ALL SWOR\n");
+        let giver = named.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the giver changed");
+        assert!(giver.uncounted.is_empty());
     }
 
     /// A gift to another faction's new unit leaves this faction's rows alone. The shared reader
@@ -1809,6 +1965,123 @@ mod tests {
             assert!(
                 crate::orders::grammar::find_order(keyword).is_some(),
                 "{keyword} is not in the grammar"
+            );
+        }
+    }
+
+    /// `ah-agbm`. The seam onto `semantics::item_effects`, and what the preview does with it:
+    /// `BUY`, `SELL`, `WITHDRAW` and `TAKE` reach `unit.items` exactly as `GIVE` already does, and
+    /// the two new fields cross the boundary.
+    mod item_effects {
+        use super::*;
+
+        #[test]
+        fn a_bought_item_reaches_the_previewed_unit() {
+            let response = preview_over(&report_with_market(), "unit 900\nBUY 5 horse\n");
+            let unit = only_unit(&response);
+
+            let bought = unit
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "HORS")
+                .expect("the bought horses are in the previewed list");
+            assert_eq!(bought.amount, 5);
+            change(unit, "items");
+        }
+
+        /// Q4's rule, via the existing `take_item`.
+        #[test]
+        fn a_sold_out_stock_disappears_from_the_previewed_list() {
+            let response = preview_over(&report_with_market(), "unit 900\nSELL ALL FUR\n");
+            let unit = only_unit(&response);
+
+            assert!(
+                !unit.unit.items.iter().any(|item| item.tag == "FUR"),
+                "an emptied stock must not be shown, even as zero: {:?}",
+                unit.unit.items
+            );
+            change(unit, "items");
+        }
+
+        /// A unit ordered `sell 8 FUR` and then `give 901 5 FUR` out of a stock of 10 is
+        /// overdrawn: the ledger's `SELL` movement is computed against the report's original 10,
+        /// but the `GIVE` has already taken 5 off the previewed list by the time it applies. The
+        /// column must not render `-3 FUR`.
+        #[test]
+        fn an_overdrawn_stock_is_never_negative() {
+            let response = preview_over(
+                &report_with_market(),
+                "unit 900\nSELL 8 FUR\nGIVE 901 5 FUR\n",
+            );
+            let giver = response.regions[0]
+                .units
+                .iter()
+                .find(|unit| unit.unit.unit_id == "900")
+                .expect("the giver changed");
+
+            assert!(
+                !giver.unit.items.iter().any(|item| item.tag == "FUR"),
+                "an overdrawn stock must be dropped, not shown negative: {:?}",
+                giver.unit.items
+            );
+        }
+
+        /// The guard on double-application: `GIVE` records no movement in the ledger, so a unit
+        /// ordered to give 2 swords loses exactly 2, not 4.
+        #[test]
+        fn a_gift_is_still_applied_exactly_once() {
+            let response = preview("unit 900\nGIVE 901 2 SWOR\n");
+            let giver = response.regions[0]
+                .units
+                .iter()
+                .find(|unit| unit.unit.unit_id == "900")
+                .expect("the giver changed");
+
+            let swords = giver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .map_or(0, |item| item.amount);
+            assert_eq!(swords, 1, "3 swords less 2 given, not less 4");
+        }
+
+        #[test]
+        fn an_uncounted_order_reaches_the_preview_verbatim() {
+            let response = preview_over(
+                &report_with_market(),
+                "unit 900\nbuy all HORS ; testing\nSELL 1 FUR\n",
+            );
+            let unit = only_unit(&response);
+
+            assert_eq!(unit.uncounted, vec!["buy all HORS".to_string()]);
+        }
+
+        /// The navigator's S1 state: a unit whose only order cannot be counted still reaches the
+        /// response, with `changes` empty and `uncounted` naming the order - the filter at the
+        /// bottom of `preview_orders_on_map` gains `&& uncounted.is_empty()` for exactly this.
+        #[test]
+        fn a_unit_whose_only_order_cannot_be_counted_is_still_sent() {
+            let response = preview_over(&report_with_market(), "unit 900\nBUY ALL HORS\n");
+            let unit = only_unit(&response);
+
+            assert!(unit.changes.is_empty(), "{:?}", unit.changes);
+            assert_eq!(unit.uncounted, vec!["BUY ALL HORS".to_string()]);
+        }
+
+        #[test]
+        fn a_take_from_a_unit_not_shown_here_names_its_source() {
+            let response = preview_over(&report_with_market(), "unit 901\nTAKE FROM 999 5 GRAI\n");
+            let unit = only_unit(&response);
+
+            assert_eq!(
+                unit.taken_unshown,
+                vec![TakenUnshown {
+                    amount: 5,
+                    tag: "GRAI".to_string(),
+                    from: "999".to_string(),
+                }]
             );
         }
     }

@@ -4143,6 +4143,26 @@ test("orders change the units table to show the coming month", async ({ page }) 
 });
 
 /**
+ * ah-agbm: the ITEMS column already showed a pending GIVE in italic; BUY, SELL, WITHDRAW and TAKE
+ * now get the same treatment. Hex 1:7,53 carries a "For Sale: ... perfume [PERF] ..." line, so a
+ * stated BUY settles without contention from any other own unit.
+ */
+test("a bought item marks the ITEMS cell as a projection", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await fillOrders(page, "BUY 1 PERF");
+
+  // No other order is on this unit's block, so the ITEMS cell is the only predicted cell in the
+  // row - the same locator the NAME case above uses.
+  const itemsCell = row.locator('[data-predicted="true"]').first();
+  await expect(itemsCell).toContainText("PERF");
+  await expect(itemsCell).toHaveAttribute("title", /^was: /);
+});
+
+/**
  * ah-cp8: a narrow window used to clip the right-hand end of the header (Export, the settings
  * gear) instead of adapting. The header now wraps into two groups, with the actions group
  * dropping to its own right-aligned row when the game-state group has already taken the width.

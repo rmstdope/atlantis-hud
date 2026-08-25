@@ -333,6 +333,13 @@ export type FieldChange = {
   original: string;
 };
 
+/** Goods taken from a unit the report does not show in this hex (`ah-agbm`). */
+export type TakenUnshown = {
+  amount: number;
+  tag: string;
+  from: string;
+};
+
 /** One unit as the orders leave it: the full predicted state, so the row renders like any other. */
 export type UnitPreview = {
   unit: ReportUnit;
@@ -347,6 +354,13 @@ export type UnitPreview = {
    * stands in is. Never set on an arriving row: an arrival says only where it came from.
    */
   aboard: string | null;
+  /**
+   * This unit's orders whose effect on its items could not be counted, verbatim, in document
+   * order (`ah-agbm`).
+   */
+  uncounted: string[];
+  /** Silver or goods taken from a unit the report does not show in this hex (`ah-agbm`). */
+  takenUnshown: TakenUnshown[];
 };
 
 /** Every previewed unit standing in (or bound for) one region. */

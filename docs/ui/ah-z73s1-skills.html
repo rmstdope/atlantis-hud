@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-z73s.1 — skills arriving with given men</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  table.units { width:100%; border-collapse:collapse; font-family:'SF Mono',Menlo,Consolas,monospace;
+    font-size:12.5px; background:var(--panel); border:1px solid var(--edge); }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:6px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  .own { color:var(--ok); } .id { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .drop { font-style:italic; color:var(--danger); }
+  .hov { display:inline-block; background:var(--raised); border:1px solid var(--edge); border-radius:4px;
+    padding:4px 8px; font-family:'SF Mono',Menlo,monospace; font-size:11.5px; color:var(--ink-soft); margin-top:6px; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  .arith { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); margin:6px 0 0; }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  .prob { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; max-width:100ch; }
+  .prob .w { color:var(--brass); } .prob .ttl { color:var(--ink-dim); font-size:11px; letter-spacing:1.4px;
+    text-transform:uppercase; margin-bottom:6px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+</style></head><body>
+<header>
+  <h1>ah-z73s.1 — <span>skills arriving with given men</span></h1>
+  <p>A report prints a skill as <code>lumberjack [LUMB] 5 (450)</code>, and the figure in brackets is study points
+  <b>per man</b> — I checked that against every skill reading in the fixtures (4022 of them): a level is the largest
+  <code>n</code> with <code>points &ge; 15&middot;n&middot;(n+1)</code>, i.e. 30, 90, 180, 300, 450. Because it is per man, and the
+  rules divide months <i>"as evenly as possible among the people in the unit"</i>, <b>the giver's cell never
+  changes</b> — it keeps its points per man and therefore its level. Only the receiver merges.</p>
+  <p>The three cases below are what that arithmetic produces. The question is only about the third one.</p>
+</header>
+<main>
+
+<h3 class="sec">Case 1 — a formed unit, the one ah-jw85 named</h3>
+<p><code>GIVE NEW 1 5 HUMN</code> from a unit at <code>LUMB 1 (30)</code>. The formed unit starts with no men and no skills.</p>
+<table class="units">
+<tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th>Skills</th><th>Items</th></tr>
+<tr><td class="own">*</td><td class="id">1234</td><td>Woodcutters</td><td class="pred">3</td><td>LUMB 1 (30)</td><td class="pred">3 HUMN</td></tr>
+<tr><td class="own">*</td><td class="id">new 1</td><td>Sawyers</td><td class="pred">5</td><td class="pred">LUMB 1 (30)</td><td class="pred">5 HUMN</td></tr>
+</table>
+<div class="arith">receiver: (0 men &times; 0) + (5 &times; 30) = 150 over 5 men = <b>30 points &rarr; level 1</b>. giver: 30 points per man, unchanged.</div>
+<div class="note">The five men arrive knowing exactly what they knew. <b>This is the case that removes ah-jw85's false
+<code>cannot produce lumber: needs lumberjack 1, has no lumberjack</code></b> — though the warning itself is
+ah-z73s.2, because the checks read a different pipeline.</div>
+
+<h3 class="sec">Case 2 — a skill arriving into a unit that has none of it</h3>
+<p><code>GIVE 2200 5 HUMN</code> from a unit at <code>LUMB 1 (30)</code>, into 25 men who know no lumberjack.</p>
+<table class="units">
+<tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th>Skills</th><th>Items</th></tr>
+<tr><td class="own">*</td><td class="id">2200</td><td>Labour gang</td><td class="pred">30</td><td class="pred">LUMB 0 (5)</td><td class="pred">30 HUMN</td></tr>
+</table>
+<div class="arith">(25 &times; 0) + (5 &times; 30) = 150 over 30 men = <b>5 points &rarr; level 0</b>.</div>
+<div class="note">The knowledge is real but spread thin, so the cell gains a skill at <b>level 0</b>. That is a state the
+report itself prints — the fixtures carry <code>(0, 5)</code>, <code>(0, 17)</code> and <code>(0, 25)</code> — so
+nothing new is being invented, and the existing cell already renders <code>TAG level (points)</code>.</div>
+
+<h3 class="sec">Case 3 — the one that needs your decision: the level goes <i>down</i></h3>
+<p><code>GIVE 3100 5 HUMN</code> from a unit at <code>LUMB 1 (30)</code>, into 5 men who are <code>LUMB 3 (180)</code>.</p>
+<div class="arith">(5 &times; 180) + (5 &times; 30) = 1050 over 10 men = <b>105 points &rarr; level 2</b>. The receiving unit drops from 3 to 2.</div>
+<div class="note">Nothing is lost — the unit knows more in total than it did — but <b>it can no longer do what
+level 3 could</b>, and a player who was reinforcing a skilled unit will not expect that. It is also invisible in the
+cell itself: <code>LUMB 2 (105)</code> looks like an ordinary predicted value.</div>
+
+<span class="opt">A — the standard predicted marking, and nothing else</span>
+<table class="units">
+<tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th>Skills</th><th>Items</th></tr>
+<tr><td class="own">*</td><td class="id">3100</td><td>Timber crew</td><td class="pred">10</td><td class="pred">LUMB 2 (105)</td><td class="pred">10 HUMN</td></tr>
+</table>
+<div class="hov">was: LUMB 3 (180)</div>
+<ul class="notes">
+  <li>Exactly what the Men and Items cells already do — italic brass, hover says what the report said. One rule for every predicted cell.</li>
+  <li class="con">The drop is only visible to someone who hovers and does the subtraction. A player reinforcing a unit is unlikely to hover the cell they were not worried about.</li>
+</ul>
+
+<span class="opt">B — the standard marking, and the hover says what happened</span>
+<table class="units">
+<tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th>Skills</th><th>Items</th></tr>
+<tr><td class="own">*</td><td class="id">3100</td><td>Timber crew</td><td class="pred">10</td><td class="pred">LUMB 2 (105)</td><td class="pred">10 HUMN</td></tr>
+</table>
+<div class="hov">was: LUMB 3 (180)<br>the men arriving know less, so the unit's lumberjack falls to 2</div>
+<ul class="notes">
+  <li>Says the thing that is surprising, in the place a puzzled player already looks, and costs no new screen furniture.</li>
+  <li>Only appears when a level actually falls — an arrival that raises or holds the level keeps the plain <code>was:</code> line.</li>
+  <li class="con">Still only found by hovering, and the Skills cell truncates, so the hover is already carrying the full skill list.</li>
+</ul>
+
+<span class="opt">C — the marking, and a finding in Problems</span>
+<table class="units">
+<tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th>Skills</th><th>Items</th></tr>
+<tr><td class="own">*</td><td class="id">3100</td><td>Timber crew</td><td class="pred">10</td><td class="pred">LUMB 2 (105)</td><td class="pred">10 HUMN</td></tr>
+</table>
+<div class="prob"><div class="ttl">Problems</div>
+<span class="w">&#9888;</span> <b>3100 Timber crew</b> — giving 5 men to this unit lowers its lumberjack from 3 to 2.
+</div>
+<p style="color:#a3b0c0;font-size:13px;margin:14px 0 6px;max-width:100ch">
+<b style="color:#dbe3ec">C1 (above)</b> — the cell keeps the ordinary predicted marking and the finding carries the whole
+signal. <b style="color:#dbe3ec">C2 (below)</b> — the cell is also coloured as a warning, so the row and the panel
+agree at a glance.</p>
+<table class="units">
+<tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th>Skills</th><th>Items</th></tr>
+<tr><td class="own">*</td><td class="id">3100</td><td>Timber crew</td><td class="pred">10</td><td class="drop">LUMB 2 (105)</td><td class="pred">10 HUMN</td></tr>
+</table>
+<ul class="notes">
+  <li>Impossible to miss, and it reaches the panel a player scans before committing a turn.</li>
+  <li class="con">It is not a problem with the orders — the player may want exactly this — so it would be the first entry in Problems that warns about something perfectly legal, and it needs its own toggle in Settings like every other check.</li>
+  <li class="con">A new finding code is a change to the checks pipeline, which is ah-z73s.2's territory, not this bead's.</li>
+</ul>
+
+<h3 class="sec">And the giver, in every case</h3>
+<table class="units">
+<tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th>Skills</th><th>Items</th></tr>
+<tr><td class="own">*</td><td class="id">1234</td><td>Woodcutters</td><td class="pred">3</td><td>LUMB 1 (30)</td><td class="pred">3 HUMN</td></tr>
+</table>
+<div class="note">Men and Items are predicted; <b>Skills is not marked at all</b>, because it genuinely did not change. Worth
+seeing once, because the bead as filed assumed both units' levels could move.</div>
+</main></body></html>

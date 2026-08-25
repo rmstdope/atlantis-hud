@@ -110,7 +110,9 @@ describe("a unit carried away by a sailing fleet", () => {
         changes: [],
         arrivingFrom: null,
         departingTo,
-        aboard
+        aboard,
+        uncounted: [],
+        takenUnshown: []
       }
     ]
   });
@@ -184,7 +186,9 @@ describe("the structure column", () => {
             changes: [{ field: "structureId", original: "" }],
             arrivingFrom: null,
             departingTo: null,
-            aboard: null
+            aboard: null,
+            uncounted: [],
+            takenUnshown: []
           }
         ]
       }
@@ -677,5 +681,61 @@ describe("the Silver column", () => {
     // The ⚠ button's sr-only text - `rowTarget`, decision C1.
     expect(markup).toContain("unit 1922");
     expect(markup).not.toContain("unit new-1");
+  });
+});
+
+describe("the items column", () => {
+  // `ah-agbm`. One row, one unit, so a `data-predicted`/`italic` check has nothing else in the
+  // markup it could be matching by accident.
+  const previewOf = (
+    unitOverrides: Partial<ReportUnit>,
+    previewOverrides: Partial<RegionPreview["units"][number]>
+  ): RegionPreview => ({
+    regionId: "1:6,52",
+    units: [
+      {
+        unit: unit(unitOverrides),
+        status: "present",
+        changes: [],
+        arrivingFrom: null,
+        departingTo: null,
+        aboard: null,
+        uncounted: [],
+        takenUnshown: [],
+        ...previewOverrides
+      }
+    ]
+  });
+
+  it("shows a projected item list in italic", () => {
+    const markup = draw(
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 5, name: "grain", tag: "GRAI" }] })] }) }),
+      previewOf(
+        { unitId: "1", items: [{ amount: 5, name: "grain", tag: "GRAI" }] },
+        { changes: [{ field: "items", original: "0 GRAI" }] }
+      )
+    );
+
+    expect(markup).toContain('data-predicted="true"');
+    expect(markup).toContain("italic text-brass");
+    expect(markup).toContain("5 GRAI");
+  });
+
+  it("marks a cell whose month could not be fully counted, upright when nothing was projected", () => {
+    const markup = draw(
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 3, name: "swords", tag: "SWOR" }] })] }) }),
+      previewOf(
+        { unitId: "1", items: [{ amount: 3, name: "swords", tag: "SWOR" }] },
+        { uncounted: ["buy all HORS"] }
+      )
+    );
+
+    expect(markup).toContain(" + ?");
+    expect(markup).toContain("3 SWOR");
+    // The S1 state: the mark alone keeps the row distinguishable from a unit given no orders -
+    // nothing was projected, so italic (which means "this figure is a projection") must not
+    // appear anywhere in this row's markup.
+    expect(markup).not.toContain("italic text-brass");
+    expect(markup).not.toContain('data-predicted="true"');
   });
 });
