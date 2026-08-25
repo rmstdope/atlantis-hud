@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The warning on a unit with no number</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+    --predict:#8fa3bb;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1440px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:94ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; position:relative; }
+  .orders { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:9px 11px;
+            font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); white-space:pre; overflow-x:auto; }
+  .orders b { color:var(--brass-bright); font-weight:600; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); }
+  .uid { color:var(--select); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .num { text-align:right; }
+  .neg { color:var(--danger); }
+  .zero { color:var(--ink-dim); }
+  .pred { color:var(--predict); font-style:italic; }
+  .chip { color:var(--predict); font-size:11px; margin-left:6px; font-style:normal; }
+  .blank { outline:1px dashed var(--danger); outline-offset:-1px; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         min-width:250px; max-width:330px; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip .r { display:flex; justify-content:space-between; gap:24px; }
+  .tip .r span:last-child { font-variant-numeric:tabular-nums; }
+  .tip hr { border:0; border-top:1px solid var(--edge); margin:6px 0; }
+  .tip .note { color:var(--ink-dim); font-size:10.5px; margin-top:6px; line-height:1.45; }
+  .tip .sec2 { color:var(--brass); font-size:10px; letter-spacing:1.2px; text-transform:uppercase; margin:8px 0 3px; }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .pair { display:grid; grid-template-columns:minmax(280px,1fr) minmax(300px,340px); gap:16px; align-items:start; }
+  @media (max-width:900px) { .split, .split3, .pair { grid-template-columns:1fr; } }
+</style></head><body>
+<header><h1>The &#9888; and the Problems panel for a unit with no number &mdash; <span>ah-jw85, round 3</span></h1>
+<p>You chose <b>W2</b>: a new unit that cannot pay is marked exactly like any other. Three things follow that only you can settle, because all three are on the screen.</p>
+<p>The hex: Tax Collector (1922) holds 500, forms <code>NEW 1</code>, gives it 100, and the new unit is told to buy five Plainsmen at 40 &mdash; 200. It is 100 short.</p></header>
+<main>
+
+<h3 class="sec">Question 1 &middot; What the &#9888; does when it is clicked</h3>
+<p>Today the &#9888; in the Silver cell and the unit number in the Problems panel are both buttons: they select the unit and take the map to it. A unit created this month has no number in the report, so neither has anything to select.</p>
+<div class="card">
+  <div class="split3">
+    <div>
+      <div class="concept"><b>C1 &mdash; both go to the forming unit.</b> Clicking either takes you to Tax Collector (1922), whose block is where the <code>FORM</code> and the <code>GIVE</code> are actually written.</div>
+      <div class="stage">
+        <table class="units">
+      <colgroup>
+        <col style="width:2%"><col style="width:6%"><col style="width:19%"><col style="width:5%"><col style="width:12%"><col style="width:20%"><col style="width:10%"><col style="width:12%"><col style="width:9%">
+      </colgroup>
+      <thead><tr>
+        <th></th><th>Id</th><th>Unit</th><th class="num">Men</th><th>Skills</th><th>Items</th><th>Structure</th><th>Long order</th><th class="num colhi">Silver</th>
+      </tr></thead>
+          <tbody>
+          <tr><td class="own">*</td><td class="uid">1922</td><td>Tax Collector</td><td class="num">8</td><td>COMB 2</td><td>8 LEAT, <span class="pred">400 SILV</span></td><td>&mdash;</td><td>@tax</td><td class="num">700</td></tr>
+          <tr><td class="own">*</td><td class="uid">new-1</td><td><span class="pred">Unit (new 1)</span><span class="chip">new</span></td><td class="num pred">0</td><td>&mdash;</td><td><span class="pred">100 SILV</span></td><td>&mdash;</td><td>&mdash;</td><td class="num neg" style="text-decoration:underline dotted;cursor:pointer">&#9888; &minus;100</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="notes">
+        <li>Lands you where the fix is typed &mdash; you cannot edit a new unit's orders anywhere but its parent's block.</li>
+        <li class="con">The click says one unit and arrives at another, with nothing on screen saying why.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="concept"><b>C2 &mdash; the new unit is selectable like any unit.</b> Clicking selects the <span class="chip" style="font-style:normal">new</span> row itself and takes the map to its hex.</div>
+      <div class="stage">
+        <table class="units">
+      <colgroup>
+        <col style="width:2%"><col style="width:6%"><col style="width:19%"><col style="width:5%"><col style="width:12%"><col style="width:20%"><col style="width:10%"><col style="width:12%"><col style="width:9%">
+      </colgroup>
+      <thead><tr>
+        <th></th><th>Id</th><th>Unit</th><th class="num">Men</th><th>Skills</th><th>Items</th><th>Structure</th><th>Long order</th><th class="num colhi">Silver</th>
+      </tr></thead>
+          <tbody>
+          <tr><td class="own">*</td><td class="uid">1922</td><td>Tax Collector</td><td class="num">8</td><td>COMB 2</td><td>8 LEAT, <span class="pred">400 SILV</span></td><td>&mdash;</td><td>@tax</td><td class="num">700</td></tr>
+          <tr style="background:#1c232e"><td class="own">*</td><td class="uid">new-1</td><td><span class="pred">Unit (new 1)</span><span class="chip">new</span></td><td class="num pred">0</td><td>&mdash;</td><td><span class="pred">100 SILV</span></td><td>&mdash;</td><td>&mdash;</td><td class="num neg" style="text-decoration:underline dotted;cursor:pointer">&#9888; &minus;100</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="notes">
+        <li>The click means what it says, and the row highlights like every other.</li>
+        <li class="con">A unit that does not exist becomes something the rest of the app can hold selected &mdash; the keyboard walk between units, the orders pane and the map marker all then meet it.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="concept"><b>C3 &mdash; the mark is not a button.</b> The &#9888; and the figure show; neither is clickable, and the Problems entry names the unit as plain text.</div>
+      <div class="stage">
+        <table class="units">
+      <colgroup>
+        <col style="width:2%"><col style="width:6%"><col style="width:19%"><col style="width:5%"><col style="width:12%"><col style="width:20%"><col style="width:10%"><col style="width:12%"><col style="width:9%">
+      </colgroup>
+      <thead><tr>
+        <th></th><th>Id</th><th>Unit</th><th class="num">Men</th><th>Skills</th><th>Items</th><th>Structure</th><th>Long order</th><th class="num colhi">Silver</th>
+      </tr></thead>
+          <tbody>
+          <tr><td class="own">*</td><td class="uid">1922</td><td>Tax Collector</td><td class="num">8</td><td>COMB 2</td><td>8 LEAT, <span class="pred">400 SILV</span></td><td>&mdash;</td><td>@tax</td><td class="num">700</td></tr>
+          <tr><td class="own">*</td><td class="uid">new-1</td><td><span class="pred">Unit (new 1)</span><span class="chip">new</span></td><td class="num pred">0</td><td>&mdash;</td><td><span class="pred">100 SILV</span></td><td>&mdash;</td><td>&mdash;</td><td class="num neg">&#9888; &minus;100</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="notes">
+        <li>Nothing to build, nothing that can go anywhere wrong.</li>
+        <li class="con">The one &#9888; in the table that does not answer a click, with no visible reason.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">Question 2 &middot; What the Problems panel calls it</h3>
+<p>Every entry opens with who it is about. Reported units are named by their number. These are the same entry, three namings &mdash; and beside them, for scale, the entry the Scholar gets today.</p>
+<div class="card">
+  <div class="split3">
+    <div>
+      <div class="concept"><b>N1 &mdash; the raw id, <code>new-1</code>.</b> Exactly the string the row itself carries.</div>
+      <div class="tip" style="max-width:none">
+        <div style="display:flex;gap:8px"><span style="color:#d97070">&#9888;</span><span style="color:#8a97a8;font-variant-numeric:tabular-nums">new-1</span><span>short $100: this unit can have $0 and its purchases spend $100</span></div>
+        <hr>
+        <div style="display:flex;gap:8px"><span style="color:#d97070">&#9888;</span><span style="color:#8a97a8;font-variant-numeric:tabular-nums">2101</span><span>short $140: this unit can have $60 and its studies spend $200</span></div>
+      </div>
+      <ul class="notes"><li class="n">One column of ids, one shape. <span class="con" style="color:#d97070">&minus;</span> <code>new-1</code> is a spelling out of the code, not out of the game.</li></ul>
+    </div>
+    <div>
+      <div class="concept"><b>N2 &mdash; <code>new 1</code>,</b> the way the order itself writes it: <code>GIVE NEW 1 100 SILV</code>.</div>
+      <div class="tip" style="max-width:none">
+        <div style="display:flex;gap:8px"><span style="color:#d97070">&#9888;</span><span style="color:#8a97a8;font-variant-numeric:tabular-nums">new 1</span><span>short $100: this unit can have $0 and its purchases spend $100</span></div>
+        <hr>
+        <div style="display:flex;gap:8px"><span style="color:#d97070">&#9888;</span><span style="color:#8a97a8;font-variant-numeric:tabular-nums">2101</span><span>short $140: this unit can have $60 and its studies spend $200</span></div>
+      </div>
+      <ul class="notes"><li class="n">Matches the words in the orders file the player is editing.</li></ul>
+    </div>
+    <div>
+      <div class="concept"><b>N3 &mdash; <code>Unit (new 1)</code>,</b> the same label the table row shows.</div>
+      <div class="tip" style="max-width:none">
+        <div style="display:flex;gap:8px"><span style="color:#d97070">&#9888;</span><span style="color:#8a97a8">Unit (new 1)</span><span>short $100: this unit can have $0 and its purchases spend $100</span></div>
+        <hr>
+        <div style="display:flex;gap:8px"><span style="color:#d97070">&#9888;</span><span style="color:#8a97a8;font-variant-numeric:tabular-nums">2101</span><span>short $140: this unit can have $60 and its studies spend $200</span></div>
+      </div>
+      <ul class="notes"><li class="n">Reads as a name. <span style="color:#d97070">&minus;</span> Twice the width of every other who-column in the list.</li></ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">Question 3 &middot; The message understates a unit that was given silver</h3>
+<p>Look at the message above: <i>&ldquo;this unit can have $0 and its purchases spend $100&rdquo;</i>. The new unit was given 100 and is buying 200 of Plainsmen. The message counts only what the unit <b>holds in the report</b>, so the gift is missing from both figures.</p>
+<p>This is not new and not about <code>FORM</code>: a reported unit given silver by a neighbour gets the same understatement today. It is simply invisible until now, because it is worst when the unit holds nothing &mdash; which every new unit does.</p>
+<div class="card">
+  <div class="split">
+    <div>
+      <div class="concept"><b>M1 &mdash; leave the message as it is</b> and fix it in a bead of its own, for every unit at once.</div>
+      <div class="tip" style="max-width:none"><div style="display:flex;gap:8px"><span style="color:#d97070">&#9888;</span><span style="color:#8a97a8">new 1</span><span>short $100: this unit can have $0 and its purchases spend $100</span></div></div>
+      <ul class="notes">
+        <li>Keeps this bead about the column and the mark.</li>
+        <li class="con">The panel says $0 on the same screen where the column says the unit was given 100.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="concept"><b>M2 &mdash; fix it here</b>, counting silver given to the unit into both figures.</div>
+      <div class="tip" style="max-width:none"><div style="display:flex;gap:8px"><span style="color:#d97070">&#9888;</span><span style="color:#8a97a8">new 1</span><span>short $100: this unit can have $100 and its purchases spend $200</span></div></div>
+      <ul class="notes">
+        <li>The panel and the column agree, and every gift-receiving unit's message improves with it.</li>
+        <li class="con">Changes a message on units that have nothing to do with <code>FORM</code>, inside a bead about <code>FORM</code>.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer><p style="color:#8a97a8;font-size:12.5px;margin-top:26px">Chosen: C1 (both go to the forming unit), N2 (<code>new 1</code>) and M2 (the message counts silver the unit was given). The shipped message reads &ldquo;and its <b>orders</b> spend $200&rdquo; &mdash; <code>spenders</code> prints only <i>orders</i> or <i>orders and upkeep</i>.</p></footer>
+</body></html>
