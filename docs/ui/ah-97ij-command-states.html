@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlantis lookup skill (ah-97ij) — the command and its states</title>
+<style>  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); } em { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.88em; color:var(--brass-bright); }
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:22px; align-items:start; }
+  .cards.two { grid-template-columns:repeat(2,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:11px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .card h3 .recd { color:var(--ground); background:var(--brass); border-radius:3px; font:10px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px; text-transform:uppercase; padding:1px 5px; margin-left:6px; vertical-align:2px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; padding:0; margin-top:auto; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .term { border:1px solid var(--edge); border-radius:6px; overflow:hidden; margin-top:4px; }
+  .term.bad { border-color:#5a3236; } .term.warn { border-color:#5a4a2a; }
+  .cmdline { background:var(--raised); padding:6px 11px; font:12px/1.5 'SF Mono',Menlo,Consolas,monospace; color:var(--ink); border-bottom:1px solid var(--edge); }
+  .cmdline .ps { color:var(--brass); margin-right:7px; }
+  pre.out { background:var(--ground); padding:10px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; white-space:pre-wrap; margin:0; }
+  pre.out b { color:var(--ok); } pre.out i { color:var(--danger); font-style:normal; } pre.out u { color:var(--ink-dim); text-decoration:none; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; color:var(--ink-soft); }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+</style></head><body>
+<header><h1><span>ah-97ij</span> &mdash; round two: the command, and what it does when things go wrong</h1>
+<p>You chose the committed copy, a weekly PR, and covering the repo&rsquo;s own
+<code>ruleset.json</code> alongside the two pages. That settles the shape. What is left is the part a
+Sonnet agent at 2am actually meets: <strong>the exact command, and every state the happy path
+hides</strong>. Everything below is real output computed from the committed fixtures, not a
+sketch.</p></header><main>
+<section><h2 class="rule"><em>the happy path</em>What a lookup looks like</h2>
+<p>A provenance header, then the text. The header is what lets an agent quote the rule and say where it came from &mdash; and what stops it passing off a snapshot as the live page.</p>
+<div class="term"><div class="cmdline"><span class="ps">$</span> pnpm run atlantis rules give</div><pre class="out"><b># rules/give &mdash; https://atlantis-pbem.com/rules
+# NewOrigins v8.0.0, last changed Jun 20 2025; snapshot 2026-08-25</b>
+
+GIVE [unit] [quantity] [item]
+GIVE [unit] ALL [item]
+GIVE [unit] ALL [item] EXCEPT [quantity]
+GIVE [unit] ALL [item class]
+GIVE [unit] UNIT
+
+The first form of the GIVE order gives a quantity of an item to another
+unit. The second form of the GIVE order will give all of a given item to
+another unit. The third form will give all of an item except for a
+specific quantity to another unit. &hellip;</pre></div>
+</section>
+<section><h2 class="rule"><em>the states the happy path hides</em>Four ways a lookup goes wrong</h2>
+<p>These are the ones that decide whether the skill actually helps. An agent that guesses an anchor name and gets a bare failure goes back to recalling &mdash; which is the whole problem.</p>
+<div class="cards two">
+<div class="card"><h3><em>1</em>A guessed name</h3><p class="concept">The agent types what it thinks the anchor is called. This is the common case, not the rare one.</p><div class="term bad"><div class="cmdline"><span class="ps">$</span> pnpm run atlantis rules giv</div><pre class="out"><i>no anchor named &lsquo;giv&rsquo; on the rules page.</i>
+
+<b>Closest matches:  give, magic</b>
+All 129 names:    pnpm run atlantis rules --list
+Search the text:  pnpm run atlantis rules --search "give"
+
+<u>exit 1</u></pre></div></div>
+<div class="card"><h3><em>2</em>One word, many entries</h3><p class="concept">Real result: <strong>20 entries</strong>, of which 14 are the literal text &ldquo;No skill report.&rdquo; &mdash; question 3 below.</p><div class="term warn"><div class="cmdline"><span class="ps">$</span> pnpm run atlantis data sword</div><pre class="out"><i>20 entries match &lsquo;sword&rsquo;.</i>
+
+create runesword [CRRU]     5 levels
+enchant swords [ESWO]       5 levels
+create flaming sword [CFSW] 5 levels
+mithril sword [MSWO]        item
+sword [SWOR]                item
+runesword [RUNE]            item
+
+<b>Narrow with a tag:  pnpm run atlantis data SWOR</b></pre></div></div>
+<div class="card"><h3><em>3</em>Nothing at all</h3><p class="concept">A term the game does not have. It must be obvious that this is an answer, not a broken tool.</p><div class="term bad"><div class="cmdline"><span class="ps">$</span> pnpm run atlantis data catapult</div><pre class="out"><i>nothing on the data page matches &lsquo;catapult&rsquo;.</i>
+
+The data page has 480 skill levels, 171 items and 60 objects.
+List them:  pnpm run atlantis data --list items
+
+<b>This is an answer: the game has no such thing. Do not
+assume it exists because you remember one.</b>
+
+<u>exit 1</u></pre></div></div>
+<div class="card"><h3><em>4</em>The snapshot has drifted</h3><p class="concept">What the weekly job runs, and what a person runs by hand before trusting an answer.</p><div class="term warn"><div class="cmdline"><span class="ps">$</span> pnpm run atlantis check</div><pre class="out">rules  https://atlantis-pbem.com/rules   <b>unchanged</b>  283,946 bytes
+data   https://atlantis-pbem.com/data    <i>DIFFERS</i>     184,512 &rarr; 184,690
+
+<i>The committed data page is out of date.</i>
+Refresh it:  pnpm run atlantis refresh
+
+<u>exit 1</u></pre></div></div>
+</div></section>
+<section><h2 class="rule"><em>the coupling you need to know about</em>A refresh is not a docs change</h2>
+<p><code>packages/ruleset/src/committed.test.ts</code> asserts that
+<code>config/public/ruleset.json</code> is <em>exactly</em> what the scraper produces from these two
+fixture files. So <strong>refreshing the pages without regenerating the ruleset leaves the repository
+red.</strong> And regenerating it changes movement costs, item weights and skill prices that the
+application actually uses &mdash; 171 items, 96 skills, 58 buildings.</p>
+<p>There is a second edge. <code>docs/ruleset-contract.md</code> sets the policy that movement values
+<strong>fail loudly</strong>: <code>rules.ts</code> anchors six regexes on the page&rsquo;s own
+sentences and throws <code>RulesetScrapeError</code> rather than defaulting, because
+&ldquo;a movement number that is quietly wrong produces routes that are confidently wrong, which is
+worse than no planner at all.&rdquo; A reworded sentence therefore makes the refresh
+<em>fail</em>, not merely differ.</p>
+<div class="term"><div class="cmdline"><span class="ps">$</span> pnpm run atlantis refresh</div><pre class="out">rules  283,946 &rarr; 284,102 bytes   <b>updated</b>
+data   184,512 &rarr; 184,512 bytes   unchanged
+
+regenerating config/public/ruleset.json &hellip;
+  movement.terrainCosts.doubled  <i>+jungle</i>
+  items.MSWO.weight              <i>2 &rarr; 3</i>
+  skills.MINI.cost               <i>10 &rarr; 12</i>
+
+<b>3 changes. Review them before committing &mdash; these are numbers
+the planner routes with.</b></pre></div>
+</section>
+<section><h2 class="rule"><em>question 1</em>What the weekly job produces</h2><div class="cards">
+<div class="card rec"><h3><em>A</em>One PR, fixtures and ruleset together<span class="recd">recommended</span></h3><p class="concept">The job refreshes both pages, regenerates <code>ruleset.json</code>, and opens a single PR. The repository stays green and you review one diff.</p><ul class="notes"><li class="">Green at every commit; nothing is ever half-refreshed.</li><li class="">The rules diff and the numbers it moved sit side by side in one review.</li><li class="con">A PR that changes real application behaviour arrives unbidden — it needs reading, not rubber-stamping.</li></ul></div>
+<div class="card"><h3><em>B</em>A bead, and no commits at all</h3><p class="concept">The job commits nothing. It files a P4 bead saying the pages moved and what changed, and the refresh happens as planned work like anything else.</p><ul class="notes"><li class="">Nothing lands without a person having decided to do it.</li><li class="">Fits the workflow you already have.</li><li class="con">The snapshot stays stale until the bead is ranked, planned and built — days, while agents look up the old rules and believe them.</li></ul></div>
+<div class="card"><h3><em>C</em>A PR with the fixtures only, deliberately red</h3><p class="concept">Refresh the pages, leave <code>ruleset.json</code> alone. <code>committed.test.ts</code> fails, which is the point.</p><ul class="notes"><li class="">Impossible to merge by accident.</li><li class="con">A red main branch blocks every other PR until someone fixes it.</li><li class="con">Punishes the whole fleet for a change on someone else’s website.</li></ul></div>
+</div></section>
+<section><h2 class="rule"><em>question 2</em>When the page is reworded and the scraper throws</h2>
+<p>The pages differ, but <code>rules.ts</code> cannot find one of its six sentences, so it throws and refuses to write a number. There is no PR to open, because the ruleset cannot be regenerated.</p><div class="cards">
+<div class="card rec"><h3><em>A</em>A P0 bead, naming the sentence<span class="recd">recommended</span></h3><p class="concept">File a P0 with the <code>RulesetScrapeError</code> message and the sentence that moved. The fleet picks it up like any other P0 — which, per the buffer rule, is immediately.</p><ul class="notes"><li class="">The one case where the app’s movement numbers cannot be regenerated is the one that gets planned first.</li><li class="">Lands in the queue that is already watched.</li><li class="con">No diff to look at until someone opens the bead.</li></ul></div>
+<div class="card"><h3><em>B</em>A PR with the fixtures only, plus the error</h3><p class="concept">Open the PR anyway, red, with the scraper’s error in the body.</p><ul class="notes"><li class="">The diff is visible immediately.</li><li class="con">Same red-main cost as 1C, for a case that is rarer and harder.</li></ul></div>
+<div class="card"><h3><em>C</em>A GitHub issue</h3><p class="concept">File it in the external inbox instead, so Moira triages it with you.</p><ul class="notes"><li class="">Goes through the triage you already run.</li><li class="con">The inbox is for external reports; this is the fleet talking to itself.</li></ul></div>
+</div></section>
+<section><h2 class="rule"><em>question 3</em>The &ldquo;No skill report.&rdquo; noise</h2>
+<p>Most skills define one useful level and leave the rest as the literal string
+&ldquo;No skill report.&rdquo; &mdash; of the 480 skill entries, the great majority are that. Printing
+them costs context and teaches an agent nothing.</p><div class="cards">
+<div class="card rec"><h3><em>A</em>Collapse them into one line<span class="recd">recommended</span></h3><p class="concept"><code>data MINI</code> prints levels 1, 3 and 5 in full and ends with <code>levels 2, 4: no skill report</code>.</p><div class="term"><div class="cmdline"><span class="ps">$</span> pnpm run atlantis data MINI</div><pre class="out"><b># data/skills &mdash; mining [MINI]</b>
+
+mining [MINI] 1: This skill deals with all aspects of extracting
+  raw metals and gems from the earth. &hellip; may PRODUCE iron [IRON]
+  at a rate of 1 per man-month. Costs 10 silver per month.
+
+mining [MINI] 3: &hellip; may PRODUCE mithril [MITH] at a rate of 1
+  per man-month. &hellip; may BUILD a Mine from 10 wood [WOOD].
+
+<i>levels 2, 4, 5: no skill report</i></pre></div><ul class="notes"><li class="">Says the level exists and is empty — which is itself a fact about the game.</li><li class="">Cuts a typical skill lookup by more than half.</li><li class="con">One more rule in the output format to explain.</li></ul></div>
+<div class="card"><h3><em>B</em>Print every level verbatim</h3><p class="concept">Exactly what the page says, including the empty ones.</p><ul class="notes"><li class="">Nothing is interpreted; the output is the source.</li><li class="con">Four fifths of a skill lookup is the same sentence repeated.</li></ul></div>
+</div></section>
+<section><h2 class="rule"><em>question 4</em>What it is called</h2>
+<p>Two names, and both are yours because both become vocabulary. The command goes into
+<code>CLAUDE.md</code>, where every session reads it and every agent copies it forever. The skill
+name is what appears in the skill list.</p>
+<table class="q">
+<tr><th></th><th>Skill</th><th>Command</th><th>Reads as</th></tr>
+<tr><td class="k">A</td><td class="k">atlantis-rules</td><td class="k">pnpm run atlantis rules give</td><td>Says what it is about. &ldquo;Rules&rdquo; is the word the game, the site and CLAUDE.md already use.</td></tr>
+<tr><td class="k">B</td><td class="k">atlantis-research</td><td class="k">pnpm run atlantis rules give</td><td>The bead&rsquo;s own word. &ldquo;Research&rdquo; describes the act rather than the subject.</td></tr>
+<tr><td class="k">C</td><td class="k">atlantis-rules</td><td class="k">pnpm run rules give</td><td>Shortest to type; but <code>rules</code> alone is ambiguous in a repo that also has a ruleset package and a ruleset contract.</td></tr>
+</table></section>
+</main></body></html>
