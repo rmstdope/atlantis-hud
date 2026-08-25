@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::movement::rules::{Production, Ruleset, SkillEntry};
+use crate::movement::rules::{ItemKind, Production, Ruleset, SkillEntry};
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::report::model::{ItemAmount, Skill};
@@ -1804,47 +1804,61 @@ pub fn settle_unclaimed(claims: &[UpkeepClaim], available: Option<i64>) -> Upkee
     }
 }
 
-/// Whether the unit is set to avoid combat, by its `avoiding` report flag.
-fn is_avoiding(flags: &[String]) -> bool {
-    flags
-        .iter()
-        .any(|flag| flag.eq_ignore_ascii_case("avoiding"))
+/// The riding skill and level a mount's description says it needs to be ridden in combat.
+///
+/// Every mount's page carries one fixed sentence - *"This mount requires riding [RIDI] of at least
+/// level N to ride in combat"* - and **there is no structured field for N**: `WING` needs 3 where
+/// `HORS`, `CAME` and `TURT` need 1, so assuming 1 would over-count a unit with winged horses and
+/// Riding 1 (`ah-cw75`). The skill tag is read from the sentence too rather than assumed to be
+/// `RIDI`.
+///
+/// `None` for a description that does not carry the sentence, and such a mount then counts for
+/// nobody - under-counting, which is the safe direction for a warning.
+fn required_riding(description: &str) -> Option<(&str, i64)> {
+    let (_, rest) = description.split_once("requires riding [")?;
+    let (skill, rest) = rest.split_once("] of at least level ")?;
+    let (level, rest) = rest.split_once(' ')?;
+    if !rest.starts_with("to ride in combat") {
+        return None;
+    }
+    Some((skill, level.parse().ok()?))
 }
 
-/// Why a unit's men are or are not combat ready, alongside how many are.
+/// How many of a unit's men are combat ready, alongside its headcount.
 ///
 /// [`combat_ready`] answers the number and nothing else, which is all `PILLAGE`'s threshold needs -
-/// but a player told `0` about a unit visibly holding nineteen men needs the reason, and the two
-/// reasons want opposite actions: clearing `avoiding` is one order, arming the unit is a different
-/// problem (`ah-cw75`).
-///
-/// `armed` deliberately ignores the `avoiding` flag: it is `min(men, weapons the unit can wield)`
-/// as if the unit were willing to fight, which is what makes "avoiding **and** unarmed"
-/// distinguishable from "avoiding but otherwise ready". `ready` is the number `PILLAGE` uses and is
-/// unchanged: zero when avoiding, `armed` otherwise.
+/// but a player told `0` about a unit visibly holding nineteen men needs to be told why, and that
+/// sentence needs the headcount beside the count (`ah-cw75`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Readiness {
     /// The unit's headcount, for the sentence.
     pub men: i64,
-    pub avoiding: bool,
-    /// `min(men, wieldable weapons)`, computed as though the unit were not avoiding.
-    pub armed: i64,
-    /// What `PILLAGE` counts: `0` when avoiding, `armed` otherwise.
+    /// What `PILLAGE` counts.
     pub ready: i64,
 }
 
-/// How many of one unit's men are combat ready, and why.
+/// How many of one unit's men are combat ready, and its headcount alongside.
 ///
-/// The rules page never defines the phrase - it uses it three times and explains it nowhere - so
-/// this is the navigator's reading, settled 2026-08-23 (`ah-1ad6.2`): **a man is combat ready when
-/// he has a weapon he can wield**, and a unit set to avoid combat has none who are.
+/// The rules page never defines the phrase directly, but it defines the thing: the pillage
+/// threshold needs *"enough combat ready men in the region to tax half of the available money"*,
+/// and the taxing test just above it reads - *"A unit may TAX if it has **Combat skill of at least
+/// level 1**, has **a weapon and the appropriate skill to use it**, has **a mount and sufficient
+/// skill to ride it in combat** or is **a mage who knows a spell which damages enemies**."* So
+/// combat ready men are the taxing characters.
 ///
-/// - `avoiding` in `flags` - zero ready, whatever the unit holds. The flag does **not** short the
-///   computation: `armed` is worked out anyway, because the two causes are separate things to say.
-/// - otherwise `min(men, weapons the unit can wield)`, where a weapon needing a skill counts only
-///   for a unit that has that skill at level 1 or better.
+/// - **Combat 1 makes every man count**, because a skill is held by the unit.
+/// - otherwise `min(men, wieldable weapons + ridable mounts)` - a man either wields something or
+///   rides something, so the two add up. A weapon needing a skill counts only for a unit holding
+///   that skill at level 1 or better; a mount counts only for a unit holding the riding level its
+///   description names ([`required_riding`]).
 ///
-/// `behind` is not consulted: a unit in the back rank still fights.
+/// **The mage case is not implemented**, by the navigator's decision on 2026-08-25: it is `ah-v585`
+/// rather than a delay to this P0. A combat mage is therefore under-counted here, which costs a
+/// missing warning and never a false one.
+///
+/// **`avoiding` is not consulted.** `ah-1ad6.2` had it zero a unit's ready men; the navigator
+/// reversed that at `ah-cw75`'s verification, and the rules' taxing test does not mention the flag.
+/// `behind` is not consulted either: a unit in the back rank still fights.
 ///
 /// `None` when the headcount is estimated - a guessed headcount cannot be compared against a
 /// threshold - and when there is no ruleset, since nothing says which items are weapons. The order
@@ -1854,39 +1868,45 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
     if facts.men_estimated {
         return None;
     }
-    let avoiding = is_avoiding(facts.flags);
     let ruleset = ruleset?;
-    let mut weapons = 0i64;
+    let men = facts.men.max(0);
+    if skill_level(facts.skills, "COMB") >= 1 {
+        return Some(Readiness { men, ready: men });
+    }
+    let mut mounted_or_armed = 0i64;
     for held in facts.items {
         let Some(entry) = ruleset.items.get(&held.tag.to_uppercase()) else {
             continue;
         };
-        let Some(weapon) = entry.weapon.as_ref() else {
-            continue;
+        let counts = if let Some(weapon) = entry.weapon.as_ref() {
+            // `needs` is a *skill* tag, not the item's own: `DBOW` is wielded with `LBOW`.
+            match weapon.needs.as_deref() {
+                None => true,
+                Some(skill) => skill_level(facts.skills, skill) >= 1,
+            }
+        } else if entry.kind == ItemKind::Mount {
+            entry
+                .description
+                .as_deref()
+                .and_then(required_riding)
+                .is_some_and(|(skill, level)| skill_level(facts.skills, skill) >= level)
+        } else {
+            false
         };
-        // `needs` is a *skill* tag, not the item's own: `DBOW` is wielded with `LBOW`.
-        let wieldable = match weapon.needs.as_deref() {
-            None => true,
-            Some(skill) => skill_level(facts.skills, skill) >= 1,
-        };
-        if wieldable {
-            weapons = weapons.saturating_add(held.amount.max(0));
+        if counts {
+            mounted_or_armed = mounted_or_armed.saturating_add(held.amount.max(0));
         }
     }
-    let men = facts.men.max(0);
-    let armed = men.min(weapons);
     Some(Readiness {
         men,
-        avoiding,
-        armed,
-        ready: if avoiding { 0 } else { armed },
+        ready: men.min(mounted_or_armed),
     })
 }
 
 /// How many of one unit's men are combat ready, in the sense `PILLAGE` needs.
 ///
 /// The number alone, which is all the threshold needs; [`readiness`] is the same answer with the
-/// reason attached, and this is a one-line delegate to it so there is only ever one count.
+/// headcount attached, and this is a one-line delegate to it so there is only ever one count.
 #[must_use]
 pub fn combat_ready(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<i64> {
     readiness(facts, ruleset).map(|readiness| readiness.ready)
@@ -1894,43 +1914,24 @@ pub fn combat_ready(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<
 
 /// Why this unit's men do not count, as the tail of the pillage warning, or `""` when they do.
 ///
-/// Empty for a unit that is genuinely armed and not avoiding: the region is simply short, nothing
-/// about this unit is wrong, and an explanation would be noise (`ah-cw75`). Empty too for a unit
-/// with no men at all - "its 0 men hold no weapons" explains nothing, and a unit with no men has a
-/// different problem than this warning is about.
+/// Empty for a unit whose men are counted: the region is simply short, nothing about this unit is
+/// wrong, and an explanation would be noise (`ah-cw75`). Empty too for a unit with no men at all -
+/// "its 0 men hold no weapons" explains nothing, and a unit with no men has a different problem
+/// than this warning is about.
+///
+/// **Keyed off `ready`, never off a weapon count.** A unit can now be combat ready with no weapon
+/// at all - by Combat skill, or by a mount - and one with Combat 1 must not be told it holds no
+/// weapons while its men are being counted.
 #[must_use]
 pub fn because_clause(readiness: &Readiness) -> String {
     let men = readiness.men;
-    if men <= 0 {
+    if men <= 0 || readiness.ready > 0 {
         return String::new();
     }
-    let one = men == 1;
-    match (readiness.avoiding, readiness.armed == 0) {
-        (false, false) => String::new(),
-        (true, true) => {
-            if one {
-                " — this unit is avoiding combat, and its 1 man holds no weapons he can wield"
-                    .to_string()
-            } else {
-                format!(
-                    " — this unit is avoiding combat, and its {men} men hold no weapons they can wield"
-                )
-            }
-        }
-        (true, false) => {
-            if one {
-                " — this unit is avoiding combat, so its 1 man does not count".to_string()
-            } else {
-                format!(" — this unit is avoiding combat, so none of its {men} men count")
-            }
-        }
-        (false, true) => {
-            if one {
-                " — this unit's 1 man holds no weapons he can wield".to_string()
-            } else {
-                format!(" — this unit's {men} men hold no weapons they can wield")
-            }
-        }
+    if men == 1 {
+        " — this unit's 1 man holds no weapons he can wield".to_string()
+    } else {
+        format!(" — this unit's {men} men hold no weapons they can wield")
     }
 }
 
@@ -5075,6 +5076,17 @@ mod combat_ready_tests {
         }
     }
 
+    fn mount_description(tag: &str) -> &'static str {
+        Box::leak(
+            ruleset()
+                .items
+                .get(tag)
+                .and_then(|entry| entry.description.clone())
+                .expect("the committed ruleset should describe every mount")
+                .into_boxed_str(),
+        )
+    }
+
     /// A unit with a headcount, whatever it holds and whatever flags it carries.
     fn unit<'a>(
         men: i64,
@@ -5155,9 +5167,73 @@ mod combat_ready_tests {
         );
     }
 
+    /// Reversed at `ah-cw75`'s verification: `avoiding` is not in the rules' taxing test at all,
+    /// so it no longer zeroes anybody.
     #[test]
-    fn an_avoiding_unit_has_no_combat_ready_men() {
-        assert_eq!(count(50, &[item("SWOR", 50)], &["avoiding"], &[]), Some(0));
+    fn avoiding_no_longer_zeroes_anyone() {
+        assert_eq!(count(50, &[item("SWOR", 50)], &["avoiding"], &[]), Some(50));
+    }
+
+    /// "A unit may TAX if it has Combat skill of at least level 1" - and a skill is held by the
+    /// unit, so every man in it counts.
+    #[test]
+    fn combat_skill_makes_every_man_a_taxer() {
+        assert_eq!(count(10, &[], &[], &[skill("COMB", 1)]), Some(10));
+    }
+
+    /// A man either wields something or rides something, so the two add up.
+    #[test]
+    fn weapons_and_mounts_add_up() {
+        assert_eq!(
+            count(
+                10,
+                &[item("SWOR", 3), item("HORS", 4)],
+                &[],
+                &[skill("RIDI", 1)]
+            ),
+            Some(7)
+        );
+    }
+
+    /// A winged horse needs riding 3; assuming 1 would over-count.
+    #[test]
+    fn a_mount_needing_a_higher_riding_level_does_not_count() {
+        assert_eq!(
+            count(10, &[item("WING", 10)], &[], &[skill("RIDI", 1)]),
+            Some(0)
+        );
+        assert_eq!(
+            count(10, &[item("WING", 10)], &[], &[skill("RIDI", 3)]),
+            Some(10)
+        );
+    }
+
+    /// Without the riding skill at all, a mount carries nobody into combat.
+    #[test]
+    fn a_mount_without_the_riding_skill_counts_for_nobody() {
+        assert_eq!(count(10, &[item("HORS", 10)], &[], &[]), Some(0));
+    }
+
+    #[test]
+    fn the_required_riding_level_is_read_out_of_the_description() {
+        for tag in ["HORS", "CAME", "TURT"] {
+            assert_eq!(required_riding(mount_description(tag)), Some(("RIDI", 1)));
+        }
+        assert_eq!(
+            required_riding(mount_description("WING")),
+            Some(("RIDI", 3))
+        );
+    }
+
+    /// A description not carrying the sentence counts for nobody - under-counting, which is the
+    /// safe direction here.
+    #[test]
+    fn a_description_without_the_sentence_names_no_level() {
+        assert_eq!(required_riding("This is a mount."), None);
+        assert_eq!(
+            required_riding("This mount requires riding [RIDI] of at least level 3 to eat hay."),
+            None
+        );
     }
 
     /// `behind` is not consulted: a unit in the back rank still fights.
@@ -5199,39 +5275,17 @@ mod combat_ready_tests {
         )
     }
 
-    /// The case that does not exist in `combat_ready`'s answer: avoiding *and* armed, which is
-    /// what makes "clear the flag" a useful thing to say.
     #[test]
-    fn an_avoiding_unit_with_weapons_is_armed_but_not_ready() {
-        let read = read(19, &[item("SWOR", 19)], &["avoiding"], &[]).expect("countable");
-        assert_eq!(read.men, 19);
-        assert!(read.avoiding);
-        assert_eq!(read.armed, 19);
-        assert_eq!(read.ready, 0);
-    }
-
-    #[test]
-    fn an_avoiding_unit_with_no_weapons_is_neither() {
-        let read = read(19, &[], &["avoiding"], &[]).expect("countable");
-        assert!(read.avoiding);
-        assert_eq!(read.armed, 0);
-        assert_eq!(read.ready, 0);
-    }
-
-    #[test]
-    fn an_unarmed_unit_that_is_not_avoiding_is_not_ready() {
-        let read = read(19, &[], &[], &[]).expect("countable");
-        assert!(!read.avoiding);
-        assert_eq!(read.armed, 0);
-        assert_eq!(read.ready, 0);
-    }
-
-    #[test]
-    fn an_armed_unit_that_is_not_avoiding_is_ready() {
+    fn readiness_reports_the_headcount_alongside_the_count() {
         let read = read(19, &[item("SWOR", 10)], &[], &[]).expect("countable");
-        assert!(!read.avoiding);
-        assert_eq!(read.armed, 10);
+        assert_eq!(read.men, 19);
         assert_eq!(read.ready, 10);
+    }
+
+    #[test]
+    fn an_unarmed_unit_is_not_ready() {
+        let read = read(19, &[], &[], &[]).expect("countable");
+        assert_eq!(read.ready, 0);
     }
 
     /// `men_estimated` is checked before the ruleset, as `combat_ready` always has.
@@ -5257,64 +5311,43 @@ mod combat_ready_tests {
         );
     }
 
-    fn clause(men: i64, avoiding: bool, armed: i64) -> String {
-        because_clause(&Readiness {
-            men,
-            avoiding,
-            armed,
-            ready: if avoiding { 0 } else { armed },
-        })
-    }
-
-    #[test]
-    fn an_avoiding_unarmed_unit_is_told_both_reasons() {
-        assert_eq!(
-            clause(19, true, 0),
-            " — this unit is avoiding combat, and its 19 men hold no weapons they can wield"
-        );
-    }
-
-    #[test]
-    fn an_avoiding_armed_unit_is_told_about_the_flag() {
-        assert_eq!(
-            clause(19, true, 19),
-            " — this unit is avoiding combat, so none of its 19 men count"
-        );
+    fn clause(men: i64, ready: i64) -> String {
+        because_clause(&Readiness { men, ready })
     }
 
     #[test]
     fn an_unarmed_unit_is_told_about_its_weapons() {
         assert_eq!(
-            clause(19, false, 0),
+            clause(19, 0),
             " — this unit's 19 men hold no weapons they can wield"
         );
     }
 
     #[test]
-    fn an_armed_unit_that_is_not_avoiding_explains_nothing() {
-        assert_eq!(clause(19, false, 19), "");
+    fn a_unit_whose_men_count_explains_nothing() {
+        assert_eq!(clause(19, 19), "");
+        assert_eq!(clause(19, 1), "");
     }
 
     #[test]
     fn a_unit_with_no_men_explains_nothing() {
-        assert_eq!(clause(0, true, 0), "");
-        assert_eq!(clause(0, false, 0), "");
-        assert_eq!(clause(0, true, 5), "");
+        assert_eq!(clause(0, 0), "");
     }
 
     #[test]
     fn a_single_man_is_described_in_the_singular() {
         assert_eq!(
-            clause(1, true, 0),
-            " — this unit is avoiding combat, and its 1 man holds no weapons he can wield"
-        );
-        assert_eq!(
-            clause(1, true, 1),
-            " — this unit is avoiding combat, so its 1 man does not count"
-        );
-        assert_eq!(
-            clause(1, false, 0),
+            clause(1, 0),
             " — this unit's 1 man holds no weapons he can wield"
         );
+    }
+
+    /// The trap named in the plan: a unit with Combat 1 and no weapons is combat ready, and must
+    /// not be told it holds no weapons. The clause keys off `ready`, never off any weapon count.
+    #[test]
+    fn a_unit_with_combat_skill_and_no_weapons_is_not_told_it_holds_no_weapons() {
+        let read = read(10, &[], &[], &[skill("COMB", 1)]).expect("countable");
+        assert_eq!(read.ready, 10);
+        assert_eq!(because_clause(&read), "");
     }
 }
