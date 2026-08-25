@@ -403,7 +403,7 @@ mod tests {
     /// one hull name matched no item, so only 13401, which wrote the SAIL, was projected as
     /// moving. Everyone else aboard stood still on screen.
     #[test]
-    fn a_passenger_on_a_fleet_that_leads_with_a_hull_follows_it() {
+    fn a_passenger_on_a_fleet_that_names_its_class_follows_it() {
         let mut cache = ReportCache::new();
         let report = cache.classified(atlantis_hud_fixtures::G7_F95_T72.text, RULESET);
         let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");

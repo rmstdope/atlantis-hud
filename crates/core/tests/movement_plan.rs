@@ -307,7 +307,7 @@ fn an_overloaded_unit_is_refused_before_any_route_is_sought() {
 }
 
 /// Frozen Tomb [194] is written `Galley, 40 Galleons, 11 Galleys, 10 Balloons` and states no
-/// `Sailors:` line, so its crew requirement is ruleset arithmetic over those hulls - 774 levels,
+/// `Sailors:` line, so its crew requirement is ruleset arithmetic over those hulls - 762 levels,
 /// against the nothing this faction has aboard. A unit standing in it goes where the fleet goes or
 /// nowhere, which is the answer the planner owes even for a passenger that is also overloaded
 /// (`ah-8myf`).
@@ -317,7 +317,7 @@ fn a_passenger_on_an_unsailable_fleet_is_refused_for_the_fleet() {
     let problem = plan(&report, "13972", at(7, 51)).expect_err("the fleet cannot sail");
 
     assert!(
-        matches!(problem, RouteProblem::CrewCannotSail { required: 774, .. }),
+        matches!(problem, RouteProblem::CrewCannotSail { required: 762, .. }),
         "{problem:?}"
     );
 }

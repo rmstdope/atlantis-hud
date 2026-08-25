@@ -16642,7 +16642,7 @@ mod tests {
     /// the barren hex the boat was leaving. The fix is in `parse_fleet_kind`; this pins the
     /// symptom the navigator saw, in the check that showed it.
     #[test]
-    fn a_passenger_on_a_fleet_that_leads_with_a_hull_is_judged_where_it_is_sailing_to() {
+    fn a_passenger_on_a_fleet_that_names_its_class_is_judged_where_it_is_sailing_to() {
         let mut regions = fleet_sailing_north(one_product(50, "fish", "FISH"));
         regions[0].structures = vec![Structure {
             structure_id: "329".to_string(),
