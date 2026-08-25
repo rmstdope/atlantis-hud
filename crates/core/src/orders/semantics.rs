@@ -977,6 +977,7 @@ fn gather_receipts(
                     read_take(
                         receipts_of(&mut receipts, giver_id),
                         units.get(source_id.as_str()).copied(),
+                        source_id,
                         located
                             .get(source_id.as_str())
                             .map(|region| &region.region_id)
@@ -1043,16 +1044,31 @@ fn receipts_of<'a>(
 
 /// Credits one `TAKE ... SILV` to the taker, or records why it could not be counted.
 ///
-/// A source the report does not show in this hex is skipped entirely and raises no doubt, which is
-/// a deliberate divergence from the ledger: the ledger is generous so it never warns falsely, and
-/// the column is exact so it never shows money that is not there (`ah-awcm`).
+/// A source the report does not show in this hex is counted too, onto `taken_unshown`, so that the
+/// column tells the same story as the ledger it displays figures from (`ah-awcm`). Its own sentence
+/// says the source is unverifiable.
 fn read_take(
     entry: &mut Receipts,
     source: Option<&ReportUnit>,
+    source_id: &str,
     in_this_hex: bool,
     amount: &Amount,
 ) {
     let (Some(source), true) = (source, in_this_hex) else {
+        // A source the report does not show here: the ledger credits a stated quantity outright
+        // and declines an `ALL`, and the column follows it exactly rather than telling a second
+        // story about figures the ledger settles (`ah-awcm`).
+        if let TransferShape::Exact(quantity) =
+            transfer_shape(&Selector::Item(SILVER.to_string()), amount)
+        {
+            if quantity > 0 {
+                entry.taken_unshown = entry.taken_unshown.saturating_add(quantity);
+                let label = format!("unit {source_id}");
+                if !entry.taken_unshown_from.contains(&label) {
+                    entry.taken_unshown_from.push(label);
+                }
+            }
+        }
         return;
     };
     match transfer_shape(&Selector::Item(SILVER.to_string()), amount) {
@@ -6618,9 +6634,12 @@ mod tests {
         assert!(!taker.take_all_unpriceable);
     }
 
-    /// `ah-awcm`: the ledger credits a stated take from a unit it cannot see; the column does not.
+    /// `ah-awcm`: the ledger credits a stated take from a unit it cannot see, and so does the
+    /// column. An earlier reading had the column skip it - exact where the ledger is generous -
+    /// and that failed verification: `shared_silver_covered` and `upkeep` are ledger-derived, so a
+    /// take the column ignored still moved the figures it displays.
     #[test]
-    fn a_take_from_a_unit_the_report_does_not_show_here_is_not_counted() {
+    fn a_take_from_a_unit_the_report_does_not_show_here_is_counted() {
         let report = ParsedReport {
             regions: vec![region(vec![unit("2391")])],
             ..Default::default()
@@ -6629,10 +6648,30 @@ mod tests {
 
         let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()));
 
-        let taker = receipts.get("2391").cloned().unwrap_or_default();
-        assert_eq!(taker.taken, 0);
+        let taker = receipts.get("2391").expect("the taker has receipts");
+        assert_eq!(taker.taken_unshown, 100);
+        assert_eq!(taker.taken_unshown_from, vec!["unit 999".to_string()]);
+        assert_eq!(taker.taken, 0, "the source is not one the report shows here");
         assert!(taker.taken_from.is_empty());
         assert!(!taker.take_all_unpriceable);
+    }
+
+    /// `ah-awcm`: `TAKE FROM <a unit not shown here> ALL SILV` takes an amount only that unit
+    /// knows, and the ledger declines to credit it. The column declines with it.
+    #[test]
+    fn a_take_of_all_silver_from_an_unshown_source_is_not_counted() {
+        let report = ParsedReport {
+            regions: vec![region(vec![unit("2391")])],
+            ..Default::default()
+        };
+        let source = "unit 2391\nTAKE FROM 999 ALL SILV\n";
+
+        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()));
+
+        let taker = receipts.get("2391").cloned().unwrap_or_default();
+        assert_eq!(taker.taken_unshown, 0);
+        assert!(taker.taken_unshown_from.is_empty());
+        assert_eq!(taker.taken, 0);
     }
 
     /// `ah-awcm`: what another unit will have left to give depends on its own month.
@@ -10964,6 +11003,55 @@ mod tests {
             assert_eq!(forecast.shared_silver_covered, 0, "{id}");
             assert_eq!(forecast.upkeep, Some(owed), "{id}");
         }
+    }
+
+    /// `ah-awcm`, the failure this bead was reopened for: a `TAKE` from a source the report does
+    /// not show here moves the ledger's settlement, because the ledger credits it. Before the fix
+    /// the column ignored the take, so the taker was shown paying an upkeep of 60 out of an income
+    /// of 0 while its neighbour's lending silently vanished - money from nowhere, the exact
+    /// complaint the take sentence exists to answer.
+    ///
+    /// The assertion is coherence rather than "unchanged by the order": the settlement *should*
+    /// move, since a unit with 100 of its own no longer needs lending. What must hold is that the
+    /// column shows where that 100 came from.
+    #[test]
+    fn an_unshown_source_does_not_move_the_upkeep_settlement() {
+        let regions = || {
+            vec![region(vec![
+                with_men(with_silver(starving(unit("5")), 500), 6),
+                with_men(with_silver(starving(unit("7")), 0), 6),
+            ])]
+        };
+
+        let idle = review_turn(
+            &report(regions()),
+            "",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let lent = forecast(&idle, "7").shared_silver_covered;
+        assert!(lent > 0, "the neighbour lends when the unit has nothing");
+
+        let taking = review_turn(
+            &report(regions()),
+            "unit 7\nTAKE FROM 99999 100 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let taker = forecast(&taking, "7");
+
+        assert_eq!(taker.taken_unshown, 100, "the take is counted");
+        assert_eq!(taker.taken_unshown_from, vec!["unit 99999".to_string()]);
+        assert_eq!(
+            taker.income,
+            Some(100),
+            "and it is in the income the column shows"
+        );
+        assert!(
+            taker.income.unwrap_or(0) + taker.shared_silver_covered
+                >= taker.upkeep.unwrap_or(0),
+            "the unit is never shown paying an upkeep nothing in the column pays for"
+        );
     }
 
     /// Step 4 hands what it could not pay on to steps 5 and 6, exactly as its own silver does: a

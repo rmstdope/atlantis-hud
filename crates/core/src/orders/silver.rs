@@ -169,6 +169,11 @@ pub struct UnitSilver {
     pub taken: i64,
     /// Those sources, as `<name> (<id>)`, so the hover can name them.
     pub taken_from: Vec<String>,
+    /// Silver counted into `income` because this unit's own `TAKE` orders pull it from units the
+    /// report does **not** show in this hex (`ah-awcm`).
+    pub taken_unshown: i64,
+    /// Those sources, as `unit <id>`: a unit the report does not show has no name to give.
+    pub taken_unshown_from: Vec<String>,
     /// Silver that faction food held by *other* units in this hex paid off, at step 2 of the
     /// payment order (`ah-7cdt`). `0` for every unit the pool did not feed, which is most of them.
     pub faction_food_covered: i64,
@@ -564,6 +569,14 @@ pub struct Receipts {
     pub taken: i64,
     /// Those sources, as `<name> (<id>)`, so the hover can name them. In document order.
     pub taken_from: Vec<String>,
+    /// Silver this unit's own `TAKE` orders pull from units the report does **not** show in this
+    /// hex. Counted, because the ledger counts it: `shared_silver_covered` and `upkeep` are
+    /// ledger-derived, so a take the column ignored would still move what the column displays
+    /// (`ah-awcm`).
+    pub taken_unshown: i64,
+    /// Those sources, as `unit <id>` - the report gives no name for a unit it does not show. In
+    /// document order.
+    pub taken_unshown_from: Vec<String>,
     /// Whether a `TAKE ... ALL SILV` could not be priced, which silences the unit's whole figure.
     ///
     /// A bool rather than the source's name, because the sentence the interface shows names the
@@ -808,6 +821,8 @@ pub fn forecast_unit(
             givers: Vec::new(),
             taken: 0,
             taken_from: Vec::new(),
+            taken_unshown: 0,
+            taken_unshown_from: Vec::new(),
             faction_food_covered: 0,
             shared_silver_covered: 0,
             shared_silver_for_orders: 0,
@@ -831,7 +846,10 @@ pub fn forecast_unit(
 
     // A gift is in the giver's block, so it arrives already gathered. It is income whatever the
     // unit itself is ordered to do, including nothing.
-    let mut income = receipts.silver.saturating_add(receipts.taken);
+    let mut income = receipts
+        .silver
+        .saturating_add(receipts.taken)
+        .saturating_add(receipts.taken_unshown);
     let mut expense = 0i64;
     // A `TAKE ... ALL SILV` is in this unit's own block, but what it will yield depends on the
     // source unit's month, which this per-unit pass has not run (`ah-awcm`).
@@ -1166,6 +1184,8 @@ pub fn forecast_unit(
         givers: receipts.givers.clone(),
         taken: receipts.taken,
         taken_from: receipts.taken_from.clone(),
+        taken_unshown: receipts.taken_unshown,
+        taken_unshown_from: receipts.taken_unshown_from.clone(),
         faction_food_covered: 0,
         shared_silver_covered: 0,
         shared_silver_for_orders: shared,
@@ -4191,6 +4211,31 @@ mod tests {
         assert_eq!(unit.income, Some(100));
         assert_eq!(unit.taken, 100);
         assert_eq!(unit.taken_from, vec!["Workers (6567)".to_string()]);
+        assert_eq!(unit.doubt, None);
+    }
+
+    /// `ah-awcm`: silver taken from a unit the report does not show here is income too - the
+    /// ledger credits it, and a column that did not would contradict the figures it displays.
+    #[test]
+    fn a_taker_counts_what_it_takes_from_a_source_the_report_does_not_show() {
+        let receipts = Receipts {
+            taken_unshown: 100,
+            taken_unshown_from: vec!["unit 999".to_string()],
+            ..Receipts::default()
+        };
+        let unit = forecast_unit(
+            facts(5, &[], &receipts),
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            None,
+        );
+        assert_eq!(unit.income, Some(100));
+        assert_eq!(unit.taken_unshown, 100);
+        assert_eq!(unit.taken_unshown_from, vec!["unit 999".to_string()]);
+        assert_eq!(unit.taken, 0);
         assert_eq!(unit.doubt, None);
     }
 

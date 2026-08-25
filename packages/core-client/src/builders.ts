@@ -234,6 +234,8 @@ export function aUnitSilver(overrides: Partial<UnitSilver> = {}): UnitSilver {
     givers: [],
     taken: 0,
     takenFrom: [],
+    takenUnshown: 0,
+    takenUnshownFrom: [],
     givenToNobody: 0,
     factionFoodCovered: 0,
     ownFoodCovered: 0,

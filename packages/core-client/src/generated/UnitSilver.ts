@@ -91,6 +91,15 @@ taken: number,
  */
 takenFrom: Array<string>, 
 /**
+ * Silver counted into `income` because this unit's own `TAKE` orders pull it from units the
+ * report does **not** show in this hex (`ah-awcm`).
+ */
+takenUnshown: number, 
+/**
+ * Those sources, as `unit <id>`: a unit the report does not show has no name to give.
+ */
+takenUnshownFrom: Array<string>, 
+/**
  * Silver that faction food held by *other* units in this hex paid off, at step 2 of the
  * payment order (`ah-7cdt`). `0` for every unit the pool did not feed, which is most of them.
  */
