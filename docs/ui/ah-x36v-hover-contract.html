@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How many sentences the Silver hover shows (ah-x36v) — Option 1</title>
+<style>
+  :root { --ground:#10151c; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63;
+    --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1040px; margin:0 auto; }
+  h1 { font-size:24px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:16px; margin:30px 0 4px; border-top:1px solid var(--edge); padding-top:16px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  p { color:var(--ink-soft); max-width:94ch; margin-top:9px; font-size:14px; }
+  strong { color:var(--ink); } code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:.9em; color:var(--brass-bright); }
+  .opt { display:inline-block; margin-top:14px; padding:6px 12px; border:1px solid var(--brass); border-radius:4px;
+     color:var(--brass-bright); font:12px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.4px; text-transform:uppercase; }
+  .tips { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:12px; align-items:start; }
+  @media (max-width:860px){ .tips{grid-template-columns:1fr;} }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.7px; text-transform:uppercase; margin-bottom:7px; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .who { color:var(--ink); font-size:13px; margin-bottom:4px; }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin:6px 0 4px; }
+  .tipnote { color:var(--ink-dim); font-size:11.5px; margin-top:7px; line-height:1.55; font-style:italic; }
+  .tipnote span { display:block; }
+  .hid { color:#46525f; text-decoration:line-through; }
+  .note { color:var(--ink-dim); font-size:12.5px; margin-top:14px; font-style:italic; max-width:94ch; }
+  .facts { color:var(--ink-dim); font:11px/1.5 'SF Mono',Menlo,Consolas,monospace; margin-top:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-x36v</span> — how many sentences the Silver hover shows</h1>
+  <p><code>unitTooltip.ts:744</code> is the whole mechanism: <code>SILVER_NOTES.find(...)</code>.
+  <strong>Exactly one sentence, ever</strong> — the first whose condition holds. Two plans were
+  agreed against that in one day and both failed verification.</p>
+  <p><strong>How often notes overlap:</strong> the ten <code>doubt-*</code> notes read one field so
+  at most one fires — but the other twenty are independent flags. A unit fed by its own food, the
+  faction's food, a sharer <em>and</em> the unclaimed fund, that also took a gift, satisfies
+  <strong>six</strong> at once. Overlap is normal, not exotic.</p>
+  <div class="opt">Chosen 2026-08-25 — every sentence that is true, with the upkeep family collapsed into one</div>
+</header>
+<main>
+
+<h2 class="rule"><em>Case 1</em> the ah-moq3 case — two sentences, both true</h2>
+<div class="tips">
+  <div><div class="lab">today</div>
+    <div class="tip"><div class="who">Miners (1795)</div>
+      <div class="facts">sharedSilverCovered 12 · sharedSilverForOrders 50</div>
+      <div class="sect">Silver</div>
+      <div class="tipnote"><span>A faction-mate's silver in this hex pays this unit's upkeep.</span>
+      <span class="hid">A faction-mate's silver in this hex pays for this unit's orders.</span></div></div></div>
+  <div><div class="lab">option 1</div>
+    <div class="tip"><div class="who">Miners (1795)</div>
+      <div class="facts">sharedSilverCovered 12 · sharedSilverForOrders 50</div>
+      <div class="sect">Silver</div>
+      <div class="tipnote"><span>A faction-mate&#39;s silver in this hex pays this unit&#39;s upkeep.</span><span>A faction-mate&#39;s silver in this hex pays for this unit&#39;s orders.</span></div></div></div>
+</div>
+
+<h2 class="rule"><em>Case 2</em> the ah-awcm case — a taking, a gift and a destroyed gift</h2>
+<div class="tips">
+  <div><div class="lab">today</div>
+    <div class="tip"><div class="who">Scouts (2210)</div>
+      <div class="facts">taken 40 · received 25 · givenToNobody 10 · worksByDefault</div>
+      <div class="sect">Silver</div>
+      <div class="tipnote"><span>This unit has no month-long order, so it will work and earn wages.</span>
+      <span class="hid">Includes 40 taken from Guards (13303).</span>
+      <span class="hid">Includes 25 given by Scouts (2211) in this hex.</span>
+      <span class="hid">Includes 10 given away to nobody.</span></div></div></div>
+  <div><div class="lab">option 1</div>
+    <div class="tip"><div class="who">Scouts (2210)</div>
+      <div class="facts">taken 40 · received 25 · givenToNobody 10 · worksByDefault</div>
+      <div class="sect">Silver</div>
+      <div class="tipnote"><span>This unit has no month-long order, so it will work and earn wages.</span><span>Includes 40 taken from Guards (13303).</span><span>Includes 25 given by Scouts (2211) in this hex.</span><span>Includes 10 given away to nobody.</span></div></div></div>
+</div>
+
+<h2 class="rule"><em>Case 3</em> the realistic worst case — a unit everything fed</h2>
+<p>Not contrived: a starving unit in a full hex is fed by its own food first, then the faction's,
+then a neighbour's silver, then the unclaimed fund — and may have taken a gift as well.</p>
+<div class="tips">
+  <div><div class="lab">today</div>
+    <div class="tip"><div class="who">Teachers (6583)</div>
+      <div class="facts">ownFoodCovered 8 · factionFoodCovered 12 · sharedSilverCovered 20<br>unclaimedCovered 10 · received 15 · foodContended</div>
+      <div class="sect">Silver</div>
+      <div class="tipnote"><span>There is not enough food here to feed every unit that needs it, so this unit may yet be fed.</span>
+      <span class="hid">&hellip;five further true sentences, none shown</span></div></div></div>
+  <div><div class="lab">option 1</div>
+    <div class="tip"><div class="who">Teachers (6583)</div>
+      <div class="facts">ownFoodCovered 8 · factionFoodCovered 12 · sharedSilverCovered 20<br>unclaimedCovered 10 · received 15 · foodContended</div>
+      <div class="sect">Silver</div>
+      <div class="tipnote"><span>There is not enough food here to feed every unit that needs it, so this unit may yet be fed.</span><span>This unit&#39;s own food covers 8 of its upkeep.</span><span>Faction food in this hex covers 12 of this unit&#39;s upkeep.</span><span>A faction-mate&#39;s silver in this hex pays this unit&#39;s upkeep.</span><span>The faction&#39;s unclaimed silver covers 10 of this unit&#39;s upkeep.</span><span>Includes 15 given by Scouts (2211) in this hex.</span></div></div></div>
+</div>
+<p class="note">Both failed beads become buildable exactly as they were agreed, and nothing is ever silently unreachable again. The cost is case 3: six sentences in a hover, four of them saying a variant of who paid the upkeep. If this is chosen it needs a cap, or the upkeep family needs to become one sentence.</p>
+<h2 class="rule"><em>And</em> the collapsed upkeep sentence</h2>
+
+<h2 class="rule"><em>Set 1</em> &ldquo;was paid by&rdquo;</h2>
+<table>
+  <tr><th>Sources</th><th>Sentence</th></tr>
+  <tr><td class="k">own food only</td><td class="s">This unit's upkeep was paid by its own food (8).</td></tr>
+  <tr><td class="k">faction food + a mate</td><td class="s">This unit's upkeep was paid by faction food here (12) and a faction-mate's silver (20).</td></tr>
+  <tr><td class="k">all four</td><td class="s">This unit's upkeep was paid by its own food (8), faction food here (12), a faction-mate's silver (20) and the faction's unclaimed silver (10).</td></tr>
+</table>
+<p class="cap">Reads as one fact with a list. The figures sit in brackets, which keeps the sentence
+short but makes them slightly less prominent than the standalone sentences made them.</p>
+
+<h2 class="rule"><em>Set 2</em> &ldquo;covers N&rdquo;, keeping the existing verb</h2>
+<table>
+  <tr><th>Sources</th><th>Sentence</th></tr>
+  <tr><td class="k">own food only</td><td class="s">Its own food covers this unit's upkeep: 8.</td></tr>
+  <tr><td class="k">faction food + a mate</td><td class="s">Faction food here and a faction-mate's silver cover this unit's upkeep: 12 and 20.</td></tr>
+  <tr><td class="k">all four</td><td class="s">Its own food, faction food here, a faction-mate's silver and the faction's unclaimed silver cover this unit's upkeep: 8, 12, 20 and 10.</td></tr>
+</table>
+<p class="cap">Keeps the &ldquo;covers&rdquo; verb the retired sentences used. The two lists have to
+be read against each other to know which figure belongs to which source, which is worse the more
+sources there are.</p>
+
+<h2 class="rule"><em>Set 3</em> &ldquo;paid by, in order&rdquo; &mdash; naming the payment order</h2>
+<table>
+  <tr><th>Sources</th><th>Sentence</th></tr>
+  <tr><td class="k">own food only</td><td class="s">This unit's upkeep was paid by its own food (8).</td></tr>
+  <tr><td class="k">faction food + a mate</td><td class="s">This unit's upkeep was paid, in the game's order, by faction food here (12) and a faction-mate's silver (20).</td></tr>
+  <tr><td class="k">all four</td><td class="s">This unit's upkeep was paid, in the game's order, by its own food (8), faction food here (12), a faction-mate's silver (20) and the faction's unclaimed silver (10).</td></tr>
+</table>
+<p class="cap">Same as set 1, plus a clause saying the list is the order the game actually pays in
+&mdash; which is true and is why the sources are listed that way. Costs five words on every
+multi-source hover, and says nothing on the common single-source one.</p>
+</main>
+</body>
+</html>
