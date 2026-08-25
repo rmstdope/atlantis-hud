@@ -7225,10 +7225,11 @@ mod tests {
         );
     }
 
-    /// The reported case (`ah-cw75`): both causes are true, and clearing the flag alone would not
-    /// have helped, so the warning says both.
+    /// The reported case (`ah-cw75`): the unit holds nineteen men and no weapons, and is told so.
+    /// It also carries `avoiding`, which after the verification reversal is no longer a reason and
+    /// is no longer named.
     #[test]
-    fn an_avoiding_unarmed_unit_is_told_both_reasons() {
+    fn an_avoiding_unarmed_unit_is_told_only_about_its_weapons() {
         let pillager = with_flag(with_men(with_silver(unit("683"), 0), 19), "avoiding");
         let hex_region = ReportRegion {
             tax_base: Some(8963),
@@ -7248,12 +7249,14 @@ mod tests {
         assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this region has 0 — this unit is avoiding combat, and its 19 men hold no weapons they can wield"
+            "cannot pillage here: needs 90 combat ready men, this region has 0 — this unit's 19 men hold no weapons they can wield"
         );
     }
 
+    /// `avoiding` no longer zeroes anybody, so an avoiding armed unit's men are counted and the
+    /// warning states the threshold alone.
     #[test]
-    fn an_avoiding_armed_unit_is_told_about_the_flag() {
+    fn an_avoiding_unit_is_not_told_it_is_avoiding() {
         let pillager = with_flag(
             with_item(
                 with_men(with_silver(unit("683"), 0), 19),
@@ -7281,7 +7284,34 @@ mod tests {
         assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this region has 0 — this unit is avoiding combat, so none of its 19 men count"
+            "cannot pillage here: needs 90 combat ready men, this region has 19"
+        );
+    }
+
+    /// The trap: a unit with Combat 1 and no weapons is combat ready, and must not be told it
+    /// holds no weapons.
+    #[test]
+    fn a_unit_with_combat_skill_and_no_weapons_is_not_told_it_holds_no_weapons() {
+        let pillager = with_skill(with_men(with_silver(unit("683"), 0), 12), "COMB", 1);
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![pillager])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            told[0].message,
+            "cannot pillage here: needs 90 combat ready men, this region has 12"
         );
     }
 
