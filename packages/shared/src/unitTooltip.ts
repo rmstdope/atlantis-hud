@@ -119,8 +119,9 @@ function figure(amount: number | null): string {
  * column is counting upkeep (`ah-1wcw.4`). `In` splits in two because silver that arrives in the
  * turn's last phase cannot pay for anything this month's orders spend (`ah-uwa3`).
  *
- * At most one note, and the first that applies: a panel that stacks three explanations under one
- * small number explains nothing. The order is the order of how much the reader needs it.
+ * **Every** note that applies, one per line, in `SILVER_NOTES` order: a note that only ever fired
+ * when nothing else did was a note two agreed plans could not use, and both failed verification
+ * (`ah-x36v`). The order is the order of how much the reader needs it.
  */
 function summariseSilver(
   unit: ReportUnit,
@@ -213,9 +214,9 @@ export type SilverFacts = {
 /**
  * One explanation the hover may show under the Silver rows.
  *
- * Precedence is `SILVER_NOTES`' order and nothing else - but unlike the chain it replaced, a note
- * carries the facts it must win for (`example`), so a note placed where an earlier one swallows it
- * fails `unitTooltip.test.ts` instead of silently never appearing (`ah-hvt8`).
+ * Every note whose `when` holds is shown, so a note is never swallowed by one above it (`ah-x36v`).
+ * It still carries an `example` it must appear for, which proves its condition is satisfiable at
+ * all (`ah-hvt8`).
  */
 export type SilverNote = {
   /** Stable, kebab-case, never rendered. What the tests name, and what a diff shows. */
@@ -225,19 +226,23 @@ export type SilverNote = {
   /** Only ever called when `when` returned true. */
   say: (facts: SilverFacts) => string;
   /**
-   * A `SilverFacts` this note must win for. Every note has one, and the suite proves each note
-   * wins for its own - which is what makes an unreachable note a failing test rather than a
-   * sentence nobody ever sees.
+   * A `SilverFacts` this note must appear for. Every note has one, and the suite proves each note
+   * appears for its own - which is what makes an unsatisfiable condition a failing test rather
+   * than a sentence nobody ever sees.
    */
   example: () => SilverFacts;
 };
 
 /**
- * Every explanation the hover may show under the Silver rows, in precedence order: the first
- * whose `when` holds is the one shown.
+ * Every explanation the hover may show under the Silver rows, in reading order: **every** note
+ * whose `when` holds is shown, one per line, in this array's order.
+ *
+ * This array's order is reading order and nothing else - it is *not* precedence. Nothing here can
+ * shadow anything below it, so a note's position never decides whether it is seen (`ah-x36v`; two
+ * plans were agreed against the first-match contract this replaced, and both failed verification).
  *
  * Exported for `unitTooltip.test.ts`, which enumerates it - a private array cannot be enumerated,
- * and enumeration is the whole mechanism that catches a shadowed note (`ah-hvt8`).
+ * and enumeration is the whole mechanism that proves every note is reachable (`ah-hvt8`).
  */
 export const SILVER_NOTES: readonly SilverNote[] = [
   // Counted alone this unit runs out, yet no finding names it - which in this hex means the units
@@ -734,6 +739,14 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   }
 ];
 
+/**
+ * Every explanation that applies, one per line, in `SILVER_NOTES` order.
+ *
+ * **Not the first that applies.** Two plans were agreed against that contract in one day and both
+ * failed verification: a planner reasons about which sentence is "more specific" when the real
+ * question was that only one was ever shown (`ah-x36v`). A note can no longer be shadowed by
+ * another, by construction - which is also why the guard in `unitTooltip.test.ts` changed shape.
+ */
 function silverNote(
   unit: ReportUnit,
   silver: UnitSilver,
@@ -741,6 +754,6 @@ function silverNote(
   countUpkeep: boolean
 ): string | null {
   const facts: SilverFacts = { unit, silver, warned, countUpkeep };
-  const note = SILVER_NOTES.find((candidate) => candidate.when(facts));
-  return note ? note.say(facts) : null;
+  const said = SILVER_NOTES.filter((note) => note.when(facts)).map((note) => note.say(facts));
+  return said.length > 0 ? said.join("\n") : null;
 }
