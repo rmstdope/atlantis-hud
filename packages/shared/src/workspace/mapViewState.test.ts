@@ -270,8 +270,8 @@ describe("travelsToSelection", () => {
   it("travels to a selection that has just arrived", () => {
     expect(
       travelsToSelection(
-        { selectedRegionId: "1:9,41", restoredRegionId: null },
-        { selectedRegionId: "1:7,53", restoredRegionId: null }
+        { selectedRegionId: "1:9,41", restoredRegionId: null, pickEpoch: 0 },
+        { selectedRegionId: "1:7,53", restoredRegionId: null, pickEpoch: 0 }
       )
     ).toBe(true);
   });
@@ -279,8 +279,8 @@ describe("travelsToSelection", () => {
   it("does not travel again for the same selection", () => {
     expect(
       travelsToSelection(
-        { selectedRegionId: "1:9,41", restoredRegionId: null },
-        { selectedRegionId: "1:9,41", restoredRegionId: null }
+        { selectedRegionId: "1:9,41", restoredRegionId: null, pickEpoch: 0 },
+        { selectedRegionId: "1:9,41", restoredRegionId: null, pickEpoch: 0 }
       )
     ).toBe(false);
   });
@@ -288,8 +288,8 @@ describe("travelsToSelection", () => {
   it("does not travel to the hex a restore put back", () => {
     expect(
       travelsToSelection(
-        { selectedRegionId: "1:7,53", restoredRegionId: "1:7,53" },
-        { selectedRegionId: null, restoredRegionId: null }
+        { selectedRegionId: "1:7,53", restoredRegionId: "1:7,53", pickEpoch: 0 },
+        { selectedRegionId: null, restoredRegionId: null, pickEpoch: 0 }
       )
     ).toBe(false);
   });
@@ -297,8 +297,8 @@ describe("travelsToSelection", () => {
   it("travels once the restore exemption ends", () => {
     expect(
       travelsToSelection(
-        { selectedRegionId: "1:7,53", restoredRegionId: null },
-        { selectedRegionId: "1:7,53", restoredRegionId: "1:7,53" }
+        { selectedRegionId: "1:7,53", restoredRegionId: null, pickEpoch: 0 },
+        { selectedRegionId: "1:7,53", restoredRegionId: "1:7,53", pickEpoch: 0 }
       )
     ).toBe(true);
   });
@@ -306,8 +306,35 @@ describe("travelsToSelection", () => {
   it("does not travel when nothing is selected", () => {
     expect(
       travelsToSelection(
-        { selectedRegionId: null, restoredRegionId: "1:7,53" },
-        { selectedRegionId: null, restoredRegionId: "1:7,53" }
+        { selectedRegionId: null, restoredRegionId: "1:7,53", pickEpoch: 0 },
+        { selectedRegionId: null, restoredRegionId: "1:7,53", pickEpoch: 0 }
+      )
+    ).toBe(false);
+  });
+
+  it("travels when the player picks the hex already selected", () => {
+    expect(
+      travelsToSelection(
+        { selectedRegionId: "1:7,53", restoredRegionId: null, pickEpoch: 4 },
+        { selectedRegionId: "1:7,53", restoredRegionId: null, pickEpoch: 3 }
+      )
+    ).toBe(true);
+  });
+
+  it("does not travel when nothing changed, pick epoch included", () => {
+    expect(
+      travelsToSelection(
+        { selectedRegionId: "1:7,53", restoredRegionId: null, pickEpoch: 3 },
+        { selectedRegionId: "1:7,53", restoredRegionId: null, pickEpoch: 3 }
+      )
+    ).toBe(false);
+  });
+
+  it("does not travel for the restored hex without a pick", () => {
+    expect(
+      travelsToSelection(
+        { selectedRegionId: "1:7,53", restoredRegionId: "1:7,53", pickEpoch: 3 },
+        { selectedRegionId: "1:7,53", restoredRegionId: "1:7,53", pickEpoch: 2 }
       )
     ).toBe(false);
   });

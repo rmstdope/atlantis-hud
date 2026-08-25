@@ -173,6 +173,8 @@ export function keepsRestoredHex(
 export type FollowedSelection = {
   selectedRegionId: string | null;
   restoredRegionId: string | null;
+  /** `pickEpoch` from the workspace store - see its doc comment there. */
+  pickEpoch: number;
 };
 
 /**
@@ -194,6 +196,9 @@ export function travelsToSelection(current: FollowedSelection, last: FollowedSel
   }
   return (
     current.selectedRegionId !== last.selectedRegionId ||
-    current.restoredRegionId !== last.restoredRegionId
+    current.restoredRegionId !== last.restoredRegionId ||
+    // The player picked a hex from a list. A repeat pick of the hex already selected changes
+    // neither id, and a selection ring nobody can see is no answer - ah-lqct.
+    current.pickEpoch !== last.pickEpoch
   );
 }
