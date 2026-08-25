@@ -9,10 +9,13 @@
 //! all: the syntax checker has already said so, and guessing at what a malformed order meant would
 //! feed a wrong premise into every check downstream. Orders that no check reads are not modelled.
 
+use std::collections::BTreeMap;
+
 use super::forms::{self, Amount, Party, Selector};
 use super::lexer::{Token, TokenKind};
 use super::walk::{self, Depth, Event};
 use crate::movement::orders::MoveStep;
+use crate::report::model::ReportRegion;
 
 /// One thing a unit's orders would do.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -241,6 +244,180 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
     });
 
     units
+}
+
+/// One unit a document's `FORM` blocks create this month, with the orders written inside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormedBlock {
+    /// The `NEW n` alias, as the orders write it - `1` in `FORM 1`. Never a name: the grammar's
+    /// `Arg::Unit` accepts `NEW 1` and never `NEW a`, so an alias that is not a number forms
+    /// nothing.
+    pub alias: String,
+    /// The unit whose block holds the `FORM`. Where the formed unit's orders are typed, and what
+    /// a click on it selects.
+    pub formed_by: String,
+    /// The `unit` line of the block that forms it, for a finding that must sit on a line.
+    pub block_line: usize,
+    /// This month's orders written inside its own block. An inner `FORM`'s orders belong to the
+    /// inner unit and are not here.
+    pub intents: Vec<PlacedIntent>,
+    /// Order lines inside this block whose keyword is in neither [`FREE_ORDERS`] nor the
+    /// month-long set, read exactly as [`UnitIntents::unread`] reads them.
+    pub unread: Vec<usize>,
+}
+
+/// Every unit this document's `FORM` blocks create this month, in document order.
+///
+/// Mirrors [`super::effects::Working`]'s own walk exactly, so the table's rows and the Silver
+/// column's figures never disagree about which units a document forms: a `FORM` inside a `TURN`
+/// block forms nothing, an alias that is not a number forms nothing, an alias already taken in the
+/// same hex is swallowed, and a nested `FORM`'s orders belong to the innermost forming unit rather
+/// than the outer one. `regions` is where the report shows each existing unit - only a unit's
+/// `region_id` is read from it, to key an alias to its hex without this module reaching into the
+/// report itself.
+#[must_use]
+pub fn read_formed(source: &str, regions: &BTreeMap<&str, &ReportRegion>) -> Vec<FormedBlock> {
+    let mut reader = FormReader {
+        regions,
+        current: None,
+        current_region: None,
+        forming: Vec::new(),
+        by_alias: BTreeMap::new(),
+        results: Vec::new(),
+    };
+    walk::walk(source, |event| reader.visit(event));
+    reader.results
+}
+
+struct FormReader<'a> {
+    regions: &'a BTreeMap<&'a str, &'a ReportRegion>,
+    /// The physically reported unit whose block we are in.
+    current: Option<String>,
+    /// That unit's hex, unchanged by `FORM` nesting: forming a unit never moves anybody to a
+    /// different hex.
+    current_region: Option<String>,
+    /// The forming unit at each open `FORM` depth, innermost last. `None` for a block that could
+    /// not be read or whose alias was already taken - its orders are swallowed rather than falling
+    /// through to whatever encloses it.
+    forming: Vec<Option<usize>>,
+    by_alias: BTreeMap<(String, String), usize>,
+    results: Vec<FormedBlock>,
+}
+
+impl FormReader<'_> {
+    fn visit(&mut self, event: Event<'_>) {
+        match event {
+            Event::Directive(_) => {
+                self.current = None;
+                self.current_region = None;
+                self.forming.clear();
+            }
+            Event::Unit(line) => {
+                self.forming.clear();
+                self.current = line
+                    .arguments
+                    .first()
+                    .filter(|id| id.kind == TokenKind::Number)
+                    .map(|id| id.text.clone());
+                self.current_region = self
+                    .current
+                    .as_deref()
+                    .and_then(|id| self.regions.get(id))
+                    .map(|region| region.region_id.clone());
+            }
+            Event::Open {
+                line,
+                kind: walk::BlockKind::Form,
+                depth,
+            } if depth.turn == 0 => {
+                self.open_form(line.arguments, line.number);
+            }
+            Event::Open { .. } => {}
+            Event::Close {
+                kind: walk::BlockKind::Form,
+                depth,
+                ..
+            } if depth.turn == 0 => {
+                self.forming.pop();
+            }
+            Event::Close { .. }
+            | Event::Stray { .. }
+            | Event::Abandoned(_)
+            | Event::Broken { .. } => {}
+            Event::Order { line, depth } if depth.turn == 0 => {
+                self.record_order(line.command, line.arguments, line.number);
+            }
+            Event::Order { .. } => {}
+        }
+    }
+
+    /// The `FormedBlock` the next order belongs to, or `None` outside any valid `FORM`.
+    fn active(&self) -> Option<usize> {
+        self.forming.last().copied().flatten()
+    }
+
+    /// The unit whose block the next `FORM` sits in: the innermost forming unit's synthetic id, or
+    /// the physically reported unit's own - `None` where neither is known, which swallows the
+    /// block exactly as a taken alias does.
+    fn parent_id(&self) -> Option<String> {
+        match self.forming.last() {
+            Some(Some(index)) => Some(format!("new-{}", self.results[*index].alias)),
+            Some(None) => None,
+            None => self.current.clone(),
+        }
+    }
+
+    fn open_form(&mut self, arguments: &[Token], line_number: usize) {
+        // The alias has to be a number: `GIVE NEW n` is the only way to reach the formed unit, and
+        // the grammar's `Arg::Unit` accepts `NEW 1` and never `NEW a`.
+        let alias = arguments
+            .first()
+            .filter(|alias| alias.kind == TokenKind::Number);
+        let (Some(alias), Some(formed_by), Some(region_id)) =
+            (alias, self.parent_id(), self.current_region.clone())
+        else {
+            // A FORM that cannot be read still opens a block, or its orders would fall through to
+            // whatever encloses it.
+            self.forming.push(None);
+            return;
+        };
+
+        let key = (region_id, alias.text.clone());
+        if self.by_alias.contains_key(&key) {
+            // The alias is taken, so the server would refuse this FORM; its block is swallowed
+            // rather than applied to the unit the alias already names.
+            self.forming.push(None);
+            return;
+        }
+
+        let index = self.results.len();
+        self.by_alias.insert(key, index);
+        self.results.push(FormedBlock {
+            alias: alias.text.clone(),
+            formed_by,
+            block_line: line_number,
+            intents: Vec::new(),
+            unread: Vec::new(),
+        });
+        self.forming.push(Some(index));
+    }
+
+    fn record_order(&mut self, command: &Token, arguments: &[Token], line_number: usize) {
+        let Some(active) = self.active() else {
+            return;
+        };
+        let block = &mut self.results[active];
+        if let Some(intent) = read_order(command, arguments) {
+            block.intents.push(PlacedIntent {
+                intent,
+                line: line_number,
+                column_start: command.column_start,
+                column_end: command.column_end,
+            });
+        } else if !is_free_order(command) {
+            block.unread.push(line_number);
+        }
+    }
 }
 
 /// Order keywords the rules place outside the month, so a unit holding one is understood to be
@@ -1222,6 +1399,129 @@ mod tests {
                 Intent::Tax
             ],
             "the FORM itself belongs to the forming unit; the BUY inside it does not"
+        );
+    }
+
+    // --- read_formed ---------------------------------------------------------------------------
+
+    fn a_region(id: &str) -> ReportRegion {
+        ReportRegion {
+            region_id: id.to_string(),
+            ..Default::default()
+        }
+    }
+
+    /// One unit's `region_id`, in the shape `read_formed` wants it - a map built once per test so
+    /// the region it borrows from outlives the call.
+    fn regions_with<'a>(
+        unit_id: &'a str,
+        region: &'a ReportRegion,
+    ) -> BTreeMap<&'a str, &'a ReportRegion> {
+        let mut regions = BTreeMap::new();
+        regions.insert(unit_id, region);
+        regions
+    }
+
+    #[test]
+    fn orders_inside_a_form_block_belong_to_the_formed_unit() {
+        let region = a_region("hex-1");
+        let regions = regions_with("1922", &region);
+        let formed = read_formed("unit 1922\nFORM 1\nBUY 5 PLAI\nEND\n", &regions);
+
+        assert_eq!(formed.len(), 1, "{formed:?}");
+        assert_eq!(formed[0].alias, "1");
+        assert_eq!(formed[0].formed_by, "1922");
+        assert_eq!(
+            formed[0]
+                .intents
+                .iter()
+                .map(|placed| placed.intent.clone())
+                .collect::<Vec<_>>(),
+            vec![Intent::Buy {
+                amount: Amount::Exact(5),
+                item: "PLAI".to_string(),
+            }]
+        );
+
+        // `read_intents` on the same source gives unit 1922 only its own FORM, not the BUY.
+        let unit = only_unit("unit 1922\nFORM 1\nBUY 5 PLAI\nEND\n");
+        assert_eq!(
+            unit.intents
+                .iter()
+                .map(|placed| placed.intent.clone())
+                .collect::<Vec<_>>(),
+            vec![Intent::Form {
+                alias: "1".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn a_form_inside_a_turn_block_forms_nothing() {
+        let region = a_region("hex-1");
+        let regions = regions_with("1922", &region);
+        let formed = read_formed("unit 1922\nTURN\nFORM 1\nEND\nENDTURN\n", &regions);
+        assert_eq!(formed, vec![]);
+    }
+
+    #[test]
+    fn a_form_alias_that_is_not_a_number_forms_nothing() {
+        let region = a_region("hex-1");
+        let regions = regions_with("1922", &region);
+        let formed = read_formed("unit 1922\nFORM a\nBUY 5 PLAI\nEND\n", &regions);
+        assert_eq!(
+            formed,
+            vec![],
+            "a FORM the server would refuse forms nothing, and its orders are swallowed rather \
+             than falling through to unit 1922"
+        );
+    }
+
+    #[test]
+    fn a_second_form_with_a_taken_alias_is_swallowed() {
+        let region = a_region("hex-1");
+        let regions = regions_with("1922", &region);
+        let formed = read_formed(
+            "unit 1922\nFORM 1\nEND\nFORM 1\nBUY 5 PLAI\nEND\n",
+            &regions,
+        );
+        assert_eq!(formed.len(), 1, "one alias, one unit: {formed:?}");
+        assert!(
+            formed[0].intents.is_empty(),
+            "the block that could not form anything is swallowed, not applied to the first: \
+             {formed:?}"
+        );
+    }
+
+    #[test]
+    fn an_inner_forms_orders_belong_to_the_inner_unit() {
+        let region = a_region("hex-1");
+        let regions = regions_with("1922", &region);
+        let formed = read_formed(
+            "unit 1922\nFORM 1\nFORM 2\nBUY 5 PLAI\nEND\nEND\n",
+            &regions,
+        );
+
+        assert_eq!(formed.len(), 2, "{formed:?}");
+        let outer = formed.iter().find(|block| block.alias == "1").unwrap();
+        let inner = formed.iter().find(|block| block.alias == "2").unwrap();
+        assert_eq!(outer.formed_by, "1922");
+        assert_eq!(
+            inner.formed_by, "new-1",
+            "a nested FORM's parent is the enclosing formed unit, not the physical one"
+        );
+        assert!(outer.intents.is_empty(), "{outer:?}");
+        assert_eq!(
+            inner
+                .intents
+                .iter()
+                .map(|placed| placed.intent.clone())
+                .collect::<Vec<_>>(),
+            vec![Intent::Buy {
+                amount: Amount::Exact(5),
+                item: "PLAI".to_string(),
+            }],
+            "the BUY belongs to the inner unit, not the outer one"
         );
     }
 }

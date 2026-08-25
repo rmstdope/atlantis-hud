@@ -13,6 +13,7 @@ function diagnostic(overrides: Partial<OrderDiagnostic>): OrderDiagnostic {
     columnEnd: null,
     regionId: null,
     unitId: null,
+    formed: null,
     severity: "error",
     ...overrides
   };

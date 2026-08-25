@@ -1,6 +1,7 @@
 import type { OrderDiagnostic, OrderValidationResult, UnitSilver } from "@atlantis/core-client";
 import { SILVER_TROUBLE_CODES } from "@atlantis/core-client";
 import { findUnitBlocks } from "./ordersDocument";
+import { silverKey } from "./unitTable";
 
 export type OrderValidationSummary = {
   errorCount: number;
@@ -256,7 +257,7 @@ export function findingsByHex(diagnostics: OrderDiagnostic[]): HexFindings[] {
 const SILVER_TROUBLE = new Set<string>(SILVER_TROUBLE_CODES);
 
 /**
- * The own units the Silver column marks with a ⚠, by id.
+ * The own units the Silver column marks with a ⚠, by hex and id (`silverKey`).
  *
  * Two checks put a unit in trouble over silver and both belong on the row. `not-enough-silver` is
  * the shortfall check; `upkeep-exceeds-unclaimed` (`ah-fjty`) names every unit whose maintenance
@@ -266,12 +267,16 @@ const SILVER_TROUBLE = new Set<string>(SILVER_TROUBLE_CODES);
  *
  * A finding anchored to the hex names no unit and marks none: in a hex whose units pool their
  * silver, blaming one of several would be as wrong in the table as it is in the panel.
+ *
+ * By hex as well as by id, exactly as `silverKey` is everywhere else: a unit a `FORM 1` creates
+ * this month is unique to its hex, not to the turn, and a plain unit-id set would mark both hexes'
+ * rows from one finding (`ah-jw85`).
  */
 export function unitsWarnedAboutSilver(diagnostics: OrderDiagnostic[]): Set<string> {
   return new Set(
     diagnostics
       .filter((diagnostic) => SILVER_TROUBLE.has(diagnostic.code))
-      .map((diagnostic) => diagnostic.unitId)
-      .filter((unitId): unitId is string => unitId !== null)
+      .filter((diagnostic) => diagnostic.unitId !== null && diagnostic.regionId !== null)
+      .map((diagnostic) => silverKey(diagnostic.regionId as string, diagnostic.unitId as string))
   );
 }

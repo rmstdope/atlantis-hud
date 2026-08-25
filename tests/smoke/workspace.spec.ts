@@ -4568,6 +4568,15 @@ test("the silver column forecasts our own units and sorts on the figure", async 
   await expect(cellOf(FOREIGN_UNIT)).toHaveText("");
   await filter.fill("");
 
+  // A unit this month's own FORM orders create gets a figure too (`ah-jw85`): it is not in the
+  // report at all, so a blank cell here would be the defect the bead exists to fix, not a foreign
+  // unit's ordinary blank.
+  await fillOrders(page, "@study obse\nFORM 1\nEND\n");
+  const formedRow = page.getByTestId("unit-row-new-1");
+  await expect(formedRow).toBeVisible();
+  await expect(formedRow.locator("td").last()).toHaveText(/^-?\d+$/);
+  await fillOrders(page, "@study obse");
+
   // Sorting ascending puts the lowest forecast first, and every figure on screen is in order.
   await header.getByRole("button", { name: "Silver", exact: true }).click();
   const figures = (await page.locator("[data-testid^='unit-row-'] td:last-child").allInnerTexts())

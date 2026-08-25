@@ -91,6 +91,7 @@ fn into_diagnostic(finding: semantics::Finding) -> OrderDiagnostic {
         column_end: finding.column_end,
         region_id: Some(finding.region_id),
         unit_id: finding.unit_id,
+        formed: finding.formed,
         severity: OrderDiagnosticSeverity::Warning,
     }
 }

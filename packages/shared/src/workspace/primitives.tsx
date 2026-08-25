@@ -1,4 +1,4 @@
-import type { OrderDiagnosticSeverity } from "@atlantis/core-client";
+import type { FormedSubject, OrderDiagnosticSeverity } from "@atlantis/core-client";
 import { Fragment, type ReactNode } from "react";
 import { itemEntryId, type GameDataIndex } from "../gameData";
 
@@ -71,13 +71,20 @@ export const UNIT_LINK_CLASS =
  * otherwise, because a button that does nothing is worse than plain text saying the same thing.
  * Without `onSelectUnit` it stays the plain span it has always been, so a caller that has no
  * selection to offer loses nothing.
+ *
+ * `formed` is set when `unitId` names a unit this month's `FORM` orders create rather than one the
+ * report shows (decision N2, `ah-jw85`): the subject reads by its alias - `new 1`, the way the
+ * order itself writes `GIVE NEW 1` - and the click goes to `formed.formedBy` instead, since a unit
+ * that does not exist cannot be selected and its orders are typed in its parent's block anyway.
  */
 export function ProblemWho({
   unitId,
+  formed,
   known,
   onSelectUnit
 }: {
   unitId: string | null;
+  formed?: FormedSubject | null;
   known?: ReadonlySet<string>;
   onSelectUnit?: (unitId: string) => void;
 }) {
@@ -92,16 +99,19 @@ export function ProblemWho({
     );
   }
 
-  if (onSelectUnit && known?.has(unitId)) {
+  const label = formed ? `new ${formed.alias}` : unitId;
+  const target = formed ? formed.formedBy : unitId;
+
+  if (onSelectUnit && known?.has(target)) {
     return (
       <button
         type="button"
         data-testid={`problem-unit-${unitId}`}
-        onClick={() => onSelectUnit(unitId)}
+        onClick={() => onSelectUnit(target)}
         className={UNIT_LINK_CLASS}
       >
         <span className="sr-only">unit </span>
-        {unitId}
+        {label}
       </button>
     );
   }
@@ -109,7 +119,7 @@ export function ProblemWho({
   return (
     <span className="shrink-0 tabular-nums text-ink-dim">
       <span className="sr-only">unit </span>
-      {unitId}
+      {label}
     </span>
   );
 }

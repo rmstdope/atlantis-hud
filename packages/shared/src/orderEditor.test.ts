@@ -15,6 +15,7 @@ import {
   summarizeOrderValidation,
   unitsWarnedAboutSilver
 } from "./orderEditor";
+import { silverKey } from "./unitTable";
 
 describe("orderEditor policy", () => {
   // The vocabulary is the core's, fetched through the client, so that the two cannot drift. The
@@ -42,6 +43,7 @@ describe("orderEditor policy", () => {
           columnEnd: 0,
           regionId: null,
           unitId: null,
+          formed: null,
           severity: "error"
         },
         {
@@ -53,6 +55,7 @@ describe("orderEditor policy", () => {
           columnEnd: 0,
           regionId: null,
           unitId: null,
+          formed: null,
           severity: "warning"
         }
       ]
@@ -80,6 +83,7 @@ describe("orderEditor policy", () => {
           columnEnd: 0,
           regionId: null,
           unitId: null,
+          formed: null,
           severity: "warning"
         }
       ]
@@ -141,6 +145,7 @@ const diagnostic = (lineStart: number, message: string): OrderDiagnostic => ({
   columnEnd: 0,
   regionId: null,
   unitId: null,
+  formed: null,
   severity: "error"
 });
 
@@ -162,6 +167,7 @@ describe("the diagnostics belonging to one unit", () => {
         columnEnd: 0,
         regionId: null,
         unitId: null,
+        formed: null,
         severity: "error"
       }
     ]);
@@ -195,6 +201,7 @@ describe("the diagnostics belonging to one unit", () => {
       columnEnd: 0,
       regionId: null,
       unitId: null,
+      formed: null,
       severity: "warning"
     };
 
@@ -213,6 +220,7 @@ describe("the diagnostics belonging to one unit", () => {
       columnEnd: 0,
       regionId: null,
       unitId: null,
+      formed: null,
       severity: "warning"
     };
 
@@ -231,6 +239,7 @@ describe("the diagnostics belonging to one unit", () => {
       columnEnd: 0,
       regionId: null,
       unitId: null,
+      formed: null,
       severity: "warning"
     };
 
@@ -253,6 +262,7 @@ describe("offendingText", () => {
       columnEnd: 16,
       regionId: null,
       unitId: null,
+      formed: null,
       severity: "error"
     };
 
@@ -272,6 +282,7 @@ describe("offendingText", () => {
       columnEnd: 12,
       regionId: null,
       unitId: null,
+      formed: null,
       severity: "error"
     };
 
@@ -289,6 +300,7 @@ describe("offendingText", () => {
       columnEnd: 5,
       regionId: null,
       unitId: null,
+      formed: null,
       severity: "error"
     };
 
@@ -306,6 +318,7 @@ describe("offendingText", () => {
       columnEnd: 9,
       regionId: null,
       unitId: null,
+      formed: null,
       severity: "error"
     };
 
@@ -333,6 +346,7 @@ function hexFinding(code: string, regionId = "1:7,53"): OrderDiagnostic {
     columnEnd: null,
     regionId,
     unitId: null,
+    formed: null,
     severity: "warning"
   };
 }
@@ -348,6 +362,7 @@ function unitFinding(unitId: string, line: number, regionId = "1:7,53"): OrderDi
     columnEnd: 4,
     regionId,
     unitId,
+    formed: null,
     severity: "warning"
   };
 }
@@ -477,11 +492,13 @@ describe("the units the silver column marks", () => {
       unitId: "12127",
       message: "your units owe $1437 of upkeep they cannot pay and the faction has $100 unclaimed"
     };
-    expect(unitsWarnedAboutSilver([short])).toEqual(new Set(["12127"]));
+    expect(unitsWarnedAboutSilver([short])).toEqual(new Set([silverKey("1:7,53", "12127")]));
   });
 
   it("still marks a unit the shortfall check names", () => {
-    expect(unitsWarnedAboutSilver([unitFinding("7226", 3)])).toEqual(new Set(["7226"]));
+    expect(unitsWarnedAboutSilver([unitFinding("7226", 3)])).toEqual(
+      new Set([silverKey("1:7,53", "7226")])
+    );
   });
 
   it("marks nobody for a finding anchored to the hex rather than a unit", () => {
@@ -494,7 +511,7 @@ describe("the units the silver column marks", () => {
   it("marks every code the core calls silver trouble", () => {
     for (const code of SILVER_TROUBLE_CODES) {
       expect(unitsWarnedAboutSilver([{ ...hexFinding(code), unitId: "101" }])).toEqual(
-        new Set(["101"])
+        new Set([silverKey("1:7,53", "101")])
       );
     }
   });

@@ -18,6 +18,7 @@ import {
   dragColumnShare,
   dropBoundaryX,
   orderOf,
+  silverKey,
   silverShown,
   shareOf,
   REORDERABLE_COLUMNS,
@@ -393,6 +394,21 @@ describe("silverShown", () => {
     // With the setting off an unpriceable upkeep is not consulted at all.
     expect(silverShown(forecast(100, null), false)).toBe(100);
     expect(silverShown(null, true)).toBeNull();
+  });
+});
+
+/** `ah-jw85`: `new-1` is unique to a hex, not to a turn, so the key has to carry both. */
+describe("silverKey", () => {
+  it("is the same for the same hex and unit", () => {
+    expect(silverKey("1:7,53", "new-1")).toBe(silverKey("1:7,53", "new-1"));
+  });
+
+  it("tells two hexes' unit apart even though the alias is the same", () => {
+    expect(silverKey("1:7,53", "new-1")).not.toBe(silverKey("1:8,53", "new-1"));
+  });
+
+  it("tells two units in the same hex apart", () => {
+    expect(silverKey("1:7,53", "new-1")).not.toBe(silverKey("1:7,53", "new-2"));
   });
 });
 

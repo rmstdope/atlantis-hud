@@ -18,8 +18,13 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use serde::{Deserialize, Serialize};
+
+use super::effects;
 use super::forms::{Amount, Party, Selector};
-use super::intents::{read_intents, spends_the_month, Intent, PlacedIntent, UnitIntents};
+use super::intents::{
+    read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, UnitIntents,
+};
 use super::standing::{self, standing_after, Boarding};
 use crate::movement::graph::Direction;
 use crate::movement::mode::{
@@ -207,6 +212,21 @@ impl Default for CheckOptions {
     }
 }
 
+/// A subject that has no number in the report, because this month's orders create it.
+///
+/// `None` for every finding about a unit the report shows, which is almost all of them. Set, the
+/// interface names the subject by its alias and sends a click to `formed_by` instead: a unit that
+/// does not exist cannot be selected, and its orders are typed in its parent's block anyway.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct FormedSubject {
+    /// The `NEW n` alias, as the orders write it.
+    pub alias: String,
+    /// The unit whose block holds the `FORM`.
+    pub formed_by: String,
+}
+
 /// One thing that looks wrong about a turn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
@@ -220,6 +240,9 @@ pub struct Finding {
     pub line: Option<usize>,
     pub column_start: Option<usize>,
     pub column_end: Option<usize>,
+    /// Set when `unit_id` names a unit this month's orders create rather than one the report
+    /// shows - see [`FormedSubject`].
+    pub formed: Option<FormedSubject>,
 }
 
 /// Where the report shows each unit, by unit number, across every region it covers.
@@ -236,6 +259,20 @@ fn where_the_report_shows_each_unit(report: &ParsedReport) -> BTreeMap<&str, &Re
         }
     }
     located
+}
+
+/// Every unit the report prints, by unit number - the unit itself rather than its region.
+///
+/// A `FORM` block's synthetic unit is built by cloning its parent's own fields (`effects.rs`'s
+/// `formed_unit`), and the parent has to be looked up by the number its block is filed under.
+fn units_by_id(report: &ParsedReport) -> BTreeMap<&str, &ReportUnit> {
+    let mut units = BTreeMap::new();
+    for region in &report.regions {
+        for unit in &region.units {
+            units.insert(unit.unit_id.as_str(), unit);
+        }
+    }
+    units
 }
 
 /// Checks a whole turn's orders against the report they were written for.
@@ -284,6 +321,20 @@ pub fn review_turn(
     } else {
         BTreeMap::new()
     };
+    // Where each *existing* unit stands, needed unconditionally now: a `FORM` block's region comes
+    // from its parent, and every review has to know which units this month's orders create.
+    let unit_regions = where_the_report_shows_each_unit(report);
+    let unit_by_id = units_by_id(report);
+    // Every unit this month's orders create, built once and before `hexes` below so it outlives
+    // every `Hex<'_>` that borrows from it (`Ordered` holds a reference into `formed[i].unit`).
+    let formed: Vec<Formed> = read_formed(source, &unit_regions)
+        .into_iter()
+        .filter_map(|block| {
+            let parent = *unit_by_id.get(block.formed_by.as_str())?;
+            let unit = effects::formed_unit(parent, &block.alias);
+            Some(Formed { unit, block })
+        })
+        .collect();
     // Same reasoning as `located` above: `review_turn` runs on every keystroke once typing
     // settles, so the index a sailing passenger's produce check walks is built only when that
     // check is actually enabled (`ah-8myf`).
@@ -303,7 +354,7 @@ pub fn review_turn(
     // Gifts of silver live in the *giver's* block, which may be anywhere in the document, so they
     // are gathered once for the whole turn before any hex is priced. Per unit this would be
     // quadratic in the size of a faction, on a path that runs on every keystroke.
-    let receipts = gather_receipts(report, &ordered, ruleset);
+    let receipts = gather_receipts(report, &ordered, ruleset, &formed);
 
     // Read once for the whole report rather than per hex or per message: the unit a shortfall is
     // said of is often the one holding none of the thing, so the evidence for its plural is
@@ -327,7 +378,7 @@ pub fn review_turn(
         .regions
         .iter()
         .map(|region| {
-            let hex = Hex::read(region, &ordered);
+            let hex = Hex::read(region, &ordered, &formed);
             let ledger = ledger_for(&hex, ruleset);
             (hex, ledger)
         })
@@ -374,7 +425,15 @@ pub fn review_turn(
 
         let start = findings.len();
         check_region_pools(hex, &overruns, ruleset, &plurals, &options, &mut findings);
-        check_resources(hex, ledger, ruleset, &plurals, &options, &mut findings);
+        check_resources(
+            hex,
+            ledger,
+            ruleset,
+            &plurals,
+            &options,
+            &receipts,
+            &mut findings,
+        );
         check_markets(hex, ruleset, &options, &mut findings);
         let pillaged = own_unit_pillages(hex);
         check_pillaged_tax(hex, pillaged, &options, &mut findings);
@@ -793,6 +852,7 @@ fn forecast_hex(
             skills: &ordered.unit.skills,
             intents: ordered.intents,
             receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
+            formed: ordered.formed.as_ref(),
         };
         claims.push(food_claim(&facts));
 
@@ -942,14 +1002,21 @@ fn gather_receipts(
     report: &ParsedReport,
     ordered: &OrderedUnits,
     ruleset: Option<&Ruleset>,
+    formed: &[Formed],
 ) -> BTreeMap<String, Receipts> {
     let located = where_the_report_shows_each_unit(report);
-    let mut units: BTreeMap<&str, &ReportUnit> = BTreeMap::new();
-    for region in &report.regions {
-        for unit in &region.units {
-            units.insert(unit.unit_id.as_str(), unit);
-        }
-    }
+    let units = units_by_id(report);
+    // Keyed exactly as `read_formed` keys its own alias table: an alias is per-hex, so the same
+    // `NEW 1` names a different unit - or none - depending on which region the giver stands in.
+    let formed_by_key: BTreeMap<(&str, &str), &Formed> = formed
+        .iter()
+        .map(|formed| {
+            (
+                (formed.unit.region_id.as_str(), formed.block.alias.as_str()),
+                formed,
+            )
+        })
+        .collect();
 
     // Document order, so a recipient's givers read in the order the orders were written.
     let mut givers: Vec<(&String, &UnitOrders)> = ordered.by_unit.iter().collect();
@@ -988,7 +1055,7 @@ fn gather_receipts(
                 continue;
             }
             let Intent::Give {
-                to: Party::Unit(recipient),
+                to,
                 what: Selector::Item(text),
                 amount,
             } = &placed.intent
@@ -1000,14 +1067,31 @@ fn gather_receipts(
             if !names_silver(text, ruleset) {
                 continue;
             }
-            // A gift from another hex is one this pass cannot see the far side of.
-            if located
-                .get(recipient.as_str())
-                .map(|region| &region.region_id)
-                != Some(from)
-            {
-                continue;
-            }
+            let recipient: String = match to {
+                Party::Unit(recipient) => {
+                    // A gift from another hex is one this pass cannot see the far side of.
+                    if located
+                        .get(recipient.as_str())
+                        .map(|region| &region.region_id)
+                        != Some(from)
+                    {
+                        continue;
+                    }
+                    recipient.clone()
+                }
+                Party::New(alias) => {
+                    // The alias is per-hex, exactly as `read_formed` keys it - a gift to a
+                    // formed unit standing in another hex is skipped, just as a gift to a
+                    // reported unit elsewhere is above.
+                    if !formed_by_key.contains_key(&(from.as_str(), alias.as_str())) {
+                        continue;
+                    }
+                    format!("new-{alias}")
+                }
+                // Another faction's new unit is not a row of ours, and a discard has nobody to
+                // credit.
+                Party::Foreign { .. } | Party::Discard => continue,
+            };
 
             let held = giver
                 .items
@@ -1022,7 +1106,7 @@ fn gather_receipts(
                 continue;
             }
 
-            let entry = receipts_of(&mut receipts, recipient);
+            let entry = receipts_of(&mut receipts, &recipient);
             entry.silver = entry.silver.saturating_add(quantity);
             let label = format!("{} ({})", giver.name, giver.unit_id);
             if !entry.givers.contains(&label) {
@@ -1149,6 +1233,13 @@ impl OrderedUnits {
     }
 }
 
+/// A unit this month's orders create, with everything the review needs to treat it as ordinary:
+/// the unit itself, its orders, and where it came from.
+struct Formed {
+    unit: ReportUnit,
+    block: FormedBlock,
+}
+
 /// One hex, with the units we may order in it and what they have been told to do.
 struct Hex<'a> {
     region: &'a ReportRegion,
@@ -1162,11 +1253,17 @@ struct Ordered<'a> {
     /// `None` when the document has no block for this unit at all.
     block_line: Option<usize>,
     unread: bool,
+    /// Set when `unit` is not one the report shows but one this month's `FORM` orders create.
+    formed: Option<FormedSubject>,
 }
 
 impl<'a> Hex<'a> {
-    fn read(region: &'a ReportRegion, ordered: &'a OrderedUnits) -> Self {
-        let units = region
+    /// `formed` is every unit this month's orders create, anywhere in the document - `read` keeps
+    /// only the ones standing in this region. Report units come first and keep their existing
+    /// order, so `shares[index]` and every other index-parallel vector `forecast_hex` builds from
+    /// `hex.units` keeps lining up with it.
+    fn read(region: &'a ReportRegion, ordered: &'a OrderedUnits, formed: &'a [Formed]) -> Self {
+        let mut units: Vec<Ordered<'a>> = region
             .units
             .iter()
             .filter(|unit| unit.own)
@@ -1177,9 +1274,25 @@ impl<'a> Hex<'a> {
                     intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
                     block_line: orders.map(|orders| orders.block_line),
                     unread: orders.is_some_and(|orders| orders.unread),
+                    formed: None,
                 }
             })
             .collect();
+        units.extend(
+            formed
+                .iter()
+                .filter(|formed| formed.unit.region_id == region.region_id)
+                .map(|formed| Ordered {
+                    unit: &formed.unit,
+                    intents: &formed.block.intents,
+                    block_line: Some(formed.block.block_line),
+                    unread: !formed.block.unread.is_empty(),
+                    formed: Some(FormedSubject {
+                        alias: formed.block.alias.clone(),
+                        formed_by: formed.block.formed_by.clone(),
+                    }),
+                }),
+        );
         Self { region, units }
     }
 
@@ -1198,6 +1311,7 @@ impl<'a> Hex<'a> {
             line: None,
             column_start: None,
             column_end: None,
+            formed: None,
         }
     }
 }
@@ -1296,6 +1410,7 @@ impl Ordered<'_> {
             line: self.block_line,
             column_start: None,
             column_end: None,
+            formed: self.formed.clone(),
         }
     }
 
@@ -1314,6 +1429,7 @@ impl Ordered<'_> {
             line: at.map(|placed| placed.line),
             column_start: at.map(|placed| placed.column_start),
             column_end: at.map(|placed| placed.column_end),
+            formed: self.formed.clone(),
         }
     }
 }
@@ -1504,6 +1620,7 @@ fn hex_facts<'a>(hex: &'a Hex<'_>, nothing: &'a Receipts) -> Vec<UnitFacts<'a>> 
             skills: &ordered.unit.skills,
             intents: ordered.intents,
             receipts: nothing,
+            formed: ordered.formed.as_ref(),
         })
         .collect()
 }
@@ -1567,9 +1684,10 @@ fn check_resources(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
+    receipts: &BTreeMap<String, Receipts>,
     findings: &mut Vec<Finding>,
 ) {
-    report_shortfalls(ledger, hex, ruleset, plurals, options, findings);
+    report_shortfalls(ledger, hex, ruleset, plurals, options, receipts, findings);
 }
 
 // --- markets: a BUY or SELL naming what this hex does not trade --------------------------------
@@ -1909,7 +2027,14 @@ fn apply(
 fn party_id(party: &Party, hex: &Hex<'_>) -> Option<String> {
     match party {
         Party::Unit(id) => hex.find(id).map(|_| id.clone()),
-        Party::New(_) | Party::Foreign { .. } | Party::Discard => None,
+        // A unit this month's `FORM` orders create is in `hex.units` exactly like a reported one
+        // (`Hex::read`), so the same lookup resolves it - and, exactly as for `Party::Unit`, finds
+        // nothing when the alias was not formed in this hex at all (`ah-jw85`).
+        Party::New(alias) => {
+            let id = format!("new-{alias}");
+            hex.find(&id).map(|_| id)
+        }
+        Party::Foreign { .. } | Party::Discard => None,
     }
 }
 
@@ -2923,6 +3048,7 @@ fn report_shortfalls(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
+    receipts: &BTreeMap<String, Receipts>,
     findings: &mut Vec<Finding>,
 ) {
     let sharing = Sharing::read(hex);
@@ -2964,14 +3090,18 @@ fn report_shortfalls(
         };
         let at = ledger.charged_at.get(&(unit_id.clone(), tag.clone()));
         let finding = if tag == SILVER {
+            // Both figures count what the unit was given this month, exactly as `short` already
+            // does through the ledger's own `apply` - a unit given 100 and told to spend 200 reads
+            // "can have $100 and its orders spend $200", not "$0 ... $100" (M2, `ah-jw85`).
+            let received = receipts.get(unit_id).map_or(0, |receipts| receipts.silver);
             ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
                 format!(
                     "short ${short}: this unit can have ${} and its {} spend ${}",
-                    ordered.holding(SILVER),
+                    ordered.holding(SILVER) + received,
                     spenders(upkeep_still_drawn(ledger, unit_id)),
-                    ordered.holding(SILVER) + short,
+                    ordered.holding(SILVER) + received + short,
                 ),
                 at,
             )
@@ -5022,6 +5152,7 @@ fn check_trade_regions(
         line: Some(placed.line),
         column_start: Some(placed.column_start),
         column_end: Some(placed.column_end),
+        formed: None,
     });
 }
 
@@ -5109,6 +5240,7 @@ fn check_quartermasters(
             line: Some(placed.line),
             column_start: Some(placed.column_start),
             column_end: Some(placed.column_end),
+            formed: None,
         });
     }
 }
@@ -5157,6 +5289,7 @@ fn check_upkeep_fund(
             line: None,
             column_start: None,
             column_end: None,
+            formed: None,
         });
     }
 }
@@ -5374,6 +5507,7 @@ fn check_claims(
             line: Some(placed.line),
             column_start: Some(placed.column_start),
             column_end: Some(placed.column_end),
+            formed: None,
         });
     }
 }
@@ -5470,7 +5604,7 @@ mod tests {
         fn counted(count: i64, tag: &str, plurals: &Plurals) -> String {
             let region = region(vec![]);
             let ordered = OrderedUnits::read("");
-            let hex = Hex::read(&region, &ordered);
+            let hex = Hex::read(&region, &ordered, &[]);
             counted_item(count, tag, &hex, Some(&ruleset()), plurals)
         }
 
@@ -6007,7 +6141,7 @@ mod tests {
                 ..region(units)
             };
             let ordered = OrderedUnits::read(orders);
-            let hex = Hex::read(&hex_region, &ordered);
+            let hex = Hex::read(&hex_region, &ordered, &[]);
             pool_shares_for(&hex, region_wages(&hex, None)).overruns
         }
 
@@ -6641,7 +6775,7 @@ mod tests {
         };
         let source = "unit 2391\nTAKE FROM 2390 100 SILV\n";
 
-        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()));
+        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()), &[]);
 
         let taker = receipts.get("2391").expect("the taker has receipts");
         assert_eq!(taker.taken, 100);
@@ -6661,7 +6795,7 @@ mod tests {
         };
         let source = "unit 2391\nTAKE FROM 999 100 SILV\n";
 
-        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()));
+        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()), &[]);
 
         let taker = receipts.get("2391").expect("the taker has receipts");
         assert_eq!(taker.taken_unshown, 100);
@@ -6684,7 +6818,7 @@ mod tests {
         };
         let source = "unit 2391\nTAKE FROM 999 ALL SILV\n";
 
-        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()));
+        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()), &[]);
 
         let taker = receipts.get("2391").cloned().unwrap_or_default();
         assert_eq!(taker.taken_unshown, 0);
@@ -6701,7 +6835,7 @@ mod tests {
         };
         let source = "unit 2391\nTAKE FROM 2390 ALL SILV\n";
 
-        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()));
+        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()), &[]);
 
         let taker = receipts.get("2391").expect("the taker has receipts");
         assert!(taker.take_all_unpriceable);
@@ -6718,7 +6852,7 @@ mod tests {
         };
         let source = "unit 2391\nTAKE FROM 2390 10 GRAI\n";
 
-        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()));
+        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()), &[]);
 
         let taker = receipts.get("2391").cloned().unwrap_or_default();
         assert_eq!(taker.taken, 0);
@@ -6940,7 +7074,7 @@ mod tests {
             ..region(vec![with_silver(taxing_by_flag(unit("1")), 0)])
         };
         let ordered = OrderedUnits::read("");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
         let ledger = ledger_for(&hex, Some(&rules));
 
@@ -6954,7 +7088,7 @@ mod tests {
             ..region(vec![with_silver(taxing_by_flag(unit("1")), 0)])
         };
         let ordered = OrderedUnits::read("unit 1\nTAX\n");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
         let ledger = ledger_for(&hex, Some(&rules));
 
@@ -6973,7 +7107,7 @@ mod tests {
             ])
         };
         let ordered = OrderedUnits::read("unit 1\nTAX\n");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let region = region_wages(&hex, None);
         let settled = pool_shares_for(&hex, region);
 
@@ -6987,7 +7121,7 @@ mod tests {
     fn a_flagged_unit_is_not_told_it_does_nothing() {
         let hex_region = region(vec![with_silver(taxing_by_flag(unit("1")), 100)]);
         let ordered = OrderedUnits::read("");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let mut findings = Vec::new();
         check_idle_units(&hex, &CheckOptions::default(), &mut findings);
 
@@ -6998,7 +7132,7 @@ mod tests {
     fn a_unit_without_the_flag_still_is() {
         let hex_region = region(vec![with_silver(unit("1"), 100)]);
         let ordered = OrderedUnits::read("");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let mut findings = Vec::new();
         check_idle_units(&hex, &CheckOptions::default(), &mut findings);
 
@@ -7017,7 +7151,7 @@ mod tests {
             ])
         };
         let ordered = OrderedUnits::read("unit 1\nPILLAGE\n");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let mut findings = Vec::new();
         check_pillaged_tax(&hex, true, &CheckOptions::default(), &mut findings);
 
@@ -7041,7 +7175,7 @@ mod tests {
             ])
         };
         let ordered = OrderedUnits::read("unit 1\nPILLAGE\n\nunit 2\nTAX\n");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let mut findings = Vec::new();
         check_pillaged_tax(&hex, true, &CheckOptions::default(), &mut findings);
 
@@ -7061,7 +7195,7 @@ mod tests {
             ..region(vec![with_silver(unit("1"), 0), with_silver(unit("2"), 0)])
         };
         let ordered = OrderedUnits::read("unit 1\nPILLAGE\n\nunit 2\nTAX\n");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
         let ledger = ledger_for(&hex, Some(&rules));
 
@@ -7910,7 +8044,7 @@ mod tests {
     fn a_foreign_unit_on_guard_is_seen() {
         let region = guarded_hex(vec![with_silver(unit("683"), 0)]);
         let ordered = OrderedUnits::read("");
-        let hex = Hex::read(&region, &ordered);
+        let hex = Hex::read(&region, &ordered, &[]);
         assert!(
             foreign_unit_guards(&hex),
             "the foreign guard is visible from the hex"
@@ -7926,7 +8060,7 @@ mod tests {
             ..region(vec![ours])
         };
         let ordered = OrderedUnits::read("");
-        let hex = Hex::read(&region, &ordered);
+        let hex = Hex::read(&region, &ordered, &[]);
         assert!(
             !foreign_unit_guards(&hex),
             "guarding our own hex is not somebody else guarding it"
@@ -7942,7 +8076,7 @@ mod tests {
             ..region(vec![with_silver(unit("683"), 0), passer_by])
         };
         let ordered = OrderedUnits::read("");
-        let hex = Hex::read(&region, &ordered);
+        let hex = Hex::read(&region, &ordered, &[]);
         assert!(
             !foreign_unit_guards(&hex),
             "a foreigner merely standing there guards nothing"
@@ -8074,7 +8208,7 @@ mod tests {
     fn a_flagged_taxer_in_a_guarded_hex_is_marked_on_its_block() {
         let region = guarded_hex(vec![with_silver(taxing_by_flag(unit("683")), 0)]);
         let ordered = OrderedUnits::read("");
-        let hex = Hex::read(&region, &ordered);
+        let hex = Hex::read(&region, &ordered, &[]);
         let mut findings = Vec::new();
         check_guarded_tax(&hex, true, false, &CheckOptions::default(), &mut findings);
 
@@ -8094,7 +8228,7 @@ mod tests {
     fn a_flagged_taxer_with_a_tax_order_is_marked_only_on_its_line() {
         let region = guarded_hex(vec![with_silver(taxing_by_flag(unit("683")), 0)]);
         let ordered = OrderedUnits::read("unit 683\nTAX\n");
-        let hex = Hex::read(&region, &ordered);
+        let hex = Hex::read(&region, &ordered, &[]);
         let mut findings = Vec::new();
         check_guarded_tax(&hex, true, false, &CheckOptions::default(), &mut findings);
 
@@ -8224,7 +8358,7 @@ mod tests {
     fn an_unflagged_unit_without_orders_is_not_marked() {
         let region = guarded_hex(vec![with_silver(unit("683"), 0)]);
         let ordered = OrderedUnits::read("");
-        let hex = Hex::read(&region, &ordered);
+        let hex = Hex::read(&region, &ordered, &[]);
         let mut findings = Vec::new();
         check_guarded_tax(&hex, true, false, &CheckOptions::default(), &mut findings);
 
@@ -8267,7 +8401,7 @@ mod tests {
     fn a_flagged_taxer_with_other_orders_is_marked_on_the_block_it_has() {
         let region = guarded_hex(vec![with_silver(taxing_by_flag(unit("683")), 0)]);
         let ordered = OrderedUnits::read("unit 683\nAVOID 1\n");
-        let hex = Hex::read(&region, &ordered);
+        let hex = Hex::read(&region, &ordered, &[]);
         let mut findings = Vec::new();
         check_guarded_tax(&hex, true, false, &CheckOptions::default(), &mut findings);
 
@@ -9256,7 +9390,7 @@ mod tests {
     fn a_hex_with_no_sharing_unit_reads_every_tag_per_unit() {
         let hex_region = region(vec![with_item(unit("1"), 1, "horse", "HORS")]);
         let ordered = OrderedUnits::read("");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
 
         let sharing = Sharing::read(&hex);
@@ -9269,7 +9403,7 @@ mod tests {
     fn a_sharing_hex_pools_goods_but_never_men() {
         let hex_region = region(vec![sharing(with_item(unit("1"), 1, "horse", "HORS"))]);
         let ordered = OrderedUnits::read("");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
 
         let sharing = Sharing::read(&hex);
@@ -9290,7 +9424,7 @@ mod tests {
     /// The verdicts one hex reaches, for a test that wants the reading rather than the message.
     fn verdicts(hex_region: ReportRegion, orders: &str) -> Vec<Verdict> {
         let ordered = OrderedUnits::read(orders);
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
         let ledger = ledger_for(&hex, Some(&rules));
         let sharing = Sharing::read(&hex);
@@ -9532,7 +9666,7 @@ mod tests {
             sharing(with_item(unit("7"), 20, "swords", "SWOR")),
         ]);
         let ordered = OrderedUnits::read("unit 5\nGIVE 9 30 swords\n");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
         let mut ledger = ledger_for(&hex, Some(&rules));
         let sharing = Sharing::read(&hex);
@@ -9560,7 +9694,7 @@ mod tests {
     /// The purse one hex settles, for a test that wants the lending rather than a message.
     fn purse_of(hex_region: &ReportRegion, orders: &str) -> SharingPurse {
         let ordered = OrderedUnits::read(orders);
-        let hex = Hex::read(hex_region, &ordered);
+        let hex = Hex::read(hex_region, &ordered, &[]);
         let rules = ruleset();
         let ledger = ledger_for(&hex, Some(&rules));
         sharing_purse(&hex, &ledger)
@@ -9611,7 +9745,7 @@ mod tests {
             sharing(with_silver(unit("7"), 500)),
         ]);
         let ordered = OrderedUnits::read("unit 5\nSTUDY combat\n");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
         let mut ledger = ledger_for(&hex, Some(&rules));
 
@@ -9765,7 +9899,7 @@ mod tests {
     fn an_unflagged_hexs_unpayable_upkeep_is_deferred_to_maintenance() {
         let hex_region = region(vec![with_silver(unit("5"), 0)]);
         let ordered = OrderedUnits::read("");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
         let mut ledger = ledger_for(&hex, Some(&rules));
 
@@ -10923,7 +11057,7 @@ mod tests {
         hex.max_wages = Some(40);
 
         let ordered = OrderedUnits::read("unit 5\nWORK\n");
-        let read = Hex::read(&hex, &ordered);
+        let read = Hex::read(&hex, &ordered, &[]);
         let rules = ruleset();
         let ledger = ledger_for(&read, Some(&rules));
 
@@ -10944,7 +11078,7 @@ mod tests {
     fn silver_lent_for_upkeep_leaves_the_lender_that_much_poorer() {
         let hex_region = region(vec![with_silver(unit("5"), 100)]);
         let ordered = OrderedUnits::read("");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
         let mut ledger = ledger_for(&hex, Some(&rules));
 
@@ -12065,7 +12199,7 @@ mod tests {
             price: 30,
         });
         let ordered = OrderedUnits::read("unit 5\nBUY 5 horses\n");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let actor = hex.find("5").expect("unit 5 is in the hex");
 
         assert_eq!(
@@ -12085,7 +12219,7 @@ mod tests {
     fn an_item_nothing_can_identify_is_unknown() {
         let hex_region = region(vec![unit("5")]);
         let ordered = OrderedUnits::read("unit 5\nBUY 5 wodgets\n");
-        let hex = Hex::read(&hex_region, &ordered);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
         let actor = hex.find("5").expect("unit 5 is in the hex");
 
         assert_eq!(
@@ -17487,5 +17621,180 @@ mod tests {
             .iter()
             .find(|unit| unit.unit_id == id)
             .expect("every own unit is forecast")
+    }
+
+    /// The half of M2 (`ah-jw85`) that is not about `FORM`: a reported unit given silver has that
+    /// silver counted into both figures the shortfall message prints, not only into `short`.
+    #[test]
+    fn a_reported_unit_given_silver_gets_the_same_message() {
+        let hex_region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 100,
+                name: "plainsmen".to_string(),
+                tag: "PLAI".to_string(),
+                price: 40,
+            }],
+            ..region(vec![unit("1922"), unit("1923")])
+        };
+
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1922\nGIVE 1923 100 SILV\n\nunit 1923\nBUY 5 PLAI\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let short = review
+            .findings
+            .iter()
+            .find(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("1923")
+            })
+            .expect("unit 1923 cannot afford its BUY even with the gift");
+        assert_eq!(
+            short.message,
+            "short $100: this unit can have $100 and its orders spend $200"
+        );
+    }
+
+    // --- a unit created by FORM (`ah-jw85`) --------------------------------------------------
+
+    mod formed_units {
+        use super::*;
+
+        #[test]
+        fn a_formed_unit_gets_a_silver_entry() {
+            let review = review_turn(
+                &report(vec![region(vec![unit("1922")])]),
+                "unit 1922\nFORM 1\nEND\n@TAX\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let formed = forecast(&review, "new-1");
+            assert_eq!(formed.held, 0);
+            assert_eq!(formed.at_month_end, Some(0));
+        }
+
+        #[test]
+        fn silver_given_to_a_formed_unit_is_credited_to_it() {
+            let hex_region = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 100,
+                    name: "plainsmen".to_string(),
+                    tag: "PLAI".to_string(),
+                    price: 40,
+                }],
+                ..region(vec![unit("1922")])
+            };
+
+            let review = review_turn(
+                &report(vec![hex_region]),
+                "unit 1922\nGIVE NEW 1 500 SILV\nFORM 1\nBUY 5 PLAI\nEND\n@TAX\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let formed = forecast(&review, "new-1");
+            assert_eq!(formed.received, 500);
+            assert_eq!(formed.expense, Some(200));
+            assert_eq!(formed.at_month_end, Some(300));
+
+            let giver = forecast(&review, "1922");
+            assert_eq!(
+                giver.held, 0,
+                "unit 1922's own figure is unaffected by this test's fixture"
+            );
+        }
+
+        #[test]
+        fn a_gift_to_a_formed_unit_in_another_hex_is_not_counted() {
+            let elsewhere = region_at("1:8,53", 8, 53, vec![unit("1922")]);
+            let review = review_turn(
+                &report(vec![elsewhere, region(vec![with_silver(unit("2000"), 0)])]),
+                "unit 1922\nGIVE NEW 1 500 SILV\n\nunit 2000\nFORM 1\nEND\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let formed = forecast(&review, "new-1");
+            assert_eq!(
+                formed.received, 0,
+                "the gift was written by a unit standing in a different hex from the one that \
+                 formed new-1: it names a unit that does not exist there"
+            );
+        }
+
+        #[test]
+        fn the_shortfall_message_counts_silver_the_unit_was_given() {
+            let hex_region = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 100,
+                    name: "plainsmen".to_string(),
+                    tag: "PLAI".to_string(),
+                    price: 40,
+                }],
+                ..region(vec![unit("1922")])
+            };
+
+            let review = review_turn(
+                &report(vec![hex_region]),
+                "unit 1922\nGIVE NEW 1 100 SILV\nFORM 1\nBUY 5 PLAI\nEND\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let short = review
+                .findings
+                .iter()
+                .find(|finding| {
+                    finding.code == codes::NOT_ENOUGH_SILVER
+                        && finding.unit_id.as_deref() == Some("new-1")
+                })
+                .expect("new-1 cannot afford its BUY even with the gift");
+            assert_eq!(
+                short.message,
+                "short $100: this unit can have $100 and its orders spend $200"
+            );
+        }
+
+        #[test]
+        fn a_formed_units_finding_names_its_alias_and_its_parent() {
+            let hex_region = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 100,
+                    name: "plainsmen".to_string(),
+                    tag: "PLAI".to_string(),
+                    price: 40,
+                }],
+                ..region(vec![unit("1922")])
+            };
+
+            let review = review_turn(
+                &report(vec![hex_region]),
+                "unit 1922\nGIVE NEW 1 100 SILV\nFORM 1\nBUY 5 PLAI\nEND\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let expected = FormedSubject {
+                alias: "1".to_string(),
+                formed_by: "1922".to_string(),
+            };
+
+            let finding = review
+                .findings
+                .iter()
+                .find(|finding| {
+                    finding.code == codes::NOT_ENOUGH_SILVER
+                        && finding.unit_id.as_deref() == Some("new-1")
+                })
+                .expect("new-1 cannot afford its BUY");
+            assert_eq!(finding.formed, Some(expected.clone()));
+
+            let silver = forecast(&review, "new-1");
+            assert_eq!(silver.formed, Some(expected));
+        }
     }
 }

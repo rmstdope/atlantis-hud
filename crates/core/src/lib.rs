@@ -87,6 +87,10 @@ pub struct OrderDiagnostic {
     /// The unit at fault, where one unit is at fault.
     #[serde(default)]
     pub unit_id: Option<String>,
+    /// Set when `unit_id` names a unit this month's orders create rather than one the report
+    /// shows - see [`orders::semantics::FormedSubject`].
+    #[serde(default)]
+    pub formed: Option<orders::semantics::FormedSubject>,
     pub severity: OrderDiagnosticSeverity,
 }
 
