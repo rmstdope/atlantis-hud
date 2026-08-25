@@ -3818,6 +3818,39 @@ fn check_pillage_men(
     }
 }
 
+/// Whether this unit will have left the hex aboard a vessel by the time production resolves.
+///
+/// `PRODUCE` is phase 10 and movement is phase 9 (`weight_after_orders`), so a passenger produces
+/// in the region the vessel reaches, not the one it started in - and the order checks are given no
+/// map, so which region that is cannot be known here (`ah-jk9h`, `gh-679`).
+///
+/// Assembled from pieces that already exist rather than re-derived: a structure this hex's report
+/// shows that is a vessel at all, carrying a unit that could captain it and has
+/// ordered SAIL, with this unit aboard by the same definition `check_sailing` uses - the report's
+/// units in the fleet, plus those that ENTER it this month, minus those that LEAVE.
+///
+/// A SAIL that will certainly fail still suppresses. `check_sailing` may separately warn that the
+/// fleet is overloaded or short of crew, in which case the boat stays put and the produce check
+/// would have been right - but the player is already being told the sail will fail, and a second
+/// finding true only *because* of the first is two warnings for one mistake, and the wrong one to
+/// act on.
+/// A vessel is one `sailing_requirement` can price - the server's own `Sailors: H/N`, or a hull the
+/// ruleset knows. `parse_fleet_kind` is not that test: it reads any non-empty kind as a one-hull
+/// fleet, so a fort would pass it and every unit inside a fort would stop being checked.
+fn sails_away(hex: &Hex<'_>, ordered: &Ordered<'_>, ruleset: &Ruleset) -> bool {
+    hex.region.structures.iter().any(|fleet| {
+        sailing_requirement(fleet, Some(ruleset)).is_some()
+            && is_aboard(ordered, &fleet.structure_id)
+            && hex.units.iter().any(|other| {
+                could_captain(other, &fleet.structure_id)
+                    && other
+                        .intents
+                        .iter()
+                        .any(|placed| matches!(placed.intent, Intent::Sail { .. }))
+            })
+    })
+}
+
 /// Both ways a `PRODUCE` order makes nothing: the unit cannot make the item anywhere, or not here.
 ///
 /// Two codes rather than one because they are separately toggleable and separately true, and a
@@ -3899,10 +3932,13 @@ fn check_production(
             }
         }
 
+        // A passenger produces where the vessel arrives, and the checks are given no map, so this
+        // one cannot be judged (`ah-jk9h`). `produce-without-skill` above is unaffected: whether
+        // the unit has the skill is a fact about the unit, not about the region.
         // Only a recipe with no material inputs comes from the hex itself. A sword is made *from*
         // iron and can be made wherever there is iron to hand, so running this on it would mark
         // every `@produce sword` in the game; a unit short of the iron is `not-enough-items`.
-        if says_here && recipe.inputs.is_empty() {
+        if says_here && recipe.inputs.is_empty() && !sails_away(hex, ordered, ruleset) {
             let products = &hex.region.products;
             if !products
                 .iter()
@@ -16347,6 +16383,168 @@ mod tests {
             disabling_all(&[codes::UNIT_DOES_NOTHING, codes::PRODUCE_NOT_HERE]),
         );
         assert_eq!(produce_codes(&not_here_off), ["produce-without-skill"]);
+    }
+
+    // --- PRODUCE aboard a vessel that is sailing away (`ah-jk9h`, `gh-679`) ---------------------
+
+    /// The reported setup: a fleet in a coastal hex, a fisherman aboard it, and a sailor aboard
+    /// who gives the SAIL. `produces` names grain, wood and furs, never fish, so the produce check
+    /// as it stood objected to a perfectly legal fishing month.
+    fn fishing_fleet(sail_order: bool, fisherman_aboard: bool) -> (ReportRegion, String) {
+        let fisherman = ReportUnit {
+            structure_id: fisherman_aboard.then(|| "329".to_string()),
+            ..with_skill(unit("4021"), "FISH", 1)
+        };
+        let mut sailor = ReportUnit {
+            structure_id: Some("329".to_string()),
+            ..unit("4022")
+        };
+        sailor.skills.push(sail(4));
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..produces(vec![fisherman, sailor])
+        };
+        let orders = if sail_order {
+            "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n".to_string()
+        } else {
+            "unit 4021\nPRODUCE fish\n".to_string()
+        };
+        (region, orders)
+    }
+
+    #[test]
+    fn a_passenger_on_a_sailing_vessel_is_not_told_it_cannot_produce_here() {
+        let (region, orders) = fishing_fleet(true, true);
+        let findings = check(vec![region], &orders);
+
+        assert_eq!(produce_codes(&findings), Vec::<&str>::new(), "{findings:?}");
+    }
+
+    #[test]
+    fn a_unit_that_is_going_nowhere_is_still_told() {
+        let findings = check(
+            vec![produces(vec![with_skill(unit("4021"), "FISH", 1)])],
+            "unit 4021\nPRODUCE fish\n",
+        );
+
+        assert_eq!(produce_codes(&findings), ["produce-not-here"]);
+        assert_eq!(
+            findings[0].message,
+            "cannot produce fish here: this region produces grain, wood and furs"
+        );
+    }
+
+    #[test]
+    fn a_passenger_on_a_vessel_nobody_sails_is_still_told() {
+        let (region, orders) = fishing_fleet(false, true);
+        let findings = check(vec![region], &orders);
+
+        assert_eq!(
+            produce_codes(&findings),
+            ["produce-not-here"],
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_unit_in_the_hex_but_not_aboard_is_still_told() {
+        let (region, orders) = fishing_fleet(true, false);
+        let findings = check(vec![region], &orders);
+
+        assert_eq!(
+            produce_codes(&findings),
+            ["produce-not-here"],
+            "{findings:?}"
+        );
+    }
+
+    /// The guard is on `produce-not-here` alone: whether a unit has the skill is a fact about the
+    /// unit, not about the region, and a unit that cannot make the item anywhere cannot make it at
+    /// sea either.
+    #[test]
+    fn a_passenger_without_the_skill_is_still_told() {
+        let fisherman = ReportUnit {
+            structure_id: Some("329".to_string()),
+            ..unit("4021")
+        };
+        let mut sailor = ReportUnit {
+            structure_id: Some("329".to_string()),
+            ..unit("4022")
+        };
+        sailor.skills.push(sail(4));
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..produces(vec![fisherman, sailor])
+        };
+        let findings = check(vec![region], "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n");
+
+        assert_eq!(
+            produce_codes(&findings),
+            ["produce-without-skill"],
+            "{findings:?}"
+        );
+    }
+
+    /// Aboard is the definition `check_sailing` uses: the report's units in the fleet, plus those
+    /// that ENTER this month, minus those that LEAVE. A raw `structure_id` test gets both wrong.
+    #[test]
+    fn a_unit_that_enters_the_fleet_this_month_is_leaving() {
+        let (region, _) = fishing_fleet(true, false);
+        let findings = check(
+            vec![region],
+            "unit 4021\nENTER 329\nPRODUCE fish\nunit 4022\nSAIL N\n",
+        );
+
+        assert_eq!(produce_codes(&findings), Vec::<&str>::new(), "{findings:?}");
+    }
+
+    #[test]
+    fn a_unit_that_leaves_the_fleet_this_month_is_not_leaving() {
+        let (region, _) = fishing_fleet(true, true);
+        let findings = check(
+            vec![region],
+            "unit 4021\nLEAVE\nPRODUCE fish\nunit 4022\nSAIL N\n",
+        );
+
+        assert_eq!(
+            produce_codes(&findings),
+            ["produce-not-here"],
+            "{findings:?}"
+        );
+    }
+
+    /// `sailing_requirement` is what makes a structure a vessel; a unit inside an ordinary
+    /// building is going nowhere, and without that filter every unit in a fort would stop being
+    /// checked. This is the test that caught `parse_fleet_kind` - which reads any non-empty kind
+    /// as a one-hull fleet - being the wrong question.
+    #[test]
+    fn a_unit_aboard_an_ordinary_building_is_still_told() {
+        let fort = Structure {
+            structure_id: "329".to_string(),
+            name: "Fort".to_string(),
+            kind: "Fort".to_string(),
+            ..Default::default()
+        };
+        let fisherman = ReportUnit {
+            structure_id: Some("329".to_string()),
+            ..with_skill(unit("4021"), "FISH", 1)
+        };
+        let mut sailor = ReportUnit {
+            structure_id: Some("329".to_string()),
+            ..unit("4022")
+        };
+        sailor.skills.push(sail(4));
+        let region = ReportRegion {
+            structures: vec![fort],
+            ..produces(vec![fisherman, sailor])
+        };
+        let findings = check(vec![region], "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n");
+
+        assert_eq!(
+            produce_codes(&findings),
+            ["produce-not-here"],
+            "{findings:?}"
+        );
     }
 
     // --- the faction's region allowance ---------------------------------------------------------
