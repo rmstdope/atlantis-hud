@@ -16635,6 +16635,26 @@ mod tests {
         );
     }
 
+    /// **`ah-8myf`, the failed verification of 2026-08-25.** `+ Frozen Tomb [194] : Galley, 40
+    /// Galleons, 11 Galleys, 10 Balloons.` states no `Sailors:` line, so whether it is a vessel
+    /// falls to ruleset arithmetic over its hulls - and read as one hull name the whole clause
+    /// matched no item, so `carried_away` found no vessel and the fisherman aboard was judged in
+    /// the barren hex the boat was leaving. The fix is in `parse_fleet_kind`; this pins the
+    /// symptom the navigator saw, in the check that showed it.
+    #[test]
+    fn a_passenger_on_a_fleet_that_names_its_class_is_judged_where_it_is_sailing_to() {
+        let mut regions = fleet_sailing_north(one_product(50, "fish", "FISH"));
+        regions[0].structures = vec![Structure {
+            structure_id: "329".to_string(),
+            name: "Frozen Tomb".to_string(),
+            kind: "Galley, 40 Galleons, 11 Galleys, 10 Balloons".to_string(),
+            ..Default::default()
+        }];
+        let findings = check(regions, "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n");
+
+        assert_eq!(produce_codes(&findings), Vec::<&str>::new(), "{findings:?}");
+    }
+
     /// `fishing_fleet`'s region, given an exit north, plus the region that exit leads to. The
     /// fleet's hex produces grain, wood and furs; what the destination produces is the test's.
     fn fleet_sailing_north(destination: Vec<ItemAmount>) -> Vec<ReportRegion> {
