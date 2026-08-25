@@ -1021,12 +1021,14 @@ describe("the silver section", () => {
   });
 });
 
-describe("the silver notes' precedence (ah-hvt8)", () => {
+describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
   it.each(SILVER_NOTES.map((note) => [note.id, note] as const))(
-    "%s wins for its own example",
+    "%s appears for its own example",
     (id, note) => {
       const facts = note.example();
-      expect(SILVER_NOTES.find((candidate) => candidate.when(facts))?.id).toBe(id);
+      expect(SILVER_NOTES.filter((candidate) => candidate.when(facts)).map((c) => c.id)).toContain(
+        id
+      );
     }
   );
 
@@ -1202,5 +1204,92 @@ describe("who paid this unit's upkeep, in one sentence (ah-x36v)", () => {
     expect(note({ upkeep: 0, ownFoodCovered: 8, unclaimedCovered: 10 }, false) ?? "").not.toContain(
       "upkeep was paid by"
     );
+  });
+});
+
+describe("no note can be shadowed by another (ah-x36v)", () => {
+  // The old guard set one field per note, so no combination was ever tried and a note unreachable
+  // only alongside another was invisible to it - which is exactly how `ah-moq3` and `ah-awcm` both
+  // shipped a sentence nobody could see. With every fact true at once, every note whose condition
+  // that satisfies must appear, which tests every note against every other in a single case.
+  const DOUBTS: NonNullable<UnitSilver["doubt"]>[] = [
+    "unknown-tax-base",
+    "unpriced-production",
+    "unpriced-skill",
+    "unknown-goods",
+    "estimated-men",
+    "takes-all-from-another",
+    "contested-region-pool",
+    "market-does-not-sell",
+    "gives-a-whole-class",
+    "contested-faction-food"
+  ];
+
+  // Built with `aUnitSilver` (`ah-uhnd`) so a field added to `UnitSilver` later does not silently
+  // fall out of the case.
+  const everything = (doubt: UnitSilver["doubt"]): UnitSilver =>
+    aUnitSilver({
+      regionId: "1:6,52",
+      doubt,
+      doubtSubject: "mithril",
+      held: 60,
+      income: 400,
+      lateIncome: 200,
+      expense: 300,
+      atMonthEnd: 60,
+      upkeep: 50,
+      shortForOrders: 40,
+      shortOn: "buy",
+      received: 25,
+      givers: ["Quartermaster (18500)"],
+      taken: 100,
+      takenFrom: ["Workers (6567)"],
+      givenToNobody: 10,
+      ownFoodCovered: 8,
+      forcedOwnFood: 2,
+      forcedOwnFoodTag: "GRAI",
+      factionFoodCovered: 12,
+      forcedFactionFood: 3,
+      sharedSilverCovered: 20,
+      sharedSilverForOrders: 50,
+      unclaimedCovered: 10,
+      unclaimedContended: true,
+      foodContended: true,
+      withdrawing: true,
+      produced: 1,
+      producedName: "catapult",
+      productionWanted: 3,
+      productionCappedBy: "silver",
+      worksByDefault: true,
+      taxesByFlag: true
+    });
+
+  const unit = aReportUnit({ men: 6, items: [{ tag: "GRAI", name: "grain", amount: 4 }] });
+
+  it.each(DOUBTS)("every note appears when every fact is true (%s)", (doubt) => {
+    const silver = everything(doubt);
+    const facts = { unit, silver, warned: false, countUpkeep: true };
+    const expected = SILVER_NOTES.filter((note) => note.when(facts)).map((note) => note.say(facts));
+
+    // A case that exercises only a handful of notes would prove nothing about the rest.
+    expect(expected.length).toBeGreaterThan(10);
+    expect(summariseUnit(unit, silver, false, true).silver?.note).toBe(expected.join("\n"));
+  });
+
+  it("leaves no note unreachable but the two that read a silence", () => {
+    const appeared = new Set(
+      DOUBTS.flatMap((doubt) => {
+        const facts = { unit, silver: everything(doubt), warned: false, countUpkeep: true };
+        return SILVER_NOTES.filter((note) => note.when(facts)).map((note) => note.id);
+      })
+    );
+
+    // Two notes say that something did NOT happen, so an everything-is-true case cannot reach
+    // either: `shared-silver-covers-shortfall` is inferred from a negative month end nothing warns
+    // about and no faction-mate covered, and `nothing-moves-silver` from an income and an expense
+    // of zero. Each is covered by its own example above. Every other note must appear here.
+    expect(
+      SILVER_NOTES.map((note) => note.id).filter((id) => !appeared.has(id))
+    ).toEqual(["shared-silver-covers-shortfall", "nothing-moves-silver"]);
   });
 });
