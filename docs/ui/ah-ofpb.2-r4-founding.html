@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ofpb.2 &mdash; R4: founding a structure, and a kind nothing can price</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, footer code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .unk { color:var(--ink-dim); }
+  .cellbox { border:1px dashed var(--edge); }
+  .clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip.none { color:var(--ink-dim); font-style:italic; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright);
+            background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            margin:10px 0 0; white-space:pre; display:inline-block; }
+  .orders .c { color:var(--ink-dim); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-left:8px; }
+</style></head><body>
+<header><h1>R4 &mdash; <span>founding a structure, and a kind nothing can price</span></h1>
+<p>Everything so far has been a unit working on a structure that already exists, which the report gives a label and a remaining need. <code>BUILD [name]</code> is the other half of the order and it has neither: the structure does not exist yet, so there is nothing for <b>N1</b> to name and nothing printing how much is left to do.</p>
+<p>The catalogue does have the two numbers that matter &mdash; a Tower costs 10 and is built from stone; a Stockade costs 60 and is built from wood &mdash; so the arithmetic is the same as everywhere else, with the full cost standing in for the remaining need. What is missing is only the words.</p>
+<p><b>And 22 of the data page&rsquo;s 58 structures state no build requirement at all</b> &mdash; a Shaft, a Lair, a Ruin, a Gateway. Nor does the page know a structure the player has misspelt. Q&nbsp;G is what those rows do.</p>
+<div class="orders">unit 5561  <span class="c">; Masons, 10 humans, 120 stone, building 3</span>
+  build Tower       <span class="c">; a Tower is 10 stone; its men could do 30</span>
+
+unit 5562  <span class="c">; Carpenters, 10 humans, 120 wood, building 3</span>
+  build Stockade    <span class="c">; a Stockade is 60 wood; its men could do 30, and it has the wood</span>
+
+unit 5563  <span class="c">; Prospectors, 10 humans, 120 stone, building 3</span>
+  build Shaft       <span class="c">; the data page names no cost, no material and no skill for a Shaft</span>
+
+unit 5564  <span class="c">; Dreamers, 10 humans, 120 wood, building 3</span>
+  build Barn        <span class="c">; there is no such structure in the game</span></div>
+</header>
+<main>
+
+<h3 class="sec">F &mdash; the words for a build that founds something new</h3>
+<p>Unit 5562 is the plain case: 30 units of work, 30 wood, nothing capped. Unit 5561 is capped by the structure&rsquo;s own cost &mdash; a Tower is finished in ten.</p>
+
+<div class="card"><p class="concept"><b>F1 &mdash; &ldquo;a new &lt;kind&gt;&rdquo; wherever a label would have gone</b><span class="rec">recommended</span></p>
+<div class="tip"><b>unit 5562 &mdash; nothing capped</b>was: 10 HUMN, 120 WOOD
+Spends 30 WOOD on a new Stockade this month.</div>
+<div class="tip"><b>unit 5561 &mdash; the Tower is finished in ten</b>was: 10 HUMN, 120 STON
+Spends 10 STON on a new Tower this month.
+A new Tower needs 10 units of work, not the 30 its men could do.</div>
+<ul class="notes">
+<li>One substitution and both agreed sentences keep working unchanged, cap sentence included.</li>
+<li>&ldquo;A new Tower&rdquo; is exactly what the player wrote and exactly what will appear next month.</li>
+<li class="con">The cap sentence reads a little oddly for a structure that has had no work done on it &mdash; &ldquo;needs 10&rdquo; is its whole cost, not a remainder.</li>
+</ul></div>
+
+<div class="card"><p class="concept"><b>F2 &mdash; a sentence of its own for founding</b></p>
+<div class="tip"><b>unit 5562</b>was: 10 HUMN, 120 WOOD
+Spends 30 WOOD starting a Stockade this month.</div>
+<div class="tip"><b>unit 5561</b>was: 10 HUMN, 120 STON
+Spends 10 STON starting a Tower this month, which is all a Tower costs.</div>
+<ul class="notes">
+<li>&ldquo;Starting&rdquo; says the thing that is different about this order.</li>
+<li>The capped form reads naturally, because it never pretends to be a remainder.</li>
+<li class="con">Two more strings, and a second cap form, for a case that is arithmetically identical to the others.</li>
+<li class="con">A <code>BUILD Tower</code> written next to an unfinished Tower of the same type continues that one rather than starting a second (<code>rules/build</code>, the COMPLETE forms) &mdash; so &ldquo;starting&rdquo; can be wrong where &ldquo;a new Tower&rdquo; is merely imprecise.</li>
+</ul></div>
+
+<div class="card"><p class="concept"><b>F3 &mdash; name only the kind, with no article</b></p>
+<div class="tip"><b>unit 5562</b>was: 10 HUMN, 120 WOOD
+Spends 30 WOOD on Stockade this month.</div>
+<div class="tip"><b>unit 5561</b>was: 10 HUMN, 120 STON
+Spends 10 STON on Tower this month.
+Tower needs 10 units of work, not the 30 its men could do.</div>
+<ul class="notes">
+<li>Identical in form to the existing-structure sentence, with nothing added at all.</li>
+<li class="con">Reads as though a structure called &ldquo;Tower&rdquo; already exists, which is the one thing this case must not imply.</li>
+</ul></div>
+
+<h3 class="sec">G &mdash; a structure the catalogue cannot price</h3>
+<p>Unit 5563 names a real structure the data page states no cost, material or skill for. Unit 5564 names one that does not exist. Neither can be given a figure.</p>
+
+<div class="card"><p class="concept"><b>G1 &mdash; both get the mark, like every other build the column cannot settle</b><span class="rec">recommended</span></p><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:60px"><col style="width:104px"><col style="width:128px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5563</td><td>Prospectors</td><td>build Shaft</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 STON <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5564</td><td>Dreamers</td><td>build Barn</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 WOOD <span class="unk">+&nbsp;?</span></span></td></tr>
+</tbody></table>
+</div>
+<div class="tip"><b>hover on unit 5563's ITEMS cell</b>was: 10 HUMN, 120 STON
+and more that cannot be counted: build Shaft</div>
+<ul class="notes">
+<li>One rule with no exceptions to remember: a build the column cannot put a figure to is marked, whatever the reason.</li>
+<li>Identical to what a wood-or-stone fork and an unfinished ship already get.</li>
+<li class="con">A misspelt structure will very likely be an error the engine rejects outright, so the mark spends the player&rsquo;s attention on a row that will do nothing at all.</li>
+</ul></div>
+
+<div class="card"><p class="concept"><b>G2 &mdash; leave both alone, upright and unmarked</b></p><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:60px"><col style="width:104px"><col style="width:128px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5563</td><td>Prospectors</td><td>build Shaft</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 STON</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5564</td><td>Dreamers</td><td>build Barn</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 WOOD</span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>Neither order will move anything the engine recognises, so an unchanged list is arguably the truth.</li>
+<li class="con">Indistinguishable from a unit given no orders, on a row whose orders are almost certainly a mistake.</li>
+<li class="con">A rule with an exception in it: every other unpriceable build is marked, these two are not.</li>
+</ul></div>
+
+</main>
+<footer>Sources: <code>rules/build</code> (<i>&ldquo;BUILD given with an [object type] &hellip; instructs the unit to begin work on a new object of the type given&rdquo;</i>), <code>rules/tablebuildings</code> (<i>&ldquo;Cost is both the number of man-months of labor and the number of units of material required to complete the building&rdquo;</i>), and the data page&rsquo;s buildings table, which carries <code>cost</code> and <code>materials</code> for 36 of its 58 structures and neither for the other 22. The <code>+&nbsp;?</code> hover line is the existing <code>and more that cannot be counted: &lt;the order as written&gt;</code>. <code>build-without-skill</code> already stays silent for a kind the catalogue states no requirement for, which is the same 22.</footer>
+</body></html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ofpb.2 &mdash; R3: the words</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, footer code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .unk { color:var(--ink-dim); }
+  .cellbox { border:1px dashed var(--edge); }
+  .clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip.none { color:var(--ink-dim); font-style:italic; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright);
+            background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            margin:10px 0 0; white-space:pre; display:inline-block; }
+  .orders .c { color:var(--ink-dim); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-left:8px; }
+</style></head><body>
+<header><h1>R3 &mdash; <span>the words, exactly as they will ship</span></h1>
+<p>The shape is settled: <b>B1</b> the material leaves and the hover explains; <b>M1</b> spend the material it holds, mark it when it holds both; <b>H1</b> count a <code>BUILD HELP</code>, mark an unfinished ship, leave a skill-less unit upright; <b>P1</b> count each unit alone. What is left is every sentence.</p>
+<p>The ITEMS hover is a stack of lines. Line one is always <code>was: &lt;the report&rsquo;s list&gt;</code>, and it already exists. A <code>PRODUCE</code> already adds <i>&ldquo;Includes 10 WOOD this unit will produce. Production resolves last, so they cannot be spent this month.&rdquo;</i> and, when a cap bit, <i>&ldquo;This unit has materials for 5 swords, not the 8 its men could make.&rdquo;</i> A <code>BUILD</code>&rsquo;s lines have to sit alongside those.</p>
+<p>Four questions. They are independent; N is asked first because W and K both use whatever it decides.</p>
+<div class="orders">unit 5541  <span class="c">; Builders, 10 humans, 120 wood, building 3, in "+ Building [4] : Stockade, needs 45."</span>
+  build
+
+unit 5542  <span class="c">; Hodmen, 10 humans, 15 wood, building 3, same structure</span>
+  build             <span class="c">; men could do 30; only 15 wood</span>
+
+unit 5543  <span class="c">; Finishers, 10 humans, 120 wood, building 3, in "+ Guild Hall [7] : Stockade, needs 6."</span>
+  build             <span class="c">; men could do 30; the structure wants 6</span>
+
+unit 5553  <span class="c">; Hodmen, 10 humans, 120 wood, building 3</span>
+  build help 5541   <span class="c">; helping 5541 with Building [4]</span></div>
+</header>
+<main>
+
+<h3 class="sec">N &mdash; how a structure is named in the hover</h3>
+<p>Two of the four are unnamed in the report and print a placeholder with a number; one has a real name. Whatever is chosen here is substituted into every sentence below.</p>
+<div class="card"><p class="concept"><b>N1 &mdash; the same label the warnings already use</b> (<code>structure_label</code>: the report&rsquo;s name, or the placeholder with its id appended). Today <code>already-built</code> says &ldquo;<i>Building 4 is already finished</i>&rdquo;.<span class="rec">recommended</span></p>
+<div class="tip"><b>unit 5541</b>&hellip; on Building 4 &hellip;</div>
+<div class="tip"><b>unit 5543</b>&hellip; on Guild Hall &hellip;</div>
+<ul class="notes">
+<li>One name for a structure across the whole application. A player who has read the <code>already-built</code> warning meets the identical phrase here.</li>
+<li>Unambiguous when a hex holds three Stockades.</li>
+<li class="con">&ldquo;Building 4&rdquo; tells a player nothing about what is being built.</li>
+</ul></div>
+<div class="card"><p class="concept"><b>N2 &mdash; the structure&rsquo;s kind</b></p>
+<div class="tip"><b>unit 5541</b>&hellip; on the Stockade &hellip;</div>
+<div class="tip"><b>unit 5543</b>&hellip; on the Stockade &hellip;</div>
+<ul class="notes">
+<li>Says the thing the player actually cares about, and needs no cross-reference.</li>
+<li class="con">Two Stockades in one hex read identically, and a hex under construction usually has several structures.</li>
+<li class="con">Disagrees with the wording of the warning on the same order.</li>
+</ul></div>
+<div class="card"><p class="concept"><b>N3 &mdash; both</b></p>
+<div class="tip"><b>unit 5541</b>&hellip; on Building 4, a Stockade, &hellip;</div>
+<div class="tip"><b>unit 5543</b>&hellip; on Guild Hall, a Stockade, &hellip;</div>
+<ul class="notes">
+<li>Unambiguous and meaningful at once.</li>
+<li class="con">Long, in a line that already has a figure and a unit in it, inside a hover that may carry four other lines.</li>
+</ul></div>
+
+<h3 class="sec">W &mdash; the sentence saying what the material went on</h3>
+<p>Shown with N1 substituted. This line appears on every counted BUILD, capped or not.</p>
+<div class="card"><p class="concept"><b>W1</b><span class="rec">recommended</span></p>
+<div class="tip"><b>hover on unit 5541's ITEMS cell</b>was: 10 HUMN, 120 WOOD
+Spends 30 WOOD on Building 4 this month.</div>
+<ul class="notes">
+<li>Says the figure, the item and the destination in seven words.</li>
+<li>&ldquo;Spends&rdquo; is the right verb: unlike a PRODUCE, the material is gone.</li>
+</ul></div>
+<div class="card"><p class="concept"><b>W2</b></p>
+<div class="tip"><b>hover on unit 5541's ITEMS cell</b>was: 10 HUMN, 120 WOOD
+30 WOOD goes into Building 4 this month.</div>
+<ul class="notes">
+<li>Puts the figure first, where the eye lands.</li>
+<li class="con">&ldquo;Goes into&rdquo; reads as though the wood is stored there and could come back out.</li>
+</ul></div>
+<div class="card"><p class="concept"><b>W3</b></p>
+<div class="tip"><b>hover on unit 5541's ITEMS cell</b>was: 10 HUMN, 120 WOOD
+Building Building 4: 30 WOOD spent.</div>
+<ul class="notes">
+<li>Shortest, and groups by subject if a unit ever had two builds.</li>
+<li class="con">&ldquo;Building Building 4&rdquo;. The placeholder name makes this form unusable.</li>
+</ul></div>
+
+<h3 class="sec">K &mdash; the sentence naming what cut the work short</h3>
+<p>Only on a capped row. Two different caps: unit 5542 has too little wood, unit 5543&rsquo;s structure wants less than its men could do. <b>The PRODUCE cap sentence next door reads &ldquo;This unit has materials for 5 swords, not the 8 its men could make.&rdquo;</b></p>
+<div class="card"><p class="concept"><b>K1 &mdash; the same shape as the production cap sentence, one form per cap</b><span class="rec">recommended</span></p>
+<div class="tip"><b>unit 5542 &mdash; short of wood</b>was: 10 HUMN, 15 WOOD
+Spends 15 WOOD on Building 4 this month.
+This unit has wood for 15 units of work, not the 30 its men could do.</div>
+<div class="tip"><b>unit 5543 &mdash; structure nearly finished</b>was: 10 HUMN, 120 WOOD
+Spends 6 WOOD on Guild Hall this month.
+Guild Hall needs 6 more units of work, not the 30 its men could do.</div>
+<ul class="notes">
+<li>A player who has learned to read the PRODUCE sentence reads this one without stopping.</li>
+<li>The two caps are genuinely different facts and are said differently.</li>
+<li class="con">Two sentences to keep in step rather than one.</li>
+</ul></div>
+<div class="card"><p class="concept"><b>K2 &mdash; one form covering both</b></p>
+<div class="tip"><b>unit 5542</b>was: 10 HUMN, 15 WOOD
+Spends 15 WOOD on Building 4 this month. Its men could have done 30.</div>
+<div class="tip"><b>unit 5543</b>was: 10 HUMN, 120 WOOD
+Spends 6 WOOD on Guild Hall this month. Its men could have done 30.</div>
+<ul class="notes">
+<li>One string, and it fits on the end of the line that is already there.</li>
+<li class="con">Never says <i>why</i>, which is the only reason a player hovers a capped row. Unit 5543&rsquo;s player is left wondering whether they are short of wood.</li>
+</ul></div>
+<div class="card"><p class="concept"><b>K3 &mdash; fold the cap into the first sentence</b></p>
+<div class="tip"><b>unit 5542</b>was: 10 HUMN, 15 WOOD
+Spends 15 of its 30 units of work on Building 4 this month, for want of wood.</div>
+<div class="tip"><b>unit 5543</b>was: 10 HUMN, 120 WOOD
+Spends 6 of its 30 units of work on Guild Hall this month, which is all it needs.</div>
+<ul class="notes">
+<li>One line rather than two, and the whole story is in it.</li>
+<li class="con">Stops naming the item. The column is a list of items, and the reader wants to know it is <i>wood</i> that moved.</li>
+<li class="con">Diverges from the PRODUCE sentence one row away, so the two columns word the same idea two ways.</li>
+</ul></div>
+
+<h3 class="sec">D &mdash; does a BUILD HELP say something different?</h3>
+<p>Unit 5553 spends its own wood on a structure it is not responsible for. Its cell and its figure are the same either way; this is only about the sentence.</p>
+<div class="card"><p class="concept"><b>D1 &mdash; name the unit being helped</b><span class="rec">recommended</span></p>
+<div class="tip"><b>hover on unit 5553's ITEMS cell</b>was: 10 HUMN, 120 WOOD
+Spends 30 WOOD helping unit 5541 build Building 4 this month.</div>
+<ul class="notes">
+<li>A player scanning for why their wood is disappearing sees at once that it went to somebody else&rsquo;s build.</li>
+<li>Matches <code>build-without-skill</code>, which already says &ldquo;cannot help build&rdquo; rather than &ldquo;cannot build&rdquo;.</li>
+<li class="con">A second string, differing from W1 by four words.</li>
+</ul></div>
+<div class="card"><p class="concept"><b>D2 &mdash; say exactly what an ordinary build says</b></p>
+<div class="tip"><b>hover on unit 5553's ITEMS cell</b>was: 10 HUMN, 120 WOOD
+Spends 30 WOOD on Building 4 this month.</div>
+<ul class="notes">
+<li>One string for every counted build; nothing extra to word or test.</li>
+<li class="con">Hides the one fact that makes this row unusual. The structure named is not one this unit is in, which is confusing rather than merely terse.</li>
+</ul></div>
+
+</main>
+<footer>The <code>+ ?</code> mark&rsquo;s own hover line is not in question: it is the existing <code>and more that cannot be counted: &lt;the order as written&gt;</code>, which <code>BUY ALL</code> and a bare <code>PRODUCE</code> already use, and it is what unit 5551&rsquo;s wood-or-stone case and every unfinished ship will get. Item tags rather than names (<code>WOOD</code>, not <code>wood</code>) because every existing line in this hover uses tags. Sources: <code>rules/economy_buildings</code>, <code>rules/build</code>; <code>structure_label</code> is <code>semantics.rs:4843</code> and the production cap sentence is <code>unitTooltip.ts:189</code>.</footer>
+</body></html>
