@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-z73s.3 — what following recruits does to the rest of the panel</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:70ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+  table.units { width:100%; border-collapse:collapse; font-family:'SF Mono',Menlo,Consolas,monospace;
+    font-size:12.5px; background:var(--panel); border:1px solid var(--edge); max-width:900px; margin-top:8px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:6px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  .own { color:var(--ok); } .id { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:104ch; }
+  .note b { color:var(--ink); }
+  .fix { border-left:3px solid var(--ok); }
+  .arith { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); margin:6px 0 10px; }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  .prob { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; max-width:104ch; }
+  .prob .w { color:var(--brass); } .prob .ttl { color:var(--ink-dim); font-size:11px; letter-spacing:1.4px;
+    text-transform:uppercase; margin-bottom:6px; }
+  .prob div.row { padding:4px 0; }
+  .prob .quiet { color:var(--ink-dim); font-style:italic; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:104ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(430px,1fr)); gap:22px; margin-top:6px; }
+</style></head><body>
+<header>
+  <h1>ah-z73s.3 &mdash; <span>what following recruits does to the rest of the panel</span></h1>
+  <p>You chose <b>B</b>: the merge follows recruiting as well as gifts. That is one arm of one function, but the
+  merged skills are read by <b>seven</b> warnings, not just the crew one. Three things follow from it that are yours
+  to settle rather than mine.</p>
+</header>
+<main>
+
+<div class="note fix"><b>One thing B buys that is worth saying plainly.</b> The units table and the Problems panel
+will now read the <i>same</i> ledger for recruits &mdash; the table already does, and that is where its diluted
+Skills cell comes from. So this is not two walkers being taught to agree; it is one walk being read twice. That
+makes B considerably safer than it looked when I asked.</p></div>
+
+<h3 class="sec">1 &mdash; The six other warnings start firing for recruiting units</h3>
+<p>Ten men who each know lumberjack 1 (30 points), recruiting four peasants and producing lumber:</p>
+<pre class="ord">unit 900
+  <b>BUY 4 PEAS</b>
+  <b>PRODUCE LUMB</b></pre>
+<div class="arith">(10&times;30 + 4&times;0) / 14 = 21 points &rarr; lumberjack <b>0</b>. The unit can no longer produce lumber.</div>
+<table class="units">
+<tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th>Skills</th></tr>
+<tr><td class="own">*</td><td class="id">900</td><td>Woodsmen</td><td class="pred">14</td><td class="pred">LUMB 0 (21)</td></tr>
+</table>
+<div class="note">That row is what the application shows <b>today</b>. The Problems panel says nothing.</div>
+
+<div class="cols">
+<div>
+<span class="opt">W &mdash; leave every sentence exactly as it is</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>900 Woodsmen</b> &mdash; cannot produce lumber: needs lumberjack 1, has no lumberjack.</div>
+</div>
+<ul class="notes">
+  <li>The same answer you already gave for gifts on <code>ah-z73s.2</code>, applied to the same warnings for the
+      same reason. Nothing is inconsistent between the two.</li>
+  <li>No string changes in six messages, in six shapes, one of which has two levels in it.</li>
+  <li class="con">The report says lumberjack 1 and the warning says &ldquo;no lumberjack&rdquo;, with nothing on the
+      line to bridge the two.</li>
+</ul>
+</div>
+<div>
+<span class="opt">X &mdash; the six sentences say the men are why</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>900 Woodsmen</b> &mdash; cannot produce lumber: needs lumberjack 1, has no lumberjack once the men joining it this month are counted.</div>
+</div>
+<ul class="notes">
+  <li>Stands on its own with no other warning switched on.</li>
+  <li class="con">Re-opens a decision you took on <code>ah-z73s.2</code>, where the same clause was rejected as six
+      strings becoming twelve &mdash; and it would now have to be added to the crew sentence's <i>other</i> clause too.</li>
+  <li class="con">Doubles the size of this bead.</li>
+</ul>
+</div>
+</div>
+
+<h3 class="sec">2 &mdash; <code>BUY ALL</code> counts nothing, so a recruiting unit can still be judged wrongly</h3>
+<p><code>rules/buy</code> allows <code>BUY ALL [item]</code>, and the ledger prices it at nothing at all &mdash; it
+records the line as uncountable and moves on. That is <code>ah-jown</code>'s bead, in flight now. Until it lands,
+a unit with <code>BUY ALL PEASANTS</code> looks to every check like a unit that recruited nobody.</p>
+<pre class="ord">unit 9508
+  <b>BUY ALL PEASANTS</b>          ; as many as it can afford - the app cannot say how many
+  <b>SAIL N</b></pre>
+<div class="cols">
+<div>
+<span class="opt">Y &mdash; a <code>BUY ALL</code> leaves the unit's skills unjudged</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row quiet">nothing about this unit's skills, and nothing about the fleet's crew</div>
+</div>
+<ul class="notes">
+  <li>Follows the rule you set on <code>ah-z73s.2</code>: the player never sees a skill warning computed from a
+      figure the application knows is incomplete.</li>
+  <li>Self-liquidating &mdash; the moment <code>ah-jown</code> resolves <code>BUY ALL</code> into a quantity, this
+      arm can be deleted and the unit is judged normally.</li>
+  <li class="con">Over-cautious: <code>BUY ALL SWORDS</code> brings no men at all, and this would silence that
+      unit's skill warnings too. Telling the two apart is not possible &mdash; <code>PEASANTS</code> names no item
+      in the catalogue, so &ldquo;is this a purchase of men?&rdquo; has no reliable answer here.</li>
+</ul>
+</div>
+<div>
+<span class="opt">Z &mdash; judge it as if it recruited nobody</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>9508 Crew</b> &mdash; judged on the report's figures, as though the <code>BUY ALL</code> were not there.</div>
+</div>
+<ul class="notes">
+  <li>Exactly today's behaviour, so nothing that passes now changes.</li>
+  <li>No unit loses a warning it gets today.</li>
+  <li class="con">It is the confident wrong number this module refuses to produce &mdash; and now knowingly, since
+      the bead would have looked at the case and decided to guess.</li>
+</ul>
+</div>
+</div>
+
+<h3 class="sec">3 &mdash; The drop advisory (<code>ah-z73s.4</code>) is about gifts only</h3>
+<p><code>ah-z73s.4</code>, planned but not built, adds the line that explains a level falling:</p>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>900 Woodsmen</b> &mdash; giving 5 men to this unit lowers its lumberjack from 3 to 2.</div>
+</div>
+<p>Its whole design is written around <i>a gift</i>: which unit gave, how many men, and the level before and after.
+A unit that recruits gets no such line, so the case above &mdash; lumberjack 1 becoming no lumberjack because four
+peasants were bought &mdash; would be a bare warning with nothing under it.</p>
+<ul class="notes">
+  <li><b>Widen it</b> &mdash; <code>ah-z73s.4</code> covers a level lowered by recruiting as well, with its own
+      sentence: <i>&ldquo;recruiting 4 men into this unit lowers its lumberjack from 1 to none.&rdquo;</i>
+      One more shape in a bead that is not built yet, so the cost is only in that bead.</li>
+  <li><b>Leave it</b> &mdash; the advisory stays about gifts, and recruiting is explained by the units table's
+      Skills cell alone. Cheaper, and consistent with the bead as it was planned.</li>
+</ul>
+<div class="note">Either way this changes <code>ah-z73s.4</code>, not this bead. I am asking now because
+<code>ah-z73s.4</code> is already planned and I would rather amend it once, here, than have it built and then
+found wanting.</div>
+
+</main></body></html>

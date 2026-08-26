@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-z73s.3 — which arrivals the crew check follows</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:70ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+  table.units { width:100%; border-collapse:collapse; font-family:'SF Mono',Menlo,Consolas,monospace;
+    font-size:12.5px; background:var(--panel); border:1px solid var(--edge); max-width:900px; margin-top:8px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:6px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  .own { color:var(--ok); } .id { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  .arith { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); margin:6px 0 0; }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  .prob { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; max-width:100ch; }
+  .prob .w { color:var(--brass); } .prob .ttl { color:var(--ink-dim); font-size:11px; letter-spacing:1.4px;
+    text-transform:uppercase; margin-bottom:6px; }
+  .prob div.row { padding:3px 0; }
+  .prob .quiet { color:var(--ink-dim); font-style:italic; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(430px,1fr)); gap:22px; margin-top:6px; }
+  .fix { border-left:3px solid var(--danger); }
+</style></head><body>
+<header>
+  <h1>ah-z73s.3 — <span>which arrivals the crew check follows</span></h1>
+  <p>Today the undercrewed check goes <b>completely silent</b> for a fleet the moment men of any race arrive at any
+  unit aboard it. <code>ah-z73s.2</code> shipped the machinery to compute the merged skill, so the silence can go —
+  but only for arrivals the merge actually follows. This page is about where that line is drawn.</p>
+</header>
+<main>
+
+<h3 class="sec">A correction, recorded after the decision was taken</h3>
+<div class="note fix"><b>I told you a <code>TAKE</code> of men leaves the fleet unjudged. That is out of date.</b>
+It was true when <code>ah-z73s.2</code> was planned; <code>ah-dxfd.1</code> has since taught the walk to resolve a
+<code>TAKE</code>'s source, so a take from a unit <i>in the same hex</i> is merged exactly like a gift. Only a
+<code>TAKE FROM</code> a unit the hex does not show still leaves the taker unjudged. Several doc comments in the
+code still say the old thing and are stale.
+<br><br>This makes the bead follow <b>more</b> arrivals than the question described, which strengthens rather than
+weakens the answer given here &mdash; and the clause chosen for the warning, &ldquo;once the men joining the crew
+this month are counted&rdquo;, was already true of a take. Nothing was re-asked; the record should be right.</div>
+
+<h3 class="sec">What is already settled, and needs no answer from you</h3>
+<p>These follow from <code>ah-z73s.2</code>'s own decisions and are not being re-opened.</p>
+<ul class="notes">
+  <li><b>Men given aboard are counted.</b> The fleet is judged on the merged sailing level — which can go up
+      <i>or down</i> — instead of the check falling silent.</li>
+  <li><b>Men <code>TAKE</code>n aboard from a unit in the same hex are counted</b> — see the correction above.
+      Only a <code>TAKE FROM</code> a unit the hex does not show leaves the taker unjudged.</li>
+  <li class="con"><b>A guessed headcount stays unjudged</b>, and so does a unit whose sums the ledger could not
+      follow. Both already silence this check today and still will.</li>
+</ul>
+
+<h3 class="sec">The one case that is genuinely open: recruiting</h3>
+<p><code>rules/buy</code>: &ldquo;Recruit 5 barbarians into the current unit. (This will dilute the skills that the
+unit has.)&rdquo; and <code>rules/economy_recruiting</code>: &ldquo;New recruits will not have any skills or
+items.&rdquo; So recruits are an arrival whose effect on a skill is <b>exactly computable</b> — unlike a
+<code>TAKE</code>, where the source unit's skills are genuinely unknown.</p>
+
+<p>A Raft that states <code>Sailors: 2/2</code>, crewed by two gnolls who each know sailing 1:</p>
+<pre class="ord">unit 9508
+  <b>BUY 4 PEAS</b>                ; recruit four peasants into the crew
+  <b>SAIL N</b></pre>
+<div class="arith">(2&times;30 + 4&times;0) / 6 = 10 points &rarr; sailing <b>0</b>. Levels aboard: 0 &times; 6 = <b>0</b>. The raft needs 2.</div>
+
+<div class="note"><b>The units table already says this.</b> The orders preview has diluted a recruiting unit's skills
+since <code>ah-dxfd.1</code> — this row is what the application shows you today, with no change from this bead:</div>
+<table class="units">
+<tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th>Skills</th></tr>
+<tr><td class="own">*</td><td class="id">9508</td><td>Crew</td><td class="pred">6</td><td class="pred">SAIL 0 (10)</td></tr>
+</table>
+
+<div class="cols">
+<div>
+<span class="opt">A &mdash; follow gifts only; a recruiting unit leaves the fleet unjudged</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row quiet">nothing about this fleet</div>
+</div>
+<ul class="notes">
+  <li>Nothing outside the fleet check changes. This bead touches one check and one function.</li>
+  <li>Exactly today's behaviour for a recruiting unit, so nothing that passes now can start failing.</li>
+  <li class="con">The units table says sailing 0 and the Problems panel says the raft is fine. One screen, two
+      answers, about the same unit.</li>
+  <li class="con">Recruiting aboard is not exotic — <code>rules/form</code> makes <code>FORM</code>, give it silver,
+      <code>BUY</code> people the ordinary way to raise a new unit at all.</li>
+  <li class="con">The same silence stays in the other six skill warnings: a unit that recruits four peasants and
+      produces lumber is still judged at the level its report printed.</li>
+</ul>
+</div>
+<div>
+<span class="opt">B &mdash; follow gifts and recruits; only a <code>TAKE</code> leaves it unjudged</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>9508 Crew</b> &mdash; Raft [218] is short of sailors&hellip; so it will not sail.</div>
+</div>
+<ul class="notes">
+  <li>The panel and the units table agree about the same unit, which is the standard
+      <code>ah-z73s.2</code> set for itself.</li>
+  <li>The arithmetic is the one already shipped and tested in the preview walker — recruits merge in at zero.</li>
+  <li class="con"><b>Six other warnings change with it</b>, and in the direction of saying <i>more</i>: a unit that
+      recruits heavily and then produces, builds, teaches or studies can be warned where today it is not.</li>
+  <li class="con">Bigger than the bead as filed, and the new warnings deserve a verification pass of their own.</li>
+</ul>
+</div>
+</div>
+
+<div class="note fix"><b>If you choose A</b> I will file the recruit case as its own bead so it is not lost, and say so
+in the plan. <b>If you choose B</b> the six other warnings come along with it and this bead grows by roughly one
+increment.</div>
+
+<h3 class="sec">One thing neither option changes</h3>
+<ul class="notes">
+  <li>The <b>overload</b> half of the fleet check never consulted this doubt and still does not. A fleet can be
+      warned it is overloaded while the crew half stays silent, exactly as today.</li>
+  <li>The <b>route planner's</b> own crew figure reads the report and models no transfers at all. It already
+      disagrees with the panel for a fleet that gives crew away this month; this bead adds no new kind of
+      disagreement, and putting the two in step is not this bead.</li>
+</ul>
+
+</main></body></html>

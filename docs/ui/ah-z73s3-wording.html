@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-z73s.3 — what the crew warning says when men arrive</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:70ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  .arith { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); margin:6px 0 10px; }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  .prob { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; max-width:104ch; }
+  .prob .w { color:var(--brass); } .prob .ttl { color:var(--ink-dim); font-size:11px; letter-spacing:1.4px;
+    text-transform:uppercase; margin-bottom:6px; }
+  .prob div.row { padding:4px 0; }
+  .prob .case { color:var(--ink-dim); font-size:11px; letter-spacing:1px; text-transform:uppercase;
+    display:inline-block; min-width:118px; }
+  .prob .quiet { color:var(--ink-dim); font-style:italic; }
+  .prob .same { color:var(--ink-dim); }
+  .bad { color:var(--danger); }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:104ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  table.cases { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); max-width:1100px; margin-top:8px; }
+  table.cases th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.cases td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  table.cases td.n { font-family:'SF Mono',Menlo,monospace; color:var(--brass); white-space:nowrap; }
+  .new { color:var(--ok); font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+</style></head><body>
+<header>
+  <h1>ah-z73s.3 &mdash; <span>what the crew warning says when men arrive</span></h1>
+  <p>One sentence in the Problems panel changes shape. Today it has two forms, and a comment in the code says a
+  third can never occur &mdash; because men arriving silenced the whole check. Once they no longer do, it can.</p>
+</header>
+<main>
+
+<h3 class="sec">The sentence today</h3>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>9508 Crew</b> &mdash; Raft [218] is short of sailors: <b>2 sailing levels aboard less 1 given away this month</b>, it needs 2, so it will not sail.</div>
+<div class="row"><span class="w">&#9888;</span> <b>11125 Crew</b> &mdash; Longship [329] is short of sailors: <b>2 sailing levels aboard</b>, it needs 4, so it will not sail.</div>
+</div>
+<div class="note">The first is a unit that gave a sailor away this month; the second is a crew that simply is not big
+enough and moved nobody. <b>Nothing about either of those two cases changes in this bead</b>, whichever option you
+pick below &mdash; unless you pick S.</div>
+
+<h3 class="sec">The three cases this bead makes reachable</h3>
+<p>A Raft states <code>Sailors: 2/2</code>; unit 9508 aboard it is two gnolls who each know sailing 1
+(30 points each). A Longship states <code>Sailors: 4/4</code>; unit 11125 aboard it is one man at sailing 1.</p>
+<table class="cases">
+<tr><th>&nbsp;</th><th>Orders</th><th>What happens</th><th>Report said</th><th>Will be</th><th>Needs</th></tr>
+<tr>
+  <td class="new">new &mdash; drop</td>
+  <td><pre class="ord" style="margin:0"><b>GIVE 9508 2 PEAS</b></pre></td>
+  <td>Two peasants who cannot sail join the crew, so the merged level falls.<div class="arith">(2&times;30 + 2&times;0)/4 = 15 &rarr; sailing 0; 0 &times; 4 men</div></td>
+  <td class="n">2</td><td class="n">0</td><td class="n">2</td>
+</tr>
+<tr>
+  <td class="new">new &mdash; rise</td>
+  <td><pre class="ord" style="margin:0"><b>GIVE 11125 1 GNOL</b></pre></td>
+  <td>A sailor joins, and the fleet is still short.<div class="arith">(1&times;30 + 1&times;30)/2 = 30 &rarr; sailing 1; 1 &times; 2 men</div></td>
+  <td class="n">1</td><td class="n">2</td><td class="n">4</td>
+</tr>
+<tr>
+  <td class="new">new &mdash; both</td>
+  <td><pre class="ord" style="margin:0"><b>GIVE 9508 2 PEAS</b>
+<b>GIVE 0 1 GNOL</b></pre></td>
+  <td>Peasants join and a gnoll is discarded, in that order.<div class="arith">merged to sailing 0, then 3 men left</div></td>
+  <td class="n">2</td><td class="n">0</td><td class="n">2</td>
+</tr>
+</table>
+<div class="note"><b>Why the &ldquo;drop&rdquo; case is the one that matters.</b> Today it is silent, and after this bead
+it warns &mdash; about a fleet whose report says it has exactly the crew it needs. The player is looking at a number
+the report never printed, so whatever the sentence says has to be enough to make sense of that on its own.</div>
+
+<h3 class="sec">Open all four and compare the middle row &mdash; that is where they differ</h3>
+
+<span class="opt">P &mdash; say nothing new: the plain sentence covers everything that is not a give-away</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">drop</span> Raft [218] is short of sailors: <b>0 sailing levels aboard</b>, it needs 2, so it will not sail.</div>
+<div class="row"><span class="case">rise</span> Longship [329] is short of sailors: <b>2 sailing levels aboard</b>, it needs 4, so it will not sail.</div>
+<div class="row"><span class="case">both</span> Raft [218] is short of sailors: <b>0 sailing levels aboard</b>, it needs 2, so it will not sail.</div>
+<div class="row same"><span class="case">gave away</span> &hellip; 2 sailing levels aboard less 1 given away this month, it needs 2 &hellip; <i>(unchanged)</i></div>
+</div>
+<ul class="notes">
+  <li>Not one string is added or changed anywhere. The smallest possible change to the panel.</li>
+  <li>The &ldquo;rise&rdquo; row reads perfectly well as it is &mdash; the fleet is short, and by how much is what it says.</li>
+  <li class="con">The &ldquo;drop&rdquo; row says <b>0</b> about a raft the report says has 2 of the 2 it needs, and offers
+      nothing to explain the gap. That is the case this bead exists to start warning about.</li>
+</ul>
+
+<span class="opt">Q &mdash; one new clause for every arrival: &ldquo;once this month's transfers of men have run&rdquo;</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">drop</span> Raft [218] is short of sailors: <b>2 sailing levels aboard, 0 once this month's transfers of men have run</b>, it needs 2, so it will not sail.</div>
+<div class="row"><span class="case">rise</span> Longship [329] is short of sailors: <b>1 sailing levels aboard, 2 once this month's transfers of men have run</b>, it needs 4, so it will not sail.</div>
+<div class="row"><span class="case">both</span> Raft [218] is short of sailors: <b>2 sailing levels aboard, 0 once this month's transfers of men have run</b>, it needs 2, so it will not sail.</div>
+<div class="row same"><span class="case">gave away</span> &hellip; 2 sailing levels aboard less 1 given away this month, it needs 2 &hellip; <i>(unchanged)</i></div>
+</div>
+<ul class="notes">
+  <li>One new string, used for all three cases. Always shows the report's figure beside the one being judged, so the
+      contradiction is on the screen rather than left to the player to notice.</li>
+  <li>The clause is true of the &ldquo;both&rdquo; case without having to describe two movements at once.</li>
+  <li class="con">&ldquo;1 sailing levels&rdquo; &mdash; the sentence has never had a plural rule and this option does
+      not add one. It is already like that today in <code>less 1 given away</code>.</li>
+  <li class="con">Does not say <i>why</i> the number fell. A player who gave two peasants aboard may not connect
+      &ldquo;transfers of men&rdquo; with a skill being diluted.</li>
+</ul>
+
+<span class="opt">R &mdash; name the men, in two shapes: joining leaves fewer, or joining brings more</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">drop</span> Raft [218] is short of sailors: <b>2 sailing levels aboard, but the 2 men joining it this month leave 0</b>, it needs 2, so it will not sail.</div>
+<div class="row"><span class="case">rise</span> Longship [329] is short of sailors: <b>2 sailing levels aboard with the man joining it this month</b>, it needs 4, so it will not sail.</div>
+<div class="row"><span class="case">both</span> Raft [218] is short of sailors: <b>2 sailing levels aboard, but the 2 men joining it this month leave 0</b>, it needs 2, so it will not sail.</div>
+<div class="row same"><span class="case">gave away</span> &hellip; 2 sailing levels aboard less 1 given away this month, it needs 2 &hellip; <i>(unchanged)</i></div>
+</div>
+<ul class="notes">
+  <li>The only option that explains the surprise: unskilled men joining a skilled crew make it worse, which is not
+      obvious and is exactly what <code>rules/give</code> says happens.</li>
+  <li class="con">Two new strings, and the count of men joining is a number the sentence did not carry before.</li>
+  <li class="con">In the &ldquo;both&rdquo; case it says only half of what moved &mdash; a gnoll also left, and the
+      sentence does not mention it.</li>
+  <li class="con">Four shapes in one message now, which is the most any finding in the panel has.</li>
+</ul>
+
+<span class="opt">S &mdash; one shape for every changed crew, replacing the give-away sentence too</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">drop</span> Raft [218] is short of sailors: <b>2 sailing levels aboard become 0 once this month's orders have run</b>, it needs 2, so it will not sail.</div>
+<div class="row"><span class="case">rise</span> Longship [329] is short of sailors: <b>1 sailing levels aboard become 2 once this month's orders have run</b>, it needs 4, so it will not sail.</div>
+<div class="row"><span class="case">both</span> Raft [218] is short of sailors: <b>2 sailing levels aboard become 0 once this month's orders have run</b>, it needs 2, so it will not sail.</div>
+<div class="row bad"><span class="case">gave away</span> Raft [218] is short of sailors: <b>2 sailing levels aboard become 1 once this month's orders have run</b>, it needs 2, so it will not sail. <i>(changed)</i></div>
+</div>
+<ul class="notes">
+  <li>Two shapes in total instead of four: &ldquo;nothing moved&rdquo; and &ldquo;this is what it becomes&rdquo;.
+      The simplest rule to hold in your head and the simplest to test.</li>
+  <li class="con"><b>It rewrites a sentence that has already shipped and been verified</b>
+      (<code>ah-j0e</code>, two verification failures paid for that wording), and it loses
+      &ldquo;given away&rdquo;, which named the cause.</li>
+</ul>
+
+<h3 class="sec">Things I have already decided, so you do not have to</h3>
+<ul class="notes">
+  <li><b>No new warning and no new switch.</b> This is the existing <code>fleet-undercrewed</code> finding, on the
+      existing toggle, pointing at the same <code>SAIL</code> line.</li>
+  <li><b>One unit aboard that cannot be judged still silences the whole fleet's crew count.</b> A fleet is crewed by
+      everyone in the hull, so a hole in one unit is a hole in the total.</li>
+  <li><b>The overload half is untouched</b> and goes on warning even when the crew half is silent.</li>
+</ul>
+
+</main></body></html>
