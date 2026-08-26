@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-z73s.4 — a unit given men and recruiting, and the Settings toggle</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  .fix { border-left:3px solid var(--ok); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  .prob { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; max-width:110ch; }
+  .prob .w { color:var(--brass); } .prob .ttl { color:var(--ink-dim); font-size:11px; letter-spacing:1.4px;
+    text-transform:uppercase; margin-bottom:6px; }
+  .prob div.row { padding:4px 0; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:110ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:78ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+  .set { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:12px 14px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; max-width:82ch; }
+  .set .grp { color:var(--ink-dim); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-bottom:8px; }
+  .set .item { display:flex; gap:11px; padding:7px 0; border-top:1px solid var(--edge); }
+  .set .item:first-of-type { border-top:0; }
+  .set .box { width:15px; height:15px; border-radius:3px; background:var(--select); flex:0 0 auto; margin-top:2px;
+    position:relative; }
+  .set .box::after { content:"\2713"; color:#0b1016; font-size:12px; position:absolute; left:2.5px; top:-2px; font-weight:bold; }
+  .set .box.off { background:transparent; border:1px solid var(--ink-dim); }
+  .set .box.off::after { content:""; }
+  .set .lbl b { color:var(--ink); font-weight:600; display:block; }
+  .set .lbl span { color:var(--ink-soft); font-size:11.5px; }
+  .set .new b { color:var(--brass); }
+</style></head><body>
+<header>
+  <h1>ah-z73s.4 &mdash; <span>a unit given men <i>and</i> recruiting, and the Settings toggle</span></h1>
+  <p>Two things the widening to recruiting opened. First: you decided <b>one entry per skill for the whole
+  month</b> &mdash; but a unit can be given men <i>and</i> recruit in the same month, and both dilute the same skill.
+  Second: the toggle's agreed title and description are both written about a <code>GIVE</code>, and are now not true.</p>
+</header>
+<main>
+
+<h3 class="sec">1 &mdash; both routes in one month</h3>
+<p>A unit of ten lumberjacks is given five unskilled men and recruits four more. The gift takes it from
+lumberjack&nbsp;3 to 2; the recruits take it from 2 to 1. The rules run gifts first &mdash; <i>Give orders</i> before
+<i>Market orders</i> in <code>rules/sequenceofevents</code> &mdash; so the order of the two steps is fixed, not arbitrary.</p>
+<pre class="ord">unit 1010
+GIVE 3100 5 PEAS
+
+unit 3100
+<b>BUY 4 PEAS</b>
+PRODUCE LUMB</pre>
+
+<span class="opt">M1 &mdash; one entry per route, in the game's order</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; giving 5 men to this unit lowers its lumberjack from 3 to 2.</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; recruiting 4 men into this unit lowers its lumberjack from 2 to 1.</div>
+</div>
+<ul class="notes">
+  <li>Both agreed sentences are used exactly as written. Nothing new to word, nothing new to test.</li>
+  <li>Each step is separately true, and the two read as a chain: 3 &rarr; 2 &rarr; 1.</li>
+  <li class="con">Two entries about one unit ending at one level &mdash; the very thing you rejected when you chose
+      one entry per skill for the month.</li>
+  <li class="con">A player who fixes only the gift is still left at 2, and has to read both lines to see that.</li>
+</ul>
+
+<span class="opt">M2 &mdash; one entry, naming both routes</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; giving 5 men to this unit and recruiting 4 more lowers its lumberjack from 3 to 1.</div>
+</div>
+<ul class="notes">
+  <li>Keeps one entry per skill for the month, exactly as you chose, and states the month's real drop.</li>
+  <li>Names both causes, so the player knows fixing one is not enough.</li>
+  <li class="con">A third sentence shape, with its own singular cases on <i>two</i> counts (&ldquo;1 man&hellip;
+      1 more&rdquo;).</li>
+</ul>
+
+<span class="opt">M3 &mdash; one entry, route-neutral when both happened</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; 9 men joining this unit lower its lumberjack from 3 to 1.</div>
+</div>
+<ul class="notes">
+  <li>Uses <i>joining</i>, the word you chose for the crew clause in <code>ah-z73s.3</code> precisely because it is
+      true of a gift and a recruit alike.</li>
+  <li>One entry, one number for the arrivals, one drop. Shortest of the three.</li>
+  <li class="con">Says the least about <i>why</i>. A player who gave men and did not think of the <code>BUY</code>
+      is told nine men arrived and left to work out which orders those were.</li>
+  <li class="con">A third shape all the same, and it needs its own count agreement (<i>lower</i> / <i>lowers</i>).</li>
+</ul>
+
+<div class="note"><b>Only the same skill is at stake.</b> If the gift lowers lumberjack and the recruits lower
+mining, there is no clash &mdash; that is already two entries by the one-per-skill rule, each in its own sentence,
+and every option above agrees.</div>
+
+<h3 class="sec">2 &mdash; the Settings toggle</h3>
+<p>Agreed while planning <code>ah-z73s.2</code>: title <i>Transfers that lower a skill</i>, description
+<i>A GIVE of men that leaves the receiving unit at a lower skill level than the report gave it.</i> It sits in the
+<b>Orders</b> group after <i>Gifts to units that are not here</i>, and is <b>ON</b> by default. A recruit is neither a
+transfer nor a <code>GIVE</code>, so both strings are now wrong.</p>
+
+<span class="opt">T1 &mdash; one toggle, retitled to cover both</span>
+<div class="set"><div class="grp">Orders</div>
+  <div class="item"><span class="box"></span><span class="lbl"><b>Gifts to units that are not here</b><span>A GIVE naming a unit that is not in the same region.</span></span></div>
+  <div class="item new"><span class="box"></span><span class="lbl"><b>Arrivals that lower a skill</b><span>Men joining a unit, by gift or by recruiting, that leave it at a lower skill level than the report gave it.</span></span></div>
+</div>
+<ul class="notes">
+  <li>One switch for one idea: <i>unskilled men arriving cost you a level</i>. The player does not have to know the
+      two routes are implemented separately.</li>
+  <li class="con">A player who only ever wanted to be warned about gifts cannot have that.</li>
+</ul>
+
+<span class="opt">T2 &mdash; one toggle, keep the agreed title, widen only the description</span>
+<div class="set"><div class="grp">Orders</div>
+  <div class="item"><span class="box"></span><span class="lbl"><b>Gifts to units that are not here</b><span>A GIVE naming a unit that is not in the same region.</span></span></div>
+  <div class="item new"><span class="box"></span><span class="lbl"><b>Transfers that lower a skill</b><span>A GIVE of men, or a recruit, that leaves the unit at a lower skill level than the report gave it.</span></span></div>
+</div>
+<ul class="notes">
+  <li>The title you already approved does not move.</li>
+  <li class="con"><i>Transfers</i> still does not cover recruiting, and the title is what a player scanning the list
+      reads &mdash; the description is the part they do not read.</li>
+</ul>
+
+<span class="opt">T3 &mdash; two toggles, one per route</span>
+<div class="set"><div class="grp">Orders</div>
+  <div class="item"><span class="box"></span><span class="lbl"><b>Gifts to units that are not here</b><span>A GIVE naming a unit that is not in the same region.</span></span></div>
+  <div class="item new"><span class="box"></span><span class="lbl"><b>Gifts that lower a skill</b><span>A GIVE of men that leaves the receiving unit at a lower skill level than the report gave it.</span></span></div>
+  <div class="item new"><span class="box"></span><span class="lbl"><b>Recruits that lower a skill</b><span>A purchase of men that leaves the buying unit at a lower skill level than the report gave it.</span></span></div>
+</div>
+<ul class="notes">
+  <li>Each can be silenced alone. A player who recruits constantly and knows what it costs can turn only that off.</li>
+  <li>The two sentences are two codes anyway, which is how every other pair of messages in the panel is switched.</li>
+  <li class="con">Two entries in a group that already has several, for one idea.</li>
+  <li class="con">If you choose <b>M2</b> or <b>M3</b> above, the both-at-once entry belongs to neither toggle and a
+      third rule is needed to say which switch hides it.</li>
+</ul>
+
+</main></body></html>
