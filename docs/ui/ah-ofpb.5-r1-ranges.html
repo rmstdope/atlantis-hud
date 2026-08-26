@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ofpb.5 - round 1: a range in the ITEMS column</title>
+<title>ah-ofpb.1 - round 2: what the rules really say a CAST creates</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .stagelabel { font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin:14px 0 5px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .unk { color:var(--ink-dim); }
+  .cellbox { border:1px dashed var(--edge); }
+  .clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip.none { color:var(--ink-dim); font-style:italic; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright);
+            background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            margin:10px 0 0; white-space:pre; display:inline-block; }
+  .orders .c { color:var(--ink-dim); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-left:8px; }
+
+  table.data { width:100%; border-collapse:collapse; font:12px/1.45 'Helvetica Neue',Arial,sans-serif; margin-top:6px; }
+  table.data th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); font-weight:400; padding:4px 8px; border-bottom:1px solid var(--edge); }
+  table.data td { padding:4px 8px; border-bottom:1px solid var(--edge-soft); color:var(--ink-soft); vertical-align:top; }
+  table.data td.t { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; white-space:nowrap; }
+  .quote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13px; margin:10px 0; max-width:96ch; font-style:italic; }
+  .bad { color:var(--danger); }
+</style></head><body>
+</head><body>
+<header><h1>Round 1 &mdash; <span>a range in the ITEMS column</span></h1>
+<p>You have already settled the two big things and I am not re-asking them: <b>family A</b> (the level-scaled certainties &mdash; <code>ESWO EARM ESHD CRPA CRSS CRMA TRNS</code>) shows the exact figure capped by what the unit holds, and <b>family B</b> (the chance spells) shows the arrival as a range, <code>2-3 RUNE</code>. This page is the four things that decision left open, plus one finding of mine that changes the shape of the answer.</p>
+<p><b>The finding first, because it moves two of the questions.</b> The families are not fixed lists of spells. I computed every creating spell at every level from <code>config/public/ruleset.json</code>: a chance spell&rsquo;s range <b>collapses to a single number whenever the total is a whole multiple of 100</b>. A level 5 ring maker is 20&times;5 = 100% &mdash; exactly one ring, no range. A level 5 staff maker is 40&times;5 = 200% &mdash; exactly two. So the rule has to be arithmetic (<code>floor</code> and <code>ceil</code> of the same total), never a spell list, and the same spell looks different at different levels.</p>
+<p>The other half of that finding: <b><code>SWIN</code> (create cloudship) is the only chance spell that consumes materials</b> &mdash; 75 <code>FLOA</code> + 75 <code>IRWD</code> &mdash; and it is a range only at levels 3 and 4. That is Q4.</p>
+
+</header>
+<main>
+<h3 class="sec">The whole catalogue, computed</h3>
+<p>Every spell that creates something, and what each level shows. Read off the committed ruleset, not from memory. A dash is a level too low to create at all.</p>
+<div class="card"><div class="stage">
+<table class="data">
+<thead><tr><th>Skill</th><th>Makes</th><th>Per level</th><th>Consumes</th><th>L1</th><th>L2</th><th>L3</th><th>L4</th><th>L5</th></tr></thead>
+<tbody>
+<tr><td class="t">CRRU</td><td>runesword</td><td>90%</td><td class="t">$600 each</td><td class="t">0-1</td><td class="t">1-2</td><td class="t">2-3</td><td class="t">3-4</td><td class="t">4-5</td></tr>
+<tr><td class="t">CFSW</td><td>flaming sword</td><td>60%</td><td class="t">$600 each</td><td class="t">0-1</td><td class="t">1-2</td><td class="t">1-2</td><td class="t">2-3</td><td class="t"><b>3</b></td></tr>
+<tr><td class="t">CRSF</td><td>staff of fire</td><td>40%</td><td class="t">$600 each</td><td class="t">0-1</td><td class="t">0-1</td><td class="t">1-2</td><td class="t">1-2</td><td class="t"><b>2</b></td></tr>
+<tr><td class="t">CRRI</td><td>ring of invisibility</td><td>20%</td><td class="t">$600 each</td><td class="t">0-1</td><td class="t">0-1</td><td class="t">0-1</td><td class="t">0-1</td><td class="t"><b>1</b></td></tr>
+<tr><td class="t">SWIN</td><td>cloudship</td><td>20%, from L3</td><td class="t">75 FLOA + 75 IRWD each</td><td class="t">&ndash;</td><td class="t">&ndash;</td><td class="t">0-1</td><td class="t">0-1</td><td class="t"><b>1</b></td></tr>
+<tr><td class="t">ESWO</td><td>mithril sword</td><td>500%</td><td class="t">1 SWOR each</td><td class="t">5</td><td class="t">10</td><td class="t">15</td><td class="t">20</td><td class="t">25</td></tr>
+<tr><td class="t">CRPA</td><td>amulet of protection</td><td>100%</td><td class="t">$200 each</td><td class="t">1</td><td class="t">2</td><td class="t">3</td><td class="t">4</td><td class="t">5</td></tr>
+<tr><td class="t">TRNS</td><td>rootstone &amp; six more</td><td>200%</td><td class="t">1 STON each</td><td class="t">2</td><td class="t">4</td><td class="t">6</td><td class="t">8</td><td class="t">10</td></tr>
+<tr><td class="t">WOLF</td><td>wolf</td><td>200%</td><td class="t">nothing</td><td class="t">2</td><td class="t">4</td><td class="t">6</td><td class="t">8</td><td class="t">10</td></tr>
+<tr><td class="t">DRAG</td><td>dragon</td><td>20%</td><td class="t">nothing</td><td class="t">0-1</td><td class="t">0-1</td><td class="t">0-1</td><td class="t">0-1</td><td class="t"><b>1</b></td></tr>
+<tr><td class="t">BIRD</td><td>eagle</td><td>100%, level&minus;2</td><td class="t">nothing</td><td class="t">&ndash;</td><td class="t">&ndash;</td><td class="t">1</td><td class="t">2</td><td class="t">3</td></tr>
+</tbody></table>
+<ul class="notes"><li class="n">Bold = a level where a &ldquo;chance&rdquo; spell is in fact exact. Eleven more <code>500</code>-silver artifact spells behave exactly like <code>CRSF</code>; nine summoning skills cost nothing at all.</li></ul>
+</div></div>
+
+<h3 class="sec">Q1 &mdash; a range meeting a stock the unit already holds</h3>
+<p>A level 3 runesmith already holding <code>2 RUNE</code> and <code>40 HERB</code>, ordered <code>cast Create_Runesword</code>. It makes 2 certain and has a 70% chance of a third. The column&rsquo;s settled meaning is <b>what the unit ends the month holding</b>, so the two numbers have to meet somewhere.</p>
+<div class="card">
+<div class="concept"><b>A &mdash; merge, and the whole holding becomes the range.</b> One entry per item, exactly as every other order already merges. You cannot see how much was already there.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:190px">NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8901</td><td>Runesmith L3</td><td class="colhi cellbox"><span class="clip"><span class="pred">4-5 RUNE, 40 HERB</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8902</td><td>Runesmith L3 (holds none)</td><td class="colhi cellbox"><span class="clip"><span class="pred">2-3 RUNE</span></span></td></tr>
+</tbody></table>
+<ul class="notes"><li>One rule, and the same rule <code>GIVE</code>, <code>BUY</code> and <code>PRODUCE</code> already follow.</li><li>The cell always answers the question the column asks: what will this unit have?</li><li class="con">A player who wants to know what the cast contributes has to do the subtraction, and cannot when the stock is itself a range.</li></ul>
+</div></div>
+
+<div class="card">
+<div class="concept"><b>B &mdash; keep the arrival as its own entry.</b> The stock stays exact and the cast&rsquo;s contribution is legible on its own.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:190px">NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8901</td><td>Runesmith L3</td><td class="colhi cellbox"><span class="clip">2 RUNE, 40 HERB, <span class="pred">+2-3 RUNE</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8902</td><td>Runesmith L3 (holds none)</td><td class="colhi cellbox"><span class="clip"><span class="pred">+2-3 RUNE</span></span></td></tr>
+</tbody></table>
+<ul class="notes"><li>You can see the cast&rsquo;s own contribution without arithmetic.</li><li class="con">Two entries for one item, which no other order produces &mdash; the column stops being a holding and becomes a holding plus a diff.</li><li class="con">The <code>+</code> sign collides with the <code>+ ?</code> mark that already means &ldquo;something here could not be counted&rdquo;.</li></ul>
+</div></div>
+
+<div class="card">
+<div class="concept"><b>C &mdash; merge, but keep the held part visible in brackets.</b> One entry, both numbers.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:190px">NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8901</td><td>Runesmith L3</td><td class="colhi cellbox"><span class="clip"><span class="pred">4-5 RUNE (2 held), 40 HERB</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8902</td><td>Runesmith L3 (holds none)</td><td class="colhi cellbox"><span class="clip"><span class="pred">2-3 RUNE</span></span></td></tr>
+</tbody></table>
+<ul class="notes"><li>Everything is on screen with no second entry.</li><li class="con">Long. The ITEMS cell already clips with an ellipsis at this width, and this is the widest form of the three.</li><li class="con">A rule that fires only for ranges, so two chance mages and one certainty mage in the same hex read three different ways.</li></ul>
+</div></div>
+
+<h3 class="sec">Q2 &mdash; what a <code>0-1</code> range does to the <code>+ ?</code> mark</h3>
+<p>The mark means one exact thing today: <b>something in this cell could not be counted</b> &mdash; <code>buy all HORS</code> at a price the market did not print, a <code>PRODUCE</code> naming an item no skill makes. A level 1 ring maker shows <code>0-1 RING</code>: a 20% chance of a ring and nothing else. That <i>was</i> counted. The question is whether the mark stretches to cover it.</p>
+<div class="card">
+<div class="concept"><b>A &mdash; no mark. The range says the uncertainty itself.</b> The mark keeps meaning &ldquo;could not be counted&rdquo;, and every one of the 33 creating spells is countable.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:230px">NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8903</td><td>Ringmaker L1 &mdash; 20% of a ring</td><td class="colhi cellbox"><span class="clip"><span class="pred">0-1 RING</span>, 900 SILV</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8904</td><td>Ringmaker L5 &mdash; exactly one</td><td class="colhi cellbox"><span class="clip"><span class="pred">1 RING</span>, 900 SILV</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8905</td><td>Trader &mdash; <code>buy all HORS</code>, unpriced</td><td class="colhi cellbox"><span class="clip">14 GRAI, 900 SILV <span class="unk">+ ?</span></span></td></tr>
+</tbody></table>
+<ul class="notes"><li>The mark stays rare, so it stays worth looking at.</li><li>Row 8903 and row 8905 say different things and look different.</li><li class="con">A player scanning for &ldquo;rows that are not exact&rdquo; has two shapes to look for, not one.</li></ul>
+</div></div>
+
+<div class="card">
+<div class="concept"><b>B &mdash; the mark, on any cell whose figures are not exact.</b> One marker for &ldquo;do not trust this row to the item&rdquo;.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:230px">NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8903</td><td>Ringmaker L1 &mdash; 20% of a ring</td><td class="colhi cellbox"><span class="clip"><span class="pred">0-1 RING</span>, 900 SILV <span class="unk">+ ?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8904</td><td>Ringmaker L5 &mdash; exactly one</td><td class="colhi cellbox"><span class="clip"><span class="pred">1 RING</span>, 900 SILV</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8905</td><td>Trader &mdash; <code>buy all HORS</code>, unpriced</td><td class="colhi cellbox"><span class="clip">14 GRAI, 900 SILV <span class="unk">+ ?</span></span></td></tr>
+</tbody></table>
+<ul class="notes"><li>One shape to scan for.</li><li class="con">Twenty of the 33 creating spells are chance spells, so most mage rows in a magic-heavy faction carry the mark &mdash; the exact fate you rejected for <code>PRODUCE</code> caps in <code>ah-ofpb.1</code> (option C3).</li><li class="con">The mark now means two things, and the hover has to say which.</li></ul>
+</div></div>
+<p style="margin-top:10px;color:var(--ink-soft);font-size:13px"><b>Italics, while we are here.</b> Both options keep the range in the projection italic, because it is a projection like any other. Say if you would rather a range were distinguished from a certainty inside the cell &mdash; that is a third answer and I will mock it.</p>
+
+<h3 class="sec">Q3 &mdash; the nine spells that summon monsters for nothing</h3>
+<p><code>ah-ofpb.3</code> recorded a creation for nine summoning skills that state no cost at all, on your decision to record every creation the page states. So the app now knows a level 3 wolf master makes six wolves. Nothing reads that yet; this bead is what would.</p>
+<p>Two things about them the data page says and this bead does not model: four of them (<code>WOLF BIRD SUSK RAIS</code>) word the number as an <b>average</b> in their prose, and several state control caps and monthly decay. A wolf master who is already at its control cap gets fewer wolves than six, and the column would still say six.</p>
+<div class="card">
+<div class="concept"><b>A &mdash; show them, exactly like any other creation.</b> The column knows the number; withholding it is the column being less useful than it can be.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:230px">NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8906</td><td>Wolf master L3</td><td class="colhi cellbox"><span class="clip"><span class="pred">6 WOLF</span>, 60 SILV</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8907</td><td>Dragon lord L3 &mdash; 60% of one</td><td class="colhi cellbox"><span class="clip"><span class="pred">0-1 DRAG</span>, 60 SILV</span></td></tr>
+</tbody></table>
+<ul class="notes"><li>One rule for every creating spell, with no list of exceptions to remember.</li><li class="con">Six wolves is the page&rsquo;s <i>average</i>, printed as if it were the count &mdash; and a mage at its control cap gets fewer.</li></ul>
+</div></div>
+<div class="card">
+<div class="concept"><b>B &mdash; leave the summons out, and mark the cell <code>+ ?</code>.</b> The app admits it cannot count this one rather than printing an average as a fact.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:230px">NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8906</td><td>Wolf master L3</td><td class="colhi cellbox"><span class="clip">60 SILV <span class="unk">+ ?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8907</td><td>Dragon lord L3 &mdash; 60% of one</td><td class="colhi cellbox"><span class="clip">60 SILV <span class="unk">+ ?</span></span></td></tr>
+</tbody></table>
+<ul class="notes"><li>The mark means what it has always meant, and no average is printed as a count.</li><li class="con">Nine skills the ruleset can price perfectly well are treated as unknowable, and a later bead has to undo it.</li></ul>
+</div></div>
+<div class="card">
+<div class="concept"><b>C &mdash; show them, and say in the hover that the number is an average and a cap applies.</b> The count is there, and the caveat is one hover away.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:230px">NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8906</td><td>Wolf master L3</td><td class="colhi cellbox"><span class="clip"><span class="pred">6 WOLF</span>, 60 SILV</span></td></tr>
+</tbody></table>
+<div class="tip"><b>hover on unit 8906's ITEMS cell</b>was: 60 SILV
+Includes 6 WOLF this unit will summon. The rules give that as an average, and a mage can only control so many.</div>
+<ul class="notes"><li>Nothing is hidden and nothing is overclaimed.</li><li class="con">A sentence that admits the app is guessing, on a row that looks exact.</li></ul>
+</div></div>
+
+<h3 class="sec">Q4 &mdash; the one chance spell that eats materials</h3>
+<p><code>SWIN</code> (create cloudship) costs <b>75 <code>FLOA</code> + 75 <code>IRWD</code> per cloudship</b> and is a chance spell &mdash; 20% per level, from level 3. So a level 3 wind mage has a 60% chance of one cloudship. It is the only spell in the game where a range is charged against items rather than silver, and it makes the arrival and the consumption disagree about how sure they are.</p>
+<p><b>What is already fixed:</b> <code>ah-ofpb.4</code> charges the ledger the <b>ceiling</b> &mdash; 75 and 75, for one cloudship &mdash; because you chose &ldquo;the most it can cost&rdquo;. The <code>not-enough-items</code> warning fires off that figure. The question is only what the ITEMS column prints beside it. The mage below holds 200 of each.</p>
+<div class="card">
+<div class="concept"><b>A &mdash; the consumption at the ceiling, the arrival as a range.</b> The column matches the ledger exactly: 75 leave for certain, 0-1 arrives.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:180px">NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8908</td><td>Wind mage L3</td><td class="colhi cellbox"><span class="clip"><span class="pred">125 FLOA, 125 IRWD, 0-1 CLOU</span></span></td></tr>
+</tbody></table>
+<ul class="notes"><li>The ITEMS column and the SILVER column and the warnings all read off one number.</li><li>Nothing has to compute a second, floored cost.</li><li class="con">The cell asserts 150 items are certainly spent on a cloudship that is 40% likely never to exist. In the game, a failed cast still spends them &mdash; but the cell does not say so.</li></ul>
+</div></div>
+<div class="card">
+<div class="concept"><b>B &mdash; both ends as ranges.</b> The consumption is as uncertain as the arrival, and the cell says so on both sides.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:180px">NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8908</td><td>Wind mage L3</td><td class="colhi cellbox"><span class="clip"><span class="pred">125-200 FLOA, 125-200 IRWD, 0-1 CLOU</span></span></td></tr>
+</tbody></table>
+<ul class="notes"><li>Symmetrical: the same uncertainty on what goes and what arrives.</li><li class="con">It contradicts the ledger, which charged 75 &mdash; so the SILVER column, the warnings and this cell would be computed from two different numbers, which is the defect this whole epic was filed about.</li><li class="con">Needs a floored cost that <code>CastPlan</code> deliberately does not carry (<code>ah-ofpb.4</code>, Q2).</li></ul>
+</div></div>
+<p style="margin-top:10px;color:var(--ink-soft);font-size:13px">Whichever you pick, it applies to exactly one spell at exactly two levels. Every other chance spell costs only silver, which this column has never tracked.</p>
+
+<h3 class="sec">Decided<span class="rec">navigator, 2026-08-26</span></h3><ul class="notes"><li><b>Q1 &rarr; A</b>, merge: <code>4-5 RUNE</code>.</li><li><b>Q2 &rarr; A</b>, no <code>+ ?</code> on a range.</li><li><b>Q3 &rarr; neither.</b> The navigator supplied the engine arithmetic instead: the four averaging summons are <code>1..2n</code> coin flips. Carried into round 3 as Q9.</li><li><b>Q4 &rarr; A</b>, consumption at the ceiling, arrival as a range.</li></ul>
+<footer><b>Where these numbers come from.</b> The catalogue table and every figure on this page were computed from <code>config/public/ruleset.json</code> as committed, using the formula <code>ah-ofpb.3</code> wrote down: <code>total = percentPerLevel &times; max(0, level + levelOffset)</code>, of which <code>total / 100</code> is certain and <code>total % 100</code> is the chance of one more. The turn order was looked up at <code>rules/sequenceofevents</code>. Nothing here is recalled.<br><br>Round 2 will be the wording of every sentence, the cap sentence in the ITEMS hover, what happens to a <code>CAST</code> the app cannot price at all, and one consequence of the turn order that I think needs your decision: <b>a cast resolves before <code>SELL</code>, <code>BUY</code>, <code>WITHDRAW</code>, <code>PRODUCE</code> and <code>BUILD</code>, but after <code>GIVE</code></b> &mdash; the opposite way round from <code>PRODUCE</code>, which resolves last.</footer>
+</main></body></html>
