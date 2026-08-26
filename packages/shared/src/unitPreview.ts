@@ -10,7 +10,7 @@ import type {
   UnitPreviewStatus,
   UnitSilver
 } from "@atlantis/core-client";
-import { castCapSentence, productionCapSentence } from "./unitTooltip";
+import { buyAllSentences, castCapSentence, productionCapSentence } from "./unitTooltip";
 
 /**
  * How the orders preview folds into the units table.
@@ -141,12 +141,14 @@ export function formatItems(
 
 /**
  * The ITEMS cell's hover: what the report said, what came from an unverifiable source, what this
- * month's production adds, what stopped that production short, and what could not be counted - in
- * that order, known before unknown (`ah-agbm`, `ah-ofpb.1`).
+ * month's production adds, what a `BUY ALL` settled to and what stopped it settling higher, what
+ * stopped production short, and what could not be counted - in that order, known before unknown
+ * (`ah-agbm`, `ah-ofpb.1`, `ah-jown`).
  *
- * `silver` is the row's own forecast, which is where the cap sentence lives: the ITEMS and SILVER
- * hovers say it in the same words because they call the same function. `undefined` when there is
- * nothing to say, exactly today's behaviour for a cell the orders left alone (`ah-agbm`).
+ * `silver` is the row's own forecast, which is where the cap sentence and the `BUY ALL` sentences
+ * live: the ITEMS and SILVER hovers say them in the same words because they call the same
+ * functions. `undefined` when there is nothing to say, exactly today's behaviour for a cell the
+ * orders left alone (`ah-agbm`).
  */
 export function itemsTooltip(
   unit: PreviewedUnit | undefined,
@@ -162,6 +164,7 @@ export function itemsTooltip(
   const built = unit.built ?? [];
   const created = unit.created ?? [];
   const uncounted = unit.uncounted ?? [];
+  const buyAll = buyAllSentences(silver);
   const capSentence = productionCapSentence(silver);
   const castCap = castCapSentence(silver);
   if (
@@ -171,6 +174,7 @@ export function itemsTooltip(
     built.length === 0 &&
     created.length === 0 &&
     uncounted.length === 0 &&
+    buyAll.length === 0 &&
     capSentence === undefined &&
     castCap === undefined
   ) {
@@ -192,6 +196,9 @@ export function itemsTooltip(
     lines.push(
       `Includes ${item.amount} ${item.tag} this unit will produce. Production resolves last, so they cannot be spent this month.`
     );
+  }
+  for (const sentence of buyAll) {
+    lines.push(sentence);
   }
   for (const item of created) {
     const amount = item.fewest === item.most ? `${item.most}` : `${item.fewest}-${item.most}`;

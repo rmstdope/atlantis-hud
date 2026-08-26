@@ -298,6 +298,36 @@ pub struct UnitSilver {
     /// see [`FormedSubject`]. The interface names the unit by its alias and sends a click to
     /// `formed_by`, since a unit that does not exist cannot be selected.
     pub formed: Option<FormedSubject>,
+    /// This unit's `BUY ALL` orders, settled, in document order. Empty for the overwhelming
+    /// majority of units, and empty for a unit whose sums are doubted - the deferred pass does
+    /// not run at all then, exactly as it does not today.
+    pub buy_all: Vec<BuyAllShown>,
+}
+
+/// One `BUY ALL` on one unit, as the ITEMS and SILVER hovers say it.
+///
+/// A `Vec` on [`UnitSilver`] rather than a set of flat fields: a unit may write several `BUY ALL`
+/// lines and each gets its own sentence (the navigator's Q4), and every field here is meaningless
+/// without the others.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct BuyAllShown {
+    /// `"19 grain"`, `"1 sword"`, `"8 nomads"`, `"no grain"` - counted and pluralised **by the
+    /// core**, because the unit does not hold these goods yet and TS cannot pluralise what it was
+    /// never given. The same reason `castMadeNamed` is pre-counted (`ah-ofpb.4`).
+    pub bought_named: String,
+    /// The whole line, named the same way, for the `Shared` sentence.
+    pub market_named: String,
+    pub bought: i64,
+    pub affordable: i64,
+    pub available: i64,
+    pub market_has: i64,
+    /// What the unit holds when this line is reached, for the "cannot afford one" sentence.
+    pub silver_available: i64,
+    /// The line's unit price, for the same sentence.
+    pub price: i64,
+    pub capped_by: BuyAllCap,
 }
 
 /// The kind of order a shortfall bites on, so the hover can name it (`ah-uwa3`).
@@ -568,6 +598,13 @@ pub struct Lookups<'a> {
     /// reason `item_name` is: what a cast is about to create is not in the unit's inventory, so
     /// the interface cannot pluralise it (`ah-ofpb.4`).
     pub counted_item: &'a dyn Fn(i64, &str) -> String,
+    /// `"19 grain"`, `"no grain"` - [`Lookups::counted_item`] with zero written as a word.
+    ///
+    /// A separate lookup rather than a rule TS applies: pluralisation lives in the core's
+    /// `Plurals` map, and a sentence that states an absence reads "buys no grain", never
+    /// "buys 0 grain". `counted_item` itself is left alone - every other caller states a
+    /// quantity rather than an absence.
+    pub counted_or_none: &'a dyn Fn(i64, &str) -> String,
 }
 
 /// What this hex's market says about goods a unit is ordered to sell.
@@ -937,6 +974,7 @@ pub fn forecast_unit(
             cast_capped_by: None,
             cast_summons: false,
             formed,
+            buy_all: Vec::new(),
         };
     }
 
@@ -971,6 +1009,9 @@ pub fn forecast_unit(
     // `BUY ALL` and `GIVE ... ALL SILV` spend what is left after every other term, so they cannot
     // be priced inside this pass. Collected in document order and applied below.
     let mut deferred: Vec<Deferred> = Vec::new();
+    // What each `BUY ALL` in `deferred` settled to, for the hover - filled by the deferred pass
+    // below, in document order.
+    let mut buy_all: Vec<BuyAllShown> = Vec::new();
 
     // Whether this unit taxes at all is a property of the unit, not of one line in its block: the
     // taxing flag makes it tax every turn with no `TAX` order, and a unit with both the flag and an
@@ -1152,10 +1193,15 @@ pub fn forecast_unit(
                     // waits for the running total below.
                     // The share is captured here, where the `Lookups` are, rather than in the
                     // deferred pass - which runs after the settlement and knows nothing of it.
+                    // A `BUY ALL` whose item resolves to no tag cannot reach here: the `purchase`
+                    // closure would have answered `NotSold` and the arm above doubts before the
+                    // amount is read.
                     Amount::All { .. } => deferred.push(Deferred::BuyAll {
                         price,
-                        market_has: (lookups.market_share)(item, MarketSide::Buying)
+                        available: (lookups.market_share)(item, MarketSide::Buying)
                             .unwrap_or(market_has),
+                        market_has,
+                        tag: (lookups.item_tag)(item).unwrap_or_default(),
                     }),
                 },
                 PurchaseAnswer::NotSold { name } => {
@@ -1246,15 +1292,25 @@ pub fn forecast_unit(
             .saturating_sub(expense);
         for spend in &deferred {
             let spent = match spend {
-                Deferred::BuyAll { price, market_has } => {
-                    if *price <= 0 {
-                        0
-                    } else {
-                        (running / price)
-                            .max(0)
-                            .min(*market_has)
-                            .saturating_mul(*price)
-                    }
+                Deferred::BuyAll {
+                    price,
+                    available,
+                    market_has,
+                    tag,
+                } => {
+                    let (priced, plan) = price_buy_all(running, *price, *available, *market_has);
+                    buy_all.push(BuyAllShown {
+                        bought_named: (lookups.counted_or_none)(plan.bought, tag),
+                        market_named: (lookups.counted_or_none)(plan.market_has, tag),
+                        bought: plan.bought,
+                        affordable: plan.affordable,
+                        available: plan.available,
+                        market_has: plan.market_has,
+                        silver_available: running,
+                        price: *price,
+                        capped_by: plan.capped_by,
+                    });
+                    priced.spends
                 }
                 Deferred::GiveAllSilver { except, to_nobody } => {
                     let spent = running.saturating_sub(*except).max(0);
@@ -1357,14 +1413,24 @@ pub fn forecast_unit(
         cast_capped_by: cast.as_ref().and_then(|plan| plan.capped_by),
         cast_summons: cast.as_ref().is_some_and(|plan| plan.summons),
         formed,
+        buy_all,
     }
 }
 
 /// A term that spends whatever is left after every other one, kept until the running total exists.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum Deferred {
-    /// `BUY ALL`: as many as the unit can afford, and no more than the market has.
-    BuyAll { price: i64, market_has: i64 },
+    /// `BUY ALL`: as many as the unit can afford, and no more than its settled share of the line.
+    BuyAll {
+        price: i64,
+        /// This unit's settled share of the line, or the line itself where nothing was settled.
+        available: i64,
+        /// The whole line.
+        market_has: i64,
+        /// The canonical tag, or empty for one nothing could identify - unreachable in practice,
+        /// see the call site.
+        tag: String,
+    },
     /// `GIVE ... ALL SILV`, less any `EXCEPT` reserve.
     GiveAllSilver { except: i64, to_nobody: bool },
 }
@@ -2314,6 +2380,90 @@ pub fn price_purchase(count: i64, price: i64, allowed: i64) -> Priced {
         spends: quantity_bought(count, allowed).saturating_mul(price),
         ..Priced::default()
     }
+}
+
+/// Which limit settled a `BUY ALL`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "kebab-case")]
+pub enum BuyAllCap {
+    /// The unit's silver ran out before the market's line did. Also the exact tie, and a unit
+    /// that cannot afford even one - see [`price_buy_all`] for why both live here.
+    Silver,
+    /// The line ran out, and no other own unit contended for it.
+    Market,
+    /// The line was split with this faction's own units in the hex, so this unit's share is
+    /// smaller than the line - a different fact from the line being small, and the one the
+    /// player can do something about.
+    Shared,
+}
+
+/// What one `BUY ALL` takes, and what stopped it taking more.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuyAllPlan {
+    /// How many it actually buys.
+    pub bought: i64,
+    /// How many its silver alone would pay for, market aside.
+    pub affordable: i64,
+    /// This unit's settled share of the line - what it could have had were it rich enough.
+    pub available: i64,
+    /// The whole line, so a `Shared` sentence can say what was split.
+    pub market_has: i64,
+    pub capped_by: BuyAllCap,
+}
+
+/// What a `BUY ALL` takes and what it costs.
+///
+/// The unbounded counterpart of [`price_purchase`], and called by **both** surfaces -
+/// `forecast_unit`'s deferred pass and `semantics::settle_buy_all` - because two surfaces reading
+/// one order must not price it two ways (`ah-lu0f.2`).
+///
+/// `silver_available` is what the unit holds when this line is reached, which is *not* its report
+/// holding: `rules/sequenceofevents` settles TAX, PILLAGE and SELL before the market opens, so a
+/// unit taxes and sells before it buys. Each caller supplies that from its own running figure.
+#[must_use]
+pub fn price_buy_all(
+    silver_available: i64,
+    price: i64,
+    available: i64,
+    market_has: i64,
+) -> (Priced, BuyAllPlan) {
+    // A price of zero or less cannot come off a real `For Sale` line - every one is printed
+    // `at $N` - so this is a guard rather than a case, and it matches what the shipped deferred
+    // pass already does.
+    let affordable = if price <= 0 {
+        0
+    } else {
+        (silver_available / price).max(0)
+    };
+    let available = available.max(0);
+    let bought = affordable.min(available);
+    let capped_by = if bought < affordable {
+        if available < market_has {
+            BuyAllCap::Shared
+        } else {
+            BuyAllCap::Market
+        }
+    } else {
+        // Silver is the narrator whenever the market did not bite - which includes the exact tie
+        // (the navigator's decision: a `BUY ALL` means "as many as it can afford", so silver is
+        // its natural voice, and the two equal numbers make the dead heat visible) and a unit
+        // that can afford none, where `affordable` and `bought` are both zero.
+        BuyAllCap::Silver
+    };
+    (
+        Priced {
+            spends: bought.saturating_mul(price),
+            ..Priced::default()
+        },
+        BuyAllPlan {
+            bought,
+            affordable,
+            available,
+            market_has,
+            capped_by,
+        },
+    )
 }
 
 /// How many of the goods a `SELL` actually moves: what was asked, capped by the settled share and
@@ -3656,6 +3806,7 @@ mod tests {
             item_name: &verbatim_name,
             market_share: &unsettled_market,
             counted_item: &verbatim_counted,
+            counted_or_none: &verbatim_counted_or_none,
         }
     }
 
@@ -3663,6 +3814,16 @@ mod tests {
     /// same way [`verbatim_name`] does.
     fn verbatim_counted(count: i64, tag: &str) -> String {
         format!("{count} {}", tag.to_lowercase())
+    }
+
+    /// [`Lookups::counted_or_none`]'s twin for a test with no catalogue: names the tag verbatim,
+    /// writing zero as a word the same way the shipped closure does.
+    fn verbatim_counted_or_none(count: i64, tag: &str) -> String {
+        if count == 0 {
+            format!("no {}", tag.to_lowercase())
+        } else {
+            verbatim_counted(count, tag)
+        }
     }
 
     fn verbatim_name(tag: &str) -> String {
@@ -5359,6 +5520,67 @@ mod tests {
         let unit = spending(100, &intents, RegionWages::default(), &sells(12, 5), None);
         assert_eq!(unit.expense, Some(96));
         assert_eq!(unit.at_month_end, Some(4));
+    }
+
+    // --- ah-jown: price_buy_all --------------------------------------------------------------
+
+    #[test]
+    fn a_buy_all_is_capped_by_silver_when_it_runs_out_first() {
+        let (priced, plan) = price_buy_all(356, 18, 30, 30);
+        assert_eq!(priced.spends, 342);
+        assert_eq!(plan.bought, 19);
+        assert_eq!(plan.affordable, 19);
+        assert_eq!(plan.capped_by, BuyAllCap::Silver);
+    }
+
+    #[test]
+    fn a_buy_all_capped_by_a_small_market_names_the_market() {
+        let (_, plan) = price_buy_all(356, 18, 5, 5);
+        assert_eq!(plan.bought, 5);
+        assert_eq!(plan.capped_by, BuyAllCap::Market);
+    }
+
+    #[test]
+    fn a_buy_all_whose_share_is_short_of_the_line_names_the_split() {
+        let (_, plan) = price_buy_all(356, 18, 5, 10);
+        assert_eq!(plan.bought, 5);
+        assert_eq!(plan.capped_by, BuyAllCap::Shared);
+    }
+
+    #[test]
+    fn an_exact_tie_is_told_as_silver() {
+        let (_, plan) = price_buy_all(342, 18, 19, 19);
+        assert_eq!(plan.bought, 19);
+        assert_eq!(plan.capped_by, BuyAllCap::Silver);
+    }
+
+    #[test]
+    fn a_unit_that_cannot_afford_one_buys_none_and_blames_its_silver() {
+        let (_, plan) = price_buy_all(10, 18, 30, 30);
+        assert_eq!(plan.bought, 0);
+        assert_eq!(plan.affordable, 0);
+        assert_eq!(plan.capped_by, BuyAllCap::Silver);
+    }
+
+    #[test]
+    fn a_line_priced_at_nothing_buys_nothing() {
+        let (priced, plan) = price_buy_all(356, 0, 30, 30);
+        assert_eq!(priced.spends, 0);
+        assert_eq!(plan.bought, 0);
+    }
+
+    #[test]
+    fn a_buy_all_says_what_it_bought_and_what_stopped_it() {
+        let intents = vec![placed(Intent::Buy {
+            amount: Amount::All { except: 0 },
+            item: "grain".to_string(),
+        })];
+        let unit = spending(356, &intents, RegionWages::default(), &sells(18, 30), None);
+        assert_eq!(unit.expense, Some(342));
+        assert_eq!(unit.buy_all.len(), 1);
+        let bought = &unit.buy_all[0];
+        assert_eq!(bought.bought, 19);
+        assert_eq!(bought.capped_by, BuyAllCap::Silver);
     }
 
     #[test]

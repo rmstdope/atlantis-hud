@@ -2842,15 +2842,19 @@ mod tests {
             assert_eq!(swords, 1, "3 swords less 2 given, not less 4");
         }
 
+        // `report_with_market()`'s hex sells horses, so a `BUY ALL` of them is settled rather
+        // than uncounted since `ah-jown` - these two now name a good the market does not carry
+        // (`SWOR`, not on its `For Sale` line) to stay examples of an order that really cannot
+        // be counted at all.
         #[test]
         fn an_uncounted_order_reaches_the_preview_verbatim() {
             let response = preview_over(
                 &report_with_market(),
-                "unit 900\nbuy all HORS ; testing\nSELL 1 FUR\n",
+                "unit 900\nbuy all SWOR ; testing\nSELL 1 FUR\n",
             );
             let unit = only_unit(&response);
 
-            assert_eq!(unit.uncounted, vec!["buy all HORS".to_string()]);
+            assert_eq!(unit.uncounted, vec!["buy all SWOR".to_string()]);
         }
 
         /// The navigator's S1 state: a unit whose only order cannot be counted still reaches the
@@ -2858,11 +2862,11 @@ mod tests {
         /// bottom of `preview_orders_on_map` gains `&& uncounted.is_empty()` for exactly this.
         #[test]
         fn a_unit_whose_only_order_cannot_be_counted_is_still_sent() {
-            let response = preview_over(&report_with_market(), "unit 900\nBUY ALL HORS\n");
+            let response = preview_over(&report_with_market(), "unit 900\nBUY ALL SWOR\n");
             let unit = only_unit(&response);
 
             assert!(unit.changes.is_empty(), "{:?}", unit.changes);
-            assert_eq!(unit.uncounted, vec!["BUY ALL HORS".to_string()]);
+            assert_eq!(unit.uncounted, vec!["BUY ALL SWOR".to_string()]);
         }
 
         #[test]

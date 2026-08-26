@@ -4163,6 +4163,26 @@ test("a bought item marks the ITEMS cell as a projection", async ({ page }) => {
 });
 
 /**
+ * ah-jown: a `BUY ALL` now settles like a stated `BUY` instead of leaving the ITEMS cell marked
+ * `+ ?`. Hex 1:7,53 carries a "For Sale: 63 perfume [PERF] at $204 ..." line; `CLAIM 1000` gives
+ * the unit silver to spend without depending on this hex's own tax or wage figures, so the case
+ * stays deterministic wherever the fixture's own numbers drift.
+ */
+test("a BUY ALL settles and marks the ITEMS cell as a projection", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await fillOrders(page, "CLAIM 1000\nBUY ALL perfume");
+
+  const itemsCell = row.locator('[data-predicted="true"]').first();
+  await expect(itemsCell).toContainText("PERF");
+  await expect(itemsCell).not.toContainText("+ ?");
+  await expect(itemsCell).toHaveAttribute("title", /this market offers/);
+});
+
+/**
  * ah-ofpb.1: a PRODUCE now shows what it makes. Unit 18642 is a one-man leader with no lumberjack
  * skill, and that is deliberate: the projection is taken from the recipe, the men and the
  * holdings, and never from whether the unit can actually do it - a unit ordered to make what it

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   HOVER_DELAY_MS,
   SILVER_NOTES,
+  buyAllSentences,
   placeTooltip,
   productionCapSentence,
   summariseUnit,
@@ -154,6 +155,84 @@ describe("productionCapSentence", () => {
     expect(productionCapSentence(aUnitSilver())).toBeUndefined();
     expect(productionCapSentence(null)).toBeUndefined();
     expect(productionCapSentence(undefined)).toBeUndefined();
+  });
+});
+
+describe("buyAllSentences (ah-jown)", () => {
+  const buyAll = (overrides: Partial<UnitSilver["buyAll"][number]> = {}) =>
+    aUnitSilver({
+      buyAll: [
+        {
+          boughtNamed: "19 grain",
+          marketNamed: "30 grain",
+          bought: 19,
+          affordable: 19,
+          available: 30,
+          marketHas: 30,
+          silverAvailable: 356,
+          price: 18,
+          cappedBy: "silver",
+          ...overrides
+        }
+      ]
+    });
+
+  it("names the cap that settled each BUY ALL", () => {
+    expect(buyAllSentences(buyAll({ cappedBy: "silver" }))).toEqual([
+      "This unit has silver for 19 grain, not the 30 this market offers."
+    ]);
+    expect(
+      buyAllSentences(
+        buyAll({ cappedBy: "market", boughtNamed: "5 grain", bought: 5, affordable: 19 })
+      )
+    ).toEqual(["This market has 5 grain, not the 19 this unit's silver would buy."]);
+    expect(
+      buyAllSentences(
+        buyAll({
+          cappedBy: "shared",
+          bought: 5,
+          available: 5,
+          marketHas: 10,
+          marketNamed: "10 grain"
+        })
+      )
+    ).toEqual([
+      "This unit gets 5 of the 10 grain this market has, because your units in this region are competing for it."
+    ]);
+    expect(
+      buyAllSentences(
+        buyAll({
+          cappedBy: "silver",
+          bought: 0,
+          boughtNamed: "no grain",
+          affordable: 0,
+          available: 30,
+          marketHas: 30,
+          silverAvailable: 10,
+          price: 18
+        })
+      )
+    ).toEqual(["This unit buys no grain: it holds 10 silver and one costs 18."]);
+    expect(
+      buyAllSentences(
+        buyAll({
+          cappedBy: "shared",
+          bought: 0,
+          boughtNamed: "no grain",
+          affordable: 19,
+          available: 0,
+          marketHas: 10
+        })
+      )
+    ).toEqual([
+      "This unit buys no grain: your other units in this region have claimed all 10 this market has."
+    ]);
+  });
+
+  it("says nothing for a unit that wrote no BUY ALL", () => {
+    expect(buyAllSentences(aUnitSilver())).toEqual([]);
+    expect(buyAllSentences(null)).toEqual([]);
+    expect(buyAllSentences(undefined)).toEqual([]);
   });
 });
 
@@ -1162,6 +1241,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
     "cannot-pay": "This unit cannot pay the 50 its study costs.",
     "shared-silver-pays-orders":
       "A faction-mate's silver in this hex pays for this unit's orders.",
+    "buy-all-settled":
+      "This unit has silver for 19 grain, not the 30 this market offers.",
     "production-capped":
       "This unit has silver for 1 catapult, not the 3 its men could make.",
     "cast-capped":
@@ -1404,7 +1485,20 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
       castMade: 2,
       castMadeNamed: "2 amulets of protection",
       castWanted: 3,
-      castCappedBy: "silver"
+      castCappedBy: "silver",
+      buyAll: [
+        {
+          boughtNamed: "19 grain",
+          marketNamed: "30 grain",
+          bought: 19,
+          affordable: 19,
+          available: 30,
+          marketHas: 30,
+          silverAvailable: 356,
+          price: 18,
+          cappedBy: "silver"
+        }
+      ]
     });
 
   const unit = aReportUnit({ men: 6, items: [{ tag: "GRAI", name: "grain", amount: 4 }] });

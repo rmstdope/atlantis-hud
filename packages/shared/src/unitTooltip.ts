@@ -223,6 +223,31 @@ export function productionCapSentence(silver: UnitSilver | null | undefined): st
 }
 
 /**
+ * One sentence per `BUY ALL` this unit wrote, in document order - what it buys and what stopped
+ * it buying more. Empty when the unit wrote none, or when its sums are doubted.
+ *
+ * Exported because the ITEMS hover says it too (`ah-jown`), the arrangement
+ * [`productionCapSentence`] already has: two copies of one sentence are two things to keep in step.
+ */
+export function buyAllSentences(silver: UnitSilver | null | undefined): string[] {
+  return (silver?.buyAll ?? []).map((b) => {
+    if (b.bought === 0 && b.cappedBy === "silver") {
+      return `This unit buys ${b.boughtNamed}: it holds ${b.silverAvailable} silver and one costs ${b.price}.`;
+    }
+    if (b.bought === 0 && b.cappedBy === "shared") {
+      return `This unit buys ${b.boughtNamed}: your other units in this region have claimed all ${b.marketHas} this market has.`;
+    }
+    if (b.cappedBy === "shared") {
+      return `This unit gets ${b.bought} of the ${b.marketNamed} this market has, because your units in this region are competing for it.`;
+    }
+    if (b.cappedBy === "market") {
+      return `This market has ${b.boughtNamed}, not the ${b.affordable} this unit's silver would buy.`;
+    }
+    return `This unit has silver for ${b.boughtNamed}, not the ${b.available} this market offers.`;
+  });
+}
+
+/**
  * "This unit has silver for 2 amulets of protection, not the 3 its level could make." -
  * `undefined` when nothing capped the cast, or when there is no priceable CAST to speak about.
  * `castMadeNamed` is already counted and named - unlike `producedName` above, the core cannot
@@ -532,6 +557,34 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       // A unit that really is short is warned - and the inferred `shared-silver-covers-shortfall`
       // note above reads exactly that silence, so an unwarned example would be shadowed by it.
       warned: true,
+      countUpkeep: true
+    })
+  },
+  // A `BUY ALL` explains where the silver went, on the cell that visibly lost it. One note however
+  // many lines the unit wrote: `silverNote` joins the notes it keeps with "\n", so a note that
+  // returns several lines reads identically to several notes (`ah-jown`).
+  {
+    id: "buy-all-settled",
+    when: ({ silver }) => buyAllSentences(silver).length > 0,
+    say: ({ silver }) => buyAllSentences(silver).join("\n"),
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({
+        buyAll: [
+          {
+            boughtNamed: "19 grain",
+            marketNamed: "30 grain",
+            bought: 19,
+            affordable: 19,
+            available: 30,
+            marketHas: 30,
+            silverAvailable: 356,
+            price: 18,
+            cappedBy: "silver"
+          }
+        ]
+      }),
+      warned: false,
       countUpkeep: true
     })
   },
