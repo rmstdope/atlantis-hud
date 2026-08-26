@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-dxfd.2 — which moment in the turn each number is priced from</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  header p b { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  table.grid { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:8px; font-family:system-ui,-apple-system,sans-serif; }
+  table.grid th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.grid td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  table.grid td.n { text-align:right; font-family:'SF Mono',Menlo,monospace; }
+  table.grid tr.hi td { background:rgba(217,164,65,.07); }
+  .orders { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); white-space:pre; margin-top:10px; }
+  .dim { color:var(--ink-dim); } .red { color:var(--danger); } .ok { color:var(--ok); }
+  .pred { color:var(--brass); font-style:italic; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); } .bad { border-left-color:var(--danger); }
+  .good { border-left-color:var(--ok); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 4px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cyc { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft);
+    background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:11px 14px; margin-top:10px; }
+  .cyc b { color:var(--brass); }
+  .q { background:#2a2113; border:1px solid #5c4718; border-left:4px solid var(--brass); border-radius:5px;
+    padding:11px 14px; margin:22px 0 2px; max-width:100ch; font-size:13.5px; }
+  .q b { color:var(--brass); }
+  .warn { font-family:system-ui,sans-serif; font-size:12.5px; background:#2a1a1a; border:1px solid #5c2a2a;
+    border-left:4px solid var(--danger); border-radius:4px; padding:9px 12px; margin-top:8px; color:#f0d8d8; max-width:100ch; }
+  .quiet { font-family:system-ui,sans-serif; font-size:12.5px; background:var(--raised); border:1px solid var(--edge);
+    border-left:4px solid var(--edge); border-radius:4px; padding:9px 12px; margin-top:8px; color:var(--ink-dim); max-width:100ch; }
+</style></head><body>
+<header>
+  <h1>ah-dxfd.2 — <span>which moment in the turn each number is priced from</span></h1>
+  <p>Before the questions, one correction to the mockup you approved for the parent bead. That page said the
+  answer was to read <b>the ledger's post-order balance</b> and reorder <code>ledger_for</code> so item
+  transfers settle before the silver is priced. I looked the turn sequence up
+  (<code>rules/sequenceofevents</code>) and that turns out to be both harder than it needs to be
+  <b>and wrong in one direction</b>.</p>
+  <p>The game runs GIVE and TAKE <b>first</b>, and PILLAGE and TAX immediately after — before the market
+  opens. So a sword <i>bought</i> this month is not in the unit's hand when it pillages, and the ledger's
+  end-of-month balance counts it as though it were.</p>
+</header>
+<main>
+
+<h3 class="sec">The turn, in the game's own order</h3>
+<p>Abridged from <code>rules/sequenceofevents</code>. The right-hand column is what each phase can see.</p>
+<table class="grid">
+  <tr><th style="width:26%">Phase</th><th style="width:30%">What this app prices there</th><th>Sees</th></tr>
+  <tr class="hi"><td><b>GIVE and TAKE</b></td><td>—</td><td>the report</td></tr>
+  <tr class="hi"><td><b>PILLAGE, TAX</b></td><td>pillage warning, TAX income</td><td>the report <b>+ gifts and takes</b></td></tr>
+  <tr class="hi"><td><b>Spells are CAST</b></td><td>CAST income and cost</td><td>the report <b>+ gifts and takes</b></td></tr>
+  <tr><td>SELL, then BUY</td><td>market income and cost</td><td>&hellip; + what was sold</td></tr>
+  <tr><td>WITHDRAW</td><td>—</td><td>&hellip; + what was bought</td></tr>
+  <tr><td>Movement</td><td>—</td><td>&hellip;</td></tr>
+  <tr><td>STUDY, PRODUCE, BUILD</td><td>study fee, production cost</td><td>&hellip; + withdrawals</td></tr>
+  <tr><td>ENTERTAIN, WORK</td><td>entertaining and wage income</td><td>&hellip;</td></tr>
+  <tr><td><b>Maintenance is assessed</b></td><td>upkeep, and the food that pays it</td><td>everything</td></tr>
+</table>
+<div class="note good"><b>What this buys.</b> The three highlighted rows are the whole of the bead's headline case —
+the pillage warning, the tax income and the CAST income — and every one of them is priced from the picture
+<i>immediately after GIVE and TAKE</i>. That picture is already half-built: the walk that follows gifts of men
+for the skill checks (<code>apply_gifts_of_men</code>, shipped by <code>ah-z73s.2</code>) keeps a running
+holdings map per unit and simply throws it away. Widening it from "gifts of men" to "gifts of anything" and
+publishing what it already knows fixes all three — <b>and needs no change to <code>ledger_for</code> at all,
+so the cycle that page called out never has to be broken.</b></div>
+
+<h3 class="sec">The headline case, unchanged from the parent's mockup</h3>
+<p>Isles of Kel, tax base 2400, so 24 combat ready men are needed to pillage.</p>
+<div class="orders">unit 1234              <span class="dim">; Home guard — 19 HUMN, COMB 1 (30), 35 SWOR</span>
+FORM 1
+  PILLAGE
+END
+GIVE NEW 1 10 HUMN
+GIVE NEW 1 10 SWOR</div>
+<table class="grid">
+  <tr><th>&nbsp;</th><th>Home guard</th><th>Raiders (new 1)</th><th class="n">Region total</th><th>Warning</th></tr>
+  <tr><td>Today</td><td class="n">min(19, 35) = 19</td><td class="n">min(0, 0) = 0</td><td class="n">19</td><td class="red">fires, with a false explanation</td></tr>
+  <tr class="hi"><td><b>After this bead</b></td><td class="n">min(9, 25) = 9</td><td class="n">min(10, 10) = 10</td><td class="n">19</td><td class="ok">fires; correct number, no false explanation</td></tr>
+</table>
+
+<h3 class="sec">What is left over — and it is a real question</h3>
+<p>The bottom half of the turn — ENTERTAIN, WORK and maintenance — sees the post-market picture, which
+includes <b>men bought from the market</b>. Recruiting <i>is</i> the market in this game
+(<code>rules/economy_recruiting</code>: "The BUY order is used to recruit new people"), and
+<code>ah-dxfd.1</code> — merging now — makes the <b>MEN</b> cell show them.</p>
+<div class="orders">unit 900               <span class="dim">; Crew — 10 HUMN, 400 SILV, in a region paying $24.1 wages</span>
+BUY 5 HUMN
+WORK</div>
+<table class="grid">
+  <tr><th>&nbsp;</th><th class="n">MEN cell</th><th class="n">SILVER column prices WORK on</th><th>Row reads</th></tr>
+  <tr><td>Today</td><td class="n">10</td><td class="n">10 men &rarr; $241</td><td class="dim">consistent, and both wrong</td></tr>
+  <tr><td>After <code>ah-dxfd.1</code> alone</td><td class="n pred">15</td><td class="n">10 men &rarr; $241</td><td class="red">the two cells of one row disagree</td></tr>
+  <tr class="hi"><td>After this bead, <b>option A</b></td><td class="n pred">15</td><td class="n">10 men &rarr; $241</td><td class="red">still disagree — left to a follow-up</td></tr>
+  <tr class="hi"><td>After this bead, <b>option B</b></td><td class="n pred">15</td><td class="n pred">15 men &rarr; $361</td><td class="ok">agree</td></tr>
+</table>
+
+<span class="opt">A — this bead follows gifts and takes only</span>
+<ul class="notes">
+  <li>One view of a unit, taken immediately after GIVE and TAKE. Every number in the bead's title is right.</li>
+  <li>Smaller: one walk widened, two call sites repointed. No change to <code>ledger_for</code>.</li>
+  <li class="con">A unit that BUYs men keeps pricing its WORK, ENTERTAIN and upkeep on the old headcount, so
+    its MEN cell and its SILVER cell disagree until a follow-up bead lands.</li>
+  <li class="con">Same for food: grain <i>bought</i> this month will not be counted as paying upkeep.
+    Grain <i>given</i> will be.</li>
+</ul>
+
+<span class="opt">B — this bead also gives the late orders a post-market view</span>
+<ul class="notes">
+  <li>The row agrees with itself for a recruiting unit, which is the fault the whole family exists to remove.</li>
+  <li>Food bought this month pays maintenance, which is what the game does.</li>
+  <li class="con">A unit now has <b>two</b> headcounts and two holdings — one for PILLAGE/TAX/CAST, one for
+    WORK/ENTERTAIN/maintenance — and every arithmetic term in the column has to say which it takes.
+    That is the single largest source of "why does this number differ from that one" in this module.</li>
+  <li class="con">Meaningfully larger bead: the late view has to come off the ledger's balance, so
+    <code>forecast_hex</code> and <code>charge_upkeep</code> both grow a second source of facts.</li>
+</ul>
+
+<div class="q"><b>Question 1.</b> Does <code>ah-dxfd.2</code> stop at gifts and takes (A), with a follow-up bead
+for men and goods that arrive from the market — or does it carry the late orders too (B)?</div>
+
+</main></body></html>

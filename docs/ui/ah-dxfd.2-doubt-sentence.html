@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-dxfd.2 — the sentence the innocent neighbour reads</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  header p b { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  table.grid { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:8px; font-family:system-ui,-apple-system,sans-serif; }
+  table.grid th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.grid td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  table.grid td.n { text-align:right; font-family:'SF Mono',Menlo,monospace; }
+  table.grid tr.hi td { background:rgba(217,164,65,.07); }
+  .orders { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); white-space:pre; margin-top:10px; }
+  .dim { color:var(--ink-dim); } .red { color:var(--danger); } .ok { color:var(--ok); }
+  .pred { color:var(--brass); font-style:italic; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); } .bad { border-left-color:var(--danger); }
+  .good { border-left-color:var(--ok); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 4px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cyc { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft);
+    background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:11px 14px; margin-top:10px; }
+  .cyc b { color:var(--brass); }
+  .q { background:#2a2113; border:1px solid #5c4718; border-left:4px solid var(--brass); border-radius:5px;
+    padding:11px 14px; margin:22px 0 2px; max-width:100ch; font-size:13.5px; }
+  .q b { color:var(--brass); }
+  .warn { font-family:system-ui,sans-serif; font-size:12.5px; background:#2a1a1a; border:1px solid #5c2a2a;
+    border-left:4px solid var(--danger); border-radius:4px; padding:9px 12px; margin-top:8px; color:#f0d8d8; max-width:100ch; }
+  .quiet { font-family:system-ui,sans-serif; font-size:12.5px; background:var(--raised); border:1px solid var(--edge);
+    border-left:4px solid var(--edge); border-radius:4px; padding:9px 12px; margin-top:8px; color:var(--ink-dim); max-width:100ch; }
+</style></head><body>
+<header>
+  <h1>ah-dxfd.2 — <span>the sentence the innocent neighbour reads</span></h1>
+  <p>You chose <b>B</b>: a transfer the app cannot follow makes the hex's combat-ready sum unanswerable, so a
+  pillaging unit's SILVER cell shows <code>?</code>. I said that needed no new sentence. <b>Checking the code,
+  that was wrong</b> — and it turns out to be wrong for a case that already ships.</p>
+  <p>When the hex's sum is unanswerable, <code>price_pillage</code> raises
+  <code>SilverDoubt::EstimatedMen</code>, whose hover reads:</p>
+  <div class="warn" style="border-left-color:var(--brass);background:#2a2113;border-color:#5c4718;color:#f0e2c4">This unit's headcount is an estimate, so its month cannot be priced.</div>
+  <p>The code's own comment says <i>"<code>EstimatedMen</code> is reused rather than a variant added — its
+  sentence stays true."</i> <b>It does not.</b> The sum goes unanswerable when <i>any</i> own unit in the hex
+  has a guessed headcount, so today a unit whose own count is exact can already be told its headcount is an
+  estimate. Option B adds a second cause with the same problem.</p>
+</header>
+<main>
+
+<h3 class="sec">Who reads the sentence, and whether it is true of them</h3>
+<table class="grid">
+  <tr><th style="width:38%">Situation</th><th style="width:28%">Whose cell shows <code>?</code></th><th>Is "this unit's headcount is an estimate" true of them?</th></tr>
+  <tr><td>The pillaging unit's own headcount is a guess</td><td>its own</td><td class="ok">yes</td></tr>
+  <tr><td><b>Ships today:</b> a <i>neighbour's</i> headcount is a guess</td><td>the pillager's</td><td class="red">no — its count is exact</td></tr>
+  <tr class="hi"><td><b>New with option B:</b> a neighbour writes <code>GIVE 900 ALL MAGIC</code></td><td>the pillager's</td><td class="red">no — nobody's headcount is a guess; a transfer cannot be followed</td></tr>
+</table>
+
+<h3 class="sec">The case</h3>
+<div class="orders">unit 1234              <span class="dim">; Home guard — 19 HUMN, COMB 1 (30), 35 SWOR</span>
+GIVE 2200 ALL MAGIC
+
+unit 2200              <span class="dim">; Raiders — 12 HUMN, COMB 1 (30), 12 SWOR</span>
+PILLAGE                <span class="dim">; ← this unit's SILVER cell shows ? and this hover explains why</span></div>
+
+<span class="opt">S1 — keep reusing EstimatedMen</span>
+<div class="warn" style="border-left-color:var(--brass);background:#2a2113;border-color:#5c4718;color:#f0e2c4">This unit's headcount is an estimate, so its month cannot be priced.</div>
+<ul class="notes">
+  <li>No new string, no new variant, no TypeScript at all — this bead stays inside <code>crates/core</code>.</li>
+  <li class="con">It is false, and demonstrably so: the Raiders' MEN cell shows a plain <b>12</b> two columns
+    away while this sentence calls it an estimate. A player who trusts it goes looking for a <code>~</code>
+    that is not there.</li>
+  <li class="con">Leaves a defect that already ships, in a comment that asserts the opposite.</li>
+</ul>
+
+<span class="opt">S2 — one new sentence for both causes, in the app's own house pattern</span>
+<div class="warn" style="border-left-color:var(--brass);background:#2a2113;border-color:#5c4718;color:#f0e2c4">Another of your units here cannot be counted, so the combat ready men in this region cannot be added up.</div>
+<ul class="notes">
+  <li>Follows the sentence the app already uses for a neighbour-caused doubt:
+    <i>"Another of your units here draws on the same pool and its headcount is an estimate, so this unit's
+    share cannot be worked out."</i></li>
+  <li>Fixes the case that already ships as well as the one this bead adds — one variant, both causes.</li>
+  <li>Points at the thing the player can act on: it is a <i>neighbour</i>, not this unit.</li>
+  <li class="con">Adds a <code>SilverDoubt</code> variant, so the bead grows a generated TypeScript type and a
+    <code>unitTooltip.ts</code> entry. No longer Rust-only.</li>
+  <li class="con">"cannot be counted" is doing two jobs — a guessed headcount and an unfollowable order —
+    and says which only by being vague.</li>
+</ul>
+
+<span class="opt">S3 — one new sentence, and say what is actually unknown</span>
+<div class="warn" style="border-left-color:var(--brass);background:#2a2113;border-color:#5c4718;color:#f0e2c4">The combat ready men in this region cannot be added up, so what a pillage earns cannot be said.</div>
+<ul class="notes">
+  <li>Says exactly what is missing and exactly what it costs, without claiming anything about this unit or
+    guessing at the cause.</li>
+  <li>True of every cause, present and future — a third cause added later needs no new wording.</li>
+  <li>Fixes the shipping case too.</li>
+  <li class="con">Does not tell the player <i>which</i> order to go and look at. They must find the neighbour
+    themselves — though that neighbour's own cell already shows <code>?</code> with its own explanation.</li>
+  <li class="con">Same TypeScript cost as S2.</li>
+</ul>
+
+<div class="q"><b>Question 4.</b> Which sentence does a pillaging unit read when its hex's combat-ready sum
+cannot be added up — S1 (keep the false one), S2 (blame the neighbour) or S3 (name what is unknown)?</div>
+
+</main></body></html>
