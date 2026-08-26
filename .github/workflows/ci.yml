@@ -264,9 +264,13 @@ jobs:
 
       - name: Generated TypeScript bindings are committed
         run: |
-          if [ -n "$(git status --porcelain -- packages/core-client/src/generated)" ]; then
-            git status --porcelain -- packages/core-client/src/generated
-            echo "::error::cargo test rewrote packages/core-client/src/generated; commit the result"
+          # Unquoted below on purpose: each word is its own pathspec. Kept in step with
+          # GENERATED_DIRS in scripts/checkGenerated.ts by scripts/generatedBindingsGate.test.ts.
+          GENERATED="packages/core-client/src/generated packages/ruleset/src/generated"
+          STALE="$(git status --porcelain -- $GENERATED)"
+          if [ -n "$STALE" ]; then
+            echo "$STALE"
+            echo "::error::cargo test rewrote the generated TypeScript bindings; commit the result"
             exit 1
           fi
 

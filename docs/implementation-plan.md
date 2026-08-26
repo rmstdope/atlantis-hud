@@ -5,8 +5,9 @@
 - Desktop-first with web parity
 - Shared Rust core with platform adapters (WASM and Tauri)
 - TypeScript types for the report model are generated from the Rust core by ts-rs into
-  `packages/core-client/src/generated/` during `cargo test`; `pnpm run check:generated` and CI
-  refuse a stale copy. A new field on a Rust report type is a Rust edit plus a `git add`.
+  `packages/core-client/src/generated/` and `packages/ruleset/src/generated/` during `cargo test`;
+  `pnpm run check:generated` and CI refuse a stale copy. A new field on a Rust report type is a Rust
+  edit plus a `git add`.
 - React + TypeScript SPA frontend
 - Tauri desktop shell
 - SVG map renderer (PixiJS until #58; a canvas cannot keep text sharp under zoom)
@@ -30,9 +31,10 @@ dev-only dependency so nothing about it reaches the wasm or desktop build, and a
 atlantis-hud-core` is the generator: it is what runs the `#[test]` functions ts-rs writes for each
 `#[ts(export)]` type.
 
-Never edit a file under `packages/core-client/src/generated/` by hand - it is overwritten on the
-next `cargo test`. Regenerate with `cargo test -p atlantis-hud-core` after changing a Rust report
-type, and commit the result; `pnpm run check:generated` and CI both fail on a stale copy. A renamed
+Never edit a file under `packages/core-client/src/generated/` or `packages/ruleset/src/generated/`
+by hand - it is overwritten on the next `cargo test`. Regenerate with `cargo test -p
+atlantis-hud-core` after changing a Rust report type, and commit the result; `pnpm run
+check:generated` and CI both fail on a stale copy. A renamed
 export (`ts(rename = "...")`) always carries `export_to` alongside it, naming the file the rename
 should land in - without it the file keeps the type's Rust name and the re-export in `index.ts`
 points at nothing. A type reached only through `#[serde(flatten)]` carries no `export` of its own,
