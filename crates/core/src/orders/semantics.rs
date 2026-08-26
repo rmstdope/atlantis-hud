@@ -5767,52 +5767,45 @@ fn capacity_after_orders(
     capacities_from_items(&priced, ruleset)
 }
 
+/// One unit's contribution to a fleet's crew once this month's orders have run.
+struct CrewAfterOrders {
+    /// Sailing levels the unit supplies: its level per man times its headcount.
+    levels: i64,
+    /// Whether any men joined it this month, by gift, take or recruiting. Decides which of the
+    /// crew message's three shapes is used, and cannot be derived from `levels`: dilution and a
+    /// gift of sailors move the total in opposite directions, and men joining while others leave
+    /// can move it not at all.
+    men_joined: bool,
+}
+
 /// The sailing levels one unit supplies once this month's transfers of men have run.
 ///
 /// A unit's skill level is held by each of its men - "the number of skill levels of the Sailing
-/// skill that must be aboard the ship" - so men leaving take levels with them. Read from the
-/// ledger for the same reason `weight_after_orders` is: the server runs every GIVE and TAKE
-/// (phase 4) before it moves anybody (phase 9), so giving a gnoll away and sailing in the same
-/// month is one turn, not two.
+/// skill that must be aboard the ship" - so both halves of `level * men` move when men do: the
+/// headcount directly, and the level because the game averages skills over the merged unit
+/// (`rules/give`). Read from `Ordered`, which `apply_gifts_of_men` and `apply_recruits` have both
+/// written by the time any check runs.
 ///
-/// `None` - cannot say, so the caller silences the crew check for this fleet - when men arrive
-/// rather than leave. The game merges given men into the receiving unit and recomputes its skill,
-/// which this application does not model; counting them at the receiver's own level would turn two
-/// unskilled gnolls into two sailors, and a warning that is wrong is worse than one that is
-/// missing (this module's header, and the navigator's own answer on the amendment).
+/// `None` - cannot say, so the caller silences the crew check for this fleet - when the merged
+/// view is `Unknowable`: men arrived by a route neither walk could follow. A warning that is
+/// wrong is worse than one that is missing (this module's header).
 fn sailing_levels_after_orders(
     ordered: &Ordered<'_>,
-    ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
-) -> Option<i64> {
-    let level: i64 = ordered
-        .unit
-        .skills
+) -> Option<CrewAfterOrders> {
+    // Without a catalogue there is no telling which tags name people, so nothing here has been
+    // computed and the report's own figures are not a substitute for it.
+    ruleset?;
+    let skills = ordered.skills()?;
+    let level: i64 = skills
         .iter()
         .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
         .map(|skill| i64::from(skill.level))
         .sum();
-
-    // Without a catalogue there is no telling which tags name people, so no delta can be computed.
-    let ruleset = ruleset?;
-
-    let mut men_moved: i64 = 0;
-    for ((unit_id, tag), balance) in &ledger.balance {
-        if unit_id != &ordered.unit.unit_id || !ruleset.is_man(tag) {
-            continue;
-        }
-        let moved = balance - ordered.holding(tag);
-        if moved > 0 {
-            // Men of this race arrived: the merged unit's skill is unknowable. Tested per tag
-            // rather than on the total, so a unit that takes gnolls in and gives centaurs away is
-            // doubted rather than netting out to a number that looks like a plain departure.
-            return None;
-        }
-        men_moved = men_moved.saturating_add(moved);
-    }
-
-    let men = ordered.unit.men.saturating_add(men_moved).max(0);
-    Some(level.saturating_mul(men))
+    Some(CrewAfterOrders {
+        levels: level.saturating_mul(ordered.men_after_orders.max(0)),
+        men_joined: ordered.men_joined > 0,
+    })
 }
 
 // --- gifts and takings ---------------------------------------------------------------------------
@@ -6014,10 +6007,10 @@ fn check_sailing(
             .sum();
         // The same after this month's transfers of men. `None` from any unit aboard silences the
         // crew check for the whole fleet - one unknowable unit makes the fleet's total unknowable.
-        let levels: Option<i64> = aboard
+        let crews: Option<Vec<CrewAfterOrders>> = aboard
             .iter()
-            .map(|ordered| sailing_levels_after_orders(ordered, ledger, ruleset))
-            .sum();
+            .map(|ordered| sailing_levels_after_orders(ordered, ruleset))
+            .collect();
         // A guessed headcount cannot price an exact number of sailing levels either - the same
         // doubt `study` already treats `men_estimated` as (`:750`). Raised in review on this
         // bead's own PR. A unit whose sums the ledger could not follow is the same kind of doubt,
@@ -6026,21 +6019,31 @@ fn check_sailing(
         let headcount_is_doubtful = aboard.iter().any(|ordered| {
             ordered.unit.men_estimated || ledger.doubted.contains(&ordered.unit.unit_id)
         });
-        if let (Some(levels), Some(required)) = (levels, sailing_requirement(fleet, ruleset)) {
+        if let (Some(crews), Some(required)) = (crews, sailing_requirement(fleet, ruleset)) {
+            let levels: i64 = crews.iter().map(|crew| crew.levels).sum();
+            let men_joined = crews.iter().any(|crew| crew.men_joined);
             if !headcount_is_doubtful
                 && levels < required
                 && options.emits(codes::FLEET_UNDERCREWED)
             {
-                let crew = match levels - reported_levels {
-                    change if change < 0 => format!(
+                let crew = if men_joined && levels != reported_levels {
+                    // Men joining the crew this month, whatever else moved - shown first so a
+                    // fleet where men both joined and left still gets the joining clause rather
+                    // than "given away" (the navigator's decision, `ah-z73s3-wording-2.html`).
+                    format!(
+                        "{reported_levels} sailing levels aboard, {levels} once the men joining \
+                         the crew this month are counted, it needs {required}"
+                    )
+                } else if levels < reported_levels {
+                    format!(
                         "{reported_levels} sailing levels aboard less {} given away this month, \
                          it needs {required}",
-                        -change
-                    ),
+                        reported_levels - levels
+                    )
+                } else {
                     // Unchanged, and the sentence `ah-j0e` already shipped: the crew did not move
-                    // this month, so there is no before-and-after to draw. A positive change
-                    // cannot occur - men arriving returns `None` above.
-                    _ => format!("{levels} sailing levels aboard, it needs {required}"),
+                    // this month, so there is no before-and-after to draw.
+                    format!("{levels} sailing levels aboard, it needs {required}")
                 };
                 findings.push(captain.finding(
                     hex,
@@ -17826,14 +17829,49 @@ mod tests {
             ])
         };
 
-        let finding = only(check(
+        // 15 unskilled gnolls also dilute the one-man sailing-4 crew this test does not otherwise
+        // care about - `(1*300 + 15*0)/16 = 18` points, level 0, so the fleet is undercrewed too
+        // now that an arrival is judged rather than silenced. This test is still about the weight
+        // half; `fleet_undercrewed_when_men_are_given_aboard` below pins the crew half of the same
+        // fixture.
+        let findings = check(
             vec![region],
             "unit 8801\nGIVE 11125 15 GNOL\nunit 11125\nSAIL N\n",
-        ));
-        assert_eq!(finding.code.as_str(), "fleet-overloaded");
-        assert!(finding
+        );
+        let overload = findings
+            .iter()
+            .find(|finding| finding.code == codes::FLEET_OVERLOADED)
+            .unwrap();
+        assert!(overload
             .message
             .contains("50 aboard plus 150 loaded this month"));
+    }
+
+    /// The crew half of `men_given_aboard_are_weighed`'s fixture: 15 unskilled gnolls given into a
+    /// one-man sailing-4 crew dilute it to nothing.
+    #[test]
+    fn fleet_undercrewed_when_men_are_given_aboard() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                unfed(aboard("11125", "329", 50, 4)),
+                with_men(with_item(unfed(unit("8801")), 20, "gnoll", "GNOL"), 20),
+            ])
+        };
+
+        let findings = check(
+            vec![region],
+            "unit 8801\nGIVE 11125 15 GNOL\nunit 11125\nSAIL N\n",
+        );
+        let crew = findings
+            .iter()
+            .find(|finding| finding.code == codes::FLEET_UNDERCREWED)
+            .unwrap();
+        assert_eq!(
+            crew.message,
+            "Longship [329] is short of sailors: 4 sailing levels aboard, 0 once the men joining \
+             the crew this month are counted, it needs 4, so it will not sail"
+        );
     }
 
     #[test]
@@ -18059,36 +18097,75 @@ mod tests {
         );
     }
 
-    /// Men given *into* a unit aboard are merged and the receiving unit's skill recomputed, which
-    /// this application does not model - so the crew check says nothing rather than inventing
-    /// sailors. The load half is untouched by that doubt and still warns.
+    /// Men given *into* a unit aboard are now merged and counted: unit 9508 is one man at sailing 1
+    /// receiving two unskilled gnolls - `(1*30 + 2*0)/3 = 10` points, level 0, three men, so 0
+    /// levels against the raft's 2. The load half is unaffected and still warns.
     #[test]
-    fn men_given_into_a_unit_aboard_silence_the_crew_check() {
+    fn men_given_into_a_unit_aboard_are_counted_into_the_crew() {
         let heavy = with_item(aboard("9508", "218", 500, 1), 1, "gnolls", "GNOL");
         let region = ReportRegion {
             structures: vec![raft("218")],
             ..region(vec![heavy, with_item(unit("9509"), 2, "gnolls", "GNOL")])
         };
 
-        let found = only(check(
+        let findings = check(
             vec![region],
             "unit 9509\nGIVE 9508 2 GNOL\nunit 9508\nSAIL N\n",
-        ));
-        assert_eq!(found.code, codes::FLEET_OVERLOADED);
+        );
+        assert_eq!(
+            codes(&findings),
+            vec!["fleet-overloaded", "fleet-undercrewed"]
+        );
+        let crew = findings
+            .iter()
+            .find(|finding| finding.code == codes::FLEET_UNDERCREWED)
+            .unwrap();
+        assert_eq!(
+            crew.message,
+            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
+             crew this month are counted, it needs 2, so it will not sail"
+        );
     }
 
-    /// The same, taken rather than given: men arriving is the doubt, whichever order moved them.
+    /// The same, taken rather than given: a `TAKE` from a unit in the hex is merged just as a
+    /// `GIVE` is (`ah-dxfd.1`).
     #[test]
-    fn men_taken_aboard_silence_the_crew_check() {
+    fn men_taken_aboard_are_counted_into_the_crew() {
         let heavy = with_item(aboard("9508", "218", 500, 1), 1, "gnolls", "GNOL");
         let region = ReportRegion {
             structures: vec![raft("218")],
             ..region(vec![heavy, with_item(unit("9509"), 2, "gnolls", "GNOL")])
         };
 
-        let found = only(check(
+        let findings = check(vec![region], "unit 9508\nTAKE FROM 9509 2 GNOL\nSAIL N\n");
+        assert_eq!(
+            codes(&findings),
+            vec!["fleet-overloaded", "fleet-undercrewed"]
+        );
+        let crew = findings
+            .iter()
+            .find(|finding| finding.code == codes::FLEET_UNDERCREWED)
+            .unwrap();
+        assert_eq!(
+            crew.message,
+            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
+             crew this month are counted, it needs 2, so it will not sail"
+        );
+    }
+
+    /// A `TAKE` from a unit number the hex does not show is a source this walk cannot read, so the
+    /// taker is doubted and the crew check stays silent - the one arrival route that still doubts.
+    #[test]
+    fn men_taken_from_outside_the_hex_leave_the_crew_unjudged() {
+        let heavy = with_item(aboard("9508", "218", 500, 1), 1, "gnolls", "GNOL");
+        let region = ReportRegion {
+            structures: vec![raft("218")],
+            ..region(vec![heavy])
+        };
+
+        let found = only(check_ignoring_transfer_targets(
             vec![region],
-            "unit 9508\nTAKE FROM 9509 2 GNOL\nSAIL N\n",
+            "unit 9508\nTAKE FROM 999 2 GNOL\nSAIL N\n",
         ));
         assert_eq!(found.code, codes::FLEET_OVERLOADED);
     }
@@ -18148,10 +18225,13 @@ mod tests {
         assert_eq!(found.code, codes::FLEET_OVERLOADED);
     }
 
-    /// Men of one race arriving while men of another leave is still a merge, so the doubt is
-    /// per race and not on the total - raised in review on PR #387.
+    /// Men of one race arriving while men of another leave is still a merge, judged on the
+    /// arrival: unit 9508 is one man at sailing 1, its one gnoll given away and one unskilled
+    /// centaur received in its place - `(1*30 + 1*0)/2 = 15` points, level 0, one man, so 0 levels
+    /// against the raft's 2. The joining clause fires rather than "given away", since men joined
+    /// this month even though the total headcount did not move.
     #[test]
-    fn men_of_one_race_arriving_silence_the_crew_even_as_others_leave() {
+    fn men_joining_and_leaving_at_once_read_as_a_gain() {
         let heavy = with_item(
             with_item(aboard("9508", "218", 500, 1), 1, "gnolls", "GNOL"),
             0,
@@ -18163,11 +18243,23 @@ mod tests {
             ..region(vec![heavy, with_item(unit("9509"), 1, "centaurs", "CTAU")])
         };
 
-        let found = only(check(
+        let findings = check(
             vec![region],
             "unit 9509\nGIVE 9508 1 CTAU\nunit 9508\nGIVE 0 1 GNOL\nSAIL N\n",
-        ));
-        assert_eq!(found.code, codes::FLEET_OVERLOADED);
+        );
+        assert_eq!(
+            codes(&findings),
+            vec!["fleet-overloaded", "fleet-undercrewed"]
+        );
+        let crew = findings
+            .iter()
+            .find(|finding| finding.code == codes::FLEET_UNDERCREWED)
+            .unwrap();
+        assert_eq!(
+            crew.message,
+            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
+             crew this month are counted, it needs 2, so it will not sail"
+        );
     }
 
     /// Giving the whole crew away leaves no sailors at all, and the clamp holds at zero.
@@ -18184,6 +18276,57 @@ mod tests {
             found.message,
             "Raft [218] is short of sailors: 2 sailing levels aboard less 2 given away this \
              month, it needs 2, so it will not sail"
+        );
+    }
+
+    /// The arm that could not occur before this bead: a sailor joins the crew, and the judged
+    /// figure is *higher* than the reported one, yet the fleet is still short.
+    #[test]
+    fn arriving_sailors_that_still_leave_it_short_read_as_a_gain() {
+        // A light weight on purpose, so the overload half stays quiet and `only` can be used.
+        let receiver = aboard("11125", "329", 20, 1);
+        let giver = with_skill_pts(men_holder("9509", 1), "SAIL", 30);
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![receiver, giver])
+        };
+
+        let found = only(check(
+            vec![region],
+            "unit 9509\nGIVE 11125 1 HUMN\nunit 11125\nSAIL N\n",
+        ));
+        assert_eq!(found.code, codes::FLEET_UNDERCREWED);
+        // (1*30 + 1*30)/2 = 30, level 1, two men, so 2 levels against 4.
+        assert_eq!(
+            found.message,
+            "Longship [329] is short of sailors: 1 sailing levels aboard, 2 once the men joining \
+             the crew this month are counted, it needs 4, so it will not sail"
+        );
+    }
+
+    /// A recruiting crew is counted exactly as a gifted one is - the same merge, a different
+    /// route into it.
+    #[test]
+    fn a_recruiting_crew_is_counted() {
+        let crew = with_silver(aboard("9508", "218", 20, 1), 400);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            structures: vec![raft("218")],
+            ..region(vec![crew])
+        };
+
+        let found = only(check(vec![region], "unit 9508\nBUY 4 HUMN\nSAIL N\n"));
+        assert_eq!(found.code, codes::FLEET_UNDERCREWED);
+        // (1*30 + 4*0)/5 = 6 points, level 0, five men, so 0 levels against the raft's 2.
+        assert_eq!(
+            found.message,
+            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
+             crew this month are counted, it needs 2, so it will not sail"
         );
     }
 
