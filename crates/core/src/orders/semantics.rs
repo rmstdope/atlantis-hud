@@ -3287,6 +3287,7 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
                 delta: plan.bought,
                 from_unshown: None,
                 produced: false,
+                created: None,
             });
         }
     }
