@@ -5858,6 +5858,39 @@ mod tests {
         assert_eq!(unit.at_month_end, Some(0));
     }
 
+    /// `MOUNT` is resolved by the catalogue and carries no silver - the `Some(false)` branch,
+    /// which must produce neither an expense nor a doubt: nothing of this unit's money is even in
+    /// question, unlike `MAGIC` below, which the catalogue cannot read at all.
+    #[test]
+    fn giving_a_resolvable_class_with_no_silver_neither_spends_nor_doubts() {
+        let rules = ruleset();
+        let carries_silver = class_carries_silver_against(&rules);
+        let intents = vec![placed(Intent::Give {
+            to: Party::Unit("1235".to_string()),
+            what: Selector::Class("MOUNT".to_string()),
+            amount: Amount::All { except: 0 },
+        })];
+        let receipts = Receipts::default();
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 500,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            Lookups {
+                class_carries_silver: &carries_silver,
+                ..no_market()
+            },
+            Some(&rules),
+        );
+        assert_eq!(unit.doubt, None);
+        assert_eq!(unit.expense, Some(0));
+        assert_eq!(unit.at_month_end, Some(500));
+    }
+
     /// `MAGIC` is one of the three classes the data page never states the members of, so the
     /// catalogue cannot say whether it carries silver - the unit is doubted, and named.
     #[test]
