@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ofpb.3 &mdash; what the ruleset should record about a spell's output</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h2.q { margin:44px 0 4px; font-size:19px; color:var(--ink); border-top:1px solid var(--edge); padding-top:26px; }
+  h2.q span { color:var(--brass); }
+  h3.sec { margin:30px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .unk { color:var(--ink-dim); }
+  .cellbox { border:1px dashed var(--edge); }
+  .clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright);
+            background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            margin:10px 0 0; white-space:pre; display:inline-block; }
+  .orders .c { color:var(--ink-dim); }
+  .quote { background:var(--raised); border-left:3px solid var(--brass); border-radius:0 6px 6px 0;
+           padding:9px 13px; margin:12px 0; font-size:13px; color:var(--ink-soft); max-width:110ch; }
+  .quote b { color:var(--brass-bright); }
+  table.data { border-collapse:collapse; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; margin-top:10px; }
+  table.data th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                  color:var(--ink-soft); font-weight:400; padding:4px 14px 4px 0; border-bottom:1px solid var(--edge); }
+  table.data td { padding:3px 14px 3px 0; border-bottom:1px solid var(--edge-soft); color:var(--ink); }
+  table.data td.t { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; border-top:1px solid var(--edge); padding-top:18px; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-left:8px; }
+  .json { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink-soft);
+          background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 12px;
+          white-space:pre; display:inline-block; margin-top:10px; }
+  .json .k { color:var(--select); } .json .v { color:var(--brass-bright); } .json .n { color:var(--ink-dim); }
+</style></head><body>
+<header><h1>ah-ofpb.3 &mdash; <span>what the ruleset should record about a spell's output</span></h1>
+<p>This bead teaches <code>config/public/ruleset.json</code> what a spell <i>creates</i>, not only what it costs. Nothing here is visible on its own &mdash; the ITEMS cells below are <b>ah-ofpb.5</b>, drawn only so the two choices have a consequence you can look at. Two things came out of reading the whole data page that the bead did not anticipate, and I do not think either is mine to settle.</p>
+<p>The bead's own list is right about the twenty-four priced spells. What follows is about <b>nine more spells it does not mention</b>, and about a reading of the percentages that decides what <b>ah-ofpb.4</b> charges.</p>
+</header>
+<main>
+
+<h2 class="q">Q1 &mdash; <span>the nine summoning spells say exactly the same sentence</span></h2>
+<p style="color:var(--ink-soft);font-size:14px;max-width:100ch;margin-top:10px;">The data page appends a normalised creation sentence to the summoning skills too, in the identical shape the artifact spells use &mdash; so the same three patterns that read <code>ESWO</code> read these for free. They are <b>not priced</b>: no <code>via magic at a cost of</code>, no transmutation. Today all nine have <code>cast: null</code>.</p>
+
+<div class="quote">wolf lore [WOLF] 1: &hellip; A mage may summon a number of wolves <b>averaging 200 percent times his skill level</b>, and control a total number of <b>his skill level squared times 4</b> wolves; the wolves will be placed in the mages inventory. &hellip; A mage with this skill <b>may create 2 times their level in wolves [WOLF]</b> via magic.</div>
+
+<table class="data">
+<thead><tr><th>Skill</th><th>Creates</th><th>The page's shape</th><th>Also says</th></tr></thead>
+<tbody>
+<tr><td class="t">WOLF</td><td>wolves <span class="t">WOLF</span></td><td>2 &times; level</td><td>an <i>average</i>; control cap level&sup2;&times;4</td></tr>
+<tr><td class="t">BIRD</td><td>eagles <span class="t">EAGL</span></td><td>1 &times; level (level 3+)</td><td>an <i>average</i> of 100% &times; (level&minus;2)</td></tr>
+<tr><td class="t">SUSK</td><td>skeletons <span class="t">SKEL</span></td><td>2 &times; level</td><td>an <i>average</i>; 8% decay each turn</td></tr>
+<tr><td class="t">RAIS</td><td>undead <span class="t">UNDE</span></td><td>1 &times; level</td><td>an <i>average</i>; 8% decay each turn</td></tr>
+<tr><td class="t">SUIM</td><td>imps <span class="t">IMP</span></td><td>2 &times; level</td><td>each may break free, 1 in 20 &times; level</td></tr>
+<tr><td class="t">SUDE</td><td>demons <span class="t">DEMO</span></td><td>1 &times; level</td><td>each may break free</td></tr>
+<tr><td class="t">DRAG</td><td>dragons <span class="t">DRAG</span></td><td>20% &times; level</td><td>control cap = level</td></tr>
+<tr><td class="t">SULI</td><td>liches <span class="t">LICH</span></td><td>30% &times; level</td><td>8% decay each turn</td></tr>
+<tr><td class="t">SUBA</td><td>balrogs <span class="t">BALR</span></td><td>30% &times; level</td><td>only one at a time</td></tr>
+</tbody></table>
+<p style="color:var(--ink-soft);font-size:13px;margin-top:12px;max-width:100ch;">All nine outputs really are items a unit holds &mdash; the catalogue lists them as <code>kind: monster</code> and the page says they are &ldquo;placed in the mages inventory&rdquo;. So the ITEMS column <i>could</i> carry them.</p>
+
+<h3 class="sec">A1 &mdash; record only what the page prices; the summons stay silent<span class="rec">recommended</span></h3>
+<p>A creation is kept only for a skill that also states a cost or a transmutation &mdash; which is exactly the twenty-five skills that have a <code>cast</code> entry today. The nine summons keep <code>cast: null</code> and nothing about them changes, now or in ah-ofpb.5.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8801</td><td>Swordwright L3</td><td class="colhi cellbox"><span class="clip"><span class="pred">5 SWOR, 15 MSWO</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8805</td><td>Wolf Master L3</td><td class="colhi cellbox"><span class="clip">40 SILV</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8806</td><td>Necromancer L3</td><td class="colhi cellbox"><span class="clip">2 SKEL, 40 SILV</span></td></tr>
+</tbody></table>
+</div>
+<div class="json"><span class="k">"WOLF"</span>: { <span class="k">"cast"</span>: <span class="n">null</span> }        <span class="n">// unchanged</span>
+<span class="k">"ESWO"</span>: { <span class="k">"cast"</span>: { <span class="k">"costs"</span>: [&hellip;], <span class="k">"creates"</span>: [{ <span class="k">"tag"</span>: <span class="v">"MSWO"</span>, <span class="k">"perLevel"</span>: <span class="v">5</span> }] } }</div>
+<ul class="notes">
+<li>The ruleset never states as a fact a number the page itself calls an <i>average</i>.</li>
+<li>Control caps, decay and imps breaking free are all things this bead does not model &mdash; and by staying out, it never has to.</li>
+<li>The committed file changes for twenty-five skills, not thirty-four. Smaller diff, smaller blast radius.</li>
+<li class="con">Unit 8805 &mdash; a wolf master casting Wolf_Lore &mdash; still has an ITEMS column that says nothing about the six wolves arriving.</li>
+<li class="con">Bringing summons in later means another bead and another scrape change.</li>
+</ul></div>
+
+<h3 class="sec">A2 &mdash; record every creation the page states, priced or not</h3>
+<p>All thirty-four skills carry a creation. Nine gain a <code>cast</code> entry that costs nothing and creates something &mdash; harmless to the ledger today, and available to ah-ofpb.5 tomorrow.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8801</td><td>Swordwright L3</td><td class="colhi cellbox"><span class="clip"><span class="pred">5 SWOR, 15 MSWO</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8805</td><td>Wolf Master L3</td><td class="colhi cellbox"><span class="clip"><span class="pred">40 SILV, 6 WOLF</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8806</td><td>Necromancer L3</td><td class="colhi cellbox"><span class="clip"><span class="pred">8 SKEL, 40 SILV</span></span></td></tr>
+</tbody></table>
+</div>
+<div class="json"><span class="k">"WOLF"</span>: { <span class="k">"cast"</span>: { <span class="k">"costs"</span>: [], <span class="k">"transmute"</span>: {}, <span class="k">"creates"</span>: [{ <span class="k">"tag"</span>: <span class="v">"WOLF"</span>, <span class="k">"perLevel"</span>: <span class="v">2</span> }] } }</div>
+<ul class="notes">
+<li>A summoner's ITEMS column becomes as useful as an enchanter's &mdash; arguably the bigger win, since a war mage summons every single month.</li>
+<li>One scrape change instead of two.</li>
+<li class="con">The column would print &ldquo;6 WOLF&rdquo; as fact where the page says <i>averaging</i> &mdash; the one thing this scraper is written never to do.</li>
+<li class="con">Says nothing about the control cap, so a level-5 mage who may hold 100 wolves and one who already holds 100 look identical.</li>
+<li class="con">Unit 8806 shows 8 SKEL where 2 were already held &mdash; and 8% of them decay before the turn resolves.</li>
+</ul></div>
+
+<h2 class="q">Q2 &mdash; <span>does a percentage past 100 make a second item?</span></h2>
+<p style="color:var(--ink-soft);font-size:14px;max-width:100ch;margin-top:10px;">ah-ofpb.5 records your reading of 2026-08-26 and asks that it be <i>&ldquo;confirmed against the rules page before building&rdquo;</i>. <b>I have read the rules page and it is silent</b> &mdash; the only percentage it states anywhere is the 33% chance of starving without maintenance. The per-spell sentence on the data page is the whole of the evidence, and it reads <i>&ldquo;a 90 percent times their level chance to create <b>a</b> runesword&rdquo;</i>, singular.</p>
+<p style="color:var(--ink-soft);font-size:14px;max-width:100ch;">So this rests on what you know of the engine, not on anything I can check. It does not block ah-ofpb.3 &mdash; the ruleset records <code>90</code> either way &mdash; but it decides what ah-ofpb.4 charges and what ah-ofpb.5 prints, so I would rather bank it now than ask again in two beads' time.</p>
+<div class="orders">unit 8807  <span class="c">; Runesmith, create runesword 5, holds 4000 SILV</span>
+  cast Create_Runesword     <span class="c">; 90 x 5 = 450 percent</span></div>
+
+<h3 class="sec">B1 &mdash; a percentage accumulates: 450% is four certain and half a fifth<span class="rec">your reading, 2026-08-26</span></h3>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:150px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>SILVER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8807</td><td>Runesmith L5</td><td><span class="pred">&minus;2400 to &minus;3000</span></td><td class="colhi cellbox"><span class="clip"><span class="pred">1000&ndash;1600 SILV, 4&ndash;5 RUNE</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8803</td><td>Artificer L3</td><td><span class="pred">&minus;600</span></td><td class="colhi cellbox"><span class="clip"><span class="pred">300 SILV, 0&ndash;1 RING</span></span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>Consistent with the certain spells: both families are then just &ldquo;a quantity per level&rdquo;, and 500% is fifteen swords at level 3 exactly as 90% is two runeswords.</li>
+<li>Makes a high-level artifact mage worth what the rules seem to intend &mdash; a level-5 runesmith is a factory, not a lottery ticket.</li>
+<li class="con">The page's own sentence says &ldquo;a runesword&rdquo;, singular, and never mentions a second.</li>
+<li class="con">If it is wrong, the app over-promises four runeswords and over-charges 2400 silver, and the SILVER column's warnings fire on units that are fine.</li>
+</ul></div>
+
+<h3 class="sec">B2 &mdash; a percentage is one attempt, capped at one item</h3>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:150px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>SILVER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8807</td><td>Runesmith L5</td><td><span class="pred">&minus;600</span></td><td class="colhi cellbox"><span class="clip"><span class="pred">3400 SILV, 1 RUNE</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8803</td><td>Artificer L3</td><td><span class="pred">&minus;600</span></td><td class="colhi cellbox"><span class="clip"><span class="pred">300 SILV, 0&ndash;1 RING</span></span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>Literally what the sentence says: one attempt, one item, and the level only improves the odds.</li>
+<li>Never over-promises: the worst it does is under-state a mage's month.</li>
+<li class="con">Level stops mattering entirely above 100% &mdash; a level-2 runesmith and a level-5 one both make exactly one runesword, which makes studying the skill past level 2 pointless.</li>
+<li class="con">Leaves the certain and chance families with genuinely different arithmetic, which every consumer then has to carry.</li>
+</ul></div>
+
+</main>
+<footer>Every sentence quoted is from <code>tests/fixtures/ruleset/neworigins-data.html</code>, the committed NewOrigins data page. The nine summoning skills were found by running this bead's three candidate patterns over every skill paragraph on that page; the rules-page search covered every paragraph containing &ldquo;percent&rdquo;. ITEMS cells are drawn at the real 230&nbsp;px column width and are ah-ofpb.5's surface, not this bead's &mdash; nothing in ah-ofpb.3 is visible to anyone.</footer>
+</body></html>
