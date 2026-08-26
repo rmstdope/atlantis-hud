@@ -1,4 +1,5 @@
 export { buildRuleset, type BuildInput, type Gap, type RiskThresholds, type Ruleset } from "./build";
+export { htmlToText, preformattedText } from "./html";
 export {
   parseItemReference,
   type ItemCapacity,

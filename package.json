@@ -6,6 +6,7 @@
   "scripts": {
     "lint": "pnpm -r run lint",
     "release": "tsx scripts/release.ts",
+    "atlantis": "tsx scripts/atlantis.ts",
     "beads:export": "tsx scripts/beadsExport.ts",
     "generate:biomes": "tsx scripts/genBiomes.ts",
     "sightings": ".claude/cerebro/scripts/retro-sightings",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@atlantis/fixtures": "workspace:*",
+    "@atlantis/ruleset": "workspace:*",
     "@playwright/test": "^1.55.0",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.18",
