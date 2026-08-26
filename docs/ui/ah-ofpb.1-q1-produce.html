@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ofpb.1 &mdash; Q1: what a PRODUCE puts in the ITEMS column</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .stagelabel { font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin:14px 0 5px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .unk { color:var(--ink-dim); }
+  .cellbox { border:1px dashed var(--edge); }
+  .clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip.none { color:var(--ink-dim); font-style:italic; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright);
+            background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            margin:10px 0 0; white-space:pre; display:inline-block; }
+  .orders .c { color:var(--ink-dim); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-left:8px; }
+</style></head><body>
+<header><h1>Q1 &mdash; <span>what a PRODUCE puts in the ITEMS column</span></h1>
+<p>The ITEMS column already shows a projected <code>BUY</code>, <code>SELL</code>, <code>WITHDRAW</code>, <code>TAKE</code> and <code>GIVE</code> in italic brass. <code>PRODUCE</code> shows nothing at all &mdash; neither the goods made nor the materials spent making them.</p>
+<p><b>The one real tension.</b> Production resolves in the <i>last</i> phase of the month, so goods made this month cannot be spent this month. The app already knows that: the ledger deliberately does not credit what a <code>PRODUCE</code> makes, so a unit that produces swords and then gives them away is still warned. The question is what the <b>column</b> should say, since the column is about what the unit will be holding when the turn is over &mdash; not about what it can spend.</p>
+<p>Two units, drawn at the real 220&nbsp;px column width, with the real NewOrigins recipes.</p>
+<div class="orders">unit 5530  <span class="c">; Lumberjacks, 6 men, holds 120 SILV</span>
+  produce wood        <span class="c">; 1 man-month, no inputs -&gt; 6 WOOD</span>
+
+unit 5531  <span class="c">; Weaponsmiths, 8 men, holds 20 IRON, 350 SILV</span>
+  produce sword       <span class="c">; 1 man-month, 1 IRON each -&gt; 8 SWOR, 8 IRON gone</span></div>
+</header>
+<main>
+
+<h3 class="sec">P1 &mdash; the goods arrive, and the hover says when<span class="rec">recommended</span></h3>
+<p>The column answers &ldquo;what will this unit be holding&rdquo;, in the same italic every other projection uses. One extra hover line keeps the promise honest about <i>when</i>.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:118px"><col style="width:220px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5530</td><td>Lumberjacks</td><td class="colhi cellbox"><span class="clip"><span class="pred">120 SILV, 6 WOOD</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5531</td><td>Weaponsmiths</td><td class="colhi cellbox"><span class="clip"><span class="pred">12 IRON, 350 SILV, 8 SWOR</span></span></td></tr>
+</tbody></table>
+</div>
+<div class="tip"><b>hover on unit 5531's ITEMS cell</b>was: 20 IRON, 350 SILV
+Includes 8 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.</div>
+<ul class="notes">
+<li>The column keeps one meaning: everything in it is what the unit ends the month holding.</li>
+<li>The materials leaving are visible too &mdash; 20 IRON down to 12 &mdash; which is half of what a producing player wants to check.</li>
+<li>Nothing about the shipped <code>not-enough-items</code> warning moves: the goods are drawn, not credited.</li>
+<li class="con">One more sentence in a hover that already carries up to three.</li>
+</ul></div>
+
+<h3 class="sec">P2 &mdash; the goods arrive, with nothing said</h3>
+<p>Identical cells; the hover carries only the <code>was:</code> line it already carries today.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:118px"><col style="width:220px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5530</td><td>Lumberjacks</td><td class="colhi cellbox"><span class="clip"><span class="pred">120 SILV, 6 WOOD</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5531</td><td>Weaponsmiths</td><td class="colhi cellbox"><span class="clip"><span class="pred">12 IRON, 350 SILV, 8 SWOR</span></span></td></tr>
+</tbody></table>
+</div>
+<div class="tip"><b>hover on unit 5531's ITEMS cell</b>was: 20 IRON, 350 SILV</div>
+<ul class="notes">
+<li>Quieter. The column already means &ldquo;at month end&rdquo;, so arguably nothing needs saying.</li>
+<li class="con">A player who writes <code>produce sword</code> then <code>give 5530 8 SWOR</code> sees eight swords in the column <i>and</i> a warning saying it has none &mdash; with nothing anywhere explaining why both are true.</li>
+</ul></div>
+
+<h3 class="sec">P3 &mdash; only the materials leave; what is made is not counted</h3>
+<p>The column stays strictly &ldquo;what this unit can spend&rdquo;. The materials go, the goods do not arrive, and the cell admits the gap with the mark <code>+ ?</code> that <code>BUY ALL</code> already uses.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:118px"><col style="width:220px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5530</td><td>Lumberjacks</td><td class="colhi cellbox"><span class="clip">120 SILV <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5531</td><td>Weaponsmiths</td><td class="colhi cellbox"><span class="clip"><span class="pred">12 IRON, 350 SILV</span> <span class="unk">+&nbsp;?</span></span></td></tr>
+</tbody></table>
+</div>
+<div class="tip"><b>hover on unit 5531's ITEMS cell</b>was: 20 IRON, 350 SILV
+and more that cannot be counted: produce sword</div>
+<ul class="notes">
+<li>Never claims a unit holds something it cannot yet spend.</li>
+<li class="con">A lumberjack &mdash; the commonest producing unit in the game &mdash; loses its whole answer and gains a question mark. The app knows exactly what it makes.</li>
+<li class="con">The mark stops meaning &ldquo;something here could not be worked out&rdquo; and starts meaning &ldquo;something here was deliberately withheld&rdquo;.</li>
+</ul></div>
+
+</main>
+<footer>Cells drawn at the units table's real 220&nbsp;px ITEMS width, dashed border showing the cell edge. Recipes and quantities are the committed NewOrigins ruleset: <code>LUMB</code> makes 1 wood per man-month from nothing; <code>WEAP</code> makes 1 sword per man-month from 1 iron.</footer>
+</body></html>

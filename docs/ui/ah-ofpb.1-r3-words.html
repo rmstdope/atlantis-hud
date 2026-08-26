@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ofpb.1 - round 3: the words, and the states the happy path hides</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .stagelabel { font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin:14px 0 5px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .unk { color:var(--ink-dim); }
+  .cellbox { border:1px dashed var(--edge); }
+  .clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip.none { color:var(--ink-dim); font-style:italic; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright);
+            background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            margin:10px 0 0; white-space:pre; display:inline-block; }
+  .orders .c { color:var(--ink-dim); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-left:8px; }
+
+  .strings { font:12px/1.7 'SF Mono',Menlo,Consolas,monospace; color:var(--ink); background:var(--raised);
+             border:1px solid var(--edge); border-radius:6px; padding:10px 12px; margin-top:8px; white-space:pre-wrap; }
+</style></head><body>
+<header><h1>Round 3 &mdash; <span>the words, and the states the happy path hides</span></h1>
+<p>You chose <b>P1</b> (the goods arrive, and the hover says when) and <b>C2</b> (the settled figure, with the cap named in the ITEMS hover too). This page settles what those two sentences actually say, and walks the three states neither mockup drew.</p>
+<p>The ITEMS hover is built from lines joined by newlines, always opening with <code>was:</code>. Today it can carry three kinds of line; this bead adds two more, so the order matters.</p>
+</header>
+<main>
+
+<h3 class="sec">Q4 &mdash; the sentence that says the goods arrive late</h3>
+<p>Unit 5531, 8 weaponsmiths holding 20 IRON and 350 SILV, ordered <code>produce sword</code>. Cell reads <span class="pred">12 IRON, 350 SILV, 8 SWOR</span>.</p>
+<div class="card">
+<p class="concept"><b>W1</b> &mdash; two sentences: what is included, then why it matters.</p>
+<div class="tip"><b>hover</b>was: 20 IRON, 350 SILV
+Includes 8 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.</div>
+<p class="concept" style="margin-top:16px"><b>W2</b> &mdash; one sentence, shorter.</p>
+<div class="tip"><b>hover</b>was: 20 IRON, 350 SILV
+Includes 8 SWOR produced this month, which arrive too late to spend.</div>
+<p class="concept" style="margin-top:16px"><b>W3</b> &mdash; names the mechanism rather than the consequence.</p>
+<div class="tip"><b>hover</b>was: 20 IRON, 350 SILV
+Includes 8 SWOR this unit will produce; production resolves after every spending order.</div>
+<ul class="notes">
+<li class="n">All three sit on the same line of the same hover; only the words differ. The existing line above them, <code>Includes 5 GRAI taken from unit 999, which your report does not show here.</code>, is the shape they are following.</li>
+</ul></div>
+
+<h3 class="sec">Q5 &mdash; the sentence that names the cap</h3>
+<p>Unit 5531 again, but holding only 5 IRON: its men could make 8 swords and its iron allows 5. The SILVER column's own hover on this row already says <span class="mono" style="color:var(--brass-bright)">This unit has materials for 5 swords, not the 8 its men could make.</span></p>
+<div class="card">
+<p class="concept"><b>K1</b> &mdash; the ITEMS hover says exactly the same sentence, so the two columns cannot drift.</p>
+<div class="tip"><b>hover, materials cap</b>was: 5 IRON, 350 SILV
+Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.
+This unit has materials for 5 swords, not the 8 its men could make.</div>
+<div class="tip"><b>hover, silver cap (a carpenter short of the 3000 silver a catapult wants)</b>was: 250 WOOD, 2000 SILV
+This unit has silver for 0 catapults, not the 2 its men could make.</div>
+<ul class="notes"><li>One sentence, one meaning, wherever you hover.</li><li class="con">On a silver cap it is word-for-word what the cell next door says.</li></ul>
+</div>
+<div class="card">
+<p class="concept"><b>K2</b> &mdash; only when the cap is <i>materials</i>. A silver cap is the SILVER column's business and the ITEMS hover stays quiet about it.</p>
+<div class="tip"><b>hover, materials cap</b>was: 5 IRON, 350 SILV
+Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.
+This unit has materials for 5 swords, not the 8 its men could make.</div>
+<div class="tip"><b>hover, silver cap</b>was: 250 WOOD, 2000 SILV</div>
+<ul class="notes"><li>Each column speaks about its own subject and nothing is ever said twice on one row.</li><li class="con">A player hovering ITEMS on a silver-capped carpenter is told nothing about why no catapult appeared.</li></ul>
+</div>
+<div class="card">
+<p class="concept"><b>K3</b> &mdash; an items-flavoured sentence naming the material that ran out.</p>
+<div class="tip"><b>hover, materials cap</b>was: 5 IRON, 350 SILV
+Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.
+Its men could make 8 swords; its 5 IRON allows 5.</div>
+<ul class="notes"><li>Says which material bit, which the SILVER sentence never does.</li><li class="con">A recipe with four inputs (a catapult wants wood, ironwood, fur and silver) has no single material to name, so the sentence needs a second form and a rule for choosing between them.</li></ul>
+</div>
+
+<h3 class="sec">Q6 &mdash; the unit that produces nothing at all</h3>
+<p>Unit 5532, 8 armourers holding no iron, ordered <code>produce sword</code>. Nothing is consumed and nothing arrives, so under C2 the row is upright and unmarked &mdash; identical to a unit given no orders &mdash; and the hover it carries is one nobody is invited to open.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:118px"><col style="width:220px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5532</td><td>Armourers</td><td class="colhi cellbox"><span class="clip">350 SILV</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5533</td><td>Idlers</td><td class="colhi cellbox"><span class="clip">350 SILV</span></td></tr>
+</tbody></table>
+</div>
+<p class="concept" style="margin-top:12px">Unit 5532 is producing nothing; unit 5533 has no orders. <b>Z1</b> leaves them looking the same, which is what C2 as chosen implies. <b>Z2</b> gives 5532 the mark:</p>
+<div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:118px"><col style="width:220px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5532</td><td>Armourers</td><td class="colhi cellbox"><span class="clip">350 SILV <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5533</td><td>Idlers</td><td class="colhi cellbox"><span class="clip">350 SILV</span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li class="n">This is not the C3 you rejected: C3 marked <i>every</i> capped row, and most producing rows are capped. Z2 marks only the rows where the cap took the whole month's work away.</li>
+<li class="con">Z2 stretches the mark's meaning: nothing here is uncounted, it was counted and came to zero.</li>
+</ul></div>
+
+<h3 class="sec">Q7 &mdash; a PRODUCE the app cannot price at all</h3>
+<p>Three ways this happens, all real:</p>
+<div class="card">
+<div class="orders">unit 5540  <span class="c">; Cooks, 6 men, holds 30 GRAI, 12 FISH</span>
+  produce meal        <span class="c">; cooking takes one of grain, livestock OR fish - the app refuses to guess which</span>
+
+unit 5541  <span class="c">; Dreamers, 4 men</span>
+  produce moonbeam    <span class="c">; nothing in the game produces it</span>
+
+unit 5542  <span class="c">; Labourers, 4 men</span>
+  produce             <span class="c">; names no item; the engine will refuse the order</span></div>
+<p class="concept" style="margin-top:14px"><b>U1</b> &mdash; all three get the mark, and the hover names the order, exactly as <code>buy all HORS</code> already does.</p>
+<div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:118px"><col style="width:220px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5540</td><td>Cooks</td><td class="colhi cellbox"><span class="clip">30 GRAI, 12 FISH <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5541</td><td>Dreamers</td><td class="colhi cellbox"><span class="clip">&mdash; <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5542</td><td>Labourers</td><td class="colhi cellbox"><span class="clip">&mdash; <span class="unk">+&nbsp;?</span></span></td></tr>
+</tbody></table>
+</div>
+<div class="tip"><b>hover on unit 5540</b>was: 30 GRAI, 12 FISH
+and more that cannot be counted: produce meal</div>
+<p class="concept" style="margin-top:16px"><b>U2</b> &mdash; the first two are marked; the bare <code>produce</code> is not, because it names no item, will be refused, and already draws a warning of its own.</p>
+<div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:64px"><col style="width:118px"><col style="width:220px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5540</td><td>Cooks</td><td class="colhi cellbox"><span class="clip">30 GRAI, 12 FISH <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5541</td><td>Dreamers</td><td class="colhi cellbox"><span class="clip">&mdash; <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5542</td><td>Labourers</td><td class="colhi cellbox"><span class="clip">&mdash;</span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li class="n">Unit 5541 already draws the shipped <code>produce-without-skill</code> warning &mdash; &ldquo;cannot produce moonbeam: no skill produces it&rdquo; &mdash; so U1 and U2 both add a mark to a row the Problems panel is already shouting about.</li>
+</ul></div>
+
+<h3 class="sec">All five hover lines, in the order they would appear</h3>
+<p>A unit that manages every kind of note at once. Lines 1&ndash;3 ship today; lines 4 and 5 are this bead's.</p>
+<div class="card"><div class="strings">was: 20 IRON, 350 SILV, 5 GRAI
+Includes 5 GRAI taken from unit 999, which your report does not show here.
+Includes 8 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.
+This unit has materials for 5 swords, not the 8 its men could make.
+and more that cannot be counted: produce meal</div>
+<ul class="notes"><li class="n">Known before unknown, which is the order round 3 of ah-agbm settled. The two new lines go between the existing &ldquo;includes&rdquo; line and the &ldquo;cannot be counted&rdquo; line.</li></ul></div>
+
+</main>
+<footer>Recipes are the committed NewOrigins ruleset: <code>WEAP</code> makes 1 sword per man-month from 1 iron; <code>CARP</code> makes 1 catapult per 4 man-months from 250 wood, 30 ironwood, 80 fur and 3000 silver; <code>COOK</code> makes meals from any one of grain, livestock or fish, which is why the app refuses to price it.</footer>
+</body></html>
