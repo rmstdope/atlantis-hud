@@ -1708,8 +1708,15 @@ fn apply_gifts_of_men(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
 fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Option<&Ruleset>) {
     let Some(ruleset) = ruleset else { return };
 
+    // Indices rather than `iter_mut`: the arrival sum below reads the unit inside a closure while
+    // the branches around it write to it, and taking the two borrows one after the other in the
+    // same body avoids a fight with the borrow checker for no gain.
+    #[allow(clippy::needless_range_loop)]
     for index in 0..units.len() {
-        if matches!(units[index].skills_after_gifts, SkillsAfterGifts::Unknowable) {
+        if matches!(
+            units[index].skills_after_gifts,
+            SkillsAfterGifts::Unknowable
+        ) {
             continue;
         }
 
@@ -18938,6 +18945,20 @@ mod tests {
         hex
     }
 
+    /// `hex_after_gifts`, and then this month's recruits - the whole post-orders view.
+    fn hex_after_orders<'a>(region: &'a ReportRegion, ordered: &'a OrderedUnits) -> Hex<'a> {
+        // On its own line, not `Some(&ruleset())`: the ledger holds the reference past this
+        // statement, so a temporary will not borrow-check here even though `hex_after_gifts` gets
+        // away with it.
+        let rules = ruleset();
+        let mut hex = Hex::read(region, ordered, &[]);
+        apply_gifts_of_men(&mut hex.units, Some(&rules));
+        let receipts = BTreeMap::new();
+        let ledger = ledger_for(&hex, Some(&rules), &receipts);
+        apply_recruits(&mut hex.units, &ledger, Some(&rules));
+        hex
+    }
+
     #[test]
     fn a_formed_unit_given_skilled_men_is_not_told_it_lacks_the_skill() {
         let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
@@ -19307,6 +19328,139 @@ mod tests {
             codes(&findings).contains(&"produce-without-skill"),
             "{findings:?}"
         );
+    }
+
+    /// `rules/form`'s own recruiting idiom: fund a newly `FORM`ed unit with silver, then have it
+    /// `BUY` its own crew. It starts at `men: 0` and `skills: []`, so `merge_skills(&[], 0, &[], 5)`
+    /// has nothing to average and the unit still cannot produce wood once it exists.
+    #[test]
+    fn a_formed_unit_that_recruits_is_judged_on_what_it_bought() {
+        let founder = with_silver(unit("1010"), 200);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![founder])
+        };
+        let orders = "unit 1010\nFORM 1\nBUY 5 HUMN\nPRODUCE WOOD\nEND\nGIVE NEW 1 200 SILV\n";
+
+        let findings = check(vec![region], orders);
+
+        assert!(
+            codes(&findings).contains(&"produce-without-skill"),
+            "{findings:?}"
+        );
+    }
+
+    /// `ruleset.is_man` gates what `apply_recruits` counts as an arrival - a `BUY` of equipment
+    /// moves an item tag the ledger sees exactly as it sees a man tag, but it is not one.
+    #[test]
+    fn a_buy_of_goods_is_not_a_recruit() {
+        let crew = with_silver(with_skill_pts(men_holder("900", 10), "LUMB", 30), 400);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 10,
+            }],
+            ..region(vec![crew])
+        };
+        let orders = "unit 900\nBUY 2 SWOR\nPRODUCE WOOD\n";
+
+        let findings = check(vec![region], orders);
+
+        assert!(
+            !codes(&findings).contains(&"produce-without-skill"),
+            "{findings:?}"
+        );
+    }
+
+    /// Decision 3: `BUY ALL PEASANTS` cannot be told from `BUY ALL SWORDS` here - `PEASANTS` names
+    /// no catalogue item at all (`rules/buy`: "you may use PEASANT or PEASANTS to recruit whichever
+    /// race is present in the region") - so the guard in `apply_recruits` is on the *amount*, not
+    /// the item, and it over-silences `BUY ALL SWOR` too. That is the accepted cost until `ah-jown`
+    /// resolves `BUY ALL` into a quantity.
+    #[test]
+    fn buying_all_of_anything_leaves_the_unit_unjudged() {
+        let crew = with_silver(with_skill_pts(men_holder("900", 10), "LUMB", 30), 400);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![crew])
+        };
+
+        for item in ["PEAS", "SWOR"] {
+            let orders = format!("unit 900\nBUY ALL {item}\nPRODUCE WOOD\n");
+            let findings = check(vec![region.clone()], &orders);
+            assert!(
+                !codes(&findings).contains(&"produce-without-skill"),
+                "{item}: {findings:?}"
+            );
+        }
+    }
+
+    /// The merge is weighted by the receiver's headcount, and a headcount that is only a guess
+    /// cannot price an exact dilution - the same doubt `settle_headcounts` already treats
+    /// `men_estimated` as, for the units table.
+    #[test]
+    fn an_estimated_headcount_leaves_a_recruiting_unit_unjudged() {
+        let mut crew = with_silver(with_skill_pts(men_holder("900", 10), "LUMB", 30), 400);
+        crew.men_estimated = true;
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![crew])
+        };
+        let orders = "unit 900\nBUY 4 HUMN\nPRODUCE WOOD\n";
+
+        let findings = check(vec![region], orders);
+
+        assert!(
+            !codes(&findings).contains(&"produce-without-skill"),
+            "{findings:?}"
+        );
+    }
+
+    /// Both merges run in the game's own order (`rules/sequenceofevents`: *Give orders* before
+    /// *Market orders*) and compose: the receiver is given five skilled men, then buys five more
+    /// unskilled recruits. What this pins is composition, not ordering - both merges are
+    /// headcount-weighted averages over the same three groups, so recruiting first would reach the
+    /// same level up to integer truncation. What it *can* tell is that both merges happened: a
+    /// `recruited` derived as `arrived - men_joined` is one sign error away from counting the gift
+    /// twice or the recruits not at all, and either mistake lands on a different level.
+    #[test]
+    fn a_gift_and_a_recruit_merge_in_the_games_own_order() {
+        let receiver = with_silver(with_skill_pts(men_holder("2200", 5), "LUMB", 30), 400);
+        let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 180);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![receiver, giver])
+        };
+        let orders = "unit 1010\nGIVE 2200 5 HUMN\nunit 2200\nBUY 5 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let hex = hex_after_orders(&region, &ordered);
+
+        // Gifts first: (5*30 + 5*180)/10 = 105 points, level 2. Then recruits:
+        // (10*105 + 5*0)/15 = 70 points, level 1.
+        assert_eq!(hex.find("2200").unwrap().skill_level("LUMB"), Some(1));
+        assert_eq!(hex.find("2200").unwrap().men_after_orders, 15);
     }
 
     // --- the same six checks, each reading the merged view -----------------------------------
