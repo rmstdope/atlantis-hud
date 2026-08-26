@@ -10497,6 +10497,38 @@ mod tests {
             });
         }
 
+        /// `CAST Transmutation` naming no material at all: the spell transmutes something, so the
+        /// column cannot simply say nothing moved (round 2, Q7, answer A's third uncountable case,
+        /// caught in review - the other two already had dedicated tests above).
+        #[test]
+        fn a_transmutation_naming_no_material_cannot_be_counted() {
+            let hex_region = region(vec![unit("5")]);
+            with_ledger(hex_region, "unit 5\nCAST Transmutation\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("5").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+                assert!(ledger.movements.is_empty());
+            });
+        }
+
+        /// `CAST Transmutation` naming a material the catalogue cannot place.
+        #[test]
+        fn a_transmutation_naming_an_unresolvable_material_cannot_be_counted() {
+            let hex_region = region(vec![unit("5")]);
+            with_ledger(
+                hex_region,
+                "unit 5\nCAST Transmutation nonexistent_material\n",
+                |ledger| {
+                    assert_eq!(
+                        ledger.uncounted.get("5").map(Vec::as_slice),
+                        Some([2].as_slice())
+                    );
+                    assert!(ledger.movements.is_empty());
+                },
+            );
+        }
+
         /// A fireball is a known spell with no `cast` cost at all, so its month must not carry the
         /// question mark this bead adds - marking it would put one on every combat mage in the
         /// faction, for ever (round 2, Q7, answer A).
