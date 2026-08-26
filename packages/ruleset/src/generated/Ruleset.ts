@@ -17,4 +17,30 @@ skills: { [key in string]: SkillEntry },
  * Empty for a ruleset generated before buildings were scraped. Empty means nothing can be
  * said about a structure, not that no structure seats a mage.
  */
-buildings: { [key in string]: BuildingEntry }, };
+buildings: { [key in string]: BuildingEntry }, 
+/**
+ * Which item tags belong to each class `GIVE [unit] ALL [item class]` accepts, for the
+ * classes this catalogue can read off the data page.
+ *
+ * **A class the page never states is absent, and the absence is the answer**: `ADVANCED`,
+ * `MAGIC` and `SPECIAL` are never printed by the engine in any form, so a caller must tell
+ * "this catalogue cannot say" from "this class is empty here", and a missing key is how.
+ * `ITEM`/`ITEMS` is absent too, for the opposite reason - `rules/give` defines it as
+ * everything the holder has, so it needs no catalogue.
+ *
+ * Keys are `ItemClass::key`. An unrecognised key is ignored rather than refused, in the same
+ * spirit as `ItemKind::Unknown`: a later scraper that learns a sixteenth class should not
+ * make this build refuse the file. Empty for a ruleset generated before `ah-3sp7.1`, which
+ * reads as "no class can be resolved" and is exactly today's behaviour.
+ */
+itemClasses: { [key in string]: Array<string> }, 
+/**
+ * The item tags the data page says may not change hands: `This item cannot be given to
+ * other units.` 51 monsters and the imprisoned entity carry it, so `GIVE ... ALL MONSTERS`
+ * selects sixty items and can move nine.
+ *
+ * Sorted. Empty for a ruleset generated before `ah-3sp7.1`, which reads as "nothing is known
+ * to be ungiveable" - the permissive direction, and the one that matches a page which states
+ * the restriction and is silent otherwise.
+ */
+ungiveableItems: Array<string>, };

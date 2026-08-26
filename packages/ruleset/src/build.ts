@@ -13,7 +13,13 @@ export type { Ruleset } from "./generated/Ruleset";
 import type { Gap } from "./generated/Gap";
 import type { RiskThresholds } from "./generated/RiskThresholds";
 import type { Ruleset } from "./generated/Ruleset";
-import { parseBuildingReference, parseItemReference, parseSkillReference } from "./data";
+import {
+  itemClassesOf,
+  parseBuildingReference,
+  parseItemReference,
+  parseSkillReference,
+  ungiveableItemsOf
+} from "./data";
 import { parseMovementRules, RulesetScrapeError } from "./rules";
 
 export type BuildInput = {
@@ -109,6 +115,8 @@ export function buildRuleset(input: BuildInput): Ruleset {
     gaps: { weather: WEATHER_GAP },
     items,
     skills,
-    buildings
+    buildings,
+    itemClasses: itemClassesOf(items),
+    ungiveableItems: ungiveableItemsOf(items)
   };
 }

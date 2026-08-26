@@ -139,6 +139,43 @@ fn tells_men_from_equipment() {
 }
 
 #[test]
+fn the_catalogue_knows_which_items_are_armor() {
+    let ruleset = ruleset();
+
+    let armor = ruleset
+        .class_members("ARMOR")
+        .expect("ARMOR should be a class this catalogue can read");
+    assert!(
+        armor.iter().any(|tag| tag == "CARM"),
+        "chain armor should be recorded as ARMOR, got {armor:?}"
+    );
+}
+
+#[test]
+fn a_tag_the_page_says_cannot_change_hands_is_not_giveable() {
+    let ruleset = ruleset();
+
+    assert!(
+        !ruleset.can_be_given("LION"),
+        "a lion's entry says it cannot be given to other units"
+    );
+}
+
+#[test]
+fn a_tag_the_catalogue_does_not_carry_is_giveable_by_default() {
+    let ruleset = ruleset();
+
+    // The page states a restriction and is silent otherwise, so silence and ignorance look the
+    // same and the permissive reading is the one that matches the page - true both for a real tag
+    // the catalogue has nothing to say about and for one it has never heard of at all.
+    assert!(ruleset.can_be_given("SWOR"), "a sword may change hands");
+    assert!(
+        ruleset.can_be_given("ZZZZ"),
+        "an unknown tag is not known to be restricted"
+    );
+}
+
+#[test]
 fn carries_the_item_catalogue_the_risk_heuristic_needs() {
     let ruleset = ruleset();
 
