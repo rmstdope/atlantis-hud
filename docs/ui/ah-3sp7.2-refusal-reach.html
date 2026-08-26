@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-3sp7.2 — how far the refusal reaches</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1080px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:38px 0 10px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass);
+    border-top:1px solid var(--edge); padding-top:22px; }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:22px 0 8px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  pre.ord { background:#0c1016; border:1px solid var(--edge); border-left:3px solid var(--ink-dim);
+    padding:9px 13px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12.5px; color:var(--ink-soft); margin:10px 0; }
+  pre.ord b { color:var(--ink); }
+  table.units { border-collapse:collapse; width:100%; font-family:system-ui,-apple-system,sans-serif;
+    font-size:12.5px; background:var(--panel); border:1px solid var(--edge); margin:8px 0; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:600; font-size:10.5px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:8px 12px; border-bottom:1px solid rgba(38,48,61,.5); }
+  table.units tr:last-child td { border-bottom:0; }
+  table.units td.pred { color:var(--brass); font-style:italic; }
+  table.units td.same { color:var(--ink-dim); }
+  .warn { background:var(--raised); border-left:3px solid var(--brass); padding:9px 13px; font-family:system-ui,sans-serif;
+    font-size:12.5px; color:var(--ink); max-width:104ch; margin:8px 0; }
+  .warn .w { color:var(--brass); }
+  .none { color:var(--ink-dim); font-style:italic; font-size:12.5px; margin:10px 0; font-family:system-ui,sans-serif; }
+  .caselbl { color:var(--ink-dim); font-size:11px; letter-spacing:1.3px; text-transform:uppercase; margin:18px 0 4px; }
+  .lede { color:var(--ink-soft); font-size:13.5px; max-width:104ch; margin:8px 0 4px; }
+  s { color:var(--ink-dim); }
+</style></head><body>
+<header>
+<h1>Three things the interview did not reach — <span>how far the refusal goes</span></h1>
+<p>You settled the twelve classes, the warning that fires only where the game refuses, its exact
+wording, the hover, and the Settings entry. Everything below follows on from those and is still
+open. Each one changes what a row shows or when a warning appears, so none of them is mine to
+take.</p>
+<p style="margin-top:8px">Throughout: unit 900 holds <b>20 lions, 3 wolves, 1 skeleton, 4 swords,
+2 horses, 12 grain and 400 silver</b>. Lions and wolves say <code>This item cannot be given to other
+units.</code>; the skeleton does not.</p>
+</header>
+<main>
+
+<h3 class="sec">1 — does <code>ALL ITEMS</code> obey the refusal too?</h3>
+<p class="lede"><code>rules/give</code> makes <code>ITEMS</code> "the combination of all of the previous
+categories" — so it selects the lions as surely as <code>ALL MONSTERS</code> does, and the game refuses
+them just the same. <b>The application already resolves <code>ALL ITEMS</code> today</b> (shipped in
+<code>ah-dxfd.1</code>) and currently moves the lions, which is wrong. Whichever option you pick, the
+row changes; the question is whether the <i>warning</i> follows it there.</p>
+
+<div class="opt">OPTION 1A — the refusal and the warning apply to every class, ITEMS included</div>
+<pre class="ord">unit 900
+<b>GIVE 901 ALL ITEMS</b></pre>
+<table class="units">
+<tr><th>Unit</th><th>Items</th><th>Silver</th></tr>
+<tr><td>Beasts (900)</td><td class="pred">20 lions, 3 wolves</td><td class="pred">0</td></tr>
+<tr><td>Handler (901)</td><td class="pred">1 skeleton, 4 swords, 2 horses, 12 grain</td><td class="pred">450</td></tr>
+</table>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be given away, so this order moves only 1 skeleton, 4 swords, 2 horses and 12 grain.</div>
+<ul class="notes">
+<li>One rule, stated once: the game refuses these items, so no order moves them and every order that names them says so.</li>
+<li>A player emptying a unit with <code>ALL ITEMS</code> learns immediately that the pets stayed behind.</li>
+<li class="con"><code>ALL ITEMS</code> is the commonest form of the order, so a faction that keeps monsters sees this warning a great deal.</li>
+</ul>
+
+<div class="opt">OPTION 1B — the refusal applies everywhere; the warning fires only for the narrow classes</div>
+<pre class="ord">unit 900
+<b>GIVE 901 ALL ITEMS</b></pre>
+<table class="units">
+<tr><th>Unit</th><th>Items</th><th>Silver</th></tr>
+<tr><td>Beasts (900)</td><td class="pred">20 lions, 3 wolves</td><td class="pred">0</td></tr>
+<tr><td>Handler (901)</td><td class="pred">1 skeleton, 4 swords, 2 horses, 12 grain</td><td class="pred">450</td></tr>
+</table>
+<p class="none">No warning. The rows already show the lions and wolves staying, and <code>ALL ITEMS</code>
+never promised to move things the game will not move.</p>
+<div class="caselbl">the same unit, ordered by class — still warns</div>
+<pre class="ord">unit 900
+<b>GIVE 901 ALL MONSTERS</b></pre>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be given away, so this order moves only 1 skeleton.</div>
+<ul class="notes">
+<li>The warning stays rare, so it keeps its force where it matters: a player who wrote <code>ALL MONSTERS</code> meant the monsters and got almost none of them.</li>
+<li>Rows are identical under both options — nothing is hidden, only unsaid.</li>
+<li class="con">Two rules where there could be one, and the Settings description ("a whole class") would not quite describe when it fires.</li>
+</ul>
+
+<h3 class="sec">2 — the tail of the sentence, when a lot survives</h3>
+<p class="lede">You chose <b>"…so this order moves only the skeleton."</b> against a case with exactly one
+survivor. Under <code>ALL ITEMS</code>, or a fuller stack, the survivors are a list — and it is the
+half of the sentence that grows without limit.</p>
+
+<div class="opt">OPTION 2A — name every survivor, with counts (what wording A literally says)</div>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be given away, so this order moves only 1 skeleton, 4 swords, 2 horses and 12 grain.</div>
+<div class="caselbl">and with a fuller unit</div>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be given away, so this order moves only 1 skeleton, 4 swords, 2 horses, 12 grain, 3 mithril, 1 wagon, 8 furs and 2 longbows.</div>
+<ul class="notes">
+<li>Symmetric with the first half, and the player never has to look anywhere else.</li>
+<li class="con">Unbounded. On a laden unit the sentence is longer than the row it explains.</li>
+</ul>
+
+<div class="opt">OPTION 2B — name what is refused; say only that the rest moves</div>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be given away, so this order moves everything else this unit holds.</div>
+<div class="caselbl">state: nothing survives</div>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be given away, so this order moves nothing.</div>
+<div class="caselbl">state: exactly one survivor — still the general shape</div>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be given away, so this order moves everything else this unit holds.</div>
+<ul class="notes">
+<li>Fixed length whatever the unit holds; the refused half, which is the news, keeps its counts.</li>
+<li class="con">Loses "only the skeleton" — the phrasing you picked, and the one that makes a nearly-empty transfer obvious at a glance.</li>
+</ul>
+
+<div class="opt">OPTION 2C — keep the named tail up to three, then fall back</div>
+<div class="caselbl">up to three survivors — exactly the sentence you chose</div>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be given away, so this order moves only 1 skeleton.</div>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be given away, so this order moves only 1 skeleton, 4 swords and 2 horses.</div>
+<div class="caselbl">four or more</div>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be given away, so this order moves everything else this unit holds.</div>
+<ul class="notes">
+<li>Keeps the sentence you chose for the case you chose it for, and stays bounded on a laden unit.</li>
+<li class="con">A threshold in the wording, so the same order phrases itself two ways as a stack grows.</li>
+</ul>
+
+<h3 class="sec">3 — a named item the game also refuses</h3>
+<p class="lede">The game refuses a lion however the order names it. <code>GIVE 901 20 LION</code> is not a
+class order at all, and today the preview moves the lions — as it will keep doing unless this bead
+stops it. The check you settled is worded for classes ("a whole class holding items that cannot
+change hands"), so the warning is a separate question from the row.</p>
+
+<div class="opt">OPTION 3A — the row refuses it; the warning stays class-only</div>
+<pre class="ord">unit 900
+<b>GIVE 901 20 LION</b></pre>
+<table class="units">
+<tr><th>Unit</th><th>Items</th></tr>
+<tr><td>Beasts (900)</td><td class="same">20 lions, 3 wolves, 1 skeleton, …</td></tr>
+<tr><td>Handler (901)</td><td class="same">(unchanged)</td></tr>
+</table>
+<p class="none">Nothing moves, and nothing is said. The row is right; the player is left to notice.</p>
+<ul class="notes">
+<li>The projection tells one truth about lions wherever they appear, which is the thing a preview is for.</li>
+<li>No change to the Settings entry you already worded.</li>
+<li class="con">A row where a deliberate, explicit order did nothing at all, with no sentence anywhere saying why — the exact complaint that made you choose a warning in the first place.</li>
+</ul>
+
+<div class="opt">OPTION 3B — the row refuses it, and the same check speaks</div>
+<pre class="ord">unit 900
+<b>GIVE 901 20 LION</b></pre>
+<table class="units">
+<tr><th>Unit</th><th>Items</th></tr>
+<tr><td>Beasts (900)</td><td class="same">20 lions, 3 wolves, 1 skeleton, …</td></tr>
+<tr><td>Handler (901)</td><td class="same">(unchanged)</td></tr>
+</table>
+<div class="warn"><span class="w">line 2</span> — 20 lions cannot be given away, so this order moves nothing.</div>
+<ul class="notes">
+<li>The same sentence, reached the same way — the player learns the rule from whichever order they happened to write.</li>
+<li>An explicit order that does nothing is exactly where a warning earns its place.</li>
+<li class="con">The Settings description you chose says "a whole class", and would need one word changed to stay true — e.g. <code>A GIVE or TAKE naming items that cannot change hands, such as most monsters.</code></li>
+</ul>
+
+<div class="opt">OPTION 3C — leave the named form entirely alone this bead</div>
+<pre class="ord">unit 900
+<b>GIVE 901 20 LION</b></pre>
+<table class="units">
+<tr><th>Unit</th><th>Items</th></tr>
+<tr><td>Beasts (900)</td><td class="pred">3 wolves, 1 skeleton, …</td></tr>
+<tr><td>Handler (901)</td><td class="pred">20 lions</td></tr>
+</table>
+<p class="none">Today's behaviour, kept: the lions move in the preview even though the game will not
+move them. A separate bead for the named form.</p>
+<ul class="notes">
+<li>Smallest change, and keeps this bead to the class form its plan and its check describe.</li>
+<li class="con">The application would then say two different things about the same lions depending on how the order was typed, which is worse than saying one wrong thing consistently.</li>
+</ul>
+
+</main></body></html>
