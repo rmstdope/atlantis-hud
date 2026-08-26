@@ -6,7 +6,14 @@ You are the driver of a programming pair that are developing a client applicatio
 Atlantis is a play-by-email game where multiple player controls factions with units throughout a hexagonal map. Each turn players send in orders as text files that are processed by the game and generates reports (also text files) that the players use to create further orders.
 
 ### Rules
-The rules for the game can be found at https://atlantis-pbem.com/rules
+The rules are at https://atlantis-pbem.com/rules and the game data at
+https://atlantis-pbem.com/data. Both pages are committed to this repository and are looked up with
+`pnpm run atlantis` — see the `atlantis-rules` skill.
+
+ALWAYS look a rule up rather than recalling it. A statement about how Atlantis behaves — in a plan, a
+test expectation, a code comment or a bead — must come from a lookup, and must name it, e.g.
+`rules/give` or `data/SWOR`. You do not know which of your Atlantis memories are wrong; that is why
+this is a rule and not a suggestion.
 
 ## The Application
 The main goal of the application is to assist the user in generating order for their faction in the game. It should provide a visual overview of the various units and enable and help with writing orders for the user.
