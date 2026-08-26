@@ -126,6 +126,7 @@ pub mod codes {
     pub const PILLAGE_WITHOUT_MEN: Code = Code("pillage-without-men");
     pub const TAXED_A_GUARDED_HEX: Code = Code("taxed-a-guarded-hex");
     pub const PART_OF_HEX_SHORTFALL: Code = Code("part-of-hex-shortfall");
+    pub const NOTHING_LEFT_TO_SELL: Code = Code("nothing-left-to-sell");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -134,7 +135,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 33] = [
+    pub const ALL: [Code; 34] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -168,6 +169,7 @@ pub mod codes {
         PILLAGE_WITHOUT_MEN,
         TAXED_A_GUARDED_HEX,
         PART_OF_HEX_SHORTFALL,
+        NOTHING_LEFT_TO_SELL,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -451,6 +453,7 @@ pub fn review_turn(
             &mut findings,
         );
         check_markets(hex, ruleset, &options, &mut findings);
+        check_emptied_sales(hex, ruleset, &plurals, &options, &mut findings);
         let pillaged = own_unit_pillages(hex);
         check_pillaged_tax(hex, pillaged, &options, &mut findings);
         check_guarded_tax(
@@ -677,9 +680,11 @@ fn market_shares_for(
 
             let want = match (&placed.intent, side) {
                 // A unit cannot sell what it does not hold, so asking for more is not a larger
-                // claim on the market.
+                // claim on the market. `rules/sequenceofevents` settles GIVE/TAKE before the
+                // market opens, so what it "does not hold" is read as of that phase boundary
+                // rather than the report's own figure (`ah-q7jd`).
                 (Intent::Sell { amount, .. }, _) => {
-                    let holds = ordered.holding(&tag);
+                    let holds = ordered.early_holding(&tag);
                     match amount {
                         Amount::Exact(count) => (*count).min(holds),
                         Amount::All { except } => (holds - except).max(0),
@@ -833,7 +838,7 @@ fn forecast_hex(
             MarketAnswer::Offered(line) => SaleAnswer::Wanted {
                 price: line.price,
                 market_takes: line.amount,
-                unit_holds: ordered.holding(&line.tag.to_ascii_uppercase()),
+                unit_holds: ordered.early_holding(&line.tag.to_ascii_uppercase()),
             },
             // `market` collapses these two into `None`; the column must tell them apart, because
             // one earns nothing and the other cannot be priced at all.
@@ -2006,6 +2011,20 @@ impl Ordered<'_> {
             .map_or(0, |item| item.amount)
     }
 
+    /// What the unit holds of one tag as the market phase finds it - the report's own figure with
+    /// this month's `GIVE`/`TAKE` applied where `apply_transfers` could follow them.
+    ///
+    /// `rules/sequenceofevents` puts the *Give orders* phase before *Market orders*, and `BUY`,
+    /// `WITHDRAW`, `PRODUCE`, `BUILD` and `TRANSPORT` after it - so a purchase or a production run
+    /// written above a `SELL` gives it nothing to sell, and a gift written below one still takes
+    /// it away. The goods mirror of [`Ordered::early_men`].
+    fn early_holding(&self, tag: &str) -> i64 {
+        self.early_items()
+            .iter()
+            .find(|item| item.tag.eq_ignore_ascii_case(tag))
+            .map_or(0, |item| item.amount)
+    }
+
     /// A finding against the unit's block rather than against one order in it, for a check whose
     /// subject is the absence of an order. No columns: there is no token to underline.
     fn finding_at_block(&self, hex: &Hex<'_>, code: Code, message: String) -> Finding {
@@ -2605,6 +2624,152 @@ fn check_markets(
             };
 
             findings.push(ordered.finding(hex, codes::NOT_TRADED_HERE, message, Some(placed)));
+        }
+    }
+}
+
+/// Which of this month's transfers emptied a unit's stock before the market opened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EmptiedBy {
+    /// The unit's own `GIVE` - its own line, which is the one the player can edit.
+    OwnGive,
+    /// Another unit's `TAKE FROM` this one.
+    AnotherTake,
+}
+
+/// Why one unit's holding of one tag is gone by the market phase, or `None` when nothing in this
+/// hex's `GIVE` and `TAKE` orders names it - in which case the check stays silent rather than
+/// guessing. `OwnGive` wins when both apply, because the unit's own line is the one the player can
+/// edit.
+///
+/// Walks the hex's orders directly rather than `apply_transfers`'s projection: that records what
+/// moved, not who moved it.
+fn emptied_by(
+    hex: &Hex<'_>,
+    unit_id: &str,
+    tag: &str,
+    ruleset: Option<&Ruleset>,
+) -> Option<EmptiedBy> {
+    let actor = hex.find(unit_id)?;
+
+    // A class or whole-unit gift by this unit empties its stock wholesale, so it counts without
+    // resolving the class - re-deriving it here would be a second reading of what `apply_transfers`
+    // has already worked out.
+    let gives_it_away = actor.intents.iter().any(|placed| match &placed.intent {
+        Intent::Give { what, .. } => match what {
+            Selector::Item(text) => resolve_item(text, hex, actor, ruleset)
+                .is_some_and(|resolved| resolved.eq_ignore_ascii_case(tag)),
+            Selector::Class(_) | Selector::WholeUnit => true,
+        },
+        _ => false,
+    });
+    if gives_it_away {
+        return Some(EmptiedBy::OwnGive);
+    }
+
+    let taken_by_another = hex.units.iter().any(|other| {
+        other.intents.iter().any(|placed| match &placed.intent {
+            Intent::Take { from, what, .. } => {
+                party_id(from, hex).as_deref() == Some(unit_id)
+                    && match what {
+                        Selector::Item(text) => resolve_item(text, hex, other, ruleset)
+                            .is_some_and(|resolved| resolved.eq_ignore_ascii_case(tag)),
+                        Selector::Class(_) | Selector::WholeUnit => true,
+                    }
+            }
+            _ => false,
+        })
+    });
+
+    taken_by_another.then_some(EmptiedBy::AnotherTake)
+}
+
+/// An item's plural as the report writes it, falling back to the catalogue's singular where the
+/// report never showed more than one - the fallback [`counted_with_singular`] already carries,
+/// pulled out so a caller that only wants the plural word need not build the whole counted string.
+fn plural_name(tag: &str, hex: &Hex<'_>, ruleset: Option<&Ruleset>, plurals: &Plurals) -> String {
+    plurals
+        .get(&tag.to_ascii_uppercase())
+        .cloned()
+        .unwrap_or_else(|| item_name(tag, hex, ruleset))
+}
+
+/// `SELL ... ALL` of goods this month's earlier orders have already moved away.
+///
+/// Needs no ledger: [`Ordered::early_holding`] is the market-phase projection
+/// [`apply_transfers`] already wrote, and the report's own [`Ordered::holding`] is what says the
+/// unit had something to begin with.
+fn check_emptied_sales(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::NOTHING_LEFT_TO_SELL) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        for placed in ordered.intents {
+            let Intent::Sell {
+                amount: Amount::All { .. },
+                item,
+            } = &placed.intent
+            else {
+                continue;
+            };
+
+            let MarketAnswer::Offered(line) =
+                market_answer(&hex.region.wanted, item, hex, ordered, ruleset)
+            else {
+                // `not-traded-here` already speaks for the untraded case, and nothing could
+                // identify the goods in the unknown case - either way, a second warning on the
+                // same line would be worse than the one that already fired.
+                continue;
+            };
+            let tag = line.tag.to_ascii_uppercase();
+
+            // A transfer this walk could not follow means the projection fell back to the
+            // report, so "it was moved away" is exactly what cannot be said.
+            if ordered.holdings_unknown() {
+                continue;
+            }
+            // The report's own figure: a unit that never held any was never going to sell any,
+            // and nothing this month caused that.
+            let report_holding = ordered.holding(&tag);
+            if report_holding <= 0 {
+                continue;
+            }
+            // Still something left by the market phase - an ordinary, correctly-priced sale.
+            if ordered.early_holding(&tag) != 0 {
+                continue;
+            }
+
+            let Some(cause) = emptied_by(hex, &ordered.unit.unit_id, &tag, ruleset) else {
+                continue;
+            };
+
+            let name = if report_holding == 1 {
+                format!("its only {}", item_name(&tag, hex, ruleset))
+            } else {
+                format!(
+                    "all {report_holding} of its {}",
+                    plural_name(&tag, hex, ruleset, plurals)
+                )
+            };
+            let message = match cause {
+                EmptiedBy::OwnGive => {
+                    format!("this unit gives away {name} before the market opens, so this sells nothing")
+                }
+                EmptiedBy::AnotherTake => {
+                    format!(
+                        "another unit takes {name} before the market opens, so this sells nothing"
+                    )
+                }
+            };
+
+            findings.push(ordered.finding(hex, codes::NOTHING_LEFT_TO_SELL, message, Some(placed)));
         }
     }
 }
@@ -3541,7 +3706,11 @@ fn sell(
     };
 
     let tag = demand.tag.to_ascii_uppercase();
-    let holds = balance_of(ledger, who, &tag);
+    // The market phase can only sell what the phase boundary itself leaves the unit
+    // (`rules/sequenceofevents`), so the early holding caps what `ALL` resolves against - and the
+    // running ledger balance still caps it too, so a second `SELL ALL` of the same goods this
+    // month cannot double-charge what the first one already took (`ah-q7jd`).
+    let holds = actor.early_holding(&tag).min(balance_of(ledger, who, &tag));
     let asked = match amount {
         Amount::Exact(count) => *count,
         Amount::All { except } => holds - except,
@@ -8448,6 +8617,355 @@ mod tests {
         assert_eq!(review.silver[0].doubt, None);
     }
 
+    /// `ah-q7jd`. The ledger's credit, the column's income and the unit's market share must all
+    /// settle a `SELL ALL` against one holding, not three - this is the bead's acceptance
+    /// criterion written as a test.
+    #[test]
+    fn the_three_surfaces_price_one_sale_alike() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![
+                unit("5512"),
+                with_item(unit("2390"), 10, "fur", "FUR"),
+            ])
+        };
+
+        let review = review_turn(
+            &report(vec![hex.clone()]),
+            "unit 2390\nGIVE 5512 10 FUR\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert_eq!(review.silver[0].income, Some(0));
+
+        let ordered = OrderedUnits::read("unit 2390\nGIVE 5512 10 FUR\nSELL ALL FUR\n");
+        let rules = ruleset();
+        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
+        assert_eq!(balance_of(&ledger, "2390", "SILV"), 0);
+
+        let mut overruns = Vec::new();
+        let shares = market_shares_for(&hex_with_transfers, Some(&rules), &mut overruns);
+        assert_eq!(
+            shares.get(&("FUR".to_string(), MarketSide::Selling)),
+            None,
+            "a seller whose gift emptied it makes no claim at all, so there is no entry to divide"
+        );
+    }
+
+    /// `ah-q7jd`, increment 5. `market_shares_for`'s sell claim reads the market-phase holding, so
+    /// a seller whose own gift emptied it takes none of a market-share settlement between own
+    /// units - the other seller, untouched, takes the whole line rather than half of it.
+    #[test]
+    fn a_seller_whose_gift_emptied_it_claims_no_share_of_the_line() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 10,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 5,
+            }],
+            ..region(vec![
+                with_item(unit("2390"), 10, "fur", "FUR"),
+                with_item(unit("2391"), 10, "fur", "FUR"),
+                unit("5512"),
+            ])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nGIVE 5512 10 FUR\nSELL ALL FUR\nunit 2391\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let income_of = |id: &str| {
+            review
+                .silver
+                .iter()
+                .find(|unit| unit.unit_id == id)
+                .and_then(|unit| unit.income)
+        };
+        assert_eq!(income_of("2390"), Some(0));
+        assert_eq!(income_of("2391"), Some(50));
+    }
+
+    /// `ah-q7jd`, increment 6.
+    #[test]
+    fn a_sale_emptied_by_this_units_own_gift_is_warned_on_its_sell_line() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![
+                with_item(unit("2390"), 10, "furs", "FUR"),
+                unit("5512"),
+            ])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nGIVE 5512 10 FUR\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let findings: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "nothing-left-to-sell")
+            .collect();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(
+            findings[0].message,
+            "this unit gives away all 10 of its furs before the market opens, so this sells nothing"
+        );
+        assert_eq!(findings[0].unit_id, Some("2390".to_string()));
+    }
+
+    /// `ah-q7jd`, increment 7.
+    #[test]
+    fn a_sale_emptied_by_a_single_gifted_item_names_it_in_the_singular() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![with_item(unit("2390"), 1, "fur", "FUR"), unit("5512")])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nGIVE 5512 1 FUR\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let message = review
+            .findings
+            .iter()
+            .find(|finding| finding.code.as_str() == "nothing-left-to-sell")
+            .map(|finding| finding.message.as_str());
+        assert_eq!(
+            message,
+            Some(
+                "this unit gives away its only fur before the market opens, so this sells nothing"
+            )
+        );
+    }
+
+    /// `ah-q7jd`, increment 7.
+    #[test]
+    fn a_sale_emptied_by_another_units_take_says_who_took_it() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![
+                with_item(unit("2390"), 10, "furs", "FUR"),
+                unit("5512"),
+            ])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 5512\nTAKE FROM 2390 10 FUR\nunit 2390\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let message = review
+            .findings
+            .iter()
+            .find(|finding| finding.code.as_str() == "nothing-left-to-sell")
+            .map(|finding| finding.message.as_str());
+        assert_eq!(
+            message,
+            Some("another unit takes all 10 of its furs before the market opens, so this sells nothing")
+        );
+    }
+
+    /// `ah-q7jd`, increment 7.
+    #[test]
+    fn a_sale_emptied_by_a_take_of_a_single_item_names_it_in_the_singular() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![with_item(unit("2390"), 1, "fur", "FUR"), unit("5512")])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 5512\nTAKE FROM 2390 1 FUR\nunit 2390\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let message = review
+            .findings
+            .iter()
+            .find(|finding| finding.code.as_str() == "nothing-left-to-sell")
+            .map(|finding| finding.message.as_str());
+        assert_eq!(
+            message,
+            Some("another unit takes its only fur before the market opens, so this sells nothing")
+        );
+    }
+
+    /// `ah-q7jd`, increment 8. A unit the report showed holding none of the goods was never going
+    /// to sell any, so nothing this month can be blamed for emptying it.
+    #[test]
+    fn a_sale_of_goods_the_report_showed_none_of_is_not_warned() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![unit("2390")])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(!review
+            .findings
+            .iter()
+            .any(|finding| finding.code.as_str() == "nothing-left-to-sell"));
+    }
+
+    /// `ah-q7jd`, increment 8. The gift only partly reduced the stock, so the sale still does
+    /// something and the corrected SILVER figure already tells the truth.
+    #[test]
+    fn a_sale_a_gift_only_partly_reduced_is_not_warned() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![
+                with_item(unit("2390"), 10, "fur", "FUR"),
+                unit("5512"),
+            ])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nGIVE 5512 4 FUR\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(!review
+            .findings
+            .iter()
+            .any(|finding| finding.code.as_str() == "nothing-left-to-sell"));
+    }
+
+    /// `ah-q7jd`, increment 8. `not-traded-here` already speaks for a market that does not want
+    /// the goods; this check must not pile a second warning on the same line.
+    #[test]
+    fn a_sale_of_goods_this_market_does_not_want_is_not_warned() {
+        let hex = region(vec![with_item(unit("2390"), 10, "fur", "FUR")]);
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(!review
+            .findings
+            .iter()
+            .any(|finding| finding.code.as_str() == "nothing-left-to-sell"));
+    }
+
+    /// `ah-q7jd`, increment 8. The `EXCEPT` reserve is deliberately not consulted: a reserve only
+    /// bites when something survives to the market, so a stock nothing moved away is silent
+    /// whatever the reserve says.
+    #[test]
+    fn a_sale_whose_except_reserve_takes_the_rest_is_not_warned() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![with_item(unit("2390"), 5, "fur", "FUR")])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nSELL ALL FUR EXCEPT 5\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(!review
+            .findings
+            .iter()
+            .any(|finding| finding.code.as_str() == "nothing-left-to-sell"));
+    }
+
+    /// `ah-q7jd`, increment 8. A transfer this walk cannot follow leaves the projection falling
+    /// back to the report, so "the gifts moved it away" is exactly what cannot be asserted.
+    #[test]
+    fn a_sale_by_a_unit_whose_transfers_cannot_be_followed_is_not_warned() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![with_item(
+                with_item(unit("2390"), 10, "fur", "FUR"),
+                1,
+                "sword",
+                "SWOR",
+            )])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nGIVE 5512 ALL WEAPONS\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(!review
+            .findings
+            .iter()
+            .any(|finding| finding.code.as_str() == "nothing-left-to-sell"));
+    }
+
     /// The pair is the point (`ah-abwx`): one direction alone passes on a surface that credits
     /// nothing. The ledger has always credited a pillage twice the region's tax base, so the
     /// column has to say the same or the player is shown a red month-end beside a silent warning.
@@ -10404,6 +10922,104 @@ mod tests {
                 tag: tag.to_string(),
                 price,
             }
+        }
+
+        /// Like `with_ledger`, but with this month's `GIVE`/`TAKE` projected onto the hex's units
+        /// first (`hex_with_transfers`) - what `sell`'s early-holding argument reads, and what
+        /// `with_ledger` above deliberately skips for every test that is not about it (`ah-q7jd`).
+        fn with_ledger_after_transfers<R>(
+            hex_region: ReportRegion,
+            orders: &str,
+            read: impl FnOnce(&Ledger<'_>) -> R,
+        ) -> R {
+            let ordered = OrderedUnits::read(orders);
+            let rules = ruleset();
+            let hex = hex_with_transfers(&hex_region, &ordered, &[], Some(&rules));
+            let no_receipts = BTreeMap::new();
+            let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+            read(&ledger)
+        }
+
+        /// `ah-q7jd`, increment 1. The SILVER surfaces settle a sale against what the market phase
+        /// finds, not the report's own figure - `rules/sequenceofevents` puts *Give orders* before
+        /// *Market orders*.
+        #[test]
+        fn a_sale_of_all_after_a_gift_sells_only_what_the_gift_leaves() {
+            let hex_region = ReportRegion {
+                wanted: vec![line(100, 42, "fur", "FUR")],
+                ..region(vec![
+                    with_item(unit("2390"), 10, "fur", "FUR"),
+                    unit("5512"),
+                ])
+            };
+            with_ledger_after_transfers(
+                hex_region,
+                "unit 2390\nGIVE 5512 10 FUR\nSELL ALL FUR\n",
+                |ledger| {
+                    assert_eq!(balance_of(ledger, "2390", "SILV"), 0);
+                    assert!(balance_of(ledger, "2390", "FUR") >= 0);
+                },
+            );
+        }
+
+        /// `ah-q7jd`, increment 2. The early holding is the stock at the *start* of the market
+        /// phase, so two `SELL ALL` lines of the same goods would each resolve to the full amount
+        /// without the ledger's own running balance still capping the second - the running balance
+        /// is what stops that from double-charging.
+        #[test]
+        fn two_sales_of_all_the_same_goods_do_not_charge_twice() {
+            let hex_region = ReportRegion {
+                wanted: vec![line(100, 42, "fur", "FUR")],
+                ..region(vec![with_item(unit("2390"), 10, "fur", "FUR")])
+            };
+            with_ledger_after_transfers(
+                hex_region,
+                "unit 2390\nSELL ALL FUR\nSELL ALL FUR\n",
+                |ledger| {
+                    assert_eq!(balance_of(ledger, "2390", "FUR"), 0);
+                    assert_eq!(balance_of(ledger, "2390", "SILV"), 420);
+                    assert!(
+                        !ledger.uncounted.contains_key("2390"),
+                        "the second SELL ALL sells nothing, but is not an order nothing could count"
+                    );
+                },
+            );
+        }
+
+        /// `ah-q7jd`, increment 3. Document order alone must not decide the price: the phase
+        /// boundary does, so the sale is priced the same whichever order the two lines are
+        /// written in.
+        #[test]
+        fn a_sale_of_all_is_priced_the_same_whichever_order_the_lines_are_written_in() {
+            let hex_region = ReportRegion {
+                wanted: vec![line(100, 42, "fur", "FUR")],
+                ..region(vec![
+                    with_item(unit("2390"), 10, "fur", "FUR"),
+                    unit("5512"),
+                ])
+            };
+            let sell_then_give = with_ledger_after_transfers(
+                hex_region.clone(),
+                "unit 2390\nSELL ALL FUR\nGIVE 5512 10 FUR\n",
+                |ledger| {
+                    (
+                        balance_of(ledger, "2390", "SILV"),
+                        balance_of(ledger, "2390", "FUR"),
+                    )
+                },
+            );
+            let give_then_sell = with_ledger_after_transfers(
+                hex_region,
+                "unit 2390\nGIVE 5512 10 FUR\nSELL ALL FUR\n",
+                |ledger| {
+                    (
+                        balance_of(ledger, "2390", "SILV"),
+                        balance_of(ledger, "2390", "FUR"),
+                    )
+                },
+            );
+            assert_eq!(sell_then_give, give_then_sell);
+            assert_eq!(sell_then_give, (0, 0));
         }
 
         #[test]
@@ -17638,6 +18254,21 @@ mod tests {
                 code: codes::NOT_TRADED_HERE,
                 regions: vec![region(vec![unit("5")])],
                 orders: "unit 5\nBUY 5 silk\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::NOTHING_LEFT_TO_SELL,
+                regions: vec![ReportRegion {
+                    wanted: vec![MarketItem {
+                        amount: 100,
+                        name: "furs".to_string(),
+                        tag: "FUR".to_string(),
+                        price: 42,
+                    }],
+                    ..region(vec![with_item(unit("5"), 10, "furs", "FUR"), unit("7")])
+                }],
+                orders: "unit 5\nGIVE 7 10 FUR\nSELL ALL FUR\n",
                 allowance: None,
                 unclaimed: None,
             },

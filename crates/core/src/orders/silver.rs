@@ -4651,6 +4651,18 @@ mod tests {
         assert_eq!(unit.income, Some(288));
     }
 
+    /// `ah-q7jd`. `unit_holds` is the market-phase holding `forecast_hex`'s sale closure now
+    /// reads from `Ordered::early_holding` rather than the report's own figure - a unit whose
+    /// earlier gift has already moved everything away sells nothing, whatever the report shows.
+    #[test]
+    fn selling_all_of_goods_this_months_gift_moved_away_earns_nothing() {
+        let unit = sold(
+            &[selling("furs", Amount::All { except: 0 })],
+            &wanted(24, 40, 0),
+        );
+        assert_eq!(unit.income, Some(0));
+    }
+
     #[test]
     fn selling_all_but_a_reserve_keeps_the_reserve() {
         let unit = sold(

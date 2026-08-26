@@ -35,7 +35,8 @@ export const ADVISORY_CHECK_CODES = [
   "region-pool-oversubscribed",
   "pillage-without-men",
   "taxed-a-guarded-hex",
-  "part-of-hex-shortfall"
+  "part-of-hex-shortfall",
+  "nothing-left-to-sell"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
