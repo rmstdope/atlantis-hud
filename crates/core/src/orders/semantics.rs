@@ -36,13 +36,13 @@ use crate::movement::rules::{item_spellings, ItemKind, Production, Ruleset, Skil
 use crate::orders::silver::{
     because_clause, combat_ready, feed_after_silver, feed_from_faction_food, food_claim,
     forecast_unit, late_income, parse_wage_centis, pillage_threshold, pool_wants, price_buy_all,
-    price_cast, price_claim, price_pillage, price_production, price_purchase, price_sale,
-    price_study, price_tax, quantity_bought, quantity_sold, readiness, recipe_for,
-    settle_unclaimed, split_pool, taxes, transfer_shape, transmute_argument, unit_upkeep, Caster,
-    ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
-    LateFoodRelief, Lookups, MarketSide, PoolOverrun, PoolShare, PoolShares, PoolWants,
-    PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, TransferShape, Transmuting,
-    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
+    price_cast, price_claim, price_pillage, price_production, price_purchase, price_sale_line,
+    price_study, price_tax, quantity_bought, readiness, recipe_for, settle_unclaimed, split_pool,
+    taxes, transfer_shape, transmute_argument, unit_upkeep, Caster, ContendedPool, FactionFoodPass,
+    FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketSide,
+    PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages,
+    SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
+    UpkeepSettlement, FOOD_TAGS,
 };
 use crate::report::composition;
 use crate::report::model::{
@@ -454,7 +454,7 @@ pub fn review_turn(
             &mut findings,
         );
         check_markets(hex, ruleset, &options, &mut findings);
-        check_emptied_sales(hex, ruleset, &plurals, &options, &mut findings);
+        check_emptied_sales(hex, ledger, ruleset, &plurals, &options, &mut findings);
         let pillaged = own_unit_pillages(hex);
         check_pillaged_tax(hex, pillaged, &options, &mut findings);
         check_guarded_tax(
@@ -653,6 +653,11 @@ fn market_shares_for(
     overruns: &mut Vec<PoolOverrun>,
 ) -> BTreeMap<(String, MarketSide), Vec<i64>> {
     let mut wants: BTreeMap<(String, MarketSide), Vec<i64>> = BTreeMap::new();
+    // A unit's `SELL` lines draw on one stock, so a second line for the same goods can only claim
+    // what the first left. Without this a unit writing `SELL ALL FUR` twice claims twenty of a line
+    // it can supply ten into, wins a share it is not owed, and can push the line into a false
+    // `region-pool-oversubscribed` (`ah-vw8e`).
+    let mut claimed: BTreeMap<(usize, String), i64> = BTreeMap::new();
 
     for (index, ordered) in hex.units.iter().enumerate() {
         for placed in ordered.intents {
@@ -683,9 +688,11 @@ fn market_shares_for(
                 // A unit cannot sell what it does not hold, so asking for more is not a larger
                 // claim on the market. `rules/sequenceofevents` settles GIVE/TAKE before the
                 // market opens, so what it "does not hold" is read as of that phase boundary
-                // rather than the report's own figure (`ah-q7jd`).
+                // rather than the report's own figure (`ah-q7jd`). A second `SELL` of the same
+                // goods can only claim what an earlier line of this unit's own has left (`ah-vw8e`).
                 (Intent::Sell { amount, .. }, _) => {
-                    let holds = ordered.early_holding(&tag);
+                    let already = claimed.get(&(index, tag.clone())).copied().unwrap_or(0);
+                    let holds = (ordered.early_holding(&tag) - already).max(0);
                     match amount {
                         Amount::Exact(count) => (*count).min(holds),
                         Amount::All { except } => (holds - except).max(0),
@@ -700,6 +707,9 @@ fn market_shares_for(
                 },
                 _ => continue,
             };
+            if matches!(side, MarketSide::Selling) {
+                *claimed.entry((index, tag.clone())).or_default() += want.max(0);
+            }
             if want <= 0 {
                 // A zero want is not a claim and takes no share.
                 continue;
@@ -2296,6 +2306,32 @@ struct Ledger<'a> {
     /// same reason, and the two must defer to the same figure or the SILVER and ITEMS cells go
     /// back to contradicting each other.
     pub(crate) buy_all: BTreeMap<String, Vec<DeferredBuy>>,
+    /// How many of one tag a unit's own `SELL` lines have already moved this month, and how many of
+    /// those lines moved any. A block may name the same goods twice, and the second line can only
+    /// draw on what the first left of the unit's settled share of the market line (`ah-vw8e`). Keyed
+    /// as `balance` is, and with the same caveat: two units carrying one id share an entry.
+    sold: BTreeMap<(String, String), SoldSoFar>,
+    /// Every `SELL` line that found none of its goods left when it ran, recorded where the running
+    /// total already lives so `check_emptied_sales` need not compute the same fact a second time
+    /// (`ah-vw8e`) - which is how this column and that warning drifted apart before (`ah-ycuj`).
+    dead_sales: Vec<DeadSale>,
+}
+
+/// How much of one tag one unit's earlier `SELL` lines this month have already moved.
+#[derive(Debug, Clone, Copy, Default)]
+struct SoldSoFar {
+    /// How many of the tag those lines moved.
+    quantity: i64,
+    /// How many lines moved any. Only the sentence's verb reads it.
+    lines: i64,
+}
+
+/// A `SELL` line with nothing left to sell, and what the lines above it had taken.
+struct DeadSale {
+    unit_id: String,
+    tag: String,
+    placed: PlacedIntent,
+    sold_before: SoldSoFar,
 }
 
 /// One `BUY ALL` the ledger has read and not yet settled.
@@ -2415,6 +2451,8 @@ fn ledger_for<'a>(
         uncounted: BTreeMap::new(),
         built: BTreeMap::new(),
         buy_all: BTreeMap::new(),
+        sold: BTreeMap::new(),
+        dead_sales: Vec::new(),
     };
 
     for ordered in &hex.units {
@@ -2876,13 +2914,18 @@ fn plural_name(tag: &str, hex: &Hex<'_>, ruleset: Option<&Ruleset>, plurals: &Pl
         .unwrap_or_else(|| item_name(tag, hex, ruleset))
 }
 
-/// `SELL ... ALL` of goods this month's earlier orders have already moved away.
+/// A `SELL` of goods this month's earlier orders have already moved away - any `SELL`, not only
+/// `SELL … ALL`: a stated amount emptied by a gift, a take, or an earlier `SELL` is the same
+/// invisible mistake (`ah-vw8e`).
 ///
-/// Needs no ledger: [`Ordered::early_holding`] is the market-phase projection
-/// [`apply_transfers`] already wrote, and the report's own [`Ordered::holding`] is what says the
-/// unit had something to begin with.
+/// Reads [`Ledger::dead_sales`] rather than walking the hex itself: `sell` has already applied the
+/// gates that used to live here (goods this market does not want or nothing could identify never
+/// reach it, and `Amount::All` is resolved against the same running total the SILVER column and the
+/// ledger balance read), so this is the one place left to turn a dead line into a sentence
+/// (`ah-vw8e`).
 fn check_emptied_sales(
     hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
@@ -2892,55 +2935,67 @@ fn check_emptied_sales(
         return;
     }
 
-    for ordered in &hex.units {
-        for placed in ordered.intents {
-            let Intent::Sell {
-                amount: Amount::All { .. },
-                item,
-            } = &placed.intent
-            else {
+    for dead in &ledger.dead_sales {
+        let Some(ordered) = hex.find(&dead.unit_id) else {
+            continue;
+        };
+        // A transfer this walk could not follow means the projection fell back to the report, so
+        // "it was moved away" is exactly what cannot be said.
+        if ordered.holdings_unknown() {
+            continue;
+        }
+        // The report's own figure: a unit that never held any was never going to sell any, and
+        // nothing this month caused that.
+        let report_holding = ordered.holding(&dead.tag);
+        if report_holding <= 0 {
+            continue;
+        }
+
+        // An earlier line of this unit's own that already sold the goods is the nearer cause -
+        // it consumed the last of the stock - and is checked first; only when no earlier line
+        // sold anything does the gift or the take get named (`ah-vw8e`).
+        let message = if dead.sold_before.quantity > 0 {
+            let SoldSoFar { quantity, lines } = dead.sold_before;
+            // The count is what the earlier lines actually sold, never the report's figure: a
+            // month where a gift took part of the stock would otherwise claim all of it was sold.
+            let goods = if quantity == 1 {
+                if quantity == report_holding {
+                    format!("its only {}", item_name(&dead.tag, hex, ruleset))
+                } else {
+                    format!(
+                        "the only {} it had left",
+                        item_name(&dead.tag, hex, ruleset)
+                    )
+                }
+            } else if quantity == report_holding {
+                format!(
+                    "all {quantity} of its {}",
+                    plural_name(&dead.tag, hex, ruleset, plurals)
+                )
+            } else {
+                format!(
+                    "the {quantity} {} it had left",
+                    plural_name(&dead.tag, hex, ruleset, plurals)
+                )
+            };
+            if lines == 1 {
+                format!("an earlier order sells {goods}, so this sells nothing")
+            } else {
+                format!("earlier orders sell {goods}, so this sells nothing")
+            }
+        } else {
+            let Some(cause) = emptied_by(hex, &dead.unit_id, &dead.tag, ruleset) else {
                 continue;
             };
-
-            let MarketAnswer::Offered(line) =
-                market_answer(&hex.region.wanted, item, hex, ordered, ruleset)
-            else {
-                // `not-traded-here` already speaks for the untraded case, and nothing could
-                // identify the goods in the unknown case - either way, a second warning on the
-                // same line would be worse than the one that already fired.
-                continue;
-            };
-            let tag = line.tag.to_ascii_uppercase();
-
-            // A transfer this walk could not follow means the projection fell back to the
-            // report, so "it was moved away" is exactly what cannot be said.
-            if ordered.holdings_unknown() {
-                continue;
-            }
-            // The report's own figure: a unit that never held any was never going to sell any,
-            // and nothing this month caused that.
-            let report_holding = ordered.holding(&tag);
-            if report_holding <= 0 {
-                continue;
-            }
-            // Still something left by the market phase - an ordinary, correctly-priced sale.
-            if ordered.early_holding(&tag) != 0 {
-                continue;
-            }
-
-            let Some(cause) = emptied_by(hex, &ordered.unit.unit_id, &tag, ruleset) else {
-                continue;
-            };
-
             let name = if report_holding == 1 {
-                format!("its only {}", item_name(&tag, hex, ruleset))
+                format!("its only {}", item_name(&dead.tag, hex, ruleset))
             } else {
                 format!(
                     "all {report_holding} of its {}",
-                    plural_name(&tag, hex, ruleset, plurals)
+                    plural_name(&dead.tag, hex, ruleset, plurals)
                 )
             };
-            let message = match cause {
+            match cause {
                 EmptiedBy::OwnGive => {
                     format!("this unit gives away {name} before the market opens, so this sells nothing")
                 }
@@ -2949,10 +3004,15 @@ fn check_emptied_sales(
                         "another unit takes {name} before the market opens, so this sells nothing"
                     )
                 }
-            };
+            }
+        };
 
-            findings.push(ordered.finding(hex, codes::NOTHING_LEFT_TO_SELL, message, Some(placed)));
-        }
+        findings.push(ordered.finding(
+            hex,
+            codes::NOTHING_LEFT_TO_SELL,
+            message,
+            Some(&dead.placed),
+        ));
     }
 }
 
@@ -3979,36 +4039,50 @@ fn sell(
     };
 
     let tag = demand.tag.to_ascii_uppercase();
+    let before = ledger
+        .sold
+        .get(&(who.clone(), tag.clone()))
+        .copied()
+        .unwrap_or_default();
     // The market phase can only sell what the phase boundary itself leaves the unit
     // (`rules/sequenceofevents`), so the early holding caps what `ALL` resolves against - and the
-    // running ledger balance still caps it too, so a second `SELL ALL` of the same goods this
-    // month cannot double-charge what the first one already took (`ah-q7jd`).
-    let holds = actor.early_holding(&tag).min(balance_of(ledger, who, &tag));
-    let asked = match amount {
-        Amount::Exact(count) => *count,
-        Amount::All { except } => holds - except,
-    };
+    // running ledger balance still caps it too, which is what catches a `GIVE` this month's
+    // projection could not follow, and what already nets off this unit's earlier sales (`ah-q7jd`).
+    let remaining_holding = actor.early_holding(&tag).min(balance_of(ledger, who, &tag));
     // What this hex's other own sellers left of the line, or the line itself where nothing was
-    // settled - so a lone unit is credited only for what the market will actually take
-    // (`ah-t2pn.3`).
+    // settled (`ah-t2pn.3`), less what this unit's own earlier lines have already taken out of it.
     let allowed = standing
         .share_of(&tag, MarketSide::Selling)
         .unwrap_or(demand.amount);
-    let quantity = quantity_sold(asked, holds, allowed);
-
-    charge(ledger, who, &tag, quantity, placed);
-    credit(
-        ledger,
-        who,
-        SILVER,
-        price_sale(asked, holds, demand.price, allowed).earns,
+    let line = price_sale_line(
+        amount,
+        remaining_holding,
+        (allowed - before.quantity).max(0),
+        demand.price,
     );
-    if quantity != 0 {
+
+    charge(ledger, who, &tag, line.quantity, placed);
+    credit(ledger, who, SILVER, line.earns);
+
+    let entry = ledger.sold.entry((who.clone(), tag.clone())).or_default();
+    entry.quantity = entry.quantity.saturating_add(line.quantity);
+    if line.quantity > 0 {
+        entry.lines += 1;
+    }
+    if remaining_holding == 0 {
+        ledger.dead_sales.push(DeadSale {
+            unit_id: who.clone(),
+            tag: tag.clone(),
+            placed: placed.clone(),
+            sold_before: before,
+        });
+    }
+    if line.quantity != 0 {
         ledger.movements.push(ItemMovement {
             unit_id: who.clone(),
             tag: tag.clone(),
             name: item_name(&tag, hex, ledger.ruleset),
-            delta: -quantity,
+            delta: -line.quantity,
             from_unshown: None,
             produced: false,
             created: None,
@@ -8935,6 +9009,111 @@ mod tests {
         );
     }
 
+    /// `ah-vw8e`, increment 4. A unit's `SELL` lines draw on one settled share of the market line,
+    /// so a second line for the same goods can only move what the first left of it - not the whole
+    /// share again.
+    #[test]
+    fn a_doubled_sale_never_moves_more_than_the_settled_share() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 6,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![
+                with_item(unit("2390"), 10, "fur", "FUR"),
+                with_item(unit("2391"), 10, "fur", "FUR"),
+            ])
+        };
+
+        let review = review_turn(
+            &report(vec![hex.clone()]),
+            "unit 2390\nSELL ALL FUR\nSELL ALL FUR\nunit 2391\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let income_of = |id: &str| {
+            review
+                .silver
+                .iter()
+                .find(|unit| unit.unit_id == id)
+                .and_then(|unit| unit.income)
+        };
+        assert_eq!(income_of("2390"), Some(126));
+
+        let ordered =
+            OrderedUnits::read("unit 2390\nSELL ALL FUR\nSELL ALL FUR\nunit 2391\nSELL ALL FUR\n");
+        let rules = ruleset();
+        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
+        let moved: i64 = ledger
+            .movements
+            .iter()
+            .filter(|movement| movement.unit_id == "2390" && movement.tag == "FUR")
+            .map(|movement| -movement.delta)
+            .sum();
+        assert_eq!(moved, 3);
+    }
+
+    /// `ah-vw8e`, increment 5. A unit's own doubled `SELL ALL` claims what it holds once, not
+    /// twice. Both units here genuinely oversubscribe a ten-line by holding ten each - the pool
+    /// really is short, and the finding is right to fire - but before this fix the doubled unit's
+    /// own inflated claim of twenty pushed the *stated* total to 30 and skewed the split against
+    /// the honest single seller; after it, the stated total is the real 20, and the line is split
+    /// in half rather than two-thirds/one-third.
+    #[test]
+    fn a_doubled_sell_all_claims_only_what_the_unit_holds() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 10,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![
+                with_item(unit("2390"), 10, "fur", "FUR"),
+                with_item(unit("2391"), 10, "fur", "FUR"),
+            ])
+        };
+        let orders = "unit 2390\nSELL ALL FUR\nSELL ALL FUR\nunit 2391\nSELL ALL FUR\n";
+
+        let review = review_turn(
+            &report(vec![hex.clone()]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let message = review
+            .findings
+            .iter()
+            .find(|finding| finding.code == codes::REGION_POOL_OVERSUBSCRIBED)
+            .map(|finding| finding.message.as_str());
+        assert_eq!(
+            message,
+            Some("your units here sell 20 fur between them and this market wants 10"),
+            "the doubled unit's own claim must not inflate the stated total to 30: {:?}",
+            codes(&review.findings)
+        );
+
+        let ordered = OrderedUnits::read(orders);
+        let rules = ruleset();
+        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
+        let moved = |id: &str| -> i64 {
+            ledger
+                .movements
+                .iter()
+                .filter(|movement| movement.unit_id == id && movement.tag == "FUR")
+                .map(|movement| -movement.delta)
+                .sum()
+        };
+        assert_eq!(moved("2390"), 5);
+        assert_eq!(moved("2391"), 5);
+    }
+
     /// `ah-q7jd`, increment 5. `market_shares_for`'s sell claim reads the market-phase holding, so
     /// a seller whose own gift emptied it takes none of a market-share settlement between own
     /// units - the other seller, untouched, takes the whole line rather than half of it.
@@ -9103,6 +9282,418 @@ mod tests {
         assert_eq!(
             message,
             Some("another unit takes its only fur before the market opens, so this sells nothing")
+        );
+    }
+
+    /// `ah-vw8e`, increment 7. A second `SELL ALL` of the same goods is a third cause of
+    /// `nothing-left-to-sell`, alongside the gift and the take - and it sits on the line that
+    /// actually finds nothing left, not the first.
+    #[test]
+    fn a_second_sell_line_warns_that_nothing_is_left() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![with_item(unit("2390"), 10, "furs", "FUR")])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nSELL ALL FUR\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let findings: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "nothing-left-to-sell")
+            .collect();
+        assert_eq!(findings.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            findings[0].message,
+            "an earlier order sells all 10 of its furs, so this sells nothing"
+        );
+        // On the second SELL line, not the first: a finding on the first line would be the
+        // plausible wrong answer.
+        assert_eq!(findings[0].line, Some(3));
+    }
+
+    /// `ah-vw8e`, increment 8. A single item stays singular in the doubled-sale sentence too.
+    #[test]
+    fn a_doubled_sale_of_a_single_item_names_it_in_the_singular() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![with_item(unit("2390"), 1, "furs", "FUR")])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nSELL ALL FUR\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let message = review
+            .findings
+            .iter()
+            .find(|finding| finding.code.as_str() == "nothing-left-to-sell")
+            .map(|finding| finding.message.as_str());
+        assert_eq!(
+            message,
+            Some("an earlier order sells its only fur, so this sells nothing")
+        );
+    }
+
+    /// `ah-vw8e`, increment 8. Two earlier lines that both sold something make the verb plural,
+    /// and the count is their total, not either line's alone.
+    #[test]
+    fn two_earlier_selling_lines_make_the_verb_plural() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![with_item(unit("2390"), 10, "furs", "FUR")])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nSELL 6 FUR\nSELL ALL FUR\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let findings: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "nothing-left-to-sell")
+            .collect();
+        assert_eq!(findings.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            findings[0].message,
+            "earlier orders sell all 10 of its furs, so this sells nothing"
+        );
+    }
+
+    /// `ah-vw8e`, increment 8. A sale after a gift names what the sale itself took, not the whole
+    /// report holding: a month where a gift took part of the stock would otherwise claim all of
+    /// it was sold.
+    #[test]
+    fn a_sale_after_a_gift_names_what_the_sale_took() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![with_item(unit("2390"), 10, "furs", "FUR")])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nGIVE 5512 5 FUR\nSELL ALL FUR\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let message = review
+            .findings
+            .iter()
+            .find(|finding| finding.code.as_str() == "nothing-left-to-sell")
+            .map(|finding| finding.message.as_str());
+        assert_eq!(
+            message,
+            Some("an earlier order sells the 5 furs it had left, so this sells nothing")
+        );
+    }
+
+    /// `ah-vw8e`, increment 8. What the sale took stays singular when the gift left only one.
+    #[test]
+    fn a_sale_after_a_gift_of_all_but_one_names_it_in_the_singular() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![with_item(unit("2390"), 10, "furs", "FUR")])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nGIVE 5512 9 FUR\nSELL ALL FUR\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let message = review
+            .findings
+            .iter()
+            .find(|finding| finding.code.as_str() == "nothing-left-to-sell")
+            .map(|finding| finding.message.as_str());
+        assert_eq!(
+            message,
+            Some("an earlier order sells the only fur it had left, so this sells nothing")
+        );
+    }
+
+    /// `ah-vw8e`, increment 8. Each dead line is separately editable and equally dead: deleting
+    /// line 2 must not leave a silent dead line 3, so every dead line gets its own finding.
+    #[test]
+    fn every_dead_sell_line_gets_its_own_finding() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![with_item(unit("2390"), 10, "furs", "FUR")])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nSELL ALL FUR\nSELL ALL FUR\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let findings: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "nothing-left-to-sell")
+            .collect();
+        assert_eq!(findings.len(), 2, "{:?}", codes(&review.findings));
+        assert_eq!(findings[0].line, Some(3));
+        assert_eq!(findings[1].line, Some(4));
+        assert_eq!(
+            findings[0].message,
+            "an earlier order sells all 10 of its furs, so this sells nothing"
+        );
+        assert_eq!(findings[0].message, findings[1].message);
+    }
+
+    /// `ah-vw8e`, increment 9. Any `SELL` can be the subject, not only `SELL … ALL`: a stated
+    /// amount emptied by a gift is just as invisible a mistake.
+    #[test]
+    fn a_stated_sale_emptied_by_a_gift_is_warned_too() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![
+                with_item(unit("2390"), 10, "furs", "FUR"),
+                unit("5512"),
+            ])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nGIVE 5512 10 FUR\nSELL 10 FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let findings: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "nothing-left-to-sell")
+            .collect();
+        assert_eq!(findings.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            findings[0].message,
+            "this unit gives away all 10 of its furs before the market opens, so this sells nothing"
+        );
+    }
+
+    /// `ah-vw8e`, increment 9. A doubled stated sale is the same mistake as a doubled `SELL ALL`:
+    /// it warns once and earns only for the goods the first line actually moved.
+    #[test]
+    fn a_doubled_stated_sale_warns_and_earns_only_once() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![with_item(unit("2390"), 10, "furs", "FUR")])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nSELL 10 FUR\nSELL 10 FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(review.silver[0].income, Some(420));
+        let findings: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "nothing-left-to-sell")
+            .collect();
+        assert_eq!(findings.len(), 1, "{:?}", codes(&review.findings));
+    }
+
+    /// `ah-vw8e`, increment 10. A partly reduced sale is an ordinary sale: the second line still
+    /// moves goods, so nothing is dead.
+    #[test]
+    fn a_partly_reduced_sale_does_not_warn() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![with_item(unit("2390"), 10, "furs", "FUR")])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nSELL 6 FUR\nSELL 6 FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(review.silver[0].income, Some(420));
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code.as_str() == "nothing-left-to-sell"),
+            "{:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// `ah-vw8e`, increment 10. A line the market ran out under is silent on `nothing-left-to-sell`:
+    /// `region-pool-oversubscribed` already speaks for it, and the unit still visibly holds the
+    /// goods, so "nothing left to sell" would be untrue.
+    #[test]
+    fn a_line_the_market_ran_out_under_does_not_warn() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 6,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![
+                with_item(unit("2390"), 10, "fur", "FUR"),
+                with_item(unit("2391"), 10, "fur", "FUR"),
+            ])
+        };
+        let orders = "unit 2390\nSELL ALL FUR\nSELL ALL FUR\nunit 2391\nSELL ALL FUR\n";
+
+        let review = review_turn(
+            &report(vec![hex.clone()]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code.as_str() == "nothing-left-to-sell"),
+            "{:?}",
+            codes(&review.findings)
+        );
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::REGION_POOL_OVERSUBSCRIBED),
+            "{:?}",
+            codes(&review.findings)
+        );
+
+        let ordered = OrderedUnits::read(orders);
+        let rules = ruleset();
+        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
+        assert_eq!(balance_of(&ledger, "2390", "FUR"), 7);
+    }
+
+    /// `ah-vw8e`, increment 11. The bead's own acceptance, written as a test: a unit whose orders
+    /// contain two `SELL ALL` lines for the same item is priced identically by the SILVER column,
+    /// the ITEMS column and the market-share settlement - all three describe the same ten furs.
+    #[test]
+    fn the_two_columns_and_the_settlement_agree_about_a_doubled_sale() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 6,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![
+                with_item(unit("2390"), 10, "fur", "FUR"),
+                with_item(unit("2391"), 10, "fur", "FUR"),
+            ])
+        };
+        let orders = "unit 2390\nSELL ALL FUR\nSELL ALL FUR\nunit 2391\nSELL ALL FUR\n";
+
+        // The SILVER column.
+        let review = review_turn(
+            &report(vec![hex.clone()]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let income = review
+            .silver
+            .iter()
+            .find(|unit| unit.unit_id == "2390")
+            .and_then(|unit| unit.income)
+            .expect("the doubled unit's income should be known");
+
+        // The ITEMS column.
+        let ordered = OrderedUnits::read(orders);
+        let rules = ruleset();
+        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
+        let moved: i64 = ledger
+            .movements
+            .iter()
+            .filter(|movement| movement.unit_id == "2390" && movement.tag == "FUR")
+            .map(|movement| -movement.delta)
+            .sum();
+
+        // The market-share settlement.
+        let mut overruns = Vec::new();
+        let shares = market_shares_for(&hex_with_transfers, Some(&rules), &mut overruns);
+        let settled_share = shares
+            .get(&("FUR".to_string(), MarketSide::Selling))
+            .and_then(|shares| shares.first())
+            .copied()
+            .expect("the doubled unit's settled share should exist");
+
+        let price = 42;
+        assert_eq!(income, moved * price, "SILVER disagrees with ITEMS");
+        assert_eq!(
+            moved, settled_share,
+            "ITEMS disagrees with the market-share settlement"
         );
     }
 
