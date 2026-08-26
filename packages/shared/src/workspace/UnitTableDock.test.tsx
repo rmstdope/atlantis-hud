@@ -113,7 +113,8 @@ describe("a unit carried away by a sailing fleet", () => {
         aboard,
         uncounted: [],
         takenUnshown: [],
-        produced: []
+        produced: [],
+        built: []
       }
     ]
   });
@@ -190,7 +191,8 @@ describe("the structure column", () => {
             aboard: null,
             uncounted: [],
             takenUnshown: [],
-            produced: []
+            produced: [],
+            built: []
           }
         ]
       }
@@ -721,6 +723,7 @@ describe("the items column", () => {
         uncounted: [],
         takenUnshown: [],
         produced: [],
+        built: [],
         ...previewOverrides
       }
     ]
@@ -780,6 +783,49 @@ describe("the items column", () => {
     expect(markup).toContain("italic text-brass");
     expect(markup).toContain("8 SWOR");
   });
+
+  // `ah-ofpb.2`.
+  it("shows a builder's material draining in the projected item list", () => {
+    const markup = draw(
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 120, name: "wood", tag: "WOOD" }] })] }) }),
+      previewOf(
+        { unitId: "1", items: [{ amount: 90, name: "wood", tag: "WOOD" }] },
+        {
+          changes: [{ field: "items", original: "120 WOOD" }],
+          built: [
+            {
+              amount: 30,
+              tag: "WOOD",
+              name: "wood",
+              place: "Building 4",
+              founding: false,
+              helping: null,
+              couldDo: 30,
+              cappedBy: null
+            }
+          ]
+        }
+      )
+    );
+
+    expect(markup).toContain('data-predicted="true"');
+    expect(markup).toContain("italic text-brass");
+    expect(markup).toContain("90 WOOD");
+  });
+
+  it("marks a build it could not count", () => {
+    const markup = draw(
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 3, name: "swords", tag: "SWOR" }] })] }) }),
+      previewOf(
+        { unitId: "1", items: [{ amount: 3, name: "swords", tag: "SWOR" }] },
+        { uncounted: ["BUILD Mine"] }
+      )
+    );
+
+    expect(markup).toContain(" + ?");
+    expect(markup).not.toContain("italic text-brass");
+    expect(markup).not.toContain('data-predicted="true"');
+  });
 });
 
 describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
@@ -799,6 +845,7 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
         uncounted: [],
         takenUnshown: [],
         produced: [],
+        built: [],
         ...previewOverrides
       }
     ]

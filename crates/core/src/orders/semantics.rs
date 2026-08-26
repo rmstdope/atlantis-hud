@@ -1859,6 +1859,9 @@ struct Ledger<'a> {
     /// Lines whose effect on a unit's items could not be counted at all, by unit, in document
     /// order (`ah-agbm`).
     pub(crate) uncounted: BTreeMap<String, Vec<usize>>,
+    /// What each unit's `BUILD` orders spend, in document order (`ah-ofpb.2`). Keyed by unit id,
+    /// exactly as `uncounted` is, because a `BUILD` records more than a movement can carry.
+    pub(crate) built: BTreeMap<String, Vec<super::effects::BuildSpend>>,
 }
 
 /// One item this month's orders move into or out of a unit (`ah-agbm`).
@@ -1950,6 +1953,7 @@ fn ledger_for<'a>(
         faction_food: FactionFoodPass::default(),
         movements: Vec::new(),
         uncounted: BTreeMap::new(),
+        built: BTreeMap::new(),
     };
 
     for ordered in &hex.units {
@@ -2040,6 +2044,9 @@ pub(crate) fn item_effects(
                 }
             }
         }
+        for (unit_id, spends) in ledger.built {
+            result.entry(unit_id).or_default().built = spends;
+        }
     }
 
     result
@@ -2051,6 +2058,8 @@ pub(crate) struct UnitItemEffects {
     pub moved: Vec<ItemMovement>,
     /// The orders that could not be counted, verbatim as the player wrote them, in document order.
     pub uncounted: Vec<String>,
+    /// What this unit's `BUILD` orders spend this month, in document order (`ah-ofpb.2`).
+    pub built: Vec<super::effects::BuildSpend>,
 }
 
 /// Charges every unit its monthly maintenance, after the orders have run.
@@ -2557,7 +2566,10 @@ fn apply(
         | Intent::Move { .. }
         | Intent::MonthLong(_)
         | Intent::Form { .. } => {}
-        Intent::Sail { .. } | Intent::Enter { .. } | Intent::Leave | Intent::Build { .. } => {}
+        Intent::Build { founding, helping } => {
+            build(ledger, hex, actor, placed, founding, helping, ruleset);
+        }
+        Intent::Sail { .. } | Intent::Enter { .. } | Intent::Leave => {}
     }
 }
 
@@ -2846,6 +2858,250 @@ fn produce(
             produced: true,
         });
     }
+}
+
+/// What one `BUILD` order does, once the structure and the recipe are known (`ah-ofpb.2`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BuildPlan {
+    /// Units of work actually done, which is also the material consumed, one for one.
+    done: i64,
+    /// What the unit's men alone could have done: `men * level`.
+    could_do: i64,
+    capped_by: Option<super::effects::BuildCap>,
+}
+
+/// `men * level`, capped by what the structure still wants and by the material the unit holds.
+///
+/// `Needs` is named first when both bind exactly, because a structure about to be finished is the
+/// more actionable fact: "buy more stone" would be wasted advice.
+fn plan_build(men: i64, level: i64, remaining: i64, held: i64) -> BuildPlan {
+    let could_do = men.saturating_mul(level).max(0);
+    let remaining = remaining.max(0);
+    let held = held.max(0);
+    let done = could_do.min(remaining).min(held);
+    let capped_by = if done >= could_do {
+        None
+    } else if remaining <= held {
+        Some(super::effects::BuildCap::Needs)
+    } else {
+        Some(super::effects::BuildCap::Materials)
+    };
+    BuildPlan {
+        done,
+        could_do,
+        capped_by,
+    }
+}
+
+/// `BUILD`, in whichever of the rules' forms it was written: what it spends this month.
+///
+/// Reuses the same structure resolution the four BUILD checks already do (`check_building`,
+/// `check_building_outside`, `check_build_help`, `check_build_skill`) rather than inventing a
+/// second reading of "what is this unit working on" (`ah-ofpb.2`).
+///
+/// **No `SILV` movement, and nothing is credited.** A BUILD costs no silver, and the column has
+/// never tracked silver anyway. Nothing is credited because a structure is not an item; the
+/// material simply leaves. `ledger.doubted` is not touched either - that set is about sums of
+/// money, and a build puts no sum in question, the same reasoning the bare-`PRODUCE` arm records.
+fn build(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    actor: &Ordered<'_>,
+    placed: &PlacedIntent,
+    founding: &Option<String>,
+    helping: &Option<Party>,
+    ruleset: Option<&Ruleset>,
+) {
+    let who = &actor.unit.unit_id;
+
+    // 1. No ruleset, or a ruleset that knows no buildings.
+    let Some(ruleset) = ruleset else { return };
+    if !ruleset.knows_buildings() {
+        return;
+    }
+
+    macro_rules! mark_uncounted_and_return {
+        () => {{
+            ledger
+                .uncounted
+                .entry(who.clone())
+                .or_default()
+                .push(placed.line);
+            return;
+        }};
+    }
+
+    // 2. Whose task this is, and what it is: `founding_kind` is set for a build that founds a
+    // structure (this unit's own, or the unit being helped's); `task_owner` is whichever unit's
+    // structure and ship holdings are being read, which is the helped unit for a `HELP` and this
+    // unit otherwise; `helped_id` is `Some` only for a `HELP` that resolved.
+    let (founding_kind, task_owner, helped_id): (Option<String>, &Ordered<'_>, Option<String>) =
+        match (founding, helping) {
+            (Some(kind), _) => (Some(kind.clone()), actor, None),
+            (None, Some(Party::Unit(id))) => {
+                let Some(helped) = hex.find(id) else {
+                    mark_uncounted_and_return!();
+                };
+                let their_build = helped
+                    .intents
+                    .iter()
+                    .find_map(|placed| match &placed.intent {
+                        Intent::Build { founding, helping } => Some((founding, helping)),
+                        _ => None,
+                    });
+                match their_build {
+                    // A unit not building has nothing to help with - a known zero, exactly as
+                    // `build-help-not-building` (the warning for it) already judges this: the row
+                    // stays upright and unmarked.
+                    None => return,
+                    Some((their_founding, their_helping)) => {
+                        match (their_founding, their_helping) {
+                            (Some(kind), _) => (Some(kind.clone()), helped, Some(id.clone())),
+                            (None, None) => (None, helped, Some(id.clone())),
+                            // One level of indirection only - a helper of a helper is not resolved,
+                            // exactly as `check_build_skill` stays silent on the same chain.
+                            (None, Some(_)) => mark_uncounted_and_return!(),
+                        }
+                    }
+                }
+            }
+            (None, Some(Party::New(_) | Party::Foreign { .. } | Party::Discard)) => {
+                mark_uncounted_and_return!()
+            }
+            // A bare `BUILD` or `BUILD COMPLETE`: this unit's own structure.
+            (None, None) => (None, actor, None),
+        };
+
+    // 3. An unfinished ship beats everything a bare BUILD could mean (`rules/build`) - but only
+    // for the bare form; a founding BUILD falls out at step 5 instead, because no ship is in the
+    // buildings table.
+    if founding_kind.is_none()
+        && task_owner.unit.items.iter().any(|item| {
+            item.name.len() >= 11 && item.name[..11].eq_ignore_ascii_case("unfinished ")
+        })
+    {
+        mark_uncounted_and_return!();
+    }
+
+    // 4/5. The structure being worked on, and its recipe. A founding build spends against its
+    // whole cost, and is named by the kind the player wrote, verbatim.
+    let (place, kind, is_founding, existing_remaining) = if let Some(kind) = founding_kind {
+        (kind.clone(), kind, true, None)
+    } else {
+        let Some(structure_id) = structure_after_orders(task_owner) else {
+            // No structure at all, and no unfinished ship: the order does nothing and we know it
+            // does nothing (`build-outside-structure` is the warning for it).
+            return;
+        };
+        let Some(structure) = hex
+            .region
+            .structures
+            .iter()
+            .find(|structure| structure.structure_id == structure_id)
+        else {
+            // An id not among the region's structures: nothing can be said.
+            mark_uncounted_and_return!();
+        };
+        let Some(needs) = structure.needs else {
+            // Finished: no work is possible (`already-built` is the warning for it).
+            return;
+        };
+        (
+            structure_label(structure),
+            structure.kind.clone(),
+            false,
+            Some(needs),
+        )
+    };
+
+    let Some((cost, materials)) = ruleset.build_recipe(&kind) else {
+        // A Shaft, a ship, or a misspelling: the catalogue states neither cost nor material.
+        mark_uncounted_and_return!();
+    };
+    let remaining = existing_remaining.unwrap_or(cost);
+
+    // 6. The skill tag. The minimum level is not read here - whether the unit may build at all is
+    // `build-without-skill`'s business, and a unit below the minimum still does `men * level`
+    // units of work by the rules as written.
+    let Some((skill_tag, _minimum_level)) = ruleset.build_requirement(&kind) else {
+        mark_uncounted_and_return!();
+    };
+
+    // 7. The material: resolve each name the recipe offers, drop what the catalogue does not
+    // know, and settle on the one the unit holds.
+    let resolved: Vec<&crate::movement::rules::ItemEntry> = materials
+        .iter()
+        .filter_map(|name| ruleset.find_item(name))
+        .collect();
+    if resolved.is_empty() {
+        mark_uncounted_and_return!();
+    }
+    let held_of = |tag: &str| -> i64 {
+        actor
+            .unit
+            .items
+            .iter()
+            .filter(|item| item.tag.eq_ignore_ascii_case(tag))
+            .map(|item| item.amount)
+            .sum()
+    };
+    let material = if resolved.len() == 1 {
+        resolved[0]
+    } else {
+        let holding: Vec<&crate::movement::rules::ItemEntry> = resolved
+            .iter()
+            .copied()
+            .filter(|item| held_of(&item.tag) > 0)
+            .collect();
+        match holding.len() {
+            // No work is possible, and it is known to be none.
+            0 => return,
+            1 => holding[0],
+            // Nothing in the rules says which the engine takes.
+            _ => mark_uncounted_and_return!(),
+        }
+    };
+    let held = held_of(&material.tag);
+
+    // 8. The level. `Ordered::skill_level` cannot answer `None` on this path today (see the
+    // module's known traps), but the branch costs one line and is cheaper than a surprise later.
+    let Some(level) = actor.skill_level(skill_tag) else {
+        mark_uncounted_and_return!();
+    };
+
+    // 9. The arithmetic.
+    let plan = plan_build(actor.unit.men, i64::from(level), remaining, held);
+    if plan.done == 0 {
+        // A zero movement would reorder the item list into a phantom "items changed" row.
+        return;
+    }
+
+    // 10. Record the movement and the spend. Every value has exactly one source.
+    let tag = material.tag.to_ascii_uppercase();
+    let name = item_name(&tag, hex, Some(ruleset));
+    charge(ledger, who, &tag, plan.done, placed);
+    ledger.movements.push(ItemMovement {
+        unit_id: who.clone(),
+        tag: tag.clone(),
+        name: name.clone(),
+        delta: -plan.done,
+        from_unshown: None,
+        produced: false,
+    });
+    ledger
+        .built
+        .entry(who.clone())
+        .or_default()
+        .push(super::effects::BuildSpend {
+            amount: plan.done,
+            tag,
+            name,
+            place,
+            founding: is_founding,
+            helping: helped_id,
+            could_do: plan.could_do,
+            capped_by: plan.capped_by,
+        });
 }
 
 fn sell(
@@ -9572,6 +9828,73 @@ mod tests {
         }
     }
 
+    /// `ah-ofpb.2`. `plan_build` is pure arithmetic with no ledger or ruleset involved, so it is
+    /// tested directly rather than through a fixture.
+    mod build_arithmetic {
+        use super::effects::BuildCap;
+        use super::*;
+
+        #[test]
+        fn a_build_does_what_its_men_and_its_level_allow() {
+            assert_eq!(
+                plan_build(10, 3, 45, 120),
+                BuildPlan {
+                    done: 30,
+                    could_do: 30,
+                    capped_by: None,
+                }
+            );
+        }
+
+        #[test]
+        fn a_build_short_of_material_does_less() {
+            assert_eq!(
+                plan_build(10, 3, 45, 15),
+                BuildPlan {
+                    done: 15,
+                    could_do: 30,
+                    capped_by: Some(BuildCap::Materials),
+                }
+            );
+        }
+
+        #[test]
+        fn a_build_on_a_nearly_finished_structure_does_only_what_is_left() {
+            assert_eq!(
+                plan_build(10, 3, 6, 120),
+                BuildPlan {
+                    done: 6,
+                    could_do: 30,
+                    capped_by: Some(BuildCap::Needs),
+                }
+            );
+        }
+
+        #[test]
+        fn a_build_stopped_by_both_names_the_structure() {
+            assert_eq!(
+                plan_build(10, 3, 6, 6),
+                BuildPlan {
+                    done: 6,
+                    could_do: 30,
+                    capped_by: Some(BuildCap::Needs),
+                }
+            );
+        }
+
+        #[test]
+        fn a_unit_with_no_skill_does_no_work() {
+            assert_eq!(
+                plan_build(10, 0, 45, 120),
+                BuildPlan {
+                    done: 0,
+                    could_do: 0,
+                    capped_by: None,
+                }
+            );
+        }
+    }
+
     /// `ah-agbm`. The ITEMS column's projection reuses the ledger's own settlement rather than
     /// re-deriving it, so these tests read `Ledger::movements` and `Ledger::uncounted` directly -
     /// the same fields `item_effects` will drain.
@@ -9965,6 +10288,397 @@ mod tests {
                     !ledger.doubted.contains("2391"),
                     "a bare PRODUCE costs no silver, so no sum is in question"
                 );
+            });
+        }
+
+        // --- BUILD (`ah-ofpb.2`) -----------------------------------------------------------
+
+        /// A hex whose one own unit stands in an unfinished Stockade, for the `BUILD` cases.
+        /// 10 humans (`men`), `building [BUIL] 3`, holding 120 wood.
+        fn report_with_a_builder() -> ReportRegion {
+            ReportRegion {
+                structures: vec![unfinished_building("4")],
+                ..region(vec![in_structure(
+                    with_skill(
+                        with_item(with_men(unit("900"), 10), 120, "wood", "WOOD"),
+                        "BUIL",
+                        3,
+                    ),
+                    "4",
+                )])
+            }
+        }
+
+        #[test]
+        fn a_build_records_the_material_it_consumes() {
+            with_ledger(report_with_a_builder(), "unit 900\nBUILD\n", |ledger| {
+                assert!(
+                    ledger.movements.contains(&ItemMovement {
+                        unit_id: "900".to_string(),
+                        tag: "WOOD".to_string(),
+                        name: "wood".to_string(),
+                        delta: -30,
+                        from_unshown: None,
+                        produced: false,
+                    }),
+                    "the material a BUILD consumes should be among the recorded movements: {:?}",
+                    ledger.movements
+                );
+                assert_eq!(
+                    ledger.built.get("900"),
+                    Some(&vec![effects::BuildSpend {
+                        amount: 30,
+                        tag: "WOOD".to_string(),
+                        name: "wood".to_string(),
+                        place: "Building 4".to_string(),
+                        founding: false,
+                        helping: None,
+                        could_do: 30,
+                        capped_by: None,
+                    }])
+                );
+            });
+        }
+
+        #[test]
+        fn a_build_credits_the_unit_nothing() {
+            with_ledger(report_with_a_builder(), "unit 900\nBUILD\n", |ledger| {
+                let for_900: Vec<&ItemMovement> = ledger
+                    .movements
+                    .iter()
+                    .filter(|m| m.unit_id == "900")
+                    .collect();
+                assert_eq!(
+                    for_900,
+                    vec![&ItemMovement {
+                        unit_id: "900".to_string(),
+                        tag: "WOOD".to_string(),
+                        name: "wood".to_string(),
+                        delta: -30,
+                        from_unshown: None,
+                        produced: false,
+                    }],
+                    "a BUILD should charge material and credit nothing else: {for_900:?}"
+                );
+            });
+        }
+
+        #[test]
+        fn a_build_short_of_material_records_only_what_it_spends() {
+            let mut hex_region = report_with_a_builder();
+            hex_region.units[0] = with_item(hex_region.units[0].clone(), 15, "wood", "WOOD");
+            with_ledger(hex_region, "unit 900\nBUILD\n", |ledger| {
+                assert!(
+                    ledger.movements.contains(&ItemMovement {
+                        unit_id: "900".to_string(),
+                        tag: "WOOD".to_string(),
+                        name: "wood".to_string(),
+                        delta: -15,
+                        from_unshown: None,
+                        produced: false,
+                    }),
+                    "{:?}",
+                    ledger.movements
+                );
+                assert_eq!(
+                    ledger.built["900"][0].capped_by,
+                    Some(effects::BuildCap::Materials)
+                );
+            });
+        }
+
+        #[test]
+        fn a_build_on_a_nearly_finished_structure_records_only_what_is_left() {
+            let mut hex_region = report_with_a_builder();
+            hex_region.structures[0].needs = Some(6);
+            with_ledger(hex_region, "unit 900\nBUILD\n", |ledger| {
+                assert!(
+                    ledger.movements.contains(&ItemMovement {
+                        unit_id: "900".to_string(),
+                        tag: "WOOD".to_string(),
+                        name: "wood".to_string(),
+                        delta: -6,
+                        from_unshown: None,
+                        produced: false,
+                    }),
+                    "{:?}",
+                    ledger.movements
+                );
+                assert_eq!(
+                    ledger.built["900"][0].capped_by,
+                    Some(effects::BuildCap::Needs)
+                );
+            });
+        }
+
+        #[test]
+        fn a_build_on_a_finished_structure_records_nothing() {
+            let mut hex_region = report_with_a_builder();
+            hex_region.structures[0].needs = None;
+            with_ledger(hex_region, "unit 900\nBUILD\n", |ledger| {
+                assert!(!ledger.movements.iter().any(|m| m.unit_id == "900"));
+                assert!(!ledger.built.contains_key("900"));
+                assert!(!ledger.uncounted.contains_key("900"));
+            });
+        }
+
+        #[test]
+        fn a_build_by_a_unit_with_no_building_skill_records_nothing() {
+            let mut hex_region = report_with_a_builder();
+            hex_region.units[0].skills.clear();
+            with_ledger(hex_region, "unit 900\nBUILD\n", |ledger| {
+                assert!(!ledger.movements.iter().any(|m| m.unit_id == "900"));
+                assert!(!ledger.built.contains_key("900"));
+                assert!(!ledger.uncounted.contains_key("900"));
+            });
+        }
+
+        #[test]
+        fn a_build_from_outside_any_structure_records_nothing() {
+            let mut hex_region = report_with_a_builder();
+            hex_region.units[0].structure_id = None;
+            with_ledger(hex_region, "unit 900\nBUILD\n", |ledger| {
+                assert!(!ledger.movements.iter().any(|m| m.unit_id == "900"));
+                assert!(!ledger.built.contains_key("900"));
+                assert!(!ledger.uncounted.contains_key("900"));
+            });
+        }
+
+        #[test]
+        fn a_build_that_does_nothing_records_no_movement() {
+            let mut hex_region = report_with_a_builder();
+            hex_region.units[0]
+                .items
+                .retain(|item| !item.tag.eq_ignore_ascii_case("WOOD"));
+            with_ledger(hex_region, "unit 900\nBUILD\n", |ledger| {
+                assert!(!ledger.movements.iter().any(|m| m.unit_id == "900"));
+                assert!(!ledger.built.contains_key("900"));
+                assert!(!ledger.uncounted.contains_key("900"));
+            });
+        }
+
+        #[test]
+        fn a_build_of_a_structure_of_alternatives_cannot_be_counted() {
+            let hex_region = region(vec![with_item(
+                with_item(with_men(unit("900"), 10), 120, "wood", "WOOD"),
+                120,
+                "stone",
+                "STON",
+            )]);
+            with_ledger(hex_region, "unit 900\nBUILD Mine\n", |ledger| {
+                assert!(!ledger.movements.iter().any(|m| m.unit_id == "900"));
+                assert!(!ledger.built.contains_key("900"));
+                assert_eq!(
+                    ledger.uncounted.get("900").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+            });
+        }
+
+        #[test]
+        fn a_build_of_a_structure_of_alternatives_spends_the_one_it_holds() {
+            let hex_region = region(vec![with_skill(
+                with_item(with_men(unit("900"), 10), 120, "wood", "WOOD"),
+                "MINI",
+                3,
+            )]);
+            with_ledger(hex_region, "unit 900\nBUILD Mine\n", |ledger| {
+                assert!(
+                    ledger.movements.contains(&ItemMovement {
+                        unit_id: "900".to_string(),
+                        tag: "WOOD".to_string(),
+                        name: "wood".to_string(),
+                        delta: -10,
+                        from_unshown: None,
+                        produced: false,
+                    }),
+                    "{:?}",
+                    ledger.movements
+                );
+                assert!(!ledger.uncounted.contains_key("900"));
+            });
+        }
+
+        #[test]
+        fn a_build_of_a_structure_the_catalogue_cannot_price_cannot_be_counted() {
+            let hex_region = region(vec![with_men(unit("900"), 10)]);
+            with_ledger(hex_region, "unit 900\nBUILD Shaft\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("900").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+                assert!(!ledger.movements.iter().any(|m| m.unit_id == "900"));
+            });
+        }
+
+        #[test]
+        fn a_build_of_something_the_game_does_not_have_cannot_be_counted() {
+            let hex_region = region(vec![with_men(unit("900"), 10)]);
+            with_ledger(hex_region, "unit 900\nBUILD Barn\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("900").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+            });
+        }
+
+        #[test]
+        fn a_build_of_a_ship_cannot_be_counted() {
+            let hex_region = region(vec![with_men(unit("900"), 10)]);
+            with_ledger(hex_region, "unit 900\nBUILD Galleon\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("900").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+            });
+        }
+
+        #[test]
+        fn a_bare_build_by_a_unit_holding_an_unfinished_ship_cannot_be_counted() {
+            let mut hex_region = report_with_a_builder();
+            hex_region.units[0].items.push(ItemAmount {
+                amount: 1,
+                name: "unfinished Cog".to_string(),
+                tag: "COG".to_string(),
+            });
+            with_ledger(hex_region, "unit 900\nBUILD\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("900").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+                assert!(!ledger.movements.iter().any(|m| m.unit_id == "900"));
+            });
+        }
+
+        #[test]
+        fn a_build_help_naming_nobody_we_can_see_cannot_be_counted() {
+            let hex_region = region(vec![with_men(unit("900"), 10)]);
+            with_ledger(hex_region, "unit 900\nBUILD HELP 0\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("900").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+            });
+        }
+
+        #[test]
+        fn a_build_that_founds_a_structure_spends_against_its_whole_cost() {
+            let hex_region = region(vec![with_skill(
+                with_item(with_men(unit("900"), 10), 120, "stone", "STON"),
+                "BUIL",
+                3,
+            )]);
+            with_ledger(hex_region, "unit 900\nBUILD Tower\n", |ledger| {
+                assert!(
+                    ledger.movements.contains(&ItemMovement {
+                        unit_id: "900".to_string(),
+                        tag: "STON".to_string(),
+                        name: "stone".to_string(),
+                        delta: -10,
+                        from_unshown: None,
+                        produced: false,
+                    }),
+                    "{:?}",
+                    ledger.movements
+                );
+                assert_eq!(
+                    ledger.built.get("900"),
+                    Some(&vec![effects::BuildSpend {
+                        amount: 10,
+                        tag: "STON".to_string(),
+                        name: "stone".to_string(),
+                        place: "Tower".to_string(),
+                        founding: true,
+                        helping: None,
+                        could_do: 30,
+                        capped_by: Some(effects::BuildCap::Needs),
+                    }])
+                );
+            });
+        }
+
+        #[test]
+        fn a_founding_build_keeps_the_kind_the_player_wrote() {
+            let hex_region = region(vec![with_skill(
+                with_item(with_men(unit("900"), 10), 120, "stone", "STON"),
+                "BUIL",
+                3,
+            )]);
+            with_ledger(hex_region, "unit 900\nBUILD tower\n", |ledger| {
+                assert_eq!(ledger.built["900"][0].place, "tower");
+            });
+        }
+
+        #[test]
+        fn a_build_help_spends_the_helpers_own_material_on_the_other_units_structure() {
+            let mut hex_region = report_with_a_builder();
+            hex_region.units.push(with_skill(
+                with_item(with_men(unit("901"), 10), 120, "wood", "WOOD"),
+                "BUIL",
+                3,
+            ));
+            with_ledger(
+                hex_region,
+                "unit 900\nBUILD\nunit 901\nBUILD HELP 900\n",
+                |ledger| {
+                    assert!(
+                        ledger.movements.contains(&ItemMovement {
+                            unit_id: "901".to_string(),
+                            tag: "WOOD".to_string(),
+                            name: "wood".to_string(),
+                            delta: -30,
+                            from_unshown: None,
+                            produced: false,
+                        }),
+                        "{:?}",
+                        ledger.movements
+                    );
+                    let spend = &ledger.built["901"][0];
+                    assert_eq!(spend.helping.as_deref(), Some("900"));
+                    assert_eq!(spend.place, "Building 4");
+                    assert!(!spend.founding);
+                },
+            );
+        }
+
+        #[test]
+        fn a_build_help_follows_a_founding_unit() {
+            let hex_region = region(vec![
+                with_skill(with_men(unit("900"), 10), "BUIL", 3),
+                with_skill(
+                    with_item(with_men(unit("901"), 10), 120, "stone", "STON"),
+                    "BUIL",
+                    3,
+                ),
+            ]);
+            with_ledger(
+                hex_region,
+                "unit 900\nBUILD Tower\nunit 901\nBUILD HELP 900\n",
+                |ledger| {
+                    let spend = &ledger.built["901"][0];
+                    assert!(spend.founding);
+                    assert_eq!(spend.place, "Tower");
+                    assert_eq!(spend.helping.as_deref(), Some("900"));
+                    // 900 itself holds no stone, so it does nothing on its own account.
+                    assert!(!ledger.built.contains_key("900"));
+                },
+            );
+        }
+
+        #[test]
+        fn a_build_help_of_a_unit_that_is_not_building_records_nothing() {
+            let hex_region = region(vec![
+                unit("900"),
+                with_skill(
+                    with_item(with_men(unit("901"), 10), 120, "wood", "WOOD"),
+                    "BUIL",
+                    3,
+                ),
+            ]);
+            with_ledger(hex_region, "unit 901\nBUILD HELP 900\n", |ledger| {
+                assert!(!ledger.movements.iter().any(|m| m.unit_id == "901"));
+                assert!(!ledger.built.contains_key("901"));
+                assert!(!ledger.uncounted.contains_key("901"));
             });
         }
     }

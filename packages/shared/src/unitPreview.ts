@@ -1,4 +1,5 @@
 import type {
+  BuildSpend,
   FieldChange,
   ItemAmount,
   ProducedItem,
@@ -42,6 +43,8 @@ export type PreviewedUnit = ReportUnit & {
   takenUnshown?: TakenUnshown[];
   /** What this unit's PRODUCE orders make this month (`ah-ofpb.1`). */
   produced?: ProducedItem[];
+  /** What this unit's BUILD orders spend this month (`ah-ofpb.2`). */
+  built?: BuildSpend[];
 };
 
 /**
@@ -75,7 +78,8 @@ export function mergePreview(
       aboard: previewed.aboard,
       uncounted: previewed.uncounted,
       takenUnshown: previewed.takenUnshown,
-      produced: previewed.produced
+      produced: previewed.produced,
+      built: previewed.built
     };
   });
 
@@ -90,7 +94,8 @@ export function mergePreview(
       aboard: previewed.aboard,
       uncounted: previewed.uncounted,
       takenUnshown: previewed.takenUnshown,
-      produced: previewed.produced
+      produced: previewed.produced,
+      built: previewed.built
     });
   }
 
@@ -133,12 +138,14 @@ export function itemsTooltip(
   const change = changeFor(unit, "items");
   const takenUnshown = unit.takenUnshown ?? [];
   const produced = unit.produced ?? [];
+  const built = unit.built ?? [];
   const uncounted = unit.uncounted ?? [];
   const capSentence = productionCapSentence(silver);
   if (
     !change &&
     takenUnshown.length === 0 &&
     produced.length === 0 &&
+    built.length === 0 &&
     uncounted.length === 0 &&
     capSentence === undefined
   ) {
@@ -163,6 +170,22 @@ export function itemsTooltip(
   }
   if (capSentence !== undefined) {
     lines.push(capSentence);
+  }
+  for (const spend of built) {
+    const place = spend.founding ? `a new ${spend.place}` : spend.place;
+    const target =
+      spend.helping === null ? `on ${place}` : `helping unit ${spend.helping} build ${place}`;
+    lines.push(`Spends ${spend.amount} ${spend.tag} ${target} this month.`);
+    if (spend.cappedBy === "materials") {
+      lines.push(
+        `This unit has ${spend.name} for ${spend.amount} units of work, not the ${spend.couldDo} its men could do.`
+      );
+    } else if (spend.cappedBy === "needs") {
+      const needs = spend.founding
+        ? `A new ${spend.place} needs ${spend.amount} units of work`
+        : `${spend.place} needs ${spend.amount} more units of work`;
+      lines.push(`${needs}, not the ${spend.couldDo} its men could do.`);
+    }
   }
   for (const order of uncounted) {
     lines.push(`and more that cannot be counted: ${order}`);
