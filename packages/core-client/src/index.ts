@@ -46,6 +46,7 @@ export type { OrderValidationResult } from "./generated/OrderValidationResult";
 export type { FormedSubject } from "./generated/FormedSubject";
 export type { UnitSilver } from "./generated/UnitSilver";
 export type { SilverDoubt } from "./generated/SilverDoubt";
+export type { ProductionCap } from "./generated/ProductionCap";
 export type { MapShape } from "./generated/MapShape";
 export type { GameMetadata } from "./generated/GameMetadata";
 export type { ReportSourceRef } from "./generated/ReportSourceRef";

@@ -38,10 +38,11 @@ use crate::orders::silver::{
     forecast_unit, late_income, parse_wage_centis, pillage_threshold, pool_wants, price_cast,
     price_claim, price_pillage, price_production, price_purchase, price_sale, price_study,
     price_tax, quantity_bought, quantity_sold, readiness, recipe_for, settle_unclaimed, split_pool,
-    taxes, transfer_shape, unit_upkeep, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim,
-    LateFoodClaim, LateFoodRelief, Lookups, MarketSide, PoolOverrun, PoolShare, PoolShares,
-    PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, TransferShape,
-    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
+    taxes, transfer_shape, transmute_argument, unit_upkeep, Caster, ContendedPool, FactionFoodPass,
+    FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, PoolOverrun,
+    PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
+    SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
+    FOOD_TAGS,
 };
 use crate::report::model::{
     Coordinate, ItemAmount, MarketItem, ReportRegion, ReportUnit, Skill, Structure,
@@ -393,7 +394,7 @@ pub fn review_turn(
         .map(|region| {
             let mut hex = Hex::read(region, &ordered, &formed);
             apply_gifts_of_men(&mut hex.units, ruleset);
-            let ledger = ledger_for(&hex, ruleset);
+            let ledger = ledger_for(&hex, ruleset, &receipts);
             (hex, ledger)
         })
         .collect();
@@ -430,6 +431,7 @@ pub fn review_turn(
                 food: &food_relief,
                 settlement: &settlement,
             },
+            &plurals,
             &mut silver,
             &mut overruns,
         );
@@ -767,6 +769,7 @@ fn combat_ready_in(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Option<i64> {
 
 /// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
 /// already filtered them out, so their cell is blank for free.
+#[allow(clippy::too_many_arguments)]
 fn forecast_hex(
     // The hex and the ledger built from it, as `review_turn` already holds them - one argument
     // rather than two, which is also what keeps a hex from being priced against another's ledger.
@@ -775,6 +778,7 @@ fn forecast_hex(
     purse: FactionPurse,
     ruleset: Option<&Ruleset>,
     relief: &Relief<'_>,
+    plurals: &Plurals,
     into: &mut Vec<UnitSilver>,
     overruns: &mut Vec<PoolOverrun>,
 ) {
@@ -853,6 +857,10 @@ fn forecast_hex(
             })
         };
         let name_of = |tag: &str| item_name(tag, hex, ruleset);
+        // Named `counted_by_name` rather than `counted_item`, which is the private function it
+        // calls: shadowing it here would make the closure recurse (`ah-ofpb.4`).
+        let counted_by_name =
+            |count: i64, tag: &str| counted_item(count, tag, hex, ruleset, plurals);
 
         let facts = UnitFacts {
             unit_id: &ordered.unit.unit_id,
@@ -882,6 +890,7 @@ fn forecast_hex(
                 item_tag: &item_tag,
                 item_name: &name_of,
                 market_share: &market_share,
+                counted_item: &counted_by_name,
             },
             ruleset,
         ));
@@ -1768,6 +1777,11 @@ impl Ordered<'_> {
 struct Ledger<'a> {
     /// The catalogue that turns an order's item argument into a tag, where there is one.
     ruleset: Option<&'a Ruleset>,
+    /// Gifts and takes of silver this month's orders bring each unit, gathered once for the whole
+    /// turn by `gather_receipts` before any hex is priced. `cast` reads it for the same reason
+    /// `forecast_unit` does: a gift that arrives before `Spells are CAST` funds a cast even when
+    /// the unit's own report holding is nothing (`ah-ofpb.4`, R4).
+    receipts: &'a BTreeMap<String, Receipts>,
     /// What each unit would hold once its orders had run, keyed by unit and item tag.
     balance: BTreeMap<(String, String), i64>,
     /// Units whose sums cannot be trusted, and which are therefore not judged at all.
@@ -1892,9 +1906,14 @@ fn own_unit_pillages(hex: &Hex<'_>) -> bool {
 /// `check_sailing` asks what the change of stock weighs. One ledger rather than two, because the
 /// answer has to be the same one - a fleet judged against a different set of transfers from the
 /// set that produced the shortfall warnings would be two models of the same turn.
-fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
+fn ledger_for<'a>(
+    hex: &Hex<'_>,
+    ruleset: Option<&'a Ruleset>,
+    receipts: &'a BTreeMap<String, Receipts>,
+) -> Ledger<'a> {
     let mut ledger = Ledger {
         ruleset,
+        receipts,
         balance: BTreeMap::new(),
         doubted: BTreeSet::new(),
         charged_at: BTreeMap::new(),
@@ -1965,13 +1984,16 @@ pub(crate) fn item_effects(
 ) -> BTreeMap<String, UnitItemEffects> {
     let ordered = OrderedUnits::read(orders_document);
     let mut result: BTreeMap<String, UnitItemEffects> = BTreeMap::new();
+    // This pipeline models no gifts at all - `&[]` below already opts formed units out of it, and
+    // a GIVE reaching the ITEMS column is `ah-agbm`'s own follow-up, not this bead's.
+    let no_receipts = BTreeMap::new();
 
     for region in &report.regions {
         // `&[]`: a unit this month's `FORM` orders create is out of scope here, exactly as it was
         // before `ah-jw85` gave `Hex::read` a third argument - `ah-agbm`'s own follow-up, not this
         // bead's, if the ITEMS column is to project a formed unit's BUY or SELL too.
         let hex = Hex::read(region, &ordered, &[]);
-        let ledger = ledger_for(&hex, ruleset);
+        let ledger = ledger_for(&hex, ruleset, &no_receipts);
 
         for movement in ledger.movements {
             result
@@ -2798,9 +2820,10 @@ fn study(
     charge(ledger, who, SILVER, priced.spends, placed);
 }
 
-/// Credits what an earning spell raises, and charges what the ruleset says a cast consumes. A
-/// spell the ruleset does not know, or knows no cost for, charges nothing and doubts nothing: most
-/// spells cost nothing to cast, and a unit's other sums are still good.
+/// Credits what an earning spell raises, and charges what the ruleset says a cast consumes -
+/// charged for every item it will make, not once whatever the roll makes (`ah-ofpb.4`). A spell the
+/// ruleset does not know, or knows no cost for, charges nothing and doubts nothing: most spells
+/// cost nothing to cast, and a unit's other sums are still good.
 fn cast(
     ledger: &mut Ledger<'_>,
     actor: &Ordered<'_>,
@@ -2811,50 +2834,58 @@ fn cast(
     region: RegionWages,
 ) {
     let who = &actor.unit.unit_id;
-    let spell = ruleset.and_then(|ruleset| ruleset.find_skill(spell));
-
-    // Both surfaces price the cast from one function, so the Silver column and the
-    // `not-enough-silver` warning cannot disagree about a mage's month (`ah-lu0f.3`). Silver is
-    // charged from `spends` alone - the loop below skips `SILV` for exactly that reason.
-    let priced = price_cast(spell, &actor.unit.skills, region);
-    credit(ledger, who, SILVER, priced.earns);
-    charge(ledger, who, SILVER, priced.spends, placed);
-
-    let Some(cost) = spell.and_then(|skill| skill.cast.as_ref()) else {
-        return;
-    };
-
-    for input in &cost.costs {
-        // `SILV` is `price_cast`'s, and charging it here as well would charge it twice.
-        if input.tag.eq_ignore_ascii_case(SILVER) {
-            continue;
-        }
-        charge(ledger, who, &input.tag, input.amount, placed);
-    }
-
-    if cost.transmute.is_empty() {
-        return;
-    }
+    let resolved = ruleset.and_then(|ruleset| ruleset.find_skill(spell));
 
     // `CAST Transmutation [number] <material>`: the material is the spell's *output* - "the
     // resource you wish to create" - and the source it is made from is the ruleset's business.
-    // An unnumbered cast makes as many as it can, so the least a successful one consumes is one.
-    let (number, material) = match arguments {
-        [count, material] => match count.parse::<i64>() {
-            Ok(count) if count > 0 => (count, material.as_str()),
-            _ => return,
-        },
-        [material] => (1, material.as_str()),
-        _ => return,
+    // Built only when this spell actually transmutes something and the material resolves, exactly
+    // as `silver::forecast_unit`'s own `Intent::Cast` arm gates it, so the two surfaces agree about
+    // which casts are transmutations at all.
+    let transmute_tag = resolved
+        .and_then(|skill| skill.cast.as_ref())
+        .filter(|cost| !cost.transmute.is_empty())
+        .and_then(|_| transmute_argument(arguments))
+        .and_then(|(number, material)| {
+            ruleset
+                .and_then(|ruleset| ruleset.find_item(material))
+                .map(|output| (number, output.tag.to_ascii_uppercase()))
+        });
+    let transmuting = transmute_tag.as_ref().map(|(number, tag)| Transmuting {
+        output_tag: tag.as_str(),
+        number: *number,
+    });
+
+    // `rules/sequence` puts `GIVE` and `TAKE` two phases before `Spells are CAST`, so silver on its
+    // way in counts; wages and anything produced after do not (`ah-ofpb.4`, R4). The report's own
+    // holding, not the ledger's running balance - the same divergence `plan_production` already
+    // has from a unit's other orders.
+    let receipts = ledger.receipts.get(who);
+    let caster = Caster {
+        skills: &actor.unit.skills,
+        held: &actor.unit.items,
+        silver_available: actor.holding(SILVER)
+            + receipts.map_or(0, |receipts| {
+                receipts.silver + receipts.taken + receipts.taken_unshown
+            }),
+        transmuting,
     };
 
-    let Some(output) = ruleset.and_then(|ruleset| ruleset.find_item(material)) else {
+    // Both surfaces price the cast from one function, so the Silver column and the
+    // `not-enough-silver` warning cannot disagree about a mage's month (`ah-lu0f.3`). Silver is
+    // charged from `spends` alone; `plan.materials` never contains `SILV` (`ah-ofpb.4`).
+    let (priced, plan) = price_cast(resolved, &caster, region);
+    credit(ledger, who, SILVER, priced.earns);
+    charge(ledger, who, SILVER, priced.spends, placed);
+
+    let Some(plan) = plan else {
         return;
     };
-    let Some(source) = cost.transmute.get(&output.tag.to_ascii_uppercase()) else {
-        return;
-    };
-    charge(ledger, who, source, number, placed);
+
+    // A cast's arrival and consumption in the ITEMS column is `ah-ofpb.5` - no `ItemMovement` is
+    // pushed here, unlike `produce()`, which this ledger charge is otherwise modelled on.
+    for material in &plan.materials {
+        charge(ledger, who, &material.tag, material.amount, placed);
+    }
 }
 
 /// What the hex's market says about an item an order names.
@@ -6089,6 +6120,7 @@ fn check_claims(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::orders::silver::plan_cast;
     use crate::report::model::{level_for_points, Exit, Skill};
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
@@ -7650,7 +7682,8 @@ mod tests {
         let ordered = OrderedUnits::read("");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let ledger = ledger_for(&hex, Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
 
         assert_eq!(silver_balance(&ledger, "1"), 50);
     }
@@ -7664,7 +7697,8 @@ mod tests {
         let ordered = OrderedUnits::read("unit 1\nTAX\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let ledger = ledger_for(&hex, Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
 
         assert_eq!(silver_balance(&ledger, "1"), 50);
     }
@@ -7771,7 +7805,8 @@ mod tests {
         let ordered = OrderedUnits::read("unit 1\nPILLAGE\n\nunit 2\nTAX\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let ledger = ledger_for(&hex, Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
 
         assert_eq!(
             silver_balance(&ledger, "2"),
@@ -8355,7 +8390,9 @@ mod tests {
     }
 
     /// Narrowing `cast`'s cost loop and adding the shared charge is exactly the edit that charges
-    /// silver twice, and nothing else would notice (`ah-lu0f.3`).
+    /// silver twice, and nothing else would notice (`ah-lu0f.3`). `ah-ofpb.4`: the mage is now
+    /// funded for every item its level makes, not for one - the committed ruleset's first spell in
+    /// tag order with a `SILV` cost is `CFSW`, 60 percent per level, so a level 5 mage makes 3.
     #[test]
     fn a_cast_is_not_charged_twice_for_its_silver() {
         let spell = ruleset()
@@ -8370,18 +8407,27 @@ mod tests {
             })
             .map(|(_, skill)| skill.clone())
             .expect("the committed ruleset prices at least one cast in silver");
-        let cost: i64 = spell
-            .cast
-            .as_ref()
-            .expect("a cast cost")
+        let cast_cost = spell.cast.as_ref().expect("a cast cost");
+        let cost: i64 = cast_cost
             .costs
             .iter()
             .filter(|input| input.tag.eq_ignore_ascii_case(SILVER))
             .map(|input| input.amount)
             .sum();
+        let wanted = plan_cast(
+            cast_cost,
+            &Caster {
+                skills: &[],
+                held: &[],
+                silver_available: i64::MAX,
+                transmuting: None,
+            },
+            5,
+        )
+        .wanted;
 
         let hex_region = region(vec![with_skill(
-            with_silver(unit("683"), cost),
+            with_silver(unit("683"), cost * wanted),
             &spell.tag,
             5,
         )]);
@@ -9437,7 +9483,8 @@ mod tests {
             let ordered = OrderedUnits::read(orders);
             let hex = Hex::read(&hex_region, &ordered, &[]);
             let rules = ruleset();
-            let ledger = ledger_for(&hex, Some(&rules));
+            let no_receipts = BTreeMap::new();
+            let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
             read(&ledger)
         }
 
@@ -10375,7 +10422,8 @@ mod tests {
         let ordered = OrderedUnits::read(orders);
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let ledger = ledger_for(&hex, Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
         let sharing = Sharing::read(&hex);
         judge_shortfalls(&hex, &ledger, &sharing, Some(&rules))
     }
@@ -10617,7 +10665,8 @@ mod tests {
         let ordered = OrderedUnits::read("unit 5\nGIVE 9 30 swords\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let mut ledger = ledger_for(&hex, Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let mut ledger = ledger_for(&hex, Some(&rules), &no_receipts);
         let sharing = Sharing::read(&hex);
         let verdicts = judge_shortfalls(&hex, &ledger, &sharing, Some(&rules));
 
@@ -10645,7 +10694,8 @@ mod tests {
         let ordered = OrderedUnits::read(orders);
         let hex = Hex::read(hex_region, &ordered, &[]);
         let rules = ruleset();
-        let ledger = ledger_for(&hex, Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
         sharing_purse(&hex, &ledger)
     }
 
@@ -10696,7 +10746,8 @@ mod tests {
         let ordered = OrderedUnits::read("unit 5\nSTUDY combat\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let mut ledger = ledger_for(&hex, Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let mut ledger = ledger_for(&hex, Some(&rules), &no_receipts);
 
         assert_eq!(
             sharing_purse(&hex, &ledger).lends_to,
@@ -10850,7 +10901,8 @@ mod tests {
         let ordered = OrderedUnits::read("");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let mut ledger = ledger_for(&hex, Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let mut ledger = ledger_for(&hex, Some(&rules), &no_receipts);
 
         // What `charge_upkeep` and the sharing pass leave behind for a hex that could not feed
         // itself: a fee nothing paid, drawn straight off the balance, and no `SHARE` flag.
@@ -11420,6 +11472,35 @@ mod tests {
             findings[0].message.contains("wood"),
             "the wood is what ran out: {}",
             findings[0].message
+        );
+    }
+
+    // --- what a cast makes (`ah-ofpb.4`) -------------------------------------------------------
+
+    /// This is the only test that proves the catalogue name and the plural reach the field: it
+    /// runs through `forecast_with_ruleset`, so the closure under test is the real
+    /// `counted_by_name` built in `forecast_hex`, not a test double. `plurals_in` reads the whole
+    /// report for a plural, not the caster's own inventory - the caster does not hold the thing it
+    /// is about to create - so a bystander unit holding two supplies the word (`ah-rsdz`).
+    #[test]
+    fn a_capped_cast_names_what_it_will_make() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![
+                with_silver(with_skill(unit("5"), "CRPA", 3), 400),
+                with_item(unit("6"), 2, "amulets of protection", "AMPR"),
+            ])],
+            "unit 5\nCAST Create_Amulet_Of_Protection\n",
+        );
+
+        assert_eq!(forecast.cast_made, 2);
+        assert_eq!(
+            forecast.cast_made_named.as_deref(),
+            Some("2 amulets of protection")
+        );
+        assert_eq!(forecast.cast_wanted, 3);
+        assert_eq!(
+            forecast.cast_capped_by,
+            Some(crate::orders::silver::ProductionCap::Silver)
         );
     }
 
@@ -12008,7 +12089,8 @@ mod tests {
         let ordered = OrderedUnits::read("unit 5\nWORK\n");
         let read = Hex::read(&hex, &ordered, &[]);
         let rules = ruleset();
-        let ledger = ledger_for(&read, Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let ledger = ledger_for(&read, Some(&rules), &no_receipts);
 
         assert_eq!(ledger.upkeep.get("5"), Some(&60), "the whole fee");
         assert_eq!(
@@ -12029,7 +12111,8 @@ mod tests {
         let ordered = OrderedUnits::read("");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let mut ledger = ledger_for(&hex, Some(&rules));
+        let no_receipts = BTreeMap::new();
+        let mut ledger = ledger_for(&hex, Some(&rules), &no_receipts);
 
         let before = silver_balance(&ledger, "5");
         ledger.upkeep_lent.insert("5".to_string(), 40);
@@ -12823,20 +12906,27 @@ mod tests {
         );
     }
 
-    /// The engine charges the stated inputs once per cast, whatever the roll makes - not once per
-    /// item created.
+    /// `ah-ofpb.4`: the engine now charges the stated cost once **per item** the cast will make,
+    /// not once whatever the level makes - a level 3 amulet maker makes three and spends $600, not
+    /// one and $200. A capped cast can never overspend on its own, so the gift to unit 6 is what
+    /// makes the change observable at all; unit 6 has to stand in the hex or the gift goes
+    /// uncounted and a second, unrelated finding breaks `only()`.
     #[test]
-    fn the_stated_cost_is_charged_once_however_much_the_spell_makes() {
-        let regions = vec![region(vec![with_silver(
-            with_skill(unit("5"), "CRRI", 3),
-            200,
-        )])];
+    fn a_mage_is_charged_for_every_artifact_it_makes() {
+        let regions = vec![region(vec![
+            with_silver(with_skill(unit("5"), "CRPA", 3), 600),
+            unit("6"),
+        ])];
 
-        let finding = only(check(regions, "unit 5\nCAST Create_Ring_Of_Invisibility\n"));
-        assert!(
-            finding.message.contains("400"),
-            "$600 once, not $600 times whatever the roll makes: {}",
-            finding.message
+        let finding = only(check(
+            regions,
+            "unit 5\nCAST Create_Amulet_Of_Protection\nGIVE 6 500 SILV\n",
+        ));
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert_eq!(finding.unit_id.as_deref(), Some("5"));
+        assert_eq!(
+            finding.message,
+            "short $500: this unit can have $600 and its orders spend $1100"
         );
     }
 
@@ -12861,26 +12951,100 @@ mod tests {
         assert_eq!(check(regions, "unit 5\nCAST Enchant_Swords\n"), vec![]);
     }
 
+    /// `ah-ofpb.4`: a level 3 enchanter draws on ten swords, one per mithril sword it will make -
+    /// not the one the stated cost names. A capped cast can never overspend on its own, so the
+    /// gift to unit 6 is what makes the change observable, exactly as
+    /// `a_mage_is_charged_for_every_artifact_it_makes` needs one for silver.
+    #[test]
+    fn a_cast_draws_on_every_item_it_will_consume() {
+        let regions = vec![region(vec![
+            with_item(with_skill(unit("5"), "ESWO", 3), 10, "swords", "SWOR"),
+            unit("6"),
+        ])];
+
+        let finding = only(check(
+            regions,
+            "unit 5\nCAST Enchant_Swords\nGIVE 6 10 SWOR\n",
+        ));
+        assert_eq!(finding.code.as_str(), "not-enough-items");
+        assert_eq!(
+            finding.message,
+            "short 10 swords: this unit can have 10 and its orders spend 20"
+        );
+    }
+
     /// Transmutation names its *output* - "the resource you wish to create" - and is charged the
-    /// source the ruleset says it is made from.
+    /// source the ruleset says it is made from. `ah-ofpb.4`: a level 1 transmuter's capacity is 2
+    /// rootstone (`ceil(200 x 1 / 100)`), so an unnumbered cast now draws on up to two stone rather
+    /// than the least-of-one the shipped reading gave every cast.
     #[test]
     fn a_transmuter_names_its_output_and_is_charged_the_source() {
-        let short = vec![region(vec![with_item(unit("5"), 3, "stone", "STON")])];
-        let finding = only(check(short, "unit 5\nCAST Transmutation 4 rootstone\n"));
-        assert_eq!(finding.code.as_str(), "not-enough-items");
-        assert!(finding.message.contains("1 stone"), "{}", finding.message);
-
-        let enough = vec![region(vec![with_item(unit("5"), 3, "stone", "STON")])];
-        assert_eq!(
-            check(enough, "unit 5\nCAST Transmutation rootstone\n"),
-            vec![],
-            "an unnumbered cast makes what it can, so the least it consumes is one"
-        );
-
-        let none = vec![region(vec![unit("5")])];
+        // Holding no stone at all, an unnumbered cast still wants its full capacity of two - so
+        // the floor of one still applies, and the shortfall is against that floor.
+        let none = vec![region(vec![with_skill(unit("5"), "TRNS", 1)])];
         let finding = only(check(none, "unit 5\nCAST Transmutation rootstone\n"));
         assert_eq!(finding.code.as_str(), "not-enough-items");
         assert!(finding.message.contains("1 stone"), "{}", finding.message);
+
+        // Holding exactly the capacity, an unnumbered cast is silent.
+        let enough = vec![region(vec![with_item(
+            with_skill(unit("5"), "TRNS", 1),
+            2,
+            "stone",
+            "STON",
+        )])];
+        assert_eq!(
+            check(enough, "unit 5\nCAST Transmutation rootstone\n"),
+            vec![],
+            "the level's whole capacity is affordable, so nothing is short"
+        );
+
+        // Asking for more than the level allows is capped to the capacity, not to what was asked.
+        let capped = vec![region(vec![with_item(
+            with_skill(unit("5"), "TRNS", 1),
+            2,
+            "stone",
+            "STON",
+        )])];
+        assert_eq!(
+            check(capped, "unit 5\nCAST Transmutation 4 rootstone\n"),
+            vec![],
+            "capped to the level's capacity of 2, which is exactly what is held"
+        );
+    }
+
+    /// `ah-ofpb.4`: a level 3 transmuter's capacity is 6 rootstone (`ceil(200 x 3 / 100)`), and
+    /// `data/TRNS` offers a number only to make *fewer* than that maximum - asking for more than
+    /// the level allows charges the same as not asking at all. A capped cast can never overspend
+    /// on its own, so the gift is what makes the balance observable, exactly as
+    /// `a_mage_is_charged_for_every_artifact_it_makes` needs one for silver.
+    #[test]
+    fn a_transmuter_makes_what_its_level_allows() {
+        let holding_six_stone = || {
+            vec![region(vec![
+                with_item(with_skill(unit("5"), "TRNS", 3), 6, "stone", "STON"),
+                unit("6"),
+            ])]
+        };
+
+        let unnumbered = only(check(
+            holding_six_stone(),
+            "unit 5\nCAST Transmutation rootstone\nGIVE 6 6 STON\n",
+        ));
+        assert_eq!(unnumbered.code.as_str(), "not-enough-items");
+        assert_eq!(
+            unnumbered.message,
+            "short 6 stone: this unit can have 6 and its orders spend 12"
+        );
+
+        let asking_for_more_than_the_level_allows = only(check(
+            holding_six_stone(),
+            "unit 5\nCAST Transmutation 10 rootstone\nGIVE 6 6 STON\n",
+        ));
+        assert_eq!(
+            asking_for_more_than_the_level_allows.message, unnumbered.message,
+            "10 is capped to the level's 6, same as asking for none at all"
+        );
     }
 
     #[test]
@@ -12920,6 +13084,29 @@ mod tests {
                 vec![region(vec![with_silver(unit("5"), 0)])],
                 "unit 5\nCAST Super_Magic\n"
             ),
+            vec![]
+        );
+    }
+
+    /// `ah-ofpb.4`, Q3: a mage whose level is below the spell's own threshold makes none of it, so
+    /// the cast costs nothing - not the whole stated cost for a spell that cannot fire, which is
+    /// what the shipped reading charged. The gift is what makes the balance observable at all:
+    /// without it the mage is silent either way, since a capped cast can never overspend on its
+    /// own.
+    #[test]
+    fn a_mage_below_the_level_that_creates_pays_nothing() {
+        let regions = vec![region(vec![
+            with_item(
+                with_skill(unit("5"), "SWIN", 2),
+                80,
+                "floater hides",
+                "FLOA",
+            ),
+            unit("6"),
+        ])];
+
+        assert_eq!(
+            check(regions, "unit 5\nCAST Summon_Wind\nGIVE 6 80 FLOA\n"),
             vec![]
         );
     }

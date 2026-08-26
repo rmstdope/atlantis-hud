@@ -6,7 +6,8 @@ import {
   SILVER_NOTES,
   placeTooltip,
   productionCapSentence,
-  summariseUnit
+  summariseUnit,
+  type SilverFacts
 } from "./unitTooltip";
 
 const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit =>
@@ -153,6 +154,46 @@ describe("productionCapSentence", () => {
     expect(productionCapSentence(aUnitSilver())).toBeUndefined();
     expect(productionCapSentence(null)).toBeUndefined();
     expect(productionCapSentence(undefined)).toBeUndefined();
+  });
+});
+
+// `castCapSentence` is not exported - the ITEMS hover has no cast cell to share it with
+// (`ah-ofpb.5`), unlike `productionCapSentence` - so this goes through the note itself
+// (`ah-ofpb.4`).
+describe("the cast-capped note (ah-ofpb.4)", () => {
+  const castCapped = SILVER_NOTES.find((note) => note.id === "cast-capped");
+  if (!castCapped) {
+    throw new Error("the cast-capped note should be registered in SILVER_NOTES");
+  }
+
+  const facts = (silver: Partial<UnitSilver>): SilverFacts => ({
+    unit: unit(),
+    silver: aUnitSilver(silver),
+    warned: false,
+    countUpkeep: true
+  });
+
+  it("names what a capped cast will make", () => {
+    const capped = facts({
+      castMade: 2,
+      castMadeNamed: "2 amulets of protection",
+      castWanted: 3,
+      castCappedBy: "silver"
+    });
+    expect(castCapped.when(capped)).toBe(true);
+    expect(castCapped.say(capped)).toBe(
+      "This unit has silver for 2 amulets of protection, not the 3 its level could make."
+    );
+  });
+
+  it("a cast nothing capped says nothing", () => {
+    const uncapped = facts({
+      castMade: 3,
+      castMadeNamed: "3 amulets of protection",
+      castWanted: 3,
+      castCappedBy: null
+    });
+    expect(castCapped.when(uncapped)).toBe(false);
   });
 });
 
@@ -1106,6 +1147,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
       "A faction-mate's silver in this hex pays for this unit's orders.",
     "production-capped":
       "This unit has silver for 1 catapult, not the 3 its men could make.",
+    "cast-capped":
+      "This unit has silver for 2 amulets of protection, not the 3 its level could make.",
     "food-contended":
       "There is not enough food here to feed every unit that needs it, so this unit may yet be fed.",
     "unclaimed-contended": "There is not enough unclaimed silver to feed every unit that needs it.",
@@ -1339,7 +1382,11 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
       productionWanted: 3,
       productionCappedBy: "silver",
       worksByDefault: true,
-      taxesByFlag: true
+      taxesByFlag: true,
+      castMade: 2,
+      castMadeNamed: "2 amulets of protection",
+      castWanted: 3,
+      castCappedBy: "silver"
     });
 
   const unit = aReportUnit({ men: 6, items: [{ tag: "GRAI", name: "grain", amount: 4 }] });

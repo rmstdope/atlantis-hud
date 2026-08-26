@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::movement::rules::{ItemKind, Production, Ruleset, SkillEntry};
+use crate::movement::rules::{CastCost, CastOutput, ItemKind, Production, Ruleset, SkillEntry};
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::orders::semantics::{counted_with_singular, FormedSubject, Plurals};
@@ -274,6 +274,22 @@ pub struct UnitSilver {
     /// `false` for a unit that also carries an explicit `TAX`, which has an order on screen that
     /// explains itself.
     pub taxes_by_flag: bool,
+    /// How many of the item its `CAST` order creates this unit will make. `0` for a unit with no
+    /// such order, and for a mage whose level makes none of the thing (`ah-ofpb.4`).
+    pub cast_made: i64,
+    /// `cast_made`, named and counted the way a finding names an item - "2 amulets of protection".
+    /// The interface cannot do this itself: the unit does not hold the thing yet, so there is
+    /// nothing in its inventory to read a plural off, and 84 of the 114 items this corpus shows
+    /// with a count above one pluralise irregularly (`counted_with_singular`). `None` for a unit
+    /// with no priceable cast, and for a spell that creates nothing an item catalogue can carry -
+    /// construct gate makes a Gate.
+    pub cast_made_named: Option<String>,
+    /// How many its level alone would make. Equal to `cast_made` unless `cast_capped_by` says
+    /// something stopped it.
+    pub cast_wanted: i64,
+    /// What stopped it making `cast_wanted`, or `None` when nothing did. Drives the hover's note
+    /// and nothing else - the figures above are already the capped ones.
+    pub cast_capped_by: Option<ProductionCap>,
     /// Set when this unit is not one the report shows but one this month's `FORM` orders create -
     /// see [`FormedSubject`]. The interface names the unit by its alias and sends a click to
     /// `formed_by`, since a unit that does not exist cannot be selected.
@@ -535,6 +551,10 @@ pub struct Lookups<'a> {
     /// them, or the hex could not be settled at all - and the arm falls back to what the market
     /// line itself says, which is the behaviour before this bead.
     pub market_share: &'a dyn Fn(&str, MarketSide) -> Option<i64>,
+    /// A count of an item, named and pluralised the way every finding names one. Here for the same
+    /// reason `item_name` is: what a cast is about to create is not in the unit's inventory, so
+    /// the interface cannot pluralise it (`ah-ofpb.4`).
+    pub counted_item: &'a dyn Fn(i64, &str) -> String,
 }
 
 /// What this hex's market says about goods a unit is ordered to sell.
@@ -849,6 +869,10 @@ pub fn forecast_unit(
             production_capped_by: None,
             works_by_default: is_set_to_work(unit_flags, intents),
             taxes_by_flag: false,
+            cast_made: 0,
+            cast_made_named: None,
+            cast_wanted: 0,
+            cast_capped_by: None,
             formed,
         };
     }
@@ -878,6 +902,9 @@ pub fn forecast_unit(
     // What a `PRODUCE` order will make, for the four fields the hover reads. Filled by the arm
     // below; a unit with no such order leaves it at nothing.
     let mut production: Option<(String, ProductionPlan)> = None;
+    // What a `CAST` order will make, for the four `cast_*` fields the hover reads. Filled by the
+    // arm below; a unit with no such order, or none the ruleset prices, leaves it at nothing.
+    let mut cast: Option<CastPlan> = None;
     // `BUY ALL` and `GIVE ... ALL SILV` spend what is left after every other term, so they cannot
     // be priced inside this pass. Collected in document order and applied below.
     let mut deferred: Vec<Deferred> = Vec::new();
@@ -992,16 +1019,45 @@ pub fn forecast_unit(
                 }
                 expense_doubt = expense_doubt.or(priced.doubt);
             }
-            Intent::Cast { spell, .. } => {
+            Intent::Cast { spell, arguments } => {
                 // Resolved once: this runs per keystroke, and `find_skill` walks the catalogue.
-                let spell = ruleset.and_then(|ruleset| ruleset.find_skill(spell));
+                let resolved = ruleset.and_then(|ruleset| ruleset.find_skill(spell));
 
-                let priced = price_cast(spell, facts.skills, region);
+                // A transmutation only when the spell actually transmutes something and the order
+                // names a material this pass can resolve - the same gate `semantics::cast` applies
+                // before building the same struct, so both surfaces agree about which casts are
+                // transmutations at all (`ah-ofpb.4`).
+                let transmute_tag = resolved
+                    .and_then(|skill| skill.cast.as_ref())
+                    .filter(|cost| !cost.transmute.is_empty())
+                    .and_then(|_| transmute_argument(arguments))
+                    .and_then(|(number, material)| {
+                        (lookups.item_tag)(material).map(|tag| (number, tag))
+                    });
+                let transmuting = transmute_tag.as_ref().map(|(number, tag)| Transmuting {
+                    output_tag: tag.as_str(),
+                    number: *number,
+                });
+
+                let caster = Caster {
+                    skills: facts.skills,
+                    held: facts.items,
+                    // `rules/sequence` puts `GIVE` and `TAKE` two phases before `Spells are CAST`,
+                    // so silver on its way in counts; wages and anything produced after do not
+                    // (`ah-ofpb.4`, R4).
+                    silver_available: held
+                        .saturating_add(receipts.silver)
+                        .saturating_add(receipts.taken)
+                        .saturating_add(receipts.taken_unshown),
+                    transmuting,
+                };
+                let (priced, plan) = price_cast(resolved, &caster, region);
                 income = income.saturating_add(priced.earns);
                 expense = expense.saturating_add(priced.spends);
                 if priced.spends > 0 {
                     spent_on = spent_on.or(Some(SilverSpender::Cast));
                 }
+                cast = cast.or(plan);
             }
             Intent::Buy { amount, item } => match (lookups.purchase)(item) {
                 PurchaseAnswer::ForSale { price, market_has } => match amount {
@@ -1216,6 +1272,14 @@ pub fn forecast_unit(
             && !intents
                 .iter()
                 .any(|placed| matches!(placed.intent, Intent::Tax)),
+        cast_made: cast.as_ref().map_or(0, |plan| plan.made),
+        cast_made_named: cast.as_ref().and_then(|plan| {
+            plan.tag
+                .as_ref()
+                .map(|tag| (lookups.counted_item)(plan.made, tag))
+        }),
+        cast_wanted: cast.as_ref().map_or(0, |plan| plan.wanted),
+        cast_capped_by: cast.as_ref().and_then(|plan| plan.capped_by),
         formed,
     }
 }
@@ -2313,7 +2377,10 @@ pub fn price_production(
     }
 }
 
-/// What a `CAST` earns and costs.
+/// What a `CAST` earns and costs, and the run it describes.
+///
+/// Returns the plan as well as the price for the same reason [`price_production`] does: the ledger
+/// charges `plan.materials` tag by tag, and the column names what is made.
 ///
 /// **Two spells earn**, and both arrive in time to be spent: `CAST` resolves before every spend
 /// order, so neither is [`late_income`]'s business. Phantasmal Entertainment pays
@@ -2322,19 +2389,26 @@ pub fn price_production(
 /// hundredths, so the multiplication comes before the division by 100 and a fractional wage is not
 /// lost. A hex stating no wage pays nothing and raises no doubt, exactly as `WORK` treats one.
 ///
-/// **Every spell may cost.** Only the `SILV` entries of the cast cost move silver here; item costs
-/// and the whole `transmute` map are the item ledger's business and are not this function's.
+/// **Every spell may cost, charged for every item it will make** (`ah-ofpb.4`). Only the `SILV`
+/// entries of the cast cost move silver here; item costs and the whole `transmute` map are the item
+/// ledger's business and are not this function's - `spends` is `plan.silver` alone.
 ///
 /// A spell the ruleset does not know, or knows no cost for, earns nothing, costs nothing and doubts
-/// nothing - which is the truth about most spells.
+/// nothing - which is the truth about most spells. Returns `(Priced::default(), None)` for either.
 #[must_use]
-pub fn price_cast(spell: Option<&SkillEntry>, skills: &[Skill], region: RegionWages) -> Priced {
+pub fn price_cast(
+    spell: Option<&SkillEntry>,
+    caster: &Caster<'_>,
+    region: RegionWages,
+) -> (Priced, Option<CastPlan>) {
+    let level = skill_level(caster.skills, spell.map_or("", |spell| spell.tag.as_str()));
+
     let earns = match spell.map(|spell| spell.tag.to_ascii_uppercase()) {
-        Some(tag) if tag == PHANTASMAL_TAG => skill_level(skills, PHANTASMAL_TAG)
+        Some(tag) if tag == PHANTASMAL_TAG => level
             .saturating_mul(PHANTASMAL_PER_LEVEL)
             .min(region.entertainment.unwrap_or(0)),
         Some(tag) if tag == EARTH_LORE_TAG => {
-            skill_level(skills, EARTH_LORE_TAG)
+            level
                 .saturating_mul(EARTH_LORE_PER_LEVEL_PER_WAGE)
                 .saturating_mul(region.wage_centis.unwrap_or(0))
                 / 100
@@ -2342,20 +2416,26 @@ pub fn price_cast(spell: Option<&SkillEntry>, skills: &[Skill], region: RegionWa
         _ => 0,
     };
 
-    let spends = spell
-        .and_then(|spell| spell.cast.as_ref())
-        .map_or(0, |cost| {
-            cost.costs
-                .iter()
-                .filter(|input| input.tag.eq_ignore_ascii_case(SILVER_TAG) && input.amount > 0)
-                .fold(0i64, |total, input| total.saturating_add(input.amount))
-        });
+    let Some(cost) = spell.and_then(|spell| spell.cast.as_ref()) else {
+        return (
+            Priced {
+                earns,
+                ..Priced::default()
+            },
+            None,
+        );
+    };
 
-    Priced {
-        earns,
-        spends,
-        doubt: None,
-    }
+    let plan = plan_cast(cost, caster, level);
+
+    (
+        Priced {
+            earns,
+            spends: plan.silver,
+            doubt: None,
+        },
+        Some(plan),
+    )
 }
 
 /// The level a unit has in one skill, by tag, or 0 for a skill it does not have.
@@ -2518,6 +2598,213 @@ pub fn plan_production(
             .collect(),
         capped_by,
     })
+}
+
+/// What the caster brings to a cast.
+///
+/// A struct rather than four more positional arguments, for the reason [`UnitFacts`] is one: the
+/// call site should read as a description of the mage.
+#[derive(Debug, Clone, Copy)]
+pub struct Caster<'a> {
+    /// The unit's own skills, which give it its level in the spell.
+    pub skills: &'a [Skill],
+    /// Everything the unit holds, for the material inputs a cast consumes.
+    pub held: &'a [ItemAmount],
+    /// Silver the unit can have before the spell resolves: what the report shows it holding plus
+    /// every gift and take this month's orders bring it. `rules/sequence` puts `GIVE` and `TAKE`
+    /// two phases before `Spells are CAST`, and wages, takings from entertaining and anything the
+    /// unit produces after it - so those are not counted, and neither is `late_income`.
+    pub silver_available: i64,
+    /// `CAST Transmutation [number] <material>`, resolved by the caller because only it can turn
+    /// the order's text into a tag. `None` for every other spell.
+    pub transmuting: Option<Transmuting<'a>>,
+}
+
+/// The output a transmutation names, and how many of it the order asked for.
+#[derive(Debug, Clone, Copy)]
+pub struct Transmuting<'a> {
+    /// The canonical, upper-cased tag of the item the order names - transmutation names its
+    /// *output*, "the resource you wish to create" (`data/TRNS`).
+    pub output_tag: &'a str,
+    /// `None` for an unnumbered cast, which makes as many as the level allows: "Should you wish to
+    /// create fewer than maximum, you may CAST Transmutation [number] <material> instead"
+    /// (`data/TRNS`).
+    pub number: Option<i64>,
+}
+
+/// What one `CAST` makes, and what it takes to make it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CastPlan {
+    /// How many the cast will actually make, capped by what the mage can pay for.
+    pub made: i64,
+    /// How many the mage's level alone would make. Every whole hundred percent is an item, and any
+    /// remainder is rounded **up** to one more - the navigator's choice, 2026-08-26, and the reason
+    /// no "certain" count is computed anywhere in this bead. `1` for a spell that creates nothing
+    /// an item catalogue can carry, which the page prices per attempt.
+    pub wanted: i64,
+    /// How many the ledger is charged for: `made`, but never fewer than one when `wanted` is more
+    /// than none. A mage that cannot afford even one is charged for one and is warned that it is
+    /// short; a mage whose level makes none of the thing at all is charged nothing.
+    pub charged: i64,
+    /// The tag of the item created, upper-cased. `None` for a spell that creates nothing an item
+    /// catalogue can carry - `data/CGAT` makes a Gate, which is a region feature.
+    pub tag: Option<String>,
+    /// Silver the cast spends: `charged` times the `SILV` entry of the per-item cost.
+    pub silver: i64,
+    /// Everything else it spends, `charged` times each per-item amount. `name` is the tag, exactly
+    /// as `plan_production` leaves it - the caller names the item.
+    pub materials: Vec<ItemAmount>,
+    /// What stopped it making `wanted`, or `None` when nothing did. Silver is named first when both
+    /// bind, for the same reason `plan_production` names it first: the column this feeds is about
+    /// silver.
+    pub capped_by: Option<ProductionCap>,
+}
+
+/// `CAST Transmutation [number] <material>` split into how many and what.
+///
+/// `None` for arguments of neither shape, including a count that will not parse or is not positive
+/// - which is what `cast()` does with one today.
+#[must_use]
+pub fn transmute_argument(arguments: &[String]) -> Option<(Option<i64>, &str)> {
+    match arguments {
+        [count, material] => match count.parse::<i64>() {
+            Ok(count) if count > 0 => Some((Some(count), material.as_str())),
+            _ => None,
+        },
+        [material] => Some((None, material.as_str())),
+        _ => None,
+    }
+}
+
+/// What one cast makes and what it costs, from the ruleset's own numbers.
+///
+/// Modelled on [`plan_production`] deliberately and closely: a cast is capped by silver and
+/// materials exactly as a production run is. The one difference is silver: it is divided out of
+/// `caster.silver_available` rather than out of the unit's own `SILV` holding, because a gift that
+/// arrives before `Spells are CAST` funds the cast (`ah-ofpb.4`, R4).
+#[must_use]
+pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
+    // 1. Which creation this cast makes.
+    let output: Option<&CastOutput> = match &caster.transmuting {
+        Some(transmuting) => cost
+            .creates
+            .iter()
+            .find(|output| output.tag.eq_ignore_ascii_case(transmuting.output_tag)),
+        None => match cost.creates.as_slice() {
+            [only] => Some(only),
+            _ => None,
+        },
+    };
+
+    // The level's capacity, unused when `output` is `None`.
+    let capacity = output.map_or(0, |output| {
+        let output_level = i64::from(output.level);
+        if level < output_level {
+            return 0;
+        }
+        let effective_level = (level + output.level_offset).max(0);
+        let total_percent = output.percent_per_level.saturating_mul(effective_level);
+        // Rounded up, deliberately: a remainder chance is charged as though it landed
+        // (`ah-ofpb.4`, Q2). `total_percent` is never negative, so this is an ordinary ceiling.
+        (total_percent + 99) / 100
+    });
+
+    // 2. `wanted`.
+    let wanted = match output {
+        None => 1,
+        Some(_) => match caster.transmuting.as_ref().and_then(|t| t.number) {
+            Some(number) if number > 0 => number.min(capacity),
+            Some(_) => 0,
+            None => capacity,
+        },
+    };
+
+    // 3. The per-item cost.
+    let (silver_each, materials_each): (i64, Vec<(String, i64)>) = match caster.transmuting.as_ref()
+    {
+        Some(transmuting) => {
+            let source = cost
+                .transmute
+                .get(&transmuting.output_tag.to_ascii_uppercase());
+            (
+                0,
+                source
+                    .map(|source_tag| vec![(source_tag.clone(), 1)])
+                    .unwrap_or_default(),
+            )
+        }
+        None => {
+            let silver_each = cost
+                .costs
+                .iter()
+                .find(|input| input.tag.eq_ignore_ascii_case(SILVER_TAG))
+                .map_or(0, |input| input.amount);
+            let materials_each = cost
+                .costs
+                .iter()
+                .filter(|input| !input.tag.eq_ignore_ascii_case(SILVER_TAG))
+                .map(|input| (input.tag.clone(), input.amount))
+                .collect();
+            (silver_each, materials_each)
+        }
+    };
+
+    // 4. The caps, exactly as `plan_production` computes them, with one difference: silver is
+    // divided out of `caster.silver_available` rather than out of the unit's own `SILV` holding.
+    let holding = |tag: &str| -> i64 {
+        caster
+            .held
+            .iter()
+            .find(|item| item.tag.eq_ignore_ascii_case(tag))
+            .map_or(0, |item| item.amount)
+    };
+
+    let by_silver = if silver_each > 0 {
+        caster.silver_available.max(0) / silver_each
+    } else {
+        i64::MAX
+    };
+    let by_materials = materials_each
+        .iter()
+        .filter(|(_, amount)| *amount > 0)
+        .map(|(tag, amount)| holding(tag) / amount)
+        .min()
+        .unwrap_or(i64::MAX);
+
+    let made = wanted.min(by_silver).min(by_materials);
+    // Silver is named first when both bind, because the column this feeds is about silver.
+    let capped_by = if made == wanted {
+        None
+    } else if by_silver <= by_materials {
+        Some(ProductionCap::Silver)
+    } else {
+        Some(ProductionCap::Materials)
+    };
+    // 5. `charged` is `0` when `wanted` is `0` (Q3: a mage whose level makes none of the thing is
+    // charged nothing), and `max(1, made)` otherwise (R2: a mage that cannot afford even one is
+    // still charged for one, so the shipped warnings still fire).
+    let charged = if wanted == 0 { 0 } else { made.max(1) };
+
+    CastPlan {
+        made,
+        wanted,
+        charged,
+        tag: output.map(|output| output.tag.to_ascii_uppercase()),
+        silver: charged.saturating_mul(silver_each),
+        materials: if charged > 0 {
+            materials_each
+                .iter()
+                .map(|(tag, amount)| ItemAmount {
+                    amount: charged * amount,
+                    name: tag.clone(),
+                    tag: tag.clone(),
+                })
+                .collect()
+        } else {
+            Vec::new()
+        },
+        capped_by,
+    }
 }
 
 #[cfg(test)]
@@ -2733,6 +3020,160 @@ mod production_tests {
         let mut no_output = catapult();
         no_output.outputs = None;
         assert_eq!(plan_production(&no_output, 10, &held(&[])), None);
+    }
+}
+
+/// `plan_cast`, against the committed NewOrigins ruleset - `ah-ofpb.3` landed the multiplier this
+/// arithmetic spends, and its plan's *The one arithmetic* is the formula worked through below.
+#[cfg(test)]
+mod cast_tests {
+    use super::*;
+
+    /// The committed ruleset, which is what `ah-ofpb.3` taught the multiplier from.
+    fn ruleset() -> Ruleset {
+        Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
+            .expect("the committed ruleset should be usable")
+    }
+
+    fn cast_cost(tag: &str) -> CastCost {
+        ruleset()
+            .find_skill(tag)
+            .and_then(|skill| skill.cast.clone())
+            .unwrap_or_else(|| panic!("{tag} should carry a cast cost in the committed ruleset"))
+    }
+
+    /// A caster with no cap at all, so only the level arithmetic (step 2) is exercised.
+    fn unlimited() -> Caster<'static> {
+        Caster {
+            skills: &[],
+            held: &[],
+            silver_available: i64::MAX,
+            transmuting: None,
+        }
+    }
+
+    #[test]
+    fn plan_cast_counts_what_the_level_makes() {
+        assert_eq!(plan_cast(&cast_cost("ESWO"), &unlimited(), 3).wanted, 15);
+        assert_eq!(plan_cast(&cast_cost("CRPA"), &unlimited(), 3).wanted, 3);
+        assert_eq!(plan_cast(&cast_cost("CRRI"), &unlimited(), 3).wanted, 1);
+        assert_eq!(plan_cast(&cast_cost("CRRU"), &unlimited(), 3).wanted, 3);
+        assert_eq!(plan_cast(&cast_cost("CRRU"), &unlimited(), 5).wanted, 5);
+        assert_eq!(plan_cast(&cast_cost("SWIN"), &unlimited(), 2).wanted, 0);
+        assert_eq!(plan_cast(&cast_cost("SWIN"), &unlimited(), 5).wanted, 1);
+        assert_eq!(plan_cast(&cast_cost("BIRD"), &unlimited(), 2).wanted, 0);
+        assert_eq!(plan_cast(&cast_cost("BIRD"), &unlimited(), 3).wanted, 1);
+
+        let gate = plan_cast(&cast_cost("CGAT"), &unlimited(), 3);
+        assert_eq!(gate.wanted, 1);
+        assert_eq!(gate.tag, None);
+    }
+
+    fn holding(items: &[(&str, i64)]) -> Vec<ItemAmount> {
+        items
+            .iter()
+            .map(|(tag, amount)| ItemAmount {
+                amount: *amount,
+                name: tag.to_lowercase(),
+                tag: (*tag).to_string(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn plan_cast_is_capped_by_what_the_mage_holds() {
+        let amulets = plan_cast(
+            &cast_cost("CRPA"),
+            &Caster {
+                skills: &[],
+                held: &[],
+                silver_available: 400,
+                transmuting: None,
+            },
+            3,
+        );
+        assert_eq!(amulets.made, 2);
+        assert_eq!(amulets.wanted, 3);
+        assert_eq!(amulets.capped_by, Some(ProductionCap::Silver));
+        assert_eq!(amulets.charged, 2);
+        assert_eq!(amulets.silver, 400);
+
+        let swords = plan_cast(
+            &cast_cost("ESWO"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[("SWOR", 4)]),
+                silver_available: 0,
+                transmuting: None,
+            },
+            3,
+        );
+        assert_eq!(swords.made, 4);
+        assert_eq!(swords.capped_by, Some(ProductionCap::Materials));
+        assert_eq!(
+            swords
+                .materials
+                .iter()
+                .map(|item| (item.tag.as_str(), item.amount))
+                .collect::<Vec<_>>(),
+            vec![("SWOR", 4)]
+        );
+
+        let broke = plan_cast(
+            &cast_cost("CRPA"),
+            &Caster {
+                skills: &[],
+                held: &[],
+                silver_available: 100,
+                transmuting: None,
+            },
+            3,
+        );
+        assert_eq!(broke.made, 0);
+        assert_eq!(broke.charged, 1);
+        assert_eq!(broke.silver, 200);
+        assert_eq!(broke.capped_by, Some(ProductionCap::Silver));
+
+        let too_low_level = plan_cast(
+            &cast_cost("SWIN"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[("FLOA", 10_000), ("IRWD", 10_000)]),
+                silver_available: 0,
+                transmuting: None,
+            },
+            2,
+        );
+        assert_eq!(too_low_level.wanted, 0);
+        assert_eq!(too_low_level.charged, 0);
+        assert_eq!(too_low_level.capped_by, None);
+        assert_eq!(too_low_level.materials, Vec::new());
+
+        let short_on_two_materials = plan_cast(
+            &cast_cost("SWIN"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[("FLOA", 80), ("IRWD", 40)]),
+                silver_available: 0,
+                transmuting: None,
+            },
+            5,
+        );
+        assert_eq!(short_on_two_materials.made, 0);
+        assert_eq!(short_on_two_materials.charged, 1);
+        assert_eq!(
+            short_on_two_materials.capped_by,
+            Some(ProductionCap::Materials)
+        );
+    }
+
+    /// The navigator's Q2: a remainder chance is rounded up to a whole item and charged, so a
+    /// level 3 ring maker's cast moves the Silver column even though nothing is certain, and a
+    /// level 3 runesmith's is charged for all three it might make.
+    #[test]
+    fn plan_cast_rounds_a_chance_up_to_a_whole_item() {
+        assert_eq!(plan_cast(&cast_cost("CRRI"), &unlimited(), 3).wanted, 1);
+        assert_eq!(plan_cast(&cast_cost("CRRU"), &unlimited(), 3).wanted, 3);
     }
 }
 
@@ -2970,7 +3411,14 @@ mod tests {
             item_tag: &verbatim_tag,
             item_name: &verbatim_name,
             market_share: &unsettled_market,
+            counted_item: &verbatim_counted,
         }
+    }
+
+    /// [`Lookups::counted_item`]'s twin for a test with no catalogue: names the tag verbatim, the
+    /// same way [`verbatim_name`] does.
+    fn verbatim_counted(count: i64, tag: &str) -> String {
+        format!("{count} {}", tag.to_lowercase())
     }
 
     fn verbatim_name(tag: &str) -> String {
@@ -3080,17 +3528,24 @@ mod tests {
         let phantasmal = spell(PHANTASMAL_TAG, None);
         let earth_lore = spell(EARTH_LORE_TAG, None);
         let skills = [skill(PHANTASMAL_TAG, 3), skill(EARTH_LORE_TAG, 2)];
+        let caster = Caster {
+            skills: &skills,
+            held: &[],
+            silver_available: 0,
+            transmuting: None,
+        };
 
         // Level 3 wants 1800; the region's pool holds 500, so 500 is what it earns.
         assert_eq!(
             price_cast(
                 Some(&phantasmal),
-                &skills,
+                &caster,
                 RegionWages {
                     entertainment: Some(500),
                     ..RegionWages::default()
                 }
-            ),
+            )
+            .0,
             Priced {
                 earns: 500,
                 ..Priced::default()
@@ -3099,8 +3554,8 @@ mod tests {
 
         // A hex stating no entertainment pool pays nothing, and doubts nothing.
         assert_eq!(
-            price_cast(Some(&phantasmal), &skills, RegionWages::default()),
-            Priced::default()
+            price_cast(Some(&phantasmal), &caster, RegionWages::default()),
+            (Priced::default(), None)
         );
 
         // Earth Lore at level 2 with a wage of 13.5: 2 x 2 x 1350 / 100 = 54. Multiplied out
@@ -3108,25 +3563,29 @@ mod tests {
         assert_eq!(
             price_cast(
                 Some(&earth_lore),
-                &skills,
+                &caster,
                 RegionWages {
                     wage_centis: Some(1350),
                     ..RegionWages::default()
                 }
-            ),
+            )
+            .0,
             Priced {
                 earns: 54,
                 ..Priced::default()
             }
         );
 
-        // A spell that costs silver to cast, and earns nothing.
+        // A spell that costs silver to cast, and earns nothing. It creates nothing an item
+        // catalogue can carry, so the page prices the attempt: `wanted` 1, and a mage that cannot
+        // afford it is still charged for the one attempt (`ah-ofpb.4`, R2).
         assert_eq!(
             price_cast(
                 Some(&spell("FIRE", Some(60))),
-                &skills,
+                &caster,
                 RegionWages::default()
-            ),
+            )
+            .0,
             Priced {
                 spends: 60,
                 ..Priced::default()
@@ -3135,9 +3594,107 @@ mod tests {
 
         // A spell the ruleset does not know earns nothing, costs nothing and doubts nothing.
         assert_eq!(
-            price_cast(None, &skills, RegionWages::default()),
-            Priced::default()
+            price_cast(None, &caster, RegionWages::default()),
+            (Priced::default(), None)
         );
+    }
+
+    /// `ah-ofpb.4`: a level 3 amulet maker with enough silver spends for every item it makes, not
+    /// for one - `$200` once was the shipped reading `price_cast`'s own doc comment named as the
+    /// defect this bead fixes.
+    #[test]
+    fn prices_a_cast_for_every_item_it_makes() {
+        let ruleset = ruleset();
+        let skills = [skill("CRPA", 3)];
+        let caster = Caster {
+            skills: &skills,
+            held: &[],
+            silver_available: 600,
+            transmuting: None,
+        };
+
+        let (priced, plan) =
+            price_cast(ruleset.find_skill("CRPA"), &caster, RegionWages::default());
+        assert_eq!(priced.spends, 600);
+        assert_eq!(plan.expect("a priceable cast").made, 3);
+    }
+
+    /// `ah-ofpb.4`: the four `cast_*` fields `forecast_unit` fills, both capped and at full rate.
+    /// `cast_made_named` is whatever this module's test `Lookups` produce, **not** English -
+    /// `no_market()` names items with `verbatim_counted`, so it reads "2 ampr" rather than "2
+    /// amulets of protection"; the real English is `a_capped_cast_names_what_it_will_make` in
+    /// `semantics.rs`, the one test that runs through the naming closure `forecast_hex` actually
+    /// builds.
+    #[test]
+    fn a_capped_cast_says_what_it_will_make() {
+        let ruleset = ruleset();
+        let receipts = Receipts::default();
+        let intents = [placed(Intent::Cast {
+            spell: "Create_Amulet_Of_Protection".to_string(),
+            arguments: Vec::new(),
+        })];
+        let skills = [skill("CRPA", 3)];
+        let cast = |held: i64| {
+            forecast_unit(
+                UnitFacts {
+                    held,
+                    skills: &skills,
+                    ..facts(1, &intents, &receipts)
+                },
+                RegionWages::default(),
+                PoolShares::default(),
+                FactionPurse::default(),
+                0,
+                no_market(),
+                Some(&ruleset),
+            )
+        };
+
+        let capped = cast(400);
+        assert_eq!(capped.expense, Some(400));
+        assert_eq!(capped.cast_made, 2);
+        assert_eq!(capped.cast_made_named.as_deref(), Some("2 ampr"));
+        assert_eq!(capped.cast_wanted, 3);
+        assert_eq!(capped.cast_capped_by, Some(ProductionCap::Silver));
+
+        let full_rate = cast(600);
+        assert_eq!(full_rate.expense, Some(600));
+        assert_eq!(full_rate.cast_made, 3);
+        assert_eq!(full_rate.cast_capped_by, None);
+    }
+
+    /// The navigator's R4: silver a gift brings in time funds the cast, unlike `PRODUCE`'s cap
+    /// against the unit's own holding alone. Under the rejected reading (judging the cap on what
+    /// the mage holds now, as `PRODUCE` does) this mage would make none and spend $200.
+    #[test]
+    fn a_cast_counts_the_silver_a_gift_brings_it() {
+        let ruleset = ruleset();
+        let receipts = Receipts {
+            silver: 600,
+            ..Receipts::default()
+        };
+        let intents = [placed(Intent::Cast {
+            spell: "Create_Amulet_Of_Protection".to_string(),
+            arguments: Vec::new(),
+        })];
+        let skills = [skill("CRPA", 3)];
+
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 0,
+                skills: &skills,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            Some(&ruleset),
+        );
+
+        assert_eq!(unit.cast_made, 3);
+        assert_eq!(unit.expense, Some(600));
     }
 
     #[test]
@@ -4610,18 +5167,29 @@ mod tests {
         assert_eq!(unit.doubt, Some(SilverDoubt::GivesAWholeClass));
     }
 
+    /// `spending` gives the unit no skills at all, and a mage with no skill in the spell now
+    /// creates nothing and is charged nothing (Q3, `ah-ofpb.4`) - so this needs a level, unlike
+    /// the two tests beside it, to still exercise the `SILV` charge it is named for.
     #[test]
     fn a_cast_that_consumes_silver_is_charged_for_it() {
         let ruleset = ruleset();
-        let intents = vec![placed(Intent::Cast {
+        let receipts = Receipts::default();
+        let intents = [placed(Intent::Cast {
             spell: "create amulet of protection".to_string(),
             arguments: Vec::new(),
         })];
-        let unit = spending(
-            500,
-            &intents,
+        let skills = [skill("CRPA", 1)];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 500,
+                skills: &skills,
+                ..facts(1, &intents, &receipts)
+            },
             RegionWages::default(),
-            &no_purchases,
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
             Some(&ruleset),
         );
         assert_eq!(unit.expense, Some(200));
