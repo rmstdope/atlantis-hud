@@ -323,6 +323,10 @@ pub struct BuyAllShown {
     pub affordable: i64,
     pub available: i64,
     pub market_has: i64,
+    /// How many of these goods this unit's own earlier `BUY` lines already took out of
+    /// `available`. Zero for the first such line, which is what keeps every shipped sentence
+    /// unchanged (`ah-lauy`).
+    pub already_bought: i64,
     /// What the unit holds when this line is reached, for the "cannot afford one" sentence.
     pub silver_available: i64,
     /// The line's unit price, for the same sentence.
@@ -1014,6 +1018,10 @@ pub fn forecast_unit(
     // the same goods twice, and the second line can only move what the first left - of the stock
     // and of the settled share alike (`ah-vw8e`).
     let mut sold: BTreeMap<String, i64> = BTreeMap::new();
+    // What this unit's earlier `BUY` lines have already taken out of its settled share, per
+    // canonical tag. A block may name the same goods twice, and the second line can only buy what
+    // the first left - of the market line and of this unit's share of it alike (`ah-lauy`).
+    let mut bought: BTreeMap<String, i64> = BTreeMap::new();
     // `BUY ALL` and `GIVE ... ALL SILV` spend what is left after every other term, so they cannot
     // be priced inside this pass. Collected in document order and applied below.
     let mut deferred: Vec<Deferred> = Vec::new();
@@ -1201,15 +1209,31 @@ pub fn forecast_unit(
             Intent::Buy { amount, item } => match (lookups.purchase)(item) {
                 PurchaseAnswer::ForSale { price, market_has } => match amount {
                     Amount::Exact(count) => {
+                        let tag = (lookups.item_tag)(item);
+                        let already = tag
+                            .as_ref()
+                            .and_then(|tag| bought.get(tag))
+                            .copied()
+                            .unwrap_or(0);
                         // The settled figure is already capped by what the market has, so this
                         // also stops a lone unit being charged for goods that do not exist - the
-                        // navigator's decision, recorded in the bead's plan (`ah-t2pn.3`).
-                        let allowed =
-                            (lookups.market_share)(item, MarketSide::Buying).unwrap_or(*count);
+                        // navigator's decision, recorded in the bead's plan (`ah-t2pn.3`). Less
+                        // what this unit's own earlier lines already took (`ah-lauy`).
+                        //
+                        // The running total comes off the *settled share* only. Where nothing was
+                        // settled the arm falls back to what the unit asked for, which is not a
+                        // quantity of goods at all, so there is nothing there to spend down.
+                        let allowed = match (lookups.market_share)(item, MarketSide::Buying) {
+                            Some(share) => (share - already).max(0),
+                            None => *count,
+                        };
                         let charged = price_purchase(*count, price, allowed).spends;
                         expense = expense.saturating_add(charged);
                         if charged > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Buy));
+                        }
+                        if let Some(tag) = tag {
+                            *bought.entry(tag).or_default() += quantity_bought(*count, allowed);
                         }
                     }
                     // What a unit can afford depends on everything else this month does, so this
@@ -1221,8 +1245,7 @@ pub fn forecast_unit(
                     // amount is read.
                     Amount::All { .. } => deferred.push(Deferred::BuyAll {
                         price,
-                        available: (lookups.market_share)(item, MarketSide::Buying)
-                            .unwrap_or(market_has),
+                        share: (lookups.market_share)(item, MarketSide::Buying),
                         market_has,
                         tag: (lookups.item_tag)(item).unwrap_or_default(),
                     }),
@@ -1343,11 +1366,17 @@ pub fn forecast_unit(
             let spent = match spend {
                 Deferred::BuyAll {
                     price,
-                    available,
+                    share,
                     market_has,
                     tag,
                 } => {
-                    let (priced, plan) = price_buy_all(running, *price, *available, *market_has);
+                    let already = bought.get(tag).copied().unwrap_or(0);
+                    // Unlike the exact arm, the running total comes off the fallback too:
+                    // `market_has` is a real quantity of goods, so a unit that has already bought
+                    // the line cannot buy it again whether a share was settled or not.
+                    let available = share.unwrap_or(*market_has);
+                    let (priced, plan) =
+                        price_buy_all(running, *price, available, *market_has, already);
                     buy_all.push(BuyAllShown {
                         bought_named: (lookups.counted_or_none)(plan.bought, tag),
                         market_named: (lookups.counted_or_none)(plan.market_has, tag),
@@ -1355,10 +1384,12 @@ pub fn forecast_unit(
                         affordable: plan.affordable,
                         available: plan.available,
                         market_has: plan.market_has,
+                        already_bought: plan.already_bought,
                         silver_available: running,
                         price: *price,
                         capped_by: plan.capped_by,
                     });
+                    *bought.entry(tag.clone()).or_default() += plan.bought;
                     priced.spends
                 }
                 Deferred::GiveAllSilver { except, to_nobody } => {
@@ -1473,8 +1504,10 @@ enum Deferred {
     /// `BUY ALL`: as many as the unit can afford, and no more than its settled share of the line.
     BuyAll {
         price: i64,
-        /// This unit's settled share of the line, or the line itself where nothing was settled.
-        available: i64,
+        /// This unit's settled share of the line. `None` where nothing was settled, and the
+        /// deferred pass then falls back to the whole line, exactly as this arm did inline before
+        /// (`ah-t2pn.3`).
+        share: Option<i64>,
         /// The whole line.
         market_has: i64,
         /// The canonical tag, or empty for one nothing could identify - unreachable in practice,
@@ -2446,6 +2479,10 @@ pub enum BuyAllCap {
     /// smaller than the line - a different fact from the line being small, and the one the
     /// player can do something about.
     Shared,
+    /// This unit's own earlier `BUY` lines had already taken these goods, wholly or in part
+    /// (`ah-lauy`). Wins over `Silver`, `Market` and `Shared` whenever it applies: it is the one
+    /// cause the player can fix by deleting a line.
+    AlreadyBought,
 }
 
 /// What one `BUY ALL` takes, and what stopped it taking more.
@@ -2455,10 +2492,15 @@ pub struct BuyAllPlan {
     pub bought: i64,
     /// How many its silver alone would pay for, market aside.
     pub affordable: i64,
-    /// This unit's settled share of the line - what it could have had were it rich enough.
+    /// This unit's settled share of the line - what it could have had were it rich enough, and
+    /// **not** reduced by its own earlier lines. `already_bought` carries that separately, because
+    /// the sentence has to name the share the unit started with rather than what is left of it.
     pub available: i64,
     /// The whole line, so a `Shared` sentence can say what was split.
     pub market_has: i64,
+    /// How many of these goods this unit's own earlier `BUY` lines already took out of `available`
+    /// this month (`ah-lauy`).
+    pub already_bought: i64,
     pub capped_by: BuyAllCap,
 }
 
@@ -2477,6 +2519,9 @@ pub fn price_buy_all(
     price: i64,
     available: i64,
     market_has: i64,
+    // How many of these goods this unit's own earlier `BUY` lines have already taken out of
+    // `available` this month (`ah-lauy`).
+    already_bought: i64,
 ) -> (Priced, BuyAllPlan) {
     // A price of zero or less cannot come off a real `For Sale` line - every one is printed
     // `at $N` - so this is a guard rather than a case, and it matches what the shipped deferred
@@ -2487,8 +2532,17 @@ pub fn price_buy_all(
         (silver_available / price).max(0)
     };
     let available = available.max(0);
-    let bought = affordable.min(available);
-    let capped_by = if bought < affordable {
+    // What is left of this unit's share once its own earlier lines have had theirs.
+    let left = (available - already_bought).max(0);
+    let bought = affordable.min(left);
+    let capped_by = if already_bought > 0 && (left == 0 || bought < affordable) {
+        // The unit's own earlier line is what bit - either it emptied the share outright, or the
+        // remainder stopped this line short of what its silver would have paid for. It wins even
+        // the case where the purse is empty too (the navigator's round-2 Q3): "it holds 0 silver"
+        // is true of every spent-up `BUY ALL` and hides the duplicate line, which is the one thing
+        // the player can act on.
+        BuyAllCap::AlreadyBought
+    } else if bought < affordable {
         if available < market_has {
             BuyAllCap::Shared
         } else {
@@ -2511,6 +2565,7 @@ pub fn price_buy_all(
             affordable,
             available,
             market_has,
+            already_bought,
             capped_by,
         },
     )
@@ -5680,8 +5735,11 @@ mod tests {
         assert_eq!(unit.at_month_end, Some(0));
     }
 
+    /// `ah-lauy`, increment 2. A second `BUY ALL` of the same goods buys nothing: the fallback
+    /// (`no_market`'s `market_share` answers `None` for everything) subtracts the running total
+    /// from the line itself, not only from a settled share.
     #[test]
-    fn two_buy_all_orders_spend_in_document_order() {
+    fn a_second_buy_all_of_the_same_goods_buys_nothing() {
         let intents = vec![
             placed(Intent::Buy {
                 amount: Amount::All { except: 0 },
@@ -5692,17 +5750,103 @@ mod tests {
                 item: "grain".to_string(),
             }),
         ];
-        // 100 buys five at 12 up to the market's 5, leaving 40; the second buys three more.
+        // 100 buys five at 12 up to the market's 5, leaving 40; the second finds the line already
+        // spent by the first and buys nothing more.
         let unit = spending(100, &intents, RegionWages::default(), &sells(12, 5), None);
-        assert_eq!(unit.expense, Some(96));
-        assert_eq!(unit.at_month_end, Some(4));
+        assert_eq!(unit.expense, Some(60));
+        assert_eq!(unit.at_month_end, Some(40));
+    }
+
+    /// `ah-lauy`, increment 2. The settled-share path: a `market_share` stub answers a share
+    /// smaller than the line, and the second `BUY ALL` finds that share already spent.
+    #[test]
+    fn a_second_buy_all_cannot_take_its_share_twice() {
+        let buy_all = placed(Intent::Buy {
+            amount: Amount::All { except: 0 },
+            item: "grain".to_string(),
+        });
+        let unit = spending_with_share(10_000, &[buy_all.clone(), buy_all], &sells(12, 20), 3);
+        assert_eq!(unit.expense, Some(36));
+    }
+
+    /// [`spending`], for a unit whose share of the line the hex has settled - the shape
+    /// `forecast_hex` always produces for a `For Sale` line, and the one `no_market`'s
+    /// `market_share` cannot express.
+    fn spending_with_share(
+        held: i64,
+        intents: &[PlacedIntent],
+        purchase: &dyn Fn(&str) -> PurchaseAnswer,
+        share: i64,
+    ) -> UnitSilver {
+        let receipts = Receipts::default();
+        let market_share = move |_item: &str, side: MarketSide| {
+            matches!(side, MarketSide::Buying).then_some(share)
+        };
+        forecast_unit(
+            UnitFacts {
+                held,
+                ..facts(1, intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            Lookups {
+                purchase,
+                market_share: &market_share,
+                ..no_market()
+            },
+            None,
+        )
+    }
+
+    /// `ah-lauy`, increment 3. The exact form's running total, against a settled share.
+    #[test]
+    fn two_exact_buys_of_the_same_goods_share_one_settled_share() {
+        let intents = vec![
+            placed(Intent::Buy {
+                amount: Amount::Exact(5),
+                item: "grain".to_string(),
+            }),
+            placed(Intent::Buy {
+                amount: Amount::Exact(5),
+                item: "grain".to_string(),
+            }),
+        ];
+        let unit = spending_with_share(10_000, &intents, &sells(12, 20), 5);
+        assert_eq!(unit.expense, Some(60));
+    }
+
+    /// `ah-lauy`, increment 3. With no settled share at all, the exact arm's fallback is what the
+    /// unit asked for - not a quantity of goods - so there is nothing there for an earlier line to
+    /// have spent down.
+    #[test]
+    fn an_exact_buy_with_no_settled_share_is_uncapped() {
+        let intents = vec![
+            placed(Intent::Buy {
+                amount: Amount::Exact(5),
+                item: "grain".to_string(),
+            }),
+            placed(Intent::Buy {
+                amount: Amount::Exact(5),
+                item: "grain".to_string(),
+            }),
+        ];
+        let unit = spending(
+            10_000,
+            &intents,
+            RegionWages::default(),
+            &sells(12, 20),
+            None,
+        );
+        assert_eq!(unit.expense, Some(120));
     }
 
     // --- ah-jown: price_buy_all --------------------------------------------------------------
 
     #[test]
     fn a_buy_all_is_capped_by_silver_when_it_runs_out_first() {
-        let (priced, plan) = price_buy_all(356, 18, 30, 30);
+        let (priced, plan) = price_buy_all(356, 18, 30, 30, 0);
         assert_eq!(priced.spends, 342);
         assert_eq!(plan.bought, 19);
         assert_eq!(plan.affordable, 19);
@@ -5711,28 +5855,28 @@ mod tests {
 
     #[test]
     fn a_buy_all_capped_by_a_small_market_names_the_market() {
-        let (_, plan) = price_buy_all(356, 18, 5, 5);
+        let (_, plan) = price_buy_all(356, 18, 5, 5, 0);
         assert_eq!(plan.bought, 5);
         assert_eq!(plan.capped_by, BuyAllCap::Market);
     }
 
     #[test]
     fn a_buy_all_whose_share_is_short_of_the_line_names_the_split() {
-        let (_, plan) = price_buy_all(356, 18, 5, 10);
+        let (_, plan) = price_buy_all(356, 18, 5, 10, 0);
         assert_eq!(plan.bought, 5);
         assert_eq!(plan.capped_by, BuyAllCap::Shared);
     }
 
     #[test]
     fn an_exact_tie_is_told_as_silver() {
-        let (_, plan) = price_buy_all(342, 18, 19, 19);
+        let (_, plan) = price_buy_all(342, 18, 19, 19, 0);
         assert_eq!(plan.bought, 19);
         assert_eq!(plan.capped_by, BuyAllCap::Silver);
     }
 
     #[test]
     fn a_unit_that_cannot_afford_one_buys_none_and_blames_its_silver() {
-        let (_, plan) = price_buy_all(10, 18, 30, 30);
+        let (_, plan) = price_buy_all(10, 18, 30, 30, 0);
         assert_eq!(plan.bought, 0);
         assert_eq!(plan.affordable, 0);
         assert_eq!(plan.capped_by, BuyAllCap::Silver);
@@ -5740,9 +5884,32 @@ mod tests {
 
     #[test]
     fn a_line_priced_at_nothing_buys_nothing() {
-        let (priced, plan) = price_buy_all(356, 0, 30, 30);
+        let (priced, plan) = price_buy_all(356, 0, 30, 30, 0);
         assert_eq!(priced.spends, 0);
         assert_eq!(plan.bought, 0);
+    }
+
+    // --- ah-lauy: price_buy_all learns the earlier lines -------------------------------------
+
+    #[test]
+    fn a_buy_all_whose_own_earlier_line_emptied_the_share_says_so() {
+        let (_, plan) = price_buy_all(360, 12, 5, 5, 5);
+        assert_eq!(plan.bought, 0);
+        assert_eq!(plan.capped_by, BuyAllCap::AlreadyBought);
+
+        let (_, plan) = price_buy_all(360, 12, 5, 5, 3);
+        assert_eq!(plan.bought, 2);
+        assert_eq!(plan.capped_by, BuyAllCap::AlreadyBought);
+    }
+
+    /// Round-2 Q3: the unit's own earlier line wins the sentence even when the purse is also
+    /// empty - "it holds 0 silver" is true of every spent-up `BUY ALL` and would hide the one
+    /// thing the player can act on.
+    #[test]
+    fn a_buy_all_capped_by_its_own_line_beats_an_empty_purse() {
+        let (_, plan) = price_buy_all(0, 12, 5, 5, 5);
+        assert_eq!(plan.bought, 0);
+        assert_eq!(plan.capped_by, BuyAllCap::AlreadyBought);
     }
 
     #[test]

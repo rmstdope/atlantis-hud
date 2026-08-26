@@ -169,6 +169,7 @@ describe("buyAllSentences (ah-jown)", () => {
           affordable: 19,
           available: 30,
           marketHas: 30,
+          alreadyBought: 0,
           silverAvailable: 356,
           price: 18,
           cappedBy: "silver",
@@ -233,6 +234,84 @@ describe("buyAllSentences (ah-jown)", () => {
     expect(buyAllSentences(aUnitSilver())).toEqual([]);
     expect(buyAllSentences(null)).toEqual([]);
     expect(buyAllSentences(undefined)).toEqual([]);
+  });
+
+  // `ah-lauy`: a unit's own earlier `BUY` line already took some or all of what this one asks for.
+  it("names an earlier order of its own, ahead of every other cap", () => {
+    expect(
+      buyAllSentences(
+        buyAll({
+          cappedBy: "already-bought",
+          bought: 0,
+          boughtNamed: "no grain",
+          available: 5,
+          marketHas: 5,
+          alreadyBought: 5
+        })
+      )
+    ).toEqual([
+      "This unit buys no grain: an earlier order of its own has already bought all 5 this market has."
+    ]);
+
+    expect(
+      buyAllSentences(
+        buyAll({
+          cappedBy: "already-bought",
+          bought: 0,
+          boughtNamed: "no grain",
+          available: 1,
+          marketHas: 1,
+          alreadyBought: 1
+        })
+      )
+    ).toEqual([
+      "This unit buys no grain: an earlier order of its own has already bought the only one this market has."
+    ]);
+
+    expect(
+      buyAllSentences(
+        buyAll({
+          cappedBy: "already-bought",
+          bought: 0,
+          boughtNamed: "no grain",
+          available: 3,
+          marketHas: 5,
+          alreadyBought: 3
+        })
+      )
+    ).toEqual([
+      "This unit buys no grain: an earlier order of its own has already bought all 3 it can have here."
+    ]);
+
+    expect(
+      buyAllSentences(
+        buyAll({
+          cappedBy: "already-bought",
+          bought: 2,
+          boughtNamed: "2 grain",
+          available: 5,
+          marketHas: 5,
+          alreadyBought: 3
+        })
+      )
+    ).toEqual([
+      "This unit buys 2 grain: its earlier orders have taken the other 3 of the 5 this market has."
+    ]);
+
+    expect(
+      buyAllSentences(
+        buyAll({
+          cappedBy: "already-bought",
+          bought: 1,
+          boughtNamed: "1 grain",
+          available: 4,
+          marketHas: 5,
+          alreadyBought: 3
+        })
+      )
+    ).toEqual([
+      "This unit buys 1 grain: its earlier orders have taken the other 3 of the 4 it can have here."
+    ]);
   });
 });
 
@@ -1504,6 +1583,7 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
           affordable: 19,
           available: 30,
           marketHas: 30,
+          alreadyBought: 0,
           silverAvailable: 356,
           price: 18,
           cappedBy: "silver"

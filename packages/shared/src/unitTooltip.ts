@@ -231,6 +231,14 @@ export function productionCapSentence(silver: UnitSilver | null | undefined): st
  */
 export function buyAllSentences(silver: UnitSilver | null | undefined): string[] {
   return (silver?.buyAll ?? []).map((b) => {
+    if (b.cappedBy === "already-bought") {
+      const limit = b.available === b.marketHas ? "this market has" : "it can have here";
+      if (b.bought === 0) {
+        const what = b.available === 1 ? "the only one" : `all ${b.available}`;
+        return `This unit buys ${b.boughtNamed}: an earlier order of its own has already bought ${what} ${limit}.`;
+      }
+      return `This unit buys ${b.boughtNamed}: its earlier orders have taken the other ${b.alreadyBought} of the ${b.available} ${limit}.`;
+    }
     if (b.bought === 0 && b.cappedBy === "silver") {
       return `This unit buys ${b.boughtNamed}: it holds ${b.silverAvailable} silver and one costs ${b.price}.`;
     }
@@ -581,6 +589,7 @@ export const SILVER_NOTES: readonly SilverNote[] = [
             affordable: 19,
             available: 30,
             marketHas: 30,
+            alreadyBought: 0,
             silverAvailable: 356,
             price: 18,
             cappedBy: "silver"
