@@ -24,8 +24,8 @@ const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /**
  * The value declared for `key` in `.cerebro/project.conf`, or `undefined` if the key is absent.
- * Mirrors `scripts/project-conf`'s own format: `key value`, the value running to the end of the
- * line, and everything from a `#` on stripped first, at any column.
+ * Mirrors `.claude/cerebro/scripts/project-conf`'s own format: `key value`, the value running to
+ * the end of the line, and everything from a `#` on stripped first, at any column.
  */
 function projectConfValue(key: string): string | undefined {
   const conf = readFileSync(join(REPO, ".cerebro", "project.conf"), "utf8");
