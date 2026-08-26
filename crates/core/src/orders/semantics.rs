@@ -39,11 +39,12 @@ use crate::orders::silver::{
     price_claim, price_pillage, price_production, price_purchase, price_sale, price_study,
     price_tax, quantity_bought, quantity_sold, readiness, recipe_for, settle_unclaimed, split_pool,
     taxes, transfer_shape, transmute_argument, unit_upkeep, Caster, ContendedPool, FactionFoodPass,
-    FactionPurse, FoodClaim, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, PoolOverrun,
-    PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
-    SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
-    FOOD_TAGS,
+    FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketSide,
+    PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages,
+    SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
+    UpkeepSettlement, FOOD_TAGS,
 };
+use crate::report::composition;
 use crate::report::model::{
     Coordinate, ItemAmount, MarketItem, ReportRegion, ReportUnit, Skill, Structure,
 };
@@ -392,8 +393,7 @@ pub fn review_turn(
         .regions
         .iter()
         .map(|region| {
-            let mut hex = Hex::read(region, &ordered, &formed);
-            apply_gifts_of_men(&mut hex.units, ruleset);
+            let hex = hex_with_transfers(region, &ordered, &formed, ruleset);
             let ledger = ledger_for(&hex, ruleset, &receipts);
             (hex, ledger)
         })
@@ -529,7 +529,13 @@ struct PoolSettlement {
 /// arithmetic it always had; any wanting unit with a guessed headcount makes every wanting unit's
 /// share [`PoolShare::Unknowable`]; otherwise [`split_pool`] divides it. A unit not drawing on a
 /// pool is never touched by somebody else's contention for it.
-fn pool_shares_for(hex: &Hex<'_>, region: RegionWages) -> PoolSettlement {
+///
+/// `late` is the picture `pool_wants`' `WORK`/`ENTERTAIN` terms need - see [`hex_facts`].
+fn pool_shares_for(
+    hex: &Hex<'_>,
+    region: RegionWages,
+    late: Option<&LateHoldings>,
+) -> PoolSettlement {
     /// One contended pool, as the loop below reads it: what a unit asks of it, where that unit's
     /// share of it is written, what the region says it holds, and which pool to name in a finding
     /// about it.
@@ -541,7 +547,7 @@ fn pool_shares_for(hex: &Hex<'_>, region: RegionWages) -> PoolSettlement {
     }
 
     let nothing = Receipts::default();
-    let wants: Vec<PoolWants> = hex_facts(hex, &nothing)
+    let wants: Vec<PoolWants> = hex_facts(hex, &nothing, late)
         .iter()
         .map(|facts| pool_wants(facts, region))
         .collect();
@@ -758,10 +764,15 @@ fn region_wages(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> RegionWages {
 /// `None` when any own unit's headcount is a guess, or there is no ruleset: one guess is enough to
 /// make the threshold unanswerable, and it is unanswerable in the direction that matters - the
 /// estimate might be what carries the faction over it (`ah-1ad6.2`).
+///
+/// **Never hands `hex_facts` a `LateHoldings`.** This is reached from `region_wages`, which
+/// `ledger_for` calls before the intent loop that fills the balance, so a late picture does not
+/// exist yet here - see *Known traps*. `readiness`, which `combat_ready` delegates to, is an early
+/// term and never reads one anyway.
 fn combat_ready_in(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Option<i64> {
     let nothing = Receipts::default();
     let mut total = 0i64;
-    for facts in hex_facts(hex, &nothing) {
+    for facts in hex_facts(hex, &nothing, None) {
         total = total.saturating_add(combat_ready(&facts, ruleset)?);
     }
     Some(total)
@@ -789,10 +800,14 @@ fn forecast_hex(
     } = relief;
     let region = region_wages(hex, ruleset);
     let nothing = Receipts::default();
+    // The ledger is already complete by the time the column prices a hex - `review_turn` builds
+    // every hex's ledger before it forecasts any of them - so the late picture is read once here
+    // and handed to everything below that needs it.
+    let late = LateHoldings::read(hex, &ledger.balance, ruleset);
 
     // A region's pools are shared, so who else in this hex draws on them has to be settled before
     // any one unit can be priced against them (`ah-t2pn`).
-    let settled = pool_shares_for(hex, region);
+    let settled = pool_shares_for(hex, region, Some(&late));
     let shares = settled.shares;
     overruns.extend(settled.overruns);
 
@@ -866,15 +881,17 @@ fn forecast_hex(
             unit_id: &ordered.unit.unit_id,
             region_id: &hex.region.region_id,
             held: ordered.holding(SILVER),
-            men: ordered.unit.men,
+            men: ordered.early_men(),
             men_estimated: ordered.unit.men_estimated,
-            men_by_race: &ordered.unit.men_by_race,
-            items: &ordered.unit.items,
+            men_by_race: ordered.early_men_by_race(),
+            items: ordered.early_items(),
             flags: &ordered.unit.flags,
             skills: &ordered.unit.skills,
             intents: ordered.intents,
             receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
             formed: ordered.formed.as_ref(),
+            after_gifts_unknown: ordered.holdings_unknown(),
+            late: Some(late.of(index)),
         };
         claims.push(food_claim(&facts));
 
@@ -1281,7 +1298,7 @@ enum SkillsAfterGifts {
     /// Men arrived and the merge was computable.
     Merged(Vec<Skill>),
     /// Men arrived by a route this application does not model, so no skill-reading check may
-    /// judge this unit. See `apply_gifts_of_men` for the exact list.
+    /// judge this unit. See `apply_transfers` for the exact list.
     Unknowable,
 }
 
@@ -1294,9 +1311,13 @@ struct Ordered<'a> {
     unread: bool,
     /// Set when `unit` is not one the report shows but one this month's `FORM` orders create.
     formed: Option<FormedSubject>,
-    /// The unit's skills once this month's gifts of men have run. Written by `apply_gifts_of_men`
+    /// The unit's skills once this month's gifts of men have run. Written by `apply_transfers`
     /// after the hex is read; `Unchanged` until then.
     skills_after_gifts: SkillsAfterGifts,
+    /// The unit's people and goods once this month's GIVE and TAKE orders have run. Written by
+    /// `apply_transfers` after the hex is read, alongside `skills_after_gifts`; `Unchanged` until
+    /// then.
+    holdings_after_gifts: HoldingsAfterGifts,
 }
 
 impl<'a> Hex<'a> {
@@ -1318,6 +1339,7 @@ impl<'a> Hex<'a> {
                     unread: orders.is_some_and(|orders| orders.unread),
                     formed: None,
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
+                    holdings_after_gifts: HoldingsAfterGifts::Unchanged,
                 }
             })
             .collect();
@@ -1335,6 +1357,7 @@ impl<'a> Hex<'a> {
                         formed_by: formed.block.formed_by.clone(),
                     }),
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
+                    holdings_after_gifts: HoldingsAfterGifts::Unchanged,
                 }),
         );
         Self { region, units }
@@ -1360,15 +1383,39 @@ impl<'a> Hex<'a> {
     }
 }
 
-/// One unit's skills and running holdings while a hex's gifts of men are resolved by
-/// `apply_gifts_of_men`.
+/// A hex, with this month's transfers already projected onto its units.
+///
+/// The only way a `Hex` is built for pricing: `UnitFacts` reads the projection, so a hex built
+/// without it is silently priced on the report. One reader for both entry points that price a
+/// hex - `review_turn` and `item_effects` - so the two cannot diverge about what a unit holds.
+fn hex_with_transfers<'a>(
+    region: &'a ReportRegion,
+    ordered: &'a OrderedUnits,
+    formed: &'a [Formed],
+    ruleset: Option<&Ruleset>,
+) -> Hex<'a> {
+    let mut hex = Hex::read(region, ordered, formed);
+    apply_transfers(&mut hex.units, ruleset);
+    hex
+}
+
+/// One unit's skills and running holdings while a hex's transfers are resolved by
+/// `apply_transfers`.
 struct Working {
     men: i64,
     skills: Vec<Skill>,
-    /// Running count of each man tag the unit holds, seeded from `Ordered::holding`, upper-cased
-    /// exactly as `Selector::Item`'s own tag lookup is.
-    held: BTreeMap<String, i64>,
+    /// Running holdings, keyed by upper-cased tag - exactly as `Selector::Item`'s own tag lookup
+    /// is - but carrying the party's own name and tag spelling, seeded from its report items and
+    /// never synthesised: `effects::add_item` matches tags with `==`, so a casing invented here
+    /// would silently stop matching the report's own list.
+    held: BTreeMap<String, ItemAmount>,
+    /// Tags not already in the party's own report list, in the order they first arrived. Needed
+    /// because `held` is a `BTreeMap` and `Holdings::items` must publish arrivals in arrival
+    /// order, not alphabetical order - see *Known traps*.
+    arrived: Vec<String>,
     doubted: bool,
+    /// Set when a transfer this month cannot be followed for this unit.
+    items_unknowable: bool,
 }
 
 fn seed_working(units: &[Ordered<'_>], position: usize) -> Working {
@@ -1379,42 +1426,80 @@ fn seed_working(units: &[Ordered<'_>], position: usize) -> Working {
         held: unit
             .items
             .iter()
-            .map(|item| (item.tag.to_ascii_uppercase(), item.amount))
+            .map(|item| (item.tag.to_ascii_uppercase(), item.clone()))
             .collect(),
+        arrived: Vec::new(),
         doubted: false,
+        items_unknowable: false,
     }
 }
 
-/// Whether a transfer's selector names people at all, and by which tag if a concrete one is
-/// named.
-enum GiftConcerns {
-    /// Equipment, a mount, `GIVE ... UNIT` - nothing this walk needs to follow.
-    NotMen,
-    /// A whole class that happens to contain people (`MAN`/`MEN`/`ITEM`/`ITEMS`), which
-    /// `effects.rs` does not resolve either - any receiver here is doubted rather than guessed
-    /// at.
-    PeopleClass,
-    /// A specific item tag the ruleset says is a man.
-    Men(String),
+/// Adds (or subtracts, for a negative `delta`) `delta` of `tag` to `state`'s running holdings,
+/// creating the entry with `name`/`tag` where the party did not already hold it and recording the
+/// arrival order.
+fn move_holding(state: &mut Working, tag: &str, name: &str, delta: i64) {
+    match state.held.get_mut(tag) {
+        Some(entry) => entry.amount += delta,
+        None => {
+            state.held.insert(
+                tag.to_string(),
+                ItemAmount {
+                    amount: delta,
+                    name: name.to_string(),
+                    tag: tag.to_string(),
+                },
+            );
+            state.arrived.push(tag.to_string());
+        }
+    }
 }
 
-fn classify_gift(what: &Selector, ruleset: &Ruleset) -> GiftConcerns {
+/// Which of a holder's tags one transfer moves, and whether this walk can say at all.
+enum Moves {
+    /// Every tag listed, in the holder's own item order.
+    Tags(Vec<String>),
+    /// A class the catalogue cannot classify (`rules/give` lists fifteen; `ah-3sp7` is the bead
+    /// that teaches the scraper the rest), so what leaves the holder is not knowable.
+    Unknowable,
+}
+
+/// Which of `held`'s tags a `GIVE`/`TAKE` selector moves, or whether this walk cannot say.
+fn moves(
+    held: &BTreeMap<String, ItemAmount>,
+    what: &Selector,
+    amount: &Amount,
+    ruleset: &Ruleset,
+) -> Moves {
     match what {
-        Selector::WholeUnit => GiftConcerns::NotMen,
+        // `rules/give`: it "gives the entire unit to the specified unit's faction" - a change of
+        // ownership, and nobody's holdings move.
+        Selector::WholeUnit => Moves::Tags(Vec::new()),
+        Selector::Item(text) => match ruleset.find_item(text) {
+            Some(entry) => Moves::Tags(vec![entry.tag.to_ascii_uppercase()]),
+            None => Moves::Unknowable,
+        },
         Selector::Class(name) => {
+            // `rules/give` gives `EXCEPT` and a stated quantity to the named-item forms alone; the
+            // class form is `GIVE [unit] ALL [item class]` and nothing else.
+            if !matches!(amount, Amount::All { except: 0 }) {
+                return Moves::Unknowable;
+            }
             let upper = name.to_ascii_uppercase();
-            if upper == "MAN" || upper == "MEN" || upper == "ITEM" || upper == "ITEMS" {
-                GiftConcerns::PeopleClass
+            if upper == "MAN" || upper == "MEN" {
+                Moves::Tags(
+                    held.keys()
+                        .filter(|tag| ruleset.is_man(tag))
+                        .cloned()
+                        .collect(),
+                )
+            } else if upper == "ITEM" || upper == "ITEMS" {
+                // `rules/give`: "the combination of all of the previous categories" - silver
+                // included.
+                Moves::Tags(held.keys().cloned().collect())
             } else {
-                GiftConcerns::NotMen
+                Moves::Unknowable
             }
         }
-        Selector::Item(text) => match ruleset.find_item(text) {
-            Some(entry) if ruleset.is_man(&entry.tag) => {
-                GiftConcerns::Men(entry.tag.to_ascii_uppercase())
-            }
-            _ => GiftConcerns::NotMen,
-        },
     }
 }
 
@@ -1457,23 +1542,77 @@ fn resolve_give_target(
     }
 }
 
-fn mark_doubted(units: &[Ordered<'_>], working: &mut BTreeMap<usize, Working>, position: usize) {
-    working
-        .entry(position)
-        .or_insert_with(|| seed_working(units, position))
-        .doubted = true;
+/// One unit's people and goods once this month's GIVE and TAKE orders have run.
+///
+/// The mirror of [`SkillsAfterGifts`] and deliberately independent of it: what arrives can be
+/// exact while the skills it brings are not, and the holdings can be unknowable while the skills
+/// are untouched.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum HoldingsAfterGifts {
+    /// Nothing moved into or out of this unit, so the report's own lists stand. The overwhelming
+    /// majority of units, and the reason this is not a `Vec` on every `Ordered`.
+    Unchanged,
+    Moved(Holdings),
+    /// A transfer this walk cannot follow touched this unit.
+    Unknowable,
 }
 
-/// Merges this month's gifts of men into the receiving units of one hex.
+/// One unit's people and goods after this month's transfers have run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Holdings {
+    /// The report's items with this month's transfers applied, **in the report's own order**,
+    /// with tags the unit did not hold appended in the order they arrived. Order is load-bearing -
+    /// see *Known traps*.
+    items: Vec<ItemAmount>,
+    /// Derived from `items` by `report::composition::men_in` (`ah-dxfd.1`), which is the one place
+    /// the rule "a headcount is the man-tagged items, counted" is written. **Not** derived for a
+    /// unit whose `men_estimated` is set: re-deriving from a list the catalogue cannot fully read
+    /// is the guess `classify_unit` refuses to make, under another name. Such a unit keeps the
+    /// parser's `men` and `men_by_race`.
+    men: i64,
+    men_by_race: Vec<ItemAmount>,
+}
+
+/// `state`'s holdings in `unit.items`'s own order, with tags it did not hold appended in the
+/// order they arrived (`state.arrived`). A tag that ends at zero or below is dropped, matching the
+/// report's own convention of never listing an empty stock.
+fn holding_items(unit: &ReportUnit, state: &Working) -> Vec<ItemAmount> {
+    let mut items: Vec<ItemAmount> = unit
+        .items
+        .iter()
+        .filter_map(|item| {
+            let tag = item.tag.to_ascii_uppercase();
+            state
+                .held
+                .get(&tag)
+                .filter(|entry| entry.amount > 0)
+                .map(|entry| ItemAmount {
+                    amount: entry.amount,
+                    name: item.name.clone(),
+                    tag: item.tag.clone(),
+                })
+        })
+        .collect();
+    for tag in &state.arrived {
+        if let Some(entry) = state.held.get(tag) {
+            if entry.amount > 0 {
+                items.push(entry.clone());
+            }
+        }
+    }
+    items
+}
+
+/// Merges this month's `GIVE` and `TAKE` orders into the units of one hex.
 ///
-/// Walks the hex's `GIVE` and `TAKE` orders in document order and rewrites each receiver's
-/// `skills_after_gifts`. Document order rather than the game's own - see *Known traps* in
-/// `ah-z73s.2`'s plan.
+/// Walks the hex's orders in document order and rewrites each affected unit's
+/// `skills_after_gifts` and `holdings_after_gifts`. Document order rather than the game's own -
+/// see *Known traps* in `ah-z73s.2`'s plan.
 ///
-/// Without a ruleset this returns at once: there is no telling which item tags name people, and
-/// every check that reads skills already returns early without a catalogue, so there is nothing
-/// to be doubtful on behalf of.
-fn apply_gifts_of_men(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
+/// Without a ruleset this returns at once: there is no telling which item tags name people or
+/// which class an item belongs to, and every check that reads the projection already returns
+/// early without a catalogue, so there is nothing to project.
+fn apply_transfers(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
     let Some(ruleset) = ruleset else { return };
 
     // A FORMed unit's id is `new-{alias}` (`effects::formed_unit`), which is what
@@ -1531,65 +1670,101 @@ fn apply_gifts_of_men(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
     let mut working: BTreeMap<usize, Working> = BTreeMap::new();
 
     for transfer in &transfers {
-        let concerns = classify_gift(transfer.what, ruleset);
-        if matches!(concerns, GiftConcerns::NotMen) {
+        if matches!(transfer.what, Selector::WholeUnit) {
+            // `rules/give`: it "gives the entire unit to the specified unit's faction" - a change
+            // of ownership, and nobody's holdings move.
             continue;
         }
 
-        // For a GIVE, `transfer.position` is the giver and `transfer.party` names the receiver -
+        // For a GIVE, `transfer.position` is the source and `transfer.party` names the receiver -
         // resolved exactly as `effects::give` resolves it. `rules/take`: a TAKE "works just like
         // the GIVE order, except that the direction of transfer is reversed" - so for a TAKE,
         // `transfer.party` names the source and `transfer.position` is the receiver instead.
-        let giver = if transfer.is_give {
-            transfer.position
+        let source = if transfer.is_give {
+            GiveTarget::Unit(transfer.position)
         } else {
-            match resolve_give_target(&position_of, transfer.position, transfer.party) {
-                GiveTarget::Unit(source) => source,
-                // A unit number this hex does not show: the men are real and that unit's
-                // holdings are not ours to read, so the taker is doubted. `GiveTarget::Discard`
-                // cannot arise here - `TAKE FROM 0` names no source at all - and is treated the
-                // same way.
-                GiveTarget::Discard | GiveTarget::Nowhere => {
-                    mark_doubted(units, &mut working, transfer.position);
-                    continue;
-                }
-            }
+            resolve_give_target(&position_of, transfer.position, transfer.party)
         };
-        let target = if transfer.is_give {
+        let receiver = if transfer.is_give {
             resolve_give_target(&position_of, transfer.position, transfer.party)
         } else {
             GiveTarget::Unit(transfer.position)
         };
+
+        let source = match source {
+            GiveTarget::Unit(source) => source,
+            // `TAKE FROM 0` names no source at all: the giver side of a GIVE is always
+            // `Unit(position)`, so only a TAKE reaches here.
+            GiveTarget::Discard => continue,
+            // A unit number this hex does not show: the goods are real and that unit's holdings
+            // are not ours to read. A bounded ask is still followed optimistically for the one
+            // tag it names, exactly as the ledger already does for item balances (`apply`'s Take
+            // arm) - only `Selector::Item` resolves without a source's own held map to enumerate,
+            // and only `Amount::Exact` states its own bound.
+            GiveTarget::Nowhere => {
+                let receiver_position = transfer.position;
+                let resolved = match transfer.what {
+                    Selector::Item(text) => ruleset.find_item(text),
+                    Selector::Class(_) => None,
+                    Selector::WholeUnit => unreachable!("filtered above"),
+                };
+                match (resolved, transfer.amount) {
+                    (Some(entry), Amount::Exact(count)) if *count > 0 => {
+                        let tag = entry.tag.to_ascii_uppercase();
+                        let is_man = ruleset.is_man(&tag);
+                        let receiver_state = working
+                            .entry(receiver_position)
+                            .or_insert_with(|| seed_working(units, receiver_position));
+                        if is_man {
+                            // Arriving from a source this walk cannot see, so there is no skills
+                            // list to merge - the merge cannot be computed any more than it could
+                            // for a doubted source.
+                            receiver_state.doubted = true;
+                            receiver_state.men += *count;
+                        }
+                        move_holding(receiver_state, &tag, &entry.name, *count);
+                    }
+                    _ => {
+                        working
+                            .entry(receiver_position)
+                            .or_insert_with(|| seed_working(units, receiver_position))
+                            .items_unknowable = true;
+                    }
+                }
+                continue;
+            }
+        };
         // A GIVE that cannot be resolved is a no-op exactly as `effects::give` returns early for
-        // one: the giver never even loses what it named, so there is nothing to doubt either.
-        if matches!(target, GiveTarget::Nowhere) {
+        // one: the giver never even loses what it named.
+        if matches!(receiver, GiveTarget::Nowhere) {
             continue;
         }
 
-        let tags: Vec<String> = match &concerns {
-            GiftConcerns::NotMen => unreachable!("filtered above"),
-            GiftConcerns::Men(tag) => vec![tag.clone()],
-            GiftConcerns::PeopleClass => {
-                let giver_state = working
-                    .entry(giver)
-                    .or_insert_with(|| seed_working(units, giver));
-                // `BTreeMap`'s own order, not the document's - the tags are disjoint, so no two
-                // of them contend for the same holding and it cannot matter which order they
-                // apply in.
-                giver_state
-                    .held
-                    .keys()
-                    .filter(|tag| ruleset.is_man(tag))
-                    .cloned()
-                    .collect()
+        let source_state = working
+            .entry(source)
+            .or_insert_with(|| seed_working(units, source));
+        let tags = match moves(&source_state.held, transfer.what, transfer.amount, ruleset) {
+            Moves::Tags(tags) => tags,
+            Moves::Unknowable => {
+                source_state.items_unknowable = true;
+                if let GiveTarget::Unit(receiver_position) = receiver {
+                    working
+                        .entry(receiver_position)
+                        .or_insert_with(|| seed_working(units, receiver_position))
+                        .items_unknowable = true;
+                }
+                continue;
             }
         };
 
         for tag in tags {
-            let giver_state = working
-                .entry(giver)
-                .or_insert_with(|| seed_working(units, giver));
-            let held = giver_state.held.get(tag.as_str()).copied().unwrap_or(0);
+            let source_state = working
+                .entry(source)
+                .or_insert_with(|| seed_working(units, source));
+            let held = source_state
+                .held
+                .get(tag.as_str())
+                .map_or(0, |item| item.amount);
             let requested = match transfer.amount {
                 Amount::All { except } => held.saturating_sub(*except),
                 Amount::Exact(count) => *count,
@@ -1598,50 +1773,84 @@ fn apply_gifts_of_men(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
             if moved == 0 {
                 continue;
             }
-            let giver_doubted = giver_state.doubted;
-            let giver_skills = giver_state.skills.clone();
+            // The source's own name for the tag, since it is the one party guaranteed to already
+            // hold it here.
+            let name = source_state
+                .held
+                .get(tag.as_str())
+                .map_or_else(|| tag.clone(), |item| item.name.clone());
+            let is_man = ruleset.is_man(&tag);
+            let source_doubted = source_state.doubted;
+            let source_skills = source_state.skills.clone();
 
-            if let GiveTarget::Unit(receiver) = target {
-                let receiver_men_estimated = units[receiver].unit.men_estimated;
+            if let GiveTarget::Unit(receiver_position) = receiver {
+                let receiver_men_estimated = units[receiver_position].unit.men_estimated;
                 let receiver_state = working
-                    .entry(receiver)
-                    .or_insert_with(|| seed_working(units, receiver));
-                if giver_doubted || receiver_men_estimated {
-                    // The merge is weighted by the receiver's headcount, or built on a figure
-                    // this pass has already declined to trust - either way it cannot be computed.
-                    receiver_state.doubted = true;
-                } else {
-                    // The merge runs before the men are added to the receiver's own count:
-                    // weighting by the headcount after the arrivals is silently wrong.
-                    receiver_state.skills = effects::merge_skills(
-                        &receiver_state.skills,
-                        receiver_state.men,
-                        &giver_skills,
-                        moved,
-                    );
+                    .entry(receiver_position)
+                    .or_insert_with(|| seed_working(units, receiver_position));
+                // The skills merge and the `men` counter run only for a tag the ruleset says is a
+                // man - everything else moves amounts and nothing more.
+                if is_man {
+                    if source_doubted || receiver_men_estimated {
+                        // The merge is weighted by the receiver's headcount, or built on a figure
+                        // this pass has already declined to trust - either way it cannot be
+                        // computed.
+                        receiver_state.doubted = true;
+                    } else {
+                        // The merge runs before the men are added to the receiver's own count:
+                        // weighting by the headcount after the arrivals is silently wrong.
+                        receiver_state.skills = effects::merge_skills(
+                            &receiver_state.skills,
+                            receiver_state.men,
+                            &source_skills,
+                            moved,
+                        );
+                    }
+                    // Either way, the receiver now holds these men - a later transfer of the same
+                    // tag within this hex must see them, whether or not this arrival's skills
+                    // could be judged. Left uncredited, a unit that re-gives men it only just
+                    // received would have its second GIVE clamped to its own *reported* holdings,
+                    // silently moving fewer men than the order says and leaving a downstream unit
+                    // judged on stale figures - the review comment on this PR caught exactly this
+                    // gap.
+                    receiver_state.men += moved;
                 }
-                // Either way, the receiver now holds these men - a later transfer of the same tag
-                // within this hex must see them, whether or not this arrival's skills could be
-                // judged. Left uncredited, a unit that re-gives men it only just received would
-                // have its second GIVE clamped to its own *reported* holdings, silently moving
-                // fewer men than the order says and leaving a downstream unit judged on stale
-                // figures - the review comment on this PR caught exactly this gap.
-                receiver_state.men += moved;
-                *receiver_state.held.entry(tag.clone()).or_insert(0) += moved;
+                move_holding(receiver_state, &tag, &name, moved);
             }
 
             // Either way, the source: skills untouched, per `rules/give` - an even split leaves
             // points per man exactly as they were.
-            let giver_state = working
-                .get_mut(&giver)
+            let source_state = working
+                .get_mut(&source)
                 .expect("seeded above this same transfer");
-            giver_state.men -= moved;
-            *giver_state.held.entry(tag).or_insert(0) -= moved;
+            if is_man {
+                source_state.men -= moved;
+            }
+            move_holding(source_state, &tag, &name, -moved);
         }
     }
 
     for (position, state) in working {
         let ordered = &mut units[position];
+        ordered.holdings_after_gifts = if state.items_unknowable {
+            HoldingsAfterGifts::Unknowable
+        } else {
+            let items = holding_items(ordered.unit, &state);
+            if items == ordered.unit.items {
+                HoldingsAfterGifts::Unchanged
+            } else {
+                let (men_by_race, men) = if ordered.unit.men_estimated {
+                    (ordered.unit.men_by_race.clone(), ordered.unit.men)
+                } else {
+                    composition::men_in(&items, ruleset)
+                };
+                HoldingsAfterGifts::Moved(Holdings {
+                    items,
+                    men,
+                    men_by_race,
+                })
+            }
+        };
         ordered.skills_after_gifts = if state.doubted {
             SkillsAfterGifts::Unknowable
         } else if state.skills != ordered.unit.skills {
@@ -1715,6 +1924,45 @@ impl Ordered<'_> {
             SkillsAfterGifts::Merged(merged) => Some(merged),
             SkillsAfterGifts::Unknowable => None,
         }
+    }
+
+    /// The unit's people and goods after this month's transfers, or `None` where the report's own
+    /// lists stand - which is both "nothing moved" and "what moved cannot be followed". The two
+    /// are the same fallback on purpose: a surface that does not consult `holdings_unknown`
+    /// behaves exactly as it did before this bead.
+    fn after_gifts(&self) -> Option<&Holdings> {
+        match &self.holdings_after_gifts {
+            HoldingsAfterGifts::Moved(holdings) => Some(holdings),
+            HoldingsAfterGifts::Unchanged | HoldingsAfterGifts::Unknowable => None,
+        }
+    }
+
+    /// Whether a transfer this walk cannot follow touched this unit.
+    fn holdings_unknown(&self) -> bool {
+        matches!(self.holdings_after_gifts, HoldingsAfterGifts::Unknowable)
+    }
+
+    /// The unit's headcount as the early phases see it - the report's own figure, with this
+    /// month's `GIVE`/`TAKE` applied where they could be followed. Falls back to the report where
+    /// they could not; a caller for which that distinction matters reads `holdings_unknown()`
+    /// separately, exactly as `skills()`'s callers do for `SkillsAfterGifts::Unknowable`.
+    fn early_men(&self) -> i64 {
+        self.after_gifts()
+            .map_or(self.unit.men, |holdings| holdings.men)
+    }
+
+    /// `early_men`'s breakdown by race.
+    fn early_men_by_race(&self) -> &[ItemAmount] {
+        self.after_gifts()
+            .map_or(&self.unit.men_by_race[..], |holdings| {
+                &holdings.men_by_race[..]
+            })
+    }
+
+    /// The unit's full item list as the early phases see it - see `early_men`.
+    fn early_items(&self) -> &[ItemAmount] {
+        self.after_gifts()
+            .map_or(&self.unit.items[..], |holdings| &holdings.items[..])
     }
 
     /// The unit's level in `tag` once this month's gifts of men have run.
@@ -2013,15 +2261,18 @@ pub(crate) fn item_effects(
 ) -> BTreeMap<String, UnitItemEffects> {
     let ordered = OrderedUnits::read(orders_document);
     let mut result: BTreeMap<String, UnitItemEffects> = BTreeMap::new();
-    // This pipeline models no gifts at all - `&[]` below already opts formed units out of it, and
-    // a GIVE reaching the ITEMS column is `ah-agbm`'s own follow-up, not this bead's.
     let no_receipts = BTreeMap::new();
 
     for region in &report.regions {
         // `&[]`: a unit this month's `FORM` orders create is out of scope here, exactly as it was
         // before `ah-jw85` gave `Hex::read` a third argument - `ah-agbm`'s own follow-up, not this
         // bead's, if the ITEMS column is to project a formed unit's BUY or SELL too.
-        let hex = Hex::read(region, &ordered, &[]);
+        //
+        // `hex_with_transfers` projects this month's GIVE/TAKE onto the hex's units (`ah-dxfd.2`),
+        // exactly as `review_turn` does - one reader for both entry points, so they cannot
+        // diverge. `item_effects` only ever reads `ledger.movements` and `ledger.uncounted`,
+        // neither of which the projection touches, so this changes no output here.
+        let hex = hex_with_transfers(region, &ordered, &[], ruleset);
         let ledger = ledger_for(&hex, ruleset, &no_receipts);
 
         for movement in ledger.movements {
@@ -2062,6 +2313,151 @@ pub(crate) struct UnitItemEffects {
     pub built: Vec<super::effects::BuildSpend>,
 }
 
+/// What each unit in a hex holds once its whole month has run, in `hex.units` order.
+///
+/// The ledger's own `balance`, read back as item lists so [`UnitFacts::late`] can borrow from
+/// them, with each unit's headcount already derived from that list by
+/// `report::composition::men_in` (`ah-dxfd.1`). Built once per hex rather than per unit:
+/// `balance` is keyed by `(unit, tag)`, so one walk of it fills every unit's list, and a per-unit
+/// build would walk the whole hex's balance once per unit.
+///
+/// Order within one unit's list does not matter and no consumer may come to depend on it: these
+/// come off `Ledger::balance`, a `BTreeMap`, so they are alphabetical by tag - `own_food_pass`
+/// filters by tag, `plan_production` looks tags up, `pool_wants` reads only `men`; none of them
+/// cares.
+struct LateHoldings(Vec<Holdings>);
+
+impl LateHoldings {
+    /// `name` comes from `item_name`, which prefers the catalogue and falls back to what some
+    /// unit in the hex calls the tag. Nothing in `silver.rs` reads an `ItemAmount::name` off
+    /// `facts`, so this is for the reader rather than for the arithmetic - but a list carrying the
+    /// tag in the name field is a trap for whoever adds the first such reader.
+    ///
+    /// `Ledger::balance` is keyed by unit id, so two report units sharing an id are conflated here,
+    /// the same caveat `forecast_hex` already documents for its own by-id lookups, and both read
+    /// the same shared total rather than splitting it.
+    fn read(
+        hex: &Hex<'_>,
+        balance: &BTreeMap<(String, String), i64>,
+        ruleset: Option<&Ruleset>,
+    ) -> Self {
+        let mut by_unit: BTreeMap<&str, Vec<ItemAmount>> = BTreeMap::new();
+        for ((unit_id, tag), amount) in balance {
+            if *amount <= 0 {
+                // The report never lists an empty stock, and neither does this projection of it.
+                continue;
+            }
+            by_unit
+                .entry(unit_id.as_str())
+                .or_default()
+                .push(ItemAmount {
+                    amount: *amount,
+                    name: item_name(tag, hex, ruleset),
+                    tag: tag.clone(),
+                });
+        }
+        let holdings = hex
+            .units
+            .iter()
+            .map(|ordered| {
+                let items = by_unit
+                    .get(ordered.unit.unit_id.as_str())
+                    .cloned()
+                    .unwrap_or_default();
+                // Not derived for a unit whose headcount is itself a guess - re-deriving from a
+                // list the catalogue cannot fully read is the guess `classify_unit` refuses to
+                // make, under another name. Only `BUY`/`SELL` of a man-tagged item can move a
+                // headcount any further than the early picture already has it - `PRODUCE`,
+                // `WITHDRAW` and trading in anything else leave a unit's own people untouched, so
+                // this compares man tags alone against the early picture rather than re-deriving
+                // from every item the ledger happens to be tracking.
+                let (men_by_race, men) = if ordered.unit.men_estimated {
+                    (ordered.unit.men_by_race.clone(), ordered.unit.men)
+                } else if let Some(ruleset) = ruleset {
+                    if same_men(&items, ordered.early_items(), ruleset) {
+                        (ordered.early_men_by_race().to_vec(), ordered.early_men())
+                    } else {
+                        composition::men_in(&items, ruleset)
+                    }
+                } else {
+                    (ordered.unit.men_by_race.clone(), ordered.unit.men)
+                };
+                Holdings {
+                    items,
+                    men,
+                    men_by_race,
+                }
+            })
+            .collect();
+        Self(holdings)
+    }
+
+    /// One unit's late picture, by its index in `hex.units`.
+    fn of(&self, index: usize) -> LateFacts<'_> {
+        let holdings = &self.0[index];
+        LateFacts {
+            men: holdings.men,
+            men_by_race: &holdings.men_by_race,
+            items: &holdings.items,
+        }
+    }
+}
+
+/// Whether two item lists carry the same man-tagged entries, regardless of order or of anything
+/// else either list holds. `Ledger::balance` is a `BTreeMap`, so `LateHoldings::read`'s lists come
+/// back alphabetical by tag rather than in the report's own order, and a same-multiset-different-
+/// order pair must not read as a change - and a `PRODUCE` or a `BUY`/`SELL` of ordinary goods must
+/// not either, which is why this looks at man tags alone.
+fn same_men(a: &[ItemAmount], b: &[ItemAmount], ruleset: &Ruleset) -> bool {
+    let mut a: Vec<(String, i64)> = a
+        .iter()
+        .filter(|item| ruleset.is_man(&item.tag))
+        .map(|item| (item.tag.to_ascii_uppercase(), item.amount))
+        .collect();
+    let mut b: Vec<(String, i64)> = b
+        .iter()
+        .filter(|item| ruleset.is_man(&item.tag))
+        .map(|item| (item.tag.to_ascii_uppercase(), item.amount))
+        .collect();
+    a.sort();
+    b.sort();
+    a == b
+}
+
+/// Every own unit in one hex as maintenance sees it. Shared by `charge_upkeep` and by steps 5 and
+/// 6, which must read exactly the same facts or the column and the warning will disagree.
+///
+/// `late` is `None` for a caller with no ledger to read one from - `combat_ready_in` is the only
+/// one, and it must never be given one: it is reached from `region_wages`, which `ledger_for`
+/// calls before the intent loop that fills the balance, so a late picture does not exist there yet
+/// (see *Known traps*).
+fn hex_facts<'a>(
+    hex: &'a Hex<'_>,
+    nothing: &'a Receipts,
+    late: Option<&'a LateHoldings>,
+) -> Vec<UnitFacts<'a>> {
+    hex.units
+        .iter()
+        .enumerate()
+        .map(|(index, ordered)| UnitFacts {
+            unit_id: &ordered.unit.unit_id,
+            region_id: &hex.region.region_id,
+            held: ordered.holding(SILVER),
+            men: ordered.early_men(),
+            men_estimated: ordered.unit.men_estimated,
+            men_by_race: ordered.early_men_by_race(),
+            items: ordered.early_items(),
+            flags: &ordered.unit.flags,
+            skills: &ordered.unit.skills,
+            intents: ordered.intents,
+            receipts: nothing,
+            formed: ordered.formed.as_ref(),
+            after_gifts_unknown: ordered.holdings_unknown(),
+            late: late.map(|late| late.of(index)),
+        })
+        .collect()
+}
+
 /// Charges every unit its monthly maintenance, after the orders have run.
 ///
 /// Deliberately not through `charge`: upkeep belongs to no order, and `charged_at` is read only to
@@ -2075,39 +2471,22 @@ pub(crate) struct UnitItemEffects {
 /// (`ah-uwa3`), so it is netted off the fee. Netted off rather than credited to the balance: a
 /// credit would leave the surplus where the orders could spend it, which is the very error this
 /// removes.
-/// Every own unit in one hex as maintenance sees it. Shared by `charge_upkeep` and by steps 5 and
-/// 6, which must read exactly the same facts or the column and the warning will disagree.
-fn hex_facts<'a>(hex: &'a Hex<'_>, nothing: &'a Receipts) -> Vec<UnitFacts<'a>> {
-    hex.units
-        .iter()
-        .map(|ordered| UnitFacts {
-            unit_id: &ordered.unit.unit_id,
-            region_id: &hex.region.region_id,
-            held: ordered.holding(SILVER),
-            men: ordered.unit.men,
-            men_estimated: ordered.unit.men_estimated,
-            men_by_race: &ordered.unit.men_by_race,
-            items: &ordered.unit.items,
-            flags: &ordered.unit.flags,
-            skills: &ordered.unit.skills,
-            intents: ordered.intents,
-            receipts: nothing,
-            formed: ordered.formed.as_ref(),
-        })
-        .collect()
-}
-
 fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
+    // Built before anything below draws the balance down - see *Known traps*: `charge_upkeep`
+    // mutates `balance` as it goes, and a `LateHoldings` read after that loop would price later
+    // units against a balance earlier ones have already spent.
+    let late = LateHoldings::read(hex, &ledger.balance, ledger.ruleset);
+
     // Step 2 of the payment order needs every unit's step-1 leftovers before it can settle any of
     // them, so this is two passes over one set of facts rather than one pass - built once here,
     // because two copies of the same literal are two things to keep in step.
     let nothing = Receipts::default();
-    let facts = hex_facts(hex, &nothing);
+    let facts = hex_facts(hex, &nothing, Some(&late));
 
     // The same settlement `forecast_hex` prices the column from: `WORK` and `ENTERTAIN` reach both
     // surfaces through one `late_income`, so two settlements would be two answers to one question.
     let region = region_wages(hex, ledger.ruleset);
-    let shares = pool_shares_for(hex, region).shares;
+    let shares = pool_shares_for(hex, region, Some(&late)).shares;
 
     // The check and the Silver column read one fact, so they settle the hex's faction-food pool
     // the same way: warning that a unit cannot pay a fee its faction-mates' grain already paid is
@@ -2359,8 +2738,10 @@ fn credit_tax(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>, pilla
     let ceiling = hex.region.tax_base.unwrap_or(i64::MAX);
     // And none of what is left goes to any *foreign* unit, nor to any own one - pinned by
     // `the_ledger_stays_optimistic_about_a_contended_tax_pool`.
+    // TAX is an early-phase order (`rules/sequenceofevents`): it sees men bought, taken or given
+    // this month, not the market that opens after it.
     let priced = price_tax(
-        actor.unit.men,
+        actor.early_men(),
         Some(ceiling),
         pillaged,
         PoolShare::Uncontended,
@@ -3556,7 +3937,8 @@ fn feed_from_food_after_silver(
             continue;
         }
 
-        let facts = hex_facts(hex, &nothing);
+        let late = LateHoldings::read(hex, &ledger.balance, ledger.ruleset);
+        let facts = hex_facts(hex, &nothing, Some(&late));
         let claims: Vec<LateFoodClaim> = hex
             .units
             .iter()
@@ -4930,9 +5312,11 @@ fn check_pillage_men(
     }
 
     // The same facts `combat_ready_in` counted from, so the reason and the number are one reading
-    // of one unit rather than two descriptions of it (`ah-cw75`).
+    // of one unit rather than two descriptions of it (`ah-cw75`). `readiness` is an early term and
+    // never reads a late picture, so this needs no `LateHoldings` any more than `combat_ready_in`
+    // does.
     let nothing = Receipts::default();
-    let facts = hex_facts(hex, &nothing);
+    let facts = hex_facts(hex, &nothing, None);
     for (ordered, facts) in hex.units.iter().zip(&facts) {
         // One warning per unit, on the first PILLAGE in the block, as the BUILD checks do.
         let Some(placed) = ordered
@@ -7112,7 +7496,7 @@ mod tests {
             };
             let ordered = OrderedUnits::read(orders);
             let hex = Hex::read(&hex_region, &ordered, &[]);
-            pool_shares_for(&hex, region_wages(&hex, None)).overruns
+            pool_shares_for(&hex, region_wages(&hex, None), None).overruns
         }
 
         /// `ah-t2pn.4`. The settlement says what it divided, so the sentence a player reads comes
@@ -8081,7 +8465,7 @@ mod tests {
         let ordered = OrderedUnits::read("unit 1\nTAX\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let region = region_wages(&hex, None);
-        let settled = pool_shares_for(&hex, region);
+        let settled = pool_shares_for(&hex, region, None);
 
         assert_eq!(settled.shares.len(), 2);
         for share in &settled.shares {
@@ -8659,7 +9043,7 @@ mod tests {
             .iter()
             .find(|row| row.unit_id == "683")
             .expect("priced");
-        assert_eq!(row.doubt, Some(SilverDoubt::EstimatedMen));
+        assert_eq!(row.doubt, Some(SilverDoubt::UnknownCombatReady));
         assert_eq!(row.income, None);
     }
 
@@ -16159,8 +16543,11 @@ mod tests {
         elsewhere.region_id = "1:8,53".to_string();
         elsewhere.coordinate = Coordinate { x: 8, y: 53, z: 1 };
 
+        // `unfed`: see `a_gift_to_a_foreign_unit_in_the_hex_is_silent` (`ah-dxfd.2`) - this test is
+        // about the location finding alone, and the ledger genuinely empties the giver of what it
+        // gives even to a unit this hex cannot reach.
         let regions = vec![
-            region(vec![with_item(unit("8443"), 30, "grain", "GRAI")]),
+            region(vec![with_item(unfed(unit("8443")), 30, "grain", "GRAI")]),
             elsewhere,
         ];
 
@@ -16239,10 +16626,14 @@ mod tests {
         foreign.own = false;
         foreign.faction_id = Some("15".to_string());
 
+        // `unfed`, not `unit`: the ledger genuinely empties the giver of what it gives even to an
+        // unresolvable target - "a gift out of the hex is charged to the giver" - and this test is
+        // about the location findings, not about maintenance, so the giver pays its own fee in
+        // silver instead of the grain it is about to give away (`ah-dxfd.2`).
         assert_eq!(
             codes(&check(
                 vec![region(vec![
-                    with_item(unit("8443"), 30, "grain", "GRAI"),
+                    with_item(unfed(unit("8443")), 30, "grain", "GRAI"),
                     foreign
                 ])],
                 "unit 8443\nGIVE 900 30 GRAI\n",
@@ -16266,9 +16657,15 @@ mod tests {
 
     #[test]
     fn a_gift_to_a_unit_formed_this_month_is_silent() {
+        // `unfed`: see `a_gift_to_a_foreign_unit_in_the_hex_is_silent` (`ah-dxfd.2`).
         assert_eq!(
             codes(&check(
-                vec![region(vec![with_item(unit("8443"), 30, "grain", "GRAI")])],
+                vec![region(vec![with_item(
+                    unfed(unit("8443")),
+                    30,
+                    "grain",
+                    "GRAI"
+                )])],
                 "unit 8443\nGIVE NEW 1 30 GRAI\n",
             )),
             Vec::<&str>::new()
@@ -16277,9 +16674,15 @@ mod tests {
 
     #[test]
     fn a_gift_to_another_factions_new_unit_is_silent() {
+        // `unfed`: see `a_gift_to_a_foreign_unit_in_the_hex_is_silent` (`ah-dxfd.2`).
         assert_eq!(
             codes(&check(
-                vec![region(vec![with_item(unit("8443"), 30, "grain", "GRAI")])],
+                vec![region(vec![with_item(
+                    unfed(unit("8443")),
+                    30,
+                    "grain",
+                    "GRAI"
+                )])],
                 "unit 8443\nGIVE FACTION 15 NEW 2 30 GRAI\n",
             )),
             Vec::<&str>::new()
@@ -18789,8 +19192,292 @@ mod tests {
     /// increment 6 exercises instead.
     fn hex_after_gifts<'a>(region: &'a ReportRegion, ordered: &'a OrderedUnits) -> Hex<'a> {
         let mut hex = Hex::read(region, ordered, &[]);
-        apply_gifts_of_men(&mut hex.units, Some(&ruleset()));
+        apply_transfers(&mut hex.units, Some(&ruleset()));
         hex
+    }
+
+    // --- holdings after this month's transfers (ah-dxfd.2) ----------------------------------
+
+    fn item_amount(items: &[ItemAmount], tag: &str) -> Option<i64> {
+        items
+            .iter()
+            .find(|item| item.tag.eq_ignore_ascii_case(tag))
+            .map(|item| item.amount)
+    }
+
+    #[test]
+    fn a_gift_of_weapons_reaches_the_receivers_holdings() {
+        // ORC is a man tag, so each unit's `men` is set to match its own reported headcount item
+        // - which the gift below never touches.
+        let giver = with_item(
+            with_item(with_men(unit("1234"), 10), 10, "orcs", "ORC"),
+            35,
+            "swords",
+            "SWOR",
+        );
+        let receiver = with_item(with_men(unit("2200"), 12), 12, "orcs", "ORC");
+        let orders = "unit 1234\nGIVE 2200 10 SWOR\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver, receiver]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        let receiver = hex.find("2200").unwrap();
+        let holdings = receiver
+            .after_gifts()
+            .expect("the receiver's holdings moved");
+        assert_eq!(item_amount(&holdings.items, "ORC"), Some(12));
+        assert_eq!(item_amount(&holdings.items, "SWOR"), Some(10));
+        assert_eq!(holdings.men, receiver.unit.men, "no people moved");
+
+        let giver = hex.find("1234").unwrap();
+        let holdings = giver.after_gifts().expect("the giver's holdings moved");
+        assert_eq!(item_amount(&holdings.items, "SWOR"), Some(25));
+        assert_eq!(holdings.men, giver.unit.men, "no people moved");
+    }
+
+    /// A gift of weapons alone can make a hex's combat-ready count cross the pillage threshold -
+    /// today it cannot, since the SILVER column and the pillage check both price a unit's holdings
+    /// exactly as the report printed them, before this month's `GIVE` ever ran.
+    #[test]
+    fn a_gift_of_weapons_makes_the_receiver_combat_ready() {
+        let home_guard = with_item(men_holder("1234", 9), 30, "swords", "SWOR");
+        let raiders = men_holder("2200", 20);
+        let hex_region = ReportRegion {
+            tax_base: Some(1000),
+            ..region(vec![home_guard, raiders])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1234\nGIVE 2200 20 SWOR\nunit 2200\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN),
+            "the region now has 29 combat ready men against a threshold of 10: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// The parent bead's own regression case, and the reason `ah-dxfd.2` exists rather than a
+    /// men-only fix: men given away without their weapons must lower the region's combat-ready
+    /// count, and men given away *with* weapons the receiver cannot wield must not raise it.
+    #[test]
+    fn men_given_without_weapons_lower_the_regions_combat_ready_count() {
+        let home_guard = with_item(
+            with_item(men_holder("1234", 19), 25, "swords", "SWOR"),
+            10,
+            "crossbows",
+            "XBOW",
+        );
+        let hex_region = ReportRegion {
+            tax_base: Some(2400),
+            ..region(vec![home_guard])
+        };
+        let orders = "unit 1234\nFORM 1\nPILLAGE\nEND\nGIVE NEW 1 10 HUMN\nGIVE NEW 1 10 XBOW\n";
+        let review = review_turn(
+            &report(vec![hex_region]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            told[0].message,
+            "cannot pillage here: needs 24 combat ready men, this region has 9 — its 10 crossbows need crossbow 1, and it has no crossbow"
+        );
+    }
+
+    /// The durable case: no catalogue can ever say what a unit the report does not show holds, so
+    /// a bounded `TAKE ... ALL` from one goes unanswerable rather than silently ignored.
+    #[test]
+    fn a_take_from_a_unit_this_hex_does_not_show_leaves_the_count_unanswerable() {
+        let home_guard = with_item(men_holder("1234", 9), 30, "swords", "SWOR");
+        let raiders = men_holder("2200", 20);
+        let hex_region = ReportRegion {
+            tax_base: Some(1000),
+            ..region(vec![home_guard, raiders])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1234\nTAKE FROM 999 ALL SWOR\nunit 2200\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN),
+            "an unfollowable transfer silences the warning rather than guessing at it: {:?}",
+            codes(&review.findings)
+        );
+        let pillager = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "2200")
+            .expect("the pillager is priced");
+        assert_eq!(pillager.doubt, Some(SilverDoubt::UnknownCombatReady));
+    }
+
+    /// The check that the narrowing is narrow: `ah-3sp7` will make `MAGIC` classifiable, and when
+    /// it does this test must be repointed at whichever class is still unclassifiable then, or
+    /// deleted if none is - a test that silently stops testing anything is worse than none.
+    #[test]
+    fn a_gift_of_a_class_nothing_can_classify_leaves_the_count_unanswerable() {
+        let home_guard = with_item(men_holder("1234", 9), 30, "swords", "SWOR");
+        let raiders = men_holder("2200", 20);
+        let hex_region = ReportRegion {
+            tax_base: Some(1000),
+            ..region(vec![home_guard, raiders])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1234\nGIVE 2200 ALL MAGIC\nunit 2200\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN),
+            "{:?}",
+            codes(&review.findings)
+        );
+        let pillager = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "2200")
+            .expect("the pillager is priced");
+        assert_eq!(pillager.doubt, Some(SilverDoubt::UnknownCombatReady));
+    }
+
+    // --- the late picture: the market, withdrawals and production (ah-dxfd.2) ---------------
+
+    /// `rules/sequenceofevents` settles `WORK` after the market opens, so wages are paid on the
+    /// headcount the market leaves the unit with, not the headcount the report printed.
+    #[test]
+    fn wages_are_paid_to_men_bought_this_month() {
+        let worker = with_silver(men_holder("900", 10), 400);
+        let hex_region = ReportRegion {
+            wages: Some("$24.1".to_string()),
+            max_wages: Some(9000),
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "humans".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![worker])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 900\nBUY 5 HUMN\nWORK\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "900")
+            .expect("priced");
+        // 15 men at $24.1: 15 * 2410 / 100 = 361, not the 10 the report printed (241).
+        assert_eq!(row.late_income, Some(361));
+    }
+
+    /// `rules/sequenceofevents` settles maintenance after `GIVE`/`TAKE`, so grain given this month
+    /// pays it off - today the gift does not reach the fee at all.
+    ///
+    /// The giver holds no more than it needs for its own upkeep plus what it gives away, so
+    /// neither fixture leaves any spare food for the hex's own steps-5/6 pool to feed the receiver
+    /// with (`ah-dxfd.2`'s Known traps warns this pool feeds any unit short, flag or no flag) -
+    /// what changes the receiver's own fee here is `GIVE` reaching its own step-1 pass, not pooling.
+    #[test]
+    fn upkeep_is_paid_with_grain_given_this_month() {
+        // `men_holder`, not `unit`: `LateHoldings` re-derives a unit's headcount from its own
+        // item list (`report::composition::men_in`), and `unit`'s bare `men` field carries no
+        // matching item for that to find.
+        let mut receiver = men_holder("2200", 1);
+        receiver
+            .items
+            .retain(|item| !item.tag.eq_ignore_ascii_case("GRAI"));
+
+        // Exactly the one grain a one-man unit's own upkeep needs, and no more - nothing left to
+        // spill into the hex's shared pool.
+        let baseline_giver = men_holder("1234", 1);
+        let without_gift = review_turn(
+            &report(vec![region(vec![baseline_giver, receiver.clone()])]),
+            "",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let row = without_gift
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "2200")
+            .expect("priced");
+        assert_eq!(row.upkeep, Some(10), "no food, so the whole fee is owed");
+
+        // Its own one grain, plus the five it gives away - once given, it again holds exactly what
+        // its own upkeep needs.
+        let giving_giver = with_item(men_holder("1234", 1), 6, "grain", "GRAI");
+        let with_gift = review_turn(
+            &report(vec![region(vec![giving_giver, receiver])]),
+            "unit 1234\nGIVE 2200 5 GRAI\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let row = with_gift
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "2200")
+            .expect("priced");
+        assert_eq!(row.upkeep, Some(0), "the gifted grain now pays it off");
+    }
+
+    /// The pair to `wages_are_paid_to_men_bought_this_month`: `TAX` is settled *before* the market
+    /// opens (`rules/sequenceofevents`), so it must not see the same `BUY`.
+    #[test]
+    fn a_tax_is_still_priced_before_the_market() {
+        let taxer = with_silver(men_holder("900", 10), 400);
+        let hex_region = ReportRegion {
+            tax_base: Some(100_000),
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "humans".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![taxer])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 900\nBUY 5 HUMN\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "900")
+            .expect("priced");
+        // 10 men at $50/man = 500, not the 15 the market would leave it with (750).
+        assert_eq!(row.income, Some(500));
     }
 
     #[test]

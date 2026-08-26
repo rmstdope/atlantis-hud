@@ -1138,6 +1138,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
       "This region is not selling horses, so what the purchase costs cannot be said.",
     "doubt-gives-a-whole-class":
       "This unit is giving away a whole class of goods, which cannot be counted.",
+    "doubt-unknown-combat-ready":
+      "The combat ready men in this region cannot be added up, so what a pillage earns cannot be said.",
     "doubt-contested-faction-food":
       "There is not enough faction food here to feed every unit set to eat it.",
     "wages-too-late":
@@ -1341,7 +1343,8 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     "contested-region-pool",
     "market-does-not-sell",
     "gives-a-whole-class",
-    "contested-faction-food"
+    "contested-faction-food",
+    "unknown-combat-ready"
   ];
 
   // Built with `aUnitSilver` (`ah-uhnd`) so a field added to `UnitSilver` later does not silently

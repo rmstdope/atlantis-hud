@@ -440,6 +440,18 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
+  {
+    id: "doubt-unknown-combat-ready",
+    when: ({ silver }) => silver.doubt === "unknown-combat-ready",
+    say: () =>
+      "The combat ready men in this region cannot be added up, so what a pillage earns cannot be said.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "unknown-combat-ready" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
   // With `countUpkeep` off there is no Upkeep row on show, so neither of this bead's two lines has
   // anything to explain and both would be noise about a hidden figure (`ah-7cdt`).
   {

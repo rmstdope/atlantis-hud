@@ -394,6 +394,10 @@ pub enum SilverDoubt {
     /// is exact. Distinct from [`SilverDoubt::EstimatedMen`], which is about the unit's own
     /// headcount.
     ContestedRegionPool,
+    /// The faction's combat ready men in this hex cannot be added up, so the pillage threshold
+    /// cannot be tested. Distinct from [`SilverDoubt::EstimatedMen`]: this unit's own headcount
+    /// may be exact, and usually is - what is missing belongs to the hex.
+    UnknownCombatReady,
 }
 
 /// What one unit may draw from one contended regional pool, once its faction-mates in the same hex
@@ -474,6 +478,10 @@ pub struct PoolWants {
 }
 
 /// What this unit asks of each of its region's contended pools.
+///
+/// TAX is priced before the market opens, so it reads `facts.men`, the early picture; WORK and
+/// ENTERTAIN are priced after it, so they read `facts.late().men` instead
+/// (`rules/sequenceofevents`, `ah-dxfd.2`).
 #[must_use]
 pub fn pool_wants(facts: &UnitFacts<'_>, region: RegionWages) -> PoolWants {
     let mut wants = PoolWants::default();
@@ -483,14 +491,15 @@ pub fn pool_wants(facts: &UnitFacts<'_>, region: RegionWages) -> PoolWants {
     if taxes(facts.flags, facts.intents) {
         wants.tax = facts.men.saturating_mul(TAX_PER_MAN);
     }
+    let late = facts.late();
     for placed in facts.intents {
         match &placed.intent {
             Intent::Tax => {}
             Intent::Work => {
-                wants.wages = facts.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
+                wants.wages = late.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
             }
             Intent::Entertain => {
-                wants.entertainment = facts
+                wants.entertainment = late
                     .men
                     .saturating_mul(skill_level(facts.skills, ENTERTAIN_TAG))
                     .saturating_mul(ENTERTAIN_PER_MAN_PER_LEVEL);
@@ -502,7 +511,7 @@ pub fn pool_wants(facts: &UnitFacts<'_>, region: RegionWages) -> PoolWants {
     // pool exactly as an explicit `WORK` does (`ah-gjq4`, landing after `ah-t2pn.2`). Without this
     // every idle unit in a hex would be promised the whole pool.
     if is_set_to_work(facts.flags, facts.intents) {
-        wants.wages = facts.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
+        wants.wages = late.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
     }
     wants
 }
@@ -617,13 +626,19 @@ pub struct UnitFacts<'a> {
     pub region_id: &'a str,
     /// Silver the unit holds now. 0 for a unit carrying no `SILV` item.
     pub held: i64,
+    /// The unit's headcount as the turn's early phases see it - the report's own figure, with
+    /// this month's `GIVE`/`TAKE` orders applied where `super::semantics` could follow them
+    /// (`ah-dxfd.2`). `rules/sequenceofevents` settles TAX, PILLAGE and `Spells are CAST` before
+    /// the market opens, so this is what those terms read; a term settled after the market reads
+    /// [`UnitFacts::late`] instead.
     pub men: i64,
     pub men_estimated: bool,
-    /// The unit's people by race, which is what tells a leader from an ordinary character. Empty
+    /// `men`'s breakdown by race, which is what tells a leader from an ordinary character. Empty
     /// where the report did not break the unit down, which means *all ordinary characters* - the
-    /// report saying nothing is not evidence of leaders.
+    /// report saying nothing is not evidence of leaders. The early picture, exactly as `men` is.
     pub men_by_race: &'a [ItemAmount],
-    /// Everything the unit carries, read here only for the food that pays maintenance.
+    /// Everything the unit carries, read here only for the food that pays maintenance. The early
+    /// picture, exactly as `men` is - see `late` for the picture maintenance actually reads.
     pub items: &'a [ItemAmount],
     /// The unit's report flags, read here only for the two `consuming ...` ones.
     pub flags: &'a [String],
@@ -633,6 +648,49 @@ pub struct UnitFacts<'a> {
     pub receipts: &'a Receipts,
     /// Set when this unit is not one the report shows but one this month's `FORM` orders create.
     pub formed: Option<&'a FormedSubject>,
+    /// Set when a transfer this month cannot be followed for this unit - a class the catalogue
+    /// cannot classify (`ah-3sp7`), or a `TAKE ALL` from a unit this hex does not show.
+    ///
+    /// Distinct from `men_estimated`, which is about the *report*: this unit's reported figures
+    /// may be exact and still not survive its own orders. **Consulted by [`readiness`] and by
+    /// nothing else** - every other term falls back to the report's figures, which is what it did
+    /// before this bead, and the unit already carries an existing doubt for the order that caused
+    /// this.
+    pub after_gifts_unknown: bool,
+    /// The same unit once the market, the withdrawals and this month's production have run.
+    ///
+    /// `rules/sequenceofevents` settles STUDY, PRODUCE, ENTERTAIN, WORK and maintenance after the
+    /// market and PILLAGE, TAX and `Spells are CAST` before it, so the two pictures are genuinely
+    /// different and every term below says which it takes. `None` for a caller with no ledger to
+    /// read one from - `semantics::combat_ready_in` is the only one, and it consults nothing late.
+    /// Read it through [`UnitFacts::late`], never directly.
+    pub late: Option<LateFacts<'a>>,
+}
+
+/// One unit as the turn's late phases see it - the market, the withdrawals and this month's
+/// production already applied.
+///
+/// **There is no late `skills`, deliberately.** Skills change this month only by gifts of men;
+/// `rules/sequenceofevents` puts STUDY in the month-long phase and its result reaches next turn's
+/// report, so one skills list serves both pictures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LateFacts<'a> {
+    pub men: i64,
+    pub men_by_race: &'a [ItemAmount],
+    pub items: &'a [ItemAmount],
+}
+
+impl<'a> UnitFacts<'a> {
+    /// The unit as the late phases see it, falling back to the early picture for a caller that has
+    /// no ledger to read a late picture from.
+    #[must_use]
+    pub fn late(&self) -> LateFacts<'a> {
+        self.late.unwrap_or(LateFacts {
+            men: self.men,
+            men_by_race: self.men_by_race,
+            items: self.items,
+        })
+    }
 }
 
 /// Everything about the region that the arithmetic needs, lifted out so the function takes values.
@@ -991,8 +1049,18 @@ pub fn forecast_unit(
             // `plan_production` the ledger uses - one function, two callers, which is what keeps
             // this column and the `not-enough-silver` warning from drifting apart (`ah-ycuj`).
             Intent::Produce { item } => {
+                // PRODUCE is priced after the market opens (`rules/sequenceofevents`), so its
+                // man-months capacity reads the late headcount - men this month's `BUY`/`GIVE`
+                // bring, not only what the report printed (`ah-dxfd.2`).
+                //
+                // **Materials stay the early picture, deliberately.** `semantics::produce` prices
+                // this same order a second time from the ledger's own balance to build the ITEMS
+                // column, and charges the materials it plans against that balance - so reading the
+                // late picture's `items` here would price this order against a balance its own
+                // ledger twin has already spent, silently halving what the unit can make. Pending
+                // a way to read a mid-month balance rather than the ledger's own end state.
                 let recipe = (lookups.item_tag)(item).and_then(|tag| recipe_for(ruleset, &tag));
-                let (priced, plan) = price_production(recipe, men, facts.items);
+                let (priced, plan) = price_production(recipe, facts.late().men, facts.items);
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
@@ -1009,10 +1077,12 @@ pub fn forecast_unit(
                 }
             }
             Intent::Study { skill } => {
+                // STUDY is priced after the market opens too, so the fee is per man this month
+                // actually has, not only per man the report printed (`ah-dxfd.2`).
                 let cost = ruleset
                     .and_then(|ruleset| ruleset.find_skill(skill))
                     .and_then(|skill| skill.cost);
-                let priced = price_study(cost, men);
+                let priced = price_study(cost, facts.late().men);
                 expense = expense.saturating_add(priced.spends);
                 if priced.spends > 0 {
                     spent_on = spent_on.or(Some(SilverSpender::Study));
@@ -1322,13 +1392,17 @@ struct OwnFoodPass {
 
 /// Step 1 of the maintenance payment order - the unit's own food - and what it leaves behind.
 ///
+/// Maintenance is assessed after the market, the withdrawals and this month's production have run
+/// (`rules/sequenceofevents`), so this reads `facts.late()` throughout (`ah-dxfd.2`).
+///
 /// `None` for a headcount that is itself a guess: charge nothing rather than a guess.
 fn own_food_pass(facts: &UnitFacts<'_>) -> Option<OwnFoodPass> {
     if facts.men_estimated {
         return None;
     }
+    let late = facts.late();
 
-    let leaders = facts
+    let leaders = late
         .men_by_race
         .iter()
         .filter(|entry| entry.tag.eq_ignore_ascii_case(LEADER_TAG))
@@ -1336,15 +1410,15 @@ fn own_food_pass(facts: &UnitFacts<'_>) -> Option<OwnFoodPass> {
         .sum::<i64>();
     // A unit the report never broke down is all ordinary characters, and a breakdown that names
     // more leaders than men is not a reason to charge a negative headcount.
-    let leaders = leaders.clamp(0, facts.men);
-    let characters = facts.men - leaders;
+    let leaders = leaders.clamp(0, late.men);
+    let characters = late.men - leaders;
 
     let owed = leaders
         .saturating_mul(UPKEEP_PER_LEADER)
         .saturating_add(characters.saturating_mul(UPKEEP_PER_CHARACTER))
         .max(0);
 
-    let held = facts
+    let held = late
         .items
         .iter()
         .filter(|entry| {
@@ -1995,6 +2069,12 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
     if facts.men_estimated {
         return None;
     }
+    // A transfer this month cannot be followed, so the weapons and men this unit will actually
+    // hold are not knowable. Answering from the report instead would count goods the unit may
+    // have given away - the wrong direction, since it is the *pillage threshold* being tested.
+    if facts.after_gifts_unknown {
+        return None;
+    }
     let ruleset = ruleset?;
     let men = facts.men.max(0);
     // The rules' fourth taxing character: "or is a mage who knows a spell which damages enemies"
@@ -2191,10 +2271,11 @@ pub fn price_pillage(tax_base: Option<i64>, combat_ready: Option<i64>) -> Priced
             doubt: Some(SilverDoubt::UnknownTaxBase),
             ..Priced::default()
         },
-        // A guessed headcount somewhere in the hex: the threshold cannot be tested at all.
-        // `EstimatedMen` is reused rather than a variant added - its sentence stays true.
+        // The hex's combat-ready sum could not be added up - a guessed headcount somewhere in the
+        // hex, or a transfer this month that could not be followed - so the threshold cannot be
+        // tested at all.
         (Some(_), None) => Priced {
-            doubt: Some(SilverDoubt::EstimatedMen),
+            doubt: Some(SilverDoubt::UnknownCombatReady),
             ..Priced::default()
         },
         (Some(base), Some(ready)) if ready >= pillage_threshold(base) => Priced {
@@ -3321,7 +3402,7 @@ mod tests {
         assert_eq!(
             price_pillage(Some(8963), None),
             Priced {
-                doubt: Some(SilverDoubt::EstimatedMen),
+                doubt: Some(SilverDoubt::UnknownCombatReady),
                 ..Priced::default()
             }
         );
@@ -3376,6 +3457,8 @@ mod tests {
             intents,
             receipts,
             formed: None,
+            after_gifts_unknown: false,
+            late: None,
         }
     }
 
@@ -4101,7 +4184,7 @@ mod tests {
 
     /// One guessed headcount anywhere in the hex makes the threshold unanswerable, and it is
     /// unanswerable in the direction that matters: the estimate might be what carries the faction
-    /// over. `EstimatedMen` is reused rather than a variant added.
+    /// over.
     #[test]
     fn a_guessed_headcount_in_the_hex_doubts_the_pillage() {
         let region = RegionWages {
@@ -4110,7 +4193,7 @@ mod tests {
             ..RegionWages::default()
         };
         let unit = forecast(1, region, &[placed(Intent::Pillage)]);
-        assert_eq!(unit.doubt, Some(SilverDoubt::EstimatedMen));
+        assert_eq!(unit.doubt, Some(SilverDoubt::UnknownCombatReady));
         assert_eq!(unit.income, None);
     }
 
@@ -5368,6 +5451,8 @@ mod tests {
             intents: &[],
             receipts: no_receipts(),
             formed: None,
+            after_gifts_unknown: false,
+            late: None,
         }
     }
 
@@ -5825,6 +5910,8 @@ mod combat_ready_tests {
             intents: &[],
             receipts,
             formed: None,
+            after_gifts_unknown: false,
+            late: None,
         }
     }
 

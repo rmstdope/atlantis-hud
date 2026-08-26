@@ -3,4 +3,4 @@
 /**
  * Why a unit's month could not be priced. One variant per sentence the interface shows.
  */
-export type SilverDoubt = "unknown-tax-base" | "takes-all-from-another" | "estimated-men" | "unpriced-skill" | "unknown-goods" | "market-does-not-sell" | "gives-a-whole-class" | "unpriced-production" | "contested-faction-food" | "contested-region-pool";
+export type SilverDoubt = "unknown-tax-base" | "takes-all-from-another" | "estimated-men" | "unpriced-skill" | "unknown-goods" | "market-does-not-sell" | "gives-a-whole-class" | "unpriced-production" | "contested-faction-food" | "contested-region-pool" | "unknown-combat-ready";
