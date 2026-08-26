@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ofpb.5 - round 4: the last two sentences</title>
+<title>ah-ofpb.1 - round 2: what the rules really say a CAST creates</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .stagelabel { font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin:14px 0 5px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .unk { color:var(--ink-dim); }
+  .cellbox { border:1px dashed var(--edge); }
+  .clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip.none { color:var(--ink-dim); font-style:italic; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright);
+            background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            margin:10px 0 0; white-space:pre; display:inline-block; }
+  .orders .c { color:var(--ink-dim); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-left:8px; }
+
+  table.data { width:100%; border-collapse:collapse; font:12px/1.45 'Helvetica Neue',Arial,sans-serif; margin-top:6px; }
+  table.data th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); font-weight:400; padding:4px 8px; border-bottom:1px solid var(--edge); }
+  table.data td { padding:4px 8px; border-bottom:1px solid var(--edge-soft); color:var(--ink-soft); vertical-align:top; }
+  table.data td.t { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; white-space:nowrap; }
+  .quote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13px; margin:10px 0; max-width:96ch; font-style:italic; }
+  .bad { color:var(--danger); }
+</style></head><body>
+</head><body>
+<header><h1>Round 4 &mdash; <span>the last two sentences</span></h1>
+<p>Everything else is settled. I found the caps for all nine summons and there are exactly four, in four different sentence shapes: <code>WOLF</code> <code>level&sup2;&times;4</code>, <code>BIRD</code> <code>(level&minus;2)&sup2;&times;2</code>, <code>DRAG</code> <code>level</code>, and <code>SUBA</code> &mdash; &ldquo;may only summon a balrog if one is not already under his control&rdquo;, which is a cap of 1. <code>SUSK</code>, <code>RAIS</code> and <code>SULI</code> state 8% decay instead; <code>SUIM</code> and <code>SUDE</code> state a per-item escape chance. Five of the nine have no cap.</p>
+<p><b>One thing that makes the clamp safe:</b> all four capped skills cost nothing at all &mdash; <code>costs: []</code> in the ruleset. So clamping what they summon cannot move a silver figure or a shipped <code>not-enough-items</code> warning by construction. That is worth knowing before you read the two options below.</p>
+</header>
+<main>
+
+<h3 class="sec">Q13 &mdash; the sentence when the cap bites</h3>
+<p>A level 3 wolf master holding 30 wolves. Its level would summon 1-12; it can control 36; so the cell is clamped to <code>31-36</code>. Without a sentence, the 36 is inexplicable.</p>
+<div class="card"><div class="concept"><b>C1 &mdash; the shipped cap-sentence shape, with &ldquo;room&rdquo; for &ldquo;silver&rdquo;.</b> The same skeleton as the <code>PRODUCE</code> and <code>CAST</code> sentences already on screen.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:200px">NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody><tr><td class="own">*</td><td class="uid">8940</td><td>Wolf master L3, holds 30</td><td class="colhi cellbox"><span class="clip"><span class="pred">31-36 WOLF</span></span></td></tr></tbody></table>
+<div class="tip"><b>hover</b>was: 30 WOLF
+Includes 1-6 WOLF this unit will summon. Casting resolves after GIVE, so they cannot be given away this month.
+This unit has room for 6 wolves, not the 12 its level could summon.</div>
+<ul class="notes"><li>Third sentence is the shipped shape word for word &mdash; <code>This unit has X for N, not the M its level could make.</code> &mdash; with two words changed.</li><li>Reads as a sibling of the other two cap sentences, so nothing new to learn.</li><li class="con">&ldquo;room&rdquo; is a third noun in a slot that has held only &ldquo;silver&rdquo; and &ldquo;materials&rdquo;.</li></ul></div></div>
+<div class="card"><div class="concept"><b>C2 &mdash; name the cap as a fact, not as a shortfall.</b></div>
+<div class="stage"><div class="tip"><b>hover</b>was: 30 WOLF
+Includes 1-6 WOLF this unit will summon. Casting resolves after GIVE, so they cannot be given away this month.
+A mage of this level can control 36 wolves.</div>
+<ul class="notes"><li>States the rule and lets the player do the arithmetic; makes no claim about what the engine does with the excess.</li><li class="con">Does not actually say the figure above was reduced, so a player may not connect the two.</li></ul></div></div>
+
+<h3 class="sec">Q14 &mdash; a mage already at its cap</h3>
+<p>A level 3 wolf master holding 36 wolves; a level 3 balrog summoner already holding a balrog. Both summon nothing at all, so nothing in the cell moves. In <code>ah-ofpb.1</code> you met this exact shape &mdash; a producing unit whose cap leaves it producing nothing &mdash; and chose <b>Z1: leave it upright and unmarked, with the hover carrying the cap sentence for anyone who hovers</b>, accepting that it then looks like an idle unit.</p>
+<div class="card"><div class="concept"><b>A &mdash; the same as Z1. Upright, unmarked, hover explains.</b></div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:210px">NAME</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8941</td><td>Wolf master L3, holds 36 (at cap)</td><td class="colhi cellbox"><span class="clip">36 WOLF</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8942</td><td>Balrog summoner L3, holds 1</td><td class="colhi cellbox"><span class="clip">1 BALR</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8943</td><td>Idle unit, no orders</td><td class="colhi cellbox"><span class="clip">36 WOLF</span></td></tr>
+</tbody></table>
+<div class="tip"><b>hover on 8941</b>was: 36 WOLF
+This unit has room for 0 wolves, not the 12 its level could summon.</div>
+<ul class="notes"><li>Consistent with the decision you already took for <code>PRODUCE</code>; the <code>+ ?</code> mark keeps its one meaning.</li><li class="con">Rows 8941 and 8943 are indistinguishable without hovering &mdash; the cost you accepted in <code>ah-ofpb.1</code>, arriving again here.</li></ul></div></div>
+<div class="card"><div class="concept"><b>B &mdash; a Problems finding instead: this order will do nothing.</b> Nothing changes in the cell; the panel says why.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:210px">NAME</th><th class="colhi">ITEMS</th><th style="width:260px">PROBLEMS</th></tr></thead>
+<tbody><tr><td class="own">*</td><td class="uid">8941</td><td>Wolf master L3, holds 36 (at cap)</td><td class="colhi cellbox"><span class="clip">36 WOLF</span></td><td class="bad">this unit already controls the 36 wolves its level allows, so this cast will summon none</td></tr></tbody></table>
+<ul class="notes"><li>An order that will do nothing is exactly what the Problems panel is for, and it is visible without hovering.</li><li class="con">A new warning code, its own Settings toggle, and a claim about engine behaviour the page does not state &mdash; you were careful about exactly that in Q10.</li><li class="con">Widens the bead again, into a surface it was not filed about.</li></ul></div></div>
+
+<h3 class="sec">Decided<span class="rec">navigator, 2026-08-26</span></h3><ul class="notes"><li><b>Q13 &rarr; C1</b>, the shipped cap-sentence shape with &ldquo;room&rdquo;.</li><li><b>Q14 &rarr; A</b>, upright and unmarked, as <code>ah-ofpb.1</code>&rsquo;s Z1.</li></ul>
+<footer>Cap formulas quoted from <code>data/WOLF</code>, <code>data/BIRD</code>, <code>data/DRAG</code> and <code>data/SUBA</code>; the five uncapped summons checked in the same pass. The shipped cap sentence being echoed is <code>This unit has silver for 2 amulets of protection, not the 3 its level could make.</code> (<code>ah-ofpb.4</code> R1, <code>ah-ofpb.1</code> K1). Note the plural: here the mage <i>holds</i> wolves already, so the report supplies &ldquo;wolves&rdquo; &mdash; unlike a creation the unit has none of yet, where the app falls back to the singular by design.</footer>
+</main></body></html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ofpb.5 - round 2: the words, the turn order, and a split</title>
+<title>ah-ofpb.1 - round 2: what the rules really say a CAST creates</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .stagelabel { font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin:14px 0 5px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .unk { color:var(--ink-dim); }
+  .cellbox { border:1px dashed var(--edge); }
+  .clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip.none { color:var(--ink-dim); font-style:italic; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright);
+            background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            margin:10px 0 0; white-space:pre; display:inline-block; }
+  .orders .c { color:var(--ink-dim); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-left:8px; }
+
+  table.data { width:100%; border-collapse:collapse; font:12px/1.45 'Helvetica Neue',Arial,sans-serif; margin-top:6px; }
+  table.data th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); font-weight:400; padding:4px 8px; border-bottom:1px solid var(--edge); }
+  table.data td { padding:4px 8px; border-bottom:1px solid var(--edge-soft); color:var(--ink-soft); vertical-align:top; }
+  table.data td.t { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; white-space:nowrap; }
+  .quote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13px; margin:10px 0; max-width:96ch; font-style:italic; }
+  .bad { color:var(--danger); }
+</style></head><body>
+</head><body>
+<header><h1>Round 2 &mdash; <span>the words, the turn order, and a split</span></h1>
+<p><b>Round 1 is banked:</b> ranges merge into the stock (<code>4-5 RUNE</code>); a range gets no <code>+ ?</code> mark; <code>SWIN</code>&rsquo;s materials leave at the ceiling so the column, the SILVER column and the warnings read one number.</p>
+<p><b>Your summoning answer changes the shape of the bead, and I want to check I have it right before I write it down.</b> You gave me the engine&rsquo;s arithmetic: <code>num = (level &times; mOut + rand(0..99)) / 100</code>, then <code>RandomiseSummonAmount(num)</code> flips <code>2 &times; num</code> coins and counts heads, minimum 1 when <code>num &gt; 0</code>. For a level 3 wolf master that is <code>num = 6</code>, twelve flips, so <b>1 to 12 wolves, averaging 6</b>. I confirmed against the data page that exactly four skills word it as an average &mdash; <code>WOLF</code> &ldquo;averaging&rdquo;, <code>BIRD</code> &ldquo;an average of&rdquo;, <code>SUSK</code> and <code>RAIS</code> &ldquo;at an average rate of&rdquo; &mdash; and the other five summons do not.</p>
+<p class="quote">One thing I could not look up: the engine source is not the rules page or the data page. I will record <code>1..2n</code> as <b>your decision, from the game engine</b>, and cite it that way rather than pretending it came from a lookup.</p>
+</header>
+<main>
+
+<h3 class="sec">Q5 &mdash; the turn order, and a warning that would fire wrongly</h3>
+<p>I looked up <code>rules/sequenceofevents</code> and found something that points the opposite way from <code>PRODUCE</code>. The order of a turn is:</p>
+<div class="stage" style="margin-bottom:14px"><table class="data">
+<tbody>
+<tr><td class="t">&hellip; GIVE and TAKE &hellip;</td><td>gifts settle</td></tr>
+<tr><td class="t">&hellip; TAX &hellip;</td><td></td></tr>
+<tr><td class="t"><b style="color:var(--brass-bright)">Spells are CAST</b></td><td>&larr; the cast happens <b>here</b></td></tr>
+<tr><td class="t">SELL, then BUY</td><td></td></tr>
+<tr><td class="t">WITHDRAW</td><td></td></tr>
+<tr><td class="t">movement</td><td></td></tr>
+<tr><td class="t">STUDY, PRODUCE, BUILD, ENTERTAIN, WORK</td><td>&larr; where <code>PRODUCE</code> happens, last</td></tr>
+</tbody></table></div>
+<p>So <b>what a cast creates can be sold, bought with, withdrawn against, built with and produced with this month</b> &mdash; it just cannot be <i>given away</i>, because <code>GIVE</code> is already past. That is the reverse of <code>PRODUCE</code>, whose goods arrive too late for anything.</p>
+<p><code>ah-ofpb.1</code> deliberately does <b>not</b> credit produced goods to the ledger, so a <code>not-enough-items</code> warning still fires on a unit that produces then spends. If this bead copies that, an enchanter ordered <code>cast Enchant_Swords</code> then <code>sell 15 MSWO</code> is told it is 15 short &mdash; and by the rules it is not.</p>
+<div class="card">
+<div class="concept"><b>A &mdash; credit what a cast creates, so it can be spent.</b> The ledger gains the created items, and the warning does not fire.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:220px">NAME</th><th class="colhi">ITEMS</th><th style="width:250px">PROBLEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8910</td><td>Enchanter L3, casts then sells</td><td class="colhi cellbox"><span class="clip"><span class="pred">5 SWOR, 900 SILV</span></span></td><td class="unk">&mdash; nothing &mdash;</td></tr>
+<tr><td class="own">*</td><td class="uid">8911</td><td>Enchanter L3, casts then <b>gives</b></td><td class="colhi cellbox"><span class="clip"><span class="pred">5 SWOR</span></span></td><td class="unk">&mdash; nothing &mdash;</td></tr>
+</tbody></table>
+<div class="orders">unit 8910  <span class="c">; enchant swords 3, holds 20 SWOR</span>
+  cast Enchant_Swords              <span class="c">; 15 SWOR -&gt; 15 MSWO</span>
+  sell 15 MSWO                     <span class="c">; legal: SELL is after CAST</span>
+</div>
+<ul class="notes"><li>Matches the rules exactly for <code>SELL</code>, <code>BUY</code>, <code>WITHDRAW</code>, <code>BUILD</code> and <code>PRODUCE</code> &mdash; five of the six things that could spend them.</li><li class="con">Row 8911 gives away swords it will not have until after <code>GIVE</code> has passed, and is told nothing. A new wrong answer in place of an old one.</li><li class="con">Diverges from <code>PRODUCE</code>, so the two orders now behave differently and somebody has to remember why.</li></ul>
+</div></div>
+<div class="card">
+<div class="concept"><b>B &mdash; do not credit, exactly as <code>PRODUCE</code> does.</b> The column moves; the ledger does not.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:220px">NAME</th><th class="colhi">ITEMS</th><th style="width:250px">PROBLEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8910</td><td>Enchanter L3, casts then sells</td><td class="colhi cellbox"><span class="clip"><span class="pred">5 SWOR, 900 SILV</span></span></td><td class="bad">short 15 mithril sword: this unit can have 0 and its orders spend 15</td></tr>
+<tr><td class="own">*</td><td class="uid">8911</td><td>Enchanter L3, casts then <b>gives</b></td><td class="colhi cellbox"><span class="clip"><span class="pred">5 SWOR</span></span></td><td class="bad">short 15 mithril sword: this unit can have 0 and its orders spend 15</td></tr>
+</tbody></table>
+<ul class="notes"><li>One rule for both orders; nothing shipped changes; no warning is deleted.</li><li>Row 8911 is caught, correctly.</li><li class="con">Row 8910 is a <b>false warning against the rules</b> &mdash; the sale is legal and the app says it is not. A player who trusts the panel will not write it.</li></ul>
+</div></div>
+<div class="card">
+<div class="concept"><b>C &mdash; not this bead. Show the column, file the crediting as its own bead.</b> The ITEMS cell moves for a cast; the warnings stay exactly as they ship today, right and wrong, and a new bead decides the ledger question on its own evidence.</div>
+<ul class="notes"><li>This bead stays about the column, which is what it was filed as.</li><li>The crediting decision gets its own interview instead of being a rider on this one.</li><li class="con">The false warning in row 8910 above ships and stays shipped until that bead is built.</li></ul>
+</div>
+
+<h3 class="sec">Q6 &mdash; the hover, word for word</h3>
+<p>The shipped <code>PRODUCE</code> sentence is <code>Includes 8 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.</code> A cast needs its own, and a range needs somewhere to explain itself. Level 3 runesmith, holds 2 <code>RUNE</code> and $2,000; makes 2 certain plus a 70% chance of a third.</p>
+<div class="card"><div class="concept"><b>V1 &mdash; attribution only, no timing, no percentage.</b></div>
+<div class="stage"><div class="tip"><b>hover on unit 8901's ITEMS cell</b>was: 2 RUNE, 2000 SILV
+Includes 2-3 RUNE this unit will create by casting.</div>
+<ul class="notes"><li>Short, and true of both families with one sentence.</li><li class="con">Does not say why the number is a range, so a player must know the spell.</li></ul></div></div>
+<div class="card"><div class="concept"><b>V2 &mdash; attribution, and the range explained.</b></div>
+<div class="stage"><div class="tip"><b>hover on unit 8901's ITEMS cell</b>was: 2 RUNE, 2000 SILV
+Includes 2-3 RUNE this unit will create by casting. Two are certain and the third has a 70% chance.</div>
+<ul class="notes"><li>The range explains itself, on the row where it appears.</li><li class="con">A second sentence shape for family A, which has no chance to name. In <code>ah-ofpb.4</code> R3 you chose to keep the chance out of the SILVER hover; this puts it into the ITEMS one.</li></ul></div></div>
+<div class="card"><div class="concept"><b>V3 &mdash; attribution and the turn order, mirroring <code>PRODUCE</code>&rsquo;s two-sentence shape.</b></div>
+<div class="stage"><div class="tip"><b>hover on unit 8901's ITEMS cell</b>was: 2 RUNE, 2000 SILV
+Includes 2-3 RUNE this unit will create by casting. Casting resolves after GIVE, so they cannot be given away this month.</div>
+<ul class="notes"><li>Same two-part shape as the shipped <code>PRODUCE</code> sentence, so the two hovers read as siblings.</li><li>Says the one thing the player can actually get wrong.</li><li class="con">Only worth its space if Q5 lands on A or C &mdash; under B the goods cannot be spent on anything, and the sentence would be misleading by being too narrow.</li></ul></div></div>
+
+<h3 class="sec">Q7 &mdash; a <code>CAST</code> the app cannot count</h3>
+<p><code>ah-ofpb.1</code> gave every uncountable <code>PRODUCE</code> the <code>+ ?</code> mark, one rule with no exceptions. <code>CAST</code> is not symmetrical, because most spells legitimately move no items at all and the app knows it: a fireball, earth lore, phantasmal entertainment. Marking those would put a question mark on every mage in the faction.</p>
+<div class="card"><div class="concept"><b>A &mdash; mark only what could not be worked out.</b> A spell the ruleset has no entry for, a bare <code>CAST</code>, and a transmutation naming a material that will not resolve. A spell that is known to create and consume nothing is silent.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:230px">ORDER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8920</td><td><code>cast Fireball</code></td><td class="colhi cellbox"><span class="clip">40 HERB, 900 SILV</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8921</td><td><code>cast Construct_Gate</code> &mdash; $1000, makes a Gate</td><td class="colhi cellbox"><span class="clip">40 HERB, 900 SILV</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8922</td><td><code>cast Enchnat_Swords</code> &mdash; a typo</td><td class="colhi cellbox"><span class="clip">20 SWOR <span class="unk">+ ?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8923</td><td><code>cast</code> &mdash; naming no spell</td><td class="colhi cellbox"><span class="clip">20 SWOR <span class="unk">+ ?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8924</td><td><code>cast Transmutation 3 grubs</code></td><td class="colhi cellbox"><span class="clip">40 STON <span class="unk">+ ?</span></span></td></tr>
+</tbody></table>
+<ul class="notes"><li>The mark keeps meaning &ldquo;could not be worked out&rdquo;, and stays off the many spells that correctly move nothing.</li><li>Row 8921 is silent because a Gate is not an item and the $1000 is the SILVER column&rsquo;s, which ITEMS has never tracked.</li><li class="con">Two rules for the reader to hold: a <code>PRODUCE</code> the app cannot price is marked, a <code>CAST</code> it can price at zero is not.</li></ul></div></div>
+<div class="card"><div class="concept"><b>B &mdash; mark every <code>CAST</code> whose effect on items the app has not modelled</b>, including the spells known to move nothing.</div>
+<div class="stage"><table class="units">
+<thead><tr><th style="width:26px"></th><th style="width:60px">ID</th><th style="width:230px">ORDER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8920</td><td><code>cast Fireball</code></td><td class="colhi cellbox"><span class="clip">40 HERB, 900 SILV <span class="unk">+ ?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">8921</td><td><code>cast Construct_Gate</code></td><td class="colhi cellbox"><span class="clip">40 HERB, 900 SILV <span class="unk">+ ?</span></span></td></tr>
+</tbody></table>
+<ul class="notes"><li>One rule, identical to <code>PRODUCE</code>&rsquo;s.</li><li class="con">Every combat mage, every scout with earth lore and every entertainer-mage carries a question mark for ever, about nothing.</li></ul></div></div>
+
+<h3 class="sec">Q8 &mdash; I think the summons should be their own bead</h3>
+<p>With <code>1..2n</code> in, this bead now has two unrelated sources of a range and one of them needs work the ruleset cannot yet support.</p>
+<div class="stage"><table class="data">
+<thead><tr><th>What</th><th>Where the range comes from</th><th>What it needs</th></tr></thead>
+<tbody>
+<tr><td>The 24 priced spells, and 5 of the summons</td><td class="t">floor and ceiling of <code>percent &times; level</code></td><td>Data the ruleset already has. Arithmetic only.</td></tr>
+<tr><td class="t">WOLF, BIRD, SUSK, RAIS</td><td class="t">2&times;num coin flips, min 1</td><td>A new field on <code>CastOutput</code>, a new scraper pattern for the word &ldquo;average&rdquo;, a ruleset regeneration, and the control caps &mdash; <code>level&sup2;&times;4</code> for wolves, <code>(level&minus;2)&sup2;&times;2</code> for eagles, which bind once a mage has been summoning for a few months.</td></tr>
+</tbody></table></div>
+<ul class="notes" style="margin-top:12px">
+<li><b>Split.</b> This bead ships the column moving for every cast, with the four averaging summons showing their step-1 figure and no coin-flip range yet; a sibling bead adds <code>1..2n</code> and the caps. Two smaller passes, and the column starts being useful sooner.</li>
+<li class="n"><b>Or keep it whole</b>, and this becomes a large bead touching the scraper, the ruleset file, the core and the interface in one go &mdash; which is the shape <code>ah-ofpb</code> was split up to avoid.</li>
+</ul>
+<h3 class="sec">Decided<span class="rec">navigator, 2026-08-26</span></h3><ul class="notes"><li><b>Q5 &rarr; C</b>, crediting is a separate bead; the warnings ship unchanged.</li><li><b>Q6 &rarr; V3</b>, attribution plus the turn order.</li><li><b>Q7 &rarr; A</b>, mark only what could not be worked out.</li><li><b>Q8 &rarr; keep it whole</b>, so the coin-flip summons are in this bead.</li></ul>
+<footer>Turn order from <code>rules/sequenceofevents</code>. The four &ldquo;average&rdquo; skills confirmed word for word against <code>data/WOLF</code>, <code>data/BIRD</code>, <code>data/SUSK</code> and <code>data/RAIS</code>; the control caps quoted from the same entries. Every ITEMS cell drawn here uses the current rendering: <code>italic text-brass</code> for a projection, a dim <code>+ ?</code> for something uncounted. The <code>1..2n</code> arithmetic is yours, from the engine, and is not on either committed page.</footer>
+</main></body></html>
