@@ -114,7 +114,8 @@ describe("a unit carried away by a sailing fleet", () => {
         uncounted: [],
         takenUnshown: [],
         produced: [],
-        built: []
+        built: [],
+        created: []
       }
     ]
   });
@@ -192,7 +193,8 @@ describe("the structure column", () => {
             uncounted: [],
             takenUnshown: [],
             produced: [],
-            built: []
+            built: [],
+            created: []
           }
         ]
       }
@@ -724,6 +726,7 @@ describe("the items column", () => {
         takenUnshown: [],
         produced: [],
         built: [],
+        created: [],
         ...previewOverrides
       }
     ]
@@ -826,6 +829,29 @@ describe("the items column", () => {
     expect(markup).not.toContain("italic text-brass");
     expect(markup).not.toContain('data-predicted="true"');
   });
+
+  // `ah-ofpb.5`. A cast's creation is a projection like any other PREDICTED figure, and a range
+  // gets no ` + ?` mark - `unit.uncounted` alone still drives that span.
+  it("shows a cast creation in the projected item list", () => {
+    const markup = draw(
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 3, name: "runesword", tag: "RUNE" }] })] }) }),
+      previewOf(
+        {
+          unitId: "1",
+          items: [{ amount: 3, name: "runesword", tag: "RUNE" }]
+        },
+        {
+          changes: [{ field: "items", original: "0 RUNE" }],
+          created: [{ fewest: 2, most: 3, tag: "RUNE", summoned: false }]
+        }
+      )
+    );
+
+    expect(markup).toContain('data-predicted="true"');
+    expect(markup).toContain("italic text-brass");
+    expect(markup).toContain("2-3 RUNE");
+    expect(markup).not.toContain(" + ?");
+  });
 });
 
 describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
@@ -846,6 +872,7 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
         takenUnshown: [],
         produced: [],
         built: [],
+        created: [],
         ...previewOverrides
       }
     ]

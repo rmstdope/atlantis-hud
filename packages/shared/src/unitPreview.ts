@@ -1,5 +1,6 @@
 import type {
   BuildSpend,
+  CreatedItem,
   FieldChange,
   ItemAmount,
   ProducedItem,
@@ -9,7 +10,7 @@ import type {
   UnitPreviewStatus,
   UnitSilver
 } from "@atlantis/core-client";
-import { productionCapSentence } from "./unitTooltip";
+import { castCapSentence, productionCapSentence } from "./unitTooltip";
 
 /**
  * How the orders preview folds into the units table.
@@ -45,6 +46,8 @@ export type PreviewedUnit = ReportUnit & {
   produced?: ProducedItem[];
   /** What this unit's BUILD orders spend this month (`ah-ofpb.2`). */
   built?: BuildSpend[];
+  /** What this unit's CAST orders create this month (`ah-ofpb.5`). */
+  created?: CreatedItem[];
 };
 
 /**
@@ -79,7 +82,8 @@ export function mergePreview(
       uncounted: previewed.uncounted,
       takenUnshown: previewed.takenUnshown,
       produced: previewed.produced,
-      built: previewed.built
+      built: previewed.built,
+      created: previewed.created
     };
   });
 
@@ -95,7 +99,8 @@ export function mergePreview(
       uncounted: previewed.uncounted,
       takenUnshown: previewed.takenUnshown,
       produced: previewed.produced,
-      built: previewed.built
+      built: previewed.built,
+      created: previewed.created
     });
   }
 
@@ -113,9 +118,25 @@ export function changeFor(
 /**
  * The ITEMS cell's text: the same formatting the report uses, in one place so the cell and its
  * hover cannot drift apart (`ah-agbm`).
+ *
+ * `created` is what a CAST brings that the game leaves partly to chance: the amounts in `items`
+ * are already the most the unit may end with, so each entry's low end is that figure less the
+ * part that rests on a chance (`ah-ofpb.5`).
  */
-export function formatItems(items: readonly ItemAmount[]): string {
-  return items.map((item) => `${item.amount} ${item.tag}`).join(", ");
+export function formatItems(
+  items: readonly ItemAmount[],
+  created: readonly CreatedItem[] = []
+): string {
+  const shortfall = new Map<string, number>();
+  for (const item of created) {
+    shortfall.set(item.tag, (shortfall.get(item.tag) ?? 0) + (item.most - item.fewest));
+  }
+  return items
+    .map((item) => {
+      const gap = shortfall.get(item.tag) ?? 0;
+      return gap > 0 ? `${item.amount - gap}-${item.amount} ${item.tag}` : `${item.amount} ${item.tag}`;
+    })
+    .join(", ");
 }
 
 /**
@@ -139,15 +160,19 @@ export function itemsTooltip(
   const takenUnshown = unit.takenUnshown ?? [];
   const produced = unit.produced ?? [];
   const built = unit.built ?? [];
+  const created = unit.created ?? [];
   const uncounted = unit.uncounted ?? [];
   const capSentence = productionCapSentence(silver);
+  const castCap = castCapSentence(silver);
   if (
     !change &&
     takenUnshown.length === 0 &&
     produced.length === 0 &&
     built.length === 0 &&
+    created.length === 0 &&
     uncounted.length === 0 &&
-    capSentence === undefined
+    capSentence === undefined &&
+    castCap === undefined
   ) {
     return undefined;
   }
@@ -168,6 +193,13 @@ export function itemsTooltip(
       `Includes ${item.amount} ${item.tag} this unit will produce. Production resolves last, so they cannot be spent this month.`
     );
   }
+  for (const item of created) {
+    const amount = item.fewest === item.most ? `${item.most}` : `${item.fewest}-${item.most}`;
+    const verb = item.summoned ? "summon" : "create by casting";
+    lines.push(
+      `Includes ${amount} ${item.tag} this unit will ${verb}. Casting resolves after GIVE, so they cannot be given away this month.`
+    );
+  }
   if (capSentence !== undefined) {
     lines.push(capSentence);
   }
@@ -186,6 +218,9 @@ export function itemsTooltip(
         : `${spend.place} needs ${spend.amount} more units of work`;
       lines.push(`${needs}, not the ${spend.couldDo} its men could do.`);
     }
+  }
+  if (castCap !== undefined) {
+    lines.push(castCap);
   }
   for (const order of uncounted) {
     lines.push(`and more that cannot be counted: ${order}`);

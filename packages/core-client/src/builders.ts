@@ -258,6 +258,7 @@ export function aUnitSilver(overrides: Partial<UnitSilver> = {}): UnitSilver {
     castMadeNamed: null,
     castWanted: 0,
     castCappedBy: null,
+    castSummons: false,
     formed: null,
     ...overrides
   };

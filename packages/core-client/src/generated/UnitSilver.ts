@@ -260,6 +260,12 @@ castWanted: number,
  */
 castCappedBy: ProductionCap | null, 
 /**
+ * Whether this unit's `CAST` order summons rather than makes, which decides one word in the
+ * cap sentence: "not the 12 its level could **summon**" against "could **make**"
+ * (`ah-ofpb.5`). `false` for a unit with no priceable cast.
+ */
+castSummons: boolean, 
+/**
  * Set when this unit is not one the report shows but one this month's `FORM` orders create -
  * see [`FormedSubject`]. The interface names the unit by its alias and sends a click to
  * `formed_by`, since a unit that does not exist cannot be selected.

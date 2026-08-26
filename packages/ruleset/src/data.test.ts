@@ -605,7 +605,15 @@ describe("parseSkillReference", () => {
     const skills = parseSkillReference(DATA_HTML);
 
     expect(skills.ESWO.cast?.creates).toEqual([
-      { tag: "MSWO", level: 1, percentPerLevel: 500, levelOffset: 0 }
+      {
+        tag: "MSWO",
+        level: 1,
+        percentPerLevel: 500,
+        levelOffset: 0,
+        averaged: false,
+        summoned: false,
+        control: null
+      }
     ]);
   });
 
@@ -617,7 +625,15 @@ describe("parseSkillReference", () => {
     const skills = parseSkillReference(DATA_HTML);
 
     expect(skills.CRPA.cast?.creates).toEqual([
-      { tag: "AMPR", level: 1, percentPerLevel: 100, levelOffset: 0 }
+      {
+        tag: "AMPR",
+        level: 1,
+        percentPerLevel: 100,
+        levelOffset: 0,
+        averaged: false,
+        summoned: false,
+        control: null
+      }
     ]);
   });
 
@@ -684,8 +700,33 @@ describe("parseSkillReference", () => {
     expect(skills.WOLF.cast).toEqual({
       costs: [],
       transmute: {},
-      creates: [{ tag: "WOLF", level: 1, percentPerLevel: 200, levelOffset: 0 }]
+      creates: [
+        {
+          tag: "WOLF",
+          level: 1,
+          percentPerLevel: 200,
+          levelOffset: 0,
+          averaged: true,
+          summoned: true,
+          control: { multiplier: 4, offset: 0, exponent: 2 }
+        }
+      ]
     });
+  });
+
+  /**
+   * `data/WOLF` states everything this bead's ruleset fields exist for in one paragraph: an
+   * averaged summon with a squared-times control cap (`ah-ofpb.5`).
+   */
+  it("reads what a summoning spell states: averaged, summoned and its control cap", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "A mage may summon a number of wolves averaging 200 percent times his skill level, and
+    //  control a total number of his skill level squared times 4 wolves."
+    const wolf = skills.WOLF.cast?.creates[0];
+    expect(wolf?.averaged).toBe(true);
+    expect(wolf?.summoned).toBe(true);
+    expect(wolf?.control).toEqual({ multiplier: 4, offset: 0, exponent: 2 });
   });
 
   /**
@@ -698,8 +739,31 @@ describe("parseSkillReference", () => {
     const skills = parseSkillReference(DATA_HTML);
 
     expect(skills.BIRD.cast?.creates).toEqual([
-      { tag: "EAGL", level: 3, percentPerLevel: 100, levelOffset: -2 }
+      {
+        tag: "EAGL",
+        level: 3,
+        percentPerLevel: 100,
+        levelOffset: -2,
+        averaged: true,
+        summoned: true,
+        control: { multiplier: 2, offset: -2, exponent: 2 }
+      }
     ]);
+  });
+
+  /**
+   * `data/BIRD` is the one cap sentence on the page that spells its multiplier as a word rather
+   * than a digit - "squared, times two" - and the one creation with a `levelOffset`, both from the
+   * same sentence: "may control a number equal to his skill level minus 2, squared, times two."
+   */
+  it("reads the eagle cap from a multiplier spelled as a word", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.BIRD.cast?.creates[0]?.control).toEqual({
+      multiplier: 2,
+      offset: -2,
+      exponent: 2
+    });
   });
 
   it("reads what transmutation turns into what, across levels", () => {
@@ -725,14 +789,23 @@ describe("parseSkillReference", () => {
   it("reads what transmutation creates, and the level each output arrives at", () => {
     const skills = parseSkillReference(DATA_HTML);
 
+    const transmuted = (tag: string, level: number) => ({
+      tag,
+      level,
+      percentPerLevel: 200,
+      levelOffset: 0,
+      averaged: false,
+      summoned: false,
+      control: null
+    });
     expect(skills.TRNS.cast?.creates).toEqual([
-      { tag: "ROOT", level: 1, percentPerLevel: 200, levelOffset: 0 },
-      { tag: "MITH", level: 1, percentPerLevel: 200, levelOffset: 0 },
-      { tag: "IRWD", level: 2, percentPerLevel: 200, levelOffset: 0 },
-      { tag: "FLOA", level: 3, percentPerLevel: 200, levelOffset: 0 },
-      { tag: "YEW", level: 4, percentPerLevel: 200, levelOffset: 0 },
-      { tag: "WING", level: 5, percentPerLevel: 200, levelOffset: 0 },
-      { tag: "ADMT", level: 5, percentPerLevel: 200, levelOffset: 0 }
+      transmuted("ROOT", 1),
+      transmuted("MITH", 1),
+      transmuted("IRWD", 2),
+      transmuted("FLOA", 3),
+      transmuted("YEW", 4),
+      transmuted("WING", 5),
+      transmuted("ADMT", 5)
     ]);
     expect(skills.TRNS.cast?.creates.map((made) => made.tag)).toEqual(
       Object.keys(skills.TRNS.cast?.transmute ?? {})
@@ -765,7 +838,15 @@ describe("parseSkillReference", () => {
     // "create ring of invisibility [CRRI] 1: ... has a 20 percent times their level chance to
     //  create a ring of invisibility [RING] via magic at a cost of 600 silver [SILV]."
     expect(skills.CRRI.cast?.creates).toEqual([
-      { tag: "RING", level: 1, percentPerLevel: 20, levelOffset: 0 }
+      {
+        tag: "RING",
+        level: 1,
+        percentPerLevel: 20,
+        levelOffset: 0,
+        averaged: false,
+        summoned: false,
+        control: null
+      }
     ]);
   });
 
@@ -775,6 +856,66 @@ describe("parseSkillReference", () => {
       "level in whatnots. This skill costs 100 silver per month of study.</pre></body></html>";
 
     expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
+  });
+
+  /**
+   * `data/DRAG`: "the total number of dragons that a mage may control at one time is equal to
+   * his skill level" - the cap stated as the bare level, `{multiplier: 1, offset: 0, exponent: 1}`.
+   */
+  it("reads a cap stated as the bare level", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.DRAG.cast?.creates[0]?.control).toEqual({
+      multiplier: 1,
+      offset: 0,
+      exponent: 1
+    });
+    expect(skills.DRAG.cast?.creates[0]?.summoned).toBe(true);
+  });
+
+  /**
+   * `data/SUBA`: "may only summon a balrog if one is not already under his control" - a flat cap
+   * of one, `{multiplier: 1, offset: 0, exponent: 0}`.
+   */
+  it("reads a cap stated as only one at a time", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.SUBA.cast?.creates[0]?.control).toEqual({
+      multiplier: 1,
+      offset: 0,
+      exponent: 0
+    });
+  });
+
+  /**
+   * A creation whose control sentence this parser cannot read is the page having changed shape,
+   * and must stay loud - the same posture the creation clause itself already takes.
+   */
+  it("a creation whose control sentence cannot be read stops the scrape", () => {
+    const html =
+      "<html><body><pre>whatnot [WHAT] 1: A mage with this skill may create 3 times their " +
+      "level in whatnots [WHAT] via magic, and may control a mysterious number of them. This " +
+      "skill costs 100 silver per month of study.</pre></body></html>";
+
+    expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
+  });
+
+  /**
+   * `data/BIRD` level 1 is about scouting and talks about controlling small birds while creating
+   * nothing - the `CONTROL_STATED` guard must not fire on a paragraph with no creation to check.
+   * Isolated from the fixture's own level 1 paragraph rather than asserted through the merged
+   * `skills.BIRD.cast`, which level 3's real eagle creation would make non-null regardless.
+   */
+  it("a paragraph that controls without creating is not checked", () => {
+    const html =
+      "<html><body><pre>bird lore [BIRD] 1: A mage with Bird Lore may control the birds of the " +
+      "sky. At skill level 1, the mage can control small birds, sending them to an adjacent " +
+      "region to obtain a report on that region. This skill costs 100 silver per month of " +
+      "study.</pre></body></html>";
+
+    expect(() => parseSkillReference(html)).not.toThrow();
+    const skills = parseSkillReference(html);
+    expect(skills.BIRD.cast).toBeNull();
   });
 
   /**

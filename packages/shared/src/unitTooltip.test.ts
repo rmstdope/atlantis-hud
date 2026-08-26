@@ -157,9 +157,8 @@ describe("productionCapSentence", () => {
   });
 });
 
-// `castCapSentence` is not exported - the ITEMS hover has no cast cell to share it with
-// (`ah-ofpb.5`), unlike `productionCapSentence` - so this goes through the note itself
-// (`ah-ofpb.4`).
+// `castCapSentence` is exported (`ah-ofpb.5`, so the ITEMS hover can repeat it), but the note
+// itself is still the more complete way to exercise the sentence a unit's SILVER hover shows.
 describe("the cast-capped note (ah-ofpb.4)", () => {
   const castCapped = SILVER_NOTES.find((note) => note.id === "cast-capped");
   if (!castCapped) {
@@ -194,6 +193,22 @@ describe("the cast-capped note (ah-ofpb.4)", () => {
       castCappedBy: null
     });
     expect(castCapped.when(uncapped)).toBe(false);
+  });
+
+  // Round 4's Q13, C1, quoted verbatim: a summon clamped by what the mage may control says "room"
+  // and "summon" rather than "materials"/"silver" and "make" (`ah-ofpb.5`).
+  it("names the room a summon was clamped by", () => {
+    const clamped = facts({
+      castMade: 6,
+      castMadeNamed: "6 wolves",
+      castWanted: 12,
+      castCappedBy: "room",
+      castSummons: true
+    });
+    expect(castCapped.when(clamped)).toBe(true);
+    expect(castCapped.say(clamped)).toBe(
+      "This unit has room for 6 wolves, not the 12 its level could summon."
+    );
   });
 });
 

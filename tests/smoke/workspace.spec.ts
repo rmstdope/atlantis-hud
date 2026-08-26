@@ -4206,6 +4206,24 @@ test("a build that cannot be counted marks the ITEMS cell", async ({ page }) => 
 });
 
 /**
+ * ah-ofpb.5: a CAST now shows what it creates, chance and all. This cannot use the default
+ * turn-71 fixture: that report's five own units carry only observation, stealth and manipulation,
+ * and a cast's count comes from the caster's level, so a skill-less unit summons nothing. `g5f21t23`
+ * unit 1294 "Five of Eight" holds `wolf lore [WOLF] 2` and no wolves, so `CAST Wolf_Lore` exercises
+ * the averaged summon, the range and the hover in one walk.
+ */
+test("a cast creation marks the ITEMS cell as a projection", async ({ page }) => {
+  await loadReport(page, "Cast smoke", readReport("g5f21t23"), "regions");
+  await selectHex(page, "1:36,44");
+  await selectUnit(page, "1294");
+  await fillOrders(page, "CAST Wolf_Lore");
+
+  const itemsCell = page.getByTestId("unit-row-1294").locator('[data-predicted="true"]').first();
+  await expect(itemsCell).toContainText("1-8 WOLF");
+  await expect(itemsCell).toHaveAttribute("title", /this unit will summon/);
+});
+
+/**
  * ah-cp8: a narrow window used to clip the right-hand end of the header (Export, the settings
  * gear) instead of adapting. The header now wraps into two groups, with the actions group
  * dropping to its own right-aligned row when the game-state group has already taken the width.

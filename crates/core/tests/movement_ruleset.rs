@@ -5,7 +5,7 @@
 //! what the game says. Both are worth a failing test.
 
 use atlantis_hud_core::movement::rules::{
-    CastInput, CastOutput, ItemKind, MovementMode, Ruleset, RulesetError,
+    CastInput, CastOutput, ControlCap, ItemKind, MovementMode, Ruleset, RulesetError,
 };
 
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
@@ -431,7 +431,10 @@ fn reads_what_a_cast_creates() {
             tag: "MSWO".into(),
             level: 1,
             percent_per_level: 500,
-            level_offset: 0
+            level_offset: 0,
+            averaged: false,
+            summoned: false,
+            control: None
         }]
     );
 
@@ -481,9 +484,68 @@ fn reads_what_a_cast_creates() {
             tag: "WOLF".into(),
             level: 1,
             percent_per_level: 200,
-            level_offset: 0
+            level_offset: 0,
+            averaged: true,
+            summoned: true,
+            control: Some(ControlCap {
+                multiplier: 4,
+                offset: 0,
+                exponent: 2
+            })
         }]
     );
+
+    // BIRD, DRAG and SUBA are the other three skills that state a control cap on the page - see
+    // this test's own doc comment for why nothing here is charged or shown yet.
+    let bird_cap = bird_creates
+        .iter()
+        .find(|made| made.tag == "EAGL")
+        .expect("BIRD creates eagles")
+        .control
+        .clone()
+        .expect("BIRD states a control cap");
+    assert_eq!(
+        bird_cap,
+        ControlCap {
+            multiplier: 2,
+            offset: -2,
+            exponent: 2
+        }
+    );
+    assert!(eagl.summoned);
+    assert!(eagl.averaged);
+
+    let drag = ruleset
+        .find_skill("DRAG")
+        .expect("DRAG is in the catalogue");
+    let drag_creates = &drag.cast.as_ref().expect("DRAG has a casting cost").creates;
+    assert_eq!(drag_creates.len(), 1);
+    assert_eq!(
+        drag_creates[0].control,
+        Some(ControlCap {
+            multiplier: 1,
+            offset: 0,
+            exponent: 1
+        })
+    );
+    assert!(drag_creates[0].summoned);
+    assert!(!drag_creates[0].averaged);
+
+    let suba = ruleset
+        .find_skill("SUBA")
+        .expect("SUBA is in the catalogue");
+    let suba_creates = &suba.cast.as_ref().expect("SUBA has a casting cost").creates;
+    assert_eq!(suba_creates.len(), 1);
+    assert_eq!(
+        suba_creates[0].control,
+        Some(ControlCap {
+            multiplier: 1,
+            offset: 0,
+            exponent: 0
+        })
+    );
+    assert!(suba_creates[0].summoned);
+    assert!(!suba_creates[0].averaged);
 }
 
 /// A ruleset from before casting costs were scraped must still load: the shell serves whatever

@@ -762,7 +762,7 @@ function UnitRow({
   renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
 }) {
   const skills = unit.skills.map((skill) => `${skill.tag} ${skill.level} (${skill.points})`).join(", ");
-  const items = formatItems(unit.items);
+  const items = formatItems(unit.items, unit.created);
 
   // Which cells the orders changed, so each one can say so and show what the report said.
   const nameChange = changeFor(unit, "name");
