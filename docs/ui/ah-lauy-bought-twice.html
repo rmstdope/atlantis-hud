@@ -1,0 +1,173 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>ah-lauy — the same goods bought twice in one block</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; margin-bottom:10px; } h1 span { color:var(--brass); }
+  p.lead { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h2.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h2.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .banner { background:var(--raised); border-left:3px solid var(--select); padding:11px 14px; margin:16px 0;
+    font-size:13.5px; color:var(--ink-soft); max-width:104ch; }
+  .banner strong { color:var(--ink); }
+  .row { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:12px 14px; margin:12px 0; overflow-x:auto; }
+  p.cap { color:var(--ink-dim); font-size:11px; letter-spacing:1.3px; text-transform:uppercase; margin-bottom:8px; }
+  table.units { width:100%; border-collapse:collapse; font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; min-width:600px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:8px 12px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  td.num { text-align:right; font-family:'SF Mono',Menlo,monospace; }
+  td.ord { font-family:'SF Mono',Menlo,monospace; font-size:11.5px; color:var(--ink-soft); white-space:pre; }
+  .bad { color:var(--danger); } .ok { color:var(--ok); } .dim { color:var(--ink-dim); }
+  .editor { background:#0d1219; border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:74ch; white-space:pre; line-height:1.9; }
+  .editor .u { text-decoration:underline wavy var(--brass); text-decoration-thickness:1.5px; text-underline-offset:4px; color:var(--ink); }
+  .warn { background:var(--raised); border-left:3px solid var(--brass); padding:9px 13px; font-family:system-ui,sans-serif;
+    font-size:12.5px; color:var(--ink); max-width:92ch; margin:8px 0 0; }
+  .warn .code { color:var(--ink-dim); font-family:'SF Mono',Menlo,monospace; font-size:10.5px;
+    letter-spacing:1.1px; text-transform:uppercase; display:block; margin-bottom:4px; }
+  .none { color:var(--ink-dim); font-style:italic; font-size:12.5px; margin:8px 0 0; }
+  table.cases { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:8px; }
+  table.cases th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.cases td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  table.cases td.o { font-family:'SF Mono',Menlo,monospace; font-size:11px; color:var(--ink-soft); white-space:pre; }
+  .tab { background:var(--panel); border:1px solid var(--edge); border-radius:6px; max-width:640px; font-family:system-ui,sans-serif; }
+  .tab .grp { color:var(--brass); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; padding:10px 14px 4px; }
+  .tab .item { display:flex; gap:10px; padding:8px 14px; border-top:1px solid rgba(38,48,61,.6); }
+  .tab .box { width:13px; height:13px; border:1px solid var(--brass); border-radius:2px; background:var(--brass); flex:none; margin-top:3px; }
+  .tab .t { font-size:12.5px; color:var(--ink); } .tab .d { font-size:11.5px; color:var(--ink-dim); }
+  .tab .new { color:var(--ok); font-size:10px; letter-spacing:1.2px; text-transform:uppercase; margin-left:6px; }
+  .hover { background:#0d1219; border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; color:var(--ink); max-width:70ch; line-height:1.6; }
+  .hover .hl { color:var(--brass); }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:900px) { .two { grid-template-columns:1fr; } }
+</style></head><body>
+<header>
+<h1>ah-lauy &mdash; <span>the chosen design</span>: the same goods bought twice in one block</h1>
+<p class="lead">Everything Option A does, and one thing more: a <b>finding</b> on the line itself, so
+a dead <code>BUY</code> is underlined in the orders editor and listed in the problems panel &mdash;
+the way <code>nothing-left-to-sell</code> already treats the selling side. That is the only
+difference between the two options, and it is the whole question.</p>
+</header>
+<main>
+<div class="banner" style="border-left-color:#7fb069"><strong>Chosen, over three rounds with the
+navigator.</strong> A unit's <code>BUY</code> lines for one item are priced against a running
+per-tag total, so a second line can only buy what the lines above it left &mdash; of the market line
+and of this unit's settled share of it alike. The settlement counts an unbounded claim
+<em>once per unit</em> rather than once per line, so two <code>BUY ALL</code> lines no longer win a
+share against a faction-mate that they are not owed, and no longer push a line into a false
+<strong>region-pool-oversubscribed</strong>. A line that finds nothing left carries a new
+<strong>nothing-left-to-buy</strong> warning &mdash; on any <code>BUY</code>, exact or unbounded
+&mdash; and the <code>BUY ALL</code> hover names the unit's own earlier order rather than blaming
+the market or a faction-mate.
+<br><br>
+<strong>Rejected:</strong> fixing the numbers and changing no wording, which leaves a second line
+saying &ldquo;your other units in this region have claimed all 5 this market has&rdquo; where there
+are no other units; a hover sentence with no warning behind it (round 1, option A), which would
+leave <code>BUY 5 grain</code> written twice silently corrected and never mentioned, since exact
+lines have no hover at all; letting <em>silver</em> keep narrating a line that its own earlier order
+had already emptied; and naming the market line rather than the unit's share in the sentence, which
+claims a size the unit never had to buy.</div>
+
+
+<div class="banner"><strong>Why it might be worth a warning.</strong> The hover is only seen by a
+player who goes looking for it, on the one unit, in the one column. A dead <code>BUY</code> line is a
+line the player <em>meant</em> to do something and it does nothing &mdash; and unlike the hover, a
+finding reaches them without their asking, underlines the exact line, and covers the
+<code>BUY 5 grain</code> written twice, which has no hover at all.
+<br><br>
+<strong>Why it might not.</strong> It is a 35th warning code and a 35th switch, for a shape that only
+arises from an editing slip; the corrected numbers may be all the player needs.</div>
+
+<h2 class="sec">1 &middot; The unit table, today and after</h2>
+<p>Identical to Option A &mdash; the arithmetic is the same fix. The market's <b>For Sale</b> line is
+<b>5 grain at $12</b> and the merchant holds <b>100 silver</b>.</p>
+<div class="row">
+<p class="cap">Today</p>
+<table class="units">
+<tr><th>Unit</th><th>Orders</th><th style="text-align:right">Silver</th><th style="text-align:right">Month end</th><th>Items</th></tr>
+<tr><td>Merchant (2390)</td><td class="ord">BUY ALL grain
+BUY ALL grain</td><td class="num bad">&minus;96</td><td class="num bad">4</td><td class="bad">+8 grain</td></tr>
+</table>
+</div>
+<div class="row" style="border-color:#3d6b52">
+<p class="cap" style="color:var(--ok)">After</p>
+<table class="units">
+<tr><th>Unit</th><th>Orders</th><th style="text-align:right">Silver</th><th style="text-align:right">Month end</th><th>Items</th></tr>
+<tr><td>Merchant (2390)</td><td class="ord">BUY ALL grain
+BUY ALL grain</td><td class="num ok">&minus;60</td><td class="num ok">40</td><td class="ok">+5 grain</td></tr>
+</table>
+</div>
+
+<h2 class="sec">2 &middot; The orders editor, which is what this option adds</h2>
+<p>The second line is underlined, and the problems panel carries the finding. The hover sentence from
+Option A is still there, unchanged &mdash; the two say the same thing in the two places a player looks.</p>
+<div class="row">
+<p class="cap">Orders editor</p>
+<div class="editor">unit 2390
+  BUY ALL grain
+  <span class="u">BUY ALL grain</span></div>
+<div class="warn"><span class="code">nothing-left-to-buy</span>
+an earlier order of its own has already bought all 5 grain this market has, so this buys nothing</div>
+</div>
+<div class="row">
+<p class="cap">And the exact form, which Option A leaves silent</p>
+<div class="editor">unit 2390
+  BUY 5 grain
+  <span class="u">BUY 5 grain</span></div>
+<div class="warn"><span class="code">nothing-left-to-buy</span>
+an earlier order of its own has already bought all 5 grain this market has, so this buys nothing</div>
+</div>
+
+<h2 class="sec">3 &middot; The states the happy path hides</h2>
+<p>When the finding fires, and &mdash; more importantly &mdash; when it does not. Market line
+<b>5 grain at $12</b> throughout.</p>
+<table class="cases">
+<tr><th style="width:26%">The case</th><th style="width:30%">Orders &amp; purse</th><th>What fires</th></tr>
+<tr><td>Its own line took the lot</td><td class="o">100 silver
+BUY ALL grain  &rarr; 5
+BUY ALL grain  &rarr; 0</td><td><b>nothing-left-to-buy</b> on line 2, and the hover sentence.</td></tr>
+<tr><td>The exact form, twice</td><td class="o">100 silver
+BUY 5 grain    &rarr; 5
+BUY 5 grain    &rarr; 0</td><td><b>nothing-left-to-buy</b> on line 2. <span class="dim">No hover &mdash; exact lines have never had one.</span></td></tr>
+<tr><td>The unit simply ran out of silver</td><td class="o">36 silver
+BUY ALL grain  &rarr; 3
+BUY ALL grain  &rarr; 0</td><td class="dim">Nothing. The market still has grain; the purse is empty, and the hover already says so. A warning here would fire on every ordinary <code>BUY ALL</code> that spends up.</td></tr>
+<tr><td>A faction-mate took it all</td><td class="o">2390: share 0 of 5
+BUY ALL grain  &rarr; 0</td><td class="dim">Nothing new. <code>region-pool-oversubscribed</code> already speaks for the hex, and the hover names the competition.</td></tr>
+<tr><td>The market does not sell it</td><td class="o">BUY ALL mithril</td><td class="dim">Nothing new &mdash; <code>not-traded-here</code> already fires, and two warnings on one line is worse than one.</td></tr>
+<tr><td>Its own line took <b>part</b></td><td class="o">100 silver, share 4 of 5
+BUY 3 grain    &rarr; 3
+BUY ALL grain  &rarr; 1</td><td class="dim">Nothing. The second line bought something, so it is not dead.</td></tr>
+</table>
+
+<h2 class="sec">4 &middot; The settings tab</h2>
+<p>A 35th switch, in the existing <b>Markets</b> group, beside the selling-side one it mirrors.</p>
+<div class="row">
+<div class="tab">
+<div class="grp">Markets</div>
+<div class="item"><div class="box"></div><div><div class="t">Region pool oversubscribed</div><div class="d">Your units together want more tax, entertainment or trade goods than the region has.</div></div></div>
+<div class="item"><div class="box"></div><div><div class="t">Buying what is not sold</div><div class="d">A BUY or SELL order for something this hex's market does not trade.</div></div></div>
+<div class="item"><div class="box"></div><div><div class="t">Sale with nothing left to sell</div><div class="d">A SELL ALL of goods this month's earlier orders have already moved away.</div></div></div>
+<div class="item"><div class="box"></div><div><div class="t">Purchase with nothing left to buy<span class="new">new</span></div><div class="d">A BUY of goods this unit's own earlier orders have already bought from this market.</div></div></div>
+</div>
+</div>
+
+<h2 class="sec">5 &middot; The settlement, with a faction-mate</h2>
+<p>Unchanged from Option A &mdash; this half of the fix is not a matter of wording. One line of
+<b>30 grain</b>, two own units, 2390 writing <code>BUY ALL grain</code> twice.</p>
+<div class="row">
+<table class="units">
+<tr><th>Unit</th><th>Orders</th><th style="text-align:right">Claims today</th><th style="text-align:right">Gets today</th><th style="text-align:right">Claims after</th><th style="text-align:right">Gets after</th></tr>
+<tr><td>2390</td><td class="ord">BUY ALL grain
+BUY ALL grain</td><td class="num bad">60</td><td class="num bad">20</td><td class="num ok">30</td><td class="num ok">15</td></tr>
+<tr><td>2391</td><td class="ord">BUY ALL grain</td><td class="num">30</td><td class="num bad">10</td><td class="num">30</td><td class="num ok">15</td></tr>
+</table>
+</div>
+</main>
+</body></html>

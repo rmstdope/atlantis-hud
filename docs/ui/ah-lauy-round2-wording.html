@@ -1,0 +1,126 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>ah-lauy — round 2: counts, shared share, and which cause wins</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; margin-bottom:10px; } h1 span { color:var(--brass); }
+  p.lead { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h2.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h2.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .banner { background:var(--raised); border-left:3px solid var(--select); padding:11px 14px; margin:16px 0;
+    font-size:13.5px; color:var(--ink-soft); max-width:104ch; }
+  .banner strong { color:var(--ink); }
+  .row { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:12px 14px; margin:12px 0; overflow-x:auto; }
+  p.cap { color:var(--ink-dim); font-size:11px; letter-spacing:1.3px; text-transform:uppercase; margin-bottom:8px; }
+  table.units { width:100%; border-collapse:collapse; font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; min-width:600px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:8px 12px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  td.num { text-align:right; font-family:'SF Mono',Menlo,monospace; }
+  td.ord { font-family:'SF Mono',Menlo,monospace; font-size:11.5px; color:var(--ink-soft); white-space:pre; }
+  .bad { color:var(--danger); } .ok { color:var(--ok); } .dim { color:var(--ink-dim); }
+  .editor { background:#0d1219; border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:74ch; white-space:pre; line-height:1.9; }
+  .editor .u { text-decoration:underline wavy var(--brass); text-decoration-thickness:1.5px; text-underline-offset:4px; color:var(--ink); }
+  .warn { background:var(--raised); border-left:3px solid var(--brass); padding:9px 13px; font-family:system-ui,sans-serif;
+    font-size:12.5px; color:var(--ink); max-width:92ch; margin:8px 0 0; }
+  .warn .code { color:var(--ink-dim); font-family:'SF Mono',Menlo,monospace; font-size:10.5px;
+    letter-spacing:1.1px; text-transform:uppercase; display:block; margin-bottom:4px; }
+  .none { color:var(--ink-dim); font-style:italic; font-size:12.5px; margin:8px 0 0; }
+  table.cases { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:8px; }
+  table.cases th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.cases td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  table.cases td.o { font-family:'SF Mono',Menlo,monospace; font-size:11px; color:var(--ink-soft); white-space:pre; }
+  .tab { background:var(--panel); border:1px solid var(--edge); border-radius:6px; max-width:640px; font-family:system-ui,sans-serif; }
+  .tab .grp { color:var(--brass); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; padding:10px 14px 4px; }
+  .tab .item { display:flex; gap:10px; padding:8px 14px; border-top:1px solid rgba(38,48,61,.6); }
+  .tab .box { width:13px; height:13px; border:1px solid var(--brass); border-radius:2px; background:var(--brass); flex:none; margin-top:3px; }
+  .tab .t { font-size:12.5px; color:var(--ink); } .tab .d { font-size:11.5px; color:var(--ink-dim); }
+  .tab .new { color:var(--ok); font-size:10px; letter-spacing:1.2px; text-transform:uppercase; margin-left:6px; }
+  .hover { background:#0d1219; border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; color:var(--ink); max-width:70ch; line-height:1.6; }
+  .hover .hl { color:var(--brass); }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:900px) { .two { grid-template-columns:1fr; } }
+</style></head><body>
+<header>
+<h1>ah-lauy &mdash; <span>round 2</span>: the counts, the shared share, and which cause wins</h1>
+<p class="lead">Option B is chosen, and the two sentences are agreed in their simplest form:<br>
+&nbsp;&nbsp;hover &mdash; <b>&ldquo;This unit buys no grain: an earlier order of its own has already bought all 5 this market has.&rdquo;</b><br>
+&nbsp;&nbsp;finding &mdash; <b>&ldquo;an earlier order of its own has already bought all 5 grain this market has, so this buys nothing&rdquo;</b><br>
+Those words are exactly right for one case: the unit had the <em>whole</em> line to itself and its own
+first order took all of it. This page is the four cases where they are not.</p>
+</header>
+<main>
+
+<h2 class="sec">Q1 &middot; When the unit only ever had a share of the line</h2>
+<p>Two own units in the hex. The line is <b>5 grain</b>; 2390's settled share is <b>3</b>, its
+faction-mate holds the other 2. 2390 writes <code>BUY ALL grain</code> twice and is rich. The first
+line takes 3 &mdash; all it could ever have &mdash; and the second takes nothing.
+<b>&ldquo;all 5 this market has&rdquo; is false here</b>: this unit never had 5 to buy.</p>
+<div class="row"><p class="cap">a &mdash; name the share</p>
+<div class="hover">This unit buys <span class="hl">no grain</span>: an earlier order of its own has already bought all <b>3 it can have here</b>.</div>
+<div class="warn" style="margin-top:10px"><span class="code">nothing-left-to-buy</span>
+an earlier order of its own has already bought all 3 grain it can have here, so this buys nothing</div></div>
+<div class="row"><p class="cap">b &mdash; name the share and the competition</p>
+<div class="hover">This unit buys <span class="hl">no grain</span>: an earlier order of its own has already bought all <b>3 of the 5 your units here are splitting</b>.</div>
+<div class="warn" style="margin-top:10px"><span class="code">nothing-left-to-buy</span>
+an earlier order of its own has already bought all 3 grain of the 5 your units here are splitting, so this buys nothing</div></div>
+<div class="row"><p class="cap">c &mdash; keep the shipped competition sentence, say nothing about the earlier line</p>
+<div class="hover">This unit buys <span class="hl">no grain</span>: your other units in this region have claimed all 5 this market has.</div>
+<p class="none">Today's sentence, unchanged. Cheapest, and the only one of the three that does not
+tell the player which of their own lines to delete.</p></div>
+
+<h2 class="sec">Q2 &middot; One grain, and other counts</h2>
+<p>The line is small. Every count the sentence has to survive, in the shape being proposed.</p>
+<table class="cases">
+<tr><th style="width:22%">The line</th><th style="width:39%">Hover</th><th>Finding</th></tr>
+<tr><td><b>1</b> grain, unshared</td><td>This unit buys <b>no grain</b>: an earlier order of its own has already bought <b>the only one</b> this market has.</td><td>an earlier order of its own has already bought <b>the only grain</b> this market has, so this buys nothing</td></tr>
+<tr><td><b>5</b> grain, unshared</td><td>This unit buys <b>no grain</b>: an earlier order of its own has already bought <b>all 5</b> this market has.</td><td>an earlier order of its own has already bought <b>all 5 grain</b> this market has, so this buys nothing</td></tr>
+<tr><td><b>5</b> grain, share of <b>1</b></td><td>This unit buys <b>no grain</b>: an earlier order of its own has already bought <b>the only one</b> it can have here.</td><td>an earlier order of its own has already bought <b>the only grain</b> it can have here, so this buys nothing</td></tr>
+<tr><td><b>5</b> grain, share of <b>3</b></td><td>This unit buys <b>no grain</b>: an earlier order of its own has already bought <b>all 3</b> it can have here.</td><td>an earlier order of its own has already bought <b>all 3 grain</b> it can have here, so this buys nothing</td></tr>
+<tr><td>plate armor, <b>2</b>, unshared</td><td>This unit buys <b>no plate armor</b>: an earlier order of its own has already bought <b>all 2</b> this market has.</td><td>an earlier order of its own has already bought <b>all 2 plate armor</b> this market has, so this buys nothing</td></tr>
+</table>
+<p class="none">Note the last row: the finding names the goods and so needs the plural
+(&ldquo;5&nbsp;grain&rdquo;, &ldquo;2&nbsp;plate&nbsp;armor&rdquo;), which the core already
+pluralises for the selling side. The hover does not repeat the goods &mdash; it named them three
+words earlier &mdash; so it says &ldquo;all&nbsp;5&rdquo; and &ldquo;the only one&rdquo;.</p>
+
+<h2 class="sec">Q3 &middot; When the purse is empty too</h2>
+<p>A dead second line can have two causes at once. The unit's own first order took its whole share
+<em>and</em> spent its last silver. Only one sentence is shown, so one cause has to win.</p>
+<table class="cases">
+<tr><th style="width:24%">Orders &amp; purse</th><th style="width:38%">&ldquo;Its own earlier line&rdquo; wins</th><th>&ldquo;Silver&rdquo; wins (today's tie-break)</th></tr>
+<tr><td class="o">60 silver, line of 5 at $12
+BUY ALL grain  &rarr; 5
+BUY ALL grain  &rarr; 0</td>
+<td>This unit buys <b>no grain</b>: an earlier order of its own has already bought all 5 this market has.<br><span class="dim">Points at the line to delete.</span></td>
+<td>This unit buys <b>no grain</b>: it holds 0 silver and one costs 12.<br><span class="dim">True, but it is true of every spent-up <code>BUY ALL</code>, and says nothing about the duplicate.</span></td></tr>
+</table>
+<p class="none">And the case that is <em>not</em> in doubt: 36 silver against a line of 5 &mdash; the
+first line buys 3 and stops for want of silver, the market still has 2. Nothing was bought twice,
+the shipped silver sentence stands, and <b>no finding fires</b>. Both options agree there.</p>
+
+<h2 class="sec">Q4 &middot; The switch in the settings tab</h2>
+<p>Its title and description, as they will read in Settings &rarr; Markets, beside the selling-side
+switch it mirrors.</p>
+<div class="two">
+<div class="row"><p class="cap">a</p>
+<div class="tab">
+<div class="grp">Markets</div>
+<div class="item"><div class="box"></div><div><div class="t">Sale with nothing left to sell</div><div class="d">A SELL ALL of goods this month's earlier orders have already moved away.</div></div></div>
+<div class="item"><div class="box"></div><div><div class="t">Purchase with nothing left to buy<span class="new">new</span></div><div class="d">A BUY of goods this unit's own earlier orders have already bought from this market.</div></div></div>
+</div></div>
+<div class="row"><p class="cap">b</p>
+<div class="tab">
+<div class="grp">Markets</div>
+<div class="item"><div class="box"></div><div><div class="t">Sale with nothing left to sell</div><div class="d">A SELL ALL of goods this month's earlier orders have already moved away.</div></div></div>
+<div class="item"><div class="box"></div><div><div class="t">Buying the same goods twice<span class="new">new</span></div><div class="d">A BUY whose goods an earlier order of the same unit has already taken from this market.</div></div></div>
+</div></div>
+</div>
+</main>
+</body></html>

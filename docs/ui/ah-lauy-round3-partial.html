@@ -1,0 +1,103 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>ah-lauy — round 3: the second line that buys something</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; margin-bottom:10px; } h1 span { color:var(--brass); }
+  p.lead { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h2.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h2.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .banner { background:var(--raised); border-left:3px solid var(--select); padding:11px 14px; margin:16px 0;
+    font-size:13.5px; color:var(--ink-soft); max-width:104ch; }
+  .banner strong { color:var(--ink); }
+  .row { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:12px 14px; margin:12px 0; overflow-x:auto; }
+  p.cap { color:var(--ink-dim); font-size:11px; letter-spacing:1.3px; text-transform:uppercase; margin-bottom:8px; }
+  table.units { width:100%; border-collapse:collapse; font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; min-width:600px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:8px 12px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  td.num { text-align:right; font-family:'SF Mono',Menlo,monospace; }
+  td.ord { font-family:'SF Mono',Menlo,monospace; font-size:11.5px; color:var(--ink-soft); white-space:pre; }
+  .bad { color:var(--danger); } .ok { color:var(--ok); } .dim { color:var(--ink-dim); }
+  .editor { background:#0d1219; border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:74ch; white-space:pre; line-height:1.9; }
+  .editor .u { text-decoration:underline wavy var(--brass); text-decoration-thickness:1.5px; text-underline-offset:4px; color:var(--ink); }
+  .warn { background:var(--raised); border-left:3px solid var(--brass); padding:9px 13px; font-family:system-ui,sans-serif;
+    font-size:12.5px; color:var(--ink); max-width:92ch; margin:8px 0 0; }
+  .warn .code { color:var(--ink-dim); font-family:'SF Mono',Menlo,monospace; font-size:10.5px;
+    letter-spacing:1.1px; text-transform:uppercase; display:block; margin-bottom:4px; }
+  .none { color:var(--ink-dim); font-style:italic; font-size:12.5px; margin:8px 0 0; }
+  table.cases { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:8px; }
+  table.cases th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.cases td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  table.cases td.o { font-family:'SF Mono',Menlo,monospace; font-size:11px; color:var(--ink-soft); white-space:pre; }
+  .tab { background:var(--panel); border:1px solid var(--edge); border-radius:6px; max-width:640px; font-family:system-ui,sans-serif; }
+  .tab .grp { color:var(--brass); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; padding:10px 14px 4px; }
+  .tab .item { display:flex; gap:10px; padding:8px 14px; border-top:1px solid rgba(38,48,61,.6); }
+  .tab .box { width:13px; height:13px; border:1px solid var(--brass); border-radius:2px; background:var(--brass); flex:none; margin-top:3px; }
+  .tab .t { font-size:12.5px; color:var(--ink); } .tab .d { font-size:11.5px; color:var(--ink-dim); }
+  .tab .new { color:var(--ok); font-size:10px; letter-spacing:1.2px; text-transform:uppercase; margin-left:6px; }
+  .hover { background:#0d1219; border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; color:var(--ink); max-width:70ch; line-height:1.6; }
+  .hover .hl { color:var(--brass); }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:900px) { .two { grid-template-columns:1fr; } }
+</style></head><body>
+<header>
+<h1>ah-lauy &mdash; <span>round 3</span>: the second line that buys <em>something</em></h1>
+<p class="lead">Everything so far settles the line that buys <b>nothing</b>. There is one state left,
+and today's sentences are wrong in it too: a second line that buys <em>less than it could afford</em>
+because its own earlier line already took part of the stock. It is not dead, so no finding fires
+&mdash; but a sentence is shown, and as things stand it blames the market or a faction-mate for what
+the unit's own first line did.</p>
+</header>
+<main>
+
+<h2 class="sec">Q1 &middot; No competition &mdash; the whole line was the unit's, and its own first order took part of it</h2>
+<p>Line: <b>5 grain at $12</b>, no faction-mate. Purse: <b>100 silver</b> (enough for 8).
+Orders: <code>BUY 3 grain</code> then <code>BUY ALL grain</code>. The second line correctly buys the
+remaining <b>2</b>. What does its sentence say?</p>
+<div class="row"><p class="cap">as it would ship with no further change &mdash; today's "market" sentence</p>
+<div class="hover">This market has <span class="hl">2 grain</span>, not the 8 this unit's silver would buy.</div>
+<p class="none" style="color:var(--danger)">False. This market has 5 grain. Two are left because the
+unit's own line above bought three, and the sentence hides that.</p></div>
+<div class="row"><p class="cap">a &mdash; name the earlier order, keep the silver clause</p>
+<div class="hover">This unit buys <span class="hl">2 grain</span>: its earlier orders have taken the other 3 of the 5 this market has.</div></div>
+<div class="row"><p class="cap">b &mdash; name what is left, in the shipped &ldquo;market&rdquo; cadence</p>
+<div class="hover">This market has <span class="hl">2 grain</span> left after this unit's earlier orders, not the 8 its silver would buy.</div></div>
+<div class="row"><p class="cap">c &mdash; leave it alone</p>
+<div class="hover">This market has <span class="hl">2 grain</span>, not the 8 this unit's silver would buy.</div>
+<p class="none">Accept the inaccuracy. The numbers in the columns are right, and this is a sentence
+about a shape the player is about to delete anyway.</p></div>
+
+<h2 class="sec">Q2 &middot; With competition &mdash; a share of 4, and its own first order took 3 of it</h2>
+<p>Line: <b>5 grain</b>. 2390's settled share is <b>4</b>; a faction-mate holds 1. Purse: 100 silver.
+Orders: <code>BUY 3 grain</code> then <code>BUY ALL grain</code>, which correctly buys <b>1</b>.
+Two facts are competing to be said: the faction-mate, and its own earlier line.</p>
+<div class="row"><p class="cap">as it would ship with no further change &mdash; today's "shared" sentence</p>
+<div class="hover">This unit gets <span class="hl">1</span> of the 5 grain this market has, because your units in this region are competing for it.</div>
+<p class="none" style="color:var(--danger)">Half true. Competition cost it 1 of the 5; its own earlier
+line cost it the other 3, and only the competition is mentioned.</p></div>
+<div class="row"><p class="cap">a &mdash; the earlier order wins, as in Q1a</p>
+<div class="hover">This unit buys <span class="hl">1 grain</span>: its earlier orders have taken the other 3 of the 4 it can have here.</div></div>
+<div class="row"><p class="cap">b &mdash; say both</p>
+<div class="hover">This unit gets <span class="hl">1</span> of the 4 grain it can have here, because your units in this region are competing for it &mdash; and its earlier orders have taken 3 of that.</div></div>
+<div class="row"><p class="cap">c &mdash; leave it alone</p>
+<div class="hover">This unit gets <span class="hl">1</span> of the 5 grain this market has, because your units in this region are competing for it.</div></div>
+
+<h2 class="sec">Settled already &mdash; not in question here</h2>
+<table class="cases">
+<tr><th style="width:34%">Case</th><th>What happens</th></tr>
+<tr><td>Second line buys <b>nothing</b>, unshared line</td><td>Hover: &ldquo;This unit buys <b>no grain</b>: an earlier order of its own has already bought all 5 this market has.&rdquo; &nbsp;Finding: <b>nothing-left-to-buy</b>.</td></tr>
+<tr><td>Second line buys <b>nothing</b>, share of 3</td><td>&ldquo;&hellip; has already bought all <b>3 it can have here</b>.&rdquo; &nbsp;Finding fires.</td></tr>
+<tr><td>Second line buys nothing, <b>and</b> the purse is empty</td><td>The earlier order wins the sentence; the finding fires.</td></tr>
+<tr><td>Second line buys <b>something</b></td><td><b>No finding.</b> It is not a dead line &mdash; only the sentence above is in question.</td></tr>
+<tr><td>First line ran out of <b>silver</b>, market still has stock</td><td>Nothing changes. Shipped silver sentence, no finding.</td></tr>
+<tr><td>Three <code>BUY ALL</code> lines, all after the first dead</td><td>One sentence and one finding <b>per dead line</b>, in document order &mdash; as the selling side does.</td></tr>
+</table>
+</main>
+</body></html>
