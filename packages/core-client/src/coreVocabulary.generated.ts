@@ -37,7 +37,8 @@ export const ADVISORY_CHECK_CODES = [
   "taxed-a-guarded-hex",
   "part-of-hex-shortfall",
   "nothing-left-to-sell",
-  "arrivals-lower-a-skill"
+  "arrivals-lower-a-skill",
+  "items-cannot-be-given"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
