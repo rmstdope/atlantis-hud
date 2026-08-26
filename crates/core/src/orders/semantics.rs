@@ -2304,19 +2304,6 @@ pub(crate) struct UnitItemEffects {
     pub uncounted: Vec<String>,
 }
 
-/// Charges every unit its monthly maintenance, after the orders have run.
-///
-/// Deliberately not through `charge`: upkeep belongs to no order, and `charged_at` is read only to
-/// point a finding at the line that drew a balance down. Deliberately not following the display
-/// setting either (`ah-1wcw.4`) - a display preference must not silently change which warnings
-/// fire, so the check always counts it. A unit whose headcount is a guess is charged nothing rather
-/// than a guess.
-///
-/// Silver the unit earns in the turn's last phase - wages, entertaining, Phantasmal Entertainment -
-/// arrives too late to pay for anything the orders spend but *is* in time for maintenance
-/// (`ah-uwa3`), so it is netted off the fee. Netted off rather than credited to the balance: a
-/// credit would leave the surplus where the orders could spend it, which is the very error this
-/// removes.
 /// What each unit in a hex holds once its whole month has run, in `hex.units` order.
 ///
 /// The ledger's own `balance`, read back as item lists so [`UnitFacts::late`] can borrow from
@@ -2462,6 +2449,19 @@ fn hex_facts<'a>(
         .collect()
 }
 
+/// Charges every unit its monthly maintenance, after the orders have run.
+///
+/// Deliberately not through `charge`: upkeep belongs to no order, and `charged_at` is read only to
+/// point a finding at the line that drew a balance down. Deliberately not following the display
+/// setting either (`ah-1wcw.4`) - a display preference must not silently change which warnings
+/// fire, so the check always counts it. A unit whose headcount is a guess is charged nothing rather
+/// than a guess.
+///
+/// Silver the unit earns in the turn's last phase - wages, entertaining, Phantasmal Entertainment -
+/// arrives too late to pay for anything the orders spend but *is* in time for maintenance
+/// (`ah-uwa3`), so it is netted off the fee. Netted off rather than credited to the balance: a
+/// credit would leave the surplus where the orders could spend it, which is the very error this
+/// removes.
 fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     // Built before anything below draws the balance down - see *Known traps*: `charge_upkeep`
     // mutates `balance` as it goes, and a `LateHoldings` read after that loop would price later
