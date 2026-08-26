@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-dxfd.2 — you were right about the classes</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  header p b { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  table.grid { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:8px; font-family:system-ui,-apple-system,sans-serif; }
+  table.grid th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.grid td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  table.grid td.n { text-align:right; font-family:'SF Mono',Menlo,monospace; }
+  table.grid tr.hi td { background:rgba(217,164,65,.07); }
+  .orders { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); white-space:pre; margin-top:10px; }
+  .dim { color:var(--ink-dim); } .red { color:var(--danger); } .ok { color:var(--ok); }
+  .pred { color:var(--brass); font-style:italic; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); } .bad { border-left-color:var(--danger); }
+  .good { border-left-color:var(--ok); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 4px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cyc { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft);
+    background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:11px 14px; margin-top:10px; }
+  .cyc b { color:var(--brass); }
+  .q { background:#2a2113; border:1px solid #5c4718; border-left:4px solid var(--brass); border-radius:5px;
+    padding:11px 14px; margin:22px 0 2px; max-width:100ch; font-size:13.5px; }
+  .q b { color:var(--brass); }
+  .warn { font-family:system-ui,sans-serif; font-size:12.5px; background:#2a1a1a; border:1px solid #5c2a2a;
+    border-left:4px solid var(--danger); border-radius:4px; padding:9px 12px; margin-top:8px; color:#f0d8d8; max-width:100ch; }
+  .quiet { font-family:system-ui,sans-serif; font-size:12.5px; background:var(--raised); border:1px solid var(--edge);
+    border-left:4px solid var(--edge); border-radius:4px; padding:9px 12px; margin-top:8px; color:var(--ink-dim); max-width:100ch; }
+</style></head><body>
+<header>
+  <h1>ah-dxfd.2 — <span>you were right about the classes</span></h1>
+  <p>I went and checked instead of assuming. <b>Most of the item classes are classifiable from the data page
+  the app already scrapes</b> — the page states them in its own sentences, one per item, and the scraper simply
+  does not read them. Four are not stated anywhere and cannot be derived at all.</p>
+</header>
+<main>
+
+<h3 class="sec">The fifteen classes GIVE accepts, and what the sources say about each</h3>
+<p><code>rules/give</code>: "NORMAL, ADVANCED, TRADE, MAN or MEN, MONSTER or MONSTERS, MAGIC, WEAPON or
+WEAPONS, ARMOR, MOUNT or MOUNTS, BATTLE, SPECIAL, TOOL or TOOLS, FOOD, SHIP or SHIPS and ITEM or ITEMS."</p>
+<table class="grid">
+  <tr><th style="width:14%">Class</th><th style="width:30%">Where it comes from</th><th>Evidence in the committed sources</th></tr>
+  <tr class="hi"><td><b>MAN / MEN</b></td><td><code>kind == "man"</code></td><td class="ok">already in <code>ruleset.json</code> — 14 items. <code>ah-dxfd.1</code> uses it</td></tr>
+  <tr class="hi"><td><b>ITEM / ITEMS</b></td><td>everything the unit holds</td><td class="ok">needs no classifying. <code>ah-dxfd.1</code> does this</td></tr>
+  <tr class="hi"><td><b>MONSTER(S)</b></td><td><code>kind == "monster"</code></td><td class="ok">already in <code>ruleset.json</code> — 58 items</td></tr>
+  <tr class="hi"><td><b>SHIP(S)</b></td><td><code>kind == "ship"</code></td><td class="ok">already in <code>ruleset.json</code> — 9 items</td></tr>
+  <tr class="hi"><td><b>MOUNT(S)</b></td><td><code>kind == "mount"</code></td><td class="ok">already in <code>ruleset.json</code> — 4 items</td></tr>
+  <tr class="hi"><td><b>WEAPON(S)</b></td><td>the <code>weapon</code> block</td><td class="ok">already in <code>ruleset.json</code> — 16 items</td></tr>
+  <tr class="hi"><td><b>ARMOR</b></td><td>scraped</td><td class="ok">the data page says <i>"This is a type of armor."</i> — 6 items</td></tr>
+  <tr class="hi"><td><b>TOOL(S)</b></td><td>scraped</td><td class="ok">the data page says <i>"This is a tool."</i> — 7 items</td></tr>
+  <tr class="hi"><td><b>TRADE</b></td><td>scraped</td><td class="ok">the data page says <i>"This is a trade good."</i> — 14 items</td></tr>
+  <tr><td><b>BATTLE</b></td><td>scraped, probably</td><td class="dim">the page says <i>"This item is a miscellaneous combat item."</i> — 7 items. Plausible but not the rules' own word for it</td></tr>
+  <tr><td><b>FOOD</b></td><td>hard-coded</td><td class="dim">the page never says. The app already carries <code>["GRAI","LIVE","FISH","MEAL"]</code> for maintenance, and would go on doing so</td></tr>
+  <tr><td class="red"><b>NORMAL</b></td><td class="red">nowhere</td><td class="red">not stated on either page, in any form</td></tr>
+  <tr><td class="red"><b>ADVANCED</b></td><td class="red">nowhere</td><td class="red">not stated on either page, in any form</td></tr>
+  <tr><td class="red"><b>MAGIC</b></td><td class="red">nowhere</td><td class="red">not stated on either page, in any form</td></tr>
+  <tr><td class="red"><b>SPECIAL</b></td><td class="red">nowhere</td><td class="red">not stated on either page, in any form</td></tr>
+</table>
+<div class="note good"><b>So: ten or eleven of fifteen, and it is worth its own bead.</b> The change runs right
+through the ruleset contract — the scraper (<code>packages/ruleset/src/data.ts</code>) learns the sentences,
+<code>config/public/ruleset.json</code> is regenerated, and the reading side
+(<code>crates/core/src/movement/rules.rs</code>) grows the field to match, since both ends are
+<code>deny_unknown_fields</code> and must move together. It then pays off in <b>three</b> places at once:
+the units table's preview, the ledger, and this bead's projection — and it retires
+<code>SilverDoubt::GivesAWholeClass</code> for ten classes instead of the two
+<code>ah-dxfd.1</code> is doing now. <b>I would file it as a bead of its own, at P4 for you to rank</b>,
+rather than fold it into this one.</div>
+
+<h3 class="sec">What is still unfollowable even after all that</h3>
+<p>Two holes are left, and neither closes with better classification:</p>
+<table class="grid">
+  <tr><th style="width:34%">Order</th><th>Why it cannot be followed</th></tr>
+  <tr><td><code>GIVE 1234 ALL MAGIC</code><br><span class="dim">also NORMAL, ADVANCED, SPECIAL</span></td><td>the sources never say which items these are. Four classes of fifteen</td></tr>
+  <tr><td><code>TAKE FROM 999 ALL SWOR</code></td><td>999 is a unit this hex does not show, so what it holds to give is not ours to read. <b>No catalogue fixes this</b></td></tr>
+</table>
+
+<h3 class="sec">The case, once more</h3>
+<div class="orders">unit 1234              <span class="dim">; Home guard — 19 HUMN, COMB 1 (30), 35 SWOR, 4 XBOW</span>
+GIVE 2200 ALL MAGIC
+
+unit 2200              <span class="dim">; Raiders — 12 HUMN, COMB 1 (30), 12 SWOR</span>
+PILLAGE</div>
+
+<span class="opt">A — fall back to the report for the unit that cannot be followed</span>
+<table class="grid">
+  <tr><th>&nbsp;</th><th class="n">Home guard</th><th class="n">Raiders</th><th class="n">Region total</th></tr>
+  <tr><td>Combat ready</td><td class="n">min(19, 39) = 19 <span class="dim">(report's weapons)</span></td><td class="n">min(12, 12) = 12</td><td class="n">31</td></tr>
+</table>
+<div class="quiet">No warning: 31 &ge; 24, and the Raiders' SILVER cell shows a figure. This is today's behaviour.</div>
+<ul class="notes">
+  <li>Nothing a player sees today goes away. No new <code>?</code> anywhere.</li>
+  <li>With the classification bead landed, this fires on four classes out of fifteen and on a TAKE from
+    an unshown unit — a narrow enough hole to live with.</li>
+  <li class="con">The Home guard's own SILVER cell says "cannot be counted" while the pillage warning
+    counts it anyway. Two surfaces, one unit, opposite claims.</li>
+</ul>
+
+<span class="opt">B — the hex's count becomes unanswerable, as an estimated headcount already does</span>
+<table class="grid">
+  <tr><th>&nbsp;</th><th class="n">Home guard</th><th class="n">Raiders</th><th class="n">Region total</th></tr>
+  <tr><td>Combat ready</td><td class="n red">not countable</td><td class="n">min(12, 12) = 12</td><td class="n red">?</td></tr>
+</table>
+<div class="quiet">No warning — for the opposite reason: the app does not know, and says so. The Raiders'
+SILVER cell shows <code>?</code> for the pillage, using the sentence the app already has for a hex made
+unanswerable by a neighbour.</div>
+<ul class="notes">
+  <li>One rule, already in the app, and no new sentence to write.</li>
+  <li>Matches the module's stated policy: a warning that is wrong is worse than one that is missing.</li>
+  <li class="con">The Raiders did nothing wrong and their cell goes to <code>?</code> over a neighbour's order.</li>
+  <li class="con">Loses a pillage warning that fires today, in the four-class hole.</li>
+</ul>
+
+<div class="q"><b>Question 2, narrowed.</b> Assume I file the classification bead separately. For the hole
+that is left — four classes the sources never state, and a TAKE from a unit the hex does not show —
+does <code>ah-dxfd.2</code> fall back to the report (A) or let the hex go unanswerable (B)?</div>
+
+</main></body></html>

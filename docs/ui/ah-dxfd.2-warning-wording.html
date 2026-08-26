@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-dxfd.2 — the pillage warning now counts men that have not moved yet</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  header p b { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  table.grid { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:8px; font-family:system-ui,-apple-system,sans-serif; }
+  table.grid th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.grid td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  table.grid td.n { text-align:right; font-family:'SF Mono',Menlo,monospace; }
+  table.grid tr.hi td { background:rgba(217,164,65,.07); }
+  .orders { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); white-space:pre; margin-top:10px; }
+  .dim { color:var(--ink-dim); } .red { color:var(--danger); } .ok { color:var(--ok); }
+  .pred { color:var(--brass); font-style:italic; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); } .bad { border-left-color:var(--danger); }
+  .good { border-left-color:var(--ok); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 4px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cyc { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft);
+    background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:11px 14px; margin-top:10px; }
+  .cyc b { color:var(--brass); }
+  .q { background:#2a2113; border:1px solid #5c4718; border-left:4px solid var(--brass); border-radius:5px;
+    padding:11px 14px; margin:22px 0 2px; max-width:100ch; font-size:13.5px; }
+  .q b { color:var(--brass); }
+  .warn { font-family:system-ui,sans-serif; font-size:12.5px; background:#2a1a1a; border:1px solid #5c2a2a;
+    border-left:4px solid var(--danger); border-radius:4px; padding:9px 12px; margin-top:8px; color:#f0d8d8; max-width:100ch; }
+  .quiet { font-family:system-ui,sans-serif; font-size:12.5px; background:var(--raised); border:1px solid var(--edge);
+    border-left:4px solid var(--edge); border-radius:4px; padding:9px 12px; margin-top:8px; color:var(--ink-dim); max-width:100ch; }
+
+</style></head><body>
+<header>
+  <h1>ah-dxfd.2 — <span>the warning now counts men that have not moved yet</span></h1>
+  <p>The pillage warning's sentence does not change shape in this bead — but the <b>meaning of its number</b>
+  does. Today "this region has 19" counts the men and weapons the report printed. After this bead it counts
+  what the region will hold once <i>this month's</i> gifts and takes have run — a forecast, on a line that
+  reads today like a statement of fact.</p>
+  <p>Everywhere else in the app a forecast is marked: the units table prints a predicted figure in
+  <span class="pred">italic brass</span> with a <code>was:</code> hover. A warning message has no such
+  affordance, so if it should say it, it has to say it in words.</p>
+</header>
+<main>
+
+<h3 class="sec">The sentence today, verbatim</h3>
+<p>Two shapes, depending on whether the app can say why a particular unit's men do not count.</p>
+<div class="warn">cannot pillage here: needs 24 combat ready men, this region has 19 — its 35 swords need
+weaponsmith 1, and it has no weaponsmith</div>
+<div class="warn">cannot pillage here: needs 24 combat ready men, this region has 19</div>
+
+<h3 class="sec">The case that makes it a forecast</h3>
+<div class="orders">unit 1234              <span class="dim">; Home guard — 19 HUMN, COMB 1 (30), 35 SWOR</span>
+FORM 1
+  PILLAGE
+END
+GIVE NEW 1 10 HUMN
+GIVE NEW 1 10 SWOR</div>
+<p style="color:var(--ink-soft);font-size:13px;max-width:100ch;margin-top:10px">The region holds 19 combat
+ready men, both before and after those gifts — but only <i>because</i> the gifts move men and weapons
+together. Change <code>GIVE NEW 1 10 SWOR</code> to <code>GIVE NEW 1 10 XBOW</code>, which the Raiders cannot
+wield, and the figure the warning prints drops to 9 <b>on the strength of orders in the document, not of
+anything the report says.</b></p>
+
+<span class="opt">W1 — leave the sentence exactly as it is</span>
+<div class="warn">cannot pillage here: needs 24 combat ready men, this region has 9 — its 10 crossbows need
+crossbow 1, and it has no crossbow</div>
+<ul class="notes">
+  <li>No new string in this bead at all, which is what the parent bead settled for every other surface it
+    touches: the numbers change, the words do not.</li>
+  <li>Every warning in this app already reads the orders as well as the report — <code>pillage-without-men</code>
+    only fires because a <code>PILLAGE</code> was <i>ordered</i>. The number was always about the month you
+    are writing.</li>
+  <li class="con">"this region has 9" reads as a fact about the region, and a player who has not yet noticed
+    that their own GIVE caused it may go looking for the missing men on the report.</li>
+</ul>
+
+<span class="opt">W2 — say that the count is after this month's transfers</span>
+<div class="warn">cannot pillage here: needs 24 combat ready men, this region will have 9 once this month's
+gifts have run — its 10 crossbows need crossbow 1, and it has no crossbow</div>
+<ul class="notes">
+  <li>Names the cause on the line where the player is standing. The one thing they can act on is the GIVE,
+    and this points at it.</li>
+  <li class="con">A long sentence, and it grows the common case for the sake of the uncommon one: most
+    pillage warnings involve no gift at all, and would now carry a clause about gifts that did not happen.</li>
+  <li class="con">A new string to agree, translate and keep in step with the tooltip vocabulary.</li>
+</ul>
+
+<span class="opt">W3 — say it only when this month's transfers actually changed the figure</span>
+<div class="warn">cannot pillage here: needs 24 combat ready men, this region has 9 after this month's gifts
+(19 before) — its 10 crossbows need crossbow 1, and it has no crossbow</div>
+<p style="color:var(--ink-soft);font-size:13px;max-width:100ch;margin-top:6px">A hex where nothing moved keeps
+the sentence exactly as it reads today:</p>
+<div class="warn">cannot pillage here: needs 24 combat ready men, this region has 19</div>
+<ul class="notes">
+  <li>The common case is untouched, and the uncommon one carries both numbers, so the player can see the
+    size of what their own orders did.</li>
+  <li class="con">Two shapes of one sentence, chosen by a condition — the kind of thing that is cheap to
+    build and expensive to keep true, since the "before" figure has to be computed and carried purely to
+    be printed.</li>
+  <li class="con">The parenthesis competes with the <code>—</code> clause after it; on a narrow window
+    the line wraps twice.</li>
+</ul>
+
+<div class="q"><b>Question 3.</b> The pillage warning's number becomes a forecast. Leave the sentence alone
+(W1), always say the count is after this month's gifts (W2), or say it only when the gifts actually moved
+the figure (W3)?</div>
+
+</main></body></html>
