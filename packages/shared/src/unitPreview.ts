@@ -1,11 +1,14 @@
 import type {
   FieldChange,
   ItemAmount,
+  ProducedItem,
   RegionPreview,
   ReportUnit,
   TakenUnshown,
-  UnitPreviewStatus
+  UnitPreviewStatus,
+  UnitSilver
 } from "@atlantis/core-client";
+import { productionCapSentence } from "./unitTooltip";
 
 /**
  * How the orders preview folds into the units table.
@@ -37,6 +40,8 @@ export type PreviewedUnit = ReportUnit & {
   uncounted?: string[];
   /** Silver or goods taken from a unit the report does not show in this hex (`ah-agbm`). */
   takenUnshown?: TakenUnshown[];
+  /** What this unit's PRODUCE orders make this month (`ah-ofpb.1`). */
+  produced?: ProducedItem[];
 };
 
 /**
@@ -69,7 +74,8 @@ export function mergePreview(
       departingTo: previewed.departingTo,
       aboard: previewed.aboard,
       uncounted: previewed.uncounted,
-      takenUnshown: previewed.takenUnshown
+      takenUnshown: previewed.takenUnshown,
+      produced: previewed.produced
     };
   });
 
@@ -83,7 +89,8 @@ export function mergePreview(
       departingTo: previewed.departingTo,
       aboard: previewed.aboard,
       uncounted: previewed.uncounted,
-      takenUnshown: previewed.takenUnshown
+      takenUnshown: previewed.takenUnshown,
+      produced: previewed.produced
     });
   }
 
@@ -107,19 +114,34 @@ export function formatItems(items: readonly ItemAmount[]): string {
 }
 
 /**
- * The ITEMS cell's hover: what the report said, what came from an unverifiable source, and what
- * could not be counted - in that order, known before unknown. `undefined` when there is nothing
- * to say, exactly today's behaviour for a cell the orders left alone (`ah-agbm`).
+ * The ITEMS cell's hover: what the report said, what came from an unverifiable source, what this
+ * month's production adds, what stopped that production short, and what could not be counted - in
+ * that order, known before unknown (`ah-agbm`, `ah-ofpb.1`).
+ *
+ * `silver` is the row's own forecast, which is where the cap sentence lives: the ITEMS and SILVER
+ * hovers say it in the same words because they call the same function. `undefined` when there is
+ * nothing to say, exactly today's behaviour for a cell the orders left alone (`ah-agbm`).
  */
-export function itemsTooltip(unit: PreviewedUnit | undefined): string | undefined {
+export function itemsTooltip(
+  unit: PreviewedUnit | undefined,
+  silver?: UnitSilver | null
+): string | undefined {
   if (!unit) {
     return undefined;
   }
 
   const change = changeFor(unit, "items");
   const takenUnshown = unit.takenUnshown ?? [];
+  const produced = unit.produced ?? [];
   const uncounted = unit.uncounted ?? [];
-  if (!change && takenUnshown.length === 0 && uncounted.length === 0) {
+  const capSentence = productionCapSentence(silver);
+  if (
+    !change &&
+    takenUnshown.length === 0 &&
+    produced.length === 0 &&
+    uncounted.length === 0 &&
+    capSentence === undefined
+  ) {
     return undefined;
   }
 
@@ -133,6 +155,14 @@ export function itemsTooltip(unit: PreviewedUnit | undefined): string | undefine
     lines.push(
       `Includes ${taken.amount} ${taken.tag} taken from unit ${taken.from}, which your report does not show here.`
     );
+  }
+  for (const item of produced) {
+    lines.push(
+      `Includes ${item.amount} ${item.tag} this unit will produce. Production resolves last, so they cannot be spent this month.`
+    );
+  }
+  if (capSentence !== undefined) {
+    lines.push(capSentence);
   }
   for (const order of uncounted) {
     lines.push(`and more that cannot be counted: ${order}`);

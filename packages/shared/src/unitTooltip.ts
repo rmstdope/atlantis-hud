@@ -185,6 +185,21 @@ function countOf(count: number, name: string): string {
   return `${count} ${name}${count === 1 ? "" : "s"}`;
 }
 
+/**
+ * "This unit has materials for 5 swords, not the 8 its men could make." - `undefined` when
+ * nothing capped the run, or when there is no priceable PRODUCE to speak about.
+ *
+ * Exported because the ITEMS hover says it too (`ah-ofpb.1`), and two copies of one sentence are
+ * two things to keep in step.
+ */
+export function productionCapSentence(silver: UnitSilver | null | undefined): string | undefined {
+  if (!silver || silver.productionCappedBy === null || silver.producedName === null) {
+    return undefined;
+  }
+  const has = silver.productionCappedBy === "silver" ? "silver" : "materials";
+  return `This unit has ${has} for ${countOf(silver.produced, silver.producedName)}, not the ${silver.productionWanted} its men could make.`;
+}
+
 /** The month-end figure with upkeep taken off, or `null` where either term is unpriceable. */
 function shownEnd(silver: UnitSilver): number | null {
   if (silver.atMonthEnd === null || silver.upkeep === null) {
@@ -469,12 +484,8 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // count is only worth a line when something stopped it.
   {
     id: "production-capped",
-    when: ({ silver }) =>
-      silver.productionCappedBy !== null && silver.producedName !== null,
-    say: ({ silver }) => {
-      const has = silver.productionCappedBy === "silver" ? "silver" : "materials";
-      return `This unit has ${has} for ${countOf(silver.produced, silver.producedName as string)}, not the ${silver.productionWanted} its men could make.`;
-    },
+    when: ({ silver }) => productionCapSentence(silver) !== undefined,
+    say: ({ silver }) => productionCapSentence(silver) ?? "",
     example: () => ({
       unit: aReportUnit({ men: 3 }),
       silver: aUnitSilver({

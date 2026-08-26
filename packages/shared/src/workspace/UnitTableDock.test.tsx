@@ -112,7 +112,8 @@ describe("a unit carried away by a sailing fleet", () => {
         departingTo,
         aboard,
         uncounted: [],
-        takenUnshown: []
+        takenUnshown: [],
+        produced: []
       }
     ]
   });
@@ -188,7 +189,8 @@ describe("the structure column", () => {
             departingTo: null,
             aboard: null,
             uncounted: [],
-            takenUnshown: []
+            takenUnshown: [],
+            produced: []
           }
         ]
       }
@@ -682,6 +684,22 @@ describe("the Silver column", () => {
     expect(markup).toContain("unit 1922");
     expect(markup).not.toContain("unit new-1");
   });
+
+  // `ah-ofpb.1`. The ITEMS hover reads the same cap sentence the SILVER hover already gives, from
+  // the row's own forecast - not from any preview field - so it explains a row the orders changed
+  // nothing on: a unit whose PRODUCE was capped all the way to nothing.
+  it("explains a capped production on a row the orders changed nothing on", () => {
+    const markup = drawSilver(
+      forecast({
+        produced: 5,
+        producedName: "sword",
+        productionWanted: 8,
+        productionCappedBy: "materials"
+      })
+    );
+
+    expect(markup).toContain("not the 8 its men could make");
+  });
 });
 
 describe("the items column", () => {
@@ -702,6 +720,7 @@ describe("the items column", () => {
         aboard: null,
         uncounted: [],
         takenUnshown: [],
+        produced: [],
         ...previewOverrides
       }
     ]
@@ -738,6 +757,29 @@ describe("the items column", () => {
     expect(markup).not.toContain("italic text-brass");
     expect(markup).not.toContain('data-predicted="true"');
   });
+
+  it("shows produced goods in the projected item list", () => {
+    const markup = draw(
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 12, name: "iron", tag: "IRON" }] })] }) }),
+      previewOf(
+        {
+          unitId: "1",
+          items: [
+            { amount: 12, name: "iron", tag: "IRON" },
+            { amount: 8, name: "sword", tag: "SWOR" }
+          ]
+        },
+        {
+          changes: [{ field: "items", original: "20 IRON" }],
+          produced: [{ amount: 8, tag: "SWOR" }]
+        }
+      )
+    );
+
+    expect(markup).toContain('data-predicted="true"');
+    expect(markup).toContain("italic text-brass");
+    expect(markup).toContain("8 SWOR");
+  });
 });
 
 describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
@@ -756,6 +798,7 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
         aboard: null,
         uncounted: [],
         takenUnshown: [],
+        produced: [],
         ...previewOverrides
       }
     ]

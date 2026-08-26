@@ -340,6 +340,9 @@ export type TakenUnshown = {
   from: string;
 };
 
+/** One item a PRODUCE order makes this month. */
+export type ProducedItem = { amount: number; tag: string };
+
 /** One unit as the orders leave it: the full predicted state, so the row renders like any other. */
 export type UnitPreview = {
   unit: ReportUnit;
@@ -361,6 +364,8 @@ export type UnitPreview = {
   uncounted: string[];
   /** Silver or goods taken from a unit the report does not show in this hex (`ah-agbm`). */
   takenUnshown: TakenUnshown[];
+  /** What this unit's PRODUCE orders make this month (`ah-ofpb.1`). */
+  produced: ProducedItem[];
 };
 
 /** Every previewed unit standing in (or bound for) one region. */

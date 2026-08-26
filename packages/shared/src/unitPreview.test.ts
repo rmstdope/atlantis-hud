@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RegionPreview, ReportUnit } from "@atlantis/core-client";
-import { aReportUnit } from "@atlantis/core-client";
+import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { changeFor, formatItems, itemsTooltip, mergePreview, originalTooltip } from "./unitPreview";
 import type { PreviewedUnit } from "./unitPreview";
 
@@ -25,7 +25,8 @@ describe("mergePreview", () => {
           departingTo: null,
           aboard: null,
           uncounted: [],
-          takenUnshown: []
+          takenUnshown: [],
+          produced: []
         }
       ])
     );
@@ -55,7 +56,8 @@ describe("mergePreview", () => {
           departingTo: null,
           aboard: null,
           uncounted: [],
-          takenUnshown: []
+          takenUnshown: [],
+          produced: []
         },
         {
           unit: unit({ unitId: "new-1", name: "Recruits" }),
@@ -65,7 +67,8 @@ describe("mergePreview", () => {
           departingTo: null,
           aboard: null,
           uncounted: [],
-          takenUnshown: []
+          takenUnshown: [],
+          produced: []
         }
       ])
     );
@@ -88,7 +91,8 @@ describe("mergePreview", () => {
           departingTo: "1:2,2",
           aboard: "Wavecrest [329]",
           uncounted: [],
-          takenUnshown: []
+          takenUnshown: [],
+          produced: []
         },
         {
           unit: unit({ unitId: "901", name: "Passengers" }),
@@ -98,7 +102,8 @@ describe("mergePreview", () => {
           departingTo: "1:2,2",
           aboard: "Wavecrest [329]",
           uncounted: [],
-          takenUnshown: []
+          takenUnshown: [],
+          produced: []
         }
       ])
     );
@@ -119,7 +124,8 @@ describe("mergePreview", () => {
           departingTo: "1:2,2",
           aboard: null,
           uncounted: [],
-          takenUnshown: []
+          takenUnshown: [],
+          produced: []
         }
       ])
     );
@@ -145,7 +151,8 @@ describe("changeFor and originalTooltip", () => {
           departingTo: null,
           aboard: null,
           uncounted: [],
-          takenUnshown: []
+          takenUnshown: [],
+          produced: []
         }
       ])
     );
@@ -208,5 +215,61 @@ describe("formatItems and itemsTooltip", () => {
 
   it("says nothing for no unit at all", () => {
     expect(itemsTooltip(undefined)).toBeUndefined();
+  });
+
+  it("words the hover for a producing unit whose run was capped", () => {
+    const row = previewedUnit({
+      items: [
+        { amount: 5, name: "iron", tag: "IRON" },
+        { amount: 350, name: "silver", tag: "SILV" }
+      ],
+      previewChanges: [{ field: "items", original: "5 IRON, 350 SILV" }],
+      produced: [{ amount: 5, tag: "SWOR" }]
+    });
+    const silver = aUnitSilver({
+      produced: 5,
+      producedName: "sword",
+      productionWanted: 8,
+      productionCappedBy: "materials"
+    });
+
+    expect(itemsTooltip(row, silver)).toBe(
+      "was: 5 IRON, 350 SILV\n" +
+        "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "This unit has materials for 5 swords, not the 8 its men could make."
+    );
+  });
+
+  it("words the hover for a producing unit at full rate", () => {
+    const row = previewedUnit({
+      items: [{ amount: 8, name: "swords", tag: "SWOR" }],
+      previewChanges: [{ field: "items", original: "0 SWOR" }],
+      produced: [{ amount: 8, tag: "SWOR" }]
+    });
+    const silver = aUnitSilver({
+      produced: 8,
+      producedName: "sword",
+      productionWanted: 8,
+      productionCappedBy: null
+    });
+
+    expect(itemsTooltip(row, silver)).toBe(
+      "was: 0 SWOR\n" +
+        "Includes 8 SWOR this unit will produce. Production resolves last, so they cannot be spent this month."
+    );
+  });
+
+  it("words the hover for a unit that produces nothing at all", () => {
+    const row = previewedUnit({ items: [{ amount: 3, name: "swords", tag: "SWOR" }] });
+    const silver = aUnitSilver({
+      produced: 0,
+      producedName: "catapult",
+      productionWanted: 3,
+      productionCappedBy: "materials"
+    });
+
+    expect(itemsTooltip(row, silver)).toBe(
+      "was: 3 SWOR\nThis unit has materials for 0 catapults, not the 3 its men could make."
+    );
   });
 });
