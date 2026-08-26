@@ -430,6 +430,44 @@ pub struct CastOutput {
     /// its normalised sentence says "their level"; the navigator chose the prose (2026-08-26).
     /// `0` for every other creation the page states.
     pub level_offset: i64,
+    /// Set when the skill's own paragraph words the number as an average rather than a count.
+    /// Four skills on the page say it and no others: `data/WOLF` "averaging", `data/BIRD` "an
+    /// average of", `data/SUSK` and `data/RAIS` "at an average rate of". What it means for the
+    /// count is [`super::super::orders::silver::plan_cast`]'s business.
+    #[serde(default)]
+    pub averaged: bool,
+    /// Set when the skill's paragraph calls the creation a summoning rather than a making. Nine
+    /// skills on the page say it. It decides one word in the interface and nothing else.
+    #[serde(default)]
+    pub summoned: bool,
+    /// How many of `tag` a mage may control at once, as the skill's own paragraph states it.
+    /// `None` for a skill that states no cap, which is five of the nine summons and every
+    /// non-summon creation.
+    #[serde(default)]
+    pub control: Option<ControlCap>,
+}
+
+/// A cap on how many of a summoned creature one mage may control, as
+/// `multiplier * max(0, level + offset).pow(exponent)`.
+///
+/// Three numbers rather than one, because the four skills that state a cap state it in four
+/// different shapes and there is no fifth on the page:
+/// `data/WOLF` "control a total number of his skill level squared times 4 wolves" is
+/// `{4, 0, 2}`; `data/BIRD` "may control a number equal to his skill level minus 2, squared,
+/// times two" is `{2, -2, 2}`; `data/DRAG` "the total number of dragons that a mage may control
+/// at one time is equal to his skill level" is `{1, 0, 1}`; and `data/SUBA` "may only summon a
+/// balrog if one is not already under his control" is `{1, 0, 0}`, a flat one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/ControlCap.ts")
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ControlCap {
+    pub multiplier: i64,
+    pub offset: i64,
+    pub exponent: u32,
 }
 
 /// What CASTing a skill consumes, as the data page states it and as ah-dbb.2 charges it: `costs`
@@ -1314,6 +1352,24 @@ mod tests {
         let cast: CastCost =
             serde_json::from_str(json).expect("a cast missing creates should still parse");
         assert_eq!(cast.creates, Vec::new());
+    }
+
+    /// A ruleset cached before `ah-ofpb.5` carries a `CastOutput` with no `averaged`, `summoned` or
+    /// `control`, and must still load: `deny_unknown_fields` is about keys the struct has never
+    /// heard of, and `#[serde(default)]` is what covers keys the JSON has not got yet.
+    #[test]
+    fn a_ruleset_without_control_caps_still_loads() {
+        let json = r#"{
+            "tag": "MSWO",
+            "level": 1,
+            "percentPerLevel": 500,
+            "levelOffset": 0
+        }"#;
+        let output: CastOutput = serde_json::from_str(json)
+            .expect("a CastOutput missing control caps should still parse");
+        assert!(!output.averaged);
+        assert!(!output.summoned);
+        assert_eq!(output.control, None);
     }
 
     /// force, pattern, spirit, necromancy, teleportation and illusion are magic; mining, lumberjack,

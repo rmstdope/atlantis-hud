@@ -27,7 +27,8 @@ describe("mergePreview", () => {
           uncounted: [],
           takenUnshown: [],
           produced: [],
-          built: []
+          built: [],
+          created: []
         }
       ])
     );
@@ -59,7 +60,8 @@ describe("mergePreview", () => {
           uncounted: [],
           takenUnshown: [],
           produced: [],
-          built: []
+          built: [],
+          created: []
         },
         {
           unit: unit({ unitId: "new-1", name: "Recruits" }),
@@ -71,7 +73,8 @@ describe("mergePreview", () => {
           uncounted: [],
           takenUnshown: [],
           produced: [],
-          built: []
+          built: [],
+          created: []
         }
       ])
     );
@@ -96,7 +99,8 @@ describe("mergePreview", () => {
           uncounted: [],
           takenUnshown: [],
           produced: [],
-          built: []
+          built: [],
+          created: []
         },
         {
           unit: unit({ unitId: "901", name: "Passengers" }),
@@ -108,7 +112,8 @@ describe("mergePreview", () => {
           uncounted: [],
           takenUnshown: [],
           produced: [],
-          built: []
+          built: [],
+          created: []
         }
       ])
     );
@@ -131,7 +136,8 @@ describe("mergePreview", () => {
           uncounted: [],
           takenUnshown: [],
           produced: [],
-          built: []
+          built: [],
+          created: []
         }
       ])
     );
@@ -159,7 +165,8 @@ describe("changeFor and originalTooltip", () => {
           uncounted: [],
           takenUnshown: [],
           produced: [],
-          built: []
+          built: [],
+          created: []
         }
       ])
     );
@@ -480,6 +487,85 @@ describe("formatItems and itemsTooltip", () => {
         "This unit has materials for 5 swords, not the 8 its men could make.\n" +
         "Spends 15 WOOD on Building 4 this month.\n" +
         "This unit has wood for 15 units of work, not the 30 its men could do."
+    );
+  });
+
+  // `ah-ofpb.5`: a CAST's chance creation shows as a range, merged into whatever the unit already
+  // holds - round 1's Q1 and Q4.
+  it("shows a chance creation as a range", () => {
+    expect(
+      formatItems(
+        [{ amount: 3, name: "runesword", tag: "RUNE" }],
+        [{ fewest: 2, most: 3, tag: "RUNE", summoned: false }]
+      )
+    ).toBe("2-3 RUNE");
+  });
+
+  it("merges a range into a stock already held", () => {
+    expect(
+      formatItems(
+        [{ amount: 5, name: "runesword", tag: "RUNE" }],
+        [{ fewest: 2, most: 3, tag: "RUNE", summoned: false }]
+      )
+    ).toBe("4-5 RUNE");
+  });
+
+  it("shows a certain creation as one number", () => {
+    expect(
+      formatItems(
+        [{ amount: 15, name: "mithril sword", tag: "MSWO" }],
+        [{ fewest: 15, most: 15, tag: "MSWO", summoned: false }]
+      )
+    ).toBe("15 MSWO");
+  });
+
+  // Round 2's Q6, V3, quoted verbatim.
+  it("words the hover for a casting unit", () => {
+    const row = previewedUnit({
+      items: [{ amount: 15, name: "mithril sword", tag: "MSWO" }],
+      previewChanges: [{ field: "items", original: "0 MSWO" }],
+      created: [{ fewest: 15, most: 15, tag: "MSWO", summoned: false }]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 0 MSWO\n" +
+        "Includes 15 MSWO this unit will create by casting. Casting resolves after GIVE, so they " +
+        "cannot be given away this month."
+    );
+  });
+
+  // Round 3's Q11, S2, quoted verbatim.
+  it("words the hover for a summoning unit", () => {
+    const row = previewedUnit({
+      items: [{ amount: 12, name: "wolf", tag: "WOLF" }],
+      previewChanges: [{ field: "items", original: "0 WOLF" }],
+      created: [{ fewest: 1, most: 12, tag: "WOLF", summoned: true }]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 0 WOLF\n" +
+        "Includes 1-12 WOLF this unit will summon. Casting resolves after GIVE, so they cannot be " +
+        "given away this month."
+    );
+  });
+
+  // `ah-ofpb.1`'s K1, extended to casts by `ah-ofpb.5`'s round 3 Q12: the ITEMS hover repeats the
+  // same cap sentence the SILVER hover already gives.
+  it("repeats the cast cap sentence in the ITEMS hover", () => {
+    const row = previewedUnit({
+      items: [{ amount: 6, name: "wolf", tag: "WOLF" }],
+      previewChanges: [{ field: "items", original: "30 WOLF" }]
+    });
+    const silver = aUnitSilver({
+      castMade: 6,
+      castMadeNamed: "6 wolves",
+      castWanted: 12,
+      castCappedBy: "room",
+      castSummons: true
+    });
+
+    expect(itemsTooltip(row, silver)).toBe(
+      "was: 30 WOLF\nThis unit has room for 6 wolves, not the 12 its level could summon."
     );
   });
 });

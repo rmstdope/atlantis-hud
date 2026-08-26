@@ -76,6 +76,10 @@ pub struct UnitPreview {
     /// went and what cut the work short. Empty for a unit not building, and for one whose build
     /// comes to nothing (`ah-ofpb.2`).
     pub built: Vec<BuildSpend>,
+    /// What this unit's `CAST` orders create this month, so the hover can say what is arriving and
+    /// the column can show a chance creation as a range. Empty for a unit not casting, and for one
+    /// whose cast creates nothing an item catalogue can carry (`ah-ofpb.5`).
+    pub created: Vec<CreatedItem>,
 }
 
 /// Goods taken from a unit the report does not show in this hex (`ah-agbm`).
@@ -125,6 +129,19 @@ pub struct BuildSpend {
     /// What this unit's men alone could have done.
     pub could_do: i64,
     pub capped_by: Option<BuildCap>,
+}
+
+/// One item a `CAST` order creates this month (`ah-ofpb.5`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedItem {
+    /// The fewest the cast may bring.
+    pub fewest: i64,
+    /// The most it may bring, which is the figure already folded into the unit's item list.
+    pub most: i64,
+    pub tag: String,
+    /// Whether the skill calls this a summoning, which decides the hover's verb.
+    pub summoned: bool,
 }
 
 /// Every previewed unit standing in (or bound for) one region.
@@ -319,6 +336,7 @@ pub fn preview_orders_on_map(
         let taken_unshown = entry.taken_unshown.clone();
         let produced = entry.produced.clone();
         let built = entry.built.clone();
+        let created = entry.created.clone();
 
         let departed = status == UnitPreviewStatus::Departing;
         if changes.is_empty()
@@ -357,6 +375,7 @@ pub fn preview_orders_on_map(
                     taken_unshown: taken_unshown.clone(),
                     produced: produced.clone(),
                     built: built.clone(),
+                    created: created.clone(),
                 });
             regions
                 .entry(entry.unit.region_id.clone())
@@ -372,6 +391,7 @@ pub fn preview_orders_on_map(
                     taken_unshown,
                     produced,
                     built,
+                    created,
                 });
         } else {
             regions
@@ -388,6 +408,7 @@ pub fn preview_orders_on_map(
                     taken_unshown,
                     produced,
                     built,
+                    created,
                 });
         }
     }
@@ -498,6 +519,9 @@ struct WorkingUnit {
     /// What this unit's `BUILD` orders spend this month. Written once by `apply_item_effects`
     /// (`ah-ofpb.2`).
     built: Vec<BuildSpend>,
+    /// What this unit's `CAST` orders create this month. Written once by `apply_item_effects`
+    /// (`ah-ofpb.5`).
+    created: Vec<CreatedItem>,
 }
 
 impl WorkingUnit {
@@ -605,6 +629,7 @@ impl Working {
                 taken_unshown: Vec::new(),
                 produced: Vec::new(),
                 built: Vec::new(),
+                created: Vec::new(),
             });
         }
         Self {
@@ -738,6 +763,18 @@ impl Working {
                 })
                 .collect();
             unit.built = effect.built.clone();
+            unit.created = effect
+                .moved
+                .iter()
+                .filter_map(|movement| {
+                    movement.created.as_ref().map(|created| CreatedItem {
+                        fewest: created.fewest,
+                        most: movement.delta,
+                        tag: movement.tag.clone(),
+                        summoned: created.summoned,
+                    })
+                })
+                .collect();
         }
     }
 
@@ -779,6 +816,7 @@ impl Working {
             taken_unshown: Vec::new(),
             produced: Vec::new(),
             built: Vec::new(),
+            created: Vec::new(),
         });
         self.forming.push(Some(index));
     }
@@ -1316,6 +1354,23 @@ mod tests {
             "  Southeast : plain (2,2) in Nowhere.",
             "",
             "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON]. Weight: 180. Capacity: 0/0/120/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
+    /// A mage holding swords to enchant, for the `CAST` cases (`ah-ofpb.5`).
+    fn report_with_a_mage() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Enchanter (900), Foo (1), behind, leader [LEAD], 20 swords [SWOR]. Weight: 220. \
+             Capacity: 0/0/15/0. Skills: enchant swords [ESWO] 3 (270).",
             "",
         ]
         .join("\n")
@@ -2969,6 +3024,33 @@ mod tests {
                     capped_by: None,
                 }]
             );
+        }
+
+        #[test]
+        fn a_cast_creation_reaches_the_previewed_unit() {
+            let response = preview_over(&report_with_a_mage(), "unit 900\nCAST Enchant_Swords\n");
+            let unit = only_unit(&response);
+
+            let swords = unit
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "MSWO")
+                .expect("the enchanted mithril swords are in the previewed list");
+            assert_eq!(
+                swords.amount, 15,
+                "unit.items carries the most, which is what the ledger charged for"
+            );
+            assert_eq!(
+                unit.created,
+                vec![CreatedItem {
+                    fewest: 15,
+                    most: 15,
+                    tag: "MSWO".to_string(),
+                    summoned: false,
+                }]
+            );
+            change(unit, "items");
         }
     }
 }

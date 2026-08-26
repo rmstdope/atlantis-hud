@@ -187,16 +187,19 @@ function countOf(count: number, name: string): string {
 
 /**
  * "This unit has materials for 5 swords, not the 8 its men could make." - the shape
- * [`productionCapSentence`] and [`castCapSentence`] share, differing in one word: what limited the
- * run, what it names, how many it could have made, and what that count is of (`ah-ofpb.4`).
+ * [`productionCapSentence`] and [`castCapSentence`] share, differing in two words: what limited
+ * the run, what it names, how many it could have made, what that count is of, and what it would
+ * have done with them (`ah-ofpb.4`, `ah-ofpb.5`).
  */
 function capSentence(
   has: ProductionCap,
   named: string,
   wanted: number,
   could: "its men" | "its level",
+  verb: "make" | "summon",
 ): string {
-  return `This unit has ${has === "silver" ? "silver" : "materials"} for ${named}, not the ${wanted} ${could} could make.`;
+  const what = has === "silver" ? "silver" : has === "materials" ? "materials" : "room";
+  return `This unit has ${what} for ${named}, not the ${wanted} ${could} could ${verb}.`;
 }
 
 /**
@@ -215,6 +218,7 @@ export function productionCapSentence(silver: UnitSilver | null | undefined): st
     countOf(silver.produced, silver.producedName),
     silver.productionWanted,
     "its men",
+    "make",
   );
 }
 
@@ -223,12 +227,21 @@ export function productionCapSentence(silver: UnitSilver | null | undefined): st
  * `undefined` when nothing capped the cast, or when there is no priceable CAST to speak about.
  * `castMadeNamed` is already counted and named - unlike `producedName` above, the core cannot
  * pluralise what a unit does not hold yet, so it is not passed through `countOf` here (`ah-ofpb.4`).
+ *
+ * Exported because the ITEMS hover repeats it too, exactly as `productionCapSentence` is
+ * (`ah-ofpb.1`'s K1, extended to casts by `ah-ofpb.5`).
  */
-function castCapSentence(silver: UnitSilver | null | undefined): string | undefined {
+export function castCapSentence(silver: UnitSilver | null | undefined): string | undefined {
   if (!silver || silver.castCappedBy === null || silver.castMadeNamed === null) {
     return undefined;
   }
-  return capSentence(silver.castCappedBy, silver.castMadeNamed, silver.castWanted, "its level");
+  return capSentence(
+    silver.castCappedBy,
+    silver.castMadeNamed,
+    silver.castWanted,
+    "its level",
+    silver.castSummons ? "summon" : "make",
+  );
 }
 
 /** The month-end figure with upkeep taken off, or `null` where either term is unpriceable. */
@@ -436,6 +449,18 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     example: () => ({
       unit: aReportUnit(),
       silver: aUnitSilver({ doubt: "gives-a-whole-class" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  {
+    id: "doubt-unknown-combat-ready",
+    when: ({ silver }) => silver.doubt === "unknown-combat-ready",
+    say: () =>
+      "The combat ready men in this region cannot be added up, so what a pillage earns cannot be said.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "unknown-combat-ready" }),
       warned: false,
       countUpkeep: true
     })

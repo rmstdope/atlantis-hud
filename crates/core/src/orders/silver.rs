@@ -290,6 +290,10 @@ pub struct UnitSilver {
     /// What stopped it making `cast_wanted`, or `None` when nothing did. Drives the hover's note
     /// and nothing else - the figures above are already the capped ones.
     pub cast_capped_by: Option<ProductionCap>,
+    /// Whether this unit's `CAST` order summons rather than makes, which decides one word in the
+    /// cap sentence: "not the 12 its level could **summon**" against "could **make**"
+    /// (`ah-ofpb.5`). `false` for a unit with no priceable cast.
+    pub cast_summons: bool,
     /// Set when this unit is not one the report shows but one this month's `FORM` orders create -
     /// see [`FormedSubject`]. The interface names the unit by its alias and sends a click to
     /// `formed_by`, since a unit that does not exist cannot be selected.
@@ -394,6 +398,10 @@ pub enum SilverDoubt {
     /// is exact. Distinct from [`SilverDoubt::EstimatedMen`], which is about the unit's own
     /// headcount.
     ContestedRegionPool,
+    /// The faction's combat ready men in this hex cannot be added up, so the pillage threshold
+    /// cannot be tested. Distinct from [`SilverDoubt::EstimatedMen`]: this unit's own headcount
+    /// may be exact, and usually is - what is missing belongs to the hex.
+    UnknownCombatReady,
 }
 
 /// What one unit may draw from one contended regional pool, once its faction-mates in the same hex
@@ -474,6 +482,10 @@ pub struct PoolWants {
 }
 
 /// What this unit asks of each of its region's contended pools.
+///
+/// TAX is priced before the market opens, so it reads `facts.men`, the early picture; WORK and
+/// ENTERTAIN are priced after it, so they read `facts.late().men` instead
+/// (`rules/sequenceofevents`, `ah-dxfd.2`).
 #[must_use]
 pub fn pool_wants(facts: &UnitFacts<'_>, region: RegionWages) -> PoolWants {
     let mut wants = PoolWants::default();
@@ -483,14 +495,15 @@ pub fn pool_wants(facts: &UnitFacts<'_>, region: RegionWages) -> PoolWants {
     if taxes(facts.flags, facts.intents) {
         wants.tax = facts.men.saturating_mul(TAX_PER_MAN);
     }
+    let late = facts.late();
     for placed in facts.intents {
         match &placed.intent {
             Intent::Tax => {}
             Intent::Work => {
-                wants.wages = facts.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
+                wants.wages = late.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
             }
             Intent::Entertain => {
-                wants.entertainment = facts
+                wants.entertainment = late
                     .men
                     .saturating_mul(skill_level(facts.skills, ENTERTAIN_TAG))
                     .saturating_mul(ENTERTAIN_PER_MAN_PER_LEVEL);
@@ -502,7 +515,7 @@ pub fn pool_wants(facts: &UnitFacts<'_>, region: RegionWages) -> PoolWants {
     // pool exactly as an explicit `WORK` does (`ah-gjq4`, landing after `ah-t2pn.2`). Without this
     // every idle unit in a hex would be promised the whole pool.
     if is_set_to_work(facts.flags, facts.intents) {
-        wants.wages = facts.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
+        wants.wages = late.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
     }
     wants
 }
@@ -617,13 +630,19 @@ pub struct UnitFacts<'a> {
     pub region_id: &'a str,
     /// Silver the unit holds now. 0 for a unit carrying no `SILV` item.
     pub held: i64,
+    /// The unit's headcount as the turn's early phases see it - the report's own figure, with
+    /// this month's `GIVE`/`TAKE` orders applied where `super::semantics` could follow them
+    /// (`ah-dxfd.2`). `rules/sequenceofevents` settles TAX, PILLAGE and `Spells are CAST` before
+    /// the market opens, so this is what those terms read; a term settled after the market reads
+    /// [`UnitFacts::late`] instead.
     pub men: i64,
     pub men_estimated: bool,
-    /// The unit's people by race, which is what tells a leader from an ordinary character. Empty
+    /// `men`'s breakdown by race, which is what tells a leader from an ordinary character. Empty
     /// where the report did not break the unit down, which means *all ordinary characters* - the
-    /// report saying nothing is not evidence of leaders.
+    /// report saying nothing is not evidence of leaders. The early picture, exactly as `men` is.
     pub men_by_race: &'a [ItemAmount],
-    /// Everything the unit carries, read here only for the food that pays maintenance.
+    /// Everything the unit carries, read here only for the food that pays maintenance. The early
+    /// picture, exactly as `men` is - see `late` for the picture maintenance actually reads.
     pub items: &'a [ItemAmount],
     /// The unit's report flags, read here only for the two `consuming ...` ones.
     pub flags: &'a [String],
@@ -633,6 +652,49 @@ pub struct UnitFacts<'a> {
     pub receipts: &'a Receipts,
     /// Set when this unit is not one the report shows but one this month's `FORM` orders create.
     pub formed: Option<&'a FormedSubject>,
+    /// Set when a transfer this month cannot be followed for this unit - a class the catalogue
+    /// cannot classify (`ah-3sp7`), or a `TAKE ALL` from a unit this hex does not show.
+    ///
+    /// Distinct from `men_estimated`, which is about the *report*: this unit's reported figures
+    /// may be exact and still not survive its own orders. **Consulted by [`readiness`] and by
+    /// nothing else** - every other term falls back to the report's figures, which is what it did
+    /// before this bead, and the unit already carries an existing doubt for the order that caused
+    /// this.
+    pub after_gifts_unknown: bool,
+    /// The same unit once the market, the withdrawals and this month's production have run.
+    ///
+    /// `rules/sequenceofevents` settles STUDY, PRODUCE, ENTERTAIN, WORK and maintenance after the
+    /// market and PILLAGE, TAX and `Spells are CAST` before it, so the two pictures are genuinely
+    /// different and every term below says which it takes. `None` for a caller with no ledger to
+    /// read one from - `semantics::combat_ready_in` is the only one, and it consults nothing late.
+    /// Read it through [`UnitFacts::late`], never directly.
+    pub late: Option<LateFacts<'a>>,
+}
+
+/// One unit as the turn's late phases see it - the market, the withdrawals and this month's
+/// production already applied.
+///
+/// **There is no late `skills`, deliberately.** Skills change this month only by gifts of men;
+/// `rules/sequenceofevents` puts STUDY in the month-long phase and its result reaches next turn's
+/// report, so one skills list serves both pictures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LateFacts<'a> {
+    pub men: i64,
+    pub men_by_race: &'a [ItemAmount],
+    pub items: &'a [ItemAmount],
+}
+
+impl<'a> UnitFacts<'a> {
+    /// The unit as the late phases see it, falling back to the early picture for a caller that has
+    /// no ledger to read a late picture from.
+    #[must_use]
+    pub fn late(&self) -> LateFacts<'a> {
+        self.late.unwrap_or(LateFacts {
+            men: self.men,
+            men_by_race: self.men_by_race,
+            items: self.items,
+        })
+    }
 }
 
 /// Everything about the region that the arithmetic needs, lifted out so the function takes values.
@@ -873,6 +935,7 @@ pub fn forecast_unit(
             cast_made_named: None,
             cast_wanted: 0,
             cast_capped_by: None,
+            cast_summons: false,
             formed,
         };
     }
@@ -991,8 +1054,18 @@ pub fn forecast_unit(
             // `plan_production` the ledger uses - one function, two callers, which is what keeps
             // this column and the `not-enough-silver` warning from drifting apart (`ah-ycuj`).
             Intent::Produce { item } => {
+                // PRODUCE is priced after the market opens (`rules/sequenceofevents`), so its
+                // man-months capacity reads the late headcount - men this month's `BUY`/`GIVE`
+                // bring, not only what the report printed (`ah-dxfd.2`).
+                //
+                // **Materials stay the early picture, deliberately.** `semantics::produce` prices
+                // this same order a second time from the ledger's own balance to build the ITEMS
+                // column, and charges the materials it plans against that balance - so reading the
+                // late picture's `items` here would price this order against a balance its own
+                // ledger twin has already spent, silently halving what the unit can make. Pending
+                // a way to read a mid-month balance rather than the ledger's own end state.
                 let recipe = (lookups.item_tag)(item).and_then(|tag| recipe_for(ruleset, &tag));
-                let (priced, plan) = price_production(recipe, men, facts.items);
+                let (priced, plan) = price_production(recipe, facts.late().men, facts.items);
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
@@ -1009,10 +1082,12 @@ pub fn forecast_unit(
                 }
             }
             Intent::Study { skill } => {
+                // STUDY is priced after the market opens too, so the fee is per man this month
+                // actually has, not only per man the report printed (`ah-dxfd.2`).
                 let cost = ruleset
                     .and_then(|ruleset| ruleset.find_skill(skill))
                     .and_then(|skill| skill.cost);
-                let priced = price_study(cost, men);
+                let priced = price_study(cost, facts.late().men);
                 expense = expense.saturating_add(priced.spends);
                 if priced.spends > 0 {
                     spent_on = spent_on.or(Some(SilverSpender::Study));
@@ -1280,6 +1355,7 @@ pub fn forecast_unit(
         }),
         cast_wanted: cast.as_ref().map_or(0, |plan| plan.wanted),
         cast_capped_by: cast.as_ref().and_then(|plan| plan.capped_by),
+        cast_summons: cast.as_ref().is_some_and(|plan| plan.summons),
         formed,
     }
 }
@@ -1322,13 +1398,17 @@ struct OwnFoodPass {
 
 /// Step 1 of the maintenance payment order - the unit's own food - and what it leaves behind.
 ///
+/// Maintenance is assessed after the market, the withdrawals and this month's production have run
+/// (`rules/sequenceofevents`), so this reads `facts.late()` throughout (`ah-dxfd.2`).
+///
 /// `None` for a headcount that is itself a guess: charge nothing rather than a guess.
 fn own_food_pass(facts: &UnitFacts<'_>) -> Option<OwnFoodPass> {
     if facts.men_estimated {
         return None;
     }
+    let late = facts.late();
 
-    let leaders = facts
+    let leaders = late
         .men_by_race
         .iter()
         .filter(|entry| entry.tag.eq_ignore_ascii_case(LEADER_TAG))
@@ -1336,15 +1416,15 @@ fn own_food_pass(facts: &UnitFacts<'_>) -> Option<OwnFoodPass> {
         .sum::<i64>();
     // A unit the report never broke down is all ordinary characters, and a breakdown that names
     // more leaders than men is not a reason to charge a negative headcount.
-    let leaders = leaders.clamp(0, facts.men);
-    let characters = facts.men - leaders;
+    let leaders = leaders.clamp(0, late.men);
+    let characters = late.men - leaders;
 
     let owed = leaders
         .saturating_mul(UPKEEP_PER_LEADER)
         .saturating_add(characters.saturating_mul(UPKEEP_PER_CHARACTER))
         .max(0);
 
-    let held = facts
+    let held = late
         .items
         .iter()
         .filter(|entry| {
@@ -1995,6 +2075,12 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
     if facts.men_estimated {
         return None;
     }
+    // A transfer this month cannot be followed, so the weapons and men this unit will actually
+    // hold are not knowable. Answering from the report instead would count goods the unit may
+    // have given away - the wrong direction, since it is the *pillage threshold* being tested.
+    if facts.after_gifts_unknown {
+        return None;
+    }
     let ruleset = ruleset?;
     let men = facts.men.max(0);
     // The rules' fourth taxing character: "or is a mage who knows a spell which damages enemies"
@@ -2191,10 +2277,11 @@ pub fn price_pillage(tax_base: Option<i64>, combat_ready: Option<i64>) -> Priced
             doubt: Some(SilverDoubt::UnknownTaxBase),
             ..Priced::default()
         },
-        // A guessed headcount somewhere in the hex: the threshold cannot be tested at all.
-        // `EstimatedMen` is reused rather than a variant added - its sentence stays true.
+        // The hex's combat-ready sum could not be added up - a guessed headcount somewhere in the
+        // hex, or a transfer this month that could not be followed - so the threshold cannot be
+        // tested at all.
         (Some(_), None) => Priced {
-            doubt: Some(SilverDoubt::EstimatedMen),
+            doubt: Some(SilverDoubt::UnknownCombatReady),
             ..Priced::default()
         },
         (Some(base), Some(ready)) if ready >= pillage_threshold(base) => Priced {
@@ -2480,7 +2567,8 @@ pub fn recipe_for<'a>(ruleset: Option<&'a Ruleset>, tag: &str) -> Option<&'a Pro
         .find(|recipe| recipe.tag.eq_ignore_ascii_case(tag))
 }
 
-/// Which limit decided how many a unit produces, when it is not its men.
+/// Which limit decided how many a unit produces, when it is not its men - or, for a `CAST` that
+/// summons, how many it may control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "kebab-case")]
@@ -2489,6 +2577,10 @@ pub enum ProductionCap {
     Silver,
     /// The unit holds too little of at least one material input.
     Materials,
+    /// The mage already controls as many of the creature as its level allows, so the summon was
+    /// clamped (`ah-ofpb.5`). Only ever set for a summon, and only for the four skills that state
+    /// a cap.
+    Room,
 }
 
 /// What one `PRODUCE` order makes, and what it takes to make it.
@@ -2637,10 +2729,15 @@ pub struct Transmuting<'a> {
 pub struct CastPlan {
     /// How many the cast will actually make, capped by what the mage can pay for.
     pub made: i64,
+    /// The fewest the cast may actually bring. Equal to `made` for every certain creation, and for
+    /// a chance spell at a level whose percentage total lands on a whole hundred - a level 5 ring
+    /// maker is 20 x 5 = 100%, exactly one ring, and shows no range. `0` for a spell that creates
+    /// nothing an item catalogue can carry.
+    pub made_certain: i64,
     /// How many the mage's level alone would make. Every whole hundred percent is an item, and any
-    /// remainder is rounded **up** to one more - the navigator's choice, 2026-08-26, and the reason
-    /// no "certain" count is computed anywhere in this bead. `1` for a spell that creates nothing
-    /// an item catalogue can carry, which the page prices per attempt.
+    /// remainder is rounded **up** to one more - the navigator's choice, `ah-ofpb.4`, 2026-08-26.
+    /// `made_certain` above is the floor beside this ceiling, added by `ah-ofpb.5`. `1` for a spell
+    /// that creates nothing an item catalogue can carry, which the page prices per attempt.
     pub wanted: i64,
     /// How many the ledger is charged for: `made`, but never fewer than one when `wanted` is more
     /// than none. A mage that cannot afford even one is charged for one and is warned that it is
@@ -2658,6 +2755,9 @@ pub struct CastPlan {
     /// bind, for the same reason `plan_production` names it first: the column this feeds is about
     /// silver.
     pub capped_by: Option<ProductionCap>,
+    /// Whether the skill's paragraph calls this creation a summoning, which decides one word in
+    /// the ITEMS hover and one in the cap sentence. `false` for a spell that creates nothing.
+    pub summons: bool,
 }
 
 /// `CAST Transmutation [number] <material>` split into how many and what.
@@ -2696,17 +2796,29 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
         },
     };
 
-    // The level's capacity, unused when `output` is `None`.
-    let capacity = output.map_or(0, |output| {
+    // The fewest and the most this level can bring. Two arithmetics: a percentage total, whose
+    // whole hundreds are certain and whose remainder is the chance of one more; and the four
+    // skills the page words as an average, where the engine takes the whole-hundred count and
+    // then flips two coins per item, keeping a floor of one. The second is the navigator's,
+    // from the game engine, 2026-08-26 - it is on neither committed page and is not a lookup.
+    let (capacity_fewest, capacity) = output.map_or((0, 0), |output| {
         let output_level = i64::from(output.level);
         if level < output_level {
-            return 0;
+            return (0, 0);
         }
         let effective_level = (level + output.level_offset).max(0);
         let total_percent = output.percent_per_level.saturating_mul(effective_level);
-        // Rounded up, deliberately: a remainder chance is charged as though it landed
-        // (`ah-ofpb.4`, Q2). `total_percent` is never negative, so this is an ordinary ceiling.
-        (total_percent + 99) / 100
+        if output.averaged {
+            // `num = (level * percent + rand(0..99)) / 100`. Every `percent_per_level` the page
+            // states as an average is a whole multiple of 100, so the random part never carries
+            // and `num` is exact. Then `2 * num` coin tosses, at least one when `num > 0`.
+            let num = total_percent / 100;
+            (i64::from(num > 0), num.saturating_mul(2))
+        } else {
+            // Rounded up, deliberately, as `ah-ofpb.4` Q2 decided: a remainder chance is charged
+            // as though it landed. The floor beside it is what this bead added.
+            (total_percent / 100, (total_percent + 99) / 100)
+        }
     });
 
     // 2. `wanted`.
@@ -2780,13 +2892,33 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
     } else {
         Some(ProductionCap::Materials)
     };
+
+    // What the mage may still control, for the four skills that state a cap. `wanted` is left
+    // alone: the hover says "not the 12 its level could summon", which is the level's figure.
+    let room = output.and_then(|output| {
+        output.control.as_ref().map(|cap| {
+            let base = (level + cap.offset).max(0);
+            let ceiling = cap
+                .multiplier
+                .saturating_mul(base.saturating_pow(cap.exponent));
+            (ceiling - holding(&output.tag)).max(0)
+        })
+    });
+    let (made, capped_by) = match room {
+        Some(room) if room < made => (room, Some(ProductionCap::Room)),
+        _ => (made, capped_by),
+    };
+
     // 5. `charged` is `0` when `wanted` is `0` (Q3: a mage whose level makes none of the thing is
     // charged nothing), and `max(1, made)` otherwise (R2: a mage that cannot afford even one is
-    // still charged for one, so the shipped warnings still fire).
+    // still charged for one, so the shipped warnings still fire). The control-cap clamp above must
+    // not move this: all four capped skills have `costs: []`, so `charged` times anything is
+    // nothing (`ah-ofpb.5`, Known traps).
     let charged = if wanted == 0 { 0 } else { made.max(1) };
 
     CastPlan {
         made,
+        made_certain: capacity_fewest.min(made),
         wanted,
         charged,
         tag: output.map(|output| output.tag.to_ascii_uppercase()),
@@ -2804,6 +2936,7 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
             Vec::new()
         },
         capped_by,
+        summons: output.is_some_and(|output| output.summoned),
     }
 }
 
@@ -3062,7 +3195,11 @@ mod cast_tests {
         assert_eq!(plan_cast(&cast_cost("SWIN"), &unlimited(), 2).wanted, 0);
         assert_eq!(plan_cast(&cast_cost("SWIN"), &unlimited(), 5).wanted, 1);
         assert_eq!(plan_cast(&cast_cost("BIRD"), &unlimited(), 2).wanted, 0);
-        assert_eq!(plan_cast(&cast_cost("BIRD"), &unlimited(), 3).wanted, 1);
+        // `BIRD` is one of the four skills the page words as an average (`ah-ofpb.5`), so its
+        // ceiling is now the coin-flip arithmetic rather than the plain percentage: a level 3
+        // eagle-tamer is `num = 1`, so `2 * num = 2` rather than the `1` a bare percentage ceiling
+        // would give.
+        assert_eq!(plan_cast(&cast_cost("BIRD"), &unlimited(), 3).wanted, 2);
 
         let gate = plan_cast(&cast_cost("CGAT"), &unlimited(), 3);
         assert_eq!(gate.wanted, 1);
@@ -3174,6 +3311,111 @@ mod cast_tests {
     fn plan_cast_rounds_a_chance_up_to_a_whole_item() {
         assert_eq!(plan_cast(&cast_cost("CRRI"), &unlimited(), 3).wanted, 1);
         assert_eq!(plan_cast(&cast_cost("CRRU"), &unlimited(), 3).wanted, 3);
+    }
+
+    /// A level 3 create-runesword mage is 90 x 3 = 270 percent: two runeswords certain and a 70
+    /// percent chance of a third (`ah-ofpb.5`, settled with the navigator before this bead).
+    #[test]
+    fn plan_cast_names_the_fewest_a_chance_brings() {
+        let plan = plan_cast(&cast_cost("CRRU"), &unlimited(), 3);
+        assert_eq!(plan.made_certain, 2);
+        assert_eq!(plan.made, 3);
+    }
+
+    /// A level 5 ring maker is 20 x 5 = 100 percent, exactly one ring: no chance is left over, so
+    /// the floor and the ceiling agree and the column shows no range.
+    #[test]
+    fn plan_cast_leaves_no_range_when_the_chance_lands_exactly() {
+        let plan = plan_cast(&cast_cost("CRRI"), &unlimited(), 5);
+        assert_eq!(plan.made_certain, 1);
+        assert_eq!(plan.made, 1);
+    }
+
+    /// The navigator's own arithmetic from the game engine, cited throughout as their decision and
+    /// on neither committed page: `num = (level * percent + rand(0..99)) / 100`, then `2 * num`
+    /// coin tosses with a floor of one when `num > 0`. A level 3 wolf master is `num = 6`, so
+    /// `made == 12` and `made_certain == 1`; a level 3 eagle-tamer (`data/BIRD`, `levelOffset -2`)
+    /// is `num = 1`, so `made == 2` and `made_certain == 1`.
+    #[test]
+    fn plan_cast_spreads_an_averaged_summon() {
+        let wolf = plan_cast(&cast_cost("WOLF"), &unlimited(), 3);
+        assert_eq!(wolf.made, 12);
+        assert_eq!(wolf.made_certain, 1);
+
+        let bird = plan_cast(&cast_cost("BIRD"), &unlimited(), 3);
+        assert_eq!(bird.made, 2);
+        assert_eq!(bird.made_certain, 1);
+    }
+
+    /// `data/WOLF`: "control a total number of his skill level squared times 4 wolves" - a level 3
+    /// mage may control `4 * 3^2 = 36`. Holding 30 already, only 6 more fit, clamping the summon
+    /// that the level alone would bring (12) down to what there is room for.
+    #[test]
+    fn plan_cast_is_clamped_by_what_the_mage_may_control() {
+        let clamped = plan_cast(
+            &cast_cost("WOLF"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[("WOLF", 30)]),
+                silver_available: 0,
+                transmuting: None,
+            },
+            3,
+        );
+        assert_eq!(clamped.made, 6);
+        assert_eq!(clamped.wanted, 12);
+        assert_eq!(clamped.capped_by, Some(ProductionCap::Room));
+    }
+
+    /// A mage already at its control cap summons none: 36 wolves is `4 * 3^2`, so a level 3 mage
+    /// holding 36 has no room left. `data/SUBA`'s cap is a flat one - a mage already holding a
+    /// balrog may control no more, whatever its level.
+    #[test]
+    fn a_mage_at_its_control_cap_summons_none() {
+        let full_wolves = plan_cast(
+            &cast_cost("WOLF"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[("WOLF", 36)]),
+                silver_available: 0,
+                transmuting: None,
+            },
+            3,
+        );
+        assert_eq!(full_wolves.made, 0);
+        assert_eq!(full_wolves.capped_by, Some(ProductionCap::Room));
+
+        let full_balrog = plan_cast(
+            &cast_cost("SUBA"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[("BALR", 1)]),
+                silver_available: 0,
+                transmuting: None,
+            },
+            3,
+        );
+        assert_eq!(full_balrog.made, 0);
+        assert_eq!(full_balrog.capped_by, Some(ProductionCap::Room));
+    }
+
+    /// The clamp must not move a shipped warning: all four capped skills cost nothing, so a
+    /// control-clamped summon still charges no silver and consumes no materials - the guard this
+    /// bead's Known traps names first, and it must be written before `cast()` itself is touched.
+    #[test]
+    fn a_clamped_summon_still_charges_what_it_always_did() {
+        let clamped = plan_cast(
+            &cast_cost("WOLF"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[("WOLF", 30)]),
+                silver_available: 0,
+                transmuting: None,
+            },
+            3,
+        );
+        assert_eq!(clamped.silver, 0);
+        assert_eq!(clamped.materials, Vec::new());
     }
 }
 
@@ -3321,7 +3563,7 @@ mod tests {
         assert_eq!(
             price_pillage(Some(8963), None),
             Priced {
-                doubt: Some(SilverDoubt::EstimatedMen),
+                doubt: Some(SilverDoubt::UnknownCombatReady),
                 ..Priced::default()
             }
         );
@@ -3376,6 +3618,8 @@ mod tests {
             intents,
             receipts,
             formed: None,
+            after_gifts_unknown: false,
+            late: None,
         }
     }
 
@@ -4101,7 +4345,7 @@ mod tests {
 
     /// One guessed headcount anywhere in the hex makes the threshold unanswerable, and it is
     /// unanswerable in the direction that matters: the estimate might be what carries the faction
-    /// over. `EstimatedMen` is reused rather than a variant added.
+    /// over.
     #[test]
     fn a_guessed_headcount_in_the_hex_doubts_the_pillage() {
         let region = RegionWages {
@@ -4110,7 +4354,7 @@ mod tests {
             ..RegionWages::default()
         };
         let unit = forecast(1, region, &[placed(Intent::Pillage)]);
-        assert_eq!(unit.doubt, Some(SilverDoubt::EstimatedMen));
+        assert_eq!(unit.doubt, Some(SilverDoubt::UnknownCombatReady));
         assert_eq!(unit.income, None);
     }
 
@@ -5368,6 +5612,8 @@ mod tests {
             intents: &[],
             receipts: no_receipts(),
             formed: None,
+            after_gifts_unknown: false,
+            late: None,
         }
     }
 
@@ -5825,6 +6071,8 @@ mod combat_ready_tests {
             intents: &[],
             receipts,
             formed: None,
+            after_gifts_unknown: false,
+            late: None,
         }
     }
 

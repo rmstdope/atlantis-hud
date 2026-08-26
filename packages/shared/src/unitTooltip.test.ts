@@ -157,9 +157,8 @@ describe("productionCapSentence", () => {
   });
 });
 
-// `castCapSentence` is not exported - the ITEMS hover has no cast cell to share it with
-// (`ah-ofpb.5`), unlike `productionCapSentence` - so this goes through the note itself
-// (`ah-ofpb.4`).
+// `castCapSentence` is exported (`ah-ofpb.5`, so the ITEMS hover can repeat it), but the note
+// itself is still the more complete way to exercise the sentence a unit's SILVER hover shows.
 describe("the cast-capped note (ah-ofpb.4)", () => {
   const castCapped = SILVER_NOTES.find((note) => note.id === "cast-capped");
   if (!castCapped) {
@@ -194,6 +193,22 @@ describe("the cast-capped note (ah-ofpb.4)", () => {
       castCappedBy: null
     });
     expect(castCapped.when(uncapped)).toBe(false);
+  });
+
+  // Round 4's Q13, C1, quoted verbatim: a summon clamped by what the mage may control says "room"
+  // and "summon" rather than "materials"/"silver" and "make" (`ah-ofpb.5`).
+  it("names the room a summon was clamped by", () => {
+    const clamped = facts({
+      castMade: 6,
+      castMadeNamed: "6 wolves",
+      castWanted: 12,
+      castCappedBy: "room",
+      castSummons: true
+    });
+    expect(castCapped.when(clamped)).toBe(true);
+    expect(castCapped.say(clamped)).toBe(
+      "This unit has room for 6 wolves, not the 12 its level could summon."
+    );
   });
 });
 
@@ -1138,6 +1153,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
       "This region is not selling horses, so what the purchase costs cannot be said.",
     "doubt-gives-a-whole-class":
       "This unit is giving away a whole class of goods, which cannot be counted.",
+    "doubt-unknown-combat-ready":
+      "The combat ready men in this region cannot be added up, so what a pillage earns cannot be said.",
     "doubt-contested-faction-food":
       "There is not enough faction food here to feed every unit set to eat it.",
     "wages-too-late":
@@ -1341,7 +1358,8 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     "contested-region-pool",
     "market-does-not-sell",
     "gives-a-whole-class",
-    "contested-faction-food"
+    "contested-faction-food",
+    "unknown-combat-ready"
   ];
 
   // Built with `aUnitSilver` (`ah-uhnd`) so a field added to `UnitSilver` later does not silently
