@@ -1,0 +1,200 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>ah-vw8e — the same goods sold twice in one block</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; margin-bottom:10px; } h1 span { color:var(--brass); }
+  p.lead { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h2.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h2.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .banner { background:var(--raised); border-left:3px solid var(--select); padding:11px 14px; margin:16px 0;
+    font-size:13.5px; color:var(--ink-soft); max-width:104ch; }
+  .banner strong { color:var(--ink); }
+  .row { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:12px 14px; margin:12px 0; overflow-x:auto; }
+  p.cap { color:var(--ink-dim); font-size:11px; letter-spacing:1.3px; text-transform:uppercase; margin-bottom:8px; }
+  table.units { width:100%; border-collapse:collapse; font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; min-width:600px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:8px 12px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  td.num { text-align:right; font-family:'SF Mono',Menlo,monospace; }
+  td.ord { font-family:'SF Mono',Menlo,monospace; font-size:11.5px; color:var(--ink-soft); white-space:pre; }
+  .bad { color:var(--danger); } .ok { color:var(--ok); } .dim { color:var(--ink-dim); }
+  .editor { background:#0d1219; border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:74ch; white-space:pre; line-height:1.9; }
+  .editor .u { text-decoration:underline wavy var(--brass); text-decoration-thickness:1.5px; text-underline-offset:4px; color:var(--ink); }
+  .warn { background:var(--raised); border-left:3px solid var(--brass); padding:9px 13px; font-family:system-ui,sans-serif;
+    font-size:12.5px; color:var(--ink); max-width:92ch; margin:8px 0 0; }
+  .warn .code { color:var(--ink-dim); font-family:'SF Mono',Menlo,monospace; font-size:10.5px;
+    letter-spacing:1.1px; text-transform:uppercase; display:block; margin-bottom:4px; }
+  .none { color:var(--ink-dim); font-style:italic; font-size:12.5px; margin:8px 0 0; }
+  table.cases { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:8px; }
+  table.cases th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.cases td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  table.cases td.o { font-family:'SF Mono',Menlo,monospace; font-size:11px; color:var(--ink-soft); white-space:pre; }
+  .tab { background:var(--panel); border:1px solid var(--edge); border-radius:6px; max-width:640px; font-family:system-ui,sans-serif; }
+  .tab .grp { color:var(--brass); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; padding:10px 14px 4px; }
+  .tab .item { display:flex; gap:10px; padding:8px 14px; border-top:1px solid rgba(38,48,61,.6); }
+  .tab .box { width:13px; height:13px; border:1px solid var(--brass); border-radius:2px; background:var(--brass); flex:none; margin-top:3px; }
+  .tab .t { font-size:12.5px; color:var(--ink); } .tab .d { font-size:11.5px; color:var(--ink-dim); }
+  .tab .new { color:var(--ok); font-size:10px; letter-spacing:1.2px; text-transform:uppercase; margin-left:6px; }
+  .wording { display:grid; gap:10px; margin-top:10px; }
+  .wording .w { background:var(--raised); border-left:3px solid var(--edge); padding:9px 13px; font-family:system-ui,sans-serif; font-size:12.5px; }
+  .wording .w b { color:var(--brass); font-family:'SF Mono',Menlo,monospace; font-size:11px; letter-spacing:1.1px; }
+</style>
+</head>
+<body>
+<header>
+<h1>ah-vw8e &mdash; <span>the chosen design</span>: the same goods sold twice in one block</h1>
+<p class="lead">A trapper holds <b>10 furs</b>. The market here wants furs at <b>$42</b>. Its orders
+this month are <code>SELL ALL FUR</code> written <b>twice</b> &mdash; a shape that turns up when a
+player edits a block and forgets the line already there, or pastes last month's orders on top of
+this month's.</p>
+</header>
+<main>
+
+<div class="banner" style="border-left-color:#7fb069"><strong>Chosen, over three rounds with the
+navigator.</strong> The SILVER column, the ITEMS column and the market-share settlement all price a
+unit's <code>SELL</code> lines against a running per-tag total, so a second line can only sell what
+the lines above it left &mdash; of the unit's stock and of its settled share of the market line
+alike. A line that finds <em>nothing</em> left carries the existing
+<strong>nothing-left-to-sell</strong> warning, as a third cause beside the gift and the take, and
+that warning now fires on any <code>SELL</code> rather than only on a <code>SELL &hellip; ALL</code>.
+<br><br>
+<strong>Rejected:</strong> a warning code of its own with its own switch (<em>The same goods sold
+twice</em>) &mdash; the shipped description already covers a sale, and a 35th switch buys little;
+correcting the numbers silently, which <code>ah-q7jd</code> rejected once already; two shorter
+sentences; naming the line number, which the underline already points at; warning a line the
+<em>market</em> ran out under, where <code>region-pool-oversubscribed</code> already speaks; warning
+a line its own <code>EXCEPT</code> emptied, where the goods are visibly still there; widening only
+the new cause and leaving the gift and take causes <code>ALL</code>-only; and underlining just the
+first dead line of several. The full interview is in bead ah-vw8e's design field.</div>
+
+<div class="banner"><strong>The arithmetic is not in question &mdash; it is the bug.</strong>
+The first line sells all ten furs; the second finds nothing left and earns nothing. The ITEMS column
+already knows that. The SILVER column pays for twenty furs. <b>This page is only about what,
+if anything, the second line then says.</b></div>
+
+<h2 class="sec">What ships today &mdash; the two columns disagree</h2>
+<div class="row">
+  <p class="cap">the units table, today</p>
+  <table class="units">
+    <tr><th>Unit</th><th>Orders</th><th style="text-align:right">Silver</th><th>Items</th></tr>
+    <tr>
+      <td>Trapper (4411)</td>
+      <td class="ord">SELL ALL FUR
+SELL ALL FUR</td>
+      <td class="num bad">+$840</td>
+      <td>FUR 10 &rarr; <span class="ok">0</span></td>
+    </tr>
+  </table>
+  <p class="none">Twenty furs' worth of silver for a unit that owns ten. The market-share
+  settlement agrees with the wrong column: it records this unit as claiming twenty of a line it can
+  only supply ten into, which can push the whole line into a false oversubscription warning.</p>
+</div>
+
+<h2 class="sec">After the fix &mdash; both columns, and the settlement, say ten</h2>
+<div class="row">
+  <p class="cap">the units table, after</p>
+  <table class="units">
+    <tr><th>Unit</th><th>Orders</th><th style="text-align:right">Silver</th><th>Items</th></tr>
+    <tr>
+      <td>Trapper (4411)</td>
+      <td class="ord">SELL ALL FUR
+SELL ALL FUR</td>
+      <td class="num ok">+$420</td>
+      <td>FUR 10 &rarr; <span class="ok">0</span></td>
+    </tr>
+  </table>
+</div>
+
+<h2 class="sec">Option A &mdash; the existing <code>nothing-left-to-sell</code> warning grows a third cause</h2>
+<p>The warning shipped by <code>ah-q7jd</code> already says <em>&ldquo;a SELL ALL of goods this
+month's earlier orders have already moved away&rdquo;</em>. An earlier <code>SELL</code> line is an
+earlier order that moved them away, so it joins the two causes already there (a <code>GIVE</code>
+of your own, a <code>TAKE</code> by somebody else) rather than arriving as a code of its own.
+<b>Nothing changes in the Warnings tab.</b></p>
+
+<div class="row">
+  <p class="cap">in the orders editor, on the second SELL line</p>
+  <div class="editor">unit 4411
+  <span class="dim">SELL ALL FUR</span>
+  <span class="u">SELL ALL FUR</span>
+</div>
+  <div class="warn"><span class="code">nothing-left-to-sell</span>
+  an earlier order sells all 10 of its furs, so this sells nothing</div>
+</div>
+
+<div class="row">
+  <p class="cap">the Warnings tab &mdash; unchanged</p>
+  <div class="tab">
+    <div class="grp">Markets</div>
+    <div class="item"><span class="box"></span><span><span class="t">Buying what is not sold</span><br>
+      <span class="d">A BUY or SELL order for something this hex's market does not trade.</span></span></div>
+    <div class="item"><span class="box"></span><span><span class="t">Sale with nothing left to sell</span><br>
+      <span class="d">A SELL ALL of goods this month's earlier orders have already moved away.</span></span></div>
+  </div>
+  <p class="none">One toggle covers all three causes. A player who has switched this off because
+  they know what their gifts do also stops hearing about their duplicated sale.</p>
+</div>
+
+<h2 class="sec">Three candidate sentences</h2>
+<p>Every one of them ends <em>&ldquo;so this sells nothing&rdquo;</em>, which is how the two causes
+already shipped end. The choice is what comes before it.</p>
+<div class="wording">
+  <div class="w"><b>W1 &mdash; names the count</b><br>an earlier order sells all 10 of its furs, so this sells nothing</div>
+  <div class="w"><b>W2 &mdash; names the line</b><br>the SELL on line 2 already sells all 10 of its furs, so this sells nothing</div>
+  <div class="w"><b>W3 &mdash; shortest</b><br>an earlier SELL already sells these furs, so this sells nothing</div>
+</div>
+<p class="none">For a unit holding exactly one, the shipped wording says <em>its only fur</em>
+rather than <em>all 1 of its furs</em>; whichever sentence is chosen keeps that.</p>
+
+<h2 class="sec">The cases &mdash; what fires, and what stays quiet</h2>
+<p>Holding is <b>10 furs</b> throughout; the market wants 20 at $42, so nothing here is
+oversubscribed. The last two rows are the open questions.</p>
+<table class="cases">
+  <tr><th>Orders</th><th>Silver today</th><th>Silver after</th><th>Warns?</th><th>Why</th></tr>
+  <tr><td class="o">SELL ALL FUR
+SELL ALL FUR</td><td class="bad">$840</td><td class="ok">$420</td><td class="ok">yes, line 2</td>
+  <td>the second line sells nothing at all</td></tr>
+  <tr><td class="o">SELL 6 FUR
+SELL 6 FUR</td><td class="bad">$504</td><td class="ok">$420</td><td class="dim">no</td>
+  <td>the second line still sells the 4 left &mdash; a partial reduction never warns, exactly as a
+  partial <code>GIVE</code> never does</td></tr>
+  <tr><td class="o">SELL ALL FUR EXCEPT 3
+SELL ALL FUR</td><td class="bad">$714</td><td class="ok">$420</td><td class="dim">no</td>
+  <td>the second line sells the 3 held back</td></tr>
+  <tr><td class="o">SELL ALL FUR EXCEPT 3
+SELL ALL FUR EXCEPT 3</td><td class="bad">$588</td><td class="ok">$294</td><td class="dim">no</td>
+  <td>3 furs are still there when line 2 runs &mdash; that line sells nothing because of its own
+  <code>EXCEPT</code>, not because the goods are gone (corrected in round 3)</td></tr>
+  <tr><td class="o">SELL ALL FUR
+SELL ALL HERB</td><td class="dim">unchanged</td><td class="dim">unchanged</td><td class="dim">no</td>
+  <td>different goods, different market line &mdash; untouched</td></tr>
+  <tr><td class="o">SELL 10 FUR
+SELL 10 FUR</td><td class="bad">$840</td><td class="ok">$420</td><td class="brass"><b>question 3</b></td>
+  <td>the numbers are fixed either way. Today the warning only ever fires on a
+  <code>SELL &hellip; ALL</code> line; a stated <code>SELL 10 FUR</code> that sells nothing is
+  currently silent</td></tr>
+  <tr><td class="o">SELL ALL FUR
+SELL ALL FUR
+<span class="dim">(market wants 6; another
+own unit sells too, so this
+unit's share is 3)</span></td><td class="bad">$336</td><td class="ok">$126</td><td class="brass"><b>question 4</b></td>
+  <td>the second line sells nothing &mdash; but because the <em>market</em> ran out, not because the
+  unit did. It still holds 7 furs. <code>region-pool-oversubscribed</code> already fires on the
+  line</td></tr>
+</table>
+
+<h2 class="sec">Unchanged</h2>
+<p>The SILVER hover gains no sentence: it itemises <code>BUY ALL</code> and nothing else, and
+repeating a warning in the hover was rejected once already in <code>ah-q7jd</code>. No new toggle,
+no new column, no new setting, and nothing in the map or the report panes.</p>
+
+</main>
+</body>
+</html>

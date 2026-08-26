@@ -1,0 +1,136 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>ah-vw8e — round 3: the correction and the shipping sentences</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; margin-bottom:10px; } h1 span { color:var(--brass); }
+  p.lead { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h2.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h2.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .banner { background:var(--raised); border-left:3px solid var(--select); padding:11px 14px; margin:16px 0;
+    font-size:13.5px; color:var(--ink-soft); max-width:104ch; }
+  .banner strong { color:var(--ink); }
+  .row { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:12px 14px; margin:12px 0; overflow-x:auto; }
+  p.cap { color:var(--ink-dim); font-size:11px; letter-spacing:1.3px; text-transform:uppercase; margin-bottom:8px; }
+  table.units { width:100%; border-collapse:collapse; font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; min-width:600px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:8px 12px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  td.num { text-align:right; font-family:'SF Mono',Menlo,monospace; }
+  td.ord { font-family:'SF Mono',Menlo,monospace; font-size:11.5px; color:var(--ink-soft); white-space:pre; }
+  .bad { color:var(--danger); } .ok { color:var(--ok); } .dim { color:var(--ink-dim); }
+  .editor { background:#0d1219; border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:74ch; white-space:pre; line-height:1.9; }
+  .editor .u { text-decoration:underline wavy var(--brass); text-decoration-thickness:1.5px; text-underline-offset:4px; color:var(--ink); }
+  .warn { background:var(--raised); border-left:3px solid var(--brass); padding:9px 13px; font-family:system-ui,sans-serif;
+    font-size:12.5px; color:var(--ink); max-width:92ch; margin:8px 0 0; }
+  .warn .code { color:var(--ink-dim); font-family:'SF Mono',Menlo,monospace; font-size:10.5px;
+    letter-spacing:1.1px; text-transform:uppercase; display:block; margin-bottom:4px; }
+  .none { color:var(--ink-dim); font-style:italic; font-size:12.5px; margin:8px 0 0; }
+  table.cases { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:8px; }
+  table.cases th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.cases td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  table.cases td.o { font-family:'SF Mono',Menlo,monospace; font-size:11px; color:var(--ink-soft); white-space:pre; }
+  .tab { background:var(--panel); border:1px solid var(--edge); border-radius:6px; max-width:640px; font-family:system-ui,sans-serif; }
+  .tab .grp { color:var(--brass); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; padding:10px 14px 4px; }
+  .tab .item { display:flex; gap:10px; padding:8px 14px; border-top:1px solid rgba(38,48,61,.6); }
+  .tab .box { width:13px; height:13px; border:1px solid var(--brass); border-radius:2px; background:var(--brass); flex:none; margin-top:3px; }
+  .tab .t { font-size:12.5px; color:var(--ink); } .tab .d { font-size:11.5px; color:var(--ink-dim); }
+  .tab .new { color:var(--ok); font-size:10px; letter-spacing:1.2px; text-transform:uppercase; margin-left:6px; }
+  .wording { display:grid; gap:10px; margin-top:10px; }
+  .wording .w { background:var(--raised); border-left:3px solid var(--edge); padding:9px 13px; font-family:system-ui,sans-serif; font-size:12.5px; }
+  .wording .w b { color:var(--brass); font-family:'SF Mono',Menlo,monospace; font-size:11px; letter-spacing:1.1px; }
+</style>
+</head>
+<body>
+<header>
+<h1>ah-vw8e &mdash; <span>round 3</span>: one correction, and the sentences as they ship</h1>
+<p class="lead"><b>My mistake, and it changes a warning.</b> Round 1's case table said that
+<code>SELL ALL FUR EXCEPT 3</code> written twice warns on the second line. It should not: the unit
+still holds 3 furs there. That line sells nothing because <em>its own</em> <code>EXCEPT</code> holds
+back exactly what is left, not because the goods are gone &mdash; and a warning called
+<em>nothing left to sell</em> would be saying something untrue.</p>
+</header>
+<main>
+
+<h2 class="sec">The gate this suggests</h2>
+<p>A line warns when <b>the unit holds none of those goods by the time that line runs</b> &mdash;
+the report's stock, moved by this month's gifts and takes and by the sales above it. Not merely
+&ldquo;this line sells nothing&rdquo;, which an <code>EXCEPT</code> can cause all by itself.</p>
+<div class="row">
+  <p class="cap">holds 10 furs &mdash; warns: nothing is left when line 2 runs</p>
+  <div class="editor">unit 4411
+  <span class="dim">SELL ALL FUR</span>
+  <span class="u">SELL ALL FUR</span>
+</div>
+  <div class="warn"><span class="code">nothing-left-to-sell</span>
+  an earlier order sells all 10 of its furs, so this sells nothing</div>
+</div>
+<div class="row">
+  <p class="cap">holds 10 furs &mdash; silent: 3 furs are still there when line 2 runs</p>
+  <div class="editor">unit 4411
+  <span class="dim">SELL ALL FUR EXCEPT 3</span>
+  <span class="dim">SELL ALL FUR EXCEPT 3</span>
+</div>
+  <p class="none">no finding. The silver figure is still corrected &mdash; $588 today, $294 after
+  &mdash; because 7 furs are sold, not 14.</p>
+</div>
+
+<h2 class="sec">Every sentence, exactly as it will ship</h2>
+<p>All of them end <em>&ldquo;so this sells nothing&rdquo;</em>, as the two shipped causes do. The
+verb is plural when more than one earlier line did the selling; the count is what those lines
+actually sold.</p>
+<table class="cases">
+  <tr><th>The month</th><th>The sentence on the underlined line</th></tr>
+  <tr><td class="o">holds 10
+SELL ALL FUR
+<b>SELL ALL FUR</b></td>
+  <td>an earlier order sells all 10 of its furs, so this sells nothing</td></tr>
+  <tr><td class="o">holds 10
+SELL 6 FUR
+SELL ALL FUR
+<b>SELL ALL FUR</b></td>
+  <td>earlier orders sell all 10 of its furs, so this sells nothing</td></tr>
+  <tr><td class="o">holds 10
+GIVE 5512 5 FUR
+SELL ALL FUR
+<b>SELL ALL FUR</b></td>
+  <td>an earlier order sells the 5 furs it had left, so this sells nothing</td></tr>
+  <tr><td class="o">holds 1
+SELL ALL FUR
+<b>SELL ALL FUR</b></td>
+  <td>an earlier order sells its only fur, so this sells nothing</td></tr>
+  <tr><td class="o">holds 10
+GIVE 5512 9 FUR
+SELL ALL FUR
+<b>SELL ALL FUR</b></td>
+  <td>an earlier order sells the only fur it had left, so this sells nothing</td></tr>
+  <tr><td class="o">holds 10
+GIVE 5512 10 FUR
+<b>SELL 10 FUR</b></td>
+  <td>this unit gives away all 10 of its furs before the market opens, so this sells nothing
+  <span class="dim">&mdash; the shipped sentence, now reached by a stated sale too</span></td></tr>
+  <tr><td class="o">holds 10
+SELL ALL FUR
+<b>SELL ALL FUR</b>
+<b>SELL ALL FUR</b></td>
+  <td>the same sentence on each of the two dead lines</td></tr>
+</table>
+
+<h2 class="sec">And the silver, in every case on this page</h2>
+<table class="cases">
+  <tr><th>Orders</th><th>Silver today</th><th>Silver after</th><th>Items</th></tr>
+  <tr><td class="o">SELL ALL FUR &times;2</td><td class="bad">$840</td><td class="ok">$420</td><td class="dim">unchanged</td></tr>
+  <tr><td class="o">SELL ALL FUR EXCEPT 3 &times;2</td><td class="bad">$588</td><td class="ok">$294</td><td class="dim">unchanged</td></tr>
+  <tr><td class="o">SELL 6 FUR &times;2</td><td class="bad">$504</td><td class="ok">$420</td><td class="dim">unchanged</td></tr>
+  <tr><td class="o">SELL 10 FUR &times;2</td><td class="bad">$840</td><td class="ok">$420</td><td class="dim">unchanged</td></tr>
+</table>
+
+</main>
+</body>
+</html>
