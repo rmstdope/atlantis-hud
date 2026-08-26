@@ -199,6 +199,31 @@ describe("run — check", () => {
 });
 
 describe("run — refresh", () => {
+  it("reports the changed fields after a successful refresh", async () => {
+    // The real scraper writes config/public/ruleset.json itself; this stub reproduces that on the
+    // canonical (second, --out-less) call, so the diff-reporting path - the one branch the rest of
+    // this suite's refresh tests never exercise - runs against a real before/after pair.
+    const { io, out, files } = fakeIo({
+      fetchText: async (url) => (url === RULES_URL ? RULES_HTML : DATA_HTML),
+      scrape: (args) => {
+        if (!args.includes("--out")) {
+          const modified = JSON.parse(RULESET_JSON);
+          modified.items.SWOR.weight = 2;
+          files.set(RULESET_PATH, JSON.stringify(modified));
+        }
+      }
+    });
+
+    const code = await run(["refresh"], io);
+
+    expect(code).toBe(0);
+    const printed = out.join("\n");
+    expect(printed).toContain("items.SWOR.weight: 1 → 2");
+    expect(printed).toContain("1 changes. Review them before committing");
+    expect(files.get(RULES_FIXTURE)).toBe(RULES_HTML);
+    expect(files.get(DATA_FIXTURE)).toBe(DATA_HTML);
+  });
+
   it("changes nothing on disk when the scrape throws", async () => {
     const { io, files } = fakeIo({
       fetchText: async (url) => (url === RULES_URL ? RULES_HTML : DATA_HTML),
