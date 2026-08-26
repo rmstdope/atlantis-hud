@@ -80,6 +80,39 @@ pub struct UnitPreview {
     /// the column can show a chance creation as a range. Empty for a unit not casting, and for one
     /// whose cast creates nothing an item catalogue can carry (`ah-ofpb.5`).
     pub created: Vec<CreatedItem>,
+    /// One line of what this unit's `TRANSPORT`/`DISTRIBUTE` orders send this month, in document
+    /// order. Empty for a unit that sent nothing (`ah-bxgs`).
+    pub transport_sent: Vec<TransportSent>,
+    /// One item arriving by another unit's `TRANSPORT`/`DISTRIBUTE` this month. Empty for a unit
+    /// receiving nothing (`ah-bxgs`).
+    pub transport_received: Vec<TransportReceived>,
+}
+
+/// One line of what a unit's `TRANSPORT`/`DISTRIBUTE` orders send this month, in document order
+/// (`ah-bxgs`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransportSent {
+    /// How much leaves. `0` on a refused line, which moves nothing.
+    pub amount: i64,
+    pub tag: String,
+    /// The unit number the order named. Empty on a refused line, whose sentence names no target.
+    pub to: String,
+    /// The order named a unit number that appears nowhere in the report - an ally's
+    /// quartermaster, or a mistake. `false` for a unit the report shows but we cannot project.
+    pub to_unshown: bool,
+    /// The game will not transport this item (`rules/economy_transport`), so it stays put.
+    pub refused: bool,
+}
+
+/// One item arriving by another unit's `TRANSPORT`/`DISTRIBUTE` (`ah-bxgs`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransportReceived {
+    pub amount: i64,
+    pub tag: String,
+    /// The sending unit's number.
+    pub from: String,
 }
 
 /// Goods taken from a unit the report does not show in this hex (`ah-agbm`).
@@ -227,6 +260,10 @@ pub fn preview_orders_on_map(
         super::semantics::item_effects(&report, orders_document, Some(ruleset.as_ref()));
     working.apply_item_effects(&item_effects);
     settle_headcounts(&mut working.units, &ruleset);
+    // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
+    // after the market, after movement, after production. A sale takes its goods first, and
+    // whatever a PRODUCE made this month is there to be sent.
+    working.apply_transports();
 
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
@@ -337,12 +374,16 @@ pub fn preview_orders_on_map(
         let produced = entry.produced.clone();
         let built = entry.built.clone();
         let created = entry.created.clone();
+        let transport_sent = entry.transport_sent.clone();
+        let transport_received = entry.transport_received.clone();
 
         let departed = status == UnitPreviewStatus::Departing;
         if changes.is_empty()
             && !departed
             && status != UnitPreviewStatus::Formed
             && uncounted.is_empty()
+            && transport_sent.is_empty()
+            && transport_received.is_empty()
         {
             continue;
         }
@@ -376,6 +417,8 @@ pub fn preview_orders_on_map(
                     produced: produced.clone(),
                     built: built.clone(),
                     created: created.clone(),
+                    transport_sent: transport_sent.clone(),
+                    transport_received: transport_received.clone(),
                 });
             regions
                 .entry(entry.unit.region_id.clone())
@@ -392,6 +435,8 @@ pub fn preview_orders_on_map(
                     produced,
                     built,
                     created,
+                    transport_sent,
+                    transport_received,
                 });
         } else {
             regions
@@ -409,6 +454,8 @@ pub fn preview_orders_on_map(
                     produced,
                     built,
                     created,
+                    transport_sent,
+                    transport_received,
                 });
         }
     }
@@ -522,6 +569,12 @@ struct WorkingUnit {
     /// What this unit's `CAST` orders create this month. Written once by `apply_item_effects`
     /// (`ah-ofpb.5`).
     created: Vec<CreatedItem>,
+    /// What this unit's `TRANSPORT`/`DISTRIBUTE` orders send this month. Written once by
+    /// `apply_transports`, after everything else has run (`ah-bxgs`).
+    transport_sent: Vec<TransportSent>,
+    /// What arrives at this unit by another unit's `TRANSPORT`/`DISTRIBUTE` this month. Written
+    /// once by `apply_transports` (`ah-bxgs`).
+    transport_received: Vec<TransportReceived>,
 }
 
 impl WorkingUnit {
@@ -607,6 +660,30 @@ struct Working {
     forming: Vec<Option<usize>>,
     /// Consulted only to tell people from equipment when a GIVE moves a race.
     ruleset: std::sync::Arc<crate::movement::rules::Ruleset>,
+    /// Every `TRANSPORT`/`DISTRIBUTE` this document writes, in document order, to be applied once
+    /// everything else has been. `rules/sequenceofevents` runs transport in the month's last
+    /// phases, after the market and after production, so a sale written below a transport still
+    /// takes its goods first (`ah-bxgs`).
+    transports: Vec<PendingTransport>,
+    /// Every unit id the report names, ours and everyone else's. A target in here but not in
+    /// `by_id` is a unit we can see and cannot project; one in neither is what the hover calls
+    /// "which your report does not show" (`ah-bxgs`).
+    known_units: std::collections::BTreeSet<String>,
+}
+
+/// One `TRANSPORT`/`DISTRIBUTE` order, held until the month's other orders have been worked out
+/// (`ah-bxgs`).
+struct PendingTransport {
+    sender: usize,
+    /// The receiving row, when the target is one of ours. `None` for an ally's quartermaster or a
+    /// unit number the report does not carry - the goods still leave.
+    receiver: Option<usize>,
+    /// The unit number as the order wrote it, for the hover.
+    to: String,
+    /// `true` when `to` appears nowhere in the report at all.
+    to_unshown: bool,
+    what: super::forms::Selector,
+    amount: super::forms::Amount,
 }
 
 impl Working {
@@ -630,8 +707,11 @@ impl Working {
                 produced: Vec::new(),
                 built: Vec::new(),
                 created: Vec::new(),
+                transport_sent: Vec::new(),
+                transport_received: Vec::new(),
             });
         }
+        let known_units = report.units().map(|unit| unit.unit_id.clone()).collect();
         Self {
             units,
             by_id,
@@ -639,6 +719,8 @@ impl Working {
             current: None,
             forming: Vec::new(),
             ruleset,
+            transports: Vec::new(),
+            known_units,
         }
     }
 
@@ -817,6 +899,8 @@ impl Working {
             produced: Vec::new(),
             built: Vec::new(),
             created: Vec::new(),
+            transport_sent: Vec::new(),
+            transport_received: Vec::new(),
         });
         self.forming.push(Some(index));
     }
@@ -868,6 +952,11 @@ impl Working {
             self.give(active, arguments);
         } else if command.is("take") {
             self.take(active, arguments);
+        } else if command.is("transport") || command.is("distribute") {
+            // `rules/transport`: "the order DISTRIBUTE can be used in place of TRANSPORT and has
+            // the same meaning and syntax", which is why one arm serves both and why the grammar
+            // gives them one shared `TRANSPORT_FORMS` (`ah-bxgs`).
+            self.transport(active, arguments);
         }
     }
 
@@ -1046,6 +1135,107 @@ impl Working {
             let unit = &mut self.units[taker].unit;
             unit.skills = merge_skills(&unit.skills, unit.men, &arriving, moved);
             unit.men += moved;
+        }
+    }
+
+    /// `TRANSPORT`/`DISTRIBUTE target amount item`, whose target need only be FRIENDLY
+    /// (`rules/economy_transport`) - so sending to another faction's quartermaster is the
+    /// ordinary case and not a mistake. Parses and queues; nothing moves until
+    /// `apply_transports` runs, last of all (`ah-bxgs`).
+    ///
+    /// Returns without queueing in five cases, each a decision: the line cannot be read at all;
+    /// the selector is a whole class or a whole unit, which `TRANSPORT_FORMS` has no grammar for
+    /// even though `read_transfer` (shared with `GIVE`) will still hand one back; the target was
+    /// formed this month or belongs to another faction, and so owns no Caravanserai and cannot be
+    /// a quartermaster; the target is `0` (`TRANSPORT` is not `GIVE`, and no rule makes
+    /// transport-to-zero destroy goods); or the target resolves to the sender itself, which the
+    /// server refuses.
+    fn transport(&mut self, sender: usize, arguments: &[super::lexer::Token]) {
+        use super::forms::{Party, Selector};
+
+        let Some((target, rest)) = super::forms::read_party(arguments) else {
+            return;
+        };
+        let Some((what, amount)) = super::forms::read_transfer(rest) else {
+            return;
+        };
+        if matches!(what, Selector::Class(_) | Selector::WholeUnit) {
+            return;
+        }
+
+        let id = match target {
+            Party::Unit(id) => id,
+            Party::New(_) | Party::Foreign { .. } | Party::Discard => return,
+        };
+        if id == self.units[sender].unit.unit_id {
+            return;
+        }
+
+        let receiver = self.by_id.get(&id).copied();
+        let to_unshown = !self.known_units.contains(&id);
+
+        self.transports.push(PendingTransport {
+            sender,
+            receiver,
+            to: id,
+            to_unshown,
+            what,
+            amount,
+        });
+    }
+
+    /// Applies every queued `TRANSPORT`/`DISTRIBUTE`, last of all: `rules/sequenceofevents` runs
+    /// transport in the month's final phases, after the market, after movement, after production
+    /// (`ah-bxgs`).
+    fn apply_transports(&mut self) {
+        let pending = std::mem::take(&mut self.transports);
+        for pending in pending {
+            // `discarding: true` bypasses `tags_moved`'s `can_be_given` filter: `TRANSPORT` has
+            // its own permission gate, `can_be_transported`, checked below - the two lists are
+            // not the same (`IENT` may not be given but may be transported).
+            for (name, tag, moved) in
+                self.tags_moved(pending.sender, &pending.what, &pending.amount, true)
+            {
+                if !self.ruleset.can_be_transported(&tag) {
+                    self.units[pending.sender]
+                        .transport_sent
+                        .push(TransportSent {
+                            amount: 0,
+                            tag,
+                            to: String::new(),
+                            to_unshown: false,
+                            refused: true,
+                        });
+                    continue;
+                }
+                // Re-resolved by tag rather than kept from the snapshot, exactly as `give` does:
+                // an earlier transport in this same document may have emptied a stock ahead of
+                // this one and shifted every index after it.
+                let Some(held) = find_item(&self.units[pending.sender].unit.items, &tag) else {
+                    continue;
+                };
+                take_item(&mut self.units[pending.sender].unit.items, held, moved);
+                self.units[pending.sender]
+                    .transport_sent
+                    .push(TransportSent {
+                        amount: moved,
+                        tag: tag.clone(),
+                        to: pending.to.clone(),
+                        to_unshown: pending.to_unshown,
+                        refused: false,
+                    });
+                if let Some(receiver) = pending.receiver {
+                    add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
+                    let from = self.units[pending.sender].unit.unit_id.clone();
+                    self.units[receiver]
+                        .transport_received
+                        .push(TransportReceived {
+                            amount: moved,
+                            tag,
+                            from,
+                        });
+                }
+            }
         }
     }
 
@@ -1381,6 +1571,50 @@ mod tests {
             "",
         ]
         .join("\n")
+    }
+
+    /// Two regions joined by an exit, own units in both, and one foreign unit - for the
+    /// `TRANSPORT`/`DISTRIBUTE` cases (`ah-bxgs`). `5530` sends; `6857` is a quartermaster that can
+    /// receive. `7001` is a foreign unit visible in `6857`'s hex, present so a transport aimed at a
+    /// unit we can see but do not own has a subject.
+    ///
+    /// The men must be the *first* item on each own unit's line (`count_men`,
+    /// `report/unit.rs:217`).
+    fn report_across_two_hexes() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  Wanted: 100 stone [STON] at $10.",
+            "",
+            "Exits:",
+            "  Southeast : mountain (2,2) in Nowhere.",
+            "",
+            "* Sender (5530), Foo (1), 6 orcs [ORC], 40 stone [STON], 2 horses [HORS], \
+             5 fur [FUR]. Weight: 300. Capacity: 0/0/90/0.",
+            "",
+            "mountain (2,2) in Nowhere, 5 dwarves (dwarves), $3.",
+            "",
+            "Exits:",
+            "  Northwest : plain (1,1) in Nowhere.",
+            "",
+            "* Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "- Stranger (7001), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
+    fn two_hex_preview(orders: &str) -> OrdersPreviewResponse {
+        preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report_across_two_hexes(),
+            "[]",
+            orders,
+        )
+        .expect("the ruleset loads")
     }
 
     /// A mage holding swords to enchant, for the `CAST` cases (`ah-ofpb.5`).
@@ -2945,7 +3179,18 @@ mod tests {
         // The movement words are derived from the one list, so a fourth one can never be
         // forgotten here.
         for keyword in [
-            "name", "guard", "avoid", "behind", "enter", "leave", "form", "give", "turn", "endturn",
+            "name",
+            "guard",
+            "avoid",
+            "behind",
+            "enter",
+            "leave",
+            "form",
+            "give",
+            "turn",
+            "endturn",
+            "transport",
+            "distribute",
         ]
         .iter()
         .copied()
@@ -3252,6 +3497,369 @@ mod tests {
                 }]
             );
             change(unit, "items");
+        }
+    }
+
+    /// `ah-bxgs`. `TRANSPORT`/`DISTRIBUTE` moves goods between units that need not share a hex,
+    /// routed through quartermasters, resolved after everything else `rules/sequenceofevents`
+    /// runs first.
+    mod transport {
+        use super::*;
+
+        fn sender_row(response: &OrdersPreviewResponse) -> &UnitPreview {
+            row(response, "1:1,1", "5530").expect("the sender's row is previewed")
+        }
+
+        fn receiver_row(response: &OrdersPreviewResponse) -> Option<&UnitPreview> {
+            row(response, "1:2,2", "6857")
+        }
+
+        #[test]
+        fn a_transport_moves_goods_across_hexes() {
+            let response = two_hex_preview("unit 5530\nTRANSPORT 6857 30 STON\n");
+
+            let sender = sender_row(&response);
+            let sent_stone = sender
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount);
+            assert_eq!(sent_stone, Some(10), "40 held, 30 sent, 10 left");
+            assert!(sender.changes.iter().any(|change| change.field == "items"));
+
+            let receiver = receiver_row(&response).expect("the receiver is previewed");
+            let held_stone = receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount);
+            assert_eq!(held_stone, Some(45), "15 held, 30 arrived");
+            assert!(receiver
+                .changes
+                .iter()
+                .any(|change| change.field == "items"));
+        }
+
+        #[test]
+        fn a_transport_within_one_hex_moves_goods_too() {
+            let response = preview_orders_for_remembered_report(
+                &mut ReportCache::new(),
+                RULESET,
+                &report(),
+                "[]",
+                "unit 900\nTRANSPORT 901 2 SWOR\n",
+            )
+            .expect("the ruleset loads");
+
+            let sender = only_unit_by_id(&response, "900");
+            let sword_count = sender
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .map(|item| item.amount);
+            assert_eq!(sword_count, Some(1), "3 held, 2 sent");
+
+            let receiver = only_unit_by_id(&response, "901");
+            let sword_count = receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .map(|item| item.amount);
+            assert_eq!(
+                sword_count,
+                Some(2),
+                "0 held, 2 arrived, within the same hex"
+            );
+        }
+
+        #[test]
+        fn distribute_is_transport_under_another_name() {
+            let response = two_hex_preview("unit 5530\nDISTRIBUTE 6857 30 STON\n");
+
+            let sender = sender_row(&response);
+            let sent_stone = sender
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount);
+            assert_eq!(sent_stone, Some(10));
+
+            let receiver = receiver_row(&response).expect("the receiver is previewed");
+            let held_stone = receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount);
+            assert_eq!(held_stone, Some(45));
+        }
+
+        #[test]
+        fn the_game_will_not_transport_a_mount_so_it_stays_put() {
+            let response =
+                two_hex_preview("unit 5530\nTRANSPORT 6857 30 STON\nTRANSPORT 6857 2 HORS\n");
+
+            let sender = sender_row(&response);
+            let horses = sender
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "HORS")
+                .map(|item| item.amount);
+            assert_eq!(
+                horses,
+                Some(2),
+                "the horses stay: the game will not carry them"
+            );
+
+            assert_eq!(
+                sender.transport_sent,
+                vec![
+                    TransportSent {
+                        amount: 30,
+                        tag: "STON".to_string(),
+                        to: "6857".to_string(),
+                        to_unshown: false,
+                        refused: false,
+                    },
+                    TransportSent {
+                        amount: 0,
+                        tag: "HORS".to_string(),
+                        to: String::new(),
+                        to_unshown: false,
+                        refused: true,
+                    },
+                ]
+            );
+        }
+
+        #[test]
+        fn a_transport_of_men_moves_nothing_and_leaves_the_headcount_alone() {
+            let response = two_hex_preview("unit 6857\nTRANSPORT 5530 1 LEAD\n");
+
+            // The row is still previewed (the refusal itself is news), but nothing about the
+            // unit's items or headcount changed - `can_be_transported` refuses every `MAN` tag,
+            // so `apply_transports` never touches `unit.men`, `men_by_race` or `skills`.
+            let unit = row(&response, "1:2,2", "6857").expect("the refusal is still reported");
+            assert_eq!(unit.unit.men, 1);
+            assert!(unit.changes.iter().all(|change| change.field != "items"));
+            assert!(unit.changes.iter().all(|change| change.field != "men"));
+            assert_eq!(
+                unit.transport_sent,
+                vec![TransportSent {
+                    amount: 0,
+                    tag: "LEAD".to_string(),
+                    to: String::new(),
+                    to_unshown: false,
+                    refused: true,
+                }]
+            );
+        }
+
+        #[test]
+        fn a_refusal_is_silent_when_the_unit_holds_none_of_it() {
+            let response = two_hex_preview("unit 6857\nTRANSPORT 5530 2 HORS\n");
+
+            // `6857` holds no horses: nothing to refuse, nothing to report, no row at all.
+            assert!(row(&response, "1:2,2", "6857").is_none());
+        }
+
+        #[test]
+        fn a_sale_takes_its_goods_before_a_transport_can() {
+            let response = two_hex_preview("unit 5530\nTRANSPORT 6857 30 STON\nSELL 40 STON\n");
+
+            let sender = sender_row(&response);
+            let stone = sender
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount);
+            assert_eq!(
+                stone, None,
+                "the sale took all 40 before transport could run"
+            );
+            assert!(
+                sender.transport_sent.is_empty(),
+                "transport had nothing left to send"
+            );
+
+            assert!(
+                receiver_row(&response).is_none(),
+                "the receiver gets nothing: the sale emptied the stock first"
+            );
+        }
+
+        #[test]
+        fn what_a_produce_makes_can_be_transported() {
+            let response = preview_orders_for_remembered_report(
+                &mut ReportCache::new(),
+                RULESET,
+                &report_with_a_smith(),
+                "[]",
+                "unit 900\nPRODUCE SWOR\nTRANSPORT 901 ALL SWOR\n",
+            )
+            .expect("the ruleset loads");
+
+            let sender = only_unit_by_id(&response, "900");
+            assert!(
+                sender
+                    .transport_sent
+                    .iter()
+                    .any(|sent| sent.tag == "SWOR" && sent.amount > 0),
+                "what PRODUCE made this month is there to be sent"
+            );
+        }
+
+        #[test]
+        fn more_ordered_away_than_the_unit_holds_sends_what_is_there() {
+            let response = two_hex_preview("unit 5530\nTRANSPORT 6857 90 STON\n");
+
+            let sender = sender_row(&response);
+            let stone = sender
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount);
+            assert_eq!(stone, None, "all 40 emptied");
+            assert_eq!(
+                sender.transport_sent,
+                vec![TransportSent {
+                    amount: 40,
+                    tag: "STON".to_string(),
+                    to: "6857".to_string(),
+                    to_unshown: false,
+                    refused: false,
+                }]
+            );
+        }
+
+        #[test]
+        fn a_transport_to_a_unit_the_report_does_not_show_still_empties_the_stock() {
+            let response = two_hex_preview("unit 5530\nTRANSPORT 99999 5 STON\n");
+
+            let sender = sender_row(&response);
+            let stone = sender
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount);
+            assert_eq!(stone, Some(35));
+            assert_eq!(
+                sender.transport_sent,
+                vec![TransportSent {
+                    amount: 5,
+                    tag: "STON".to_string(),
+                    to: "99999".to_string(),
+                    to_unshown: true,
+                    refused: false,
+                }]
+            );
+        }
+
+        #[test]
+        fn a_transport_to_a_unit_we_can_see_but_do_not_own() {
+            let response = two_hex_preview("unit 5530\nTRANSPORT 7001 5 STON\n");
+
+            let sender = sender_row(&response);
+            let stone = sender
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount);
+            assert_eq!(stone, Some(35));
+            assert_eq!(
+                sender.transport_sent,
+                vec![TransportSent {
+                    amount: 5,
+                    tag: "STON".to_string(),
+                    to: "7001".to_string(),
+                    to_unshown: false,
+                    refused: false,
+                }]
+            );
+            // No row of ours gains anything: 7001 is not our unit.
+            assert!(row(&response, "1:2,2", "7001").is_none());
+        }
+
+        #[test]
+        fn a_transport_to_nobody_in_particular_moves_nothing() {
+            for orders in [
+                "unit 5530\nTRANSPORT 0 30 STON\n",
+                "unit 5530\nTRANSPORT NEW 1 30 STON\n",
+                "unit 5530\nTRANSPORT FACTION 15 NEW 1 30 STON\n",
+                "unit 5530\nTRANSPORT 5530 30 STON\n",
+                "unit 5530\nTRANSPORT 6857 ALL WEAPONS\n",
+            ] {
+                let response = two_hex_preview(orders);
+                let sender = row(&response, "1:1,1", "5530");
+                let stone_untouched = sender.is_none_or(|unit| {
+                    let stone = unit
+                        .unit
+                        .items
+                        .iter()
+                        .find(|item| item.tag == "STON")
+                        .map(|item| item.amount);
+                    stone == Some(40) && unit.transport_sent.is_empty()
+                });
+                assert!(stone_untouched, "orders {orders:?} moved nothing");
+            }
+        }
+
+        #[test]
+        fn a_unit_whose_transports_net_to_nothing_is_still_sent() {
+            // 6857 starts holding 15 stone, receives 30 more, then forwards the same 30 on -
+            // ending exactly where the report found it.
+            let response = two_hex_preview(
+                "unit 5530\nTRANSPORT 6857 30 STON\nunit 6857\nTRANSPORT 5530 30 STON\n",
+            );
+            let receiver = receiver_row(&response).expect("6857 is still sent");
+            assert!(
+                receiver
+                    .changes
+                    .iter()
+                    .all(|change| change.field != "items"),
+                "30 arrived and 30 left again, netting to the reported 15 - no items change"
+            );
+            assert!(!receiver.transport_received.is_empty());
+            assert!(!receiver.transport_sent.is_empty());
+        }
+
+        #[test]
+        fn a_unit_whose_only_transport_was_refused_is_still_sent() {
+            let response = two_hex_preview("unit 5530\nTRANSPORT 6857 1 HORS\n");
+            let sender = sender_row(&response);
+            assert!(sender.changes.iter().all(|change| change.field != "items"));
+            assert_eq!(
+                sender.transport_sent,
+                vec![TransportSent {
+                    amount: 0,
+                    tag: "HORS".to_string(),
+                    to: String::new(),
+                    to_unshown: false,
+                    refused: true,
+                }]
+            );
+        }
+
+        fn only_unit_by_id<'a>(
+            response: &'a OrdersPreviewResponse,
+            unit_id: &str,
+        ) -> &'a UnitPreview {
+            response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == unit_id)
+                .unwrap_or_else(|| panic!("unit {unit_id} is previewed"))
         }
     }
 }

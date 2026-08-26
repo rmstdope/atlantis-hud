@@ -7,6 +7,8 @@ import type {
   RegionPreview,
   ReportUnit,
   TakenUnshown,
+  TransportReceived,
+  TransportSent,
   UnitPreviewStatus,
   UnitSilver
 } from "@atlantis/core-client";
@@ -48,6 +50,10 @@ export type PreviewedUnit = ReportUnit & {
   built?: BuildSpend[];
   /** What this unit's CAST orders create this month (`ah-ofpb.5`). */
   created?: CreatedItem[];
+  /** What this unit's TRANSPORT/DISTRIBUTE orders send this month, in document order (`ah-bxgs`). */
+  transportSent?: TransportSent[];
+  /** What arrives at this unit by another unit's TRANSPORT/DISTRIBUTE this month (`ah-bxgs`). */
+  transportReceived?: TransportReceived[];
 };
 
 /**
@@ -83,7 +89,9 @@ export function mergePreview(
       takenUnshown: previewed.takenUnshown,
       produced: previewed.produced,
       built: previewed.built,
-      created: previewed.created
+      created: previewed.created,
+      transportSent: previewed.transportSent,
+      transportReceived: previewed.transportReceived
     };
   });
 
@@ -100,7 +108,9 @@ export function mergePreview(
       takenUnshown: previewed.takenUnshown,
       produced: previewed.produced,
       built: previewed.built,
-      created: previewed.created
+      created: previewed.created,
+      transportSent: previewed.transportSent,
+      transportReceived: previewed.transportReceived
     });
   }
 
@@ -164,6 +174,8 @@ export function itemsTooltip(
   const built = unit.built ?? [];
   const created = unit.created ?? [];
   const uncounted = unit.uncounted ?? [];
+  const transportSent = unit.transportSent ?? [];
+  const transportReceived = unit.transportReceived ?? [];
   const buyAll = buyAllSentences(silver);
   const capSentence = productionCapSentence(silver);
   const castCap = castCapSentence(silver);
@@ -174,6 +186,8 @@ export function itemsTooltip(
     built.length === 0 &&
     created.length === 0 &&
     uncounted.length === 0 &&
+    transportSent.length === 0 &&
+    transportReceived.length === 0 &&
     buyAll.length === 0 &&
     capSentence === undefined &&
     castCap === undefined
@@ -207,6 +221,11 @@ export function itemsTooltip(
       `Includes ${amount} ${item.tag} this unit will ${verb}. Casting resolves after GIVE, so they cannot be given away this month.`
     );
   }
+  for (const arrival of transportReceived) {
+    lines.push(
+      `Includes ${arrival.amount} ${arrival.tag} transported from unit ${arrival.from}. Transport resolves last, so they cannot be spent this month.`
+    );
+  }
   if (capSentence !== undefined) {
     lines.push(capSentence);
   }
@@ -228,6 +247,17 @@ export function itemsTooltip(
   }
   if (castCap !== undefined) {
     lines.push(castCap);
+  }
+  for (const sent of transportSent) {
+    if (sent.refused) {
+      lines.push(`The game will not transport ${sent.tag}, so they stay with this unit.`);
+    } else if (sent.toUnshown) {
+      lines.push(
+        `Sends ${sent.amount} ${sent.tag} to unit ${sent.to}, which your report does not show.`
+      );
+    } else {
+      lines.push(`Sends ${sent.amount} ${sent.tag} to unit ${sent.to}.`);
+    }
   }
   for (const order of uncounted) {
     lines.push(`and more that cannot be counted: ${order}`);
