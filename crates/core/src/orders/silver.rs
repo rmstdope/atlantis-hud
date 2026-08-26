@@ -290,6 +290,10 @@ pub struct UnitSilver {
     /// What stopped it making `cast_wanted`, or `None` when nothing did. Drives the hover's note
     /// and nothing else - the figures above are already the capped ones.
     pub cast_capped_by: Option<ProductionCap>,
+    /// Whether this unit's `CAST` order summons rather than makes, which decides one word in the
+    /// cap sentence: "not the 12 its level could **summon**" against "could **make**"
+    /// (`ah-ofpb.5`). `false` for a unit with no priceable cast.
+    pub cast_summons: bool,
     /// Set when this unit is not one the report shows but one this month's `FORM` orders create -
     /// see [`FormedSubject`]. The interface names the unit by its alias and sends a click to
     /// `formed_by`, since a unit that does not exist cannot be selected.
@@ -931,6 +935,7 @@ pub fn forecast_unit(
             cast_made_named: None,
             cast_wanted: 0,
             cast_capped_by: None,
+            cast_summons: false,
             formed,
         };
     }
@@ -1350,6 +1355,7 @@ pub fn forecast_unit(
         }),
         cast_wanted: cast.as_ref().map_or(0, |plan| plan.wanted),
         cast_capped_by: cast.as_ref().and_then(|plan| plan.capped_by),
+        cast_summons: cast.as_ref().is_some_and(|plan| plan.summons),
         formed,
     }
 }
@@ -2561,7 +2567,8 @@ pub fn recipe_for<'a>(ruleset: Option<&'a Ruleset>, tag: &str) -> Option<&'a Pro
         .find(|recipe| recipe.tag.eq_ignore_ascii_case(tag))
 }
 
-/// Which limit decided how many a unit produces, when it is not its men.
+/// Which limit decided how many a unit produces, when it is not its men - or, for a `CAST` that
+/// summons, how many it may control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "kebab-case")]
@@ -2570,6 +2577,10 @@ pub enum ProductionCap {
     Silver,
     /// The unit holds too little of at least one material input.
     Materials,
+    /// The mage already controls as many of the creature as its level allows, so the summon was
+    /// clamped (`ah-ofpb.5`). Only ever set for a summon, and only for the four skills that state
+    /// a cap.
+    Room,
 }
 
 /// What one `PRODUCE` order makes, and what it takes to make it.
@@ -2718,10 +2729,15 @@ pub struct Transmuting<'a> {
 pub struct CastPlan {
     /// How many the cast will actually make, capped by what the mage can pay for.
     pub made: i64,
+    /// The fewest the cast may actually bring. Equal to `made` for every certain creation, and for
+    /// a chance spell at a level whose percentage total lands on a whole hundred - a level 5 ring
+    /// maker is 20 x 5 = 100%, exactly one ring, and shows no range. `0` for a spell that creates
+    /// nothing an item catalogue can carry.
+    pub made_certain: i64,
     /// How many the mage's level alone would make. Every whole hundred percent is an item, and any
-    /// remainder is rounded **up** to one more - the navigator's choice, 2026-08-26, and the reason
-    /// no "certain" count is computed anywhere in this bead. `1` for a spell that creates nothing
-    /// an item catalogue can carry, which the page prices per attempt.
+    /// remainder is rounded **up** to one more - the navigator's choice, `ah-ofpb.4`, 2026-08-26.
+    /// `made_certain` above is the floor beside this ceiling, added by `ah-ofpb.5`. `1` for a spell
+    /// that creates nothing an item catalogue can carry, which the page prices per attempt.
     pub wanted: i64,
     /// How many the ledger is charged for: `made`, but never fewer than one when `wanted` is more
     /// than none. A mage that cannot afford even one is charged for one and is warned that it is
@@ -2739,6 +2755,9 @@ pub struct CastPlan {
     /// bind, for the same reason `plan_production` names it first: the column this feeds is about
     /// silver.
     pub capped_by: Option<ProductionCap>,
+    /// Whether the skill's paragraph calls this creation a summoning, which decides one word in
+    /// the ITEMS hover and one in the cap sentence. `false` for a spell that creates nothing.
+    pub summons: bool,
 }
 
 /// `CAST Transmutation [number] <material>` split into how many and what.
@@ -2777,17 +2796,29 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
         },
     };
 
-    // The level's capacity, unused when `output` is `None`.
-    let capacity = output.map_or(0, |output| {
+    // The fewest and the most this level can bring. Two arithmetics: a percentage total, whose
+    // whole hundreds are certain and whose remainder is the chance of one more; and the four
+    // skills the page words as an average, where the engine takes the whole-hundred count and
+    // then flips two coins per item, keeping a floor of one. The second is the navigator's,
+    // from the game engine, 2026-08-26 - it is on neither committed page and is not a lookup.
+    let (capacity_fewest, capacity) = output.map_or((0, 0), |output| {
         let output_level = i64::from(output.level);
         if level < output_level {
-            return 0;
+            return (0, 0);
         }
         let effective_level = (level + output.level_offset).max(0);
         let total_percent = output.percent_per_level.saturating_mul(effective_level);
-        // Rounded up, deliberately: a remainder chance is charged as though it landed
-        // (`ah-ofpb.4`, Q2). `total_percent` is never negative, so this is an ordinary ceiling.
-        (total_percent + 99) / 100
+        if output.averaged {
+            // `num = (level * percent + rand(0..99)) / 100`. Every `percent_per_level` the page
+            // states as an average is a whole multiple of 100, so the random part never carries
+            // and `num` is exact. Then `2 * num` coin tosses, at least one when `num > 0`.
+            let num = total_percent / 100;
+            (i64::from(num > 0), num.saturating_mul(2))
+        } else {
+            // Rounded up, deliberately, as `ah-ofpb.4` Q2 decided: a remainder chance is charged
+            // as though it landed. The floor beside it is what this bead added.
+            (total_percent / 100, (total_percent + 99) / 100)
+        }
     });
 
     // 2. `wanted`.
@@ -2861,13 +2892,33 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
     } else {
         Some(ProductionCap::Materials)
     };
+
+    // What the mage may still control, for the four skills that state a cap. `wanted` is left
+    // alone: the hover says "not the 12 its level could summon", which is the level's figure.
+    let room = output.and_then(|output| {
+        output.control.as_ref().map(|cap| {
+            let base = (level + cap.offset).max(0);
+            let ceiling = cap
+                .multiplier
+                .saturating_mul(base.saturating_pow(cap.exponent));
+            (ceiling - holding(&output.tag)).max(0)
+        })
+    });
+    let (made, capped_by) = match room {
+        Some(room) if room < made => (room, Some(ProductionCap::Room)),
+        _ => (made, capped_by),
+    };
+
     // 5. `charged` is `0` when `wanted` is `0` (Q3: a mage whose level makes none of the thing is
     // charged nothing), and `max(1, made)` otherwise (R2: a mage that cannot afford even one is
-    // still charged for one, so the shipped warnings still fire).
+    // still charged for one, so the shipped warnings still fire). The control-cap clamp above must
+    // not move this: all four capped skills have `costs: []`, so `charged` times anything is
+    // nothing (`ah-ofpb.5`, Known traps).
     let charged = if wanted == 0 { 0 } else { made.max(1) };
 
     CastPlan {
         made,
+        made_certain: capacity_fewest.min(made),
         wanted,
         charged,
         tag: output.map(|output| output.tag.to_ascii_uppercase()),
@@ -2885,6 +2936,7 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
             Vec::new()
         },
         capped_by,
+        summons: output.is_some_and(|output| output.summoned),
     }
 }
 
@@ -3143,7 +3195,11 @@ mod cast_tests {
         assert_eq!(plan_cast(&cast_cost("SWIN"), &unlimited(), 2).wanted, 0);
         assert_eq!(plan_cast(&cast_cost("SWIN"), &unlimited(), 5).wanted, 1);
         assert_eq!(plan_cast(&cast_cost("BIRD"), &unlimited(), 2).wanted, 0);
-        assert_eq!(plan_cast(&cast_cost("BIRD"), &unlimited(), 3).wanted, 1);
+        // `BIRD` is one of the four skills the page words as an average (`ah-ofpb.5`), so its
+        // ceiling is now the coin-flip arithmetic rather than the plain percentage: a level 3
+        // eagle-tamer is `num = 1`, so `2 * num = 2` rather than the `1` a bare percentage ceiling
+        // would give.
+        assert_eq!(plan_cast(&cast_cost("BIRD"), &unlimited(), 3).wanted, 2);
 
         let gate = plan_cast(&cast_cost("CGAT"), &unlimited(), 3);
         assert_eq!(gate.wanted, 1);
@@ -3255,6 +3311,111 @@ mod cast_tests {
     fn plan_cast_rounds_a_chance_up_to_a_whole_item() {
         assert_eq!(plan_cast(&cast_cost("CRRI"), &unlimited(), 3).wanted, 1);
         assert_eq!(plan_cast(&cast_cost("CRRU"), &unlimited(), 3).wanted, 3);
+    }
+
+    /// A level 3 create-runesword mage is 90 x 3 = 270 percent: two runeswords certain and a 70
+    /// percent chance of a third (`ah-ofpb.5`, settled with the navigator before this bead).
+    #[test]
+    fn plan_cast_names_the_fewest_a_chance_brings() {
+        let plan = plan_cast(&cast_cost("CRRU"), &unlimited(), 3);
+        assert_eq!(plan.made_certain, 2);
+        assert_eq!(plan.made, 3);
+    }
+
+    /// A level 5 ring maker is 20 x 5 = 100 percent, exactly one ring: no chance is left over, so
+    /// the floor and the ceiling agree and the column shows no range.
+    #[test]
+    fn plan_cast_leaves_no_range_when_the_chance_lands_exactly() {
+        let plan = plan_cast(&cast_cost("CRRI"), &unlimited(), 5);
+        assert_eq!(plan.made_certain, 1);
+        assert_eq!(plan.made, 1);
+    }
+
+    /// The navigator's own arithmetic from the game engine, cited throughout as their decision and
+    /// on neither committed page: `num = (level * percent + rand(0..99)) / 100`, then `2 * num`
+    /// coin tosses with a floor of one when `num > 0`. A level 3 wolf master is `num = 6`, so
+    /// `made == 12` and `made_certain == 1`; a level 3 eagle-tamer (`data/BIRD`, `levelOffset -2`)
+    /// is `num = 1`, so `made == 2` and `made_certain == 1`.
+    #[test]
+    fn plan_cast_spreads_an_averaged_summon() {
+        let wolf = plan_cast(&cast_cost("WOLF"), &unlimited(), 3);
+        assert_eq!(wolf.made, 12);
+        assert_eq!(wolf.made_certain, 1);
+
+        let bird = plan_cast(&cast_cost("BIRD"), &unlimited(), 3);
+        assert_eq!(bird.made, 2);
+        assert_eq!(bird.made_certain, 1);
+    }
+
+    /// `data/WOLF`: "control a total number of his skill level squared times 4 wolves" - a level 3
+    /// mage may control `4 * 3^2 = 36`. Holding 30 already, only 6 more fit, clamping the summon
+    /// that the level alone would bring (12) down to what there is room for.
+    #[test]
+    fn plan_cast_is_clamped_by_what_the_mage_may_control() {
+        let clamped = plan_cast(
+            &cast_cost("WOLF"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[("WOLF", 30)]),
+                silver_available: 0,
+                transmuting: None,
+            },
+            3,
+        );
+        assert_eq!(clamped.made, 6);
+        assert_eq!(clamped.wanted, 12);
+        assert_eq!(clamped.capped_by, Some(ProductionCap::Room));
+    }
+
+    /// A mage already at its control cap summons none: 36 wolves is `4 * 3^2`, so a level 3 mage
+    /// holding 36 has no room left. `data/SUBA`'s cap is a flat one - a mage already holding a
+    /// balrog may control no more, whatever its level.
+    #[test]
+    fn a_mage_at_its_control_cap_summons_none() {
+        let full_wolves = plan_cast(
+            &cast_cost("WOLF"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[("WOLF", 36)]),
+                silver_available: 0,
+                transmuting: None,
+            },
+            3,
+        );
+        assert_eq!(full_wolves.made, 0);
+        assert_eq!(full_wolves.capped_by, Some(ProductionCap::Room));
+
+        let full_balrog = plan_cast(
+            &cast_cost("SUBA"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[("BALR", 1)]),
+                silver_available: 0,
+                transmuting: None,
+            },
+            3,
+        );
+        assert_eq!(full_balrog.made, 0);
+        assert_eq!(full_balrog.capped_by, Some(ProductionCap::Room));
+    }
+
+    /// The clamp must not move a shipped warning: all four capped skills cost nothing, so a
+    /// control-clamped summon still charges no silver and consumes no materials - the guard this
+    /// bead's Known traps names first, and it must be written before `cast()` itself is touched.
+    #[test]
+    fn a_clamped_summon_still_charges_what_it_always_did() {
+        let clamped = plan_cast(
+            &cast_cost("WOLF"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[("WOLF", 30)]),
+                silver_available: 0,
+                transmuting: None,
+            },
+            3,
+        );
+        assert_eq!(clamped.silver, 0);
+        assert_eq!(clamped.materials, Vec::new());
     }
 }
 

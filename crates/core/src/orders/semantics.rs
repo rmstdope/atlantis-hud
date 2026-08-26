@@ -2129,6 +2129,19 @@ pub(crate) struct ItemMovement {
     /// arrive in the month's last phase and cannot be spent this month. `false` on every other
     /// movement, the materials that same order consumes included.
     pub produced: bool,
+    /// What a `CAST` creates, on the movement carrying its arrival (`ah-ofpb.5`). `None` on every
+    /// other movement, the materials that same cast consumes included.
+    pub created: Option<Created>,
+}
+
+/// The part of a cast's arrival the ITEMS column cannot state as one number (`ah-ofpb.5`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Created {
+    /// The fewest the cast may bring; the movement's own `delta` is the most, and the two are
+    /// equal for a certain creation.
+    pub fewest: i64,
+    /// Whether the skill calls this a summoning, which decides the hover's verb.
+    pub summoned: bool,
 }
 
 /// Whether a call to [`transfer`] should be recorded as a movement for the orders preview. `GIVE`
@@ -2903,7 +2916,9 @@ fn apply(
         }
         Intent::Study { skill } => study(ledger, actor, placed, skill, ruleset),
         Intent::Cast { spell, arguments } => {
-            cast(ledger, actor, placed, spell, arguments, ruleset, region);
+            cast(
+                ledger, hex, actor, placed, spell, arguments, ruleset, region,
+            );
         }
         // The fund pays, not the unit (`ah-tdsi`). Nothing is charged here, and an unpriceable
         // withdrawal no longer doubts the unit: what cannot be counted is the *faction's* total,
@@ -2926,6 +2941,7 @@ fn apply(
                     delta: *count,
                     from_unshown: None,
                     produced: false,
+                    created: None,
                 });
             }
         }
@@ -2936,6 +2952,16 @@ fn apply(
         // makes, so the column admits the gap rather than showing an unchanged list (`ah-ofpb.1`).
         // Deliberately not `doubted`: a bare PRODUCE costs no silver, so no sum is in question.
         Intent::MonthLong("PRODUCE") => {
+            ledger
+                .uncounted
+                .entry(who.clone())
+                .or_default()
+                .push(placed.line);
+        }
+        // `CAST` naming no spell: the month is spoken for and nothing can be said about what it
+        // moves, so the column admits the gap (`ah-ofpb.5`). Deliberately not `doubted`: a bare CAST
+        // costs no silver, so no sum is in question.
+        Intent::MonthLong("CAST") => {
             ledger
                 .uncounted
                 .entry(who.clone())
@@ -3080,6 +3106,7 @@ fn transfer(
                 delta: -quantity,
                 from_unshown: None,
                 produced: false,
+                created: None,
             });
         }
     }
@@ -3093,6 +3120,7 @@ fn transfer(
                 delta: quantity,
                 from_unshown,
                 produced: false,
+                created: None,
             });
         }
     }
@@ -3151,6 +3179,7 @@ fn buy(
             delta: bought,
             from_unshown: None,
             produced: false,
+            created: None,
         });
     }
 }
@@ -3226,6 +3255,7 @@ fn produce(
                 delta: -material.amount,
                 from_unshown: None,
                 produced: false,
+                created: None,
             });
         }
     }
@@ -3237,6 +3267,7 @@ fn produce(
             delta: plan.made,
             from_unshown: None,
             produced: true,
+            created: None,
         });
     }
 }
@@ -3470,6 +3501,7 @@ fn build(
         delta: -plan.done,
         from_unshown: None,
         produced: false,
+        created: None,
     });
     ledger
         .built
@@ -3537,6 +3569,7 @@ fn sell(
             delta: -quantity,
             from_unshown: None,
             produced: false,
+            created: None,
         });
     }
 }
@@ -3569,8 +3602,10 @@ fn study(
 /// charged for every item it will make, not once whatever the roll makes (`ah-ofpb.4`). A spell the
 /// ruleset does not know, or knows no cost for, charges nothing and doubts nothing: most spells
 /// cost nothing to cast, and a unit's other sums are still good.
+#[allow(clippy::too_many_arguments)]
 fn cast(
     ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
     actor: &Ordered<'_>,
     placed: &PlacedIntent,
     spell: &str,
@@ -3600,6 +3635,20 @@ fn cast(
         number: *number,
     });
 
+    // `CAST Transmutation` naming a material the catalogue cannot place - or naming none at all.
+    // The spell transmutes something, so the column cannot simply say nothing moved.
+    if transmute_tag.is_none()
+        && resolved
+            .and_then(|skill| skill.cast.as_ref())
+            .is_some_and(|cost| !cost.transmute.is_empty())
+    {
+        ledger
+            .uncounted
+            .entry(who.clone())
+            .or_default()
+            .push(placed.line);
+    }
+
     // `rules/sequence` puts `GIVE` and `TAKE` two phases before `Spells are CAST`, so silver on its
     // way in counts; wages and anything produced after do not (`ah-ofpb.4`, R4). The report's own
     // holding, not the ledger's running balance - the same divergence `plan_production` already
@@ -3623,13 +3672,58 @@ fn cast(
     charge(ledger, who, SILVER, priced.spends, placed);
 
     let Some(plan) = plan else {
+        // A spell the ruleset has no entry for could be a typo or a spell the scraper missed;
+        // either way nothing can be said about this unit's month, so the column admits the gap
+        // (`ah-ofpb.5`, round 2 Q7). A spell it *does* know that simply has no `cast` cost - a
+        // fireball, earth lore, phantasmal entertainment - moves no items and is counted silently:
+        // marking those would put a question mark on every combat mage in the faction, for ever.
+        if resolved.is_none() {
+            ledger
+                .uncounted
+                .entry(who.clone())
+                .or_default()
+                .push(placed.line);
+        }
         return;
     };
 
-    // A cast's arrival and consumption in the ITEMS column is `ah-ofpb.5` - no `ItemMovement` is
-    // pushed here, unlike `produce()`, which this ledger charge is otherwise modelled on.
+    // The recording `ah-ofpb.5` adds: what a cast consumes and what it creates, both as
+    // `ItemMovement`s so the ITEMS column can show them exactly as `produce()`'s do. Nothing is
+    // credited - `cast()` has never called `credit` for an item and must not start (round 2, Q5,
+    // answer C).
     for material in &plan.materials {
         charge(ledger, who, &material.tag, material.amount, placed);
+        if material.amount != 0 {
+            ledger.movements.push(ItemMovement {
+                unit_id: who.clone(),
+                tag: material.tag.to_ascii_uppercase(),
+                name: item_name(&material.tag, hex, ruleset),
+                // What a cast consumes leaves at the ceiling, because that is what the ledger was
+                // charged: the ITEMS column, the SILVER column and `not-enough-items` must read one
+                // number (`ah-ofpb.5`, round 1 Q4). `plan.materials` is already `charged` times the
+                // per-item amount.
+                delta: -material.amount,
+                from_unshown: None,
+                produced: false,
+                created: None,
+            });
+        }
+    }
+    // The arrival is `made`, never `charged`: a mage that cannot afford one is charged for one and
+    // makes none, and the column must show the materials going and nothing coming back.
+    if let Some(tag) = plan.tag.clone().filter(|_| plan.made != 0) {
+        ledger.movements.push(ItemMovement {
+            unit_id: who.clone(),
+            name: item_name(&tag, hex, ruleset),
+            tag,
+            delta: plan.made,
+            from_unshown: None,
+            produced: false,
+            created: Some(Created {
+                fewest: plan.made_certain,
+                summoned: plan.summons,
+            }),
+        });
     }
 }
 
@@ -10330,6 +10424,7 @@ mod tests {
                             delta: 100,
                             from_unshown: None,
                             produced: false,
+                            created: None,
                         }),
                         "the taker's own gain should be among the recorded movements: {:?}",
                         ledger.movements
@@ -10364,6 +10459,7 @@ mod tests {
                             delta: 8,
                             from_unshown: None,
                             produced: false,
+                            created: None,
                         })
                     );
                     assert_eq!(
@@ -10375,6 +10471,7 @@ mod tests {
                             delta: 4,
                             from_unshown: None,
                             produced: false,
+                            created: None,
                         })
                     );
                 },
@@ -10397,6 +10494,7 @@ mod tests {
                         delta: -15,
                         from_unshown: None,
                         produced: false,
+                        created: None,
                     }]
                 );
             });
@@ -10503,6 +10601,7 @@ mod tests {
                         delta: 8,
                         from_unshown: None,
                         produced: false,
+                        created: None,
                     }]
                 );
             });
@@ -10541,6 +10640,7 @@ mod tests {
                         delta: -8,
                         from_unshown: None,
                         produced: false,
+                        created: None,
                     }),
                     "the materials a PRODUCE consumes should be among the recorded movements: {:?}",
                     ledger.movements
@@ -10577,6 +10677,7 @@ mod tests {
                         delta: 8,
                         from_unshown: None,
                         produced: true,
+                        created: None,
                     }),
                     "the goods a PRODUCE makes should be among the recorded movements: {:?}",
                     ledger.movements
@@ -10603,6 +10704,7 @@ mod tests {
                             delta: -5,
                             from_unshown: None,
                             produced: false,
+                            created: None,
                         },
                         ItemMovement {
                             unit_id: "2391".to_string(),
@@ -10611,6 +10713,7 @@ mod tests {
                             delta: 5,
                             from_unshown: None,
                             produced: true,
+                            created: None,
                         },
                     ],
                     "eight men could make eight swords, but only five iron is held"
@@ -10633,6 +10736,192 @@ mod tests {
                     "production resolves in the month's last phase; crediting it now would silence \
                      a not-enough-items warning that should fire"
                 );
+            });
+        }
+
+        #[test]
+        fn a_cast_records_the_materials_it_consumes() {
+            let hex_region = region(vec![with_skill(
+                with_item(unit("5"), 20, "sword", "SWOR"),
+                "ESWO",
+                3,
+            )]);
+            with_ledger(hex_region, "unit 5\nCAST Enchant_Swords\n", |ledger| {
+                assert!(
+                    ledger.movements.contains(&ItemMovement {
+                        unit_id: "5".to_string(),
+                        tag: "SWOR".to_string(),
+                        name: "sword".to_string(),
+                        delta: -15,
+                        from_unshown: None,
+                        produced: false,
+                        created: None,
+                    }),
+                    "the materials a CAST consumes should be among the recorded movements: {:?}",
+                    ledger.movements
+                );
+            });
+        }
+
+        #[test]
+        fn a_cast_records_what_it_makes() {
+            let hex_region = region(vec![with_skill(
+                with_item(unit("5"), 20, "sword", "SWOR"),
+                "ESWO",
+                3,
+            )]);
+            with_ledger(hex_region, "unit 5\nCAST Enchant_Swords\n", |ledger| {
+                let arrival = ledger
+                    .movements
+                    .iter()
+                    .find(|movement| movement.tag == "MSWO")
+                    .expect("the enchantment's arrival should be among the recorded movements");
+                assert_eq!(arrival.delta, 15);
+                assert_eq!(
+                    arrival.created,
+                    Some(Created {
+                        fewest: 15,
+                        summoned: false,
+                    })
+                );
+            });
+        }
+
+        #[test]
+        fn a_cast_that_makes_nothing_records_no_arrival() {
+            let hex_region = region(vec![with_skill(unit("5"), "ESWO", 3)]);
+            with_ledger(hex_region, "unit 5\nCAST Enchant_Swords\n", |ledger| {
+                assert!(
+                    ledger
+                        .movements
+                        .iter()
+                        .all(|movement| movement.tag != "MSWO"),
+                    "a mage with nothing to enchant should record no arrival: {:?}",
+                    ledger.movements
+                );
+                assert!(
+                    ledger
+                        .movements
+                        .iter()
+                        .any(|movement| movement.tag == "SWOR" && movement.delta == -1),
+                    "the material charge still moves even though nothing arrives: {:?}",
+                    ledger.movements
+                );
+            });
+        }
+
+        /// A level 3 create-runesword mage is 90 x 3 = 270 percent: two runeswords certain and a 70
+        /// percent chance of a third (`ah-ofpb.5`, settled with the navigator before this bead).
+        #[test]
+        fn a_chance_cast_records_the_fewest_it_may_bring() {
+            let hex_region = region(vec![with_skill(
+                with_item(unit("5"), 2000, "silver", "SILV"),
+                "CRRU",
+                3,
+            )]);
+            with_ledger(hex_region, "unit 5\nCAST Create_Runesword\n", |ledger| {
+                let arrival = ledger
+                    .movements
+                    .iter()
+                    .find(|movement| movement.tag == "RUNE")
+                    .expect("the runesword's arrival should be among the recorded movements");
+                assert_eq!(arrival.delta, 3);
+                assert_eq!(
+                    arrival.created,
+                    Some(Created {
+                        fewest: 2,
+                        summoned: false,
+                    })
+                );
+            });
+        }
+
+        /// Mirrors `a_produce_still_credits_the_unit_nothing`: an enchanter that casts and then
+        /// sells its mithril swords this same month is still told it is short, because the cast's
+        /// arrival is never credited to `Ledger::balance` (round 2, Q5, answer C). This is a known,
+        /// accepted cost - not a defect to be quietly fixed here.
+        #[test]
+        fn a_cast_still_credits_the_unit_nothing() {
+            let hex_region = region(vec![with_skill(
+                with_item(unit("5"), 20, "sword", "SWOR"),
+                "ESWO",
+                3,
+            )]);
+            with_ledger(hex_region, "unit 5\nCAST Enchant_Swords\n", |ledger| {
+                assert_eq!(
+                    balance_of(ledger, "5", "MSWO"),
+                    0,
+                    "casting resolves before SELL and BUY but after GIVE; crediting it now would \
+                     silence a not-enough-items warning that should fire"
+                );
+            });
+        }
+
+        #[test]
+        fn a_bare_cast_cannot_be_counted() {
+            let hex_region = region(vec![unit("5")]);
+            with_ledger(hex_region, "unit 5\nCAST\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("5").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+                assert!(ledger.movements.is_empty());
+            });
+        }
+
+        #[test]
+        fn a_cast_of_a_spell_the_ruleset_does_not_know_cannot_be_counted() {
+            let hex_region = region(vec![unit("5")]);
+            with_ledger(hex_region, "unit 5\nCAST Nonexistent_Spell\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("5").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+                assert!(ledger.movements.is_empty());
+            });
+        }
+
+        /// `CAST Transmutation` naming no material at all: the spell transmutes something, so the
+        /// column cannot simply say nothing moved (round 2, Q7, answer A's third uncountable case,
+        /// caught in review - the other two already had dedicated tests above).
+        #[test]
+        fn a_transmutation_naming_no_material_cannot_be_counted() {
+            let hex_region = region(vec![unit("5")]);
+            with_ledger(hex_region, "unit 5\nCAST Transmutation\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("5").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+                assert!(ledger.movements.is_empty());
+            });
+        }
+
+        /// `CAST Transmutation` naming a material the catalogue cannot place.
+        #[test]
+        fn a_transmutation_naming_an_unresolvable_material_cannot_be_counted() {
+            let hex_region = region(vec![unit("5")]);
+            with_ledger(
+                hex_region,
+                "unit 5\nCAST Transmutation nonexistent_material\n",
+                |ledger| {
+                    assert_eq!(
+                        ledger.uncounted.get("5").map(Vec::as_slice),
+                        Some([2].as_slice())
+                    );
+                    assert!(ledger.movements.is_empty());
+                },
+            );
+        }
+
+        /// A fireball is a known spell with no `cast` cost at all, so its month must not carry the
+        /// question mark this bead adds - marking it would put one on every combat mage in the
+        /// faction, for ever (round 2, Q7, answer A).
+        #[test]
+        fn a_cast_that_moves_no_items_is_counted_silently() {
+            let hex_region = region(vec![unit("5")]);
+            with_ledger(hex_region, "unit 5\nCAST Fire\n", |ledger| {
+                assert!(!ledger.uncounted.contains_key("5"));
+                assert!(ledger.movements.is_empty());
             });
         }
 
@@ -10706,6 +10995,7 @@ mod tests {
                         delta: -30,
                         from_unshown: None,
                         produced: false,
+                        created: None,
                     }),
                     "the material a BUILD consumes should be among the recorded movements: {:?}",
                     ledger.movements
@@ -10743,6 +11033,7 @@ mod tests {
                         delta: -30,
                         from_unshown: None,
                         produced: false,
+                        created: None,
                     }],
                     "a BUILD should charge material and credit nothing else: {for_900:?}"
                 );
@@ -10762,6 +11053,7 @@ mod tests {
                         delta: -15,
                         from_unshown: None,
                         produced: false,
+                        created: None,
                     }),
                     "{:?}",
                     ledger.movements
@@ -10786,6 +11078,7 @@ mod tests {
                         delta: -6,
                         from_unshown: None,
                         produced: false,
+                        created: None,
                     }),
                     "{:?}",
                     ledger.movements
@@ -10877,6 +11170,7 @@ mod tests {
                         delta: -10,
                         from_unshown: None,
                         produced: false,
+                        created: None,
                     }),
                     "{:?}",
                     ledger.movements
@@ -10963,6 +11257,7 @@ mod tests {
                         delta: -10,
                         from_unshown: None,
                         produced: false,
+                        created: None,
                     }),
                     "{:?}",
                     ledger.movements
@@ -11015,6 +11310,7 @@ mod tests {
                             delta: -30,
                             from_unshown: None,
                             produced: false,
+                            created: None,
                         }),
                         "{:?}",
                         ledger.movements

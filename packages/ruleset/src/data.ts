@@ -14,6 +14,7 @@ export type { BuildingEntry } from "./generated/BuildingEntry";
 export type { CastCost } from "./generated/CastCost";
 export type { CastInput } from "./generated/CastInput";
 export type { CastOutput } from "./generated/CastOutput";
+export type { ControlCap } from "./generated/ControlCap";
 export type { SkillEntry } from "./generated/SkillEntry";
 export type { SkillLevel } from "./generated/SkillLevel";
 export type { SkillRequirement } from "./generated/SkillRequirement";
@@ -33,6 +34,7 @@ import type { SkillRequirement } from "./generated/SkillRequirement";
 import type { CastCost } from "./generated/CastCost";
 import type { CastInput } from "./generated/CastInput";
 import type { CastOutput } from "./generated/CastOutput";
+import type { ControlCap } from "./generated/ControlCap";
 import type { ItemCapacity } from "./generated/ItemCapacity";
 import type { ItemEntry } from "./generated/ItemEntry";
 import type { ItemKind } from "./generated/ItemKind";
@@ -441,6 +443,73 @@ const CREATION_LEVEL_OFFSET = /percent times (?:their|his|her|its) skill level m
 const CREATION_STATED =
   /may create (?:\d+ times )?their level in |percent times (?:their|his|her|its) (?:skill )?level chance to create /i;
 
+/** `averaging 200 percent`, `an average of 100 percent`, `at an average rate of 200 percent`. */
+const CREATION_AVERAGED = /\baverag(?:ing|e of|e rate of)\b/i;
+/** The nine summoning skills, from their prose rather than the normalised sentence. */
+const CREATION_SUMMONED = /\b(?:may|can) summon\b|\bchance (?:of summoning|to summon)\b/i;
+/** `control a total number of his skill level squared times 4 wolves`. */
+const CONTROL_SQUARED_TIMES =
+  /control a total number of (?:his|her|their|its) skill level squared times (\d+)/i;
+/** `may control a number equal to his skill level minus 2, squared, times two`. */
+const CONTROL_OFFSET_SQUARED =
+  /control a number equal to (?:his|her|their|its) skill level minus (\d+), squared, times (two|three|four|\d+)/i;
+/** `the total number of dragons that a mage may control at one time is equal to his skill level`. */
+const CONTROL_EQUALS_LEVEL =
+  /may control at one time is equal to (?:his|her|their|its) skill level/i;
+/** `may only summon a balrog if one is not already under his control` - a flat cap of one. */
+const CONTROL_ONLY_ONE =
+  /may only summon [a-z ]+ if one is not already under (?:his|her|their|its) control/i;
+/**
+ * Any sentence about controlling a number, with the four shapes above taken out, so a page that
+ * states a cap this parser cannot read stops the scrape rather than silently recording none - the
+ * same posture `readCastCost` already takes for a cost clause naming no input.
+ */
+const CONTROL_STATED = /\b(?:may|can) control\b|\bunder (?:his|her|their|its) control\b/i;
+
+/** `two` -> 2, `three` -> 3, `four` -> 4; anything else parsed as a plain number. */
+function wordOrNumber(word: string): number {
+  switch (word) {
+    case "two":
+      return 2;
+    case "three":
+      return 3;
+    case "four":
+      return 4;
+    default:
+      return Number.parseInt(word, 10);
+  }
+}
+
+/**
+ * Reads the control cap a paragraph states for a summoned creature, or `null` when it states none -
+ * true of five of the nine summons and every non-summon creation.
+ *
+ * Runs only when the paragraph has already been found to state a creation: `data/BIRD` level 1 is
+ * about scouting and says "the mage can control small birds of the sky" while creating nothing, and
+ * an unconditional guard would throw on it.
+ */
+function readControlCap(paragraph: string): ControlCap | null {
+  const squaredTimes = paragraph.match(CONTROL_SQUARED_TIMES);
+  if (squaredTimes) {
+    return { multiplier: Number.parseInt(squaredTimes[1], 10), offset: 0, exponent: 2 };
+  }
+  const offsetSquared = paragraph.match(CONTROL_OFFSET_SQUARED);
+  if (offsetSquared) {
+    return {
+      multiplier: wordOrNumber(offsetSquared[2]),
+      offset: -Number.parseInt(offsetSquared[1], 10),
+      exponent: 2
+    };
+  }
+  if (CONTROL_EQUALS_LEVEL.test(paragraph)) {
+    return { multiplier: 1, offset: 0, exponent: 1 };
+  }
+  if (CONTROL_ONLY_ONE.test(paragraph)) {
+    return { multiplier: 1, offset: 0, exponent: 0 };
+  }
+  return null;
+}
+
 /**
  * Reads what a single level's paragraph says CASTing the skill consumes, or `null` when it says
  * nothing - true of most spells (summons, lores, combat effects state no cost at all).
@@ -472,6 +541,10 @@ function readCastCost(tag: string, paragraph: string, level: number): CastCost |
 
   const creates: CastOutput[] = [];
 
+  const averaged = CREATION_AVERAGED.test(paragraph);
+  const summoned = CREATION_SUMMONED.test(paragraph);
+  const control = readControlCap(paragraph);
+
   const transmute: Record<string, string> = {};
   for (const match of paragraph.matchAll(TRANSMUTE)) {
     const [, perLevel, source, output] = match;
@@ -480,7 +553,10 @@ function readCastCost(tag: string, paragraph: string, level: number): CastCost |
       tag: output,
       level,
       percentPerLevel: Number.parseInt(perLevel, 10) * 100,
-      levelOffset: 0
+      levelOffset: 0,
+      averaged,
+      summoned,
+      control
     });
   }
 
@@ -494,22 +570,46 @@ function readCastCost(tag: string, paragraph: string, level: number): CastCost |
       tag: timesLevel[3],
       level,
       percentPerLevel: Number.parseInt(timesLevel[1], 10) * 100,
-      levelOffset
+      levelOffset,
+      averaged,
+      summoned,
+      control
     });
   } else if (onePerLevel) {
-    creates.push({ tag: onePerLevel[2], level, percentPerLevel: 100, levelOffset });
+    creates.push({
+      tag: onePerLevel[2],
+      level,
+      percentPerLevel: 100,
+      levelOffset,
+      averaged,
+      summoned,
+      control
+    });
   } else if (byChance) {
     creates.push({
       tag: byChance[3],
       level,
       percentPerLevel: Number.parseInt(byChance[1], 10),
-      levelOffset
+      levelOffset,
+      averaged,
+      summoned,
+      control
     });
   } else if (CREATION_STATED.test(paragraph)) {
     // A creation sentence the three shapes above could not finish reading is the page having
     // changed shape, and must stay loud - the same posture `readCastCost` already takes for a
     // cost clause naming no input.
     throw new RulesetScrapeError(`could not read what skill ${tag} creates in "${paragraph}"`);
+  }
+
+  // A control-cap sentence this parser cannot read is the page having changed shape, and must stay
+  // loud - but only once a creation has actually been found: `data/BIRD` level 1 states no
+  // creation at all while still talking about controlling small birds.
+  const statedCreation = creates.length > 0;
+  if (statedCreation && control === null && CONTROL_STATED.test(paragraph)) {
+    throw new RulesetScrapeError(
+      `could not read the control cap skill ${tag} states in "${paragraph}"`
+    );
   }
 
   if (costs.length === 0 && Object.keys(transmute).length === 0 && creates.length === 0) {
