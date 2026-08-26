@@ -1,0 +1,176 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>ah-38qc — the chosen design: a prepared verification</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1080px; margin:0 auto; }
+  h1 { font-size:25px; margin-bottom:10px; } h1 span { color:var(--brass); }
+  p.lead { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h2.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h2.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:96ch; }
+  .banner { background:var(--raised); border-left:3px solid #7fb069; padding:11px 14px; margin:16px 0;
+    font-size:13.5px; color:var(--ink-soft); max-width:100ch; } .banner strong { color:var(--ink); }
+  .term { background:#0b1017; border:1px solid var(--edge); border-radius:6px; padding:16px 18px;
+    font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12.5px; line-height:1.75; color:var(--ink-soft);
+    white-space:pre-wrap; max-width:96ch; overflow-x:auto; }
+  .term b { color:var(--ink); font-weight:600; } .term .brass { color:var(--brass); }
+  .term .dim { color:#5e6b7c; } .term .rule { color:#3a4655; } .term .bad { color:var(--danger); }
+  .page { background:#f6f3ec; color:#20242b; border-radius:6px; padding:26px 30px; max-width:86ch;
+    font:14px/1.6 Georgia,'Times New Roman',serif; border:1px solid #cfc7b6; }
+  .page h3 { font-size:19px; margin-bottom:2px; color:#111; }
+  .page .sub { color:#6b6459; font-size:12.5px; margin-bottom:16px; font-family:system-ui,sans-serif; }
+  .page .facts { background:#ece7dc; border-left:3px solid #b08a3a; padding:10px 13px; font-size:12.5px;
+    font-family:system-ui,sans-serif; margin-bottom:14px; }
+  .page .facts div { margin:2px 0; } .page .facts b { color:#3b3527; }
+  .page code { color:#7a4b12; background:#e7e0d1; padding:1px 4px; border-radius:3px; font-size:11.5px; }
+  .made { background:#f3e3d0; border-left:3px solid #a8632a; padding:9px 13px; font-size:12.5px;
+    font-family:system-ui,sans-serif; margin-bottom:14px; color:#4a3520; } .made b { color:#7a3d10; }
+  .step { display:flex; gap:12px; padding:11px 0; border-top:1px solid #ddd5c4; }
+  .step .box { width:15px; height:15px; border:1.5px solid #8a8071; border-radius:3px; flex:none; margin-top:3px; background:#fff; }
+  .step .n { font-family:system-ui,sans-serif; font-weight:700; color:#b08a3a; font-size:12px; flex:none; width:14px; margin-top:2px; }
+  .step .body { flex:1; } .step .do { color:#20242b; }
+  .step .see { color:#2c6b45; font-size:12.5px; margin-top:3px; font-family:system-ui,sans-serif; }
+  .step .fail { color:#8a3a3a; font-size:12.5px; margin-top:2px; font-family:system-ui,sans-serif; }
+  .page h4 { font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:#8a8071;
+    font-family:system-ui,sans-serif; margin:22px 0 6px; }
+  .page ul { margin-left:18px; font-size:13px; } .page ul li { margin:4px 0; }
+  .page .bound { color:#6b6459; font-size:12px; font-style:italic; margin-top:8px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
+  @media (max-width:900px) { .two { grid-template-columns:1fr; } }
+  .cap { color:var(--ink-dim); font-size:11px; letter-spacing:1.3px; text-transform:uppercase; margin-bottom:8px; }
+  .rulebox { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:14px 16px;
+    font-size:13.5px; color:var(--ink-soft); max-width:100ch; margin-top:10px; }
+  .rulebox b { color:var(--ink); } .rulebox li { margin:5px 0 5px 18px; }
+</style></head><body>
+<header>
+<h1>ah-38qc &mdash; <span>the chosen design</span>: a verification prepared before the navigator is asked</h1>
+<p class="lead">Agreed over three rounds. The terminal carries three lines and a link; the script is
+a self-contained page written to <code>.cerebro/scratch/verify-&lt;id&gt;.html</code> and overwritten
+each time that bead is verified. Nothing is opened for the navigator &mdash; they click when they
+are ready. Shown for a real merged bead, <code>ah-q7jd</code>.</p>
+</header>
+<main>
+
+<h2 class="sec">1 &mdash; the handoff, in the terminal</h2>
+<p>Four lines. Never <code>open</code>ed for them; the link is clickable and that is enough.</p>
+<div class="term"><span class="brass">Psylocke</span> — verifying <b>ah-q7jd</b> at <b>origin/main 612328a</b>, fetched 15:41.
+The web shell is up at <b>http://localhost:5173</b> with the fixture already prepared.
+
+<b>The script — open this first:</b>
+  <b class="brass">file:///Users/henrikku/repos/atlantis-hud/.cerebro/scratch/verify-ah-q7jd.html</b>
+
+Six steps, about three minutes. Tell me when you have a verdict:
+  passed  ·  passed with a follow-up  ·  failed</div>
+
+<h2 class="sec">2 &mdash; the page, when a committed fixture reaches the case</h2>
+<p>Every step is an action and the thing to look for. Nothing on it requires knowing the bead.</p>
+<div class="page">
+  <h3>Verifying: a <code>SELL ALL</code> is priced from what the unit actually still holds</h3>
+  <div class="sub">ah-q7jd &middot; origin/main 612328a &middot; prepared 15:41</div>
+  <div class="facts">
+    <div><b>Shell:</b> web &mdash; already running at <code>http://localhost:5173</code></div>
+    <div><b>Report to import:</b> <code>tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep</code></div>
+    <div><b>Checked in advance:</b> unit <b>5512</b> holds <b>10 FUR</b>; the market in its hex buys FUR at <b>$42</b>.</div>
+    <div><b>What changed:</b> a <code>SELL ALL</code> used to be priced from the report's holding, so a unit
+      that had already given its furs away was still credited for them.</div>
+  </div>
+  <div class="step"><div class="box"></div><div class="n">1</div><div class="body">
+    <div class="do">Make a game to load into &mdash; <b>New game</b>, call it anything.</div>
+    <div class="see">You land on an empty workspace asking for a report.</div></div></div>
+  <div class="step"><div class="box"></div><div class="n">2</div><div class="body">
+    <div class="do"><b>Import</b> in the header, and pick the report named above.</div>
+    <div class="see">The status line reads <b>11 regions</b> and the units pane fills.</div></div></div>
+  <div class="step"><div class="box"></div><div class="n">3</div><div class="body">
+    <div class="do">Find unit <b>5512</b> in the units pane and select it.</div>
+    <div class="see">Its ITEMS column shows <b>10 FUR</b>; its SILVER column shows <b>$0</b>.</div></div></div>
+  <div class="step"><div class="box"></div><div class="n">4</div><div class="body">
+    <div class="do">In its orders box, type these two lines:<br>
+      <code>GIVE 5513 10 FUR</code><br><code>SELL ALL FUR</code></div>
+    <div class="see">Nothing is underlined in red &mdash; both lines are accepted.</div></div></div>
+  <div class="step"><div class="box"></div><div class="n">5</div><div class="body">
+    <div class="do"><b>The thing this bead is about.</b> Look at 5512's SILVER column.</div>
+    <div class="see">It should read <b>$0</b>.</div>
+    <div class="fail">If it reads <b>$420</b>, this has failed &mdash; that is the old behaviour, pricing a
+      sale of goods the unit no longer has.</div></div></div>
+  <div class="step"><div class="box"></div><div class="n">6</div><div class="body">
+    <div class="do">Delete the <code>GIVE</code> line, leaving <code>SELL ALL FUR</code> alone.</div>
+    <div class="see">SILVER should now read <b>$420</b>.</div>
+    <div class="fail">If it still reads $0, the fix has zeroed every sale, not just this one.</div></div></div>
+
+  <h4>Where this is most likely to be wrong</h4>
+  <ul>
+    <li>Write <code>SELL ALL FUR</code> <b>twice</b> in the same block &mdash; the second should credit nothing.</li>
+    <li>Give away only <b>4</b> of the 10 &mdash; SILVER should read <b>$252</b>, not $420 and not $0.</li>
+    <li>Check the ITEMS column agrees with SILVER about what is left.</li>
+  </ul>
+  <div class="bound">These three are where a change like this usually breaks. Past them the returns
+    drop off fast &mdash; anything else odd is a new bead, not this verdict.</div>
+</div>
+
+<h2 class="sec">3 &mdash; the page, when the agent had to make the data</h2>
+<p>Same page, with a block above step 1 saying so. The navigator must never judge a strange number
+without knowing whose it is.</p>
+<div class="page">
+  <h3>Verifying: a <code>SELL ALL</code> is priced from what the unit actually still holds</h3>
+  <div class="sub">ah-q7jd &middot; origin/main 612328a &middot; prepared 15:41</div>
+  <div class="made"><b>The data here was made for this check.</b> No committed report has a unit
+    holding goods its own hex's market wants, so I trimmed
+    <code>neworigins-3.0.0-g7-f95-t71.rep</code> down to one region and two units and set the
+    holding. It parses clean (1 region, 2 units, no errors) and unit 5512 holds 10&nbsp;FUR against
+    a market buying FUR at $42 &mdash; but it is not real game data, so a number that looks strange
+    may be my fixture rather than the app.</div>
+  <div class="facts">
+    <div><b>Shell:</b> web &mdash; already running at <code>http://localhost:5173</code></div>
+    <div><b>Report to import:</b> <code>.cerebro/scratch/ah-q7jd-sell-all.rep</code></div>
+  </div>
+  <div class="step"><div class="box"></div><div class="n">1</div><div class="body">
+    <div class="do">Make a game to load into &mdash; <b>New game</b>, call it anything.</div>
+    <div class="see">You land on an empty workspace asking for a report.</div></div></div>
+  <div class="step"><div class="box"></div><div class="n">2</div><div class="body">
+    <div class="do"><b>Import</b> in the header, and pick the report named above.</div>
+    <div class="see">The status line reads <b>1 region</b> and the units pane shows two units.</div></div></div>
+  <div class="step" style="opacity:.55"><div class="box"></div><div class="n">&hellip;</div><div class="body">
+    <div class="do">&mdash; steps 3 to 6 exactly as above &mdash;</div></div></div>
+</div>
+
+<h2 class="sec">4 &mdash; the two states that never become a page</h2>
+<p>Both reach the navigator in the terminal, <b>before</b> any link is written, because neither is a
+script anyone could follow.</p>
+<div class="two">
+  <div><p class="cap">No fixture reaches the case &mdash; and none is needed from them</p>
+  <div class="term"><span class="brass">Psylocke</span> — <b>ah-q7jd</b>: no committed report has a unit holding
+goods its own hex's market wants, so I trimmed <code>g7-f95-t71</code> down to a
+minimal one and checked it. It parses clean and reaches the case. The script
+says so at the top; nothing is committed.
+
+<b>The script:</b> <span class="brass">file:///…/.cerebro/scratch/verify-ah-q7jd.html</span></div></div>
+
+  <div><p class="cap">The build failed</p>
+  <div class="term"><span class="brass">Psylocke</span> — <b class="bad">ah-q7jd: the build failed; I am not launching anything.</b>
+
+<code>pnpm --filter @atlantis/web dev</code> in the verification worktree at 612328a exited 1:
+  <span class="dim">error TS2554: Expected 2 arguments, but got 1.
+    packages/core-client/src/coreVocabulary.generated.ts:412</span>
+
+<b>No verdict from me</b> — nothing filed, nothing changed; the bead stays
+<b>verification:pending</b>. Say the word if you want me to dig.</div></div>
+</div>
+
+<h2 class="sec">The rules behind all of it</h2>
+<div class="rulebox">
+<ul>
+<li><b>The shell is web</b> unless the bead touches the desktop specifically &mdash; a cargo build is
+minutes of the navigator's patience for a React app both shells share.</li>
+<li><b>A fixture is proved, never assumed.</b> Parsed with the real parser, and the precondition the
+first decisive step depends on asserted, before a page is written.</li>
+<li><b>Exploration is named and bounded</b> &mdash; two or three specific things, what would count as
+wrong, and the sentence that says anything past them is a new bead.</li>
+<li><b>The verdict lives in the terminal</b>, never on the page: the page is a static file with no
+agent behind it.</li>
+<li><b>Nothing about launching the app is written here.</b> The commands, the ports and the fixtures
+doc are declared once in the project's own configuration and read from it.</li>
+</ul>
+</div>
+</main></body></html>
