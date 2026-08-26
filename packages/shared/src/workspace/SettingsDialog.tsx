@@ -517,6 +517,11 @@ export const WARNING_GROUPS: readonly {
         code: "nothing-left-to-sell",
         title: "Sale with nothing left to sell",
         description: "A SELL ALL of goods this month's earlier orders have already moved away."
+      },
+      {
+        code: "nothing-left-to-buy",
+        title: "Purchase with nothing left to buy",
+        description: "A BUY of goods this unit's own earlier orders have already bought from this market."
       }
     ]
   },
