@@ -1006,6 +1006,10 @@ pub fn forecast_unit(
     // What a `CAST` order will make, for the four `cast_*` fields the hover reads. Filled by the
     // arm below; a unit with no such order, or none the ruleset prices, leaves it at nothing.
     let mut cast: Option<CastPlan> = None;
+    // What this unit's earlier `SELL` lines have already moved, per canonical tag. A block may name
+    // the same goods twice, and the second line can only move what the first left - of the stock
+    // and of the settled share alike (`ah-vw8e`).
+    let mut sold: BTreeMap<String, i64> = BTreeMap::new();
     // `BUY ALL` and `GIVE ... ALL SILV` spend what is left after every other term, so they cannot
     // be priced inside this pass. Collected in document order and applied below.
     let mut deferred: Vec<Deferred> = Vec::new();
@@ -1067,16 +1071,31 @@ pub fn forecast_unit(
                     market_takes,
                     unit_holds,
                 } => {
-                    let asked = match amount {
-                        Amount::Exact(count) => *count,
-                        Amount::All { except } => (unit_holds - except).max(0),
-                    };
                     // What this hex's other own sellers left of the line, or the line itself
                     // where nothing was settled (`ah-t2pn.3`).
                     let allowed =
                         (lookups.market_share)(item, MarketSide::Selling).unwrap_or(market_takes);
-                    income =
-                        income.saturating_add(price_sale(asked, unit_holds, price, allowed).earns);
+                    // Keyed by the canonical tag, which is the key the settlement itself uses, so
+                    // two spellings of one item share one total. A tag nothing resolves is
+                    // untracked and cannot double-count: `resolve_item` walks the unit's own
+                    // inventory, so a `None` here means the unit holds none of these goods and
+                    // every such line sells nothing whether tracked or not.
+                    let key = (lookups.item_tag)(item);
+                    let already = key
+                        .as_ref()
+                        .and_then(|tag| sold.get(tag))
+                        .copied()
+                        .unwrap_or(0);
+                    let line = price_sale_line(
+                        amount,
+                        (unit_holds - already).max(0),
+                        (allowed - already).max(0),
+                        price,
+                    );
+                    income = income.saturating_add(line.earns);
+                    if let Some(tag) = key {
+                        *sold.entry(tag).or_default() += line.quantity;
+                    }
                 }
                 // Goods this market does not want are unsellable, so the order earns nothing. That
                 // is the answer rather than a guess, and the shipped `not-traded-here` finding is
@@ -2474,12 +2493,41 @@ pub fn quantity_sold(asked: i64, unit_holds: i64, allowed: i64) -> i64 {
     asked.min(allowed).min(unit_holds).max(0)
 }
 
-/// What a `SELL` earns.
+/// One `SELL` line's outcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SoldLine {
+    /// How many the order asks for, once `ALL … EXCEPT` is resolved against what is left.
+    pub asked: i64,
+    /// How many actually move.
+    pub quantity: i64,
+    /// What that earns.
+    pub earns: i64,
+}
+
+/// What one `SELL` line of a block does, priced against what the lines above it already took.
+///
+/// A unit's `SELL` lines draw on one stock and on one settled share of one market line, so a second
+/// line for the same goods can only move what the first left - of both. Both surfaces call this,
+/// the ledger through `super::semantics::sell` and the Silver column through [`forecast_unit`], so
+/// one block cannot be priced two ways (`ah-vw8e`, and the drift `ah-ycuj`'s corpus test guards).
 #[must_use]
-pub fn price_sale(asked: i64, unit_holds: i64, price: i64, allowed: i64) -> Priced {
-    Priced {
-        earns: quantity_sold(asked, unit_holds, allowed).saturating_mul(price),
-        ..Priced::default()
+pub fn price_sale_line(
+    amount: &Amount,
+    // What the unit still holds of these goods when this line runs.
+    remaining_holding: i64,
+    // What is still left of this unit's settled share of the market line.
+    remaining_allowed: i64,
+    price: i64,
+) -> SoldLine {
+    let asked = match amount {
+        Amount::Exact(count) => *count,
+        Amount::All { except } => remaining_holding - except,
+    };
+    let quantity = quantity_sold(asked, remaining_holding, remaining_allowed);
+    SoldLine {
+        asked,
+        quantity,
+        earns: quantity.saturating_mul(price),
     }
 }
 
@@ -3666,21 +3714,6 @@ mod tests {
                 ..Priced::default()
             }
         );
-        // a sale is capped by the share and by what the unit holds
-        assert_eq!(
-            price_sale(100, 100, 3, 20),
-            Priced {
-                earns: 60,
-                ..Priced::default()
-            }
-        );
-        assert_eq!(
-            price_sale(100, 10, 3, 100),
-            Priced {
-                earns: 30,
-                ..Priced::default()
-            }
-        );
         // `Amount::All { except }` can ask for a negative amount
         assert_eq!(quantity_sold(-5, 10, 100), 0);
         assert_eq!(quantity_bought(-5, 100), 0);
@@ -3697,6 +3730,47 @@ mod tests {
             Priced {
                 earns: 500,
                 ..Priced::default()
+            }
+        );
+    }
+
+    /// `ah-vw8e`, increment 1. `price_sale_line` replaces `price_sale`: it resolves `Amount::All`
+    /// against what is left as well as pricing the result, so the two remainders exist once.
+    #[test]
+    fn price_sale_line_resolves_all_against_what_is_left() {
+        // ported from `price_sale`: a sale is capped by the share and by what the unit holds
+        assert_eq!(
+            price_sale_line(&Amount::Exact(100), 100, 20, 3),
+            SoldLine {
+                asked: 100,
+                quantity: 20,
+                earns: 60,
+            }
+        );
+        assert_eq!(
+            price_sale_line(&Amount::Exact(100), 10, 100, 3),
+            SoldLine {
+                asked: 100,
+                quantity: 10,
+                earns: 30,
+            }
+        );
+        // `Amount::All { except }` resolves against what is left of the holding
+        assert_eq!(
+            price_sale_line(&Amount::All { except: 3 }, 10, 100, 42),
+            SoldLine {
+                asked: 7,
+                quantity: 7,
+                earns: 294,
+            }
+        );
+        // and can ask for a negative amount, which `quantity_sold`'s `max(0)` catches
+        assert_eq!(
+            price_sale_line(&Amount::All { except: 3 }, 0, 100, 42),
+            SoldLine {
+                asked: -3,
+                quantity: 0,
+                earns: 0,
             }
         );
     }
@@ -4804,6 +4878,58 @@ mod tests {
             &wanted(24, 40, 200),
         );
         assert_eq!(unit.income, Some(960));
+    }
+
+    /// `ah-vw8e`, increment 2. A block naming the same goods twice can only move what the first
+    /// line left of the unit's stock, so the second earns nothing rather than pricing itself
+    /// against the whole holding a second time.
+    #[test]
+    fn a_second_sell_all_of_the_same_goods_earns_nothing() {
+        let unit = sold(
+            &[
+                selling("furs", Amount::All { except: 0 }),
+                selling("furs", Amount::All { except: 0 }),
+            ],
+            &wanted(42, 100, 10),
+        );
+        assert_eq!(unit.income, Some(420));
+    }
+
+    /// [`sold`], for a hex whose market line has been settled between the faction's own units.
+    fn sold_with_share(
+        intents: &[PlacedIntent],
+        sale: &dyn Fn(&str) -> SaleAnswer,
+        share: &dyn Fn(&str, MarketSide) -> Option<i64>,
+    ) -> UnitSilver {
+        let receipts = Receipts::default();
+        forecast_unit(
+            facts(1, intents, &receipts),
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            Lookups {
+                sale,
+                market_share: share,
+                ..no_market()
+            },
+            None,
+        )
+    }
+
+    /// `ah-vw8e`, increment 3. The settled share is spent down the same way the holding is: a
+    /// second `SELL ALL` of the same goods finds the share already spent by the first.
+    #[test]
+    fn two_sell_lines_never_earn_more_than_the_settled_share() {
+        let unit = sold_with_share(
+            &[
+                selling("furs", Amount::All { except: 0 }),
+                selling("furs", Amount::All { except: 0 }),
+            ],
+            &wanted(42, 100, 10),
+            &|_item, _side| Some(3),
+        );
+        assert_eq!(unit.income, Some(126));
     }
 
     #[test]
