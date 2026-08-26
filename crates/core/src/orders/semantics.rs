@@ -395,8 +395,9 @@ pub fn review_turn(
         .regions
         .iter()
         .map(|region| {
-            let hex = hex_with_transfers(region, &ordered, &formed, ruleset);
+            let mut hex = hex_with_transfers(region, &ordered, &formed, ruleset);
             let ledger = ledger_for(&hex, ruleset, &receipts);
+            apply_recruits(&mut hex.units, &ledger, ruleset);
             (hex, ledger)
         })
         .collect();
@@ -1339,6 +1340,17 @@ struct Ordered<'a> {
     /// `apply_transfers` after the hex is read, alongside `skills_after_gifts`; `Unchanged` until
     /// then.
     holdings_after_gifts: HoldingsAfterGifts,
+    /// The unit's headcount once this month's gifts, takes and recruits have run.
+    ///
+    /// Written by `apply_transfers` and then by `apply_recruits`; equal to `unit.men` until one
+    /// of them touches it. Kept beside `skills_after_gifts` because the two are read as a pair: a
+    /// merged skill level is per man, so a level without the headcount it was merged against says
+    /// nothing.
+    men_after_orders: i64,
+    /// How many men *joined* this unit this month, by any route. Never netted against men who
+    /// left: a unit that receives three and gives two away has `men_joined: 3`, because the
+    /// question this answers is "was this unit's skill diluted", not "is it bigger".
+    men_joined: i64,
 }
 
 impl<'a> Hex<'a> {
@@ -1361,6 +1373,8 @@ impl<'a> Hex<'a> {
                     formed: None,
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
+                    men_after_orders: unit.men,
+                    men_joined: 0,
                 }
             })
             .collect();
@@ -1379,6 +1393,8 @@ impl<'a> Hex<'a> {
                     }),
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
+                    men_after_orders: formed.unit.men,
+                    men_joined: 0,
                 }),
         );
         Self { region, units }
@@ -1437,6 +1453,14 @@ struct Working {
     doubted: bool,
     /// Set when a transfer this month cannot be followed for this unit.
     items_unknowable: bool,
+    /// Men that arrived at this unit through a transfer the walk actually followed. Distinct from
+    /// `arrived` above, which tracks *tags*, not a headcount.
+    men_arrived: i64,
+    /// A transfer into this unit moved fewer men than the order named, because the source did not
+    /// hold that many. `apply_recruits` cannot then attribute the difference between the ledger's
+    /// arrivals and `men_arrived` to recruiting, because part of it is an over-give the ledger
+    /// does not clamp and this walk does. See *Known traps*.
+    men_clamped: bool,
 }
 
 fn seed_working(units: &[Ordered<'_>], position: usize) -> Working {
@@ -1452,6 +1476,8 @@ fn seed_working(units: &[Ordered<'_>], position: usize) -> Working {
         arrived: Vec::new(),
         doubted: false,
         items_unknowable: false,
+        men_arrived: 0,
+        men_clamped: false,
     }
 }
 
@@ -1791,11 +1817,8 @@ fn apply_transfers(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
                 Amount::Exact(count) => *count,
             };
             let moved = requested.clamp(0, held);
-            if moved == 0 {
-                continue;
-            }
-            // The source's own name for the tag, since it is the one party guaranteed to already
-            // hold it here.
+            // Read above the `moved == 0` return so `source_state`'s borrow ends here: the block
+            // below takes a second `working.entry`, which will not compile while it lives.
             let name = source_state
                 .held
                 .get(tag.as_str())
@@ -1803,6 +1826,21 @@ fn apply_transfers(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
             let is_man = ruleset.is_man(&tag);
             let source_doubted = source_state.doubted;
             let source_skills = source_state.skills.clone();
+
+            // A gift the source cannot cover is clamped here and is *not* clamped by the ledger,
+            // so the difference would reach `apply_recruits` looking exactly like recruiting -
+            // for a man tag only, since that is the only thing `apply_recruits` sums.
+            if is_man && moved < requested {
+                if let GiveTarget::Unit(receiver_position) = receiver {
+                    working
+                        .entry(receiver_position)
+                        .or_insert_with(|| seed_working(units, receiver_position))
+                        .men_clamped = true;
+                }
+            }
+            if moved == 0 {
+                continue;
+            }
 
             if let GiveTarget::Unit(receiver_position) = receiver {
                 let receiver_men_estimated = units[receiver_position].unit.men_estimated;
@@ -1835,6 +1873,7 @@ fn apply_transfers(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
                     // judged on stale figures - the review comment on this PR caught exactly this
                     // gap.
                     receiver_state.men += moved;
+                    receiver_state.men_arrived += moved;
                 }
                 move_holding(receiver_state, &tag, &name, moved);
             }
@@ -1853,6 +1892,8 @@ fn apply_transfers(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
 
     for (position, state) in working {
         let ordered = &mut units[position];
+        ordered.men_after_orders = state.men;
+        ordered.men_joined = state.men_arrived;
         ordered.holdings_after_gifts = if state.items_unknowable {
             HoldingsAfterGifts::Unknowable
         } else {
@@ -1872,12 +1913,113 @@ fn apply_transfers(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
                 })
             }
         };
-        ordered.skills_after_gifts = if state.doubted {
+        ordered.skills_after_gifts = if state.doubted || state.men_clamped {
             SkillsAfterGifts::Unknowable
         } else if state.skills != ordered.unit.skills {
             SkillsAfterGifts::Merged(state.skills)
         } else {
             SkillsAfterGifts::Unchanged
+        };
+    }
+}
+
+/// Merges this month's recruits into the units that bought them.
+///
+/// `rules/economy_recruiting`: "New recruits will not have any skills or items", so a purchase of
+/// people merges in at zero points and dilutes what the unit knows - `rules/buy` says so in as many
+/// words: "Recruit 5 barbarians into the current unit. (This will dilute the skills that the unit
+/// has.)". `effects::settle_headcounts` already does exactly this for the units table, from the
+/// same ledger; this is the checks' half of it, so the Skills cell and the Problems panel cannot
+/// disagree about one unit.
+///
+/// Runs after `apply_transfers` because `rules/sequenceofevents` puts *Give orders* before
+/// *Market orders*, and after `ledger_for` because only the ledger knows how many people a `BUY`
+/// could actually pay for.
+fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Option<&Ruleset>) {
+    let Some(ruleset) = ruleset else { return };
+
+    // Indices rather than `iter_mut`: the arrival sum below reads the unit inside a closure while
+    // the branches around it write to it, and taking the two borrows one after the other in the
+    // same body avoids a fight with the borrow checker for no gain.
+    #[allow(clippy::needless_range_loop)]
+    for index in 0..units.len() {
+        if matches!(
+            units[index].skills_after_gifts,
+            SkillsAfterGifts::Unknowable
+        ) {
+            continue;
+        }
+
+        let buys_all_people = units[index].intents().any(|intent| {
+            matches!(
+                intent,
+                Intent::Buy {
+                    amount: Amount::All { .. },
+                    ..
+                }
+            )
+        });
+        if buys_all_people {
+            // `buy` returns early for `Amount::All` and credits nothing to the balance, so the
+            // arrivals below would read as zero and the unit would be judged as though it had
+            // recruited nobody. `BUY ALL PEASANTS` cannot be told from `BUY ALL SWORDS` here -
+            // `PEASANTS` names no catalogue item at all - so the test is on the amount, not the
+            // item. `ah-jown` makes this arm deletable.
+            units[index].skills_after_gifts = SkillsAfterGifts::Unknowable;
+            continue;
+        }
+
+        // Arrivals the ledger saw, per man tag, positive parts only - never the net, so a unit
+        // that takes gnolls in and gives centaurs away has recruited nobody rather than netting to
+        // a number that looks like it by accident.
+        let arrived: i64 = {
+            let ordered = &units[index];
+            ledger
+                .balance
+                .iter()
+                .filter(|((unit_id, tag), _)| {
+                    unit_id == &ordered.unit.unit_id && ruleset.is_man(tag)
+                })
+                .map(|((_, tag), balance)| (balance - ordered.holding(tag)).max(0))
+                .sum()
+        };
+
+        let recruited = arrived - units[index].men_joined;
+        if recruited < 0 {
+            // The two walks disagree about one unit. Step 2 above and the `clamped` flag on
+            // `apply_transfers` cover the routes known to diverge, so nothing should reach here
+            // - this is a backstop, and silence is the right shape for one.
+            units[index].skills_after_gifts = SkillsAfterGifts::Unknowable;
+            continue;
+        }
+        if recruited == 0 {
+            continue;
+        }
+        if units[index].unit.men_estimated {
+            // The merge is weighted by the receiver's headcount, and `settle_headcounts` skips
+            // such a unit for the same reason.
+            units[index].skills_after_gifts = SkillsAfterGifts::Unknowable;
+            continue;
+        }
+
+        let ordered = &mut units[index];
+        let before = ordered.men_after_orders;
+        let current = match &ordered.skills_after_gifts {
+            SkillsAfterGifts::Unchanged => ordered.unit.skills.clone(),
+            SkillsAfterGifts::Merged(merged) => merged.clone(),
+            // The check above already skipped every one of these.
+            SkillsAfterGifts::Unknowable => continue,
+        };
+        // `before` is the headcount as the gifts left it, not `before + recruited`: weighting by
+        // the headcount after the arrivals is silently wrong, the same trap `apply_transfers`
+        // avoids for a gift.
+        let merged = effects::merge_skills(&current, before, &[], recruited);
+        ordered.men_after_orders = before + recruited;
+        ordered.men_joined += recruited;
+        ordered.skills_after_gifts = if merged == ordered.unit.skills {
+            SkillsAfterGifts::Unchanged
+        } else {
+            SkillsAfterGifts::Merged(merged)
         };
     }
 }
@@ -6403,52 +6545,45 @@ fn capacity_after_orders(
     capacities_from_items(&priced, ruleset)
 }
 
+/// One unit's contribution to a fleet's crew once this month's orders have run.
+struct CrewAfterOrders {
+    /// Sailing levels the unit supplies: its level per man times its headcount.
+    levels: i64,
+    /// Whether any men joined it this month, by gift, take or recruiting. Decides which of the
+    /// crew message's three shapes is used, and cannot be derived from `levels`: dilution and a
+    /// gift of sailors move the total in opposite directions, and men joining while others leave
+    /// can move it not at all.
+    men_joined: bool,
+}
+
 /// The sailing levels one unit supplies once this month's transfers of men have run.
 ///
 /// A unit's skill level is held by each of its men - "the number of skill levels of the Sailing
-/// skill that must be aboard the ship" - so men leaving take levels with them. Read from the
-/// ledger for the same reason `weight_after_orders` is: the server runs every GIVE and TAKE
-/// (phase 4) before it moves anybody (phase 9), so giving a gnoll away and sailing in the same
-/// month is one turn, not two.
+/// skill that must be aboard the ship" - so both halves of `level * men` move when men do: the
+/// headcount directly, and the level because the game averages skills over the merged unit
+/// (`rules/give`). Read from `Ordered`, which `apply_transfers` and `apply_recruits` have both
+/// written by the time any check runs.
 ///
-/// `None` - cannot say, so the caller silences the crew check for this fleet - when men arrive
-/// rather than leave. The game merges given men into the receiving unit and recomputes its skill,
-/// which this application does not model; counting them at the receiver's own level would turn two
-/// unskilled gnolls into two sailors, and a warning that is wrong is worse than one that is
-/// missing (this module's header, and the navigator's own answer on the amendment).
+/// `None` - cannot say, so the caller silences the crew check for this fleet - when the merged
+/// view is `Unknowable`: men arrived by a route neither walk could follow. A warning that is
+/// wrong is worse than one that is missing (this module's header).
 fn sailing_levels_after_orders(
     ordered: &Ordered<'_>,
-    ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
-) -> Option<i64> {
-    let level: i64 = ordered
-        .unit
-        .skills
+) -> Option<CrewAfterOrders> {
+    // Without a catalogue there is no telling which tags name people, so nothing here has been
+    // computed and the report's own figures are not a substitute for it.
+    ruleset?;
+    let skills = ordered.skills()?;
+    let level: i64 = skills
         .iter()
         .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
         .map(|skill| i64::from(skill.level))
         .sum();
-
-    // Without a catalogue there is no telling which tags name people, so no delta can be computed.
-    let ruleset = ruleset?;
-
-    let mut men_moved: i64 = 0;
-    for ((unit_id, tag), balance) in &ledger.balance {
-        if unit_id != &ordered.unit.unit_id || !ruleset.is_man(tag) {
-            continue;
-        }
-        let moved = balance - ordered.holding(tag);
-        if moved > 0 {
-            // Men of this race arrived: the merged unit's skill is unknowable. Tested per tag
-            // rather than on the total, so a unit that takes gnolls in and gives centaurs away is
-            // doubted rather than netting out to a number that looks like a plain departure.
-            return None;
-        }
-        men_moved = men_moved.saturating_add(moved);
-    }
-
-    let men = ordered.unit.men.saturating_add(men_moved).max(0);
-    Some(level.saturating_mul(men))
+    Some(CrewAfterOrders {
+        levels: level.saturating_mul(ordered.men_after_orders.max(0)),
+        men_joined: ordered.men_joined > 0,
+    })
 }
 
 // --- gifts and takings ---------------------------------------------------------------------------
@@ -6650,10 +6785,10 @@ fn check_sailing(
             .sum();
         // The same after this month's transfers of men. `None` from any unit aboard silences the
         // crew check for the whole fleet - one unknowable unit makes the fleet's total unknowable.
-        let levels: Option<i64> = aboard
+        let crews: Option<Vec<CrewAfterOrders>> = aboard
             .iter()
-            .map(|ordered| sailing_levels_after_orders(ordered, ledger, ruleset))
-            .sum();
+            .map(|ordered| sailing_levels_after_orders(ordered, ruleset))
+            .collect();
         // A guessed headcount cannot price an exact number of sailing levels either - the same
         // doubt `study` already treats `men_estimated` as (`:750`). Raised in review on this
         // bead's own PR. A unit whose sums the ledger could not follow is the same kind of doubt,
@@ -6662,21 +6797,31 @@ fn check_sailing(
         let headcount_is_doubtful = aboard.iter().any(|ordered| {
             ordered.unit.men_estimated || ledger.doubted.contains(&ordered.unit.unit_id)
         });
-        if let (Some(levels), Some(required)) = (levels, sailing_requirement(fleet, ruleset)) {
+        if let (Some(crews), Some(required)) = (crews, sailing_requirement(fleet, ruleset)) {
+            let levels: i64 = crews.iter().map(|crew| crew.levels).sum();
+            let men_joined = crews.iter().any(|crew| crew.men_joined);
             if !headcount_is_doubtful
                 && levels < required
                 && options.emits(codes::FLEET_UNDERCREWED)
             {
-                let crew = match levels - reported_levels {
-                    change if change < 0 => format!(
+                let crew = if men_joined && levels != reported_levels {
+                    // Men joining the crew this month, whatever else moved - shown first so a
+                    // fleet where men both joined and left still gets the joining clause rather
+                    // than "given away" (the navigator's decision, `ah-z73s3-wording-2.html`).
+                    format!(
+                        "{reported_levels} sailing levels aboard, {levels} once the men joining \
+                         the crew this month are counted, it needs {required}"
+                    )
+                } else if levels < reported_levels {
+                    format!(
                         "{reported_levels} sailing levels aboard less {} given away this month, \
                          it needs {required}",
-                        -change
-                    ),
+                        reported_levels - levels
+                    )
+                } else {
                     // Unchanged, and the sentence `ah-j0e` already shipped: the crew did not move
-                    // this month, so there is no before-and-after to draw. A positive change
-                    // cannot occur - men arriving returns `None` above.
-                    _ => format!("{levels} sailing levels aboard, it needs {required}"),
+                    // this month, so there is no before-and-after to draw.
+                    format!("{levels} sailing levels aboard, it needs {required}")
                 };
                 findings.push(captain.finding(
                     hex,
@@ -12368,8 +12513,18 @@ mod tests {
             name: "sailing".to_string(),
             tag: "SAIL".to_string(),
             level,
-            points: 0,
+            points: 15 * level * (level + 1),
         }
+    }
+
+    /// `sail`'s points must imply its level under `level_for_points`, or every crew merge built on
+    /// this fixture would drop the skill at 0 points and pass for the wrong reason.
+    #[test]
+    fn the_sail_fixture_carries_the_points_its_level_implies() {
+        assert_eq!(sail(1).points, 30);
+        assert_eq!(sail(2).points, 90);
+        assert_eq!(sail(3).points, 180);
+        assert_eq!(sail(4).points, 300);
     }
 
     fn report(regions: Vec<ReportRegion>) -> ParsedReport {
@@ -19248,14 +19403,49 @@ mod tests {
             ])
         };
 
-        let finding = only(check(
+        // 15 unskilled gnolls also dilute the one-man sailing-4 crew this test does not otherwise
+        // care about - `(1*300 + 15*0)/16 = 18` points, level 0, so the fleet is undercrewed too
+        // now that an arrival is judged rather than silenced. This test is still about the weight
+        // half; `fleet_undercrewed_when_men_are_given_aboard` below pins the crew half of the same
+        // fixture.
+        let findings = check(
             vec![region],
             "unit 8801\nGIVE 11125 15 GNOL\nunit 11125\nSAIL N\n",
-        ));
-        assert_eq!(finding.code.as_str(), "fleet-overloaded");
-        assert!(finding
+        );
+        let overload = findings
+            .iter()
+            .find(|finding| finding.code == codes::FLEET_OVERLOADED)
+            .unwrap();
+        assert!(overload
             .message
             .contains("50 aboard plus 150 loaded this month"));
+    }
+
+    /// The crew half of `men_given_aboard_are_weighed`'s fixture: 15 unskilled gnolls given into a
+    /// one-man sailing-4 crew dilute it to nothing.
+    #[test]
+    fn fleet_undercrewed_when_men_are_given_aboard() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                unfed(aboard("11125", "329", 50, 4)),
+                with_men(with_item(unfed(unit("8801")), 20, "gnoll", "GNOL"), 20),
+            ])
+        };
+
+        let findings = check(
+            vec![region],
+            "unit 8801\nGIVE 11125 15 GNOL\nunit 11125\nSAIL N\n",
+        );
+        let crew = findings
+            .iter()
+            .find(|finding| finding.code == codes::FLEET_UNDERCREWED)
+            .unwrap();
+        assert_eq!(
+            crew.message,
+            "Longship [329] is short of sailors: 4 sailing levels aboard, 0 once the men joining \
+             the crew this month are counted, it needs 4, so it will not sail"
+        );
     }
 
     #[test]
@@ -19481,36 +19671,75 @@ mod tests {
         );
     }
 
-    /// Men given *into* a unit aboard are merged and the receiving unit's skill recomputed, which
-    /// this application does not model - so the crew check says nothing rather than inventing
-    /// sailors. The load half is untouched by that doubt and still warns.
+    /// Men given *into* a unit aboard are now merged and counted: unit 9508 is one man at sailing 1
+    /// receiving two unskilled gnolls - `(1*30 + 2*0)/3 = 10` points, level 0, three men, so 0
+    /// levels against the raft's 2. The load half is unaffected and still warns.
     #[test]
-    fn men_given_into_a_unit_aboard_silence_the_crew_check() {
+    fn men_given_into_a_unit_aboard_are_counted_into_the_crew() {
         let heavy = with_item(aboard("9508", "218", 500, 1), 1, "gnolls", "GNOL");
         let region = ReportRegion {
             structures: vec![raft("218")],
             ..region(vec![heavy, with_item(unit("9509"), 2, "gnolls", "GNOL")])
         };
 
-        let found = only(check(
+        let findings = check(
             vec![region],
             "unit 9509\nGIVE 9508 2 GNOL\nunit 9508\nSAIL N\n",
-        ));
-        assert_eq!(found.code, codes::FLEET_OVERLOADED);
+        );
+        assert_eq!(
+            codes(&findings),
+            vec!["fleet-overloaded", "fleet-undercrewed"]
+        );
+        let crew = findings
+            .iter()
+            .find(|finding| finding.code == codes::FLEET_UNDERCREWED)
+            .unwrap();
+        assert_eq!(
+            crew.message,
+            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
+             crew this month are counted, it needs 2, so it will not sail"
+        );
     }
 
-    /// The same, taken rather than given: men arriving is the doubt, whichever order moved them.
+    /// The same, taken rather than given: a `TAKE` from a unit in the hex is merged just as a
+    /// `GIVE` is (`ah-dxfd.1`).
     #[test]
-    fn men_taken_aboard_silence_the_crew_check() {
+    fn men_taken_aboard_are_counted_into_the_crew() {
         let heavy = with_item(aboard("9508", "218", 500, 1), 1, "gnolls", "GNOL");
         let region = ReportRegion {
             structures: vec![raft("218")],
             ..region(vec![heavy, with_item(unit("9509"), 2, "gnolls", "GNOL")])
         };
 
-        let found = only(check(
+        let findings = check(vec![region], "unit 9508\nTAKE FROM 9509 2 GNOL\nSAIL N\n");
+        assert_eq!(
+            codes(&findings),
+            vec!["fleet-overloaded", "fleet-undercrewed"]
+        );
+        let crew = findings
+            .iter()
+            .find(|finding| finding.code == codes::FLEET_UNDERCREWED)
+            .unwrap();
+        assert_eq!(
+            crew.message,
+            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
+             crew this month are counted, it needs 2, so it will not sail"
+        );
+    }
+
+    /// A `TAKE` from a unit number the hex does not show is a source this walk cannot read, so the
+    /// taker is doubted and the crew check stays silent - the one arrival route that still doubts.
+    #[test]
+    fn men_taken_from_outside_the_hex_leave_the_crew_unjudged() {
+        let heavy = with_item(aboard("9508", "218", 500, 1), 1, "gnolls", "GNOL");
+        let region = ReportRegion {
+            structures: vec![raft("218")],
+            ..region(vec![heavy])
+        };
+
+        let found = only(check_ignoring_transfer_targets(
             vec![region],
-            "unit 9508\nTAKE FROM 9509 2 GNOL\nSAIL N\n",
+            "unit 9508\nTAKE FROM 999 2 GNOL\nSAIL N\n",
         ));
         assert_eq!(found.code, codes::FLEET_OVERLOADED);
     }
@@ -19570,10 +19799,13 @@ mod tests {
         assert_eq!(found.code, codes::FLEET_OVERLOADED);
     }
 
-    /// Men of one race arriving while men of another leave is still a merge, so the doubt is
-    /// per race and not on the total - raised in review on PR #387.
+    /// Men of one race arriving while men of another leave is still a merge, judged on the
+    /// arrival: unit 9508 is one man at sailing 1, its one gnoll given away and one unskilled
+    /// centaur received in its place - `(1*30 + 1*0)/2 = 15` points, level 0, one man, so 0 levels
+    /// against the raft's 2. The joining clause fires rather than "given away", since men joined
+    /// this month even though the total headcount did not move.
     #[test]
-    fn men_of_one_race_arriving_silence_the_crew_even_as_others_leave() {
+    fn men_joining_and_leaving_at_once_read_as_a_gain() {
         let heavy = with_item(
             with_item(aboard("9508", "218", 500, 1), 1, "gnolls", "GNOL"),
             0,
@@ -19585,11 +19817,23 @@ mod tests {
             ..region(vec![heavy, with_item(unit("9509"), 1, "centaurs", "CTAU")])
         };
 
-        let found = only(check(
+        let findings = check(
             vec![region],
             "unit 9509\nGIVE 9508 1 CTAU\nunit 9508\nGIVE 0 1 GNOL\nSAIL N\n",
-        ));
-        assert_eq!(found.code, codes::FLEET_OVERLOADED);
+        );
+        assert_eq!(
+            codes(&findings),
+            vec!["fleet-overloaded", "fleet-undercrewed"]
+        );
+        let crew = findings
+            .iter()
+            .find(|finding| finding.code == codes::FLEET_UNDERCREWED)
+            .unwrap();
+        assert_eq!(
+            crew.message,
+            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
+             crew this month are counted, it needs 2, so it will not sail"
+        );
     }
 
     /// Giving the whole crew away leaves no sailors at all, and the clamp holds at zero.
@@ -19606,6 +19850,57 @@ mod tests {
             found.message,
             "Raft [218] is short of sailors: 2 sailing levels aboard less 2 given away this \
              month, it needs 2, so it will not sail"
+        );
+    }
+
+    /// The arm that could not occur before this bead: a sailor joins the crew, and the judged
+    /// figure is *higher* than the reported one, yet the fleet is still short.
+    #[test]
+    fn arriving_sailors_that_still_leave_it_short_read_as_a_gain() {
+        // A light weight on purpose, so the overload half stays quiet and `only` can be used.
+        let receiver = aboard("11125", "329", 20, 1);
+        let giver = with_skill_pts(men_holder("9509", 1), "SAIL", 30);
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![receiver, giver])
+        };
+
+        let found = only(check(
+            vec![region],
+            "unit 9509\nGIVE 11125 1 HUMN\nunit 11125\nSAIL N\n",
+        ));
+        assert_eq!(found.code, codes::FLEET_UNDERCREWED);
+        // (1*30 + 1*30)/2 = 30, level 1, two men, so 2 levels against 4.
+        assert_eq!(
+            found.message,
+            "Longship [329] is short of sailors: 1 sailing levels aboard, 2 once the men joining \
+             the crew this month are counted, it needs 4, so it will not sail"
+        );
+    }
+
+    /// A recruiting crew is counted exactly as a gifted one is - the same merge, a different
+    /// route into it.
+    #[test]
+    fn a_recruiting_crew_is_counted() {
+        let crew = with_silver(aboard("9508", "218", 20, 1), 400);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            structures: vec![raft("218")],
+            ..region(vec![crew])
+        };
+
+        let found = only(check(vec![region], "unit 9508\nBUY 4 HUMN\nSAIL N\n"));
+        assert_eq!(found.code, codes::FLEET_UNDERCREWED);
+        // (1*30 + 4*0)/5 = 6 points, level 0, five men, so 0 levels against the raft's 2.
+        assert_eq!(
+            found.message,
+            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
+             crew this month are counted, it needs 2, so it will not sail"
         );
     }
 
@@ -20367,6 +20662,20 @@ mod tests {
         hex
     }
 
+    /// `hex_after_gifts`, and then this month's recruits - the whole post-orders view.
+    fn hex_after_orders<'a>(region: &'a ReportRegion, ordered: &'a OrderedUnits) -> Hex<'a> {
+        // On its own line, not `Some(&ruleset())`: the ledger holds the reference past this
+        // statement, so a temporary will not borrow-check here even though `hex_after_gifts` gets
+        // away with it.
+        let rules = ruleset();
+        let mut hex = Hex::read(region, ordered, &[]);
+        apply_transfers(&mut hex.units, Some(&rules));
+        let receipts = BTreeMap::new();
+        let ledger = ledger_for(&hex, Some(&rules), &receipts);
+        apply_recruits(&mut hex.units, &ledger, Some(&rules));
+        hex
+    }
+
     // --- holdings after this month's transfers (ah-dxfd.2) ----------------------------------
 
     fn item_amount(items: &[ItemAmount], tag: &str) -> Option<i64> {
@@ -20930,6 +21239,53 @@ mod tests {
         ));
     }
 
+    /// `apply_transfers` writes `men_after_orders`/`men_joined` for every unit its walk
+    /// touches, giver and receiver both - `men_joined` counts arrivals only, never netted against
+    /// men the same unit gave away.
+    #[test]
+    fn a_gift_of_men_moves_both_counters() {
+        let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
+        let receiver = with_men(unit("2200"), 1);
+        let orders = "unit 1010\nGIVE 2200 3 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver, receiver]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        assert_eq!(hex.find("2200").unwrap().men_after_orders, 4);
+        assert_eq!(hex.find("2200").unwrap().men_joined, 3);
+        assert_eq!(hex.find("1010").unwrap().men_after_orders, 2);
+        assert_eq!(hex.find("1010").unwrap().men_joined, 0);
+    }
+
+    /// A gift the source cannot cover leaves the receiver `Unknowable`, because the ledger (unlike
+    /// this walk) does not clamp the arrival to what the giver actually held - a difference that
+    /// would otherwise reach `apply_recruits` looking exactly like recruiting.
+    #[test]
+    fn an_over_give_leaves_the_receiver_unjudged() {
+        // The source holds 5, so `moved` is 5 against a `requested` of 99.
+        let partial_giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
+        let orders = "unit 1010\nGIVE 2200 99 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let over_give_region = region(vec![partial_giver, unit("2200")]);
+        let hex = hex_after_gifts(&over_give_region, &ordered);
+        assert!(matches!(
+            hex.find("2200").unwrap().skills_after_gifts,
+            SkillsAfterGifts::Unknowable
+        ));
+
+        // The source holds none of the tag at all, so `moved` is 0 - the case a naive placement
+        // of the clamp flag (after the `moved == 0` return) would miss.
+        let empty_giver = with_skill_pts(unit("1010"), "LUMB", 30);
+        let orders = "unit 1010\nGIVE 2200 3 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let empty_give_region = region(vec![empty_giver, unit("2200")]);
+        let hex = hex_after_gifts(&empty_give_region, &ordered);
+        assert!(matches!(
+            hex.find("2200").unwrap().skills_after_gifts,
+            SkillsAfterGifts::Unknowable
+        ));
+    }
+
     #[test]
     fn giving_a_whole_unit_away_is_not_a_merge() {
         let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
@@ -20943,6 +21299,169 @@ mod tests {
             hex.find("2200").unwrap().skills_after_gifts,
             SkillsAfterGifts::Unchanged
         ));
+    }
+
+    // --- recruits --------------------------------------------------------------------------
+
+    /// `rules/economy_recruiting`: "New recruits will not have any skills or items" - a recruiting
+    /// unit's skills are diluted the same way a gift's are, so a unit whose report shows lumberjack
+    /// 1 can no longer produce lumber once it has bought enough unskilled recruits.
+    #[test]
+    fn a_recruiting_unit_is_judged_on_its_diluted_skills() {
+        let crew = with_silver(with_skill_pts(men_holder("900", 10), "LUMB", 30), 400);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![crew])
+        };
+        // `LUMB` (lumberjack) is the skill; `WOOD` is what it produces (`data/LUMB`, `data/WOOD`).
+        let orders = "unit 900\nBUY 4 HUMN\nPRODUCE WOOD\n";
+
+        let findings = check(vec![region], orders);
+
+        // (10*30 + 4*0)/14 = 21 points, level 0 under `level_for_points` - the unit can no longer
+        // produce wood.
+        assert!(
+            codes(&findings).contains(&"produce-without-skill"),
+            "{findings:?}"
+        );
+    }
+
+    /// `rules/form`'s own recruiting idiom: fund a newly `FORM`ed unit with silver, then have it
+    /// `BUY` its own crew. It starts at `men: 0` and `skills: []`, so `merge_skills(&[], 0, &[], 5)`
+    /// has nothing to average and the unit still cannot produce wood once it exists.
+    #[test]
+    fn a_formed_unit_that_recruits_is_judged_on_what_it_bought() {
+        let founder = with_silver(unit("1010"), 200);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![founder])
+        };
+        let orders = "unit 1010\nFORM 1\nBUY 5 HUMN\nPRODUCE WOOD\nEND\nGIVE NEW 1 200 SILV\n";
+
+        let findings = check(vec![region], orders);
+
+        assert!(
+            codes(&findings).contains(&"produce-without-skill"),
+            "{findings:?}"
+        );
+    }
+
+    /// `ruleset.is_man` gates what `apply_recruits` counts as an arrival - a `BUY` of equipment
+    /// moves an item tag the ledger sees exactly as it sees a man tag, but it is not one.
+    #[test]
+    fn a_buy_of_goods_is_not_a_recruit() {
+        let crew = with_silver(with_skill_pts(men_holder("900", 10), "LUMB", 30), 400);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 10,
+            }],
+            ..region(vec![crew])
+        };
+        let orders = "unit 900\nBUY 2 SWOR\nPRODUCE WOOD\n";
+
+        let findings = check(vec![region], orders);
+
+        assert!(
+            !codes(&findings).contains(&"produce-without-skill"),
+            "{findings:?}"
+        );
+    }
+
+    /// Decision 3: `BUY ALL PEASANTS` cannot be told from `BUY ALL SWORDS` here - `PEASANTS` names
+    /// no catalogue item at all (`rules/buy`: "you may use PEASANT or PEASANTS to recruit whichever
+    /// race is present in the region") - so the guard in `apply_recruits` is on the *amount*, not
+    /// the item, and it over-silences `BUY ALL SWOR` too. That is the accepted cost until `ah-jown`
+    /// resolves `BUY ALL` into a quantity.
+    #[test]
+    fn buying_all_of_anything_leaves_the_unit_unjudged() {
+        let crew = with_silver(with_skill_pts(men_holder("900", 10), "LUMB", 30), 400);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![crew])
+        };
+
+        for item in ["PEAS", "SWOR"] {
+            let orders = format!("unit 900\nBUY ALL {item}\nPRODUCE WOOD\n");
+            let findings = check(vec![region.clone()], &orders);
+            assert!(
+                !codes(&findings).contains(&"produce-without-skill"),
+                "{item}: {findings:?}"
+            );
+        }
+    }
+
+    /// The merge is weighted by the receiver's headcount, and a headcount that is only a guess
+    /// cannot price an exact dilution - the same doubt `settle_headcounts` already treats
+    /// `men_estimated` as, for the units table.
+    #[test]
+    fn an_estimated_headcount_leaves_a_recruiting_unit_unjudged() {
+        let mut crew = with_silver(with_skill_pts(men_holder("900", 10), "LUMB", 30), 400);
+        crew.men_estimated = true;
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![crew])
+        };
+        let orders = "unit 900\nBUY 4 HUMN\nPRODUCE WOOD\n";
+
+        let findings = check(vec![region], orders);
+
+        assert!(
+            !codes(&findings).contains(&"produce-without-skill"),
+            "{findings:?}"
+        );
+    }
+
+    /// Both merges run in the game's own order (`rules/sequenceofevents`: *Give orders* before
+    /// *Market orders*) and compose: the receiver is given five skilled men, then buys five more
+    /// unskilled recruits. What this pins is composition, not ordering - both merges are
+    /// headcount-weighted averages over the same three groups, so recruiting first would reach the
+    /// same level up to integer truncation. What it *can* tell is that both merges happened: a
+    /// `recruited` derived as `arrived - men_joined` is one sign error away from counting the gift
+    /// twice or the recruits not at all, and either mistake lands on a different level.
+    #[test]
+    fn a_gift_and_a_recruit_merge_in_the_games_own_order() {
+        let receiver = with_silver(with_skill_pts(men_holder("2200", 5), "LUMB", 30), 400);
+        let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 180);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![receiver, giver])
+        };
+        let orders = "unit 1010\nGIVE 2200 5 HUMN\nunit 2200\nBUY 5 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let hex = hex_after_orders(&region, &ordered);
+
+        // Gifts first: (5*30 + 5*180)/10 = 105 points, level 2. Then recruits:
+        // (10*105 + 5*0)/15 = 70 points, level 1.
+        assert_eq!(hex.find("2200").unwrap().skill_level("LUMB"), Some(1));
+        assert_eq!(hex.find("2200").unwrap().men_after_orders, 15);
     }
 
     // --- the same six checks, each reading the merged view -----------------------------------
