@@ -127,6 +127,7 @@ pub mod codes {
     pub const TAXED_A_GUARDED_HEX: Code = Code("taxed-a-guarded-hex");
     pub const PART_OF_HEX_SHORTFALL: Code = Code("part-of-hex-shortfall");
     pub const NOTHING_LEFT_TO_SELL: Code = Code("nothing-left-to-sell");
+    pub const ARRIVALS_LOWER_A_SKILL: Code = Code("arrivals-lower-a-skill");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -135,7 +136,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 34] = [
+    pub const ALL: [Code; 35] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -170,6 +171,7 @@ pub mod codes {
         TAXED_A_GUARDED_HEX,
         PART_OF_HEX_SHORTFALL,
         NOTHING_LEFT_TO_SELL,
+        ARRIVALS_LOWER_A_SKILL,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -477,6 +479,7 @@ pub fn review_turn(
         check_forms(hex, &options, &mut findings);
         check_idle_units(hex, &options, &mut findings);
         check_transfer_targets(hex, &located, &options, &mut findings);
+        check_arrivals(hex, &options, &mut findings);
         check_sailing(hex, ledger, ruleset, &options, &mut findings);
         check_movement(hex, ledger, ruleset, &options, &mut findings);
 
@@ -1324,6 +1327,33 @@ enum SkillsAfterGifts {
     Unknowable,
 }
 
+/// How many men joined a unit this month, by each route that can bring them.
+///
+/// Never netted against men who left: a unit that receives three and gives two away has
+/// `given: 3`, because the question these answer is "was this unit's skill diluted", not "is it
+/// bigger".
+///
+/// Three counters rather than one total because `arrivals-lower-a-skill` names the order the
+/// player actually wrote, and the three orders are three different words in its message.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct Arrivals {
+    /// Men that arrived by a `GIVE` this walk followed.
+    given: i64,
+    /// Men that arrived by a `TAKE` this walk followed. `rules/take` calls a `TAKE` "a GIVE order
+    /// with the direction reversed", but nobody *gave* these men and the message says so.
+    taken: i64,
+    /// Men that arrived by recruiting - a `BUY` of a man tag, as the ledger settled it, which is
+    /// not always the number the order asked for.
+    bought: i64,
+}
+
+impl Arrivals {
+    /// Every man that joined, by any route.
+    fn total(self) -> i64 {
+        self.given + self.taken + self.bought
+    }
+}
+
 /// One of our units, and its orders.
 struct Ordered<'a> {
     unit: &'a ReportUnit,
@@ -1347,10 +1377,8 @@ struct Ordered<'a> {
     /// merged skill level is per man, so a level without the headcount it was merged against says
     /// nothing.
     men_after_orders: i64,
-    /// How many men *joined* this unit this month, by any route. Never netted against men who
-    /// left: a unit that receives three and gives two away has `men_joined: 3`, because the
-    /// question this answers is "was this unit's skill diluted", not "is it bigger".
-    men_joined: i64,
+    /// How many men joined this unit this month, by each route. See `Arrivals`.
+    arrivals: Arrivals,
 }
 
 impl<'a> Hex<'a> {
@@ -1374,7 +1402,7 @@ impl<'a> Hex<'a> {
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
                     men_after_orders: unit.men,
-                    men_joined: 0,
+                    arrivals: Arrivals::default(),
                 }
             })
             .collect();
@@ -1394,7 +1422,7 @@ impl<'a> Hex<'a> {
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
                     men_after_orders: formed.unit.men,
-                    men_joined: 0,
+                    arrivals: Arrivals::default(),
                 }),
         );
         Self { region, units }
@@ -1453,13 +1481,15 @@ struct Working {
     doubted: bool,
     /// Set when a transfer this month cannot be followed for this unit.
     items_unknowable: bool,
-    /// Men that arrived at this unit through a transfer the walk actually followed. Distinct from
+    /// Men that arrived at this unit through a `GIVE` the walk actually followed. Distinct from
     /// `arrived` above, which tracks *tags*, not a headcount.
-    men_arrived: i64,
+    men_given: i64,
+    /// Men that arrived at this unit through a `TAKE` the walk actually followed.
+    men_taken: i64,
     /// A transfer into this unit moved fewer men than the order named, because the source did not
     /// hold that many. `apply_recruits` cannot then attribute the difference between the ledger's
-    /// arrivals and `men_arrived` to recruiting, because part of it is an over-give the ledger
-    /// does not clamp and this walk does. See *Known traps*.
+    /// arrivals and `men_given + men_taken` to recruiting, because part of it is an over-give the
+    /// ledger does not clamp and this walk does. See *Known traps*.
     men_clamped: bool,
 }
 
@@ -1476,7 +1506,8 @@ fn seed_working(units: &[Ordered<'_>], position: usize) -> Working {
         arrived: Vec::new(),
         doubted: false,
         items_unknowable: false,
-        men_arrived: 0,
+        men_given: 0,
+        men_taken: 0,
         men_clamped: false,
     }
 }
@@ -1873,7 +1904,11 @@ fn apply_transfers(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
                     // judged on stale figures - the review comment on this PR caught exactly this
                     // gap.
                     receiver_state.men += moved;
-                    receiver_state.men_arrived += moved;
+                    if transfer.is_give {
+                        receiver_state.men_given += moved;
+                    } else {
+                        receiver_state.men_taken += moved;
+                    }
                 }
                 move_holding(receiver_state, &tag, &name, moved);
             }
@@ -1893,7 +1928,8 @@ fn apply_transfers(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
     for (position, state) in working {
         let ordered = &mut units[position];
         ordered.men_after_orders = state.men;
-        ordered.men_joined = state.men_arrived;
+        ordered.arrivals.given = state.men_given;
+        ordered.arrivals.taken = state.men_taken;
         ordered.holdings_after_gifts = if state.items_unknowable {
             HoldingsAfterGifts::Unknowable
         } else {
@@ -1984,7 +2020,7 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
                 .sum()
         };
 
-        let recruited = arrived - units[index].men_joined;
+        let recruited = arrived - units[index].arrivals.total();
         if recruited < 0 {
             // The two walks disagree about one unit. Step 2 above and the `clamped` flag on
             // `apply_transfers` cover the routes known to diverge, so nothing should reach here
@@ -2015,7 +2051,7 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
         // avoids for a gift.
         let merged = effects::merge_skills(&current, before, &[], recruited);
         ordered.men_after_orders = before + recruited;
-        ordered.men_joined += recruited;
+        ordered.arrivals.bought += recruited;
         ordered.skills_after_gifts = if merged == ordered.unit.skills {
             SkillsAfterGifts::Unchanged
         } else {
@@ -6582,7 +6618,7 @@ fn sailing_levels_after_orders(
         .sum();
     Some(CrewAfterOrders {
         levels: level.saturating_mul(ordered.men_after_orders.max(0)),
-        men_joined: ordered.men_joined > 0,
+        men_joined: ordered.arrivals.total() > 0,
     })
 }
 
@@ -6636,6 +6672,104 @@ fn check_transfer_targets(
                 ),
             };
             findings.push(ordered.finding(hex, codes::GIVE_TARGET_NOT_HERE, message, Some(placed)));
+        }
+    }
+}
+
+/// `1 man` or `5 men`.
+///
+/// The message names people rather than the race the order moved, so no item catalogue and no
+/// `Plurals` table is involved: `counted_item` is for item *names* and would answer `4 humans`
+/// here, which is not what the navigator agreed.
+fn men_count(count: i64) -> String {
+    if count == 1 {
+        "1 man".to_string()
+    } else {
+        format!("{count} men")
+    }
+}
+
+/// Which orders brought the men, e.g. `giving 5 men to this unit, taking 2 more and buying 4
+/// more`.
+///
+/// The first route present is written in full with its own preposition; every later one is
+/// `<verb> N more`, which carries the noun forward so "men" is said once. The order is fixed -
+/// given, taken, bought - and matches the game's own: `rules/sequenceofevents` puts *Give orders*
+/// (which is `GIVE` and `TAKE` alike) before *Market orders*.
+fn arrivals_clause(arrivals: Arrivals) -> String {
+    let mut clauses = Vec::new();
+    if arrivals.given > 0 {
+        clauses.push(if clauses.is_empty() {
+            format!("giving {} to this unit", men_count(arrivals.given))
+        } else {
+            format!("giving {} more", arrivals.given)
+        });
+    }
+    if arrivals.taken > 0 {
+        clauses.push(if clauses.is_empty() {
+            format!("taking {} into this unit", men_count(arrivals.taken))
+        } else {
+            format!("taking {} more", arrivals.taken)
+        });
+    }
+    if arrivals.bought > 0 {
+        clauses.push(if clauses.is_empty() {
+            format!("buying {} into this unit", men_count(arrivals.bought))
+        } else {
+            format!("buying {} more", arrivals.bought)
+        });
+    }
+    match clauses.as_slice() {
+        [one] => one.clone(),
+        [a, b] => format!("{a} and {b}"),
+        [a, b, c] => format!("{a}, {b} and {c}"),
+        _ => String::new(),
+    }
+}
+
+/// A unit left at a lower skill level than its report showed, because men joined it this month.
+///
+/// Skill knowledge is per man and merging averages it (`rules/give`), so unskilled arrivals dilute
+/// what a unit knows. `ah-z73s.1` already computes the drop and already shows it in the Skills
+/// cell; this says so in words, because `LUMB 2 (105)` reads like any other predicted value and a
+/// player reinforcing a skilled unit has no reason to hover it.
+///
+/// One finding per skill for the whole month, on the **receiving** unit, with **no line**: the
+/// orders that caused it can sit in three different blocks, and pointing at one of them would
+/// blame an order that is only part of the cause.
+fn check_arrivals(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !options.emits(codes::ARRIVALS_LOWER_A_SKILL) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        let arrivals = ordered.arrivals;
+        if arrivals.total() <= 0 {
+            continue;
+        }
+        // A unit whose arrivals this month cannot be followed is not judged at all: this module's
+        // rule is that a warning that is wrong is worse than one that is missing, and `skills()`
+        // answering `None` is the one doubt signal there is.
+        let Some(after) = ordered.skills() else {
+            continue;
+        };
+        // Only a skill the *report* showed can fall; one that arrived cannot go below 0.
+        for skill in &ordered.unit.skills {
+            let before = skill.level;
+            let now = level_in(after, &skill.tag);
+            if now >= before {
+                continue;
+            }
+            let name = &skill.name;
+            findings.push(ordered.finding(
+                hex,
+                codes::ARRIVALS_LOWER_A_SKILL,
+                format!(
+                    "{} lowers its {name} from {before} to {now}",
+                    arrivals_clause(arrivals),
+                ),
+                None,
+            ));
         }
     }
 }
@@ -18837,6 +18971,16 @@ mod tests {
                 allowance: None,
                 unclaimed: None,
             },
+            Case {
+                code: codes::ARRIVALS_LOWER_A_SKILL,
+                regions: vec![region(vec![
+                    men_holder("1010", 5),
+                    with_named_skill_pts(men_holder("3100", 10), "lumberjack", "LUMB", 180),
+                ])],
+                orders: "unit 1010\nGIVE 3100 5 HUMN\n",
+                allowance: None,
+                unclaimed: None,
+            },
         ];
 
         assert_eq!(
@@ -19682,9 +19826,11 @@ mod tests {
             ..region(vec![heavy, with_item(unit("9509"), 2, "gnolls", "GNOL")])
         };
 
-        let findings = check(
-            vec![region],
+        let findings = check_turn(
+            &report(vec![region]),
             "unit 9509\nGIVE 9508 2 GNOL\nunit 9508\nSAIL N\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::ARRIVALS_LOWER_A_SKILL]),
         );
         assert_eq!(
             codes(&findings),
@@ -19711,7 +19857,12 @@ mod tests {
             ..region(vec![heavy, with_item(unit("9509"), 2, "gnolls", "GNOL")])
         };
 
-        let findings = check(vec![region], "unit 9508\nTAKE FROM 9509 2 GNOL\nSAIL N\n");
+        let findings = check_turn(
+            &report(vec![region]),
+            "unit 9508\nTAKE FROM 9509 2 GNOL\nSAIL N\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::ARRIVALS_LOWER_A_SKILL]),
+        );
         assert_eq!(
             codes(&findings),
             vec!["fleet-overloaded", "fleet-undercrewed"]
@@ -19817,9 +19968,11 @@ mod tests {
             ..region(vec![heavy, with_item(unit("9509"), 1, "centaurs", "CTAU")])
         };
 
-        let findings = check(
-            vec![region],
+        let findings = check_turn(
+            &report(vec![region]),
             "unit 9509\nGIVE 9508 1 CTAU\nunit 9508\nGIVE 0 1 GNOL\nSAIL N\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::ARRIVALS_LOWER_A_SKILL]),
         );
         assert_eq!(
             codes(&findings),
@@ -19894,7 +20047,12 @@ mod tests {
             ..region(vec![crew])
         };
 
-        let found = only(check(vec![region], "unit 9508\nBUY 4 HUMN\nSAIL N\n"));
+        let found = only(check_turn(
+            &report(vec![region]),
+            "unit 9508\nBUY 4 HUMN\nSAIL N\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::ARRIVALS_LOWER_A_SKILL]),
+        ));
         assert_eq!(found.code, codes::FLEET_UNDERCREWED);
         // (1*30 + 4*0)/5 = 6 points, level 0, five men, so 0 levels against the raft's 2.
         assert_eq!(
@@ -20640,6 +20798,23 @@ mod tests {
         unit
     }
 
+    /// `with_skill_pts`, with the skill's name as a report writes it.
+    ///
+    /// `skill_pts` names a skill after its own tag (`lumb`), which is fine for every check that
+    /// only reads the level - but `arrivals-lower-a-skill` prints the name, and the sentences the
+    /// navigator agreed name the skill in full.
+    fn with_named_skill_pts(
+        mut unit: ReportUnit,
+        name: &str,
+        tag: &str,
+        points: u32,
+    ) -> ReportUnit {
+        let mut skill = skill_pts(tag, points);
+        skill.name = name.to_string();
+        unit.skills.push(skill);
+        unit
+    }
+
     /// `unit(id)`, with `men` set and that many HUMN reported - what a GIVE/TAKE of men reads via
     /// `Ordered::holding`.
     fn men_holder(id: &str, men: i64) -> ReportUnit {
@@ -21239,9 +21414,9 @@ mod tests {
         ));
     }
 
-    /// `apply_transfers` writes `men_after_orders`/`men_joined` for every unit its walk
-    /// touches, giver and receiver both - `men_joined` counts arrivals only, never netted against
-    /// men the same unit gave away.
+    /// `apply_transfers` writes `men_after_orders`/`arrivals` for every unit its walk touches,
+    /// giver and receiver both - `arrivals` counts arrivals only, never netted against men the
+    /// same unit gave away.
     #[test]
     fn a_gift_of_men_moves_both_counters() {
         let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
@@ -21252,9 +21427,294 @@ mod tests {
         let hex = hex_after_gifts(&region, &ordered);
 
         assert_eq!(hex.find("2200").unwrap().men_after_orders, 4);
-        assert_eq!(hex.find("2200").unwrap().men_joined, 3);
+        assert_eq!(hex.find("2200").unwrap().arrivals.total(), 3);
         assert_eq!(hex.find("1010").unwrap().men_after_orders, 2);
-        assert_eq!(hex.find("1010").unwrap().men_joined, 0);
+        assert_eq!(hex.find("1010").unwrap().arrivals.total(), 0);
+    }
+
+    /// `Arrivals` tells a gift from a take, because `arrivals-lower-a-skill` names the order the
+    /// player wrote, and the three orders are three different words in its message.
+    #[test]
+    fn a_gift_and_a_take_are_counted_apart() {
+        let region = region(vec![
+            men_holder("1010", 5),
+            men_holder("2200", 5),
+            men_holder("3100", 10),
+        ]);
+        let orders = "unit 1010\nGIVE 3100 3 HUMN\nunit 3100\nTAKE FROM 2200 2 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        assert_eq!(
+            hex.find("3100").unwrap().arrivals,
+            Arrivals {
+                given: 3,
+                taken: 2,
+                bought: 0,
+            }
+        );
+        assert_eq!(hex.find("3100").unwrap().arrivals.total(), 5);
+        // A unit that only gave men away has no arrivals.
+        assert_eq!(hex.find("1010").unwrap().arrivals.total(), 0);
+    }
+
+    // --- arrivals-lower-a-skill (ah-z73s.4) ------------------------------------------------------
+
+    /// The finding under `codes::ARRIVALS_LOWER_A_SKILL`, or a panic naming every finding the
+    /// fixture raised - the fixture may raise other advisories, and this bead must not become the
+    /// reason they are silenced.
+    fn arrivals_finding(findings: &[Finding]) -> &Finding {
+        findings
+            .iter()
+            .find(|finding| finding.code == codes::ARRIVALS_LOWER_A_SKILL)
+            .unwrap_or_else(|| panic!("{findings:?}"))
+    }
+
+    #[test]
+    fn a_gift_that_lowers_a_skill_is_reported() {
+        let region = region(vec![
+            men_holder("1010", 5),
+            with_named_skill_pts(men_holder("3100", 10), "lumberjack", "LUMB", 180),
+        ]);
+        let orders = "unit 1010\nGIVE 3100 5 HUMN\n";
+
+        let findings = check(vec![region], orders);
+        let finding = arrivals_finding(&findings);
+
+        assert_eq!(
+            finding.message,
+            "giving 5 men to this unit lowers its lumberjack from 3 to 2"
+        );
+        assert_eq!(finding.unit_id.as_deref(), Some("3100"));
+        assert!(finding.line.is_none());
+        assert!(finding.column_start.is_none());
+    }
+
+    #[test]
+    fn a_recruit_that_lowers_a_skill_is_reported() {
+        let crew = with_silver(
+            with_named_skill_pts(men_holder("900", 10), "lumberjack", "LUMB", 30),
+            400,
+        );
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![crew])
+        };
+        let orders = "unit 900\nBUY 4 HUMN\n";
+
+        let findings = check(vec![region], orders);
+        let finding = arrivals_finding(&findings);
+
+        assert_eq!(
+            finding.message,
+            "buying 4 men into this unit lowers its lumberjack from 1 to 0"
+        );
+    }
+
+    #[test]
+    fn a_take_that_lowers_a_skill_names_the_take() {
+        let region = region(vec![
+            men_holder("1010", 5),
+            with_named_skill_pts(men_holder("3100", 10), "lumberjack", "LUMB", 180),
+        ]);
+        let orders = "unit 3100\nTAKE FROM 1010 5 HUMN\n";
+
+        let findings = check(vec![region], orders);
+        let finding = arrivals_finding(&findings);
+
+        assert_eq!(
+            finding.message,
+            "taking 5 men into this unit lowers its lumberjack from 3 to 2"
+        );
+    }
+
+    #[test]
+    fn men_from_every_route_are_named_in_one_finding() {
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![
+                men_holder("1010", 5),
+                men_holder("2200", 2),
+                with_silver(
+                    with_named_skill_pts(men_holder("3100", 10), "lumberjack", "LUMB", 180),
+                    400,
+                ),
+            ])
+        };
+        let orders = "unit 1010\nGIVE 3100 5 HUMN\nunit 3100\nTAKE FROM 2200 2 HUMN\nBUY 4 HUMN\n";
+
+        let findings = check(vec![region], orders);
+        let matching: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::ARRIVALS_LOWER_A_SKILL)
+            .collect();
+
+        assert_eq!(matching.len(), 1, "{findings:?}");
+        assert_eq!(
+            matching[0].message,
+            "giving 5 men to this unit, taking 2 more and buying 4 more lowers its lumberjack \
+             from 3 to 1"
+        );
+    }
+
+    #[test]
+    fn a_gift_that_raises_a_level_says_nothing() {
+        let region = region(vec![
+            with_named_skill_pts(men_holder("1010", 5), "lumberjack", "LUMB", 300),
+            with_named_skill_pts(men_holder("3100", 10), "lumberjack", "LUMB", 180),
+        ]);
+        let orders = "unit 1010\nGIVE 3100 5 HUMN\n";
+
+        let findings = check(vec![region], orders);
+
+        assert!(
+            !codes(&findings).contains(&"arrivals-lower-a-skill"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_gift_that_holds_a_level_says_nothing() {
+        let region = region(vec![
+            with_named_skill_pts(men_holder("1010", 5), "lumberjack", "LUMB", 180),
+            with_named_skill_pts(men_holder("3100", 10), "lumberjack", "LUMB", 180),
+        ]);
+        let orders = "unit 1010\nGIVE 3100 5 HUMN\n";
+
+        let findings = check(vec![region], orders);
+
+        assert!(
+            !codes(&findings).contains(&"arrivals-lower-a-skill"),
+            "{findings:?}"
+        );
+    }
+
+    /// Exercises the `skills()`-is-`None` guard: `apply_transfers` credits the arrivals and then
+    /// marks the unit doubted, so `arrivals.total()` is above zero and only the second guard can
+    /// silence it.
+    #[test]
+    fn a_unit_with_an_estimated_headcount_is_not_judged() {
+        let giver = men_holder("1010", 5);
+        let mut receiver = with_named_skill_pts(men_holder("3100", 10), "lumberjack", "LUMB", 180);
+        receiver.men_estimated = true;
+        let region = region(vec![giver, receiver]);
+        let orders = "unit 1010\nGIVE 3100 5 HUMN\n";
+
+        let findings = check(vec![region], orders);
+
+        assert!(
+            !codes(&findings).contains(&"arrivals-lower-a-skill"),
+            "{findings:?}"
+        );
+    }
+
+    /// Silenced by the `total() <= 0` guard rather than by doubt: `GiveTarget::Nowhere` credits
+    /// `receiver_state.men` and sets `doubted`, but records no arrival.
+    #[test]
+    fn an_arrival_from_a_unit_the_report_does_not_show_says_nothing() {
+        let region = region(vec![with_named_skill_pts(
+            men_holder("3100", 10),
+            "lumberjack",
+            "LUMB",
+            180,
+        )]);
+        let orders = "unit 3100\nTAKE FROM 9999 5 HUMN\n";
+
+        let findings = check_ignoring_transfer_targets(vec![region], orders);
+
+        assert!(
+            !codes(&findings).contains(&"arrivals-lower-a-skill"),
+            "{findings:?}"
+        );
+    }
+
+    /// A class selector of `MEN` is followed, not doubted: `moves` resolves it to the man tags the
+    /// source actually holds, so all five men move and the message is exactly the gift's.
+    #[test]
+    fn a_gift_of_every_man_is_followed_and_reported() {
+        let region = region(vec![
+            men_holder("1010", 5),
+            with_named_skill_pts(men_holder("3100", 10), "lumberjack", "LUMB", 180),
+        ]);
+        let orders = "unit 1010\nGIVE 3100 ALL MEN\n";
+
+        let findings = check(vec![region], orders);
+        let finding = arrivals_finding(&findings);
+
+        assert_eq!(
+            finding.message,
+            "giving 5 men to this unit lowers its lumberjack from 3 to 2"
+        );
+    }
+
+    #[test]
+    fn two_skills_falling_at_once_are_two_findings() {
+        let giver = men_holder("1010", 5);
+        let receiver = with_named_skill_pts(
+            with_named_skill_pts(men_holder("3100", 10), "lumberjack", "LUMB", 180),
+            "mining",
+            "MINI",
+            90,
+        );
+        let region = region(vec![giver, receiver]);
+        let orders = "unit 1010\nGIVE 3100 5 HUMN\n";
+
+        let findings = check(vec![region], orders);
+        let matching: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::ARRIVALS_LOWER_A_SKILL)
+            .collect();
+
+        assert_eq!(matching.len(), 2, "{findings:?}");
+        let messages: Vec<&str> = matching.iter().map(|f| f.message.as_str()).collect();
+        assert!(
+            messages.contains(&"giving 5 men to this unit lowers its lumberjack from 3 to 2"),
+            "{messages:?}"
+        );
+        assert!(
+            messages.contains(&"giving 5 men to this unit lowers its mining from 2 to 1"),
+            "{messages:?}"
+        );
+    }
+
+    #[test]
+    fn one_man_is_singular() {
+        let region = region(vec![
+            men_holder("1010", 1),
+            with_named_skill_pts(men_holder("3100", 1), "lumberjack", "LUMB", 180),
+        ]);
+        let orders = "unit 1010\nGIVE 3100 1 HUMN\n";
+
+        let findings = check(vec![region], orders);
+        let finding = arrivals_finding(&findings);
+
+        assert_eq!(
+            finding.message,
+            "giving 1 man to this unit lowers its lumberjack from 3 to 2"
+        );
+    }
+
+    #[test]
+    fn a_formed_unit_can_never_trigger_it() {
+        let region = region(vec![men_holder("1010", 5)]);
+        let orders = "unit 1010\nFORM 1\nEND\nGIVE NEW 1 5 HUMN\n";
+
+        let findings = check(vec![region], orders);
+
+        assert!(
+            !codes(&findings).contains(&"arrivals-lower-a-skill"),
+            "{findings:?}"
+        );
     }
 
     /// A gift the source cannot cover leaves the receiver `Unknowable`, because the ledger (unlike
@@ -21439,8 +21899,8 @@ mod tests {
     /// unskilled recruits. What this pins is composition, not ordering - both merges are
     /// headcount-weighted averages over the same three groups, so recruiting first would reach the
     /// same level up to integer truncation. What it *can* tell is that both merges happened: a
-    /// `recruited` derived as `arrived - men_joined` is one sign error away from counting the gift
-    /// twice or the recruits not at all, and either mistake lands on a different level.
+    /// `recruited` derived as `arrived - arrivals.total()` is one sign error away from counting
+    /// the gift twice or the recruits not at all, and either mistake lands on a different level.
     #[test]
     fn a_gift_and_a_recruit_merge_in_the_games_own_order() {
         let receiver = with_silver(with_skill_pts(men_holder("2200", 5), "LUMB", 30), 400);

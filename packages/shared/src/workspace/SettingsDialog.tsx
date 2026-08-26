@@ -549,6 +549,12 @@ export const WARNING_GROUPS: readonly {
         description: "A GIVE or TAKE naming a unit the report does not show in that hex."
       },
       {
+        code: "arrivals-lower-a-skill",
+        title: "Arrivals that lower a skill",
+        description:
+          "Men joining a unit, given, taken or bought, that leave it at a lower skill level than the report gave it."
+      },
+      {
         code: "too-many-trade-regions",
         title: "Producing in too many regions",
         description: "PRODUCE orders in more regions than the faction's allowance permits."
