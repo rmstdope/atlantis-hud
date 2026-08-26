@@ -552,7 +552,7 @@ export const WARNING_GROUPS: readonly {
         code: "arrivals-lower-a-skill",
         title: "Arrivals that lower a skill",
         description:
-          "Men joining a unit, given or bought, that leave it at a lower skill level than the report gave it."
+          "Men joining a unit, given, taken or bought, that leave it at a lower skill level than the report gave it."
       },
       {
         code: "too-many-trade-regions",
