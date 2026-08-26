@@ -395,6 +395,7 @@ pub fn review_turn(
             let mut hex = Hex::read(region, &ordered, &formed);
             apply_gifts_of_men(&mut hex.units, ruleset);
             let ledger = ledger_for(&hex, ruleset, &receipts);
+            apply_recruits(&mut hex.units, &ledger, ruleset);
             (hex, ledger)
         })
         .collect();
@@ -1688,6 +1689,100 @@ fn apply_gifts_of_men(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
             SkillsAfterGifts::Merged(state.skills)
         } else {
             SkillsAfterGifts::Unchanged
+        };
+    }
+}
+
+/// Merges this month's recruits into the units that bought them.
+///
+/// `rules/economy_recruiting`: "New recruits will not have any skills or items", so a purchase of
+/// people merges in at zero points and dilutes what the unit knows - `rules/buy` says so in as many
+/// words: "Recruit 5 barbarians into the current unit. (This will dilute the skills that the unit
+/// has.)". `effects::settle_headcounts` already does exactly this for the units table, from the
+/// same ledger; this is the checks' half of it, so the Skills cell and the Problems panel cannot
+/// disagree about one unit.
+///
+/// Runs after `apply_gifts_of_men` because `rules/sequenceofevents` puts *Give orders* before
+/// *Market orders*, and after `ledger_for` because only the ledger knows how many people a `BUY`
+/// could actually pay for.
+fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Option<&Ruleset>) {
+    let Some(ruleset) = ruleset else { return };
+
+    for index in 0..units.len() {
+        if matches!(units[index].skills_after_gifts, SkillsAfterGifts::Unknowable) {
+            continue;
+        }
+
+        let buys_all_people = units[index].intents().any(|intent| {
+            matches!(
+                intent,
+                Intent::Buy {
+                    amount: Amount::All { .. },
+                    ..
+                }
+            )
+        });
+        if buys_all_people {
+            // `buy` returns early for `Amount::All` and credits nothing to the balance, so the
+            // arrivals below would read as zero and the unit would be judged as though it had
+            // recruited nobody. `BUY ALL PEASANTS` cannot be told from `BUY ALL SWORDS` here -
+            // `PEASANTS` names no catalogue item at all - so the test is on the amount, not the
+            // item. `ah-jown` makes this arm deletable.
+            units[index].skills_after_gifts = SkillsAfterGifts::Unknowable;
+            continue;
+        }
+
+        // Arrivals the ledger saw, per man tag, positive parts only - never the net, so a unit
+        // that takes gnolls in and gives centaurs away has recruited nobody rather than netting to
+        // a number that looks like it by accident.
+        let arrived: i64 = {
+            let ordered = &units[index];
+            ledger
+                .balance
+                .iter()
+                .filter(|((unit_id, tag), _)| {
+                    unit_id == &ordered.unit.unit_id && ruleset.is_man(tag)
+                })
+                .map(|((_, tag), balance)| (balance - ordered.holding(tag)).max(0))
+                .sum()
+        };
+
+        let recruited = arrived - units[index].men_joined;
+        if recruited < 0 {
+            // The two walks disagree about one unit. Step 2 above and the `clamped` flag on
+            // `apply_gifts_of_men` cover the routes known to diverge, so nothing should reach here
+            // - this is a backstop, and silence is the right shape for one.
+            units[index].skills_after_gifts = SkillsAfterGifts::Unknowable;
+            continue;
+        }
+        if recruited == 0 {
+            continue;
+        }
+        if units[index].unit.men_estimated {
+            // The merge is weighted by the receiver's headcount, and `settle_headcounts` skips
+            // such a unit for the same reason.
+            units[index].skills_after_gifts = SkillsAfterGifts::Unknowable;
+            continue;
+        }
+
+        let ordered = &mut units[index];
+        let before = ordered.men_after_orders;
+        let current = match &ordered.skills_after_gifts {
+            SkillsAfterGifts::Unchanged => ordered.unit.skills.clone(),
+            SkillsAfterGifts::Merged(merged) => merged.clone(),
+            // The check above already skipped every one of these.
+            SkillsAfterGifts::Unknowable => continue,
+        };
+        // `before` is the headcount as the gifts left it, not `before + recruited`: weighting by
+        // the headcount after the arrivals is silently wrong, the same trap `apply_gifts_of_men`
+        // avoids for a gift.
+        let merged = effects::merge_skills(&current, before, &[], recruited);
+        ordered.men_after_orders = before + recruited;
+        ordered.men_joined += recruited;
+        ordered.skills_after_gifts = if merged == ordered.unit.skills {
+            SkillsAfterGifts::Unchanged
+        } else {
+            SkillsAfterGifts::Merged(merged)
         };
     }
 }
@@ -19182,6 +19277,36 @@ mod tests {
             hex.find("2200").unwrap().skills_after_gifts,
             SkillsAfterGifts::Unchanged
         ));
+    }
+
+    // --- recruits --------------------------------------------------------------------------
+
+    /// `rules/economy_recruiting`: "New recruits will not have any skills or items" - a recruiting
+    /// unit's skills are diluted the same way a gift's are, so a unit whose report shows lumberjack
+    /// 1 can no longer produce lumber once it has bought enough unskilled recruits.
+    #[test]
+    fn a_recruiting_unit_is_judged_on_its_diluted_skills() {
+        let crew = with_silver(with_skill_pts(men_holder("900", 10), "LUMB", 30), 400);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![crew])
+        };
+        // `LUMB` (lumberjack) is the skill; `WOOD` is what it produces (`data/LUMB`, `data/WOOD`).
+        let orders = "unit 900\nBUY 4 HUMN\nPRODUCE WOOD\n";
+
+        let findings = check(vec![region], orders);
+
+        // (10*30 + 4*0)/14 = 21 points, level 0 under `level_for_points` - the unit can no longer
+        // produce wood.
+        assert!(
+            codes(&findings).contains(&"produce-without-skill"),
+            "{findings:?}"
+        );
     }
 
     // --- the same six checks, each reading the merged view -----------------------------------
