@@ -154,6 +154,8 @@ describe("run — verify", () => {
     expect(out.join("\n")).toContain("items:");
     expect(out.join("\n")).toContain("skills:");
     expect(out.join("\n")).toContain("buildings:");
+    expect(out.join("\n")).toContain("itemClasses:");
+    expect(out.join("\n")).toContain("ungiveableItems:");
   });
 
   it("names the field when the ruleset disagrees", async () => {
@@ -169,6 +171,18 @@ describe("run — verify", () => {
     expect(printed).toContain("items.SWOR");
     expect(printed).toContain("999");
     expect(printed).toContain("pnpm run atlantis refresh");
+  });
+
+  it("names the class when itemClasses disagrees", async () => {
+    const committed = JSON.parse(RULESET_JSON);
+    committed.itemClasses.ARMOR = ["NOTREAL"];
+    const { io, out } = fakeIo();
+    io.writeFile(RULESET_PATH, JSON.stringify(committed));
+
+    const code = await run(["verify"], io);
+
+    expect(code).toBe(1);
+    expect(out.join("\n")).toContain("itemClasses.ARMOR");
   });
 });
 

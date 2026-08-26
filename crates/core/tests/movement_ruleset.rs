@@ -139,6 +139,19 @@ fn tells_men_from_equipment() {
 }
 
 #[test]
+fn the_catalogue_knows_which_items_are_armor() {
+    let ruleset = ruleset();
+
+    let armor = ruleset
+        .class_members("ARMOR")
+        .expect("ARMOR should be a class this catalogue can read");
+    assert!(
+        armor.iter().any(|tag| tag == "CARM"),
+        "chain armor should be recorded as ARMOR, got {armor:?}"
+    );
+}
+
+#[test]
 fn carries_the_item_catalogue_the_risk_heuristic_needs() {
     let ruleset = ruleset();
 

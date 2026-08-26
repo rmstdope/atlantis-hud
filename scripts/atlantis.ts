@@ -283,7 +283,7 @@ function runVerify(io: Io): number {
   const disagreements: string[] = [];
   let anyDisagree = false;
 
-  for (const collection of ["items", "skills", "buildings"] as const) {
+  for (const collection of ["items", "skills", "buildings", "itemClasses"] as const) {
     const { agree, total } = compareCollection(
       collection,
       built[collection] as unknown as Record<string, unknown>,
@@ -304,6 +304,18 @@ function runVerify(io: Io): number {
   );
   io.out(`movement: ${movementAgree} / ${movementTotal} agree`);
   if (movementAgree !== movementTotal) {
+    anyDisagree = true;
+  }
+
+  // A bare array, not a keyed collection, so compareCollection's "N / N" count does not fit it -
+  // that count means "how many keys matched", and a flat list has no key to count per item.
+  if (deepEqual(built.ungiveableItems, committed.ungiveableItems)) {
+    io.out("ungiveableItems: agree");
+  } else {
+    io.out("ungiveableItems: DISAGREE");
+    disagreements.push(
+      `  ungiveableItems  ruleset ${JSON.stringify(committed.ungiveableItems)}, data page ${JSON.stringify(built.ungiveableItems)}`
+    );
     anyDisagree = true;
   }
 

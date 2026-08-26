@@ -302,6 +302,105 @@ export function parseItemReference(html: string): ItemReference {
 }
 
 /**
+ * Which of `rules/give`'s classes an entry's own paragraph states it belongs to, matched against
+ * `entry.description` - already collapsed to a single line by `entryParagraphs`.
+ *
+ * `NORMAL` is not here: it is read from `withdrawCost`, not from prose, because `prose` drops the
+ * preamble the withdrawal sentence lives in. `MAN` and `SHIP` are not here either, since `kind`
+ * already answers them more reliably than a second pattern could - a centaur is `kind === "man"`
+ * and a flying ship's `'ship'` phrasing is already handled by `classify`. `WEAPON` reads the
+ * `weapon` block rather than prose, for the same reason.
+ */
+const CLASS_MARKERS: Record<string, RegExp> = {
+  TRADE: /This is a trade good\./i,
+  MONSTER: /This is a monster\.|This is a free-moving-item \(FMI\)\./i,
+  ARMOR: /This is a type of armor\./i,
+  MOUNT: /This is a mount\./i,
+  BATTLE: /This item is a miscellaneous combat item\./i,
+  TOOL: /This is a tool\./i,
+  FOOD: /This item can be eaten to provide/i
+};
+
+/** `silver [SILV], weight 0. This is the currency of Atlantis.` - NORMAL's other member. */
+const CURRENCY = /This is the currency of/i;
+
+/** `This item cannot be given to other units.` */
+const UNGIVEABLE = /This item cannot be given to other units\./i;
+
+/**
+ * Which items belong to each class `GIVE [unit] ALL [item class]` accepts (`rules/give`), read off
+ * the finished entries rather than the page a second time, so a class can lean on a fact already
+ * scraped - `kind` for MAN and SHIP, the `weapon` block for WEAPON - instead of a second pattern
+ * that could disagree with the first.
+ *
+ * A class with no members is an absent key, not an empty array: the conservative reading is
+ * "cannot say" rather than "you have none", the same direction `classify` already refuses to guess
+ * in. `ADVANCED`, `MAGIC` and `SPECIAL` are never printed by the engine in any form, so they are
+ * always absent. `ITEM`/`ITEMS` is "the combination of all of the previous categories" and needs
+ * no catalogue, so it is never emitted either.
+ *
+ * `NORMAL` is withheld unless some item on the page states a withdrawal price: its marker rides on
+ * this game having withdrawal enabled, and a page with it off would otherwise leave NORMAL looking
+ * like a one-item class containing silver alone - a confident wrong answer rather than an absent
+ * one.
+ */
+export function itemClassesOf(items: ItemReference): Record<string, string[]> {
+  const classes: Record<string, string[]> = {};
+
+  const record = (key: string, members: string[]) => {
+    if (members.length > 0) {
+      classes[key] = members.sort();
+    }
+  };
+
+  const entries = Object.values(items);
+
+  for (const [key, marker] of Object.entries(CLASS_MARKERS)) {
+    record(
+      key,
+      entries.filter((entry) => marker.test(entry.description ?? "")).map((entry) => entry.tag)
+    );
+  }
+
+  record(
+    "MAN",
+    entries.filter((entry) => entry.kind === "man").map((entry) => entry.tag)
+  );
+  record(
+    "SHIP",
+    entries.filter((entry) => entry.kind === "ship").map((entry) => entry.tag)
+  );
+  record(
+    "WEAPON",
+    entries.filter((entry) => entry.weapon !== undefined).map((entry) => entry.tag)
+  );
+
+  if (entries.some((entry) => entry.withdrawCost !== undefined)) {
+    record(
+      "NORMAL",
+      entries
+        .filter((entry) => entry.withdrawCost !== undefined || CURRENCY.test(entry.description ?? ""))
+        .map((entry) => entry.tag)
+    );
+  }
+
+  return classes;
+}
+
+/**
+ * The tags whose entry says `This item cannot be given to other units.`, sorted.
+ *
+ * Read off the finished entries like `itemClassesOf`, from `description`, so the two new blocks
+ * are built the same way from the same input.
+ */
+export function ungiveableItemsOf(items: ItemReference): string[] {
+  return Object.values(items)
+    .filter((entry) => UNGIVEABLE.test(entry.description ?? ""))
+    .map((entry) => entry.tag)
+    .sort();
+}
+
+/**
  * A skill entry's opening: `mining [MINI] 1: This skill deals with ...`.
  *
  * The level and the colon are what separate this from an item, which opens `horse [HORS], weight`.

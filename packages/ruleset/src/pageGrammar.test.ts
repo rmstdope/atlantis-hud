@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { SKILL_OPENING, parseSkillReference } from "./data";
+import { SKILL_OPENING, itemClassesOf, parseItemReference, parseSkillReference } from "./data";
 
 /**
  * Holds the *parser* to what the *page* says, rather than to what the parser said last time.
@@ -138,5 +138,95 @@ describe("the skill catalogue against the page's own grammar", () => {
         expect(made.tag, `${skill.tag} produces something with no tag`).toMatch(/^[A-Z0-9]{2,6}$/u);
       }
     }
+  });
+});
+
+const DATA_HTML = read("tests/fixtures/ruleset/neworigins-data.html");
+
+/**
+ * An item paragraph's opening: `leader [LEAD], weight 10, ...` or `Longship [LONG]. This is a
+ * ship ...`. Restated independently of `parseItemReference`'s own opening pattern in `data.ts` -
+ * what counts as an item entry has to be checked here as an assumption, not borrowed as given.
+ * A skill entry's opening (`mining [MINI] 1: ...`) never matches: the character right after the
+ * `[TAG]` is a digit there, never a comma or a full stop.
+ */
+const ITEM_OPENING = /^([^.:[\]]{1,40}) \[([A-Z0-9]{2,6})\][,.]/u;
+
+const ITEM_ENTRIES = DATA_HTML.replace(/<[^>]*>/gu, " ")
+  .split(/\n[ \t]*\n/u)
+  .map((paragraph) => paragraph.replace(/\s+/gu, " ").trim())
+  .filter((paragraph) => ITEM_OPENING.test(paragraph));
+
+/** The tags of every item paragraph that states `marker`. */
+const itemTagsMatching = (marker: RegExp): string[] =>
+  [
+    ...new Set(
+      ITEM_ENTRIES.filter((entry) => marker.test(entry)).map(
+        (entry) => entry.match(ITEM_OPENING)![2]
+      )
+    )
+  ].sort();
+
+/**
+ * The page's own words for each readable class, re-stated independently of `itemClassesOf`'s
+ * `CLASS_MARKERS` in `data.ts` - the same discipline `statedBy` above follows for skills, and for
+ * the same reason: a check that shares its patterns with the thing it checks checks nothing.
+ */
+const ITEM_CLASS_MARKERS: Record<string, RegExp> = {
+  TRADE: /This is a trade good\./iu,
+  MONSTER: /This is a monster\.|This is a free-moving-item \(FMI\)\./iu,
+  ARMOR: /This is a type of armor\./iu,
+  MOUNT: /This is a mount\./iu,
+  BATTLE: /This item is a miscellaneous combat item\./iu,
+  TOOL: /This is a tool\./iu,
+  FOOD: /This item can be eaten to provide/iu,
+  MAN: /\bThis race may study\b/iu,
+  SHIP: /\bThis is an? (?:flying )?'?ship'?\b/iu,
+  WEAPON:
+    /No skill is needed to wield this weapon\.|Knowledge of [a-z ]+ \[[A-Z]{2,6}\] is needed to wield this weapon\./iu,
+  NORMAL: /costs \d+ silver to withdraw|This is the currency of/iu
+};
+
+describe("the item catalogue against the page's own grammar", () => {
+  it("every item class holds exactly the entries the page marks", () => {
+    const classes = itemClassesOf(parseItemReference(DATA_HTML));
+
+    for (const [key, marker] of Object.entries(ITEM_CLASS_MARKERS)) {
+      expect(classes[key] ?? [], key).toEqual(itemTagsMatching(marker));
+    }
+  });
+
+  it("the classes the page never states are absent", () => {
+    // No item paragraph states ADVANCED, MAGIC or SPECIAL under any of the phrasings the other
+    // eleven classes use - the shape a marker for one of them would take if the page had one.
+    const hypotheticalMarkers = [
+      /This is an? advanced item\./iu,
+      /This is an? magic item\./iu,
+      /This is an? special item\./iu,
+      /This item is advanced\./iu,
+      /This item is magic\./iu,
+      /This item is special\./iu
+    ];
+    for (const marker of hypotheticalMarkers) {
+      expect(itemTagsMatching(marker), marker.source).toEqual([]);
+    }
+
+    const classes = itemClassesOf(parseItemReference(DATA_HTML));
+    expect(classes).not.toHaveProperty("ADVANCED");
+    expect(classes).not.toHaveProperty("MAGIC");
+    expect(classes).not.toHaveProperty("SPECIAL");
+  });
+
+  it("lets an item belong to several classes at once", () => {
+    // A predicate accidentally written as an if/else chain would pass every count above and fail
+    // only here.
+    const classes = itemClassesOf(parseItemReference(DATA_HTML));
+
+    expect(classes.NORMAL).toContain("PICK");
+    expect(classes.WEAPON).toContain("PICK");
+    expect(classes.TOOL).toContain("PICK");
+
+    expect(classes.MAN).toContain("CTAU");
+    expect(classes.MOUNT).toContain("CTAU");
   });
 });

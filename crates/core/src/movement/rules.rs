@@ -692,6 +692,107 @@ pub struct Ruleset {
     /// said about a structure, not that no structure seats a mage.
     #[serde(default)]
     pub buildings: BTreeMap<String, BuildingEntry>,
+    /// Which item tags belong to each class `GIVE [unit] ALL [item class]` accepts, for the
+    /// classes this catalogue can read off the data page.
+    ///
+    /// **A class the page never states is absent, and the absence is the answer**: `ADVANCED`,
+    /// `MAGIC` and `SPECIAL` are never printed by the engine in any form, so a caller must tell
+    /// "this catalogue cannot say" from "this class is empty here", and a missing key is how.
+    /// `ITEM`/`ITEMS` is absent too, for the opposite reason - `rules/give` defines it as
+    /// everything the holder has, so it needs no catalogue.
+    ///
+    /// Keys are `ItemClass::key`. An unrecognised key is ignored rather than refused, in the same
+    /// spirit as `ItemKind::Unknown`: a later scraper that learns a sixteenth class should not
+    /// make this build refuse the file. Empty for a ruleset generated before `ah-3sp7.1`, which
+    /// reads as "no class can be resolved" and is exactly today's behaviour.
+    #[serde(default)]
+    pub item_classes: BTreeMap<String, Vec<String>>,
+    /// The item tags the data page says may not change hands: `This item cannot be given to
+    /// other units.` 51 monsters and the imprisoned entity carry it, so `GIVE ... ALL MONSTERS`
+    /// selects sixty items and can move nine.
+    ///
+    /// Sorted. Empty for a ruleset generated before `ah-3sp7.1`, which reads as "nothing is known
+    /// to be ungiveable" - the permissive direction, and the one that matches a page which states
+    /// the restriction and is silent otherwise.
+    #[serde(default)]
+    pub ungiveable_items: Vec<String>,
+}
+
+/// One of the classes `GIVE [unit] ALL [item class]` accepts, as `rules/give` enumerates them.
+///
+/// The engine holds these as bit flags, so an item is routinely in several at once - a pick is
+/// NORMAL, WEAPON and TOOL - which is why membership is a set per class rather than a second
+/// single-valued field beside `ItemKind`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ItemClass {
+    Normal,
+    Advanced,
+    Trade,
+    Man,
+    Monster,
+    Magic,
+    Weapon,
+    Armor,
+    Mount,
+    Battle,
+    Special,
+    Tool,
+    Food,
+    Ship,
+    Item,
+}
+
+impl ItemClass {
+    /// The class an order's word names, singular or plural, in any case.
+    ///
+    /// `rules/give` gives a plural to some and not to others, and the engine rejects "armors"
+    /// (`items.cpp`, `parse_item_category`). This mirrors that table exactly rather than
+    /// stripping a trailing `s`. Case-insensitive; anything else is `None`.
+    #[must_use]
+    pub fn parse(word: &str) -> Option<Self> {
+        let upper = word.to_ascii_uppercase();
+        Some(match upper.as_str() {
+            "NORMAL" => Self::Normal,
+            "ADVANCED" => Self::Advanced,
+            "TRADE" => Self::Trade,
+            "MAN" | "MEN" => Self::Man,
+            "MONSTER" | "MONSTERS" => Self::Monster,
+            "MAGIC" => Self::Magic,
+            "WEAPON" | "WEAPONS" => Self::Weapon,
+            "ARMOR" => Self::Armor,
+            "MOUNT" | "MOUNTS" => Self::Mount,
+            "BATTLE" => Self::Battle,
+            "SPECIAL" => Self::Special,
+            "TOOL" | "TOOLS" => Self::Tool,
+            "FOOD" => Self::Food,
+            "SHIP" | "SHIPS" => Self::Ship,
+            "ITEM" | "ITEMS" => Self::Item,
+            _ => return None,
+        })
+    }
+
+    /// The key this class is written under in `config/public/ruleset.json`: the singular,
+    /// upper-case form.
+    #[must_use]
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Normal => "NORMAL",
+            Self::Advanced => "ADVANCED",
+            Self::Trade => "TRADE",
+            Self::Man => "MAN",
+            Self::Monster => "MONSTER",
+            Self::Magic => "MAGIC",
+            Self::Weapon => "WEAPON",
+            Self::Armor => "ARMOR",
+            Self::Mount => "MOUNT",
+            Self::Battle => "BATTLE",
+            Self::Special => "SPECIAL",
+            Self::Tool => "TOOL",
+            Self::Food => "FOOD",
+            Self::Ship => "SHIP",
+            Self::Item => "ITEM",
+        }
+    }
 }
 
 /// Why a ruleset could not be used.
@@ -944,6 +1045,28 @@ impl Ruleset {
             .is_some_and(|item| item.kind == ItemKind::Man)
     }
 
+    /// The tags in one class, or `None` where this catalogue cannot say which items those are.
+    ///
+    /// `None` for `ADVANCED`, `MAGIC` and `SPECIAL`, which the data page never states; for
+    /// `ITEM`/`ITEMS`, which is everything and is the caller's to answer without a catalogue; for
+    /// a word that is not a class at all; and for a ruleset generated before this field existed.
+    /// A caller that must not guess treats `None` as "cannot say" and never as "no such items".
+    #[must_use]
+    pub fn class_members(&self, class: &str) -> Option<&[String]> {
+        let class = ItemClass::parse(class)?;
+        self.item_classes.get(class.key()).map(Vec::as_slice)
+    }
+
+    /// Whether an item may be handed to another unit, as far as the catalogue knows.
+    ///
+    /// True for a tag the catalogue does not carry: the page says a thing *cannot* be given and
+    /// is silent otherwise, so silence and ignorance look the same and the permissive reading is
+    /// the one that matches the page.
+    #[must_use]
+    pub fn can_be_given(&self, tag: &str) -> bool {
+        !self.ungiveable_items.iter().any(|item| item == tag)
+    }
+
     /// Whether a skill tag names one of the magic skills.
     ///
     /// The catalogue settles it when it was scraped with this known; a skill it does not carry, or
@@ -1112,6 +1235,21 @@ mod tests {
         .expect("a weapon needing no skill loads");
 
         assert_eq!(entry.weapon, Some(Weapon { needs: None }));
+    }
+
+    #[test]
+    fn a_class_word_is_read_singular_or_plural_where_the_rules_give_one() {
+        assert_eq!(ItemClass::parse("MEN"), Some(ItemClass::Man));
+        assert_eq!(ItemClass::parse("men"), Some(ItemClass::Man));
+        assert_eq!(ItemClass::parse("MAN"), Some(ItemClass::Man));
+        assert_eq!(ItemClass::parse("TOOLS"), Some(ItemClass::Tool));
+
+        // The case that proves the table was copied rather than an `s` stripped: the engine
+        // accepts ARMOR but rejects ARMORS, unlike TOOL/TOOLS above.
+        assert_eq!(ItemClass::parse("ARMOR"), Some(ItemClass::Armor));
+        assert_eq!(ItemClass::parse("ARMORS"), None);
+
+        assert_eq!(ItemClass::parse("FRUIT"), None);
     }
 
     #[test]

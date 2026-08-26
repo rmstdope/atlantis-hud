@@ -2,12 +2,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  itemClassesOf,
   parseBuildingReference,
   parseItemReference,
   parseSkillReference,
   RulesetScrapeError,
   taggedAmounts,
-  taggedLevels
+  taggedLevels,
+  ungiveableItemsOf
 } from "./data";
 import { preformattedText } from "./html";
 
@@ -414,6 +416,76 @@ drake [DRKE], weight 10, walking capacity 5, moves 4 hexes per month.
     expect(() => parseItemReference("<html><body><p>nothing here</p></body></html>")).toThrowError(
       RulesetScrapeError
     );
+  });
+});
+
+/**
+ * Which items belong to each class `GIVE [unit] ALL [item class]` accepts (`rules/give`), read off
+ * the finished item entries so a class can lean on a fact already scraped - `kind` for MAN and
+ * SHIP, the `weapon` block for WEAPON - instead of a second pattern that could disagree with the
+ * first.
+ *
+ * `ADVANCED`, `MAGIC` and `SPECIAL` are absent from every assertion here on purpose: the data page
+ * never states them, in any form, so this catalogue must not claim a membership it cannot back.
+ */
+describe("itemClassesOf", () => {
+  it("reads ARMOR exactly", () => {
+    const classes = itemClassesOf(parseItemReference(DATA_HTML));
+
+    expect(classes.ARMOR).toEqual(["AARM", "ARNG", "CARM", "CLOA", "LARM", "MARM", "PARM"].sort());
+  });
+
+  it("reads FOOD exactly", () => {
+    const classes = itemClassesOf(parseItemReference(DATA_HTML));
+
+    expect(classes.FOOD).toEqual(["FISH", "GRAI", "LIVE", "MEAL"].sort());
+  });
+
+  it("puts a race that is also a mount in MOUNT alongside the dedicated mounts", () => {
+    const classes = itemClassesOf(parseItemReference(DATA_HTML));
+
+    expect(classes.MOUNT).toContain("CTAU");
+    expect(classes.MOUNT).toContain("HORS");
+  });
+
+  it("reads NORMAL from the withdrawal price, including silver itself", () => {
+    const classes = itemClassesOf(parseItemReference(DATA_HTML));
+
+    expect(classes.NORMAL).toContain("SILV");
+    expect(classes.NORMAL).toContain("GRAI");
+    expect(classes.NORMAL).toContain("WAGO");
+  });
+
+  it("never claims a class the data page does not state", () => {
+    const classes = itemClassesOf(parseItemReference(DATA_HTML));
+
+    // Asserted with not.toHaveProperty rather than compared to undefined, so a key present with
+    // an empty array would fail this too.
+    expect(classes).not.toHaveProperty("ADVANCED");
+    expect(classes).not.toHaveProperty("MAGIC");
+    expect(classes).not.toHaveProperty("SPECIAL");
+    // ITEM/ITEMS is everything the holder has; it needs no catalogue and is never emitted.
+    expect(classes).not.toHaveProperty("ITEM");
+  });
+});
+
+/**
+ * The tags the data page says may not change hands: `This item cannot be given to other units.`
+ * 51 monsters and the imprisoned entity carry it, so `GIVE ... ALL MONSTERS` selects sixty items
+ * and can move nine.
+ */
+describe("ungiveableItemsOf", () => {
+  it("records the items the page says cannot change hands", () => {
+    const ungiveable = ungiveableItemsOf(parseItemReference(DATA_HTML));
+
+    expect(ungiveable).toHaveLength(52);
+    expect(ungiveable).toContain("LION");
+    expect(ungiveable).toContain("IENT");
+    // The giveable summoned creatures - the whole reason this list is worth having rather than a
+    // synonym for "monster".
+    expect(ungiveable).not.toContain("SKEL");
+    expect(ungiveable).not.toContain("DEMO");
+    expect(ungiveable).not.toContain("CATP");
   });
 });
 
