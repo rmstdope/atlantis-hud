@@ -3188,15 +3188,15 @@ fn buy(
     };
 
     let tag = offer.tag.to_ascii_uppercase();
-    // What this hex's other own buyers left of the line, for a `BUY ALL` - or the line itself
-    // where nothing was settled (`market_shares_for` already gives an unbounded order a claim of
-    // the whole pool). Read once, here, so both arms below need not repeat the lookup.
-    let available = standing
-        .share_of(&tag, MarketSide::Buying)
-        .unwrap_or(offer.amount);
 
     let Amount::Exact(count) = amount else {
-        // `BUY ALL` is settled once the unit's whole month is counted - see `Ledger::buy_all`.
+        // What this hex's other own buyers left of the line, or the line itself where nothing
+        // was settled (`market_shares_for` already gives an unbounded order a claim of the whole
+        // pool). `BUY ALL` is settled once the unit's whole month is counted - see
+        // `Ledger::buy_all`.
+        let available = standing
+            .share_of(&tag, MarketSide::Buying)
+            .unwrap_or(offer.amount);
         ledger
             .buy_all
             .entry(who.clone())
@@ -3211,9 +3211,9 @@ fn buy(
         return;
     };
 
-    // The bounded form's own fallback differs on purpose: `share_of` returns `None` only where
-    // nothing was settled, and this arm falls back to what the unit *asked for* - the unbounded
-    // arm above falls back to the whole line instead (`ah-t2pn.3`).
+    // The bounded form's own fallback differs on purpose from the unbounded arm's above:
+    // `share_of` returns `None` only where nothing was settled, and this arm falls back to what
+    // the unit *asked for* - the unbounded arm falls back to the whole line instead (`ah-t2pn.3`).
     let allowed = standing
         .share_of(&tag, MarketSide::Buying)
         .unwrap_or(*count);
