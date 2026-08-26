@@ -1523,6 +1523,10 @@ pub(crate) struct ItemMovement {
     /// For a `TAKE` from a unit the report does not show in this hex, that unit's number - so the
     /// hover can say the source is unverifiable. `None` for everything else.
     pub from_unshown: Option<String>,
+    /// Set on the movement carrying what a `PRODUCE` order makes, so the hover can say the goods
+    /// arrive in the month's last phase and cannot be spent this month. `false` on every other
+    /// movement, the materials that same order consumes included.
+    pub produced: bool,
 }
 
 /// Whether a call to [`transfer`] should be recorded as a movement for the orders preview. `GIVE`
@@ -2136,12 +2140,23 @@ fn apply(
                     name: item_name(&tag, hex, ruleset),
                     delta: *count,
                     from_unshown: None,
+                    produced: false,
                 });
             }
         }
         // Wages and takings from entertaining are paid in the last phase of the turn, after study
         // has been paid for, so they can fund nothing this month.
         Intent::Work | Intent::Entertain => {}
+        // `PRODUCE` naming no item: the month is spoken for and nothing can be said about what it
+        // makes, so the column admits the gap rather than showing an unchanged list (`ah-ofpb.1`).
+        // Deliberately not `doubted`: a bare PRODUCE costs no silver, so no sum is in question.
+        Intent::MonthLong("PRODUCE") => {
+            ledger
+                .uncounted
+                .entry(who.clone())
+                .or_default()
+                .push(placed.line);
+        }
         Intent::Guard(_)
         | Intent::Teach { .. }
         | Intent::Move { .. }
@@ -2231,6 +2246,7 @@ fn transfer(
                 name: item_name(&tag, hex, ledger.ruleset),
                 delta: -quantity,
                 from_unshown: None,
+                produced: false,
             });
         }
     }
@@ -2243,6 +2259,7 @@ fn transfer(
                 name: item_name(&tag, hex, ledger.ruleset),
                 delta: quantity,
                 from_unshown,
+                produced: false,
             });
         }
     }
@@ -2300,6 +2317,7 @@ fn buy(
             name: item_name(&tag, hex, ledger.ruleset),
             delta: bought,
             from_unshown: None,
+            produced: false,
         });
     }
 }
@@ -2348,18 +2366,45 @@ fn produce(
     ruleset: Option<&Ruleset>,
 ) {
     let who = &actor.unit.unit_id;
-    let recipe = resolve_item(item, hex, actor, ruleset).and_then(|tag| recipe_for(ruleset, &tag));
+    let tag = resolve_item(item, hex, actor, ruleset);
+    let recipe = tag.as_deref().and_then(|tag| recipe_for(ruleset, tag));
     let (priced, plan) = price_production(recipe, actor.unit.men, &actor.unit.items);
     let Some(plan) = plan else {
         // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
-        // same posture `buy` takes for goods the market does not carry.
+        // same posture `buy` takes for goods the market does not carry - and the ITEMS column
+        // says so rather than showing an unchanged list (`ah-ofpb.1`).
         ledger.doubted.insert(who.clone());
+        ledger
+            .uncounted
+            .entry(who.clone())
+            .or_default()
+            .push(placed.line);
         return;
     };
 
     charge(ledger, who, SILVER, priced.spends, placed);
     for material in &plan.materials {
         charge(ledger, who, &material.tag, material.amount, placed);
+        if material.amount != 0 {
+            ledger.movements.push(ItemMovement {
+                unit_id: who.clone(),
+                tag: material.tag.to_ascii_uppercase(),
+                name: item_name(&material.tag, hex, ruleset),
+                delta: -material.amount,
+                from_unshown: None,
+                produced: false,
+            });
+        }
+    }
+    if let Some(tag) = tag.filter(|_| plan.made != 0) {
+        ledger.movements.push(ItemMovement {
+            unit_id: who.clone(),
+            name: item_name(&tag, hex, ruleset),
+            tag,
+            delta: plan.made,
+            from_unshown: None,
+            produced: true,
+        });
     }
 }
 
@@ -2412,6 +2457,7 @@ fn sell(
             name: item_name(&tag, hex, ledger.ruleset),
             delta: -quantity,
             from_unshown: None,
+            produced: false,
         });
     }
 }
@@ -9091,6 +9137,7 @@ mod tests {
                             name: "grain".to_string(),
                             delta: 100,
                             from_unshown: None,
+                            produced: false,
                         }),
                         "the taker's own gain should be among the recorded movements: {:?}",
                         ledger.movements
@@ -9124,6 +9171,7 @@ mod tests {
                             name: "horse".to_string(),
                             delta: 8,
                             from_unshown: None,
+                            produced: false,
                         })
                     );
                     assert_eq!(
@@ -9134,6 +9182,7 @@ mod tests {
                             name: "horse".to_string(),
                             delta: 4,
                             from_unshown: None,
+                            produced: false,
                         })
                     );
                 },
@@ -9155,6 +9204,7 @@ mod tests {
                         name: "fur".to_string(),
                         delta: -15,
                         from_unshown: None,
+                        produced: false,
                     }]
                 );
             });
@@ -9239,6 +9289,7 @@ mod tests {
                         name: "grain".to_string(),
                         delta: 8,
                         from_unshown: None,
+                        produced: false,
                     }]
                 );
             });
@@ -9256,6 +9307,159 @@ mod tests {
                 assert!(
                     !ledger.doubted.contains("2390"),
                     "no shipped warning may move because of this bead"
+                );
+            });
+        }
+
+        #[test]
+        fn a_produce_records_the_materials_it_consumes() {
+            let hex_region = region(vec![with_item(
+                with_men(unit("2391"), 8),
+                20,
+                "iron",
+                "IRON",
+            )]);
+            with_ledger(hex_region, "unit 2391\nPRODUCE sword\n", |ledger| {
+                assert!(
+                    ledger.movements.contains(&ItemMovement {
+                        unit_id: "2391".to_string(),
+                        tag: "IRON".to_string(),
+                        name: "iron".to_string(),
+                        delta: -8,
+                        from_unshown: None,
+                        produced: false,
+                    }),
+                    "the materials a PRODUCE consumes should be among the recorded movements: {:?}",
+                    ledger.movements
+                );
+            });
+        }
+
+        #[test]
+        fn a_produce_that_makes_nothing_records_no_movement() {
+            let hex_region = region(vec![with_men(unit("2391"), 8)]);
+            with_ledger(hex_region, "unit 2391\nPRODUCE sword\n", |ledger| {
+                assert!(
+                    ledger.movements.is_empty(),
+                    "a PRODUCE with no materials on hand should record nothing at all: {:?}",
+                    ledger.movements
+                );
+            });
+        }
+
+        #[test]
+        fn a_produce_records_what_it_makes() {
+            let hex_region = region(vec![with_item(
+                with_men(unit("2391"), 8),
+                20,
+                "iron",
+                "IRON",
+            )]);
+            with_ledger(hex_region, "unit 2391\nPRODUCE sword\n", |ledger| {
+                assert!(
+                    ledger.movements.contains(&ItemMovement {
+                        unit_id: "2391".to_string(),
+                        tag: "SWOR".to_string(),
+                        name: "sword".to_string(),
+                        delta: 8,
+                        from_unshown: None,
+                        produced: true,
+                    }),
+                    "the goods a PRODUCE makes should be among the recorded movements: {:?}",
+                    ledger.movements
+                );
+            });
+        }
+
+        #[test]
+        fn a_capped_produce_records_only_what_it_makes() {
+            let hex_region = region(vec![with_item(
+                with_men(unit("2391"), 8),
+                5,
+                "iron",
+                "IRON",
+            )]);
+            with_ledger(hex_region, "unit 2391\nPRODUCE sword\n", |ledger| {
+                assert_eq!(
+                    ledger.movements,
+                    vec![
+                        ItemMovement {
+                            unit_id: "2391".to_string(),
+                            tag: "IRON".to_string(),
+                            name: "iron".to_string(),
+                            delta: -5,
+                            from_unshown: None,
+                            produced: false,
+                        },
+                        ItemMovement {
+                            unit_id: "2391".to_string(),
+                            tag: "SWOR".to_string(),
+                            name: "sword".to_string(),
+                            delta: 5,
+                            from_unshown: None,
+                            produced: true,
+                        },
+                    ],
+                    "eight men could make eight swords, but only five iron is held"
+                );
+            });
+        }
+
+        #[test]
+        fn a_produce_still_credits_the_unit_nothing() {
+            let hex_region = region(vec![with_item(
+                with_men(unit("2391"), 8),
+                20,
+                "iron",
+                "IRON",
+            )]);
+            with_ledger(hex_region, "unit 2391\nPRODUCE sword\n", |ledger| {
+                assert_eq!(
+                    balance_of(ledger, "2391", "SWOR"),
+                    0,
+                    "production resolves in the month's last phase; crediting it now would silence \
+                     a not-enough-items warning that should fire"
+                );
+            });
+        }
+
+        #[test]
+        fn a_produce_of_a_recipe_of_alternatives_cannot_be_counted() {
+            let hex_region = region(vec![with_men(unit("2391"), 8)]);
+            with_ledger(hex_region, "unit 2391\nPRODUCE meal\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("2391").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+                assert!(
+                    ledger.movements.is_empty(),
+                    "a recipe of alternatives records no movement"
+                );
+            });
+        }
+
+        #[test]
+        fn a_produce_of_something_no_skill_makes_cannot_be_counted() {
+            let hex_region = region(vec![with_men(unit("2391"), 8)]);
+            with_ledger(hex_region, "unit 2391\nPRODUCE moonbeam\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("2391").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+            });
+        }
+
+        #[test]
+        fn a_bare_produce_cannot_be_counted() {
+            let hex_region = region(vec![with_men(unit("2391"), 8)]);
+            with_ledger(hex_region, "unit 2391\nPRODUCE\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("2391").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+                assert!(
+                    !ledger.doubted.contains("2391"),
+                    "a bare PRODUCE costs no silver, so no sum is in question"
                 );
             });
         }

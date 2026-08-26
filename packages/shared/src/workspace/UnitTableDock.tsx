@@ -893,7 +893,7 @@ function UnitRow({
       <Td
         className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`}
         predicted={Boolean(itemsChange)}
-        title={itemsTooltip(unit)}
+        title={itemsTooltip(unit, silver)}
       >
         {items}
         {unit.uncounted && unit.uncounted.length > 0 ? (

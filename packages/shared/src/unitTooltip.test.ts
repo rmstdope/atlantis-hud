@@ -1,7 +1,13 @@
 import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
-import { HOVER_DELAY_MS, SILVER_NOTES, placeTooltip, summariseUnit } from "./unitTooltip";
+import {
+  HOVER_DELAY_MS,
+  SILVER_NOTES,
+  placeTooltip,
+  productionCapSentence,
+  summariseUnit
+} from "./unitTooltip";
 
 const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit =>
   aReportUnit({ unitId: "18642", name: "Seven of Eight", ...overrides });
@@ -113,6 +119,40 @@ describe("placeTooltip", () => {
   it("never places the tooltip above the top of the viewport", () => {
     const tall = { width: 200, height: 900 };
     expect(placeTooltip({ x: 100, y: 750 }, tall, viewport)).toEqual({ left: 112, top: 0 });
+  });
+});
+
+describe("productionCapSentence", () => {
+  it("words a capped production the same way wherever it is asked", () => {
+    expect(
+      productionCapSentence(
+        aUnitSilver({
+          produced: 1,
+          producedName: "catapult",
+          productionWanted: 3,
+          productionCappedBy: "silver"
+        })
+      )
+    ).toBe("This unit has silver for 1 catapult, not the 3 its men could make.");
+  });
+
+  it("says nothing when nothing capped the run", () => {
+    expect(
+      productionCapSentence(
+        aUnitSilver({
+          produced: 3,
+          producedName: "catapult",
+          productionWanted: 3,
+          productionCappedBy: null
+        })
+      )
+    ).toBeUndefined();
+  });
+
+  it("says nothing for a unit with no priceable PRODUCE to speak about", () => {
+    expect(productionCapSentence(aUnitSilver())).toBeUndefined();
+    expect(productionCapSentence(null)).toBeUndefined();
+    expect(productionCapSentence(undefined)).toBeUndefined();
   });
 });
 

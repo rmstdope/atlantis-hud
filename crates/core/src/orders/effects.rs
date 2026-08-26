@@ -67,6 +67,10 @@ pub struct UnitPreview {
     pub uncounted: Vec<String>,
     /// Silver or goods taken from a unit the report does not show in this hex (`ah-agbm`).
     pub taken_unshown: Vec<TakenUnshown>,
+    /// What this unit's `PRODUCE` orders make this month, so the hover can say the goods arrive in
+    /// the month's last phase. Empty for a unit not producing, and for one whose run comes to
+    /// nothing (`ah-ofpb.1`).
+    pub produced: Vec<ProducedItem>,
 }
 
 /// Goods taken from a unit the report does not show in this hex (`ah-agbm`).
@@ -76,6 +80,14 @@ pub struct TakenUnshown {
     pub amount: i64,
     pub tag: String,
     pub from: String,
+}
+
+/// One item a `PRODUCE` order makes this month (`ah-ofpb.1`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProducedItem {
+    pub amount: i64,
+    pub tag: String,
 }
 
 /// Every previewed unit standing in (or bound for) one region.
@@ -267,6 +279,7 @@ pub fn preview_orders_on_map(
         // unit stands (`ah-agbm`).
         let uncounted = entry.uncounted.clone();
         let taken_unshown = entry.taken_unshown.clone();
+        let produced = entry.produced.clone();
 
         let departed = status == UnitPreviewStatus::Departing;
         if changes.is_empty()
@@ -303,6 +316,7 @@ pub fn preview_orders_on_map(
                     aboard: None,
                     uncounted: uncounted.clone(),
                     taken_unshown: taken_unshown.clone(),
+                    produced: produced.clone(),
                 });
             regions
                 .entry(entry.unit.region_id.clone())
@@ -316,6 +330,7 @@ pub fn preview_orders_on_map(
                     aboard,
                     uncounted,
                     taken_unshown,
+                    produced,
                 });
         } else {
             regions
@@ -330,6 +345,7 @@ pub fn preview_orders_on_map(
                     aboard,
                     uncounted,
                     taken_unshown,
+                    produced,
                 });
         }
     }
@@ -434,6 +450,9 @@ struct WorkingUnit {
     /// Silver or goods taken from a unit the report does not show in this hex. Written once by
     /// `apply_item_effects` (`ah-agbm`).
     taken_unshown: Vec<TakenUnshown>,
+    /// What this unit's `PRODUCE` orders make this month. Written once by `apply_item_effects`
+    /// (`ah-ofpb.1`).
+    produced: Vec<ProducedItem>,
 }
 
 impl WorkingUnit {
@@ -539,6 +558,7 @@ impl Working {
                 boardings: Vec::new(),
                 uncounted: Vec::new(),
                 taken_unshown: Vec::new(),
+                produced: Vec::new(),
             });
         }
         Self {
@@ -662,6 +682,15 @@ impl Working {
                     })
                 })
                 .collect();
+            unit.produced = effect
+                .moved
+                .iter()
+                .filter(|movement| movement.produced)
+                .map(|movement| ProducedItem {
+                    amount: movement.delta,
+                    tag: movement.tag.clone(),
+                })
+                .collect();
         }
     }
 
@@ -701,6 +730,7 @@ impl Working {
             boardings: Vec::new(),
             uncounted: Vec::new(),
             taken_unshown: Vec::new(),
+            produced: Vec::new(),
         });
         self.forming.push(Some(index));
     }
@@ -1031,6 +1061,26 @@ mod tests {
             "",
             "* Walker (900), Foo (1), behind, leader [LEAD], 3 swords [SWOR], 10 fur [FUR]. Weight: 20. Capacity: 0/0/15/0.",
             "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
+    /// A hex with one own unit of eight men holding iron, for the `PRODUCE` cases.
+    /// `report_with_market`'s own unit is a one-man leader, which makes at most one of anything.
+    ///
+    /// The men must be the *first* item on the line: `count_men` (`report/unit.rs:217`) reads the
+    /// headcount off `items.first()`, which is the report's own convention.
+    fn report_with_a_smith() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON]. Weight: 180. Capacity: 0/0/120/0.",
             "",
         ]
         .join("\n")
@@ -2299,6 +2349,69 @@ mod tests {
                     amount: 5,
                     tag: "GRAI".to_string(),
                     from: "999".to_string(),
+                }]
+            );
+        }
+
+        #[test]
+        fn a_produced_item_reaches_the_previewed_unit() {
+            let response = preview_over(&report_with_a_smith(), "unit 900\nPRODUCE sword\n");
+            let unit = only_unit(&response);
+
+            let swords = unit
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .expect("the produced swords are in the previewed list");
+            assert_eq!(swords.amount, 8);
+            let iron = unit
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "IRON")
+                .expect("the remaining iron is in the previewed list");
+            assert_eq!(iron.amount, 12);
+            change(unit, "items");
+        }
+
+        /// `ah-agbm`'s Q4 rule, through the existing `take_item`: a stock a `PRODUCE` consumes
+        /// entirely disappears rather than showing zero.
+        #[test]
+        fn a_consumed_stock_that_empties_disappears_from_the_previewed_list() {
+            let hex_region = [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  Southeast : plain (2,2) in Nowhere.",
+                "",
+                "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 8 iron [IRON]. Weight: 180. \
+                 Capacity: 0/0/120/0.",
+                "",
+            ]
+            .join("\n");
+            let response = preview_over(&hex_region, "unit 900\nPRODUCE sword\n");
+            let unit = only_unit(&response);
+
+            assert!(
+                !unit.unit.items.iter().any(|item| item.tag == "IRON"),
+                "an emptied stock must not be shown, even as zero: {:?}",
+                unit.unit.items
+            );
+        }
+
+        #[test]
+        fn a_produced_item_is_named_on_the_preview() {
+            let response = preview_over(&report_with_a_smith(), "unit 900\nPRODUCE sword\n");
+            let unit = only_unit(&response);
+
+            assert_eq!(
+                unit.produced,
+                vec![ProducedItem {
+                    amount: 8,
+                    tag: "SWOR".to_string(),
                 }]
             );
         }
