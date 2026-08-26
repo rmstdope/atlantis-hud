@@ -22,6 +22,7 @@ import { pid } from "node:process";
 import { fileURLToPath } from "node:url";
 import type { Ruleset } from "@atlantis/ruleset";
 import { buildRuleset, preformattedText } from "@atlantis/ruleset";
+import type { RefreshOutcome } from "./atlantisRefresh";
 import {
   dataEntries,
   type DataEntry,
@@ -71,10 +72,11 @@ const HELP_TEXT = [
   "  atlantis verify                             compares config/public/ruleset.json to the data page",
   "  atlantis check                              fetches both pages, compares bytes to the fixtures",
   "  atlantis refresh                            re-fetches, rewrites the fixtures and the ruleset",
+  "  atlantis refresh --json                     same, but prints the outcome as one JSON object",
   "",
   "verify compares only what the scraper models — items, skills, buildings and movement — not prose.",
   "The data page is the arbiter when the two disagree: regenerate with 'atlantis refresh', never edit",
-  "config/public/ruleset.json by hand."
+  "config/public/ruleset.json by hand. --json is for the scheduled refresh workflow, not a person."
 ].join("\n");
 
 function printRulesHeader(anchor: string, html: string, io: Io): void {
@@ -375,11 +377,20 @@ function diffLeaves(before: unknown, after: unknown, path: string, out: string[]
 
 const REFRESH_TRACKED_KEYS = ["items", "skills", "buildings", "movement", "gaps", "risk"] as const;
 
-async function runRefresh(io: Io): Promise<number> {
+/**
+ * `refresh`'s prose report is for a person at a terminal. `refresh --json` needs the same facts
+ * structured for `.github/workflows/atlantis-rules-refresh.yml` (ah-97ij.2) to branch on, without
+ * parsing wording that exists to be readable. Both renderings come from this one run, so there is
+ * one definition of what refreshing means.
+ */
+async function runRefresh(io: Io, json: boolean): Promise<number> {
   const fetched = await fetchBothPages(io);
   if (typeof fetched === "number") {
     return fetched;
   }
+
+  const rulesBefore = io.readFile(RULES_FIXTURE);
+  const dataBefore = io.readFile(DATA_FIXTURE);
 
   // Trial run first, against real OS temp files rather than the fixtures - see cli.ts:60 for why
   // an absolute path is safe to hand the scraper. Nothing under the committed tree is touched
@@ -395,8 +406,13 @@ async function runRefresh(io: Io): Promise<number> {
   try {
     io.scrape(["--rules", tempRules, "--data", tempData, "--out", tempOut]);
   } catch (error) {
-    io.err(`the site no longer scrapes cleanly: ${messageOf(error)}`);
-    io.err("nothing on disk was changed.");
+    const message = messageOf(error);
+    if (json) {
+      io.out(JSON.stringify({ kind: "scrape-failed", message } satisfies RefreshOutcome));
+    } else {
+      io.err(`the site no longer scrapes cleanly: ${message}`);
+      io.err("nothing on disk was changed.");
+    }
     return 3;
   }
 
@@ -416,6 +432,19 @@ async function runRefresh(io: Io): Promise<number> {
   const afterParsed = JSON.parse(after) as Record<string, unknown>;
   for (const key of REFRESH_TRACKED_KEYS) {
     diffLeaves(beforeParsed[key], afterParsed[key], key, changes);
+  }
+
+  if (json) {
+    const changedPages = [
+      ...(rulesBefore !== fetched.rules ? ["rules"] : []),
+      ...(dataBefore !== fetched.data ? ["data"] : [])
+    ];
+    const outcome: RefreshOutcome =
+      changedPages.length === 0
+        ? { kind: "unchanged" }
+        : { kind: "refreshed", changedPages, rulesetChanges: changes.map((line) => line.trim()) };
+    io.out(JSON.stringify(outcome));
+    return 0;
   }
 
   for (const line of changes) {
@@ -448,7 +477,7 @@ export async function run(argv: string[], io: Io): Promise<number> {
     return runCheck(io);
   }
   if (command === "refresh") {
-    return runRefresh(io);
+    return runRefresh(io, rest[0] === "--json");
   }
 
   io.err(`unknown command '${command}'.\n\n${HELP_TEXT}`);

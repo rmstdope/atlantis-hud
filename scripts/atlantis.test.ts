@@ -254,6 +254,95 @@ describe("run — refresh", () => {
   });
 });
 
+describe("run — refresh --json", () => {
+  it("prints the outcome as one JSON object and nothing else", async () => {
+    const { io, out, files } = fakeIo({
+      fetchText: async (url) => (url === RULES_URL ? RULES_HTML : DATA_HTML),
+      scrape: (args) => {
+        if (!args.includes("--out")) {
+          const modified = JSON.parse(RULESET_JSON);
+          modified.items.SWOR.weight = 2;
+          files.set(RULESET_PATH, JSON.stringify(modified));
+        }
+      }
+    });
+
+    const code = await run(["refresh", "--json"], io);
+
+    expect(code).toBe(0);
+    expect(out).toHaveLength(1);
+    expect(() => JSON.parse(out[0])).not.toThrow();
+  });
+
+  it("reports an unchanged outcome when neither page's bytes moved", async () => {
+    const { io, out } = fakeIo({
+      fetchText: async (url) => (url === RULES_URL ? RULES_HTML : DATA_HTML),
+      scrape: () => {
+        // The canonical scrape writes nothing here; the fake Io's ruleset file therefore stays
+        // byte-identical, which is what a real, unchanged page would also produce.
+      }
+    });
+
+    const code = await run(["refresh", "--json"], io);
+
+    expect(code).toBe(0);
+    expect(JSON.parse(out[0])).toEqual({ kind: "unchanged" });
+  });
+
+  it("reports a refreshed outcome naming the page that moved and the ruleset diff", async () => {
+    const CHANGED_RULES_HTML = RULES_HTML.replace("Last Change: Jun 20, 2025", "Last Change: Jul 1, 2026");
+    const { io, out, files } = fakeIo({
+      fetchText: async (url) => (url === RULES_URL ? CHANGED_RULES_HTML : DATA_HTML),
+      scrape: (args) => {
+        if (!args.includes("--out")) {
+          const modified = JSON.parse(RULESET_JSON);
+          modified.items.SWOR.weight = 2;
+          files.set(RULESET_PATH, JSON.stringify(modified));
+        }
+      }
+    });
+
+    const code = await run(["refresh", "--json"], io);
+
+    expect(code).toBe(0);
+    const outcome = JSON.parse(out[0]);
+    expect(outcome.kind).toBe("refreshed");
+    expect(outcome.changedPages).toEqual(["rules"]);
+    expect(outcome.rulesetChanges.join("\n")).toContain("items.SWOR.weight");
+  });
+
+  it("keeps the same exit code as the prose form when the scrape refuses", async () => {
+    const { io, out } = fakeIo({
+      fetchText: async (url) => (url === RULES_URL ? RULES_HTML : DATA_HTML),
+      scrape: () => {
+        throw new Error("ruleset scrape failed: the SAIL section no longer says what we need");
+      }
+    });
+
+    const code = await run(["refresh", "--json"], io);
+
+    expect(code).toBe(3);
+    expect(JSON.parse(out[0])).toEqual({
+      kind: "scrape-failed",
+      message: "ruleset scrape failed: the SAIL section no longer says what we need"
+    });
+  });
+
+  it("keeps the same exit code as the prose form when the site cannot be reached", async () => {
+    const { io, err, out } = fakeIo({
+      fetchText: async () => {
+        throw new Error("getaddrinfo ENOTFOUND atlantis-pbem.com");
+      }
+    });
+
+    const code = await run(["refresh", "--json"], io);
+
+    expect(code).toBe(2);
+    expect(out).toHaveLength(0);
+    expect(err.join("\n")).toContain("ENOTFOUND");
+  });
+});
+
 describe("run — help", () => {
   it("prints the command table with no args", async () => {
     const { io, out } = fakeIo();

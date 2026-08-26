@@ -1,0 +1,158 @@
+name: Atlantis rules refresh
+
+# Keeps tests/fixtures/ruleset/neworigins-{rules,data}.html — and the ruleset regenerated from them
+# — in step with the live game pages, so every lookup made with `pnpm run atlantis` (ah-97ij.1)
+# stays trustworthy. See ah-97ij.2's plan (bd show ah-97ij.2) for the decisions behind this file.
+#
+# This workflow never merges anything itself. The pull request it opens is the navigator's to
+# review like any other change to application behaviour — do not add auto-merge here, and do not
+# request a Copilot review for it; CLAUDE.md's Copilot exception is for a bead an agent implements,
+# and this PR is neither.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays, 06:17 UTC — not :00, which GitHub delays under load
+  workflow_dispatch:
+
+# Beyond ci.yml's read-only default: this job pushes a branch, opens/updates a pull request, and
+# files/updates an issue when the scraper refuses the new page. ci.yml stays read-only on purpose
+# (see its own comment) — these permissions must never move there.
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: atlantis-rules-refresh
+  # A run that already pushed the branch must be allowed to finish opening its PR rather than be
+  # cancelled by the next scheduled tick or a manual workflow_dispatch.
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # atlantis.ts's own exit codes: 0 both for "refreshed" and "unchanged", 3 when the scraper
+      # refuses the new page. Anything else is a failure this job was not written to understand,
+      # and it should fail loudly rather than be read as one of those two.
+      - name: Refresh the rules and data pages
+        id: refresh
+        run: |
+          set +e
+          pnpm run atlantis refresh --json > /tmp/atlantis-refresh-outcome.json
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+          cat /tmp/atlantis-refresh-outcome.json
+
+      - name: Fail loudly on an exit code this workflow does not model
+        if: steps.refresh.outputs.code != '0' && steps.refresh.outputs.code != '3'
+        run: |
+          echo "pnpm run atlantis refresh --json exited ${{ steps.refresh.outputs.code }} - expected 0 (refreshed/unchanged) or 3 (scraper refused)."
+          exit 1
+
+      # No unit test can prove this step opens a pull request or files an issue - see the plan's
+      # Validation section. It is exercised by running workflow_dispatch once by hand, which is why
+      # that trigger is a tested invariant (atlantisRefreshGate.test.ts) rather than a convenience.
+      - name: Open or update the pull request, or file the issue
+        if: steps.refresh.outputs.code == '0' || steps.refresh.outputs.code == '3'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat <<'SCRIPT' > /tmp/act-on-refresh.ts
+          import { execFileSync } from "node:child_process";
+          import { readFileSync, writeFileSync } from "node:fs";
+          import { resolve } from "node:path";
+          import { pathToFileURL } from "node:url";
+
+          type OpenItem = { number: number; title: string; labels: string[]; headRefName?: string };
+
+          function run(args: string[]): string {
+            return execFileSync(args[0], args.slice(1), { encoding: "utf8" });
+          }
+
+          async function main(): Promise<void> {
+            const modulePath = resolve(process.cwd(), "scripts/atlantisRefresh.ts");
+            const mod = await import(pathToFileURL(modulePath).href);
+            const outcome = JSON.parse(readFileSync("/tmp/atlantis-refresh-outcome.json", "utf8"));
+
+            if (outcome.kind === "unchanged") {
+              console.log("Nothing changed - no pull request to open.");
+              return;
+            }
+
+            if (outcome.kind === "refreshed") {
+              const open: OpenItem[] = JSON.parse(
+                run(["gh", "pr", "list", "--state", "open", "--json", "number,title,headRefName"])
+              );
+              const decision = mod.decideFiling(open, "pull-request");
+              const title = mod.refreshPullRequestTitle(outcome);
+              const body = mod.refreshPullRequestBody(outcome);
+              writeFileSync("/tmp/atlantis-refresh-body.md", body);
+
+              run(["git", "config", "user.name", "github-actions[bot]"]);
+              run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"]);
+              run(["git", "checkout", "-B", mod.REFRESH_BRANCH]);
+              run(["git", "add", "tests/fixtures/ruleset", "config/public/ruleset.json"]);
+              run(["git", "commit", "-m", title]);
+              run(["git", "push", "--force", "origin", mod.REFRESH_BRANCH]);
+
+              if (decision.action === "create") {
+                run([
+                  "gh", "pr", "create",
+                  "--title", title,
+                  "--body-file", "/tmp/atlantis-refresh-body.md",
+                  "--head", mod.REFRESH_BRANCH
+                ]);
+              } else {
+                run([
+                  "gh", "pr", "edit", String(decision.number),
+                  "--title", title,
+                  "--body-file", "/tmp/atlantis-refresh-body.md"
+                ]);
+              }
+              return;
+            }
+
+            // outcome.kind === "scrape-failed"
+            const open: OpenItem[] = JSON.parse(
+              run([
+                "gh", "issue", "list",
+                "--state", "open",
+                "--label", mod.REFRESH_ISSUE_LABEL,
+                "--json", "number,title,labels"
+              ])
+            );
+            const decision = mod.decideFiling(open, "issue");
+            const body = mod.refreshIssueBody(outcome.message);
+            writeFileSync("/tmp/atlantis-refresh-issue-body.md", body);
+
+            if (decision.action === "create") {
+              run([
+                "gh", "issue", "create",
+                "--title", mod.REFRESH_ISSUE_TITLE,
+                "--label", mod.REFRESH_ISSUE_LABEL,
+                "--body-file", "/tmp/atlantis-refresh-issue-body.md"
+              ]);
+            } else {
+              run(["gh", "issue", "comment", String(decision.number), "--body-file", "/tmp/atlantis-refresh-issue-body.md"]);
+            }
+          }
+
+          main();
+          SCRIPT
+          pnpm exec tsx /tmp/act-on-refresh.ts
