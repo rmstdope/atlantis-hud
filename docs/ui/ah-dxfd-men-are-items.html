@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-dxfd — men are items, and the app already knows it</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  pre.code { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:11px 14px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+  pre.code b { color:var(--brass); font-weight:normal; }
+  table.grid { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:8px; font-family:system-ui,-apple-system,sans-serif; }
+  table.grid th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.grid td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  .yes { color:var(--ok); font-weight:bold; } .no { color:var(--danger); font-weight:bold; }
+  .dim { color:var(--ink-dim); }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); } .good { border-left-color:var(--ok); } .bad { border-left-color:var(--danger); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 4px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .q { background:#2a2113; border:1px solid #5c4718; border-left:4px solid var(--brass); border-radius:5px;
+    padding:11px 14px; margin:22px 0 2px; max-width:100ch; font-size:13.5px; }
+  .q b { color:var(--brass); }
+</style></head><body>
+<header>
+  <h1>ah-dxfd — <span>men are items, and the app already knows it</span></h1>
+  <p>You asked three times why a gift of men cannot be resolved. It can. This page is me finally finding the
+  proof, and what the bead becomes because of it. <b>Everything I said about doubt in the earlier pages is
+  withdrawn.</b></p>
+</header>
+<main>
+
+<h3 class="sec">The app already computes exactly this</h3>
+<p>A unit's headcount is not something the report hands over separately. It is <b>derived</b> — the man-tagged
+items, counted. <code>crates/core/src/report/composition.rs:51-73</code>, shipped, tested, running on every
+report that loads:</p>
+<pre class="code">fn classify_unit(unit: &amp;mut ReportUnit, ruleset: &amp;Ruleset, unknown: &amp;mut BTreeSet&lt;String&gt;) {
+    <span class="dim">// ... refuse to classify at all if any tag is unrecognised ...</span>
+
+    unit.men_by_race = unit
+        .items
+        .iter()
+        <b>.filter(|item| ruleset.is_man(&amp;item.tag))</b>
+        .cloned()
+        .collect();
+    unit.men = unit.men_by_race.iter().map(|race| race.amount).sum();
+    unit.men_estimated = false;
+}</pre>
+<div class="note good"><b><code>GIVE 1234 ALL MEN</code> is that same filter, applied to the giver's list.</b>
+Ten <code>HUMN</code> and three <code>LEAD</code> go; thirty-five <code>SWOR</code> and six hundred
+<code>SILV</code> stay. Nothing is unknown, nothing is estimated, and no new machinery is needed — the rule is
+already written down, in the file that reads the report.</div>
+
+<h3 class="sec">So what is actually unknown</h3>
+<table class="grid">
+<tr><th>Order</th><th>Resolvable?</th><th></th></tr>
+<tr><td><code>GIVE 1234 10 HUMN</code> &nbsp; <code>ALL HUMN EXCEPT 2</code></td><td class="yes">yes</td>
+    <td>Already done everywhere.</td></tr>
+<tr><td><code>TAKE FROM 1234 10 HUMN</code></td><td class="yes">yes</td>
+    <td><code>rules/take</code>: same faction, same rules as GIVE reversed. The ledger already moves the items.</td></tr>
+<tr><td><code>GIVE 1234 ALL MEN</code></td><td class="yes">yes</td>
+    <td>The filter above.</td></tr>
+<tr><td><code>GIVE 1234 ALL ITEMS</code></td><td class="yes">yes</td>
+    <td><code>rules/give</code> calls it "the combination of all of the previous categories" — everything the
+      unit holds. No classifying needed at all; the men are simply all of its man tags.</td></tr>
+<tr><td><code>GIVE 1234 ALL WEAPONS</code> &nbsp; <code>ALL FOOD</code> &nbsp; <code>ALL TRADE</code></td>
+    <td class="no">not for now</td>
+    <td>The catalogue records <code>Man / Mount / Monster / Ship / Equipment</code>, which does not carry those
+      classes. <b>They move no men, so this bead does not care.</b></td></tr>
+<tr><td>Any order, on a unit holding a tag the catalogue does not know</td><td class="no">no, and already said so</td>
+    <td>This is <code>men_estimated</code>, and it is <b>the only genuine unknown there is</b>. The MEN cell
+      already prints <code>~19</code>, the SILVER cell already prints <code>?</code>, and the hover already says
+      <i>"This unit's headcount is an estimate, so its month cannot be priced."</i></td></tr>
+</table>
+<div class="note good"><b>No new doubt code. No new sentence.</b> Every wording option I put to you is withdrawn:
+the one case that cannot be counted has been telling the player so since long before this bead.</div>
+
+<h3 class="sec">One rule, and it fixes everything at once</h3>
+<div class="note"><b>Men are the man-tagged items. Count them wherever the items are right.</b><br>
+Both places that track a unit through its orders already keep the item list right — the units-table walker
+(<code>effects.rs</code>) and the ledger (<code>semantics.rs</code>). Neither re-derives the headcount from it.
+The units-table walker adjusts <code>men</code> by hand inside the GIVE arm and nowhere else, which is why a
+TAKE today leaves a row saying <code>20 HUMN</code> in ITEMS and <code>10</code> in MEN. Re-deriving instead of
+adjusting fixes GIVE, TAKE, <code>ALL MEN</code> and <code>ALL ITEMS</code> in one stroke, in both places, with
+the rule stated once.</div>
+
+<div class="q"><b>The question, re-put.</b> You chose <b>W2 — one bead</b> when it was "weapons plus headcount".
+It is now four things: resolve the two universal classes; re-derive men from items in both walkers; reorder
+<code>ledger_for</code> so transfers settle before the silver is priced; and point <code>UnitFacts</code> at the
+result. That is more than one increment, and half of it improves the units table on its own without touching
+the Silver column at all. <b>One bead still, or two?</b></div>
+
+<span class="opt">X1 — split into two children</span>
+<table class="grid">
+<tr><th>Child A — men are counted wherever men are counted</th><th>Child B — the column prices what the orders produce</th></tr>
+<tr><td>Both walkers resolve <code>ALL MEN</code> / <code>ALL ITEMS</code> and re-derive the headcount and races
+  from the item list, through one shared helper. <b>Visible on its own</b>: the <code>20 HUMN / 10 men</code>
+  row is fixed, the MEN cell counts a TAKE, and the ITEMS cell stops saying <code>+ ?</code> for a class of
+  men.</td>
+  <td><code>ledger_for</code>'s transfers settle before the silver is priced, and
+  <code>UnitFacts</code> takes its men, races and weapons from the balance and its skills from ah-z73s.2's view.
+  Upkeep, tax, entertaining, CAST income and the pillage threshold all come right together.</td></tr>
+</table>
+<ul class="notes">
+  <li>Child A is a clean, self-contained improvement to the units table, reviewable as one idea: <i>men are
+    items</i>. It needs no ledger surgery and can land immediately.</li>
+  <li>Child B is then purely about <code>UnitFacts</code> and the ordering of one function, with the hard part —
+    the pass reordering — reviewed as the structural change it is.</li>
+  <li>An edge between them makes the ordering the fleet's business, and neither can regress anything alone.</li>
+  <li class="con">Two review cycles, and the pillage fix is behind the other one.</li>
+</ul>
+
+<span class="opt">X2 — one bead, four increments</span>
+<ul class="notes">
+  <li>One PR; the whole argument is reviewed together, and nothing can half-land.</li>
+  <li class="con">It touches the units-table walker, the ledger, <code>UnitFacts</code> and six arithmetic
+    surfaces in one change — against this project's rule of small increments delivered independently.</li>
+  <li class="con">If the ledger reordering proves worse than it looks, the units-table half is stuck behind it
+    with no way to ship alone.</li>
+</ul>
+</main></body></html>
