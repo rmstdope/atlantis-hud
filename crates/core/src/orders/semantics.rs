@@ -2977,7 +2977,9 @@ fn build(
     // buildings table.
     if founding_kind.is_none()
         && task_owner.unit.items.iter().any(|item| {
-            item.name.len() >= 11 && item.name[..11].eq_ignore_ascii_case("unfinished ")
+            item.name
+                .get(.."unfinished ".len())
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("unfinished "))
         })
     {
         mark_uncounted_and_return!();
