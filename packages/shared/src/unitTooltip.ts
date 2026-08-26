@@ -470,10 +470,13 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   {
     id: "doubt-gives-a-whole-class",
     when: ({ silver }) => silver.doubt === "gives-a-whole-class",
-    say: () => "This unit is giving away a whole class of goods, which cannot be counted.",
+    say: ({ silver }) =>
+      silver.doubtSubject
+        ? `This unit is giving away all its ${silver.doubtSubject} items, and this application cannot tell which items those are.`
+        : "This unit is giving away a whole class of goods, which cannot be counted.",
     example: () => ({
       unit: aReportUnit(),
-      silver: aUnitSilver({ doubt: "gives-a-whole-class" }),
+      silver: aUnitSilver({ doubt: "gives-a-whole-class", doubtSubject: "MAGIC" }),
       warned: false,
       countUpkeep: true
     })

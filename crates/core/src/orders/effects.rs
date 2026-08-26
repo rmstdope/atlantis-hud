@@ -955,7 +955,7 @@ impl Working {
             return;
         }
 
-        for (name, tag, moved) in self.tags_moved(giver, &what, &amount) {
+        for (name, tag, moved) in self.tags_moved(giver, &what, &amount, receiver.is_none()) {
             // Re-resolved by tag rather than kept from the snapshot: an earlier tag in this same
             // loop may have removed an item ahead of this one and shifted every index after it.
             let Some(held) = self.units[giver]
@@ -1037,7 +1037,7 @@ impl Working {
             return;
         }
 
-        for (_, tag, moved) in self.tags_moved(source_index, &what, &amount) {
+        for (_, tag, moved) in self.tags_moved(source_index, &what, &amount, false) {
             if !self.ruleset.is_man(&tag) {
                 continue;
             }
@@ -1058,21 +1058,26 @@ impl Working {
     /// `rules/give` lists the classes and defines `ITEM`/`ITEMS` as "the combination of all of
     /// the previous categories", so it needs no classifying: it is everything. `MAN`/`MEN` is
     /// `composition::men_in`'s filter, the same one that derived the headcount to begin with.
-    /// Every other class - `WEAPON`, `FOOD`, `TRADE` and the rest - needs a classification the
-    /// catalogue does not carry (`ItemKind` is `Man`/`Mount`/`Monster`/`Ship`/`Equipment`), so it
-    /// is left exactly as it is today: unresolvable, and turned away.
+    /// Every other class asks the catalogue (`Ruleset::class_members`, `ah-3sp7.1`); `ADVANCED`,
+    /// `MAGIC` and `SPECIAL` stay unresolvable because the data page never states their members,
+    /// and so does a word that is not a class at all.
     ///
     /// `GIVE target UNIT` hands over the whole unit rather than anything it holds - ownership is
     /// a different question from what a row shows, and is left to a later issue.
+    ///
+    /// `discarding` is `true` only for `GIVE 0 ...`: 52 items carry `This item cannot be given to
+    /// other units.`, and unit 0 is not another unit, so a discard moves them too while any other
+    /// receiver does not (`rules/give`, the epic's decision 9).
     fn tags_moved(
         &self,
         holder: usize,
         what: &super::forms::Selector,
         amount: &super::forms::Amount,
+        discarding: bool,
     ) -> Vec<(String, String, i64)> {
         use super::forms::{Amount, Selector};
 
-        match what {
+        let moving: Vec<(String, String, i64)> = match what {
             Selector::Item(item) => {
                 let Some(held) = find_item(&self.units[holder].unit.items, item) else {
                     return Vec::new();
@@ -1117,7 +1122,26 @@ impl Working {
                     .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
                     .collect()
             }
-            Selector::Class(_) | Selector::WholeUnit => Vec::new(),
+            Selector::Class(name) => match self.ruleset.class_members(name) {
+                Some(tags) => self.units[holder]
+                    .unit
+                    .items
+                    .iter()
+                    .filter(|item| tags.iter().any(|tag| tag == &item.tag))
+                    .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
+                    .collect(),
+                None => Vec::new(),
+            },
+            Selector::WholeUnit => Vec::new(),
+        };
+
+        if discarding {
+            moving
+        } else {
+            moving
+                .into_iter()
+                .filter(|(_, tag, _)| self.ruleset.can_be_given(tag))
+                .collect()
         }
     }
 }
@@ -1647,18 +1671,19 @@ mod tests {
     ///
     /// `ITEM`/`ITEMS` and `MAN`/`MEN` are resolved by `ah-dxfd.1` and no longer land here - see
     /// `a_gift_of_all_men_moves_every_race` and `a_gift_of_all_items_moves_the_swords_too` below.
-    /// A class the catalogue cannot classify at all, `WEAPONS`, still turns away exactly as
+    /// A class the catalogue still cannot classify, `MAGIC` - the data page never states its
+    /// members, and neither `ADVANCED` nor `SPECIAL` fare any better - still turns away exactly as
     /// every class once did, which is what proves the change is narrow.
     #[test]
     fn giving_a_class_this_walk_cannot_resolve_still_moves_nothing() {
-        let response = preview("unit 900\nGIVE 901 ALL WEAPONS\n");
+        let response = preview("unit 900\nGIVE 901 ALL MAGIC\n");
         let unit = only_unit(&response);
         assert!(
             !unit.changes.iter().any(|change| change.field == "items"),
             "a class the preview cannot classify must move nothing: {:?}",
             unit.changes
         );
-        assert_eq!(unit.uncounted, vec!["GIVE 901 ALL WEAPONS".to_string()]);
+        assert_eq!(unit.uncounted, vec!["GIVE 901 ALL MAGIC".to_string()]);
 
         // The control: `ALL` of one named item is modelled and counted, so the row above is the
         // class being turned away rather than `ALL` failing to read. Both units change here, so
@@ -1734,6 +1759,178 @@ mod tests {
             "the receiver's own leader plus the one given"
         );
         assert!(!receiver.unit.items.iter().any(|item| item.tag == "SWOR"));
+    }
+
+    /// `ah-3sp7.1` taught the catalogue `MOUNT`'s five tags, so `tags_moved` can now resolve a
+    /// class beyond `MAN`/`MEN` and `ITEM`/`ITEMS`: the horses move, the swords - not a mount -
+    /// stay behind, and nothing about the gift is left unresolved.
+    #[test]
+    fn a_gift_of_all_mounts_moves_the_horses() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Walker (900), Foo (1), leader [LEAD], 4 horses [HORS], 3 swords [SWOR]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nGIVE 901 ALL MOUNTS\n",
+        )
+        .expect("the ruleset loads");
+
+        let region = &response.regions[0];
+        let giver = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the giver changed");
+        let receiver = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "901")
+            .expect("the receiver changed");
+
+        assert!(!giver.unit.items.iter().any(|item| item.tag == "HORS"));
+        assert!(
+            giver.unit.items.iter().any(|item| item.tag == "SWOR"),
+            "the giver keeps its swords: {:?}",
+            giver.unit.items
+        );
+        assert_eq!(
+            receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "HORS")
+                .map(|item| item.amount),
+            Some(4)
+        );
+        assert!(giver.uncounted.is_empty());
+    }
+
+    /// 51 monsters and the imprisoned entity carry `This item cannot be given to other units.`, so
+    /// `ALL MONSTERS` selects sixty items and moves the one that may change hands.
+    #[test]
+    fn a_gift_of_all_monsters_leaves_the_lions_behind() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Walker (900), Foo (1), leader [LEAD], 20 lions [LION], 1 skeleton [SKEL]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nGIVE 901 ALL MONSTERS\n",
+        )
+        .expect("the ruleset loads");
+
+        let region = &response.regions[0];
+        let giver = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the giver changed");
+        let receiver = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "901")
+            .expect("the receiver changed");
+
+        assert!(
+            giver.unit.items.iter().any(|item| item.tag == "LION"),
+            "the lions cannot be given away and stay put: {:?}",
+            giver.unit.items
+        );
+        assert!(!giver.unit.items.iter().any(|item| item.tag == "SKEL"));
+        assert_eq!(
+            receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SKEL")
+                .map(|item| item.amount),
+            Some(1)
+        );
+        assert!(!receiver.unit.items.iter().any(|item| item.tag == "LION"));
+    }
+
+    /// The same refusal applies to a named-item gift, not only the class form: `GIVE 901 20 LION`
+    /// moves nothing.
+    #[test]
+    fn a_named_gift_of_lions_moves_nothing() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Walker (900), Foo (1), leader [LEAD], 20 lions [LION]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nGIVE 901 20 LION\n",
+        )
+        .expect("the ruleset loads");
+
+        assert!(
+            response.regions.is_empty(),
+            "nothing moves, so no row changes: {:?}",
+            response.regions
+        );
+    }
+
+    /// `GIVE 0` discards rather than gives, and unit 0 is not "another unit" - the refusal that
+    /// keeps the lions with a live receiver does not apply to a discard (epic decision 9).
+    #[test]
+    fn a_discard_of_all_monsters_takes_the_lions_too() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Walker (900), Foo (1), leader [LEAD], 20 lions [LION], 1 skeleton [SKEL]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nGIVE 0 ALL MONSTERS\n",
+        )
+        .expect("the ruleset loads");
+
+        let giver = only_unit(&response);
+        assert!(
+            !giver.unit.items.iter().any(|item| item.tag == "LION"),
+            "a discard destroys the lions too: {:?}",
+            giver.unit.items
+        );
+        assert!(!giver.unit.items.iter().any(|item| item.tag == "SKEL"));
     }
 
     /// `rules/give`: `ITEM`/`ITEMS` is "the combination of all of the previous categories" -

@@ -555,6 +555,11 @@ export const WARNING_GROUPS: readonly {
           "Men joining a unit, given, taken or bought, that leave it at a lower skill level than the report gave it."
       },
       {
+        code: "items-cannot-be-given",
+        title: "Gifts the game will refuse",
+        description: "A GIVE or TAKE naming items that cannot change hands, such as most monsters."
+      },
+      {
         code: "too-many-trade-regions",
         title: "Producing in too many regions",
         description: "PRODUCE orders in more regions than the faction's allowance permits."

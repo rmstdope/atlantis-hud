@@ -1112,6 +1112,16 @@ describe("the silver section", () => {
       "This unit is giving away a whole class of goods, which cannot be counted."
     );
     expect(
+      note({
+        expense: null,
+        atMonthEnd: null,
+        doubt: "gives-a-whole-class",
+        doubtSubject: "MAGIC"
+      })
+    ).toBe(
+      "This unit is giving away all its MAGIC items, and this application cannot tell which items those are."
+    );
+    expect(
       note({ income: 0, expense: 300, atMonthEnd: 60, givenToNobody: 300 })
     ).toBe("Includes 300 given away to nobody.");
   });
@@ -1231,7 +1241,7 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
     "doubt-market-does-not-sell":
       "This region is not selling horses, so what the purchase costs cannot be said.",
     "doubt-gives-a-whole-class":
-      "This unit is giving away a whole class of goods, which cannot be counted.",
+      "This unit is giving away all its MAGIC items, and this application cannot tell which items those are.",
     "doubt-unknown-combat-ready":
       "The combat ready men in this region cannot be added up, so what a pillage earns cannot be said.",
     "doubt-contested-faction-food":
