@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ofpb.2 &mdash; Q2/Q3: the builds the column cannot settle</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, footer code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .unk { color:var(--ink-dim); }
+  .cellbox { border:1px dashed var(--edge); }
+  .clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip.none { color:var(--ink-dim); font-style:italic; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright);
+            background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            margin:10px 0 0; white-space:pre; display:inline-block; }
+  .orders .c { color:var(--ink-dim); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-left:8px; }
+</style></head><body>
+<header><h1>Q2 &amp; Q3 &mdash; <span>the builds the column cannot settle</span></h1>
+<p>Q1 is about the ordinary builder: alone, inside its own structure, with one material and plenty of it. This page is about the six rows where that breaks down. Two questions, and they are independent &mdash; answer them separately.</p>
+<p><b>Six units, one hex.</b> Each is ten men with the skill its order wants at level&nbsp;3, so each could do 30 units of work.</p>
+<div class="orders">unit 5551  <span class="c">; Miners, 10 humans, 120 wood, 120 stone, mining 3</span>
+  build Mine        <span class="c">; a Mine is built from 10 "wood or stone" - it holds both</span>
+
+unit 5552  <span class="c">; Quarrymen, 10 humans, 120 wood, quarrying 3</span>
+  build Quarry      <span class="c">; a Quarry is "wood or stone" too - but it holds only wood</span>
+
+unit 5553  <span class="c">; Hodmen, 10 humans, 120 wood, building 3</span>
+  build help 5541   <span class="c">; 5541 is our unit, in this hex, working on Stockade [4]</span>
+
+unit 5554  <span class="c">; Shipwrights, 10 humans, 120 wood, unfinished Cog [COG] (needs 15), shipbuilding 3</span>
+  build             <span class="c">; a bare BUILD works on an unfinished ship the unit possesses</span>
+
+unit 5555  <span class="c">; Recruits, 10 humans, 120 wood, in Stockade [4]</span>
+  build             <span class="c">; no building skill at all, so no work gets done</span>
+
+unit 5556  <span class="c">; Labourers, 10 humans, 120 wood, building 3, in Stockade [7] (needs 6)</span>
+  build             <span class="c">; could do 30 work; so could 5543 next to it; the Stockade wants 6</span>
+
+unit 5543  <span class="c">; Finishers, 10 humans, 120 wood, building 3, same Stockade [7]</span>
+  build             <span class="c">; the rules never say which of the two spends its wood first</span></div>
+<p><b>Units 5556 and 5543 are one question, not two.</b> Each on its own is exactly resolvable: ten men at building&nbsp;3, thirty units of work, six wanted. Together they are not. <code>rules/sequenceofevents</code> gives the order of the <i>phases</i> and never the order between units inside one, so which of the two spends wood on those last six units of work &mdash; and whether the other spends any at all &mdash; cannot be derived from the report. This is the one thing on this page the rules genuinely do not settle.</p>
+<p>Unit 5555 is already warned about elsewhere by <code>build-without-skill</code>, so this question is only about what its ITEMS cell does.</p>
+</header>
+<main>
+
+<h3 class="sec">Q2 &mdash; a structure built from &ldquo;wood or stone&rdquo;</h3>
+<p>Ten of the game&rsquo;s structures &mdash; Mine, Farm, Ranch, Timber Yard, Inn, Quarry, Trapping Hut, Stables, Oasis, Caravanserai &mdash; may be built from either. The data page states both and does not say which the engine takes, so a unit holding both is a genuine fork. Only units 5551 and 5552 differ between these three; the rest of each table is Q3&rsquo;s.</p>
+
+<div class="card"><p class="concept"><b>M1 &mdash; spend the one it holds; mark the cell only when it holds both.</b><span class="rec">recommended</span></p><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:60px"><col style="width:104px"><col style="width:128px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5551</td><td>Miners</td><td>build Mine</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 HUMN, 120 STON, 120 WOOD</span> <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5552</td><td>Quarrymen</td><td>build Quarry</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 HUMN, 90 WOOD</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5553</td><td>Hodmen</td><td>build help 5541</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5554</td><td>Shipwrights</td><td>build</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5555</td><td>Recruits</td><td>build</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5556</td><td>Labourers</td><td>build</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+</tbody></table>
+</div>
+<div class="tip"><b>hover on unit 5551's ITEMS cell</b>was: 10 HUMN, 120 STON, 120 WOOD
+and more that cannot be counted: build Mine</div>
+<ul class="notes">
+<li>Unit 5552 is not a fork at all &mdash; it holds one of the two materials, so there is only one answer, and the column gives it.</li>
+<li>The mark keeps its exact meaning: <i>something here could not be worked out</i>.</li>
+<li class="con">Two units with the same order read differently, which takes a moment to understand.</li>
+<li class="n">A unit holding neither falls out of Q3 (nothing moves), not out of this question.</li>
+</ul></div>
+
+<div class="card"><p class="concept"><b>M2 &mdash; mark all ten structures, whatever the unit holds.</b></p><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:60px"><col style="width:104px"><col style="width:128px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5551</td><td>Miners</td><td>build Mine</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 HUMN, 120 STON, 120 WOOD</span> <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5552</td><td>Quarrymen</td><td>build Quarry</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 WOOD <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5553</td><td>Hodmen</td><td>build help 5541</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5554</td><td>Shipwrights</td><td>build</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5555</td><td>Recruits</td><td>build</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5556</td><td>Labourers</td><td>build</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>One rule, stated per structure type, with nothing to remember about holdings.</li>
+<li class="con">Wrong about unit 5552, which has exactly one possible answer. A Timber Yard built by a lumberjack sitting on wood is the commonest trade structure in the game.</li>
+<li class="con">Marks a fifth of the buildable catalogue as uncountable for ever.</li>
+</ul></div>
+
+<div class="card"><p class="concept"><b>M3 &mdash; take the first material the data page lists, and never mark.</b></p><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:60px"><col style="width:104px"><col style="width:128px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5551</td><td>Miners</td><td>build Mine</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 HUMN, 120 STON, 90 WOOD</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5552</td><td>Quarrymen</td><td>build Quarry</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 HUMN, 90 WOOD</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5553</td><td>Hodmen</td><td>build help 5541</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5554</td><td>Shipwrights</td><td>build</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5555</td><td>Recruits</td><td>build</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5556</td><td>Labourers</td><td>build</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>Never a question mark; one rule; the commonest case (wood) is probably right.</li>
+<li class="con">A guess presented as a fact. A player with 120 stone and 120 wood who wanted the stone gone sees the wrong column and has nothing telling them to doubt it.</li>
+<li class="con">&ldquo;First listed&rdquo; is an artefact of how the page is written, not a rule of the game.</li>
+</ul></div>
+
+<h3 class="sec">Q3 &mdash; helping, ships, and a unit that does no work</h3>
+<p>Four more rows. <code>BUILD HELP</code> puts the helper&rsquo;s own material into somebody else&rsquo;s structure. A bare <code>BUILD</code> by a unit holding an unfinished ship works on the ship, not on the region &mdash; and the ship is an <i>item</i> in the unit&rsquo;s own list, <code>unfinished Cog [COG] (needs 15)</code>, whose remaining need the report prints but the application does not model. Unit 5555 does no work at all. Units 5556 and 5543 are both working on a Stockade that wants only six more units of work, and nothing says which of them gets to spend it.</p>
+
+<div class="card"><p class="concept"><b>H1 &mdash; count the help; mark the ship; leave the skill-less unit alone.</b><span class="rec">recommended</span></p><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:60px"><col style="width:104px"><col style="width:128px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5551</td><td>Miners</td><td>build Mine</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5552</td><td>Quarrymen</td><td>build Quarry</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5553</td><td>Hodmen</td><td>build help 5541</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 HUMN, 90 WOOD</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5554</td><td>Shipwrights</td><td>build</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 WOOD, 1 COG <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5555</td><td>Recruits</td><td>build</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 WOOD</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5556</td><td>Labourers</td><td>build</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+</tbody></table>
+</div>
+<div class="tip"><b>hover on unit 5553's ITEMS cell</b>was: 10 HUMN, 120 WOOD
+Spends 30 WOOD on Building 4 this month.</div>
+<div class="tip"><b>hover on unit 5554's ITEMS cell</b>was: 10 HUMN, 120 WOOD, 1 COG
+and more that cannot be counted: build</div>
+<div class="tip none">unit 5555 &mdash; nothing moved, so the row is upright and its ITEMS hover says nothing</div>
+<ul class="notes">
+<li>The help is resolved exactly one level, which is what <code>build-without-skill</code> already does and already has tests for.</li>
+<li>Unit 5555 follows the rule already agreed for a production that comes to nothing: no movement, no mark, upright.</li>
+<li>Ships are left for a bead of their own &mdash; the unfinished ship carries a remaining need the app does not model, and shipbuilding is a second skill.</li>
+<li class="con">Unit 5555 &mdash; ordered to build and building nothing &mdash; looks exactly like a unit given no orders.</li>
+<li class="con">Leaves every shipwright in the game marked as uncountable until that bead lands.</li>
+</ul></div>
+
+<div class="card"><p class="concept"><b>H2 &mdash; count only a unit building its own structure; mark the help too.</b></p><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:60px"><col style="width:104px"><col style="width:128px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5551</td><td>Miners</td><td>build Mine</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5552</td><td>Quarrymen</td><td>build Quarry</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5553</td><td>Hodmen</td><td>build help 5541</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 WOOD <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5554</td><td>Shipwrights</td><td>build</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 WOOD, 1 COG <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5555</td><td>Recruits</td><td>build</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 WOOD</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5556</td><td>Labourers</td><td>build</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>The smallest thing that could work, and the least to get wrong.</li>
+<li class="con">A <code>BUILD HELP</code> spends the helper&rsquo;s own material at exactly the same rate as its own build &mdash; there is nothing extra to guess once the helped unit is found.</li>
+<li class="con">Helping is how a faction finishes a Castle at all; marking it means the column is silent on the biggest builds in the game.</li>
+</ul></div>
+
+<div class="card"><p class="concept"><b>H3 &mdash; count the ship as well.</b></p><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:60px"><col style="width:104px"><col style="width:128px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5551</td><td>Miners</td><td>build Mine</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5552</td><td>Quarrymen</td><td>build Quarry</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5553</td><td>Hodmen</td><td>build help 5541</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 HUMN, 90 WOOD</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5554</td><td>Shipwrights</td><td>build</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 HUMN, 105 WOOD, 1 COG</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5555</td><td>Recruits</td><td>build</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 WOOD</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5556</td><td>Labourers</td><td>build</td><td class="colhi cellbox"><span class="clip">&hellip;</span></td></tr>
+</tbody></table>
+</div>
+<div class="tip"><b>hover on unit 5554's ITEMS cell</b>was: 10 HUMN, 120 WOOD, 1 COG
+Spends 15 WOOD on the unfinished Cog this month.</div>
+<ul class="notes">
+<li>Nothing in the game&rsquo;s commonest build orders is left uncounted at all.</li>
+<li class="con">The <code>1 COG</code> entry stays put and stays silent: the report writes its remaining need <i>inside the item&rsquo;s own name</i>, and the application throws that away when it parses the list. The column would show the wood going and give no sign the ship got closer.</li>
+<li class="con">Wants a second skill (shipbuilding), a second table of costs, and a rule for a ship the unit is carrying but did not start. That is a bead, not a branch.</li>
+</ul></div>
+
+<h3 class="sec">Q4 &mdash; two units finishing one structure between them</h3>
+<p>Stockade [7] wants six more units of work. Units 5543 and 5556 are both inside it, both able to do thirty. The engine will spend six wood in total, from one of them or split between them; the rules do not say which, and the report cannot tell us. Every other case on this page has one right answer &mdash; this one has three plausible ones.</p>
+
+<div class="card"><p class="concept"><b>P1 &mdash; count each unit alone, as if it were the only builder.</b><span class="rec">recommended</span></p><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:60px"><col style="width:104px"><col style="width:128px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5543</td><td>Finishers</td><td>build</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 HUMN, 114 WOOD</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5556</td><td>Labourers</td><td>build</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 HUMN, 114 WOOD</span></span></td></tr>
+</tbody></table>
+</div>
+<div class="tip"><b>hover on either ITEMS cell</b>was: 10 HUMN, 120 WOOD
+Spends 6 WOOD on Building 7 this month. Its men could do 30 units of work; the structure needs 6 more.</div>
+<ul class="notes">
+<li>One rule, and it is the rule the whole column already runs on: every figure is what <i>this</i> unit&rsquo;s orders do, measured against what the report printed. A PRODUCE is already counted this way when two units draw on the same market.</li>
+<li>Each row is right about the unit whose row it is, which is what a per-unit column is for.</li>
+<li class="con">The two rows together claim twelve wood will be spent where six will be. A player adding up their stone before a big build gets a figure that is too high.</li>
+</ul></div>
+
+<div class="card"><p class="concept"><b>P2 &mdash; count them in order and let the first take what it can.</b></p><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:60px"><col style="width:104px"><col style="width:128px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5543</td><td>Finishers</td><td>build</td><td class="colhi cellbox"><span class="clip"><span class="pred">10 HUMN, 114 WOOD</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5556</td><td>Labourers</td><td>build</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 WOOD</span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>The totals across the hex come out right: six wood, once.</li>
+<li class="con">Invents an order the rules do not state. Unit 5556 is shown doing nothing, and it may well be the one the engine picks.</li>
+<li class="con">The row a player is looking at can change because of a unit further down the list, which no other column does.</li>
+</ul></div>
+
+<div class="card"><p class="concept"><b>P3 &mdash; mark both, since neither can be settled.</b></p><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:60px"><col style="width:104px"><col style="width:128px"><col style="width:230px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5543</td><td>Finishers</td><td>build</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 WOOD <span class="unk">+&nbsp;?</span></span></td></tr>
+<tr><td class="own">*</td><td class="uid">5556</td><td>Labourers</td><td>build</td><td class="colhi cellbox"><span class="clip">10 HUMN, 120 WOOD <span class="unk">+&nbsp;?</span></span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>Honest: this is the one case the rules really do leave open.</li>
+<li>The mark keeps meaning exactly what it means everywhere else.</li>
+<li class="con">Only bites when the structure&rsquo;s remaining need is <i>smaller</i> than what the builders could do between them &mdash; which is the last month of every build, and the month a player looks hardest.</li>
+<li class="con">Two units quarrying a Citadel that needs 800 are never in each other&rsquo;s way, so the rule has to test the total against the need before deciding, which is a rule with a condition in it.</li>
+</ul></div>
+
+</main>
+<footer>Sources: <code>rules/economy_buildings</code>, <code>rules/tabletradestructures</code> (<i>&ldquo;You can use two different materials (wood or stone) to construct most trade structures&rdquo;</i>), <code>rules/economy_ships</code> (<i>&ldquo;unfinished ships appear only in their builder&rsquo;s inventory until they are complete&rdquo;</i>), <code>rules/build</code>. The ten &ldquo;wood or stone&rdquo; structures are the data page&rsquo;s own list. An earlier draft of this page claimed a unit handed <code>ALL MEN</code> had a headcount the application could not resolve. That was wrong: <code>TAKE</code> is restricted to your own faction (<code>rules/take</code>), every own unit&rsquo;s full item list is on the report, and the catalogue already classifies a tag as a man. The application declines to resolve a class selector (<code>effects.rs:870</code>), which is a gap to be fixed in a bead of its own, not a fact about the game. The exact wording of every sentence and mark on this page is a later question.</footer>
+</body></html>
