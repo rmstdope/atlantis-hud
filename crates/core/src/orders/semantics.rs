@@ -1532,87 +1532,112 @@ fn apply_gifts_of_men(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
 
     for transfer in &transfers {
         let concerns = classify_gift(transfer.what, ruleset);
-        let tag = match concerns {
-            GiftConcerns::NotMen => continue,
-            GiftConcerns::PeopleClass => {
-                if !transfer.is_give {
-                    // "TAKE ... ALL MEN": the men are real, the count is not.
-                    mark_doubted(units, &mut working, transfer.position);
-                    continue;
-                }
-                if let GiveTarget::Unit(receiver) =
-                    resolve_give_target(&position_of, transfer.position, transfer.party)
-                {
-                    mark_doubted(units, &mut working, receiver);
-                }
-                continue;
-            }
-            GiftConcerns::Men(tag) => tag,
-        };
-
-        if !transfer.is_give {
-            // `TAKE FROM` of men: the taker is doubted and nothing else follows - `effects.rs`
-            // never applies a TAKE of men either.
-            mark_doubted(units, &mut working, transfer.position);
+        if matches!(concerns, GiftConcerns::NotMen) {
             continue;
         }
 
-        let target = resolve_give_target(&position_of, transfer.position, transfer.party);
+        // For a GIVE, `transfer.position` is the giver and `transfer.party` names the receiver -
+        // resolved exactly as `effects::give` resolves it. `rules/take`: a TAKE "works just like
+        // the GIVE order, except that the direction of transfer is reversed" - so for a TAKE,
+        // `transfer.party` names the source and `transfer.position` is the receiver instead.
+        let giver = if transfer.is_give {
+            transfer.position
+        } else {
+            match resolve_give_target(&position_of, transfer.position, transfer.party) {
+                GiveTarget::Unit(source) => source,
+                // A unit number this hex does not show: the men are real and that unit's
+                // holdings are not ours to read, so the taker is doubted. `GiveTarget::Discard`
+                // cannot arise here - `TAKE FROM 0` names no source at all - and is treated the
+                // same way.
+                GiveTarget::Discard | GiveTarget::Nowhere => {
+                    mark_doubted(units, &mut working, transfer.position);
+                    continue;
+                }
+            }
+        };
+        let target = if transfer.is_give {
+            resolve_give_target(&position_of, transfer.position, transfer.party)
+        } else {
+            GiveTarget::Unit(transfer.position)
+        };
+        // A GIVE that cannot be resolved is a no-op exactly as `effects::give` returns early for
+        // one: the giver never even loses what it named, so there is nothing to doubt either.
         if matches!(target, GiveTarget::Nowhere) {
             continue;
         }
 
-        let giver_state = working
-            .entry(transfer.position)
-            .or_insert_with(|| seed_working(units, transfer.position));
-        let held = giver_state.held.get(tag.as_str()).copied().unwrap_or(0);
-        let requested = match transfer.amount {
-            Amount::All { except } => held.saturating_sub(*except),
-            Amount::Exact(count) => *count,
-        };
-        let moved = requested.clamp(0, held);
-        if moved == 0 {
-            continue;
-        }
-        let giver_doubted = giver_state.doubted;
-        let giver_skills = giver_state.skills.clone();
-
-        if let GiveTarget::Unit(receiver) = target {
-            let receiver_men_estimated = units[receiver].unit.men_estimated;
-            let receiver_state = working
-                .entry(receiver)
-                .or_insert_with(|| seed_working(units, receiver));
-            if giver_doubted || receiver_men_estimated {
-                // The merge is weighted by the receiver's headcount, or built on a figure this
-                // pass has already declined to trust - either way it cannot be computed.
-                receiver_state.doubted = true;
-            } else {
-                // The merge runs before the men are added to the receiver's own count: weighting
-                // by the headcount after the arrivals is silently wrong.
-                receiver_state.skills = effects::merge_skills(
-                    &receiver_state.skills,
-                    receiver_state.men,
-                    &giver_skills,
-                    moved,
-                );
+        let tags: Vec<String> = match &concerns {
+            GiftConcerns::NotMen => unreachable!("filtered above"),
+            GiftConcerns::Men(tag) => vec![tag.clone()],
+            GiftConcerns::PeopleClass => {
+                let giver_state = working
+                    .entry(giver)
+                    .or_insert_with(|| seed_working(units, giver));
+                // `BTreeMap`'s own order, not the document's - the tags are disjoint, so no two
+                // of them contend for the same holding and it cannot matter which order they
+                // apply in.
+                giver_state
+                    .held
+                    .keys()
+                    .filter(|tag| ruleset.is_man(tag))
+                    .cloned()
+                    .collect()
             }
-            // Either way, the receiver now holds these men - a later GIVE of the same tag within
-            // this hex must see them, whether or not this arrival's skills could be judged. Left
-            // uncredited, a unit that re-gives men it only just received would have its second
-            // GIVE clamped to its own *reported* holdings, silently moving fewer men than the
-            // order says and leaving a downstream unit judged on stale figures - the review
-            // comment on this PR caught exactly this gap.
-            receiver_state.men += moved;
-            *receiver_state.held.entry(tag.clone()).or_insert(0) += moved;
-        }
+        };
 
-        // Either way, the giver: skills untouched, per `rules/give` - an even split leaves
-        // points per man exactly as they were.
-        let giver_state = working
-            .get_mut(&transfer.position)
-            .expect("seeded above this same transfer");
-        giver_state.men -= moved;
-        *giver_state.held.entry(tag).or_insert(0) -= moved;
+        for tag in tags {
+            let giver_state = working
+                .entry(giver)
+                .or_insert_with(|| seed_working(units, giver));
+            let held = giver_state.held.get(tag.as_str()).copied().unwrap_or(0);
+            let requested = match transfer.amount {
+                Amount::All { except } => held.saturating_sub(*except),
+                Amount::Exact(count) => *count,
+            };
+            let moved = requested.clamp(0, held);
+            if moved == 0 {
+                continue;
+            }
+            let giver_doubted = giver_state.doubted;
+            let giver_skills = giver_state.skills.clone();
+
+            if let GiveTarget::Unit(receiver) = target {
+                let receiver_men_estimated = units[receiver].unit.men_estimated;
+                let receiver_state = working
+                    .entry(receiver)
+                    .or_insert_with(|| seed_working(units, receiver));
+                if giver_doubted || receiver_men_estimated {
+                    // The merge is weighted by the receiver's headcount, or built on a figure
+                    // this pass has already declined to trust - either way it cannot be computed.
+                    receiver_state.doubted = true;
+                } else {
+                    // The merge runs before the men are added to the receiver's own count:
+                    // weighting by the headcount after the arrivals is silently wrong.
+                    receiver_state.skills = effects::merge_skills(
+                        &receiver_state.skills,
+                        receiver_state.men,
+                        &giver_skills,
+                        moved,
+                    );
+                }
+                // Either way, the receiver now holds these men - a later transfer of the same tag
+                // within this hex must see them, whether or not this arrival's skills could be
+                // judged. Left uncredited, a unit that re-gives men it only just received would
+                // have its second GIVE clamped to its own *reported* holdings, silently moving
+                // fewer men than the order says and leaving a downstream unit judged on stale
+                // figures - the review comment on this PR caught exactly this gap.
+                receiver_state.men += moved;
+                *receiver_state.held.entry(tag.clone()).or_insert(0) += moved;
+            }
+
+            // Either way, the source: skills untouched, per `rules/give` - an even split leaves
+            // points per man exactly as they were.
+            let giver_state = working
+                .get_mut(&giver)
+                .expect("seeded above this same transfer");
+            giver_state.men -= moved;
+            *giver_state.held.entry(tag).or_insert(0) -= moved;
+        }
     }
 
     for (position, state) in working {
@@ -2359,18 +2384,36 @@ fn apply(
     match &placed.intent {
         Intent::Produce { item } => produce(ledger, hex, actor, placed, item, ruleset),
         Intent::Give { to, what, amount } => {
-            transfer(
-                ledger,
-                hex,
-                actor,
-                placed,
-                what,
-                amount,
-                who.clone(),
-                party_id(to, hex),
-                RecordMovement::No,
-                None,
-            );
+            let receiver = party_id(to, hex);
+            if let Some(tags) = class_tags(ledger, ruleset, who, what, amount) {
+                for tag in tags {
+                    transfer(
+                        ledger,
+                        hex,
+                        actor,
+                        placed,
+                        &Selector::Item(tag),
+                        &Amount::All { except: 0 },
+                        who.clone(),
+                        receiver.clone(),
+                        RecordMovement::No,
+                        None,
+                    );
+                }
+            } else {
+                transfer(
+                    ledger,
+                    hex,
+                    actor,
+                    placed,
+                    what,
+                    amount,
+                    who.clone(),
+                    receiver,
+                    RecordMovement::No,
+                    None,
+                );
+            }
         }
         Intent::Take { from, what, amount } => {
             let source = party_id(from, hex);
@@ -2394,18 +2437,36 @@ fn apply(
                 (Party::Unit(id), None) => Some(id.clone()),
                 _ => None,
             };
-            transfer(
-                ledger,
-                hex,
-                actor,
-                placed,
-                what,
-                amount,
-                source.unwrap_or_default(),
-                Some(who.clone()),
-                RecordMovement::Yes,
-                from_unshown,
-            );
+            let source = source.unwrap_or_default();
+            if let Some(tags) = class_tags(ledger, ruleset, &source, what, amount) {
+                for tag in tags {
+                    transfer(
+                        ledger,
+                        hex,
+                        actor,
+                        placed,
+                        &Selector::Item(tag),
+                        &Amount::All { except: 0 },
+                        source.clone(),
+                        Some(who.clone()),
+                        RecordMovement::Yes,
+                        None,
+                    );
+                }
+            } else {
+                transfer(
+                    ledger,
+                    hex,
+                    actor,
+                    placed,
+                    what,
+                    amount,
+                    source,
+                    Some(who.clone()),
+                    RecordMovement::Yes,
+                    from_unshown,
+                );
+            }
         }
         // Priced by `silver::price_claim`, which `silver::forecast_unit` calls too. The `None`
         // is this surface's policy and is deliberate: the ledger does not cap a claim at the
@@ -2516,6 +2577,51 @@ fn party_id(party: &Party, hex: &Hex<'_>) -> Option<String> {
         }
         Party::Foreign { .. } | Party::Discard => None,
     }
+}
+
+/// The tags one class of `what` expands to for `holder`, when this ledger can resolve it - or
+/// `None` when it cannot, so the caller falls through to today's path (a class the ledger cannot
+/// classify stays `Unpriceable`, exactly as `transfer` already treats it).
+///
+/// `rules/give` defines `ITEM`/`ITEMS` as "the combination of all of the previous categories" -
+/// everything the holder has, silver included - so it needs no classifying at all. `MAN`/`MEN` is
+/// `composition::men_in`'s own filter, the walker's headcount rule stated once
+/// (`ah-dxfd.1`). Every other class - `WEAPON`, `FOOD`, `TRADE` and the rest - still needs a
+/// classification this ledger does not carry and is left exactly as before. `rules/give` gives
+/// `EXCEPT` and a stated amount to the named-item forms alone; the class form is
+/// `GIVE [unit] ALL [item class]` and nothing else, so a class carrying either amount shape is a
+/// shape the rules do not define and is left alone too.
+fn class_tags(
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+    holder: &str,
+    what: &Selector,
+    amount: &Amount,
+) -> Option<Vec<String>> {
+    let Selector::Class(name) = what else {
+        return None;
+    };
+    if *amount != (Amount::All { except: 0 }) {
+        return None;
+    }
+    let is_man_class = name.eq_ignore_ascii_case("MAN") || name.eq_ignore_ascii_case("MEN");
+    let is_item_class = name.eq_ignore_ascii_case("ITEM") || name.eq_ignore_ascii_case("ITEMS");
+    if !is_man_class && !is_item_class {
+        return None;
+    }
+    // `MAN`/`MEN` cannot be resolved without a catalogue, and expanding `ITEM`/`ITEMS` alone
+    // would make the two classes behave differently for no reason a reader could infer.
+    let ruleset = ruleset?;
+
+    Some(
+        ledger
+            .balance
+            .keys()
+            .filter(|(unit_id, _)| unit_id == holder)
+            .filter(|(_, tag)| !is_man_class || ruleset.is_man(tag))
+            .map(|(_, tag)| tag.clone())
+            .collect(),
+    )
 }
 
 /// Moves goods from one unit to another. Either end may be absent - a gift out of the hex is
@@ -9627,14 +9733,35 @@ mod tests {
             });
         }
 
+        /// `ITEM`/`ITEMS` and `MAN`/`MEN` are resolved by `ah-dxfd.1` and no longer land here -
+        /// see `a_gift_of_a_whole_class_of_people_is_counted` below. `WEAPONS` is a class the
+        /// catalogue still cannot classify, so it still turns the unit away exactly as every
+        /// class once did - which is what proves the change is narrow.
         #[test]
         fn a_gift_of_a_whole_class_cannot_be_counted() {
             let hex_region = region(vec![with_item(unit("901"), 5, "sword", "SWOR")]);
-            with_ledger(hex_region, "unit 901\nGIVE 902 ALL ITEMS\n", |ledger| {
+            with_ledger(hex_region, "unit 901\nGIVE 902 ALL WEAPONS\n", |ledger| {
                 assert_eq!(
                     ledger.uncounted.get("901").map(Vec::as_slice),
                     Some([2].as_slice())
                 );
+            });
+        }
+
+        /// `rules/give` defines `MAN`/`MEN` as the people among the previous categories, which
+        /// is exactly `classify_unit`'s own filter - so it needs no classifying by this ledger at
+        /// all, and a gift of it can be counted like any other.
+        #[test]
+        fn a_gift_of_a_whole_class_of_people_is_counted() {
+            let hex_region = region(vec![with_item(unit("901"), 5, "orcs", "ORC"), unit("902")]);
+            with_ledger(hex_region, "unit 901\nGIVE 902 ALL MEN\n", |ledger| {
+                assert_eq!(balance_of(ledger, "901", "ORC"), 0);
+                assert_eq!(balance_of(ledger, "902", "ORC"), 5);
+                assert!(
+                    !ledger.doubted.contains("901"),
+                    "a whole gift of men can now be counted"
+                );
+                assert!(!ledger.uncounted.contains_key("901"));
             });
         }
 
@@ -12830,14 +12957,17 @@ mod tests {
         );
     }
 
-    /// Handing over a whole class of items moves an amount that depends on classifying every item
-    /// the unit holds. Until that is modelled, the unit's silver is not judged at all.
+    /// Handing over a whole class of items the catalogue cannot classify moves an amount that
+    /// depends on classifying every item the unit holds. Until that is modelled, the unit's
+    /// silver is not judged at all. `ITEM`/`ITEMS` and `MAN`/`MEN` are resolved by `ah-dxfd.1`
+    /// and no longer silence a unit this way - a class this narrow still cannot classify names
+    /// nothing else.
     #[test]
     fn giving_a_whole_class_of_items_silences_the_unit() {
         assert_eq!(
             check_ignoring_transfer_targets(
                 vec![region(vec![with_silver(unit("5"), 0)])],
-                "unit 5\nGIVE 7 ALL ITEMS\nGIVE 8 100 SILV\n"
+                "unit 5\nGIVE 7 ALL WEAPONS\nGIVE 8 100 SILV\n"
             ),
             vec![]
         );
@@ -18087,44 +18217,67 @@ mod tests {
         ));
     }
 
+    /// `rules/take`: "works just like the GIVE order, except that the direction of transfer is
+    /// reversed" - so a TAKE of men is judged on what actually arrives, exactly as a GIVE is,
+    /// rather than left unjudged the way it was before `effects.rs` modelled a TAKE of men at
+    /// all (`ah-dxfd.1`). Renamed from `men_taken_rather_than_given_leave_the_taker_unjudged`.
     #[test]
-    fn men_taken_rather_than_given_leave_the_taker_unjudged() {
-        let taker = unit("1010");
-        let source = unit("2200");
+    fn men_taken_rather_than_given_are_judged_on_what_arrives() {
         let orders = "unit 1010\nPRODUCE WOOD\nTAKE FROM 2200 5 HUMN\n";
 
-        let findings = check_turn(
-            &report(vec![region(vec![taker, source])]),
+        let skilled = check_turn(
+            &report(vec![region(vec![
+                unit("1010"),
+                // Points high enough that the merged average still clears WOOD's level-1
+                // threshold: (1 man at 0 + 5 arriving at 180) / 6 = 150, level 2.
+                with_skill_pts(men_holder("2200", 5), "LUMB", 180),
+            ])]),
             orders,
             Some(&ruleset()),
             CheckOptions::default(),
         );
-
         assert!(
-            !codes(&findings).contains(&"produce-without-skill"),
-            "{findings:?}"
+            !codes(&skilled).contains(&"produce-without-skill"),
+            "the taken men know lumberjack, so the taker is judged and found competent: \
+             {skilled:?}"
+        );
+
+        // The control: without the skill, the taker is still judged - not merely left quiet -
+        // and found lacking. That is what proves the absence above is a real judgement.
+        let unskilled = check_turn(
+            &report(vec![region(vec![unit("1010"), men_holder("2200", 5)])]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert!(
+            codes(&unskilled).contains(&"produce-without-skill"),
+            "the taken men bring no lumberjack: {unskilled:?}"
         );
     }
 
+    /// Renamed from `a_gift_of_a_whole_class_leaves_the_receiver_unjudged`: `MAN`/`MEN` is
+    /// `classify_unit`'s own filter and needs no classifying by this pass at all, so a gift of it
+    /// is judged on what actually arrives exactly as a named tag is (`ah-dxfd.1`).
     #[test]
-    fn a_gift_of_a_whole_class_leaves_the_receiver_unjudged() {
-        for class in ["MEN", "ITEMS"] {
-            let giver = men_holder("1010", 5);
-            let receiver = unit("2200");
-            let orders = format!("unit 1010\nGIVE 2200 ALL {class}\n");
-            let ordered = OrderedUnits::read(&orders);
-            let region = region(vec![giver, receiver]);
-            let hex = hex_after_gifts(&region, &ordered);
+    fn a_gift_of_a_whole_class_of_men_is_judged_on_what_arrives() {
+        let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
+        let receiver = unit("2200");
+        let orders = "unit 1010\nGIVE 2200 ALL MEN\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver, receiver]);
+        let hex = hex_after_gifts(&region, &ordered);
 
-            assert!(
-                matches!(
-                    hex.find("2200").unwrap().skills_after_gifts,
-                    SkillsAfterGifts::Unknowable
-                ),
-                "GIVE ALL {class} should leave the receiver unjudged: {:?}",
-                hex.find("2200").unwrap().skills_after_gifts
-            );
-        }
+        assert!(
+            matches!(
+                hex.find("2200").unwrap().skills_after_gifts,
+                SkillsAfterGifts::Merged(_)
+            ),
+            "GIVE ALL MEN can now be judged: {:?}",
+            hex.find("2200").unwrap().skills_after_gifts
+        );
+        // 1 man with none merges with 5 arriving at (30) -> (1*0 + 5*30) / 6 = 25, level 0.
+        assert_eq!(hex.find("2200").unwrap().skill_level("LUMB"), Some(0));
     }
 
     #[test]
@@ -18188,11 +18341,13 @@ mod tests {
     #[test]
     fn doubt_carries_to_the_next_unit_along() {
         let middle = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
-        let source = unit("999");
         let receiver = unit("2200");
+        // "999" is not in this region at all - a unit this hex genuinely does not show, which
+        // still doubts the taker under `resolve_give_target`'s `GiveTarget::Nowhere` even now
+        // that a TAKE of men can otherwise be judged (`ah-dxfd.1`).
         let orders = "unit 1010\nTAKE FROM 999 5 HUMN\nGIVE 2200 3 HUMN\n";
         let ordered = OrderedUnits::read(orders);
-        let region = region(vec![middle, source, receiver]);
+        let region = region(vec![middle, receiver]);
         let hex = hex_after_gifts(&region, &ordered);
 
         assert!(matches!(
