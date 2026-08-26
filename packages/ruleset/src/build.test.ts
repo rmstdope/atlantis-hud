@@ -53,7 +53,7 @@ describe("buildRuleset", () => {
   it("carries what casting a skill costs", () => {
     const ruleset = built();
 
-    expect(ruleset.skills.CRRI.cast).toEqual({ costs: [{ tag: "SILV", amount: 600 }], transmute: {} });
+    expect(ruleset.skills.CRRI.cast?.costs).toEqual([{ tag: "SILV", amount: 600 }]);
     expect(ruleset.skills.FIRE.cast).toBeNull();
   });
 

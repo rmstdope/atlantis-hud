@@ -13,6 +13,7 @@
 export type { BuildingEntry } from "./generated/BuildingEntry";
 export type { CastCost } from "./generated/CastCost";
 export type { CastInput } from "./generated/CastInput";
+export type { CastOutput } from "./generated/CastOutput";
 export type { SkillEntry } from "./generated/SkillEntry";
 export type { SkillLevel } from "./generated/SkillLevel";
 export type { SkillRequirement } from "./generated/SkillRequirement";
@@ -31,6 +32,7 @@ import type { SkillLevel } from "./generated/SkillLevel";
 import type { SkillRequirement } from "./generated/SkillRequirement";
 import type { CastCost } from "./generated/CastCost";
 import type { CastInput } from "./generated/CastInput";
+import type { CastOutput } from "./generated/CastOutput";
 import type { ItemCapacity } from "./generated/ItemCapacity";
 import type { ItemEntry } from "./generated/ItemEntry";
 import type { ItemKind } from "./generated/ItemKind";
@@ -421,7 +423,23 @@ const CAST_COST = /via magic at a cost of ([^.]+)\./i;
 /** "the attempt costs 1000 silver." (Construct Gate) */
 const ATTEMPT_COST = /the attempt costs (\d+) silver/i;
 /** "2 stone [STON] times the skill level into rootstone [ROOT]" - the source and what it becomes. */
-const TRANSMUTE = /\d+ [a-z ]+ \[([A-Z0-9]{2,6})\] times the skill level into [a-z ]+ \[([A-Z0-9]{2,6})\]/gi;
+const TRANSMUTE = /(\d+) [a-z ]+ \[([A-Z0-9]{2,6})\] times the skill level into [a-z ]+ \[([A-Z0-9]{2,6})\]/gi;
+/** "may create 5 times their level in mithril swords [MSWO]" - a count per level, with a number. */
+const CREATES_TIMES_LEVEL = /may create (\d+) times their level in ([^.[]*)\[([A-Z0-9]{2,6})\]/i;
+/** "may create their level in amulets of protection [AMPR]" - the same shape, meaning one per level. */
+const CREATES_ONE_PER_LEVEL = /may create their level in ([^.[]*)\[([A-Z0-9]{2,6})\]/i;
+/** "has a 20 percent times their level chance to create a ring of invisibility [RING]". */
+const CREATES_BY_CHANCE =
+  /(\d+) percent times (?:their|his|her|its) (?:skill )?level chance to create ([^.[]*)\[([A-Z0-9]{2,6})\]/i;
+/** "100 percent times his skill level minus 2 eagles per month" - bird lore alone. */
+const CREATION_LEVEL_OFFSET = /percent times (?:their|his|her|its) skill level minus (\d+)/i;
+/**
+ * The three creation clauses with the item taken out, so a page that states a creation this parser
+ * cannot finish reading stops the scrape rather than silently recording nothing - the same posture
+ * `readCastCost` already takes for a cost clause naming no input.
+ */
+const CREATION_STATED =
+  /may create (?:\d+ times )?their level in |percent times (?:their|his|her|its) (?:skill )?level chance to create /i;
 
 /**
  * Reads what a single level's paragraph says CASTing the skill consumes, or `null` when it says
@@ -431,7 +449,7 @@ const TRANSMUTE = /\d+ [a-z ]+ \[([A-Z0-9]{2,6})\] times the skill level into [a
  * silently dropped: the page has changed shape, and a cost quietly missing is exactly the failure
  * this catalogue exists to prevent - see `RulesetScrapeError`.
  */
-function readCastCost(tag: string, paragraph: string): CastCost | null {
+function readCastCost(tag: string, paragraph: string, level: number): CastCost | null {
   const costs: CastInput[] = [];
 
   const costMatch = paragraph.match(CAST_COST);
@@ -452,16 +470,52 @@ function readCastCost(tag: string, paragraph: string): CastCost | null {
     costs.push({ tag: "SILV", amount: attemptCost });
   }
 
+  const creates: CastOutput[] = [];
+
   const transmute: Record<string, string> = {};
   for (const match of paragraph.matchAll(TRANSMUTE)) {
-    const [, source, output] = match;
+    const [, perLevel, source, output] = match;
     transmute[output] = source;
+    creates.push({
+      tag: output,
+      level,
+      percentPerLevel: Number.parseInt(perLevel, 10) * 100,
+      levelOffset: 0
+    });
   }
 
-  if (costs.length === 0 && Object.keys(transmute).length === 0) {
+  const timesLevel = paragraph.match(CREATES_TIMES_LEVEL);
+  const onePerLevel = paragraph.match(CREATES_ONE_PER_LEVEL);
+  const byChance = paragraph.match(CREATES_BY_CHANCE);
+  const offsetMatch = paragraph.match(CREATION_LEVEL_OFFSET);
+  const levelOffset = offsetMatch ? -Number.parseInt(offsetMatch[1], 10) : 0;
+  if (timesLevel) {
+    creates.push({
+      tag: timesLevel[3],
+      level,
+      percentPerLevel: Number.parseInt(timesLevel[1], 10) * 100,
+      levelOffset
+    });
+  } else if (onePerLevel) {
+    creates.push({ tag: onePerLevel[2], level, percentPerLevel: 100, levelOffset });
+  } else if (byChance) {
+    creates.push({
+      tag: byChance[3],
+      level,
+      percentPerLevel: Number.parseInt(byChance[1], 10),
+      levelOffset
+    });
+  } else if (CREATION_STATED.test(paragraph)) {
+    // A creation sentence the three shapes above could not finish reading is the page having
+    // changed shape, and must stay loud - the same posture `readCastCost` already takes for a
+    // cost clause naming no input.
+    throw new RulesetScrapeError(`could not read what skill ${tag} creates in "${paragraph}"`);
+  }
+
+  if (costs.length === 0 && Object.keys(transmute).length === 0 && creates.length === 0) {
     return null;
   }
-  return { costs, transmute };
+  return { costs, transmute, creates };
 }
 
 /** The clause a production sentence opens with. Every PRODUCE on the page today is a `may PRODUCE`. */
@@ -555,7 +609,11 @@ function mergeProduction(existing: Production[] | undefined, found: Production[]
   return merged;
 }
 
-/** Unions two `CastCost`s across levels: `costs` from whichever level states them, `transmute` merged. */
+/**
+ * Unions two `CastCost`s across levels: `costs` from whichever level states them, `transmute`
+ * merged, and `creates` concatenated with a tag already seen dropped - the paragraphs arrive in
+ * level order, so the first paragraph to state a tag is the one kept.
+ */
 function mergeCast(existing: CastCost | null | undefined, found: CastCost | null): CastCost | null {
   if (!existing) {
     return found;
@@ -565,7 +623,11 @@ function mergeCast(existing: CastCost | null | undefined, found: CastCost | null
   }
   return {
     costs: existing.costs.length > 0 ? existing.costs : found.costs,
-    transmute: { ...existing.transmute, ...found.transmute }
+    transmute: { ...existing.transmute, ...found.transmute },
+    creates: [
+      ...existing.creates,
+      ...found.creates.filter((made) => !existing.creates.some((seen) => seen.tag === made.tag))
+    ]
   };
 }
 
@@ -621,7 +683,7 @@ export function parseSkillReference(html: string): SkillReference {
       // write null over a figure the page did give would lose every cost in the catalogue.
       cost: existing?.cost ?? stated,
       maxLevel: Math.max(existing?.maxLevel ?? 0, Number.parseInt(level, 10)),
-      cast: mergeCast(existing?.cast, readCastCost(tag, paragraph)),
+      cast: mergeCast(existing?.cast, readCastCost(tag, paragraph, Number.parseInt(level, 10))),
       produces: mergeProduction(
         existing?.produces,
         readProduction(tag, paragraph, Number.parseInt(level, 10))
