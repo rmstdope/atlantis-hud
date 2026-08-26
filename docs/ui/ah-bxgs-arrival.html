@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-bxgs &mdash; Q1: the unit the goods arrive at</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .ord { color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; }
+  .unk { color:var(--ink-dim); }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+</style></head><body>
+<header><h1>Question 1 &mdash; <span>the unit the goods arrive at</span></h1>
+<p><code>TRANSPORT</code> (and its synonym <code>DISTRIBUTE</code>) moves goods to a unit <b>in another hex</b>, up to two or three hexes away, through a quartermaster. Both ends of the order change: the sender ends the month holding less, the receiver holding more.</p>
+<p><b>The sending end is not in question</b> &mdash; goods leave, the list falls, exactly as a gift does today. This page is about <b>the receiving unit's row</b>, which sits in a different hex entirely and whose figure is decided by an order written in somebody else's block.</p>
+<p><b>The timing fact that makes this a question.</b> <code>rules/sequenceofevents</code> puts <code>TRANSPORT</code> <b>dead last</b> &mdash; after give, after the market, after movement, after production and building. So the goods really do arrive this month, but they arrive too late to be spent, sold, given or carried. The column already has a wording for exactly that shape, on production: <span class="mono" style="color:var(--brass-bright)">Production resolves last, so they cannot be spent this month.</span></p>
+<p class="mono" style="color:var(--brass-bright);font-size:13px;margin-top:12px">unit 5530&nbsp;&nbsp;<span style="color:var(--ink-dim)">; in mountain (34,2)</span><br>&nbsp;&nbsp;transport 6857 30 STON<br><br>unit 6857&nbsp;&nbsp;<span style="color:var(--ink-dim)">; the quartermaster, in mountain (36,4) &mdash; two hexes away</span><br>&nbsp;&nbsp;<span style="color:var(--ink-dim)">; no orders of its own</span></p></header>
+<main>
+
+<h3 class="sec">A &mdash; the receiver's row moves, in the same italic every other projection uses <span class="rec">&nbsp;&nbsp;recommended</span></h3>
+<p>The stone is counted into unit 6857's list and the row goes italic, because the figure is a projection. The hover says where it came from and that it lands too late to be spent.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">mountain (34,2) &mdash; the sender</div>
+  <table class="units"><colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:48px"><col style="width:150px"><col style="width:220px"><col style="width:120px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th></tr>
+  <tr><td class="own">*</td><td class="uid">5530</td><td>Miners</td><td>6</td><td>mining 3</td><td class="pred colhi">120 SILV, 10 STON</td><td class="ord">&mdash;</td></tr>
+  </table>
+</div>
+<div class="stage">
+  <div class="hexlab">mountain (36,4) &mdash; the receiver, two hexes away</div>
+  <table class="units"><colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:48px"><col style="width:150px"><col style="width:220px"><col style="width:120px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th></tr>
+  <tr><td class="own">*</td><td class="uid">6857</td><td>Advisor</td><td>1</td><td>quartermaster 5</td><td class="pred colhi">88 SILV, 45 STON</td><td class="ord">&mdash;</td></tr>
+  </table>
+</div>
+<div class="tip"><b>hover on the receiver's ITEMS cell</b>was: 88 SILV, 15 STON
+Includes 30 STON transported from unit 5530. Transport resolves last, so they cannot be spent this month.</div>
+<ul class="notes">
+  <li>The column keeps its one promise: <i>what this unit will have</i>. A quartermaster's whole job is receiving, so a quartermaster whose row never moves is the column at its least useful.</li>
+  <li>Italic already means <i>this figure is a projection</i>, and nothing new has to be learned.</li>
+  <li>The caveat sentence is the shape the column already uses for production and casting, so a player who has met one has met this.</li>
+  <li class="con">A row can now go italic because of an order written in a <b>different hex's</b> block &mdash; the first time that is true of anything but a <code>GIVE</code> between neighbours.</li>
+</ul>
+</div>
+
+<h3 class="sec">B &mdash; only the sender moves; the receiver's row is left alone</h3>
+<p>Goods leave the sender. The receiving unit shows its report figure, upright, as if nothing were coming.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">mountain (34,2) &mdash; the sender</div>
+  <table class="units"><colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:48px"><col style="width:150px"><col style="width:220px"><col style="width:120px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th></tr>
+  <tr><td class="own">*</td><td class="uid">5530</td><td>Miners</td><td>6</td><td>mining 3</td><td class="pred colhi">120 SILV, 10 STON</td><td class="ord">&mdash;</td></tr>
+  </table>
+</div>
+<div class="stage">
+  <div class="hexlab">mountain (36,4) &mdash; the receiver, two hexes away</div>
+  <table class="units"><colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:48px"><col style="width:150px"><col style="width:220px"><col style="width:120px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th></tr>
+  <tr><td class="own">*</td><td class="uid">6857</td><td>Advisor</td><td>1</td><td>quartermaster 5</td><td class="colhi">88 SILV, 15 STON</td><td class="ord">&mdash;</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Nothing can be wrong about a figure that never moved: whether the goods actually arrive depends on the target really being a quartermaster with a Caravanserai in range, and the app checks none of that today.</li>
+  <li class="con">This is the half of the bug the bead calls <b>the worse half</b>. A receiving unit can be told it cannot afford or cannot carry out orders that the incoming goods would cover.</li>
+  <li class="con">Goods vanish from the map: they leave one row and appear on none. A player reading both hexes sees stone destroyed.</li>
+</ul>
+</div>
+
+<h3 class="sec">C &mdash; the receiver's row moves, but marked apart from ordinary projections</h3>
+<p>The stone is counted, and the arrival is drawn in a dimmer tone with a trailing arrow, to say <i>this came from elsewhere and may not arrive</i>.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">mountain (36,4) &mdash; the receiver</div>
+  <table class="units"><colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:48px"><col style="width:150px"><col style="width:220px"><col style="width:120px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th></tr>
+  <tr><td class="own">*</td><td class="uid">6857</td><td>Advisor</td><td>1</td><td>quartermaster 5</td><td class="pred colhi">88 SILV, 45 STON<span class="unk"> &#8592;</span></td><td class="ord">&mdash;</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Says out loud that this row changed for a reason written somewhere else.</li>
+  <li class="con">A second glyph in a column that already carries <code>+ ?</code>, and the two mean different things. Two marks in one narrow cell is how a column stops being readable.</li>
+  <li class="con">It is the first truncated thing on a long list, exactly as <code>+ ?</code> is &mdash; and it would be carrying a meaning the hover already carries in words.</li>
+</ul>
+</div>
+
+</main>
+<footer>Column widths are the real ones. The <b>ITEMS</b> column is outlined in brass on every stage. Fixture: the quartermasters in <code>neworigins-3.0.0-g3-f42-t82.rep</code> stand in mountain (36,4).</footer>
+</body></html>

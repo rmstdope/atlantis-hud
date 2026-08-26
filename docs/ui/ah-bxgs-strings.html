@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-bxgs &mdash; round 2: every sentence, as it will ship</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .ord { color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; }
+  .unk { color:var(--ink-dim); }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+</style></head><body>
+<header><h1>Round 2 &mdash; <span>every sentence, as it will ship</span></h1>
+<p>You chose <b>A</b> (the receiver's row moves), <b>U1</b> (goods leave for a target the report cannot see, and the hover says so), <b>R1</b> (refused goods stay put and the hover says why), and for Q4 the rule <b>&ldquo;anything a <code>create &hellip;</code> spell can make is an artefact and cannot be transported&rdquo;</b>.</p>
+<p><b>Your Q4 rule measures cleanly, and it is better than any option I offered.</b> The game has 21 skills whose name begins <code>create</code>; 18 of them name an item that exists, and every one of those 18 requires <code>artifact lore</code>. The other three &mdash; <i>create aura of fear</i>, <i>create phantasmal beasts</i>, <i>create phantasmal demons</i> &mdash; make no item at all, and the beasts and demons are already refused as summoned creatures. So the rule adds exactly 18 tags and removes all doubt about nine of the fourteen I asked about.</p>
+<p><b>What it leaves.</b> Refused: <b>105 of 171 items</b>. Five items are still unaccounted for by any rule: <code>PORT</code> portal, <code>MWAG</code> magic wagon, <code>GLID</code> glider, <code>HPOT</code> healing potion, <code>IENT</code> imprisoned entity. Under your rule they are transportable. <b>Question 5 below is whether that is what you meant.</b></p>
+<p class="mono" style="color:var(--brass-bright);font-size:13px;margin-top:12px">unit 5530&nbsp;&nbsp;<span style="color:var(--ink-dim)">; mountain (34,2)</span><br>&nbsp;&nbsp;transport 6857 30 STON<br>&nbsp;&nbsp;transport 6857 2 HORS<br>&nbsp;&nbsp;transport 1234 5 FUR</p></header>
+<main>
+
+<h3 class="sec">The sender's hover &mdash; W1: departures are named <span class="rec">&nbsp;&nbsp;recommended</span></h3>
+<p>Every transport out gets its own line, in document order, so the hover reads as a list of what left and where it went. The arrival side already names its counterparty, and this keeps the two ends symmetric.</p>
+<div class="card">
+<div class="stage">
+  <table class="units"><colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:48px"><col style="width:150px"><col style="width:220px"><col style="width:120px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th></tr>
+  <tr><td class="own">*</td><td class="uid">5530</td><td>Miners</td><td>6</td><td>mining 3</td><td class="pred colhi">120 SILV, 10 STON, 2 HORS</td><td class="ord">&mdash;</td></tr>
+  </table>
+</div>
+<div class="tip"><b>hover</b>was: 120 SILV, 40 STON, 2 HORS, 5 FUR
+Sends 30 STON to unit 6857.
+The game will not transport horses, so they stay with this unit.
+Sends 5 FUR to unit 1234, which your report does not show.</div>
+<ul class="notes">
+  <li>The player can read off every transport they wrote, and see at a glance which one did nothing.</li>
+  <li>One shape of sentence for both the ordinary and the unverifiable case, differing only in the trailing clause.</li>
+  <li class="con">A unit with six transports has a seven-line hover.</li>
+</ul>
+</div>
+
+<h3 class="sec">W2 &mdash; only the exceptional lines are named</h3>
+<p>An ordinary transport out says nothing: the falling figure and the italic already carry it. Only the refusal and the unverifiable target earn a sentence.</p>
+<div class="card">
+<div class="stage">
+  <table class="units"><colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:48px"><col style="width:150px"><col style="width:220px"><col style="width:120px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th></tr>
+  <tr><td class="own">*</td><td class="uid">5530</td><td>Miners</td><td>6</td><td>mining 3</td><td class="pred colhi">120 SILV, 10 STON, 2 HORS</td><td class="ord">&mdash;</td></tr>
+  </table>
+</div>
+<div class="tip"><b>hover</b>was: 120 SILV, 40 STON, 2 HORS, 5 FUR
+The game will not transport horses, so they stay with this unit.
+Sends 5 FUR to unit 1234, which your report does not show.</div>
+<ul class="notes">
+  <li>Short. The hover says only what the figures cannot.</li>
+  <li class="con">The <code>was:</code> line drops both 30 STON and 5 FUR and the hover explains only one of them, so the player has to work out which order accounts for the rest.</li>
+  <li class="con">Breaks the symmetry with the receiving row, which does name its counterparty.</li>
+</ul>
+</div>
+
+<h3 class="sec">The receiver's hover &mdash; the timing clause</h3>
+<p><code>rules/sequenceofevents</code> puts transport last, after movement and production, so arriving goods cannot be spent, sold, given or carried this month. The column says this about production already. Two ways to say it here:</p>
+<div class="split">
+  <div class="card"><h2><em>T1</em> the full clause &nbsp;<span class="rec">recommended</span></h2>
+  <p class="concept">Exactly the shape the production sentence uses.</p>
+  <div class="tip"><b>hover on unit 6857</b>was: 88 SILV, 15 STON
+Includes 30 STON transported from unit 5530. Transport resolves last, so they cannot be spent this month.</div>
+  <ul class="notes"><li>A player who has met the production sentence has met this one.</li><li class="con">Long, and repeated once per arriving item.</li></ul>
+  </div>
+  <div class="card"><h2><em>T2</em> the clause once, at the end</h2>
+  <p class="concept">Name each arrival plainly; state the timing once, however many arrive.</p>
+  <div class="tip"><b>hover on unit 6857</b>was: 88 SILV, 15 STON, 4 SPEA
+Includes 30 STON transported from unit 5530.
+Includes 12 SPEA transported from unit 4670.
+Transport resolves last, so transported goods cannot be spent this month.</div>
+  <ul class="notes"><li>Scales: five arrivals cost five short lines and one clause.</li><li class="con">A second wording of a sentence the column already ships, and the clause floats free of the line it qualifies.</li></ul>
+  </div>
+</div>
+
+<h3 class="sec">A row that both sends and receives</h3>
+<p>A quartermaster receiving from a field unit and forwarding to a second quartermaster is the ordinary middle of a supply chain, and the game runs all three phases in one month. Both kinds of line appear in one hover, arrivals first:</p>
+<div class="card">
+<div class="stage">
+  <table class="units"><colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:48px"><col style="width:150px"><col style="width:220px"><col style="width:120px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th></tr>
+  <tr><td class="own">*</td><td class="uid">6857</td><td>Advisor</td><td>1</td><td>quartermaster 5</td><td class="pred colhi">88 SILV, 15 STON</td><td class="ord">&mdash;</td></tr>
+  </table>
+</div>
+<div class="tip"><b>hover</b>was: 88 SILV, 15 STON
+Includes 30 STON transported from unit 5530. Transport resolves last, so they cannot be spent this month.
+Sends 30 STON to unit 16340.</div>
+<ul class="notes">
+  <li class="n">Arrivals before departures, matching the order the game's three transport phases run in.</li>
+  <li class="n">The list is unchanged &mdash; 30 in, 30 out &mdash; but the row is still italic, because the hover has something to say. <b>Question 6 asks whether that is right.</b></li>
+</ul>
+</div>
+
+</main>
+<footer>Sentences are quoted exactly as they would ship. Nothing on this page is left for the implementer to word.</footer>
+</body></html>
