@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-dxfd — the weapons are stale too</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  table.grid { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:8px; font-family:system-ui,-apple-system,sans-serif; }
+  table.grid th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.grid td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  table.grid td.n { text-align:right; font-family:'SF Mono',Menlo,monospace; }
+  .orders { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); white-space:pre; margin-top:10px; }
+  .dim { color:var(--ink-dim); } .red { color:var(--danger); } .ok { color:var(--ok); }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); } .bad { border-left-color:var(--danger); }
+  .good { border-left-color:var(--ok); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 4px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cyc { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft);
+    background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:11px 14px; margin-top:10px; }
+  .cyc b { color:var(--danger); }
+  .q { background:#2a2113; border:1px solid #5c4718; border-left:4px solid var(--brass); border-radius:5px;
+    padding:11px 14px; margin:22px 0 2px; max-width:100ch; font-size:13.5px; }
+  .q b { color:var(--brass); }
+</style></head><body>
+<header>
+  <h1>ah-dxfd — <span>the weapons are stale too, and that changes the bead</span></h1>
+  <p>Chasing your point about the swords: <b>there is no guessing in that example, and I picked a bad one.</b>
+  A TAKE of swords is already counted — the ledger applies it. But following it through turned up something
+  the bead as filed does not mention, and it is load-bearing.</p>
+  <p>A unit is combat ready in the numbers the app uses as <code>min(men, things it can wield or ride)</code>
+  (<code>readiness</code>, <code>silver.rs:1930</code>). It reads the men from <code>UnitFacts.men</code> —
+  the report's — and the weapons from <code>UnitFacts.items</code>, which is <b>also the report's</b>
+  (<code>semantics.rs:862</code>). The bead names the headcount and the skills. It does not name the items,
+  and the pillage half does not work without them.</p>
+</header>
+<main>
+
+<h3 class="sec">Fixing the men alone makes the pillage warning worse</h3>
+<p>The bead's own headline case. Isles of Kel, tax base 2400, so 24 combat ready men are needed.</p>
+<div class="orders">unit 1234              <span class="dim">; Home guard — 19 HUMN, COMB 1 (30), 35 SWOR</span>
+FORM 1
+  PILLAGE
+END
+GIVE NEW 1 10 HUMN
+GIVE NEW 1 10 SWOR</div>
+<table class="grid">
+<tr><th>&nbsp;</th><th class="n">Home guard</th><th class="n">Raiders (new 1)</th><th class="n">Region total</th><th>Warning</th></tr>
+<tr><td><b>Today</b></td><td class="n">min(19, 35) = 19</td><td class="n">min(0, 0) = 0</td><td class="n">19</td>
+    <td>fires, with a false explanation</td></tr>
+<tr><td><b class="red">Men and skills only</b></td><td class="n">min(9, 35) = 9</td><td class="n red">min(10, <b>0</b>) = 0</td><td class="n red">9</td>
+    <td class="red">fires, and now the number is wrong too</td></tr>
+<tr><td><b class="ok">Men, skills and items</b></td><td class="n">min(9, 25) = 9</td><td class="n ok">min(10, 10) = 10</td><td class="n ok">19</td>
+    <td class="ok">fires; correct number, no false explanation</td></tr>
+</table>
+<div class="note bad"><b>Today's 19 is right by accident</b> — the ten men the app forgets to give the Raiders are
+the same ten it forgets to take off the Home guard, so the error cancels. Move the men and leave the swords
+behind, and the cancellation stops: the app would say <b>9</b> where the truth is 19, and tell you an order
+that works cannot be filed. <b>A men-only fix is a regression on the very warning this bead is named after.</b></div>
+
+<h3 class="sec">The answer is already computed — but in the wrong order</h3>
+<p><code>ledger_for</code> (<code>semantics.rs:1583</code>) seeds every unit's item balance from the report and
+then applies every GIVE, TAKE, BUY, SELL and WITHDRAW to it. That balance <i>is</i> the post-order weapon count.
+The trouble is when it is ready:</p>
+<div class="cyc">ledger_for:
+  1. seed balance from the report's items
+  2. region_wages(hex)  &rarr;  combat_ready_in  &rarr;  readiness  &rarr;  <b>wants the weapons</b>
+  3. apply every intent  &rarr;  the balance becomes post-order
+       &nbsp;&nbsp;&nbsp;&nbsp;&hellip; and the PILLAGE arm here reads <b>region.combat_ready from step 2</b>
+  4. charge_upkeep</div>
+<div class="note">Combat-ready is needed to price a PILLAGE, and the weapons that decide combat-ready are not
+settled until after the PILLAGE has been priced. <b>That is a genuine cycle, not an oversight</b> — it is why
+<code>region_wages</code> is computed once per hex, before the intent loop (<code>ah-1ad6.2</code>,
+<code>ah-lu0f.3</code>). Breaking it means applying the item transfers in a pass of their own before the
+silver is priced, which is a real change to a function two surfaces share.</p></div>
+
+<div class="q"><b>The question.</b> The bead as filed is "the headcount and the skills". The work it actually
+needs is "the headcount, the skills <i>and</i> the weapons", and the third one is the awkward one.
+<b>How should it be shaped?</b></div>
+
+<span class="opt">W1 — split ah-dxfd, weapons first</span>
+<table class="grid">
+<tr><th>Child 1 — the weapons</th><th>Child 2 — the men and the skills</th></tr>
+<tr><td><code>readiness</code> counts the weapons and mounts the unit will actually hold, out of the ledger's
+  balance. The intent walk is reordered so item transfers settle before the silver is priced.
+  <b>Safe on its own</b>: it can only make the pillage count more right, and today's cancelling error is
+  untouched because the headcount does not move.</td>
+  <td>Everything the bead was filed for — upkeep, tax, entertaining, CAST income and the pillage headcount —
+  reads the post-gift figures. Lands on top of child 1, so the regression above can never ship.</td></tr>
+</table>
+<ul class="notes">
+  <li>Each child is one small increment with its own PR, and either one alone leaves the app better than it
+    found it.</li>
+  <li>The hard part — reordering the ledger's passes — is isolated in a bead of its own, where it can be
+    reviewed as the structural change it is rather than as a detail of a headcount fix.</li>
+  <li>A dependency edge makes the ordering the fleet's business rather than a note somebody has to remember.</li>
+  <li class="con">Two review cycles instead of one, and the fix you are waiting for is behind the other one.</li>
+</ul>
+
+<span class="opt">W2 — one bead, weapons as its first increment</span>
+<ul class="notes">
+  <li>One PR, so the two halves cannot be separated by accident and the regression is impossible by
+    construction.</li>
+  <li>The reviewer sees the whole argument at once, including why the ledger's passes had to be reordered.</li>
+  <li class="con">It is a large bead — a struct's inputs, a pass reordering, and six arithmetic surfaces — and
+    this project's rule is small increments delivered independently.</li>
+  <li class="con">If the ledger reordering turns out to be worse than it looks, the headcount fix is stuck
+    behind it with no way to land alone.</li>
+</ul>
+
+<span class="opt">W3 — keep ah-dxfd to men and skills, and leave PILLAGE out of it</span>
+<ul class="notes">
+  <li>Smallest possible change; upkeep, tax, entertaining and CAST all get right immediately.</li>
+  <li class="con"><b>It cannot be done.</b> <code>readiness</code> reads the same
+    <code>UnitFacts</code> the upkeep does — there is no way to give the maintenance pass the new headcount
+    and the pillage pass the old one without keeping two views of one unit, which is the fault the bead
+    exists to remove.</li>
+  <li class="con">Listed only so it is on the record as considered and rejected.</li>
+</ul>
+</main></body></html>
