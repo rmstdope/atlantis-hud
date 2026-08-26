@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-jown &mdash; Q1: what the ITEMS cell shows for BUY ALL</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; position:relative; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .ord { color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; }
+  .unk { color:var(--ink-dim); }
+  .bad { color:var(--danger); }
+  .market { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            font:11.5px/1.5 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); display:inline-block; margin-bottom:12px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+</style></head><body>
+<header><h1>Q1 &mdash; <span>what the ITEMS cell shows for a <code style="font-size:20px">BUY ALL</code></span></h1>
+<p>A unit may write <code>BUY ALL GRAI</code> instead of a number. <code>rules/buy</code>: <i>&ldquo;the unit will attempt to buy as many as it can afford&rdquo;</i>, and an oversubscribed line is <i>&ldquo;split among the buyers in proportion to the amount each buyer attempted to buy&rdquo;</i>.</p>
+<p><b>The situation on this page.</b> The market carries <code>30 grain [GRAI] at $18</code>. Unit 5512 <i>Hunters</i> holds <code>356 SILV, 3 SWOR</code> and orders <code>buy all GRAI</code>. It can afford 19 (19&times;18 = 342), the market has 30, so it buys <b>19</b> and is left with <b>14 SILV</b>.</p>
+<p><b>What the application does today &mdash; and why this is a bead.</b> The SILVER column already works this out and shows <code>14</code>. The ITEMS column does not, and shows the report&rsquo;s untouched list with a <code>+&nbsp;?</code>. <b>The two cells on one row contradict each other.</b></p></header>
+<main>
+
+<h3 class="sec">Today &mdash; the contradiction this bead closes</h3>
+<p>Not an option. This is the shipped behaviour, here so the options below have something to be better than.</p>
+<div class="card"><div class="market">For Sale: 30 grain [GRAI] at $18</div><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:150px"><col style="width:180px"><col><col style="width:110px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th><th class="colhi">SILVER</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5512</td><td>Hunters</td><td class="ord">buy all GRAI</td><td class="colhi">356 SILV, 3 SWOR<span class="unk"> + ?</span></td><td class="colhi"><span class="pred">14</span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li class="con">ITEMS says the unit still holds 356 silver. SILVER says it holds 14. Both are on the same row.</li>
+<li class="con">No grain appears anywhere, though the unit will certainly have some.</li>
+<li class="con">The ledger never charges the purchase, so a later order in the same month is judged against silver that is already spent.</li>
+</ul></div>
+
+<h3 class="sec">Option A &mdash; the settled figure, plain</h3>
+<p>The cell reads exactly as it would for <code>buy 19 GRAI</code>. The <code>+&nbsp;?</code> goes, because there is no longer anything uncounted.</p>
+<div class="card"><div class="market">For Sale: 30 grain [GRAI] at $18</div><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:150px"><col style="width:180px"><col><col style="width:110px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th><th class="colhi">SILVER</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5512</td><td>Hunters</td><td class="ord">buy all GRAI</td><td class="colhi"><span class="pred">14 SILV, 3 SWOR, 19 GRAI</span></td><td class="colhi"><span class="pred">14</span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>The two columns tell one story, which is the whole point of the bead.</li>
+<li>A stated <code>buy 19 GRAI</code> already shows a settled figure with no caveat, and it rests on exactly the same unknowns (foreign buyers are invisible in both). Marking only <code>ALL</code> would be inconsistent.</li>
+<li>Nothing new to learn: the cell means what it has always meant.</li>
+<li class="con">A figure that depends on the application&rsquo;s reckoning of the unit&rsquo;s income is shown as flatly as one the player typed.</li>
+</ul></div>
+
+<h3 class="sec">Option B &mdash; the settled figure, and the mark stays</h3>
+<p>The number appears, but <code>+&nbsp;?</code> is kept to say the figure rests on an assumption. The hover then explains it.</p>
+<div class="card"><div class="market">For Sale: 30 grain [GRAI] at $18</div><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:150px"><col style="width:180px"><col><col style="width:110px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th><th class="colhi">SILVER</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5512</td><td>Hunters</td><td class="ord">buy all GRAI</td><td class="colhi"><span class="pred">14 SILV, 3 SWOR, 19 GRAI</span><span class="unk"> + ?</span></td><td class="colhi"><span class="pred">14</span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>Honest that an <code>ALL</code> is a projection rather than a quantity the player chose.</li>
+<li class="con"><code>+&nbsp;?</code> currently means <i>&ldquo;something here could not be counted&rdquo;</i>. Reusing it for <i>&ldquo;counted, but from an estimate&rdquo;</i> gives one glyph two meanings.</li>
+<li class="con">The SILVER cell beside it carries no mark for the same order, so the row is inconsistent again &mdash; in a smaller way.</li>
+</ul></div>
+
+<h3 class="sec">Option C &mdash; the figure marked as a ceiling</h3>
+<p>The quantity the <code>ALL</code> produced is written <code>&le;19 GRAI</code>: foreign buyers can only take it down, never up.</p>
+<div class="card"><div class="market">For Sale: 30 grain [GRAI] at $18</div><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:150px"><col style="width:180px"><col><col style="width:110px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th><th class="colhi">SILVER</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5512</td><td>Hunters</td><td class="ord">buy all GRAI</td><td class="colhi"><span class="pred">14 SILV, 3 SWOR, &le;19 GRAI</span></td><td class="colhi"><span class="pred">14</span></td></tr>
+</tbody></table>
+</div>
+<ul class="notes">
+<li>Says precisely the true thing: the number is an upper bound.</li>
+<li class="con">The same is true of every settled <code>BUY</code> in the table, so either the glyph spreads to all of them or it is arbitrary here.</li>
+<li class="con">A new glyph in the narrowest column, and <code>formatItems</code> currently renders <code>&lt;amount&gt; &lt;tag&gt;</code> and nothing else.</li>
+</ul></div>
+
+<footer><b>Recommended: A.</b> The bead exists because ITEMS and SILVER disagree; A is the only option that leaves them saying the same thing in the same way. The uncertainty B and C want to mark is real but it is not specific to <code>ALL</code> &mdash; it applies identically to <code>buy 19 GRAI</code>, which has shown a bare settled figure since <code>ah-agbm</code>.</footer>
+</main></body></html>

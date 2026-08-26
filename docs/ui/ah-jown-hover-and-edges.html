@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-jown &mdash; Q2-Q4: the hover, and the states the happy path hides</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; position:relative; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .ord { color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; }
+  .unk { color:var(--ink-dim); }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; max-width:70ch; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip .soft { color:var(--ink-soft); }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .market { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            font:11.5px/1.5 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); display:inline-block; margin-bottom:12px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+</style></head><body>
+<header><h1>Q2&ndash;Q4 &mdash; <span>the hover, and the states the happy path hides</span></h1>
+<p>These pages assume Q1 landed on a settled figure in the cell. What is left is what the <b>hover</b> says, and what the three awkward states look like: a unit that can afford <b>none</b>, a market that runs out before the silver does, and <b>two</b> <code>BUY ALL</code> lines on one unit.</p>
+<p>Every sentence below is written as it would ship. The ITEMS hover is a stack of lines beginning <code>was: &hellip;</code> &mdash; that shape is already in place and does not change.</p></header>
+<main>
+
+<h3 class="sec">Q2 &mdash; what the hover says about a <code>BUY ALL</code></h3>
+<p>Same unit as Q1: <code>356 SILV, 3 SWOR</code>, <code>buy all GRAI</code>, market <code>30 grain at $18</code>, buys 19 for 342. The silver ran out first.</p>
+<div class="split3">
+<div class="card"><h2><em>H1</em>Says nothing extra</h2><p class="concept">The cell already shows 19 GRAI. The hover keeps only the line it always had.</p><div class="stage">
+<div class="tip"><b>hover</b>was: 356 SILV, 3 SWOR</div>
+</div><ul class="notes">
+<li>Nothing new to write, nothing new to translate, nothing that can go stale.</li>
+<li class="con">The player has to do 356&nbsp;&divide;&nbsp;18 themselves to see why it is 19 and not 30.</li>
+<li class="con">Gives no warning at all in the two states below, where the answer is <b>none</b>.</li>
+</ul></div>
+
+<div class="card"><h2><em>H2</em>Names the cap that bit</h2><p class="concept">One line, and it says <i>which</i> limit produced the number &mdash; the unit&rsquo;s silver, or the market&rsquo;s stock.</p><div class="stage">
+<div class="tip"><b>hover</b>was: 356 SILV, 3 SWOR<br><span class="soft">Buys 19 grain &mdash; as many as its silver will pay for.</span></div>
+<div class="tip"><b>when the market runs out first</b><span class="soft">Buys 5 grain &mdash; all the market will sell it.</span></div>
+</div><ul class="notes">
+<li>Answers the question the player actually has, which is &ldquo;why that number?&rdquo;.</li>
+<li>The same shape <code>BUILD</code> uses (<code>ah-ofpb.2</code>): say the figure, then say what stopped it.</li>
+<li class="con">Two sentences to keep right instead of none, and a third for the tie.</li>
+</ul></div>
+
+<div class="card"><h2><em>H3</em>One sentence, always the same</h2><p class="concept">States the figure without naming the limit.</p><div class="stage">
+<div class="tip"><b>hover</b>was: 356 SILV, 3 SWOR<br><span class="soft">Buys 19 grain, the most this order can get.</span></div>
+</div><ul class="notes">
+<li>One string, whatever the situation.</li>
+<li class="con">Repeats the cell and adds nothing &mdash; the number is already visible two centimetres away.</li>
+</ul></div>
+</div>
+
+<h3 class="sec">Q3 &mdash; the unit that can afford none</h3>
+<p>Unit 5518 <i>Scouts</i> holds <code>10 SILV, 2 LEAT</code> and orders <code>buy all GRAI</code> at $18. It buys nothing and spends nothing. <b>Its items are unchanged, so nothing is in italic and there is nothing to project.</b> The player has written an order that will do literally nothing.</p>
+<div class="split">
+<div class="card"><h2><em>Z1</em>Silent &mdash; the row reads as if no order were written</h2><div class="stage">
+<div class="market">For Sale: 30 grain [GRAI] at $18</div>
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:140px"><col style="width:170px"><col><col style="width:90px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th><th>SILVER</th></tr></thead>
+<tbody><tr><td class="own">*</td><td class="uid">5518</td><td>Scouts</td><td class="ord">buy all GRAI</td><td class="colhi">10 SILV, 2 LEAT</td><td>10</td></tr></tbody></table>
+<div class="tip"><b>hover</b><span class="soft">(none &mdash; the cell has nothing to say)</span></div>
+</div><ul class="notes">
+<li>Truthful: nothing changes, so nothing is marked.</li>
+<li class="con">Indistinguishable from a unit with no market order at all. The player&rsquo;s wasted order is invisible in the one place they went to check it.</li>
+</ul></div>
+
+<div class="card"><h2><em>Z2</em>The cell is unchanged, the hover says why</h2><div class="stage">
+<div class="market">For Sale: 30 grain [GRAI] at $18</div>
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:140px"><col style="width:170px"><col><col style="width:90px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th><th>SILVER</th></tr></thead>
+<tbody><tr><td class="own">*</td><td class="uid">5518</td><td>Scouts</td><td class="ord">buy all GRAI</td><td class="colhi">10 SILV, 2 LEAT</td><td>10</td></tr></tbody></table>
+<div class="tip"><b>hover</b>was: 10 SILV, 2 LEAT<br><span class="soft">Buys no grain &mdash; 10 silver will not pay for one at $18.</span></div>
+</div><ul class="notes">
+<li>The wasted order is recoverable, and only costs a hover.</li>
+<li>Follows H2: the hover is where a <code>BUY ALL</code> explains itself.</li>
+<li class="con">Only reachable on hover, so a player scanning the table still sees nothing.</li>
+<li class="n">Depends on Q2 landing on H2 or H3; under H1 there is no hover line to put it in.</li>
+</ul></div>
+</div>
+
+<h3 class="sec">Q4 &mdash; two <code>BUY ALL</code> lines on one unit</h3>
+<p><i>Hunters</i> again, <code>356 SILV</code>, ordering <code>buy all GRAI</code> <b>then</b> <code>buy all HORS</code>. The first takes 342 of the 356; 14 is left, and a horse costs $60. <b>The second order buys nothing</b> &mdash; and that is the game&rsquo;s answer, not a quirk: <code>rules/buy</code> gives no way to divide silver between two unbounded orders, so the earlier line simply wins.</p>
+<div class="card"><div class="market">For Sale: 30 grain [GRAI] at $18 &nbsp;&middot;&nbsp; 4 horses [HORS] at $60</div><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:140px"><col style="width:200px"><col><col style="width:90px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th><th>SILVER</th></tr></thead>
+<tbody><tr><td class="own">*</td><td class="uid">5512</td><td>Hunters</td><td class="ord">buy all GRAI<br>buy all HORS</td><td class="colhi"><span class="pred">14 SILV, 3 SWOR, 19 GRAI</span></td><td><span class="pred">14</span></td></tr></tbody></table>
+<div class="tip"><b>hover, if Q2 lands on H2</b>was: 356 SILV, 3 SWOR<br><span class="soft">Buys 19 grain &mdash; as many as its silver will pay for.<br>Buys no horses &mdash; 14 silver will not pay for one at $60.</span></div>
+</div>
+<ul class="notes">
+<li class="n">Nothing to choose here if Q2 lands on H2 &mdash; one line per <code>BUY ALL</code> falls out of it, and the second line is what tells the player their second order is dead.</li>
+<li class="n">Under H1 this state is completely silent, which is the strongest argument against H1.</li>
+<li class="n">The SILVER column already resolves both lines this way today, so no arithmetic changes; only what is said about it.</li>
+</ul></div>
+
+
+<h3 class="sec">Q5 &mdash; when a faction-mate took the rest of the line</h3>
+<p>Both our units order <code>buy all GRAI</code> and the market carries only <code>10 grain at $18</code>. Both could afford more. <code>rules/buy</code> splits the line <i>&ldquo;in proportion to the amount each buyer attempted to buy&rdquo;</i>, and an unbounded order attempts everything there is &mdash; so the two attempts are equal and each gets <b>5</b>. <b>Neither ran out of silver, and neither is short because the market was small: they are short because of each other.</b></p>
+<div class="card"><div class="market">For Sale: 10 grain [GRAI] at $18</div><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:140px"><col style="width:170px"><col><col style="width:90px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">ITEMS</th><th>SILVER</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">5512</td><td>Hunters</td><td class="ord">buy all GRAI</td><td class="colhi"><span class="pred">266 SILV, 3 SWOR, 5 GRAI</span></td><td><span class="pred">266</span></td></tr>
+<tr><td class="own">*</td><td class="uid">5518</td><td>Farmhands</td><td class="ord">buy all GRAI</td><td class="colhi"><span class="pred">110 SILV, 2 LEAT, 5 GRAI</span></td><td><span class="pred">110</span></td></tr>
+</tbody></table>
+</div></div>
+
+<div class="split3">
+<div class="card"><h2><em>M1</em>Two causes, one sentence</h2><p class="concept">The market cap and the faction-mate cap read the same. Only two sentences ever exist.</p><div class="stage">
+<div class="tip"><b>hover</b>was: 356 SILV, 3 SWOR<br><span class="soft">Buys 5 grain &mdash; all the market will sell it.</span></div>
+</div><ul class="notes">
+<li>Two strings in total, both already needed for Q2.</li>
+<li class="con">Not quite true: the market <i>would</i> sell it 10. The reason it gets 5 is the unit two rows down, and the sentence hides that.</li>
+</ul></div>
+
+<div class="card"><h2><em>M2</em>A third sentence for the split</h2><p class="concept">When another of your own units contended for the same line, the sentence says so.</p><div class="stage">
+<div class="tip"><b>hover</b>was: 356 SILV, 3 SWOR<br><span class="soft">Buys 5 grain &mdash; the market has 10 and your units in this region are competing for it.</span></div>
+</div><ul class="notes">
+<li>Names the thing the player can actually do something about: they wrote both orders.</li>
+<li>Matches what the region already warns about &mdash; an oversubscribed market line has its own shipped finding (<code>ah-t2pn.4</code>).</li>
+<li class="con">A third string, and a third branch to decide between.</li>
+</ul></div>
+
+<div class="card"><h2><em>M3</em>Say the share, not the cause</h2><p class="concept">One sentence covering both caps, stating the arithmetic instead of naming a culprit.</p><div class="stage">
+<div class="tip"><b>hover</b>was: 356 SILV, 3 SWOR<br><span class="soft">Buys 5 grain &mdash; its share of the 10 this market has.</span></div>
+</div><ul class="notes">
+<li>One string for both market cases, and true in each.</li>
+<li class="con">&ldquo;Its share&rdquo; needs the player to already know the line is split, which is the very thing they may have missed.</li>
+</ul></div>
+</div>
+
+<footer><b>Recommended: H2, then Z2, then M2.</b> H2 is the only option that has anything to say in Q3 and Q4, which are the states where a player has written an order that will not do what they think. Z2 then follows from it at no extra cost. If H1 is chosen, Q3, Q4 and Q5 have no answer at all and a wasted <code>BUY ALL</code> stays invisible. M2 is recommended because the one cap the player can act on is the one they caused themselves.</footer>
+</main></body></html>

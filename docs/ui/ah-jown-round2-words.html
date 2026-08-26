@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-jown &mdash; round 2: the words, men, and the SILVER hover</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .ord { color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:block; margin-top:8px; max-width:78ch; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip .soft { color:var(--ink-soft); }
+  .tip .old { color:var(--ink-dim); }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .market { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            font:11.5px/1.5 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); display:inline-block; margin-bottom:12px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+</style></head><body>
+<header><h1>Round 2 &mdash; <span>the words, men, and whether SILVER says it too</span></h1>
+<p>Round 1 settled the shape: the cell shows the settled figure plainly (A), the hover names the cap that bit (H2), a unit that can afford none says so (Z2), and a line split between your own units gets its own sentence (M2).</p>
+<p><b>What I got wrong in round 1.</b> I invented a sentence shape. This application already has one: <code>capSentence</code> produces <i>&ldquo;This unit has materials for 5 swords, not the 8 its men could make.&rdquo;</i> for <code>PRODUCE</code> and <i>&ldquo;This unit has silver for 2 amulets of protection, not the 3 its level could make.&rdquo;</i> for <code>CAST</code> &mdash; and <b>the ITEMS hover already prints those</b>. So a <code>BUY ALL</code> sentence in my round-1 wording would sit directly underneath one of these, in a different voice.</p></header>
+<main>
+
+<h3 class="sec">R1 &mdash; which voice the three sentences speak in</h3>
+<p>The same unit throughout: <code>356 SILV, 3 SWOR</code> ordering <code>buy all GRAI</code>. Each card shows all three cases stacked, which is how you should judge them &mdash; and the last block in each is a unit that <i>also</i> has a <code>PRODUCE</code>, so you can see the new sentence next to the shipped one.</p>
+<div class="split">
+
+<div class="card"><h2><em>W1</em>My round-1 voice</h2><p class="concept">Starts from the order and reports what it did.</p><div class="stage">
+<div class="tip"><b>silver ran out</b><span class="old">was: 356 SILV, 3 SWOR</span><br><span class="soft">Buys 19 grain &mdash; as many as its silver will pay for.</span></div>
+<div class="tip"><b>market ran out</b><span class="soft">Buys 5 grain &mdash; all the market will sell it.</span></div>
+<div class="tip"><b>your own units split the line</b><span class="soft">Buys 5 grain &mdash; the market has 10 and your units in this region are competing for it.</span></div>
+<div class="tip"><b>beside a shipped PRODUCE sentence</b><span class="old">was: 356 SILV, 3 SWOR</span><br><span class="soft">Buys 19 grain &mdash; as many as its silver will pay for.<br>This unit has materials for 5 swords, not the 8 its men could make.</span></div>
+</div><ul class="notes">
+<li>Short, and leads with the number the player came for.</li>
+<li class="con">Two voices in one hover. The last block reads as two different people wrote it.</li>
+<li class="con">Never says what it <i>would</i> have bought, so the player cannot see how far short they fell.</li>
+</ul></div>
+
+<div class="card"><h2><em>W2</em>The house voice &mdash; <code>capSentence</code>&rsquo;s shape</h2><p class="concept"><i>&ldquo;This unit has X for N, not the M &hellip;&rdquo;</i>, the shape already on screen for PRODUCE and CAST.</p><div class="stage">
+<div class="tip"><b>silver ran out</b><span class="old">was: 356 SILV, 3 SWOR</span><br><span class="soft">This unit has silver for 19 grain, not the 30 this market offers.</span></div>
+<div class="tip"><b>market ran out</b><span class="soft">This market has 5 grain, not the 19 this unit&rsquo;s silver would buy.</span></div>
+<div class="tip"><b>your own units split the line</b><span class="soft">This unit gets 5 of the 10 grain this market has, because your units in this region are competing for it.</span></div>
+<div class="tip"><b>beside a shipped PRODUCE sentence</b><span class="old">was: 356 SILV, 3 SWOR</span><br><span class="soft">This unit has silver for 19 grain, not the 30 this market offers.<br>This unit has materials for 5 swords, not the 8 its men could make.</span></div>
+</div><ul class="notes">
+<li>One voice. The last block reads as one hover rather than two.</li>
+<li>Always names both numbers, so the shortfall is visible without arithmetic.</li>
+<li>The first two are literally <code>capSentence</code> with a different tail, so the existing function extends rather than a second one being written.</li>
+<li class="con">Longer, and the number the player came for is no longer first.</li>
+</ul></div>
+</div>
+
+<h3 class="sec">R2 &mdash; <code>BUY ALL</code> of men</h3>
+<p><code>rules/buy</code>: <i>&ldquo;or to buy new people in any region where people are available for recruiting &hellip; specify the race of the people as the [item]&rdquo;</i>. Recruits appear on the <code>For Sale</code> line like anything else, so <code>buy all NOMA</code> is a <code>BUY ALL</code> that changes the <b>MEN</b> column as well as ITEMS. <code>ah-dxfd.1</code> shipped the rule that a headcount follows men bought &mdash; but it cannot follow an order nothing counts, so today this is silent too, and it stops being silent for free when this bead lands.</p>
+<div class="card"><div class="market">For Sale: 231 nomads [NOMA] at $43</div><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:70px"><col style="width:130px"><col style="width:160px"><col style="width:90px"><col><col style="width:80px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi">MEN</th><th class="colhi">ITEMS</th><th>SILVER</th></tr></thead>
+<tbody><tr><td class="own">*</td><td class="uid">5512</td><td>Hunters</td><td class="ord">buy all NOMA</td><td class="colhi"><span class="pred">10</span></td><td class="colhi"><span class="pred">98 SILV, 3 SWOR, 8 NOMA</span></td><td><span class="pred">98</span></td></tr></tbody></table>
+<div class="tip"><b>hover, in the W2 voice</b><span class="old">was: 442 SILV, 3 SWOR, 2 LEAD</span><br><span class="soft">This unit has silver for 8 nomads, not the 231 this market offers.</span></div>
+</div>
+<ul class="notes">
+<li class="n">2 men were on the report; 8 nomads arrive; MEN reads 10.</li>
+<li class="n">Nothing extra to decide if the same sentence covers it &mdash; &ldquo;8 nomads&rdquo; is the market line&rsquo;s own wording, counted and pluralised by the same code that already writes &ldquo;5 swords&rdquo;.</li>
+<li class="con">Recruiting dilutes the unit&rsquo;s skills, and <b>nothing here says so</b>. That is a separate bead, not this one.</li>
+</ul></div>
+
+<h3 class="sec">R3 &mdash; does the <b>SILVER</b> hover say it too?</h3>
+<p>The SILVER cell already shows <code>98</code> and explains nothing about where 344 silver went. <code>productionCapSentence</code> is exported <i>&ldquo;because the ITEMS hover says it too&rdquo;</i> &mdash; one sentence, two hovers. The question is whether the <code>BUY ALL</code> sentence joins that arrangement or stays in ITEMS alone.</p>
+<div class="split">
+<div class="card"><h2><em>S1</em>Both hovers say it</h2><div class="stage">
+<div class="tip"><b>ITEMS hover</b><span class="old">was: 356 SILV, 3 SWOR</span><br><span class="soft">This unit has silver for 19 grain, not the 30 this market offers.</span></div>
+<div class="tip"><b>SILVER hover</b><span class="old">holds 356 &middot; spends 342 &middot; at month end 14</span><br><span class="soft">This unit has silver for 19 grain, not the 30 this market offers.</span></div>
+</div><ul class="notes">
+<li>The player gets the answer wherever they hovered, which is the arrangement PRODUCE already has.</li>
+<li>One exported function, so the two cannot drift apart.</li>
+<li class="con">The sentence is about goods, and the SILVER hover is about money &mdash; it is a longer hover for a cell whose number was never in doubt.</li>
+</ul></div>
+<div class="card"><h2><em>S2</em>ITEMS only</h2><div class="stage">
+<div class="tip"><b>ITEMS hover</b><span class="old">was: 356 SILV, 3 SWOR</span><br><span class="soft">This unit has silver for 19 grain, not the 30 this market offers.</span></div>
+<div class="tip"><b>SILVER hover</b><span class="old">holds 356 &middot; spends 342 &middot; at month end 14</span><br><span class="soft">(unchanged)</span></div>
+</div><ul class="notes">
+<li>Smaller change, and the SILVER hover stays about money.</li>
+<li class="con">Breaks the pattern <code>PRODUCE</code> set, so a reader wonders why one cap sentence travels and the other does not.</li>
+<li class="con">A player who hovers SILVER asking &ldquo;where did 342 go?&rdquo; is told nothing.</li>
+</ul></div>
+</div>
+
+<footer><b>Recommended: W2, and S1.</b> W2 because the ITEMS hover already prints <code>capSentence</code>&rsquo;s wording and two voices in one tooltip is worse than a longer sentence; S1 because the sentence exists to explain a number, and the number it explains is in both cells. R2 needs no decision unless the wording there looks wrong to you.</footer>
+</main></body></html>
