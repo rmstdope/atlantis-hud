@@ -512,6 +512,11 @@ export const WARNING_GROUPS: readonly {
         code: "not-traded-here",
         title: "Buying what is not sold",
         description: "A BUY or SELL order for something this hex's market does not trade."
+      },
+      {
+        code: "nothing-left-to-sell",
+        title: "Sale with nothing left to sell",
+        description: "A SELL ALL of goods this month's earlier orders have already moved away."
       }
     ]
   },
