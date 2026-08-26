@@ -1297,6 +1297,17 @@ struct Ordered<'a> {
     /// The unit's skills once this month's gifts of men have run. Written by `apply_gifts_of_men`
     /// after the hex is read; `Unchanged` until then.
     skills_after_gifts: SkillsAfterGifts,
+    /// The unit's headcount once this month's gifts, takes and recruits have run.
+    ///
+    /// Written by `apply_gifts_of_men` and then by `apply_recruits`; equal to `unit.men` until
+    /// one of them touches it. Kept beside `skills_after_gifts` because the two are read as a
+    /// pair: a merged skill level is per man, so a level without the headcount it was merged
+    /// against says nothing.
+    men_after_orders: i64,
+    /// How many men *joined* this unit this month, by any route. Never netted against men who
+    /// left: a unit that receives three and gives two away has `men_joined: 3`, because the
+    /// question this answers is "was this unit's skill diluted", not "is it bigger".
+    men_joined: i64,
 }
 
 impl<'a> Hex<'a> {
@@ -1318,6 +1329,8 @@ impl<'a> Hex<'a> {
                     unread: orders.is_some_and(|orders| orders.unread),
                     formed: None,
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
+                    men_after_orders: unit.men,
+                    men_joined: 0,
                 }
             })
             .collect();
@@ -1335,6 +1348,8 @@ impl<'a> Hex<'a> {
                         formed_by: formed.block.formed_by.clone(),
                     }),
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
+                    men_after_orders: formed.unit.men,
+                    men_joined: 0,
                 }),
         );
         Self { region, units }
@@ -1369,6 +1384,13 @@ struct Working {
     /// exactly as `Selector::Item`'s own tag lookup is.
     held: BTreeMap<String, i64>,
     doubted: bool,
+    /// Men that arrived at this unit through a transfer the walk actually followed.
+    arrived: i64,
+    /// A transfer into this unit moved fewer men than the order named, because the source did not
+    /// hold that many. `apply_recruits` cannot then attribute the difference between the ledger's
+    /// arrivals and `arrived` to recruiting, because part of it is an over-give the ledger does
+    /// not clamp and this walk does. See *Known traps*.
+    clamped: bool,
 }
 
 fn seed_working(units: &[Ordered<'_>], position: usize) -> Working {
@@ -1382,6 +1404,8 @@ fn seed_working(units: &[Ordered<'_>], position: usize) -> Working {
             .map(|item| (item.tag.to_ascii_uppercase(), item.amount))
             .collect(),
         doubted: false,
+        arrived: 0,
+        clamped: false,
     }
 }
 
@@ -1595,11 +1619,24 @@ fn apply_gifts_of_men(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
                 Amount::Exact(count) => *count,
             };
             let moved = requested.clamp(0, held);
+            // Moved above the `moved == 0` return so that `giver_state`'s borrow ends here: the
+            // block below takes a second `working.entry`, which will not compile while it lives.
+            let giver_doubted = giver_state.doubted;
+            let giver_skills = giver_state.skills.clone();
+
+            // A gift the source cannot cover is clamped here and is *not* clamped by the ledger,
+            // so the difference would reach `apply_recruits` looking exactly like recruiting.
+            if moved < requested {
+                if let GiveTarget::Unit(receiver) = target {
+                    working
+                        .entry(receiver)
+                        .or_insert_with(|| seed_working(units, receiver))
+                        .clamped = true;
+                }
+            }
             if moved == 0 {
                 continue;
             }
-            let giver_doubted = giver_state.doubted;
-            let giver_skills = giver_state.skills.clone();
 
             if let GiveTarget::Unit(receiver) = target {
                 let receiver_men_estimated = units[receiver].unit.men_estimated;
@@ -1627,6 +1664,7 @@ fn apply_gifts_of_men(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
                 // fewer men than the order says and leaving a downstream unit judged on stale
                 // figures - the review comment on this PR caught exactly this gap.
                 receiver_state.men += moved;
+                receiver_state.arrived += moved;
                 *receiver_state.held.entry(tag.clone()).or_insert(0) += moved;
             }
 
@@ -1642,7 +1680,9 @@ fn apply_gifts_of_men(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
 
     for (position, state) in working {
         let ordered = &mut units[position];
-        ordered.skills_after_gifts = if state.doubted {
+        ordered.men_after_orders = state.men;
+        ordered.men_joined = state.arrived;
+        ordered.skills_after_gifts = if state.doubted || state.clamped {
             SkillsAfterGifts::Unknowable
         } else if state.skills != ordered.unit.skills {
             SkillsAfterGifts::Merged(state.skills)
@@ -19076,6 +19116,53 @@ mod tests {
         let region = region(vec![middle, receiver]);
         let hex = hex_after_gifts(&region, &ordered);
 
+        assert!(matches!(
+            hex.find("2200").unwrap().skills_after_gifts,
+            SkillsAfterGifts::Unknowable
+        ));
+    }
+
+    /// `apply_gifts_of_men` writes `men_after_orders`/`men_joined` for every unit its walk
+    /// touches, giver and receiver both - `men_joined` counts arrivals only, never netted against
+    /// men the same unit gave away.
+    #[test]
+    fn a_gift_of_men_moves_both_counters() {
+        let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
+        let receiver = with_men(unit("2200"), 1);
+        let orders = "unit 1010\nGIVE 2200 3 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver, receiver]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        assert_eq!(hex.find("2200").unwrap().men_after_orders, 4);
+        assert_eq!(hex.find("2200").unwrap().men_joined, 3);
+        assert_eq!(hex.find("1010").unwrap().men_after_orders, 2);
+        assert_eq!(hex.find("1010").unwrap().men_joined, 0);
+    }
+
+    /// A gift the source cannot cover leaves the receiver `Unknowable`, because the ledger (unlike
+    /// this walk) does not clamp the arrival to what the giver actually held - a difference that
+    /// would otherwise reach `apply_recruits` looking exactly like recruiting.
+    #[test]
+    fn an_over_give_leaves_the_receiver_unjudged() {
+        // The source holds 5, so `moved` is 5 against a `requested` of 99.
+        let partial_giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
+        let orders = "unit 1010\nGIVE 2200 99 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let over_give_region = region(vec![partial_giver, unit("2200")]);
+        let hex = hex_after_gifts(&over_give_region, &ordered);
+        assert!(matches!(
+            hex.find("2200").unwrap().skills_after_gifts,
+            SkillsAfterGifts::Unknowable
+        ));
+
+        // The source holds none of the tag at all, so `moved` is 0 - the case a naive placement
+        // of the clamp flag (after the `moved == 0` return) would miss.
+        let empty_giver = with_skill_pts(unit("1010"), "LUMB", 30);
+        let orders = "unit 1010\nGIVE 2200 3 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let empty_give_region = region(vec![empty_giver, unit("2200")]);
+        let hex = hex_after_gifts(&empty_give_region, &ordered);
         assert!(matches!(
             hex.find("2200").unwrap().skills_after_gifts,
             SkillsAfterGifts::Unknowable
