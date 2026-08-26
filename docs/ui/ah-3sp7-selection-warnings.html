@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-3sp7 — does a class that selects nothing say so?</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:70ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:104ch; }
+  .note b { color:var(--ink); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:30px 0 8px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:104ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .row { background:var(--panel); border:1px solid var(--edge); border-radius:6px; margin:10px 0; overflow-x:auto; }
+  table.units { width:100%; border-collapse:collapse; font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; min-width:660px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:8px 12px; border-bottom:1px solid rgba(38,48,61,.5); }
+  table.units td.pred { color:var(--brass); font-style:italic; }
+  table.units td.same { color:var(--ink-dim); }
+  .warn { background:var(--raised); border-left:3px solid var(--brass); padding:9px 13px; font-family:system-ui,sans-serif;
+    font-size:12.5px; color:var(--ink); max-width:96ch; margin:8px 0; }
+  .warn .w { color:var(--brass); }
+  .none { color:var(--ink-dim); font-style:italic; font-size:12.5px; margin:10px 0; font-family:system-ui,sans-serif; }
+  .caselbl { color:var(--ink-dim); font-size:11px; letter-spacing:1.3px; text-transform:uppercase; margin:18px 0 4px; }
+</style></head><body>
+<header>
+<h1>Two classes where being right <span>looks wrong</span></h1>
+<p>Both of these are cases where the application would now do exactly what the game does, and the
+result may still surprise the player. The question is whether either earns a sentence. Everything
+below assumes the twelve classes resolve; the rows show the units table as it would look while the
+orders are being written.</p>
+</header>
+<main>
+
+<h3 class="sec">Case 1 — a class that selects sixty items and moves nine</h3>
+<p>Unit 900 holds twenty lions and a skeleton. <code>rules/give</code> accepts <code>ALL MONSTERS</code>; the game
+selects all twenty-one and then refuses every item whose entry says <code>This item cannot be given to
+other units.</code> Only the skeleton leaves.</p>
+<pre class="ord">unit 900
+<b>GIVE 901 ALL MONSTERS</b></pre>
+
+<h3 class="sec">Case 2 — a class that quietly includes your silver and your food</h3>
+<p>Unit 900 holds 400 silver, 12 grain, 3 swords and a horse. Every one of those is <code>IT_NORMAL</code>.</p>
+<pre class="ord">unit 900
+<b>GIVE 901 ALL NORMAL</b></pre>
+
+<div class="opt">OPTION A — say nothing; the rows are the answer</div>
+<p style="color:var(--ink-soft);font-size:13px;max-width:100ch">The preview already shows what happens.
+Nothing new is written anywhere; no finding, no hover sentence, no new doubt.</p>
+
+<div class="caselbl">Case 1 — the monsters</div>
+<div class="row"><table class="units">
+<tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+<tr><td>Beasts (900)</td><td class="same">0</td><td class="pred">20 lions, <s>1 skeleton</s></td><td class="same">400</td></tr>
+<tr><td>Handler (901)</td><td class="same">2</td><td class="pred">1 skeleton</td><td class="same">50</td></tr>
+</table></div>
+<p class="none">No warning. The lions simply stay.</p>
+
+<div class="caselbl">Case 2 — all normal</div>
+<div class="row"><table class="units">
+<tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+<tr><td>Carrier (900)</td><td class="same">4</td><td class="pred">— <span style="color:var(--ink-dim)">(silk, 2 mithril)</span></td><td class="pred">0</td></tr>
+<tr><td>Depot (901)</td><td class="same">2</td><td class="pred">400 silver, 12 grain, 3 swords, 1 horse</td><td class="pred">450</td></tr>
+</table></div>
+<p class="none">No warning. The silver moves and the SILVER cell shows the new figure.</p>
+<ul class="notes">
+<li>Nothing new to word, translate, or keep true as classes change.</li>
+<li>The row already tells the whole story — the lions did not move, the silver did.</li>
+<li class="con">A player who meant "give my monsters away" sees a row where nothing changed, and cannot tell that from the application failing to understand the order.</li>
+<li class="con">Silver leaving on <code>ALL NORMAL</code> is easy to miss in a busy hex.</li>
+</ul>
+
+<div class="opt">OPTION B — warn only where the game will refuse</div>
+<p style="color:var(--ink-soft);font-size:13px;max-width:100ch">One new order-check finding, for the
+case where a class selects items the game will not move. Nothing is said about <code>ALL NORMAL</code>,
+because everything it selects really does move.</p>
+
+<div class="caselbl">Case 1 — the monsters</div>
+<div class="row"><table class="units">
+<tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+<tr><td>Beasts (900)</td><td class="same">0</td><td class="pred">20 lions, <s>1 skeleton</s></td><td class="same">400</td></tr>
+<tr><td>Handler (901)</td><td class="same">2</td><td class="pred">1 skeleton</td><td class="same">50</td></tr>
+</table></div>
+<div class="warn"><span class="w">line 2</span> — 20 lions cannot be given to another unit, so this
+order moves only the skeleton.</div>
+
+<div class="caselbl">Case 2 — all normal</div>
+<div class="row"><table class="units">
+<tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+<tr><td>Carrier (900)</td><td class="same">4</td><td class="pred">— <span style="color:var(--ink-dim)">(silk, 2 mithril)</span></td><td class="pred">0</td></tr>
+<tr><td>Depot (901)</td><td class="same">2</td><td class="pred">400 silver, 12 grain, 3 swords, 1 horse</td><td class="pred">450</td></tr>
+</table></div>
+<p class="none">No warning — everything selected really moves.</p>
+<ul class="notes">
+<li>Catches a real mistake: ordering <code>ALL MONSTERS</code> over a stack of lions does nothing, and now says so.</li>
+<li>Fires only where the game itself will refuse, so it can never be merely an opinion.</li>
+<li>Silent for the eleven classes where nothing is ever refused.</li>
+<li class="con">A new finding, a new string, and a rule about when it fires.</li>
+<li class="con">Says nothing about the silver.</li>
+</ul>
+
+<div class="opt">OPTION C — warn on both</div>
+<p style="color:var(--ink-soft);font-size:13px;max-width:100ch">Option B, plus a second finding when a
+class carries silver out of a unit — because the SILVER column is the one cell a player is most likely
+to be watching for a different reason.</p>
+
+<div class="caselbl">Case 1 — the monsters</div>
+<div class="warn"><span class="w">line 2</span> — 20 lions cannot be given to another unit, so this
+order moves only the skeleton.</div>
+
+<div class="caselbl">Case 2 — all normal</div>
+<div class="row"><table class="units">
+<tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+<tr><td>Carrier (900)</td><td class="same">4</td><td class="pred">— <span style="color:var(--ink-dim)">(silk, 2 mithril)</span></td><td class="pred">0</td></tr>
+<tr><td>Depot (901)</td><td class="same">2</td><td class="pred">400 silver, 12 grain, 3 swords, 1 horse</td><td class="pred">450</td></tr>
+</table></div>
+<div class="warn"><span class="w">line 2</span> — giving all normal items hands over this unit's 400
+silver and 12 grain as well.</div>
+<ul class="notes">
+<li>Nothing expensive is ever given away silently.</li>
+<li class="con">Fires on a correct order that the player may well have meant, so it is an opinion rather than a fact — the shape of warning that gets ignored, and then hides the one that mattered.</li>
+<li class="con">Two new strings and two rules, one of which has to decide what counts as "expensive".</li>
+</ul>
+
+<h3 class="sec">The states each option has to survive</h3>
+<ul class="notes">
+<li><b>Nothing selected at all</b> — <code>ALL TOOLS</code> from a unit holding no tools. Under every option: nothing moves, and nothing is said. This is not the same as case 1, where the items exist and are refused.</li>
+<li><b>Everything selected is refused</b> — <code>ALL MONSTERS</code> over lions alone, no skeleton. Under B and C the finding still fires and says the order moves nothing.</li>
+<li><b>No ruleset loaded</b> — no class resolves, and every one of them behaves exactly as all fifteen do today.</li>
+</ul>
+
+</main></body></html>

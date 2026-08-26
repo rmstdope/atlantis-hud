@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-3sp7 — which classes the application can identify</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:104ch; }
+  .note b { color:var(--ink); }
+  table.cases { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); max-width:1100px; margin-top:8px; }
+  table.cases th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.cases td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  table.cases td.n { font-family:'SF Mono',Menlo,monospace; color:var(--brass); white-space:nowrap; }
+  table.cases td.tags { font-family:'SF Mono',Menlo,monospace; color:var(--ink-dim); font-size:11px; }
+  .yes { color:var(--ok); } .no { color:var(--danger); } .dim { color:var(--ink-dim); }
+</style></head><body>
+<header>
+<h1>Giving a whole class of goods — <span>what the catalogue can and cannot say</span></h1>
+<p>Background for the three questions on the other two pages. Nothing here is a choice; it is what I
+checked, so that the choices rest on something. <b>Every row was verified against the game engine's own
+item table</b> (<code>gamedata.cpp</code>, flags <code>IT_NORMAL</code>…<code>IT_SHIP</code>) and then re-checked against all
+171 items in our committed <code>ruleset.json</code>. Where it says <span class="yes">yes</span>, our reading and
+the engine's agree on <b>every single item</b> — no near misses, no judgement calls.</p>
+</header>
+<main>
+
+<h3 class="sec">Twelve of the fifteen classes</h3>
+<p><code>rules/give</code> names fifteen. We resolve two today.</p>
+
+<table class="cases">
+<tr><th>Class</th><th>Items</th><th>Read from</th><th>Today</th></tr>
+<tr><td class="n">MAN / MEN</td><td class="n">14</td><td>the race sentence — already <code>kind</code></td><td class="yes">already works</td></tr>
+<tr><td class="n">ITEM / ITEMS</td><td class="n">171</td><td>everything; needs no classifying</td><td class="yes">already works</td></tr>
+<tr><td class="n">NORMAL</td><td class="n">31</td><td><code>…costs N silver to withdraw</code>, plus silver itself</td><td class="no">turned away</td></tr>
+<tr><td class="n">TRADE</td><td class="n">15</td><td><code>This is a trade good.</code></td><td class="no">turned away</td></tr>
+<tr><td class="n">MONSTER(S)</td><td class="n">60</td><td><code>This is a monster.</code> or <code>…a free-moving-item (FMI).</code></td><td class="no">turned away</td></tr>
+<tr><td class="n">WEAPON(S)</td><td class="n">16</td><td>the wield sentence — already the <code>weapon</code> block</td><td class="no">turned away</td></tr>
+<tr><td class="n">ARMOR</td><td class="n">7</td><td><code>This is a type of armor.</code></td><td class="no">turned away</td></tr>
+<tr><td class="n">MOUNT(S)</td><td class="n">5</td><td><code>This is a mount.</code></td><td class="no">turned away</td></tr>
+<tr><td class="n">BATTLE</td><td class="n">12</td><td><code>This item is a miscellaneous combat item.</code></td><td class="no">turned away</td></tr>
+<tr><td class="n">TOOL(S)</td><td class="n">8</td><td><code>This is a tool.</code></td><td class="no">turned away</td></tr>
+<tr><td class="n">FOOD</td><td class="n">4</td><td><code>…can be eaten to provide N silver…</code></td><td class="no">turned away</td></tr>
+<tr><td class="n">SHIP(S)</td><td class="n">9</td><td>the ship sentence — already <code>kind</code></td><td class="no">turned away</td></tr>
+<tr><td class="n dim">ADVANCED</td><td class="n dim">21</td><td class="dim">nothing on the page says so</td><td class="dim">stays turned away</td></tr>
+<tr><td class="n dim">MAGIC</td><td class="n dim">20</td><td class="dim">nothing on the page says so</td><td class="dim">stays turned away</td></tr>
+<tr><td class="n dim">SPECIAL</td><td class="n dim">3</td><td class="dim">nothing on the page says so</td><td class="dim">stays turned away</td></tr>
+</table>
+
+<div class="note"><b>The bead assumed four classes were unknowable. It is three.</b> NORMAL is readable
+after all: the engine prints a withdrawal price for every NORMAL item except silver, and prints
+<code>This is the currency of Atlantis.</code> for silver. That is 31 items — exactly the engine's 31.</div>
+
+<div class="note"><b>Why the last three genuinely cannot be done.</b> I read the engine function that
+writes the data page. <b>There is no code path in it that tests <code>IT_ADVANCED</code>, <code>IT_MAGIC</code> or
+<code>IT_SPECIAL</code></b> — those three flags are never printed, in any form. Only 21 items carry none of the
+twelve; six of them say <code>may only be used by a mage</code> and so are certainly MAGIC, leaving <b>15 items
+that cannot be told apart at all</b>. A magic wagon is ADVANCED and a magic carpet is MAGIC, and their
+entries are indistinguishable: <code>magic wagon [MWAG], weight 50, walking capacity 200…</code> against
+<code>magic carpet [CARP], weight 0, walking capacity 15…</code>. Nothing in either says which.</div>
+
+<h3 class="sec">Three things that follow, worth seeing before you answer</h3>
+
+<div class="note"><b>1. <code>GIVE ALL NORMAL</code> gives away your silver — and your food.</b> NORMAL is 31
+items and includes <code>SILV</code>, <code>GRAI</code>, <code>LIVE</code>, <code>FISH</code> and <code>MEAL</code> alongside iron, wood, swords and
+horses. That is the engine's behaviour, not our reading of it.</div>
+
+<div class="note"><b>2. <code>GIVE ALL MOUNTS</code> gives away your centaurs.</b> A centaur is flagged both
+<code>IT_MAN</code> and <code>IT_MOUNT</code>, so <code>ALL MEN</code> and <code>ALL MOUNTS</code> both sweep it up. Giving one moves
+people: the MEN cell falls, and the receiving unit's skills are diluted by the arrivals.</div>
+
+<div class="note"><b>3. <code>GIVE ALL MONSTERS</code> selects 60 items and can actually move 9.</b> The other
+51 say <code>This item cannot be given to other units.</code> The nine that move are the summoned undead and
+demons — skeleton, undead, lich, imp, demon, balrog, devil — plus the catapult and the steel
+defender. So a unit holding twenty lions and ordering <code>GIVE 901 ALL MONSTERS</code> moves <b>nothing at
+all</b>.</div>
+
+<h3 class="sec">Twenty-seven items are in more than one class</h3>
+<p>Worth knowing because it rules out one class per item — this has to be a set.</p>
+<table class="cases">
+<tr><th>Item</th><th>Classes</th><th>Consequence</th></tr>
+<tr><td>pick, spear, axe, hammer</td><td class="tags">NORMAL + WEAPON + TOOL</td><td>swept up by three different orders</td></tr>
+<tr><td>runesword, flaming sword</td><td class="tags">WEAPON + BATTLE (+ MAGIC)</td><td>two of its three classes are readable</td></tr>
+<tr><td>centaur</td><td class="tags">MAN + MOUNT</td><td>a mount that is also people</td></tr>
+<tr><td>silver</td><td class="tags">NORMAL</td><td>leaves on <code>ALL NORMAL</code> as well as <code>ALL ITEMS</code></td></tr>
+<tr><td>grain, livestock, fish, meal</td><td class="tags">NORMAL + FOOD</td><td>leave on <code>ALL NORMAL</code> too</td></tr>
+<tr><td>horse, camel</td><td class="tags">NORMAL + MOUNT</td><td>—</td></tr>
+</table>
+
+</main></body></html>
