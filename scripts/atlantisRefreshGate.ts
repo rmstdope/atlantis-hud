@@ -1,5 +1,5 @@
 /**
- * Keeps `.github/workflows/atlantis-rules-refresh.yml` honest about the two invariants a tidy-up
+ * Keeps `.github/workflows/atlantis-rules-refresh.yml` honest about the three invariants a tidy-up
  * could silently break: that the schedule still exists, that `workflow_dispatch` still lets the
  * navigator force a refresh, and that the permissions it grants itself have not widened. Reads the
  * workflow as text, the same way `scripts/ciDocsGate.ts` reads `ci.yml` — see that file's own

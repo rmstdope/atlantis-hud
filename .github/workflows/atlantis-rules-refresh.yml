@@ -80,6 +80,10 @@ jobs:
           import { pathToFileURL } from "node:url";
 
           type OpenItem = { number: number; title: string; labels: string[]; headRefName?: string };
+          // `gh ... --json labels` emits an array of label objects ({ name, id, ... }), never
+          // plain strings - decideFiling matches on label name, so every raw listing that carries
+          // labels is mapped through this before being handed to it.
+          type RawLabel = { name: string };
 
           function run(args: string[]): string {
             return execFileSync(args[0], args.slice(1), { encoding: "utf8" });
@@ -129,7 +133,7 @@ jobs:
             }
 
             // outcome.kind === "scrape-failed"
-            const open: OpenItem[] = JSON.parse(
+            const rawOpen: Array<{ number: number; title: string; labels: RawLabel[] }> = JSON.parse(
               run([
                 "gh", "issue", "list",
                 "--state", "open",
@@ -137,6 +141,10 @@ jobs:
                 "--json", "number,title,labels"
               ])
             );
+            const open: OpenItem[] = rawOpen.map((issue) => ({
+              ...issue,
+              labels: issue.labels.map((label) => label.name)
+            }));
             const decision = mod.decideFiling(open, "issue");
             const body = mod.refreshIssueBody(outcome.message);
             writeFileSync("/tmp/atlantis-refresh-issue-body.md", body);
