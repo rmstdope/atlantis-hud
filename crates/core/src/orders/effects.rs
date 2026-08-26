@@ -1058,7 +1058,21 @@ fn settle_headcounts(units: &mut [WorkingUnit], ruleset: &crate::movement::rules
         let before = working.unit.men;
         let (by_race, total) = composition::men_in(&working.unit.items, ruleset);
         if total > before {
-            working.unit.skills = merge_skills(&working.unit.skills, before, &[], total - before);
+            // A man tag credited from a unit this hex does not show (`ah-agbm`'s
+            // `taken_unshown`) is not a recruit: its true skills are unknown, not zero, exactly
+            // as `apply_gifts_of_men` already marks that unit `Unknowable` rather than guessing.
+            // Left out of the merge here, or the checks and the units table would disagree about
+            // the same arrival.
+            let taken_unknown: i64 = working
+                .taken_unshown
+                .iter()
+                .filter(|taken| ruleset.is_man(&taken.tag))
+                .map(|taken| taken.amount)
+                .sum();
+            let recruited = total - before - taken_unknown;
+            if recruited > 0 {
+                working.unit.skills = merge_skills(&working.unit.skills, before, &[], recruited);
+            }
         }
         working.unit.men_by_race = by_race;
         working.unit.men = total;
@@ -2019,6 +2033,45 @@ mod tests {
         );
         // The source's own skills are untouched by losing men.
         assert_eq!(source.unit.skills, vec![lumberjack(180)]);
+    }
+
+    /// A `TAKE FROM` a unit this hex does not show still credits the item optimistically
+    /// (`ah-agbm`'s `taken_unshown` path), but the arriving men's true skills are unknown, not
+    /// zero - the checks side (`apply_gifts_of_men`) already marks a unit taking from an unshown
+    /// source `Unknowable` rather than guessing, and `settle_headcounts` must not quietly guess
+    /// zero either by treating the arrival as a bought recruit.
+    #[test]
+    fn men_taken_from_an_unshown_source_do_not_dilute_the_takers_skills() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Teachers (1234), Foo (1), 10 humans [HUMN]. Weight: 100. Capacity: 0/0/150/0. \
+             Skills: lumberjack [LUMB] 3 (180).",
+            "",
+        ]
+        .join("\n");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 1234\nTAKE FROM 999 5 HUMN\n",
+        )
+        .expect("the ruleset loads");
+
+        let unit = only_unit(&response);
+        assert_eq!(
+            unit.unit.men, 15,
+            "the item still arrives optimistically, per `ah-agbm`"
+        );
+        assert_eq!(
+            unit.unit.skills,
+            vec![lumberjack(180)],
+            "arriving from an unshown source must not be assumed skill-less: {:?}",
+            unit.unit.skills
+        );
     }
 
     /// `rules/economy_recruiting`: "New recruits will not have any skills or items" - so a `BUY`
