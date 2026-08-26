@@ -1,0 +1,176 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>ah-vw8e — round 2: the shapes the two-line case hides</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; margin-bottom:10px; } h1 span { color:var(--brass); }
+  p.lead { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h2.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h2.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .banner { background:var(--raised); border-left:3px solid var(--select); padding:11px 14px; margin:16px 0;
+    font-size:13.5px; color:var(--ink-soft); max-width:104ch; }
+  .banner strong { color:var(--ink); }
+  .row { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:12px 14px; margin:12px 0; overflow-x:auto; }
+  p.cap { color:var(--ink-dim); font-size:11px; letter-spacing:1.3px; text-transform:uppercase; margin-bottom:8px; }
+  table.units { width:100%; border-collapse:collapse; font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; min-width:600px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:8px 12px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  td.num { text-align:right; font-family:'SF Mono',Menlo,monospace; }
+  td.ord { font-family:'SF Mono',Menlo,monospace; font-size:11.5px; color:var(--ink-soft); white-space:pre; }
+  .bad { color:var(--danger); } .ok { color:var(--ok); } .dim { color:var(--ink-dim); }
+  .editor { background:#0d1219; border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:74ch; white-space:pre; line-height:1.9; }
+  .editor .u { text-decoration:underline wavy var(--brass); text-decoration-thickness:1.5px; text-underline-offset:4px; color:var(--ink); }
+  .warn { background:var(--raised); border-left:3px solid var(--brass); padding:9px 13px; font-family:system-ui,sans-serif;
+    font-size:12.5px; color:var(--ink); max-width:92ch; margin:8px 0 0; }
+  .warn .code { color:var(--ink-dim); font-family:'SF Mono',Menlo,monospace; font-size:10.5px;
+    letter-spacing:1.1px; text-transform:uppercase; display:block; margin-bottom:4px; }
+  .none { color:var(--ink-dim); font-style:italic; font-size:12.5px; margin:8px 0 0; }
+  table.cases { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:8px; }
+  table.cases th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.cases td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  table.cases td.o { font-family:'SF Mono',Menlo,monospace; font-size:11px; color:var(--ink-soft); white-space:pre; }
+  .tab { background:var(--panel); border:1px solid var(--edge); border-radius:6px; max-width:640px; font-family:system-ui,sans-serif; }
+  .tab .grp { color:var(--brass); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; padding:10px 14px 4px; }
+  .tab .item { display:flex; gap:10px; padding:8px 14px; border-top:1px solid rgba(38,48,61,.6); }
+  .tab .box { width:13px; height:13px; border:1px solid var(--brass); border-radius:2px; background:var(--brass); flex:none; margin-top:3px; }
+  .tab .t { font-size:12.5px; color:var(--ink); } .tab .d { font-size:11.5px; color:var(--ink-dim); }
+  .tab .new { color:var(--ok); font-size:10px; letter-spacing:1.2px; text-transform:uppercase; margin-left:6px; }
+  .wording { display:grid; gap:10px; margin-top:10px; }
+  .wording .w { background:var(--raised); border-left:3px solid var(--edge); padding:9px 13px; font-family:system-ui,sans-serif; font-size:12.5px; }
+  .wording .w b { color:var(--brass); font-family:'SF Mono',Menlo,monospace; font-size:11px; letter-spacing:1.1px; }
+</style>
+</head>
+<body>
+<header>
+<h1>ah-vw8e &mdash; <span>round 2</span>: the shapes the two-line case hides</h1>
+<p class="lead"><b>Settled in round 1:</b> the second sale is warned about on the existing
+<code>nothing-left-to-sell</code> code &mdash; a third cause, no new switch; the sentence is
+<em>&ldquo;an earlier order sells all 10 of its furs, so this sells nothing&rdquo;</em>; <b>any</b>
+<code>SELL</code> line can be the subject, not only a <code>SELL &hellip; ALL</code>; and a line the
+<em>market</em> ran out under stays silent, because <code>region-pool-oversubscribed</code> already
+speaks there.</p>
+<p class="lead">Four things follow from that and none of them are in the two-line picture.</p>
+</header>
+<main>
+
+<h2 class="sec">Q1 &mdash; widening the subject also wakes the two causes already shipped</h2>
+<p>Today the warning fires only when the line that sells nothing is a <code>SELL &hellip; ALL</code>.
+Dropping that restriction is what round 1 asked for &mdash; but the restriction is on the
+<em>subject</em>, not on the cause, so dropping it changes the <b>gift</b> and <b>take</b> causes
+too. This month is silent today and would start speaking:</p>
+<div class="row">
+  <p class="cap">holds 10 furs; gives them away, then sells a stated ten</p>
+  <div class="editor">unit 4411
+  <span class="dim">GIVE 5512 10 FUR</span>
+  <span class="u">SELL 10 FUR</span>
+</div>
+  <div class="warn"><span class="code">nothing-left-to-sell</span>
+  this unit gives away all 10 of its furs before the market opens, so this sells nothing</div>
+  <p class="none">Written <code>SELL ALL FUR</code> the same month already says exactly this. The
+  question is whether the stated form should join it, or whether only the <em>new</em> cause
+  widens and the two shipped ones stay <code>ALL</code>-only.</p>
+</div>
+
+<h2 class="sec">Q2 &mdash; three lines, two of them dead</h2>
+<div class="row">
+  <p class="cap">option 1 &mdash; every dead line is underlined</p>
+  <div class="editor">unit 4411
+  <span class="dim">SELL ALL FUR</span>
+  <span class="u">SELL ALL FUR</span>
+  <span class="u">SELL ALL FUR</span>
+</div>
+  <div class="warn"><span class="code">nothing-left-to-sell</span>
+  an earlier order sells all 10 of its furs, so this sells nothing</div>
+  <div class="warn"><span class="code">nothing-left-to-sell</span>
+  an earlier order sells all 10 of its furs, so this sells nothing</div>
+  <p class="none">Each line is separately editable, and the player deleting only the middle one is
+  left with a block that still has a dead line in it. Two identical sentences in the list.</p>
+</div>
+<div class="row">
+  <p class="cap">option 2 &mdash; only the first dead line is underlined</p>
+  <div class="editor">unit 4411
+  <span class="dim">SELL ALL FUR</span>
+  <span class="u">SELL ALL FUR</span>
+  <span class="dim">SELL ALL FUR</span>
+</div>
+  <div class="warn"><span class="code">nothing-left-to-sell</span>
+  an earlier order sells all 10 of its furs, so this sells nothing</div>
+  <p class="none">One sentence, no repetition &mdash; but delete the underlined line and the warning
+  simply reappears on the next one, which reads like the editor moving the goalposts.</p>
+</div>
+
+<h2 class="sec">Q3 &mdash; when a gift <em>and</em> an earlier sale both emptied it</h2>
+<p>The shipped rule is that a gift of the unit's own beats a take by somebody else, because the
+unit's own line is the one the player can edit. Here <b>both</b> candidates are the player's own
+lines, so that tie-breaker says nothing.</p>
+<div class="row">
+  <p class="cap">holds 10 furs: gives 5 away, sells the other 5, then sells again</p>
+  <div class="editor">unit 4411
+  <span class="dim">GIVE 5512 5 FUR</span>
+  <span class="dim">SELL ALL FUR</span>
+  <span class="u">SELL ALL FUR</span>
+</div>
+  <div class="warn"><span class="code">nothing-left-to-sell</span> <b>naming the sale</b><br>
+  an earlier order sells all 10 of its furs, so this sells nothing</div>
+  <p class="none">&hellip;but only 5 were sold; the sentence's count would have to be the 5 the sale
+  actually took, or the sentence has to say something else.</p>
+  <div class="warn"><span class="code">nothing-left-to-sell</span> <b>naming the gift</b><br>
+  this unit gives away all 10 of its furs before the market opens, so this sells nothing</div>
+  <p class="none">&hellip;which is plainly wrong here: it gave away 5, not 10.</p>
+  <div class="warn"><span class="code">nothing-left-to-sell</span> <b>naming neither</b><br>
+  nothing is left by the time this line runs, so it sells nothing</div>
+  <p class="none">True in every mixed month, and says less.</p>
+</div>
+
+<h2 class="sec">Q4 &mdash; the count, when more than one line sold</h2>
+<p>The sentence chosen in round 1 names a number. With one earlier sale it is unambiguous. With two
+it is not: below, 6 went on the first line and 4 on the second.</p>
+<div class="row">
+  <p class="cap">holds 10 furs</p>
+  <div class="editor">unit 4411
+  <span class="dim">SELL 6 FUR</span>
+  <span class="dim">SELL ALL FUR</span>
+  <span class="u">SELL ALL FUR</span>
+</div>
+  <div class="wording">
+    <div class="w"><b>C1 &mdash; the total sold, plural verb</b><br>earlier orders sell all 10 of its furs, so this sells nothing</div>
+    <div class="w"><b>C2 &mdash; the total sold, singular kept</b><br>an earlier order sells all 10 of its furs, so this sells nothing</div>
+    <div class="w"><b>C3 &mdash; no count at all when more than one line sold</b><br>earlier orders sell everything it holds, so this sells nothing</div>
+  </div>
+  <p class="none">Whichever is chosen, the single-earlier-line case keeps round 1's exact sentence,
+  and a unit holding one still reads <em>its only fur</em>.</p>
+</div>
+
+<h2 class="sec">Not in question &mdash; recorded so nobody re-opens it</h2>
+<table class="cases">
+  <tr><th>Shape</th><th>Behaviour</th></tr>
+  <tr><td class="o">SELL ALL FUR
+SELL ALL FURS</td><td>the same goods. Lines are matched by the catalogue tag the market line
+  carries, not by the words typed, so spelling and case never split a running total.</td></tr>
+  <tr><td class="o">SELL ALL FUR
+SELL ALL HERB</td><td>two market lines, two independent totals. Untouched.</td></tr>
+  <tr><td class="o">a unit that held none
+to begin with</td><td>silent, as today: nothing this month caused it, so there is nothing to
+  report.</td></tr>
+  <tr><td class="o">goods the market
+does not want</td><td>silent, as today: <code>not-traded-here</code> already speaks on that line.</td></tr>
+  <tr><td class="o">a transfer the projection
+could not follow</td><td>silent, as today: &ldquo;it was moved away&rdquo; is exactly what cannot
+  be said.</td></tr>
+  <tr><td class="o">the ITEMS column</td><td>unchanged in every case on this page &mdash; it was
+  already right.</td></tr>
+  <tr><td class="o">a false market overrun</td><td>a unit claiming twenty of a line it can supply
+  ten into can push that line into <code>region-pool-oversubscribed</code> today. After the fix it
+  claims ten, and that warning correctly stops firing.</td></tr>
+</table>
+
+</main>
+</body>
+</html>
