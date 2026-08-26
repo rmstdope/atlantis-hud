@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-z73s.2 — the warning when given men lower a skill</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:70ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+  pre.ord u { color:var(--brass); text-decoration:none; border-bottom:1px dotted var(--brass); }
+  table.units { width:100%; border-collapse:collapse; font-family:'SF Mono',Menlo,Consolas,monospace;
+    font-size:12.5px; background:var(--panel); border:1px solid var(--edge); max-width:900px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:6px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  .own { color:var(--ok); } .id { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  .arith { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); margin:6px 0 0; }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  .prob { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; max-width:100ch; }
+  .prob .w { color:var(--brass); } .prob .ttl { color:var(--ink-dim); font-size:11px; letter-spacing:1.4px;
+    text-transform:uppercase; margin-bottom:6px; }
+  .prob .empty { color:var(--ink-dim); font-style:italic; }
+  .prob div.row { padding:3px 0; }
+  .prob .at { color:var(--ink-dim); font-size:11.5px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .set { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:14px 16px;
+    font-family:system-ui,-apple-system,sans-serif; max-width:640px; }
+  .set h4 { font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); margin:14px 0 8px;
+    font-weight:normal; }
+  .set h4:first-child { margin-top:0; }
+  .set .tog { display:grid; grid-template-columns:34px 1fr; gap:10px; padding:6px 0; align-items:start; }
+  .set .sw { width:30px; height:17px; border-radius:9px; background:var(--select); position:relative; margin-top:2px; }
+  .set .sw.off { background:#3a4553; }
+  .set .sw::after { content:""; position:absolute; top:2px; right:2px; width:13px; height:13px; border-radius:50%; background:#fff; }
+  .set .sw.off::after { right:auto; left:2px; }
+  .set .t { color:var(--ink); font-size:13px; }
+  .set .d { color:var(--ink-soft); font-size:12px; }
+  .set .new { outline:2px solid var(--brass); outline-offset:4px; border-radius:3px; }
+</style></head><body>
+<header>
+  <h1>ah-z73s.2 — <span>the warning when given men lower a skill</span></h1>
+  <p>You have already decided this one is a finding in Problems, that the Skills cell keeps its ordinary predicted
+  marking, and the exact sentence: <code>giving 5 men to this unit lowers its lumberjack from 3 to 2</code>. Everything on
+  this page is what that sentence did not settle — how many findings a month's gifts produce, which line one points at,
+  and where its switch sits in Settings.</p>
+</header>
+<main>
+
+<h3 class="sec">Question 1 — two units reinforce the same unit in one month</h3>
+<p>Unit 3100 has 5 men at <code>LUMB 3 (180)</code>. Two other units give it men, and each gift knocks the level down
+one more step.</p>
+<pre class="ord">unit 1010
+  <u>GIVE 3100 3 HUMN</u>           ; these 3 are LUMB 1 (30)
+unit 1020
+  <u>GIVE 3100 4 HUMN</u>           ; these 4 know no lumberjack</pre>
+<div class="arith">(5&times;180 + 3&times;30) / 8 = 123 points &rarr; level 2 &nbsp;&nbsp;then&nbsp;&nbsp; (8&times;123) / 12 = 82 points &rarr; level 1</div>
+<table class="units">
+<tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th>Skills</th></tr>
+<tr><td class="own">*</td><td class="id">3100</td><td>Timber crew</td><td class="pred">12</td><td class="pred">LUMB 1 (82)</td></tr>
+</table>
+
+<span class="opt">A — one finding for the month, on the unit, pointing at no line</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> — giving 7 men to this unit lowers its lumberjack from 3 to 1.</div>
+</div>
+<ul class="notes">
+  <li>One mistake, one entry. The panel already refuses to warn twice about one outcome.</li>
+  <li>The sentence reads as the whole month's effect, which is what the player actually cares about: it ends at level 1.</li>
+  <li class="con">Clicking it selects the unit but jumps to no order line — there are two, in two other units' blocks.
+      A hex having no guard already behaves this way, but every other unit-anchored warning has a line.</li>
+</ul>
+
+<span class="opt">B — one finding per gift that lowers a level, each on its own GIVE line</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> — giving 3 men to this unit lowers its lumberjack from 3 to 2. <span class="at">&nbsp;line 2, in unit 1010</span></div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> — giving 4 men to this unit lowers its lumberjack from 2 to 1. <span class="at">&nbsp;line 4, in unit 1020</span></div>
+</div>
+<ul class="notes">
+  <li>Every entry points at the order that caused it, which is what the rest of the panel does.</li>
+  <li>Blames the right gift: the player can see it was the second one that cost the second level.</li>
+  <li class="con">Two entries about one unit ending up at one level. A unit reinforced from four directions produces four.</li>
+  <li class="con">The finding names unit 3100 but sits in another unit's block, so the panel's subject and its line disagree.</li>
+</ul>
+
+<span class="opt">C — one finding for the month, on the last gift's line</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> — giving 7 men to this unit lowers its lumberjack from 3 to 1. <span class="at">&nbsp;line 4, in unit 1020</span></div>
+</div>
+<ul class="notes">
+  <li>One entry, and it still points somewhere.</li>
+  <li class="con">The line it points at is arbitrary — the last gift is not more to blame than the first, and reordering
+      the document silently moves the warning.</li>
+</ul>
+
+<h3 class="sec">Question 2 — one gift lowers two skills at once</h3>
+<p>Unit 3100 has 5 men at <code>LUMB 3 (180)</code> and <code>MINI 2 (90)</code>, and receives 5 men who know neither.</p>
+<div class="arith">(5&times;180)/10 = 90 &rarr; level 2 &nbsp;&nbsp;and&nbsp;&nbsp; (5&times;90)/10 = 45 &rarr; level 1</div>
+<span class="opt">D — one finding per skill that falls</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> — giving 5 men to this unit lowers its lumberjack from 3 to 2.</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> — giving 5 men to this unit lowers its mining from 2 to 1.</div>
+</div>
+<ul class="notes">
+  <li>Keeps the sentence you already agreed, unchanged, however many skills fall.</li>
+  <li>Each entry is a separate thing the unit can no longer do.</li>
+  <li class="con">Two lines in the panel for one gift.</li>
+</ul>
+<span class="opt">E — one finding naming every skill that falls</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> — giving 5 men to this unit lowers its lumberjack from 3 to 2 and its mining from 2 to 1.</div>
+</div>
+<ul class="notes">
+  <li>One gift, one entry.</li>
+  <li class="con">A new sentence shape, and it grows without limit — a unit with five skills reads as a paragraph.</li>
+</ul>
+
+<h3 class="sec">The states the two questions above do not show</h3>
+<p>These follow from whichever you choose and need no separate decision, but they are what the wording will actually
+have to cover. Say if any of them reads wrong.</p>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> — giving 1 man to this unit lowers its lumberjack from 3 to 2.
+  <span class="at">&nbsp;&nbsp;one man: "man", not "men"</span></div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> — giving 99 men to this unit lowers its lumberjack from 1 to 0.
+  <span class="at">&nbsp;&nbsp;the skill is diluted away entirely and leaves the Skills cell; "to 0" is what is left</span></div>
+</div>
+<ul class="notes">
+  <li><b>A gift that raises or holds the level says nothing at all.</b> The Problems panel gets no entry, and the Skills
+      cell keeps the ordinary italic-brass marking it already has.</li>
+  <li><b>A unit formed this month can never trigger it</b> — it starts with no skills, so nothing can fall.</li>
+  <li><b>A unit whose merged skills cannot be worked out</b> — an estimated headcount, no ruleset, men arriving by
+      <code>TAKE</code> — says nothing either. That is the other page's decision.</li>
+  <li><b>The giving unit is never mentioned.</b> Its own skills do not change: dividing evenly among people leaves its
+      points per man exactly as they were.</li>
+</ul>
+
+<h3 class="sec">Question 3 — where the switch sits in Settings</h3>
+<p>Same title and description either way, exactly as you agreed them. Only the group differs.</p>
+<span class="opt">F — under Orders, beside the other GIVE warning</span>
+<div class="set">
+  <h4>Orders</h4>
+  <div class="tog"><div class="sw"></div><div><div class="t">Reused FORM numbers</div><div class="d">Two units formed in the same hex this month with the same NEW number.</div></div></div>
+  <div class="tog"><div class="sw"></div><div><div class="t">Gifts to units that are not here</div><div class="d">A GIVE or TAKE naming a unit the report does not show in that hex.</div></div></div>
+  <div class="tog new"><div class="sw"></div><div><div class="t">Transfers that lower a skill</div><div class="d">A GIVE of men that leaves the receiving unit at a lower skill level than the report gave it.</div></div></div>
+</div>
+<ul class="notes">
+  <li>It is a warning about a <code>GIVE</code>, and the group already holds the other one.</li>
+</ul>
+<span class="opt">G — under Studying/Teaching, with the other skill-level warnings</span>
+<div class="set">
+  <h4>Studying/Teaching</h4>
+  <div class="tog"><div class="sw"></div><div><div class="t">Teachers with free slots</div><div class="d">A unit that could teach somebody this month and is not.</div></div></div>
+  <div class="tog"><div class="sw"></div><div><div class="t">Studying at the maximum</div><div class="d">A STUDY order for a skill the unit has already taken as far as it goes.</div></div></div>
+  <div class="tog new"><div class="sw"></div><div><div class="t">Transfers that lower a skill</div><div class="d">A GIVE of men that leaves the receiving unit at a lower skill level than the report gave it.</div></div></div>
+</div>
+<ul class="notes">
+  <li>It is about a skill level moving, which is what this group is about.</li>
+  <li class="con">Nothing in it is a <code>STUDY</code> or a <code>TEACH</code>, so a player looking for gift warnings
+      would not look here.</li>
+</ul>
+
+<h3 class="sec">Question 4 — on or off when the application is first opened</h3>
+<p>Every check ships on except <b>Unguarded hexes</b>, which was turned off because it fires across the whole map and
+trains the player to ignore the panel.</p>
+<div class="set">
+  <div class="tog"><div class="sw"></div><div><div class="t">On — the player is told the first time it happens</div><div class="d">It fires only when a gift actually costs a level, which is uncommon, so it will not flood the panel. But it warns about something perfectly legal that the player may have meant.</div></div></div>
+  <div class="tog"><div class="sw off"></div><div><div class="t">Off — the player turns it on if they want it</div><div class="d">Nobody is warned about a turn they wrote deliberately. But a player who does not know the rule is exactly the one who will not go looking for the switch.</div></div></div>
+</div>
+
+</main></body></html>
