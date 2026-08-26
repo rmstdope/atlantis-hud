@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-z73s.4 — a TAKE of men is a third route</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  .fix { border-left:3px solid var(--ok); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  .prob { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; max-width:118ch; }
+  .prob .w { color:var(--brass); } .prob .ttl { color:var(--ink-dim); font-size:11px; letter-spacing:1.4px;
+    text-transform:uppercase; margin-bottom:6px; }
+  .prob div.row { padding:4px 0; }
+  .prob .case { color:var(--ink-dim); font-size:11px; letter-spacing:1px; text-transform:uppercase;
+    display:inline-block; min-width:130px; vertical-align:top; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:110ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:82ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+</style></head><body>
+<header>
+  <h1>ah-z73s.4 &mdash; <span>a <code>TAKE</code> of men is a third route, and nothing has named it</span></h1>
+  <p>I checked the shipped code rather than trusting the plan. Since <code>ah-dxfd.1</code>, a <code>TAKE</code> of men
+  is followed and merged exactly as a <code>GIVE</code> is &mdash; the test
+  <code>men_taken_rather_than_given_are_judged_on_what_arrives</code> pins it. So this advisory can fire on men that
+  <b>nobody gave</b>, and the agreed sentence would say &ldquo;giving&rdquo; about them.</p>
+</header>
+<header><p style="margin-top:14px"><b style="color:#dbe3ec">Everything else stays as you chose it.</b> This is the one
+sentence the earlier rounds could not have asked about, because they were written from the plan rather than the tree.</p></header>
+<main>
+
+<h3 class="sec">The case</h3>
+<pre class="ord">unit 3100
+<b>TAKE FROM 2200 5 HUMN</b>    <span style="color:#8a97a8">five unskilled men taken, not given</span>
+PRODUCE LUMB</pre>
+<p style="color:#a3b0c0;font-size:13px;max-width:100ch">The rules put <code>GIVE</code> and <code>TAKE</code> in the
+same phase &mdash; <i>Give orders</i> in <code>rules/sequenceofevents</code> &mdash; and <code>rules/take</code> says a
+<code>TAKE</code> is &ldquo;a GIVE order with the direction reversed&rdquo;. Both run before <i>Market orders</i>, so
+buying is always last.</p>
+
+<span class="opt">E1 &mdash; a verb of its own, and the joined sentence lists whichever routes apply</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">take only</span><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; taking 5 men into this unit lowers its lumberjack from 3 to 2</div>
+<div class="row"><span class="case">give + take</span><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; giving 5 men to this unit and taking 2 more lowers its lumberjack from 3 to 1</div>
+<div class="row"><span class="case">all three</span><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; giving 5 men to this unit, taking 2 more and buying 4 more lowers its lumberjack from 3 to 1</div>
+</div>
+<ul class="notes">
+  <li>Follows every rule you have already chosen: name the order the player wrote, name every route that brought men,
+      and give the report's level and the month's level.</li>
+  <li>Bounded &mdash; there are exactly three routes, so the sentence can never grow past three clauses.</li>
+  <li class="con">The three-clause row is long, and it is the one a narrow panel will wrap worst.</li>
+</ul>
+
+<span class="opt">E2 &mdash; taken men count as given</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">take only</span><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; giving 5 men to this unit lowers its lumberjack from 3 to 2</div>
+<div class="row"><span class="case">give + take</span><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; giving 7 men to this unit lowers its lumberjack from 3 to 1</div>
+<div class="row"><span class="case">all three</span><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; giving 7 men to this unit and buying 4 more lowers its lumberjack from 3 to 1</div>
+</div>
+<ul class="notes">
+  <li>Two clauses at most, and nothing new to word or test. The rules do call a <code>TAKE</code> a reversed
+      <code>GIVE</code>.</li>
+  <li class="con">Says &ldquo;giving&rdquo; about men the unit took. A player searching their orders for a
+      <code>GIVE</code> to this unit will not find one.</li>
+</ul>
+
+<span class="opt">E3 &mdash; route-neutral whenever a TAKE was involved</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">take only</span><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; 5 men joining this unit lower its lumberjack from 3 to 2</div>
+<div class="row"><span class="case">give + take</span><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; 7 men joining this unit lower its lumberjack from 3 to 1</div>
+<div class="row"><span class="case">all three</span><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; 11 men joining this unit lower its lumberjack from 3 to 1</div>
+</div>
+<ul class="notes">
+  <li>Keeps the give and buy sentences exactly as agreed, and never grows past one clause.</li>
+  <li class="con">A fourth shape, with its own count agreement, that appears only for the rarest route &mdash; so the
+      same unit can be described two different ways in two consecutive months.</li>
+  <li class="con">Names no order at all in the case where naming one would help most.</li>
+</ul>
+
+<div class="note"><b>My recommendation is E1.</b> It is the only option that keeps the rule you have chosen three times
+already &mdash; name the order the player actually wrote &mdash; and a <code>TAKE</code> of men is rare enough that
+the three-clause row will almost never be drawn.</div>
+
+</main></body></html>

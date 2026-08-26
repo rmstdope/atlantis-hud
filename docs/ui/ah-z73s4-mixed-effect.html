@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-z73s.4 — when one route helped and the other hurt</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  .fix { border-left:3px solid var(--ok); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  .prob { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; max-width:110ch; }
+  .prob .w { color:var(--brass); } .prob .ttl { color:var(--ink-dim); font-size:11px; letter-spacing:1.4px;
+    text-transform:uppercase; margin-bottom:6px; }
+  .prob div.row { padding:4px 0; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:110ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:82ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+</style></head><body>
+<header>
+  <h1>ah-z73s.4 &mdash; <span>when one route helped and the other hurt</span></h1>
+  <p>The last thing I cannot decide for you. Everything else is settled and this page re-opens none of it.</p>
+</header>
+<main>
+
+<h3 class="sec">The case</h3>
+<p>A unit of ten at lumberjack&nbsp;2 is given five <b>skilled</b> lumberjacks &mdash; which takes it <i>up</i> to
+lumberjack&nbsp;3 &mdash; and then buys nine peasants, which takes it down to lumberjack&nbsp;1. The report said 2;
+the month ends at 1, so the advisory fires. But the gift is the half that <i>helped</i>.</p>
+<pre class="ord">unit 1010
+GIVE 3100 5 LUMB        <span style="color:#8a97a8">five skilled men: 2 &rarr; 3</span>
+
+unit 3100
+<b>BUY 9 PEAS</b>          <span style="color:#8a97a8">nine unskilled: 3 &rarr; 1</span>
+PRODUCE LUMB</pre>
+<p style="color:#a3b0c0;font-size:13px;max-width:100ch">The rules fix the order: <i>Give orders</i> run before
+<i>Market orders</i> (<code>rules/sequenceofevents</code>), so the gift is always first and the buy always second.</p>
+
+<span class="opt">D1 &mdash; name both routes whenever men arrived by both</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; giving 5 men to this unit and buying 9 more lowers its lumberjack from 2 to 1.</div>
+</div>
+<ul class="notes">
+  <li>One rule, stated in one line, with nothing to compute per route: <i>men came by both, so both are named</i>.</li>
+  <li>Truthful about what the player would have to undo &mdash; deleting the <code>BUY</code> alone leaves the unit
+      at&nbsp;3, but deleting the <code>GIVE</code> alone leaves it at&nbsp;1 as well, so both lines are load-bearing.</li>
+  <li class="con">Blames a gift that raised the level. A player who reads it as &ldquo;the gift cost me a level&rdquo;
+      has been misled about which order to look at.</li>
+</ul>
+
+<span class="opt">D2 &mdash; name only the routes that lowered it</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; buying 9 men into this unit lowers its lumberjack from 2 to 1.</div>
+</div>
+<ul class="notes">
+  <li>Names only the order actually worth changing, which is the whole point of the advisory.</li>
+  <li class="con">The two levels in the sentence are <b>2</b> and <b>1</b>, but the buy alone took it from
+      <b>3</b> to <b>1</b>. The message's own numbers no longer describe the step it names.</li>
+  <li class="con">Needs a per-route judgement the merge does not currently produce, and a rule for the case where
+      the drop is caused by the two together and by neither alone.</li>
+</ul>
+
+<span class="opt">D3 &mdash; name only the routes that lowered it, and give that route's own step</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; buying 9 men into this unit lowers its lumberjack from 3 to 1.</div>
+</div>
+<ul class="notes">
+  <li>Internally consistent: the order named, the men named, and the two levels that order moved it between.</li>
+  <li class="con">The <b>3</b> appears nowhere the player can see. The report says&nbsp;2 and the Skills cell will
+      say&nbsp;1; the intermediate level exists only inside the check.</li>
+  <li class="con">The advisory stops being &ldquo;what the report said, and what you will have&rdquo; &mdash; which
+      is the shape every sentence here was built on.</li>
+</ul>
+
+<div class="note"><b>How rare is it?</b> It needs a gift of men who are <i>better</i> at the skill than the receiver,
+in the same month as a recruit into that same unit, with the net still falling. My recommendation is
+<b>D1</b>: it is the only option whose numbers are the report's figure and the month's figure, which is what every
+other sentence in this advisory promises.</div>
+
+</main></body></html>

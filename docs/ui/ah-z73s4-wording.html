@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-z73s.4 — the recruiting sentence, and the zero</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  .fix { border-left:3px solid var(--ok); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  .prob { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; max-width:110ch; }
+  .prob .w { color:var(--brass); } .prob .ttl { color:var(--ink-dim); font-size:11px; letter-spacing:1.4px;
+    text-transform:uppercase; margin-bottom:6px; }
+  .prob div.row { padding:4px 0; }
+  .prob .case { color:var(--ink-dim); font-size:11px; letter-spacing:1px; text-transform:uppercase;
+    display:inline-block; min-width:150px; vertical-align:top; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:110ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:78ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+</style></head><body>
+<header>
+  <h1>ah-z73s.4 &mdash; <span>the recruiting sentence, and what a level of zero reads as</span></h1>
+  <p>You already settled the gift sentence: <code>giving 5 men to this unit lowers its lumberjack from 3 to 2</code>,
+  one entry per skill for the whole month, on the receiving unit, with no line. Then, while planning
+  <code>ah-z73s.3</code>, you widened this advisory to cover a level lowered by <b>recruiting</b> too, and asked for a
+  second sentence rather than one that stretches over both. This page is those words &mdash; and one thing the
+  widening opened that nothing has decided yet.</p>
+</header>
+<main>
+
+<div class="note fix"><b>Nothing already agreed is being re-opened.</b> The gift sentence, the one-entry-per-skill
+rule, the Problems-panel home, the ordinary brass marking on the Skills cell and the ON-by-default toggle all stand.
+Section&nbsp;2 is the only place a settled sentence could move, and only in the case where a level reaches zero.</div>
+
+<h3 class="sec">1 &mdash; the recruiting sentence</h3>
+<p>Ten men who each know lumberjack&nbsp;1 (30 points), recruiting four peasants. The merge is by man-days, so the
+unit ends at 21 points per man &mdash; lumberjack&nbsp;0. <code>rules/economy_recruiting</code>: &ldquo;New recruits
+will not have any skills or items&rdquo;; <code>rules/buy</code>: &ldquo;This will dilute the skills that the unit
+has.&rdquo;</p>
+<pre class="ord">unit 900
+<b>BUY 4 PEAS</b>
+PRODUCE LUMB</pre>
+
+<span class="opt">R1 &mdash; &ldquo;recruiting 4 men into this unit&rdquo;</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">four recruits</span><span class="w">&#9888;</span> <b>900 Woodcutters</b> &mdash; recruiting 4 men into this unit lowers its lumberjack from 1 to 0.</div>
+<div class="row"><span class="case">one recruit</span><span class="w">&#9888;</span> <b>900 Woodcutters</b> &mdash; recruiting 1 man into this unit lowers its lumberjack from 3 to 2.</div>
+</div>
+<ul class="notes">
+  <li>Mirrors the gift sentence word for word except the verb and the preposition &mdash; the two read as one family.</li>
+  <li><i>into</i> rather than <i>to</i>: men are recruited <i>into</i> a unit, and no other unit is involved.</li>
+  <li class="con">&ldquo;recruiting 4 men&rdquo; is the app's word, not the order's. The player wrote <code>BUY 4 PEAS</code>.</li>
+</ul>
+
+<span class="opt">R2 &mdash; &ldquo;buying 4 men into this unit&rdquo;</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">four recruits</span><span class="w">&#9888;</span> <b>900 Woodcutters</b> &mdash; buying 4 men into this unit lowers its lumberjack from 1 to 0.</div>
+<div class="row"><span class="case">one recruit</span><span class="w">&#9888;</span> <b>900 Woodcutters</b> &mdash; buying 1 man into this unit lowers its lumberjack from 3 to 2.</div>
+</div>
+<ul class="notes">
+  <li>Names the order the player actually wrote, so the line to look at is obvious without one being pointed at.</li>
+  <li class="con">The rules call it recruiting throughout, and &ldquo;buying men&rdquo; reads as a slave market rather
+      than as raising troops.</li>
+</ul>
+
+<span class="opt">R3 &mdash; &ldquo;4 recruits joining this unit&rdquo;</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">four recruits</span><span class="w">&#9888;</span> <b>900 Woodcutters</b> &mdash; 4 recruits joining this unit lower its lumberjack from 1 to 0.</div>
+<div class="row"><span class="case">one recruit</span><span class="w">&#9888;</span> <b>900 Woodcutters</b> &mdash; 1 recruit joining this unit lowers its lumberjack from 3 to 2.</div>
+</div>
+<ul class="notes">
+  <li>Uses the same word &mdash; <i>joining</i> &mdash; that you chose for the crew clause in <code>ah-z73s.3</code>.</li>
+  <li class="con">The verb has to agree with the count (<i>lower</i> / <i>lowers</i>), which the gift sentence never has to do.</li>
+  <li class="con">Furthest from the gift sentence, so the two stop looking like one family.</li>
+</ul>
+
+<h3 class="sec">2 &mdash; what a level of zero reads as</h3>
+<p>A skill can be diluted away entirely: the merged points truncate to nothing and the skill leaves the Skills cell.
+The gift sentence as agreed says <code>from 1 to 0</code>. The draft of the recruiting sentence said
+<code>from 1 to none</code>. They cannot both be right, and this is the one place a settled sentence would move.</p>
+
+<span class="opt">Z1 &mdash; &ldquo;to 0&rdquo; everywhere &nbsp;(nothing already agreed changes)</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">gift</span><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; giving 99 men to this unit lowers its lumberjack from 1 to 0.</div>
+<div class="row"><span class="case">recruiting</span><span class="w">&#9888;</span> <b>900 Woodcutters</b> &mdash; recruiting 4 men into this unit lowers its lumberjack from 1 to 0.</div>
+</div>
+<ul class="notes">
+  <li>One shape, two numbers, always. Nothing conditional to build and nothing agreed is disturbed.</li>
+  <li class="con">The Skills cell will show <i>no lumberjack at all</i>, and the sentence says <code>0</code> &mdash;
+      a player checking the cell finds nothing where the message implied a zero.</li>
+</ul>
+
+<span class="opt">Z2 &mdash; &ldquo;to none&rdquo; everywhere &nbsp;(the gift sentence's zero case moves)</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">gift</span><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; giving 99 men to this unit lowers its lumberjack from 1 to none.</div>
+<div class="row"><span class="case">recruiting</span><span class="w">&#9888;</span> <b>900 Woodcutters</b> &mdash; recruiting 4 men into this unit lowers its lumberjack from 1 to none.</div>
+</div>
+<ul class="notes">
+  <li>Matches what the player will actually see: the skill is gone from the cell, not sitting there at zero.</li>
+  <li>Still one sentence shape &mdash; only the rendering of the number changes, in both sentences alike.</li>
+  <li class="con">Changes a sentence you already approved, in one of its cases.</li>
+</ul>
+
+<span class="opt">Z3 &mdash; a clause of its own when the skill is lost</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">gift</span><span class="w">&#9888;</span> <b>3100 Timber crew</b> &mdash; giving 99 men to this unit costs it its lumberjack entirely.</div>
+<div class="row"><span class="case">recruiting</span><span class="w">&#9888;</span> <b>900 Woodcutters</b> &mdash; recruiting 4 men into this unit costs it its lumberjack entirely.</div>
+</div>
+<ul class="notes">
+  <li>Says the strongest thing plainly. Losing a skill outright is a different event from dropping a level.</li>
+  <li class="con">A third and fourth sentence shape, each with its own test, for a case that is rare.</li>
+  <li class="con">Drops the &ldquo;from&nbsp;1&rdquo; &mdash; the player is not told what they had.</li>
+</ul>
+
+</main></body></html>
