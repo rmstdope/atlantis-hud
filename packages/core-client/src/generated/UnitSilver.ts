@@ -236,6 +236,30 @@ worksByDefault: boolean,
  */
 taxesByFlag: boolean, 
 /**
+ * How many of the item its `CAST` order creates this unit will make. `0` for a unit with no
+ * such order, and for a mage whose level makes none of the thing (`ah-ofpb.4`).
+ */
+castMade: number, 
+/**
+ * `cast_made`, named and counted the way a finding names an item - "2 amulets of protection".
+ * The interface cannot do this itself: the unit does not hold the thing yet, so there is
+ * nothing in its inventory to read a plural off, and 84 of the 114 items this corpus shows
+ * with a count above one pluralise irregularly (`counted_with_singular`). `None` for a unit
+ * with no priceable cast, and for a spell that creates nothing an item catalogue can carry -
+ * construct gate makes a Gate.
+ */
+castMadeNamed: string | null, 
+/**
+ * How many its level alone would make. Equal to `cast_made` unless `cast_capped_by` says
+ * something stopped it.
+ */
+castWanted: number, 
+/**
+ * What stopped it making `cast_wanted`, or `None` when nothing did. Drives the hover's note
+ * and nothing else - the figures above are already the capped ones.
+ */
+castCappedBy: ProductionCap | null, 
+/**
  * Set when this unit is not one the report shows but one this month's `FORM` orders create -
  * see [`FormedSubject`]. The interface names the unit by its alias and sends a click to
  * `formed_by`, since a unit that does not exist cannot be selected.

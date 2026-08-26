@@ -1,4 +1,4 @@
-import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
+import type { ProductionCap, ReportUnit, UnitSilver } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 
 /**
@@ -186,6 +186,20 @@ function countOf(count: number, name: string): string {
 }
 
 /**
+ * "This unit has materials for 5 swords, not the 8 its men could make." - the shape
+ * [`productionCapSentence`] and [`castCapSentence`] share, differing in one word: what limited the
+ * run, what it names, how many it could have made, and what that count is of (`ah-ofpb.4`).
+ */
+function capSentence(
+  has: ProductionCap,
+  named: string,
+  wanted: number,
+  could: "its men" | "its level",
+): string {
+  return `This unit has ${has === "silver" ? "silver" : "materials"} for ${named}, not the ${wanted} ${could} could make.`;
+}
+
+/**
  * "This unit has materials for 5 swords, not the 8 its men could make." - `undefined` when
  * nothing capped the run, or when there is no priceable PRODUCE to speak about.
  *
@@ -196,8 +210,25 @@ export function productionCapSentence(silver: UnitSilver | null | undefined): st
   if (!silver || silver.productionCappedBy === null || silver.producedName === null) {
     return undefined;
   }
-  const has = silver.productionCappedBy === "silver" ? "silver" : "materials";
-  return `This unit has ${has} for ${countOf(silver.produced, silver.producedName)}, not the ${silver.productionWanted} its men could make.`;
+  return capSentence(
+    silver.productionCappedBy,
+    countOf(silver.produced, silver.producedName),
+    silver.productionWanted,
+    "its men",
+  );
+}
+
+/**
+ * "This unit has silver for 2 amulets of protection, not the 3 its level could make." -
+ * `undefined` when nothing capped the cast, or when there is no priceable CAST to speak about.
+ * `castMadeNamed` is already counted and named - unlike `producedName` above, the core cannot
+ * pluralise what a unit does not hold yet, so it is not passed through `countOf` here (`ah-ofpb.4`).
+ */
+function castCapSentence(silver: UnitSilver | null | undefined): string | undefined {
+  if (!silver || silver.castCappedBy === null || silver.castMadeNamed === null) {
+    return undefined;
+  }
+  return capSentence(silver.castCappedBy, silver.castMadeNamed, silver.castWanted, "its level");
 }
 
 /** The month-end figure with upkeep taken off, or `null` where either term is unpriceable. */
@@ -493,6 +524,25 @@ export const SILVER_NOTES: readonly SilverNote[] = [
         producedName: "catapult",
         productionWanted: 3,
         productionCappedBy: "silver"
+      }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  // Immediately after `production-capped`, the same reasoning: a cast that made less than its
+  // level allows is worth a line, and `cannot-pay` above already covers a mage that can afford
+  // none of it at all (`ah-ofpb.4`).
+  {
+    id: "cast-capped",
+    when: ({ silver }) => castCapSentence(silver) !== undefined,
+    say: ({ silver }) => castCapSentence(silver) ?? "",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({
+        castMade: 2,
+        castMadeNamed: "2 amulets of protection",
+        castWanted: 3,
+        castCappedBy: "silver"
       }),
       warned: false,
       countUpkeep: true

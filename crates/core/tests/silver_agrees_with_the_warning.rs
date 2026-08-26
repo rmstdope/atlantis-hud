@@ -318,6 +318,10 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         production_wanted: 0,
         production_capped_by: None,
         works_by_default: false,
+        cast_made: 0,
+        cast_made_named: None,
+        cast_wanted: 0,
+        cast_capped_by: None,
         formed: None,
     }
 }
