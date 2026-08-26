@@ -128,6 +128,7 @@ pub mod codes {
     pub const PART_OF_HEX_SHORTFALL: Code = Code("part-of-hex-shortfall");
     pub const NOTHING_LEFT_TO_SELL: Code = Code("nothing-left-to-sell");
     pub const ARRIVALS_LOWER_A_SKILL: Code = Code("arrivals-lower-a-skill");
+    pub const ITEMS_CANNOT_BE_GIVEN: Code = Code("items-cannot-be-given");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -136,7 +137,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 35] = [
+    pub const ALL: [Code; 36] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -172,6 +173,7 @@ pub mod codes {
         PART_OF_HEX_SHORTFALL,
         NOTHING_LEFT_TO_SELL,
         ARRIVALS_LOWER_A_SKILL,
+        ITEMS_CANNOT_BE_GIVEN,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -480,6 +482,7 @@ pub fn review_turn(
         check_idle_units(hex, &options, &mut findings);
         check_transfer_targets(hex, &located, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
+        check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
         check_sailing(hex, ledger, ruleset, &options, &mut findings);
         check_movement(hex, ledger, ruleset, &options, &mut findings);
 
@@ -943,6 +946,7 @@ fn forecast_hex(
                 market_share: &market_share,
                 counted_item: &counted_by_name,
                 counted_or_none: &counted_or_none_by_name,
+                class_carries_silver: &|class: &str| class_carries_silver(class, ruleset),
             },
             ruleset,
         ));
@@ -1066,6 +1070,21 @@ fn forecast_hex(
     }
 }
 
+/// Whether `GIVE ... ALL <class>` carries the holder's silver out with it.
+///
+/// `None` where this catalogue cannot say which items the class holds - the caller must doubt
+/// rather than assume either way. `Some(true)` for `ITEM`/`ITEMS` without consulting the map:
+/// `rules/give` defines it as "the combination of all of the previous categories", silver
+/// included. The one implementation for both the SILVER column (`silver::Lookups`) and the
+/// receipts pass below - the two must not answer this two ways (`ah-lu0f`).
+fn class_carries_silver(class: &str, ruleset: Option<&Ruleset>) -> Option<bool> {
+    if class.eq_ignore_ascii_case("ITEM") || class.eq_ignore_ascii_case("ITEMS") {
+        return Some(true);
+    }
+    let tags = ruleset?.class_members(class)?;
+    Some(tags.iter().any(|tag| tag == SILVER))
+}
+
 /// Every gift of silver in the document, credited to the unit it names.
 ///
 /// Only a gift this pass can both read and place is counted: the giver must be a unit the report
@@ -1111,11 +1130,22 @@ fn gather_receipts(
         for placed in &orders.intents {
             if let Intent::Take {
                 from: Party::Unit(source_id),
-                what: Selector::Item(text),
+                what,
                 amount,
             } = &placed.intent
             {
-                if names_silver(text, ruleset) {
+                // A named item is silver by the catalogue's own tag; a class carries it out only
+                // when it is `ALL <class>` (`rules/give` gives `EXCEPT` to the named-item forms
+                // alone) of a class the catalogue says includes silver.
+                let carries_silver = match what {
+                    Selector::Item(text) => names_silver(text, ruleset),
+                    Selector::Class(name) => {
+                        *amount == (Amount::All { except: 0 })
+                            && class_carries_silver(name, ruleset) == Some(true)
+                    }
+                    Selector::WholeUnit => false,
+                };
+                if carries_silver {
                     read_take(
                         receipts_of(&mut receipts, giver_id),
                         units.get(source_id.as_str()).copied(),
@@ -1129,17 +1159,21 @@ fn gather_receipts(
                 }
                 continue;
             }
-            let Intent::Give {
-                to,
-                what: Selector::Item(text),
-                amount,
-            } = &placed.intent
-            else {
-                // `GIVE 0` discards to nobody and a foreign unit is not ours; a class or the unit
-                // itself moves an amount that depends on classifying everything it holds.
+            let Intent::Give { to, what, amount } = &placed.intent else {
                 continue;
             };
-            if !names_silver(text, ruleset) {
+            // `GIVE 0` discards to nobody and a foreign unit is not ours; a class the catalogue
+            // cannot resolve, or one that does not carry silver, moves an amount that depends on
+            // classifying everything the unit holds.
+            let carries_silver = match what {
+                Selector::Item(text) => names_silver(text, ruleset),
+                Selector::Class(name) => {
+                    *amount == (Amount::All { except: 0 })
+                        && class_carries_silver(name, ruleset) == Some(true)
+                }
+                Selector::WholeUnit => false,
+            };
+            if !carries_silver {
                 continue;
             }
             let recipient: String = match to {
@@ -1380,6 +1414,12 @@ struct Ordered<'a> {
     /// `apply_transfers` after the hex is read, alongside `skills_after_gifts`; `Unchanged` until
     /// then.
     holdings_after_gifts: HoldingsAfterGifts,
+    /// Every transfer line in this unit's own block that named items the game will not move.
+    /// Written by `apply_transfers`; empty until then, and empty for the overwhelming majority of
+    /// units. Hangs on the **actor** - the unit whose block the order is in - not on the holder,
+    /// because that is the unit the finding is about: for a `TAKE` the goods are the source's and
+    /// the mistake is the taker's.
+    refused_transfers: Vec<RefusedTransfer>,
     /// The unit's headcount once this month's gifts, takes and recruits have run.
     ///
     /// Written by `apply_transfers` and then by `apply_recruits`; equal to `unit.men` until one
@@ -1411,6 +1451,7 @@ impl<'a> Hex<'a> {
                     formed: None,
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
+                    refused_transfers: Vec::new(),
                     men_after_orders: unit.men,
                     arrivals: Arrivals::default(),
                 }
@@ -1431,6 +1472,7 @@ impl<'a> Hex<'a> {
                     }),
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
+                    refused_transfers: Vec::new(),
                     men_after_orders: formed.unit.men,
                     arrivals: Arrivals::default(),
                 }),
@@ -1546,8 +1588,8 @@ fn move_holding(state: &mut Working, tag: &str, name: &str, delta: i64) {
 enum Moves {
     /// Every tag listed, in the holder's own item order.
     Tags(Vec<String>),
-    /// A class the catalogue cannot classify (`rules/give` lists fifteen; `ah-3sp7` is the bead
-    /// that teaches the scraper the rest), so what leaves the holder is not knowable.
+    /// `ADVANCED`, `MAGIC` or `SPECIAL` - the three classes the data page never states the members
+    /// of, so what leaves the holder is not knowable - or a word that is not a class at all.
     Unknowable,
 }
 
@@ -1585,7 +1627,15 @@ fn moves(
                 // included.
                 Moves::Tags(held.keys().cloned().collect())
             } else {
-                Moves::Unknowable
+                match ruleset.class_members(&upper) {
+                    Some(tags) => Moves::Tags(
+                        held.keys()
+                            .filter(|tag| tags.iter().any(|member| member == *tag))
+                            .cloned()
+                            .collect(),
+                    ),
+                    None => Moves::Unknowable,
+                }
             }
         }
     }
@@ -1628,6 +1678,27 @@ fn resolve_give_target(
     } else {
         GiveTarget::Unit(index)
     }
+}
+
+/// One transfer line that named items the game will not move.
+///
+/// Recorded by [`apply_transfers`] while it walks the hex's transfers in line order - the one walk
+/// that carries a running holding per unit, so the only place that can say what a *later* line on
+/// the same unit would still have found. `check_refused_transfers` formats findings from this and
+/// works nothing out for itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RefusedTransfer {
+    /// The line the order sits on. The finding is anchored by looking this up in the actor's own
+    /// `intents`, so it carries the order's columns as well.
+    line: usize,
+    /// A `GIVE` rather than a `TAKE`, which picks the verb in the sentence.
+    is_give: bool,
+    /// The tags this transfer would have moved but the catalogue says may not change hands, each
+    /// with the count it would have carried, in the order the walk met them. Never empty: a
+    /// `RefusedTransfer` is recorded only when something was actually refused.
+    refused: Vec<(String, i64)>,
+    /// What the transfer still moves, same shape, same order. Empty when nothing survives.
+    moving: Vec<(String, i64)>,
 }
 
 /// One unit's people and goods once this month's GIVE and TAKE orders have run.
@@ -1756,6 +1827,10 @@ fn apply_transfers(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
     transfers.sort_by_key(|transfer| transfer.line);
 
     let mut working: BTreeMap<usize, Working> = BTreeMap::new();
+    // Accumulated rather than written straight onto `units[position].refused_transfers`: the loop
+    // below borrows `units` immutably through `seed_working(units, position)` while it runs, so a
+    // second, mutable borrow through `units[position]` cannot live alongside it.
+    let mut refused_by_position: Vec<(usize, RefusedTransfer)> = Vec::new();
 
     for transfer in &transfers {
         if matches!(transfer.what, Selector::WholeUnit) {
@@ -1827,6 +1902,10 @@ fn apply_transfers(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
         if matches!(receiver, GiveTarget::Nowhere) {
             continue;
         }
+        // Unit 0 discards rather than gives, and is not "another unit" - the one shape where the
+        // game hands over even the items it otherwise refuses to move (`rules/give`, epic
+        // decision 9).
+        let discarding = matches!(receiver, GiveTarget::Discard);
 
         let source_state = working
             .entry(source)
@@ -1844,6 +1923,11 @@ fn apply_transfers(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
                 continue;
             }
         };
+
+        // What this transfer refuses and what it still moves, in the order the walk meets them -
+        // written into `RefusedTransfer` after the loop, only when something was refused.
+        let mut refused: Vec<(String, i64)> = Vec::new();
+        let mut moving: Vec<(String, i64)> = Vec::new();
 
         for tag in tags {
             let source_state = working
@@ -1881,6 +1965,17 @@ fn apply_transfers(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
             }
             if moved == 0 {
                 continue;
+            }
+
+            // 51 monsters and the imprisoned entity carry `This item cannot be given to other
+            // units.`, and a discard is not another unit (decision 9 above) - so a discard moves
+            // them too, recording nothing, while any other receiver does not.
+            if !discarding {
+                if !ruleset.can_be_given(&tag) {
+                    refused.push((tag.clone(), moved));
+                    continue;
+                }
+                moving.push((tag.clone(), moved));
             }
 
             if let GiveTarget::Unit(receiver_position) = receiver {
@@ -1933,6 +2028,22 @@ fn apply_transfers(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
             }
             move_holding(source_state, &tag, &name, -moved);
         }
+
+        if !refused.is_empty() {
+            refused_by_position.push((
+                transfer.position,
+                RefusedTransfer {
+                    line: transfer.line,
+                    is_give: transfer.is_give,
+                    refused,
+                    moving,
+                },
+            ));
+        }
+    }
+
+    for (position, refused) in refused_by_position {
+        units[position].refused_transfers.push(refused);
     }
 
     for (position, state) in working {
@@ -3231,7 +3342,10 @@ fn apply(
         Intent::Produce { item } => produce(ledger, hex, actor, placed, item, ruleset),
         Intent::Give { to, what, amount } => {
             let receiver = party_id(to, hex);
-            if let Some(tags) = class_tags(ledger, ruleset, who, what, amount) {
+            // Unit 0 discards rather than gives, and is not "another unit" - the one shape where
+            // the game hands over even the items it otherwise refuses to move (epic decision 9).
+            let discarding = matches!(to, Party::Discard);
+            if let Some(tags) = class_tags(ledger, ruleset, who, what, amount, discarding) {
                 for tag in tags {
                     transfer(
                         ledger,
@@ -3244,6 +3358,7 @@ fn apply(
                         receiver.clone(),
                         RecordMovement::No,
                         None,
+                        discarding,
                     );
                 }
             } else {
@@ -3258,6 +3373,7 @@ fn apply(
                     receiver,
                     RecordMovement::No,
                     None,
+                    discarding,
                 );
             }
         }
@@ -3284,7 +3400,9 @@ fn apply(
                 _ => None,
             };
             let source = source.unwrap_or_default();
-            if let Some(tags) = class_tags(ledger, ruleset, &source, what, amount) {
+            // A TAKE has no discard target - the source is always a live unit, so the game's
+            // refusal always applies.
+            if let Some(tags) = class_tags(ledger, ruleset, &source, what, amount, false) {
                 for tag in tags {
                     transfer(
                         ledger,
@@ -3297,6 +3415,7 @@ fn apply(
                         Some(who.clone()),
                         RecordMovement::Yes,
                         None,
+                        false,
                     );
                 }
             } else {
@@ -3311,6 +3430,7 @@ fn apply(
                     Some(who.clone()),
                     RecordMovement::Yes,
                     from_unshown,
+                    false,
                 );
             }
         }
@@ -3447,18 +3567,24 @@ fn party_id(party: &Party, hex: &Hex<'_>) -> Option<String> {
 ///
 /// `rules/give` defines `ITEM`/`ITEMS` as "the combination of all of the previous categories" -
 /// everything the holder has, silver included - so it needs no classifying at all. `MAN`/`MEN` is
-/// `composition::men_in`'s own filter, the walker's headcount rule stated once
-/// (`ah-dxfd.1`). Every other class - `WEAPON`, `FOOD`, `TRADE` and the rest - still needs a
-/// classification this ledger does not carry and is left exactly as before. `rules/give` gives
-/// `EXCEPT` and a stated amount to the named-item forms alone; the class form is
-/// `GIVE [unit] ALL [item class]` and nothing else, so a class carrying either amount shape is a
-/// shape the rules do not define and is left alone too.
+/// `composition::men_in`'s own filter, the walker's headcount rule stated once (`ah-dxfd.1`).
+/// Every other class asks the catalogue (`Ruleset::class_members`, `ah-3sp7.1`); `ADVANCED`,
+/// `MAGIC` and `SPECIAL` stay unresolvable because the data page never states their members, and
+/// so does a word that is not a class at all. `rules/give` gives `EXCEPT` and a stated amount to
+/// the named-item forms alone; the class form is `GIVE [unit] ALL [item class]` and nothing else,
+/// so a class carrying either amount shape is a shape the rules do not define and is left alone
+/// too.
+///
+/// `discarding` drops the `can_be_given` filter: `GIVE 0 ...` destroys even the items the game
+/// will not hand to another unit, because unit 0 is not another unit (`rules/give`, epic decision
+/// 9).
 fn class_tags(
     ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
     holder: &str,
     what: &Selector,
     amount: &Amount,
+    discarding: bool,
 ) -> Option<Vec<String>> {
     let Selector::Class(name) = what else {
         return None;
@@ -3466,21 +3592,32 @@ fn class_tags(
     if *amount != (Amount::All { except: 0 }) {
         return None;
     }
-    let is_man_class = name.eq_ignore_ascii_case("MAN") || name.eq_ignore_ascii_case("MEN");
-    let is_item_class = name.eq_ignore_ascii_case("ITEM") || name.eq_ignore_ascii_case("ITEMS");
-    if !is_man_class && !is_item_class {
-        return None;
-    }
     // `MAN`/`MEN` cannot be resolved without a catalogue, and expanding `ITEM`/`ITEMS` alone
     // would make the two classes behave differently for no reason a reader could infer.
     let ruleset = ruleset?;
+    let is_man_class = name.eq_ignore_ascii_case("MAN") || name.eq_ignore_ascii_case("MEN");
+    let is_item_class = name.eq_ignore_ascii_case("ITEM") || name.eq_ignore_ascii_case("ITEMS");
+    let members = if is_man_class || is_item_class {
+        None
+    } else {
+        Some(ruleset.class_members(name)?)
+    };
 
     Some(
         ledger
             .balance
             .keys()
             .filter(|(unit_id, _)| unit_id == holder)
-            .filter(|(_, tag)| !is_man_class || ruleset.is_man(tag))
+            .filter(|(_, tag)| {
+                if is_man_class {
+                    ruleset.is_man(tag)
+                } else if is_item_class {
+                    true
+                } else {
+                    members.is_some_and(|tags| tags.iter().any(|member| member == tag))
+                }
+            })
+            .filter(|(_, tag)| discarding || ruleset.can_be_given(tag))
             .map(|(_, tag)| tag.clone())
             .collect(),
     )
@@ -3502,6 +3639,9 @@ fn transfer(
     // For `TAKE` from a unit the report does not show here: that unit's number, carried onto the
     // `to` end's movement so the hover can say the source is unverifiable (`ah-agbm`).
     from_unshown: Option<String>,
+    // `true` only for `GIVE 0 ...`: unit 0 is not "another unit", so the items the game refuses to
+    // hand to another unit still leave the giver (`rules/give`, epic decision 9).
+    discarding: bool,
 ) {
     // The same reading `silver::forecast_unit` gets, so the two surfaces cannot classify one
     // order two ways (`ah-lu0f`). `Unpriceable` is a whole class of items, or the unit itself:
@@ -3526,6 +3666,17 @@ fn transfer(
             .push(placed.line);
         return;
     };
+
+    // The item is resolved and the transfer *is* counted - it simply moves nothing, exactly as a
+    // unit holding none of it would. Neither `doubted` nor `uncounted` is touched: those mark a
+    // sum this ledger could not follow, and this one was followed to the end.
+    if !discarding
+        && ledger
+            .ruleset
+            .is_some_and(|ruleset| !ruleset.can_be_given(&tag))
+    {
+        return;
+    }
 
     let quantity = match shape {
         // Unreachable: a `Selector::Item` is never unpriceable. Doubting is what the arm above
@@ -6848,6 +6999,63 @@ fn check_arrivals(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
     }
 }
 
+/// Every transfer this month that named items the game will not move.
+///
+/// `rules/give` accepts a class the engine then filters item by item: 51 monsters and the
+/// imprisoned entity carry `This item cannot be given to other units.`, so `ALL MONSTERS` selects
+/// sixty items and can move nine. The order is valid and the server runs it - it simply does less
+/// than the player meant, which is why this is a finding and not an error.
+///
+/// Works nothing out for itself: `apply_transfers` already refused the items while walking this
+/// hex's transfers in line order, and recorded what it refused and what still moves. Anything
+/// computed a second time here would be computed against the report rather than against the
+/// running holding, and would disagree with the row it is explaining the moment a unit has two
+/// transfer lines.
+fn check_refused_transfers(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::ITEMS_CANNOT_BE_GIVEN) {
+        return;
+    }
+
+    let named = |pairs: &[(String, i64)]| -> String {
+        in_a_list(
+            &pairs
+                .iter()
+                .map(|(tag, count)| counted_item(*count, tag, hex, ruleset, plurals))
+                .collect::<Vec<_>>(),
+        )
+    };
+
+    for ordered in &hex.units {
+        for refused in &ordered.refused_transfers {
+            let verb = if refused.is_give {
+                "given away"
+            } else {
+                "taken from another unit"
+            };
+            let tail = if refused.moving.is_empty() {
+                "nothing".to_string()
+            } else {
+                format!("only {}", named(&refused.moving))
+            };
+            let message = format!(
+                "{} cannot be {verb}, so this order moves {tail}",
+                named(&refused.refused)
+            );
+            let placed = ordered
+                .intents
+                .iter()
+                .find(|placed| placed.line == refused.line);
+            findings.push(ordered.finding(hex, codes::ITEMS_CANNOT_BE_GIVEN, message, placed));
+        }
+    }
+}
+
 /// Every fleet in the hex that one of our units orders to SAIL: is what is aboard within what the
 /// hull carries, and is enough sailing skill aboard to sail it? Aboard means the report's units in
 /// the fleet, plus those that ENTER it this month, minus those that LEAVE - the instant orders the
@@ -8982,6 +9190,48 @@ mod tests {
         assert_eq!(recipient.received, 500);
     }
 
+    /// `ah-3sp7.1` taught the catalogue `NORMAL`'s members, and `SILV` is one of them - so the
+    /// receipts pass now reads a class gift too, exactly as it already reads `GIVE ... ALL SILV`.
+    #[test]
+    fn a_gift_of_all_normal_credits_the_receiver_with_the_silver() {
+        let report = ParsedReport {
+            regions: vec![region(vec![with_silver(unit("2390"), 500), unit("2391")])],
+            ..Default::default()
+        };
+
+        let review = review_turn(
+            &report,
+            "unit 2390\nGIVE 2391 ALL NORMAL\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let recipient = review
+            .silver
+            .iter()
+            .find(|unit| unit.unit_id == "2391")
+            .expect("the recipient is forecast");
+        assert_eq!(recipient.received, 500);
+    }
+
+    /// The mirror on the taking side: `TAKE FROM ... ALL NORMAL` reaches `take_all_unpriceable`
+    /// exactly as a named `TAKE ... ALL SILV` already does - what the source has left depends on
+    /// its own month, which this pass has not run.
+    #[test]
+    fn a_take_of_all_normal_is_unpriceable_like_a_named_take_of_all_silver() {
+        let report = ParsedReport {
+            regions: vec![region(vec![with_silver(unit("2390"), 500), unit("2391")])],
+            ..Default::default()
+        };
+        let source = "unit 2391\nTAKE FROM 2390 ALL NORMAL\n";
+
+        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()), &[]);
+
+        let taker = receipts.get("2391").expect("the taker has receipts");
+        assert!(taker.take_all_unpriceable);
+        assert_eq!(taker.taken, 0);
+    }
+
     #[test]
     fn a_gift_of_all_silver_from_a_giver_we_cannot_price_is_not_counted() {
         // 9999 is not a unit the report shows, so what `ALL` means for it is unknowable.
@@ -9956,7 +10206,7 @@ mod tests {
 
         let review = review_turn(
             &report(vec![hex]),
-            "unit 2390\nGIVE 5512 ALL WEAPONS\nSELL ALL FUR\n",
+            "unit 2390\nGIVE 5512 ALL MAGIC\nSELL ALL FUR\n",
             Some(&ruleset()),
             CheckOptions::default(),
         );
@@ -12189,7 +12439,7 @@ mod tests {
             };
             with_ledger(
                 hex_region,
-                "unit 2390\nBUY ALL grain\nunit 2390\nGIVE 902 ALL WEAPONS\n",
+                "unit 2390\nBUY ALL grain\nunit 2390\nGIVE 902 ALL MAGIC\n",
                 |ledger| {
                     assert!(
                         !ledger
@@ -12270,14 +12520,14 @@ mod tests {
             });
         }
 
-        /// `ITEM`/`ITEMS` and `MAN`/`MEN` are resolved by `ah-dxfd.1` and no longer land here -
-        /// see `a_gift_of_a_whole_class_of_people_is_counted` below. `WEAPONS` is a class the
-        /// catalogue still cannot classify, so it still turns the unit away exactly as every
-        /// class once did - which is what proves the change is narrow.
+        /// `ITEM`/`ITEMS`, `MAN`/`MEN` and every class the catalogue can read are resolved -
+        /// `MAGIC` is one of the three the data page never states the members of, so it still
+        /// turns the unit away exactly as every class once did, which is what proves the change is
+        /// narrow.
         #[test]
         fn a_gift_of_a_whole_class_cannot_be_counted() {
             let hex_region = region(vec![with_item(unit("901"), 5, "sword", "SWOR")]);
-            with_ledger(hex_region, "unit 901\nGIVE 902 ALL WEAPONS\n", |ledger| {
+            with_ledger(hex_region, "unit 901\nGIVE 902 ALL MAGIC\n", |ledger| {
                 assert_eq!(
                     ledger.uncounted.get("901").map(Vec::as_slice),
                     Some([2].as_slice())
@@ -12298,6 +12548,50 @@ mod tests {
                     !ledger.doubted.contains("901"),
                     "a whole gift of men can now be counted"
                 );
+                assert!(!ledger.uncounted.contains_key("901"));
+            });
+        }
+
+        /// `ah-3sp7.1` taught the catalogue `WEAPON`'s members, so a class beyond `MAN`/`MEN` and
+        /// `ITEM`/`ITEMS` can now be counted too.
+        #[test]
+        fn a_gift_of_a_whole_class_of_weapons_is_counted() {
+            let hex_region = region(vec![
+                with_item(unit("901"), 5, "swords", "SWOR"),
+                unit("902"),
+            ]);
+            with_ledger(hex_region, "unit 901\nGIVE 902 ALL WEAPONS\n", |ledger| {
+                assert_eq!(balance_of(ledger, "901", "SWOR"), 0);
+                assert_eq!(balance_of(ledger, "902", "SWOR"), 5);
+                assert!(!ledger.doubted.contains("901"));
+                assert!(!ledger.uncounted.contains_key("901"));
+            });
+        }
+
+        /// 51 monsters and the imprisoned entity carry `This item cannot be given to other
+        /// units.`, so `ALL MONSTERS` selects sixty items and the ledger moves only the one that
+        /// may change hands.
+        #[test]
+        fn a_gift_of_a_class_the_game_refuses_moves_only_what_it_may() {
+            let hex_region = region(vec![
+                with_item(
+                    with_item(unit("901"), 20, "lions", "LION"),
+                    1,
+                    "skeleton",
+                    "SKEL",
+                ),
+                unit("902"),
+            ]);
+            with_ledger(hex_region, "unit 901\nGIVE 902 ALL MONSTERS\n", |ledger| {
+                assert_eq!(balance_of(ledger, "901", "SKEL"), 0);
+                assert_eq!(balance_of(ledger, "902", "SKEL"), 1);
+                assert_eq!(
+                    balance_of(ledger, "901", "LION"),
+                    20,
+                    "the lions cannot be given away and stay with the giver"
+                );
+                assert_eq!(balance_of(ledger, "902", "LION"), 0);
+                assert!(!ledger.doubted.contains("901"));
                 assert!(!ledger.uncounted.contains_key("901"));
             });
         }
@@ -16095,15 +16389,15 @@ mod tests {
 
     /// Handing over a whole class of items the catalogue cannot classify moves an amount that
     /// depends on classifying every item the unit holds. Until that is modelled, the unit's
-    /// silver is not judged at all. `ITEM`/`ITEMS` and `MAN`/`MEN` are resolved by `ah-dxfd.1`
-    /// and no longer silence a unit this way - a class this narrow still cannot classify names
-    /// nothing else.
+    /// silver is not judged at all. `ITEM`/`ITEMS`, `MAN`/`MEN` and every class `ah-3sp7.1` taught
+    /// the catalogue no longer silence a unit this way - `MAGIC` is one of the three the data page
+    /// never states the members of, so it still does.
     #[test]
     fn giving_a_whole_class_of_items_silences_the_unit() {
         assert_eq!(
             check_ignoring_transfer_targets(
                 vec![region(vec![with_silver(unit("5"), 0)])],
-                "unit 5\nGIVE 7 ALL WEAPONS\nGIVE 8 100 SILV\n"
+                "unit 5\nGIVE 7 ALL MAGIC\nGIVE 8 100 SILV\n"
             ),
             vec![]
         );
@@ -18744,6 +19038,102 @@ mod tests {
         assert!(findings[1].message.contains("taken from"));
     }
 
+    // --- refused transfers ----------------------------------------------------------------------
+
+    /// The fixture's item *names* are load-bearing: `counted_item` takes the plural from
+    /// `plurals_in`, which reads the report's own name for anything held above one - so this must
+    /// be built with the plural spellings ("lions", "wolves") or the sentence comes out singular.
+    #[test]
+    fn a_gift_of_monsters_the_game_refuses_says_what_stays_and_what_goes() {
+        let giver = with_item(
+            with_item(
+                with_item(unit("900"), 20, "lions", "LION"),
+                3,
+                "wolves",
+                "WOLF",
+            ),
+            1,
+            "skeleton",
+            "SKEL",
+        );
+        let finding = only(check(
+            vec![region(vec![giver, unit("901")])],
+            "unit 900\nGIVE 901 ALL MONSTERS\n",
+        ));
+
+        assert_eq!(finding.code, codes::ITEMS_CANNOT_BE_GIVEN);
+        assert_eq!(finding.unit_id, Some("900".to_string()));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "20 lions and 3 wolves cannot be given away, so this order moves only 1 skeleton"
+        );
+    }
+
+    #[test]
+    fn a_gift_of_monsters_that_leaves_nothing_says_so() {
+        let giver = with_item(
+            with_item(unit("900"), 20, "lions", "LION"),
+            3,
+            "wolves",
+            "WOLF",
+        );
+        let finding = only(check(
+            vec![region(vec![giver, unit("901")])],
+            "unit 900\nGIVE 901 ALL MONSTERS\n",
+        ));
+
+        assert_eq!(
+            finding.message,
+            "20 lions and 3 wolves cannot be given away, so this order moves nothing"
+        );
+    }
+
+    #[test]
+    fn a_take_of_monsters_the_game_refuses_uses_the_take_verb() {
+        let source = with_item(unit("900"), 20, "lions", "LION");
+        let finding = only(check(
+            vec![region(vec![source, unit("901")])],
+            "unit 901\nTAKE FROM 900 ALL MONSTERS\n",
+        ));
+
+        assert_eq!(finding.code, codes::ITEMS_CANNOT_BE_GIVEN);
+        assert_eq!(finding.unit_id, Some("901".to_string()));
+        assert_eq!(
+            finding.message,
+            "20 lions cannot be taken from another unit, so this order moves nothing"
+        );
+    }
+
+    /// The named-item form gets the same row and the same sentence (epic decision 8).
+    #[test]
+    fn a_named_gift_of_lions_says_it_moves_nothing() {
+        let giver = with_item(unit("900"), 20, "lions", "LION");
+        let finding = only(check(
+            vec![region(vec![giver, unit("901")])],
+            "unit 900\nGIVE 901 20 LION\n",
+        ));
+
+        assert_eq!(
+            finding.message,
+            "20 lions cannot be given away, so this order moves nothing"
+        );
+    }
+
+    /// A unit holding none of what the order names has nothing refused and nothing to say -
+    /// `apply_transfers`'s `moved == 0` continue falls out for free.
+    #[test]
+    fn a_gift_of_monsters_from_a_unit_holding_none_says_nothing() {
+        let giver = with_item(unit("900"), 3, "swords", "SWOR");
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![giver, unit("901")])],
+                "unit 900\nGIVE 901 ALL MONSTERS\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
     // --- units with nothing to do --------------------------------------------------------------
 
     /// `check`, with the checks that fire on a bare hex out of the way. A unit doing nothing also
@@ -19569,6 +19959,16 @@ mod tests {
                     with_named_skill_pts(men_holder("3100", 10), "lumberjack", "LUMB", 180),
                 ])],
                 orders: "unit 1010\nGIVE 3100 5 HUMN\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::ITEMS_CANNOT_BE_GIVEN,
+                regions: vec![region(vec![
+                    with_item(unit("5"), 20, "lions", "LION"),
+                    unit("7"),
+                ])],
+                orders: "unit 5\nGIVE 7 ALL MONSTERS\n",
                 allowance: None,
                 unclaimed: None,
             },
@@ -21945,6 +22345,35 @@ mod tests {
         assert!(
             codes(&findings).contains(&"produce-without-skill"),
             "{findings:?}"
+        );
+    }
+
+    /// `apply_transfers` is the one walk with a running holding per unit, so it is the only place
+    /// that can say what a *later* line on the same unit would still have found - `RefusedTransfer`
+    /// is written here and read by `check_refused_transfers`, never recomputed.
+    #[test]
+    fn a_refused_gift_is_recorded_against_the_line_that_named_it() {
+        let giver = with_item(
+            with_item(unit("900"), 20, "lions", "LION"),
+            1,
+            "skeleton",
+            "SKEL",
+        );
+        let receiver = unit("901");
+        let orders = "unit 900\nGIVE 901 ALL MONSTERS\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver, receiver]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        let giver = hex.find("900").expect("the giver is still in the hex");
+        assert_eq!(
+            giver.refused_transfers,
+            vec![RefusedTransfer {
+                line: 2,
+                is_give: true,
+                refused: vec![("LION".to_string(), 20)],
+                moving: vec![("SKEL".to_string(), 1)],
+            }]
         );
     }
 

@@ -605,6 +605,10 @@ pub struct Lookups<'a> {
     /// "buys 0 grain". `counted_item` itself is left alone - every other caller states a
     /// quantity rather than an absence.
     pub counted_or_none: &'a dyn Fn(i64, &str) -> String,
+    /// Whether `GIVE ... ALL <class>` carries the holder's silver out with it, or `None` where the
+    /// catalogue cannot say which items that class holds. See `semantics::class_carries_silver`,
+    /// which is the one implementation - the column and the ledger must not answer this two ways.
+    pub class_carries_silver: &'a dyn Fn(&str) -> Option<bool>,
 }
 
 /// What this hex's market says about goods a unit is ordered to sell.
@@ -1231,7 +1235,33 @@ pub fn forecast_unit(
                 }
             },
             Intent::Give { to, what, amount } => {
-                // The shape is read before the tag is, so a gift of a whole class doubts even
+                if let Selector::Class(name) = what {
+                    if *amount == (Amount::All { except: 0 }) {
+                        match (lookups.class_carries_silver)(name) {
+                            // The class is resolved and holds no silver: nothing of this unit's
+                            // money moves, and there is nothing left to doubt.
+                            Some(false) => continue,
+                            // Every one of the unit's coins leaves, exactly as `GIVE ... ALL SILV`
+                            // does - and deferred for the same reason, so it spends against the
+                            // running total rather than the report's opening figure.
+                            Some(true) => {
+                                deferred.push(Deferred::GiveAllSilver {
+                                    except: 0,
+                                    to_nobody: matches!(to, Party::Discard),
+                                });
+                                spent_on = spent_on.or(Some(SilverSpender::Give));
+                                continue;
+                            }
+                            None => {}
+                        }
+                    }
+                    // Unresolvable, or an amount shape `rules/give` does not define: today's
+                    // doubt, now naming the class.
+                    expense_doubt = expense_doubt.or(Some(SilverDoubt::GivesAWholeClass));
+                    doubt_subject = doubt_subject.or(Some(name.to_ascii_uppercase()));
+                    continue;
+                }
+                // The shape is read before the tag is, so a gift of the unit itself doubts even
                 // where no tag was ever resolved - and `semantics::transfer` reads the same
                 // shape, so the two surfaces cannot classify one order two ways (`ah-lu0f`).
                 let shape = transfer_shape(what, amount);
@@ -1393,6 +1423,7 @@ pub fn forecast_unit(
                 Some(SilverDoubt::UnknownGoods)
                     | Some(SilverDoubt::MarketDoesNotSell)
                     | Some(SilverDoubt::UnpricedProduction)
+                    | Some(SilverDoubt::GivesAWholeClass)
             )
         }),
         received: receipts.silver,
@@ -3871,6 +3902,12 @@ mod tests {
         None
     }
 
+    /// "The catalogue cannot say" - the answer that keeps every test's behaviour exactly as it was
+    /// before `class_carries_silver` existed.
+    fn no_class_members(_class: &str) -> Option<bool> {
+        None
+    }
+
     /// The lookups for a unit that neither buys nor sells.
     fn no_market() -> Lookups<'static> {
         Lookups {
@@ -3881,6 +3918,7 @@ mod tests {
             market_share: &unsettled_market,
             counted_item: &verbatim_counted,
             counted_or_none: &verbatim_counted_or_none,
+            class_carries_silver: &no_class_members,
         }
     }
 
@@ -5759,16 +5797,96 @@ mod tests {
         assert_eq!(unit.doubt, None);
     }
 
+    /// `GIVE 901 UNIT` names no class at all, so it reaches the untouched body below and keeps
+    /// today's sentence - no subject, which is what the hover's fallback depends on.
     #[test]
     fn giving_away_a_whole_class_of_goods_is_doubted() {
         let intents = vec![placed(Intent::Give {
             to: Party::Unit("1235".to_string()),
-            what: Selector::Class("ITEMS".to_string()),
+            what: Selector::WholeUnit,
             amount: Amount::All { except: 0 },
         })];
         let unit = spending(500, &intents, RegionWages::default(), &no_purchases, None);
         assert_eq!(unit.expense, None);
         assert_eq!(unit.doubt, Some(SilverDoubt::GivesAWholeClass));
+        assert_eq!(unit.doubt_subject, None);
+    }
+
+    /// Reads whether a class carries silver against the real, committed ruleset - unlike
+    /// `no_market()`'s own lookup, which always answers "cannot say" and exists for the tests
+    /// above that are not about class resolution at all.
+    fn class_carries_silver_against(rules: &Ruleset) -> impl Fn(&str) -> Option<bool> + '_ {
+        move |class: &str| {
+            if class.eq_ignore_ascii_case("ITEM") || class.eq_ignore_ascii_case("ITEMS") {
+                return Some(true);
+            }
+            rules
+                .class_members(class)
+                .map(|tags| tags.iter().any(|tag| tag == SILVER_TAG))
+        }
+    }
+
+    /// `ah-3sp7.1` taught the catalogue `NORMAL`'s members, and `SILV` is one of them - so
+    /// `GIVE ... ALL NORMAL` now hands over the unit's silver exactly as `GIVE ... ALL SILV` does.
+    #[test]
+    fn giving_all_normal_hands_over_the_silver() {
+        let rules = ruleset();
+        let carries_silver = class_carries_silver_against(&rules);
+        let intents = vec![placed(Intent::Give {
+            to: Party::Unit("1235".to_string()),
+            what: Selector::Class("NORMAL".to_string()),
+            amount: Amount::All { except: 0 },
+        })];
+        let receipts = Receipts::default();
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 500,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            Lookups {
+                class_carries_silver: &carries_silver,
+                ..no_market()
+            },
+            Some(&rules),
+        );
+        assert_eq!(unit.doubt, None);
+        assert_eq!(unit.expense, Some(500));
+        assert_eq!(unit.at_month_end, Some(0));
+    }
+
+    /// `MAGIC` is one of the three classes the data page never states the members of, so the
+    /// catalogue cannot say whether it carries silver - the unit is doubted, and named.
+    #[test]
+    fn giving_a_class_the_catalogue_cannot_read_names_it() {
+        let rules = ruleset();
+        let carries_silver = class_carries_silver_against(&rules);
+        let intents = vec![placed(Intent::Give {
+            to: Party::Unit("1235".to_string()),
+            what: Selector::Class("magic".to_string()),
+            amount: Amount::All { except: 0 },
+        })];
+        let receipts = Receipts::default();
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 500,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            Lookups {
+                class_carries_silver: &carries_silver,
+                ..no_market()
+            },
+            Some(&rules),
+        );
+        assert_eq!(unit.doubt, Some(SilverDoubt::GivesAWholeClass));
+        assert_eq!(unit.doubt_subject, Some("MAGIC".to_string()));
     }
 
     /// `spending` gives the unit no skills at all, and a mage with no skill in the spell now
