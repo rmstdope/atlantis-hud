@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-z73s.2 — the level an existing warning quotes</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:70ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+  table.units { width:100%; border-collapse:collapse; font-family:'SF Mono',Menlo,Consolas,monospace;
+    font-size:12.5px; background:var(--panel); border:1px solid var(--edge); max-width:900px; margin-top:8px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:6px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  .own { color:var(--ok); } .id { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  .arith { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); margin:6px 0 0; }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  .prob { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; max-width:100ch; }
+  .prob .w { color:var(--brass); } .prob .ttl { color:var(--ink-dim); font-size:11px; letter-spacing:1.4px;
+    text-transform:uppercase; margin-bottom:6px; }
+  .prob div.row { padding:3px 0; }
+  .prob .b2 { color:var(--ink-dim); }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .fix { border-left:3px solid var(--danger); }
+</style></head><body>
+<header>
+  <h1>ah-z73s.2 — <span>the level an existing warning quotes</span></h1>
+  <p>Once the checks read the skills a unit's orders leave it, an existing warning can quote a level that is
+  <b>not the one the report shows</b>. This page is about whether those sentences should say so.</p>
+</header>
+<main>
+
+<h3 class="sec">A correction to the first mockup, before you read on</h3>
+<div class="note fix"><b>I described "an estimated headcount" wrongly.</b> I wrote that a report says
+<code>approximately 50 men</code> and that this is "not rare on a large faction". That is not what the flag means.
+A unit's headcount is a guess only until the item catalogue has been fetched and recognises <i>everything</i> that unit
+holds; with a current ruleset loaded it is exact for essentially every unit. So the silence you chose is
+<b>much narrower than I made it sound</b> — it is close to "no ruleset yet", which is already a state in which most
+warnings do not run. That makes your answer safer rather than more costly, so I have not re-asked it; but the record
+should be right.</div>
+
+<h3 class="sec">The situation</h3>
+<p>Unit 2200 is at <code>LUMB 3 (180)</code> with 5 men, and is told to produce something that needs lumberjack 3.
+Five men who know no lumberjack are given to it in the same month.</p>
+<pre class="ord">unit 2200
+  <b>PRODUCE IRON</b>              ; say this needs lumberjack 3
+unit 1010
+  <b>GIVE 2200 5 HUMN</b>          ; these 5 know no lumberjack</pre>
+<div class="arith">(5&times;180 + 5&times;0) / 10 = 90 points &rarr; level 2. The unit can no longer do it.</div>
+<table class="units">
+<tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th>Skills</th></tr>
+<tr><td class="own">*</td><td class="id">2200</td><td>Woodsmen</td><td class="pred">10</td><td class="pred">LUMB 2 (90)</td></tr>
+</table>
+<div class="note">The <b>report</b> says this unit is lumberjack 3, and a player who has not hovered the Skills cell
+still believes that. The warning is about to quote 2.</div>
+
+<span class="opt">H — the sentence exactly as it reads today</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>2200 Woodsmen</b> — cannot produce iron: needs lumberjack 3, has lumberjack 2.</div>
+</div>
+<ul class="notes">
+  <li>Not a single message string changes anywhere. Every one of the six affected warnings keeps the wording it has.</li>
+  <li>Once the drop warning ships, the panel usually explains itself one line further down:
+      <span style="color:var(--ink-dim)">&#9888; 2200 Woodsmen — giving 5 men to this unit lowers its lumberjack from 3 to 2.</span></li>
+  <li class="con">On its own — and it is on its own until the drop warning ships, and whenever its switch is off —
+      the number contradicts the report with nothing to explain it.</li>
+</ul>
+
+<span class="opt">I — the sentence says where the number came from</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>2200 Woodsmen</b> — cannot produce iron: needs lumberjack 3, has lumberjack 2 once the men given to it arrive.</div>
+</div>
+<ul class="notes">
+  <li>Answers the question the player is about to ask, in the place they are already looking.</li>
+  <li>Stands on its own whether or not the drop warning is switched on.</li>
+  <li class="con">Six messages to change, in six places, each with its own sentence shape — and the clause has to be
+      added only when men actually arrived, so each becomes two strings rather than one.</li>
+  <li class="con">The teaching one does not take the clause cleanly:
+      <span style="color:var(--ink-dim)">"this unit is level 2 in force and unit 3401 is level 2, so it cannot teach it"</span> —
+      there are two levels in it and the clause could belong to either.</li>
+</ul>
+
+<span class="opt">J — the plain sentence, and a second line under it saying what changed</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>2200 Woodsmen</b> — cannot produce iron: needs lumberjack 3, has lumberjack 2.</div>
+<div class="row b2">&nbsp;&nbsp;&nbsp;&nbsp;the report shows lumberjack 3; the men given to it this month bring it down to 2.</div>
+</div>
+<ul class="notes">
+  <li>Explains it once, in one place, whatever the warning above happens to be.</li>
+  <li class="con">The panel has no second line today — every entry is one sentence — so this is new furniture in a
+      panel shared by thirty-three warnings, and it would be the only one with it.</li>
+  <li class="con">It is very close to being the drop warning itself, said twice.</li>
+</ul>
+
+<h3 class="sec">Where this does and does not bite</h3>
+<ul class="notes">
+  <li><b>It does not bite at all when the level goes the other way.</b> The formed-unit case — men arriving <i>give</i>
+      a unit the skill — makes a warning vanish, and a warning that is not there quotes nothing.</li>
+  <li><b>It bites on six warnings:</b> producing without the skill, building without the skill, teaching (twice over),
+      studying at the maximum, and magic study outside a building.</li>
+  <li><b>It only bites when a gift lowered a level</b>, which is the same condition the drop warning fires on.</li>
+</ul>
+
+</main></body></html>

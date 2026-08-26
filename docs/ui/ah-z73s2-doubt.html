@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-z73s.2 — when the checks cannot work out the merged skill</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:70ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+  table.units { width:100%; border-collapse:collapse; font-family:'SF Mono',Menlo,Consolas,monospace;
+    font-size:12.5px; background:var(--panel); border:1px solid var(--edge); max-width:900px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:6px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  .own { color:var(--ok); } .id { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  .arith { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); margin:6px 0 0; }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  .prob { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; max-width:100ch; }
+  .prob .w { color:var(--brass); } .prob .ttl { color:var(--ink-dim); font-size:11px; letter-spacing:1.4px;
+    text-transform:uppercase; margin-bottom:6px; }
+  .prob .empty { color:var(--ink-dim); font-style:italic; }
+  .prob div.row { padding:3px 0; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .gone { text-decoration:line-through; color:var(--ink-dim); }
+</style></head><body>
+<header>
+  <h1>ah-z73s.2 — <span>the checks read the skills the orders leave a unit</span></h1>
+  <p>Today every skill-reading warning judges a unit on the skills the <i>report</i> gave it, and ignores men its own
+  orders hand it this month. This page is only about the half of that which needs your decision: <b>what the warnings
+  should do when the merged skill cannot be worked out at all.</b> The arithmetic itself landed with ah-z73s.1 and is
+  not in question.</p>
+</header>
+<main>
+
+<h3 class="sec">First, the case that has no decision in it — this is what the bead is for</h3>
+<p>A unit is formed, given five men who know lumberjack, and told to produce lumber. Today it is warned, wrongly.</p>
+<pre class="ord">unit 1010
+  FORM 1
+    <b>PRODUCE LUMB</b>
+  END
+  <b>GIVE NEW 1 5 HUMN</b>          ; and 1010's men are LUMB 1 (30)</pre>
+<span class="opt">Today</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>new 1 (formed by 1010)</b> — cannot produce lumber: needs lumberjack 1, has no lumberjack.</div>
+</div>
+<ul class="notes">
+  <li class="con">Wrong, and no better order fixes it — the men <i>are</i> lumberjacks. Named in ah-jw85's plan as accepted-and-to-be-removed-here.</li>
+</ul>
+<span class="opt">After this bead</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row empty">Nothing to report in this hex.</div>
+</div>
+
+<h3 class="sec">The decision — when the merge cannot be computed</h3>
+<p>Three situations where the application cannot honestly say what the receiving unit will know. In each,
+the warnings can either <b>go quiet for that unit</b> or <b>carry on judging it on the report's skills, exactly as
+today</b>.</p>
+
+<div class="note"><b>1. The report only estimates the headcount.</b> A report writes <code>approximately 50 men</code>
+for a unit it cannot count exactly. The merge is a headcount-weighted average, so an estimated headcount makes every
+merged figure a guess.</div>
+<div class="note"><b>2. No ruleset has been fetched.</b> Without the catalogue there is no telling which item tags are
+people, so the application cannot even see that men moved.</div>
+<div class="note"><b>3. The men arrive by <code>TAKE FROM</code> rather than <code>GIVE</code>.</b> The application
+models a <code>GIVE</code> of men and does not model a <code>TAKE</code> of them — neither here nor in the units table.</div>
+
+<span class="opt">A — the unit goes unjudged: every skill-reading warning is silent for it</span>
+<pre class="ord">unit 2200                    ; report says "approximately 50 men", lumberjack 1
+  <b>PRODUCE LUMB</b>
+unit 1010
+  <b>GIVE 2200 40 HUMN</b>          ; 1010's men know no lumberjack at all</pre>
+<div class="arith">40 unskilled men into ~50 who are LUMB 1 (30): the merged level is somewhere between 0 and 1, and which one
+depends on a headcount the report would not commit to.</div>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row empty">Nothing to report in this hex.</div>
+</div>
+<ul class="notes">
+  <li>Follows the module's own stated rule — a warning that is wrong is worse than one that is missing — and the
+      sailing check already does exactly this: men arriving into a unit aboard silence the crew warning for the whole fleet.</li>
+  <li>The affected warnings are advisory. Nothing is blocked by their absence.</li>
+  <li class="con">A real mistake in one of these units goes unmentioned. An estimated headcount is not rare on a large faction.</li>
+  <li class="con">The panel gives no sign that it has gone quiet — the unit simply has no entries.</li>
+</ul>
+
+<span class="opt">B — carry on judging it on the report's skills, as today</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>2200 Woodsmen</b> — cannot produce lumber: needs lumberjack 1, has lumberjack 1.</div>
+</div>
+<ul class="notes">
+  <li>Nothing that warns today stops warning. No warning is ever lost.</li>
+  <li class="con">It is the behaviour this bead exists to remove, kept for a subset of cases — and the subset is
+      invisible to the player, so the panel is right about one unit and wrong about the next with nothing to tell them apart.</li>
+</ul>
+
+<h3 class="sec">Which warnings this covers, either way</h3>
+<p>Every check that reads a unit's skills through its orders: producing without the skill, building without the skill,
+teaching (both the teacher's level and the pupil's), studying at maximum, and magic study outside a building.</p>
+<div class="note"><b>Not the SILVER column, and not <code>pillage-without-men</code>.</b> Those read the report's
+headcount as well as its skills, so putting them right is a change to the silver forecast rather than to the warnings —
+a separate bead, which I will file. And <b>not the fleet crew warning</b>, which is ah-z73s.3 and already waiting.</div>
+
+<h3 class="sec">The other side — arriving men can make a warning <i>appear</i></h3>
+<p>This follows from the same change and needs no decision, but it is worth seeing before you choose above.</p>
+<pre class="ord">unit 3400                    ; a mage, magic level 1, standing in no structure
+  <b>STUDY FORC</b>
+unit 3401
+  <b>GIVE 3400 1 HUMN</b>           ; a man who knows FORC 3</pre>
+<div class="arith">The merged mage reaches force 2, and "above level 2" magic study needs a building.</div>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="w">&#9888;</span> <b>3400 Adept</b> — studying force above level 2 outside a building that houses mages.</div>
+</div>
+<ul class="notes">
+  <li>A warning that is right and that the player would otherwise meet only when the turn came back.</li>
+</ul>
+
+</main></body></html>
