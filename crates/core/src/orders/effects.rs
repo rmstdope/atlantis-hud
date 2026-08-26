@@ -923,7 +923,12 @@ impl Working {
 ///
 /// The giver is deliberately absent: dividing evenly among people leaves its points per man
 /// unchanged, so a GIVE never alters the giver's own skills.
-fn merge_skills(into: &[Skill], into_men: i64, arriving: &[Skill], moved: i64) -> Vec<Skill> {
+pub(crate) fn merge_skills(
+    into: &[Skill],
+    into_men: i64,
+    arriving: &[Skill],
+    moved: i64,
+) -> Vec<Skill> {
     if into_men + moved == 0 {
         return into.to_vec();
     }
@@ -1741,6 +1746,16 @@ mod tests {
         let merged = merge_skills(&[], 0, &[skill("LUMB", 30)], 5);
 
         assert_eq!(merged, vec![skill("LUMB", 30)]);
+    }
+
+    /// `semantics.rs`'s checks read this through its full crate path, so it must be `pub(crate)`
+    /// rather than private to this module — ah-z73s.2.
+    #[test]
+    fn merge_skills_is_reachable_from_the_checks() {
+        let merged = crate::orders::effects::merge_skills(&[], 0, &[skill("LUMB", 30)], 5);
+
+        assert_eq!(merged, vec![skill("LUMB", 30)]);
+        assert_eq!(merged[0].level, 1);
     }
 
     #[test]

@@ -44,7 +44,7 @@ use crate::orders::silver::{
     UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
 };
 use crate::report::model::{
-    Coordinate, ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure,
+    Coordinate, ItemAmount, MarketItem, ReportRegion, ReportUnit, Skill, Structure,
 };
 use crate::report::ParsedReport;
 
@@ -391,7 +391,8 @@ pub fn review_turn(
         .regions
         .iter()
         .map(|region| {
-            let hex = Hex::read(region, &ordered, &formed);
+            let mut hex = Hex::read(region, &ordered, &formed);
+            apply_gifts_of_men(&mut hex.units, ruleset);
             let ledger = ledger_for(&hex, ruleset);
             (hex, ledger)
         })
@@ -1259,6 +1260,22 @@ struct Hex<'a> {
     units: Vec<Ordered<'a>>,
 }
 
+/// A unit's skills once this month's gifts of men have run.
+///
+/// Three states rather than an `Option<Vec<Skill>>`, because "nothing arrived" and "something
+/// arrived that cannot be followed" are opposite answers and must not be spelled the same way.
+#[derive(Debug)]
+enum SkillsAfterGifts {
+    /// No men arrived, so the report's own list stands. The overwhelming majority of units, and
+    /// the reason this is not a `Vec` on every `Ordered`: nothing is allocated for them.
+    Unchanged,
+    /// Men arrived and the merge was computable.
+    Merged(Vec<Skill>),
+    /// Men arrived by a route this application does not model, so no skill-reading check may
+    /// judge this unit. See `apply_gifts_of_men` for the exact list.
+    Unknowable,
+}
+
 /// One of our units, and its orders.
 struct Ordered<'a> {
     unit: &'a ReportUnit,
@@ -1268,6 +1285,9 @@ struct Ordered<'a> {
     unread: bool,
     /// Set when `unit` is not one the report shows but one this month's `FORM` orders create.
     formed: Option<FormedSubject>,
+    /// The unit's skills once this month's gifts of men have run. Written by `apply_gifts_of_men`
+    /// after the hex is read; `Unchanged` until then.
+    skills_after_gifts: SkillsAfterGifts,
 }
 
 impl<'a> Hex<'a> {
@@ -1288,6 +1308,7 @@ impl<'a> Hex<'a> {
                     block_line: orders.map(|orders| orders.block_line),
                     unread: orders.is_some_and(|orders| orders.unread),
                     formed: None,
+                    skills_after_gifts: SkillsAfterGifts::Unchanged,
                 }
             })
             .collect();
@@ -1304,6 +1325,7 @@ impl<'a> Hex<'a> {
                         alias: formed.block.alias.clone(),
                         formed_by: formed.block.formed_by.clone(),
                     }),
+                    skills_after_gifts: SkillsAfterGifts::Unchanged,
                 }),
         );
         Self { region, units }
@@ -1327,6 +1349,275 @@ impl<'a> Hex<'a> {
             formed: None,
         }
     }
+}
+
+/// One unit's skills and running holdings while a hex's gifts of men are resolved by
+/// `apply_gifts_of_men`.
+struct Working {
+    men: i64,
+    skills: Vec<Skill>,
+    /// Running count of each man tag the unit holds, seeded from `Ordered::holding`, upper-cased
+    /// exactly as `Selector::Item`'s own tag lookup is.
+    held: BTreeMap<String, i64>,
+    doubted: bool,
+}
+
+fn seed_working(units: &[Ordered<'_>], position: usize) -> Working {
+    let unit = units[position].unit;
+    Working {
+        men: unit.men,
+        skills: unit.skills.clone(),
+        held: unit
+            .items
+            .iter()
+            .map(|item| (item.tag.to_ascii_uppercase(), item.amount))
+            .collect(),
+        doubted: false,
+    }
+}
+
+/// Whether a transfer's selector names people at all, and by which tag if a concrete one is
+/// named.
+enum GiftConcerns {
+    /// Equipment, a mount, `GIVE ... UNIT` - nothing this walk needs to follow.
+    NotMen,
+    /// A whole class that happens to contain people (`MAN`/`MEN`/`ITEM`/`ITEMS`), which
+    /// `effects.rs` does not resolve either - any receiver here is doubted rather than guessed
+    /// at.
+    PeopleClass,
+    /// A specific item tag the ruleset says is a man.
+    Men(String),
+}
+
+fn classify_gift(what: &Selector, ruleset: &Ruleset) -> GiftConcerns {
+    match what {
+        Selector::WholeUnit => GiftConcerns::NotMen,
+        Selector::Class(name) => {
+            let upper = name.to_ascii_uppercase();
+            if upper == "MAN" || upper == "MEN" || upper == "ITEM" || upper == "ITEMS" {
+                GiftConcerns::PeopleClass
+            } else {
+                GiftConcerns::NotMen
+            }
+        }
+        Selector::Item(text) => match ruleset.find_item(text) {
+            Some(entry) if ruleset.is_man(&entry.tag) => {
+                GiftConcerns::Men(entry.tag.to_ascii_uppercase())
+            }
+            _ => GiftConcerns::NotMen,
+        },
+    }
+}
+
+/// Where a `GIVE` lands, resolved exactly as `effects::give` resolves it - a whole-unit party
+/// name, not a `Selector`.
+enum GiveTarget {
+    Unit(usize),
+    /// `GIVE 0 ...`: the giver still loses what it gives, but nobody receives it.
+    Discard,
+    /// Foreign, an alias or a number not in this hex, or giving to itself: the whole transfer is
+    /// void, exactly as `effects::give` returns early for these without touching the giver.
+    Nowhere,
+}
+
+fn resolve_give_target(
+    position_of: &BTreeMap<&str, usize>,
+    giver: usize,
+    party: &Party,
+) -> GiveTarget {
+    let index = match party {
+        Party::Discard => return GiveTarget::Discard,
+        Party::Foreign { .. } => return GiveTarget::Nowhere,
+        Party::New(alias) => {
+            let Some(&index) = position_of.get(format!("new-{alias}").as_str()) else {
+                return GiveTarget::Nowhere;
+            };
+            index
+        }
+        Party::Unit(id) => {
+            let Some(&index) = position_of.get(id.as_str()) else {
+                return GiveTarget::Nowhere;
+            };
+            index
+        }
+    };
+    if index == giver {
+        GiveTarget::Nowhere
+    } else {
+        GiveTarget::Unit(index)
+    }
+}
+
+fn mark_doubted(units: &[Ordered<'_>], working: &mut BTreeMap<usize, Working>, position: usize) {
+    working
+        .entry(position)
+        .or_insert_with(|| seed_working(units, position))
+        .doubted = true;
+}
+
+/// Merges this month's gifts of men into the receiving units of one hex.
+///
+/// Walks the hex's `GIVE` and `TAKE` orders in document order and rewrites each receiver's
+/// `skills_after_gifts`. Document order rather than the game's own - see *Known traps* in
+/// `ah-z73s.2`'s plan.
+///
+/// Without a ruleset this returns at once: there is no telling which item tags name people, and
+/// every check that reads skills already returns early without a catalogue, so there is nothing
+/// to be doubtful on behalf of.
+fn apply_gifts_of_men(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
+    let Some(ruleset) = ruleset else { return };
+
+    // A FORMed unit's id is `new-{alias}` (`effects::formed_unit`), which is what
+    // `Party::New(alias)` must be looked up as.
+    let position_of: BTreeMap<&str, usize> = units
+        .iter()
+        .enumerate()
+        .map(|(index, ordered)| (ordered.unit.unit_id.as_str(), index))
+        .collect();
+
+    struct Transfer<'a> {
+        position: usize,
+        line: usize,
+        party: &'a Party,
+        what: &'a Selector,
+        amount: &'a Amount,
+        is_give: bool,
+    }
+
+    let mut transfers: Vec<Transfer<'_>> = units
+        .iter()
+        .enumerate()
+        .flat_map(|(position, ordered)| {
+            ordered
+                .intents
+                .iter()
+                .filter_map(move |placed| match &placed.intent {
+                    Intent::Give { to, what, amount } => Some(Transfer {
+                        position,
+                        line: placed.line,
+                        party: to,
+                        what,
+                        amount,
+                        is_give: true,
+                    }),
+                    Intent::Take { from, what, amount } => Some(Transfer {
+                        position,
+                        line: placed.line,
+                        party: from,
+                        what,
+                        amount,
+                        is_give: false,
+                    }),
+                    _ => None,
+                })
+        })
+        .collect();
+    if transfers.is_empty() {
+        // Nothing moves in this hex, so nothing is allocated for it.
+        return;
+    }
+    // Ties cannot occur: one order per line.
+    transfers.sort_by_key(|transfer| transfer.line);
+
+    let mut working: BTreeMap<usize, Working> = BTreeMap::new();
+
+    for transfer in &transfers {
+        let concerns = classify_gift(transfer.what, ruleset);
+        let tag = match concerns {
+            GiftConcerns::NotMen => continue,
+            GiftConcerns::PeopleClass => {
+                if !transfer.is_give {
+                    // "TAKE ... ALL MEN": the men are real, the count is not.
+                    mark_doubted(units, &mut working, transfer.position);
+                    continue;
+                }
+                if let GiveTarget::Unit(receiver) =
+                    resolve_give_target(&position_of, transfer.position, transfer.party)
+                {
+                    mark_doubted(units, &mut working, receiver);
+                }
+                continue;
+            }
+            GiftConcerns::Men(tag) => tag,
+        };
+
+        if !transfer.is_give {
+            // `TAKE FROM` of men: the taker is doubted and nothing else follows - `effects.rs`
+            // never applies a TAKE of men either.
+            mark_doubted(units, &mut working, transfer.position);
+            continue;
+        }
+
+        let target = resolve_give_target(&position_of, transfer.position, transfer.party);
+        if matches!(target, GiveTarget::Nowhere) {
+            continue;
+        }
+
+        let giver_state = working
+            .entry(transfer.position)
+            .or_insert_with(|| seed_working(units, transfer.position));
+        let held = giver_state.held.get(tag.as_str()).copied().unwrap_or(0);
+        let requested = match transfer.amount {
+            Amount::All { except } => held.saturating_sub(*except),
+            Amount::Exact(count) => *count,
+        };
+        let moved = requested.clamp(0, held);
+        if moved == 0 {
+            continue;
+        }
+        let giver_doubted = giver_state.doubted;
+        let giver_skills = giver_state.skills.clone();
+
+        if let GiveTarget::Unit(receiver) = target {
+            let receiver_men_estimated = units[receiver].unit.men_estimated;
+            let receiver_state = working
+                .entry(receiver)
+                .or_insert_with(|| seed_working(units, receiver));
+            if giver_doubted || receiver_men_estimated {
+                // The merge is weighted by the receiver's headcount, or built on a figure this
+                // pass has already declined to trust - either way it cannot be computed.
+                receiver_state.doubted = true;
+            } else {
+                // The merge runs before the men are added to the receiver's own count: weighting
+                // by the headcount after the arrivals is silently wrong.
+                receiver_state.skills = effects::merge_skills(
+                    &receiver_state.skills,
+                    receiver_state.men,
+                    &giver_skills,
+                    moved,
+                );
+                receiver_state.men += moved;
+            }
+        }
+
+        // Either way, the giver: skills untouched, per `rules/give` - an even split leaves
+        // points per man exactly as they were.
+        let giver_state = working
+            .get_mut(&transfer.position)
+            .expect("seeded above this same transfer");
+        giver_state.men -= moved;
+        *giver_state.held.entry(tag).or_insert(0) -= moved;
+    }
+
+    for (position, state) in working {
+        let ordered = &mut units[position];
+        ordered.skills_after_gifts = if state.doubted {
+            SkillsAfterGifts::Unknowable
+        } else if state.skills != ordered.unit.skills {
+            SkillsAfterGifts::Merged(state.skills)
+        } else {
+            SkillsAfterGifts::Unchanged
+        };
+    }
+}
+
+/// A unit's level in `tag`, read from a skills list. 0 for a skill it has not got, which is what
+/// makes every comparison below uniform - the *messages* still tell the two apart in words.
+fn level_in(skills: &[Skill], tag: &str) -> u32 {
+    skills
+        .iter()
+        .find(|skill| skill.tag.eq_ignore_ascii_case(tag))
+        .map_or(0, |skill| skill.level)
 }
 
 impl Ordered<'_> {
@@ -1371,12 +1662,26 @@ impl Ordered<'_> {
             .any(|intent| spends_the_month(intent) && !matches!(intent, Intent::Teach { .. }))
     }
 
-    fn skill_level(&self, tag: &str) -> u32 {
-        self.unit
-            .skills
-            .iter()
-            .find(|skill| skill.tag.eq_ignore_ascii_case(tag))
-            .map_or(0, |skill| skill.level)
+    /// The unit's skills as every skill-reading check must read them.
+    ///
+    /// `None` means men arrive by a route the merge cannot follow, so the caller must go silent
+    /// for this unit rather than judge it on figures the turn has already moved past. This
+    /// module's rule is that a warning that is wrong is worse than one that is missing, and
+    /// `sailing_levels_after_orders` already answers `None` for the same reason.
+    fn skills(&self) -> Option<&[Skill]> {
+        match &self.skills_after_gifts {
+            SkillsAfterGifts::Unchanged => Some(&self.unit.skills),
+            SkillsAfterGifts::Merged(merged) => Some(merged),
+            SkillsAfterGifts::Unknowable => None,
+        }
+    }
+
+    /// The unit's level in `tag` once this month's gifts of men have run.
+    ///
+    /// `None` exactly as `skills`. `Some(0)` still means "has not got it" - the two are as
+    /// distinct here as they were before, and only the outer `Option` is new.
+    fn skill_level(&self, tag: &str) -> Option<u32> {
+        Some(level_in(self.skills()?, tag))
     }
 
     fn studies(&self) -> Option<&str> {
@@ -3723,14 +4028,18 @@ fn check_one_teacher(
         let Some(tag) = ruleset.and_then(|ruleset| ruleset.find_skill(studying)) else {
             continue;
         };
-        let theirs = pupil.skill_level(&tag.tag);
-        if teacher.skill_level(&tag.tag) <= theirs && options.emits(codes::TEACHER_CANNOT_TEACH) {
+        let (Some(mine), Some(theirs)) =
+            (teacher.skill_level(&tag.tag), pupil.skill_level(&tag.tag))
+        else {
+            continue;
+        };
+        if mine <= theirs && options.emits(codes::TEACHER_CANNOT_TEACH) {
             findings.push(teacher.finding(
                 hex,
                 codes::TEACHER_CANNOT_TEACH,
                 format!(
                     "this unit is {} in {} and unit {id} is level {theirs}, so it cannot teach it",
-                    describe_level(teacher.skill_level(&tag.tag)),
+                    describe_level(mine),
                     tag.name,
                 ),
                 Some(placed),
@@ -3818,7 +4127,10 @@ fn offer_free_slots(
                 .studies()
                 .and_then(|studying| ruleset.find_skill(studying))
                 .is_some_and(|skill| {
-                    teacher.skill_level(&skill.tag) > pupil.skill_level(&skill.tag)
+                    matches!(
+                        (teacher.skill_level(&skill.tag), pupil.skill_level(&skill.tag)),
+                        (Some(mine), Some(theirs)) if mine > theirs
+                    )
                 })
         })
         .collect();
@@ -4152,8 +4464,12 @@ fn check_build_skill(
             continue;
         };
         // `skill_level` answers 0 for a skill the unit has not got, which makes the comparison
-        // uniform - the *message* still has to tell the two apart.
-        let held = i64::from(ordered.skill_level(tag));
+        // uniform - the *message* still has to tell the two apart. `None` means the unit's
+        // skills cannot be said this month, so it goes unjudged rather than warned wrongly.
+        let Some(held) = ordered.skill_level(tag) else {
+            continue;
+        };
+        let held = i64::from(held);
         if held >= required {
             continue;
         }
@@ -4364,8 +4680,9 @@ fn check_production(
             .find_item(item)
             .map_or_else(|| item.to_lowercase(), |entry| entry.name.clone());
 
+        let skills = ordered.skills(); // Option<&[Skill]>
         let recipe = resolve_item(item, hex, ordered, Some(ruleset))
-            .and_then(|tag| producing_skill(ruleset, &tag, ordered).map(|found| (tag, found)));
+            .and_then(|tag| producing_skill(ruleset, &tag, skills).map(|found| (tag, found)));
         let Some((tag, (skill, recipe))) = recipe else {
             // The item resolves to nothing, or nothing in the game produces it. Either way the
             // month is wasted, so this is a sentence rather than silence.
@@ -4381,23 +4698,26 @@ fn check_production(
         };
 
         if says_skill {
-            // `skill_level` answers 0 for a skill the unit has not got, which makes the comparison
-            // uniform - the *message* still has to tell the two apart.
-            let held = i64::from(ordered.skill_level(&skill.tag));
-            let required = i64::from(recipe.level);
-            if held < required {
-                let name = &skill.name;
-                let shortfall = if held == 0 {
-                    format!("has no {name}")
-                } else {
-                    format!("has {name} {held}")
-                };
-                findings.push(ordered.finding(
-                    hex,
-                    codes::PRODUCE_WITHOUT_SKILL,
-                    format!("cannot produce {label}: needs {name} {required}, {shortfall}"),
-                    Some(placed),
-                ));
+            // `skills` is `None` when the unit's skills cannot be said this month; doubt is
+            // about skills, and must not reach `produce-not-here` below, which reads none - so
+            // this is `if let`, never `let … else { continue }`.
+            if let Some(skills) = skills {
+                let held = i64::from(level_in(skills, &skill.tag));
+                let required = i64::from(recipe.level);
+                if held < required {
+                    let name = &skill.name;
+                    let shortfall = if held == 0 {
+                        format!("has no {name}")
+                    } else {
+                        format!("has {name} {held}")
+                    };
+                    findings.push(ordered.finding(
+                        hex,
+                        codes::PRODUCE_WITHOUT_SKILL,
+                        format!("cannot produce {label}: needs {name} {required}, {shortfall}"),
+                        Some(placed),
+                    ));
+                }
             }
         }
 
@@ -4466,7 +4786,7 @@ fn check_production(
 fn producing_skill<'a>(
     ruleset: &'a Ruleset,
     tag: &str,
-    ordered: &Ordered<'_>,
+    skills: Option<&[Skill]>,
 ) -> Option<(&'a SkillEntry, &'a Production)> {
     let candidates: Vec<(&SkillEntry, &Production)> = ruleset
         .skills
@@ -4482,7 +4802,7 @@ fn producing_skill<'a>(
 
     candidates
         .iter()
-        .find(|(skill, _)| ordered.skill_level(&skill.tag) > 0)
+        .find(|(skill, _)| skills.is_some_and(|held| level_in(held, &skill.tag) > 0))
         .or_else(|| candidates.iter().min_by_key(|(_, recipe)| recipe.level))
         .copied()
 }
@@ -4547,11 +4867,12 @@ fn check_studying(
         let Some(skill) = ruleset.find_skill(studying) else {
             continue;
         };
-        // No entry for this skill on the unit means it has never studied it, so it is not at any
-        // maximum.
-        let Some(level) = ordered
-            .unit
-            .skills
+        // `None` means the unit's skills cannot be said this month, so it goes unjudged. No entry
+        // for this skill on the unit means it has never studied it, so it is not at any maximum.
+        let Some(skills) = ordered.skills() else {
+            continue;
+        };
+        let Some(level) = skills
             .iter()
             .find(|entry| entry.tag.eq_ignore_ascii_case(&skill.tag))
             .map(|entry| entry.level)
@@ -4615,9 +4936,11 @@ fn check_magic_study(
 
         // "Above level 2" is the level reached, so the level held must be 2 or more. No entry at
         // all means the unit has never studied it - level 0, and below the threshold either way.
-        let level = ordered
-            .unit
-            .skills
+        // `None` means the unit's skills cannot be said this month, so it goes unjudged.
+        let Some(skills) = ordered.skills() else {
+            continue;
+        };
+        let level = skills
             .iter()
             .find(|entry| entry.tag.eq_ignore_ascii_case(&skill.tag))
             .map_or(0, |entry| entry.level);
@@ -5759,7 +6082,7 @@ fn check_claims(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::report::model::{Exit, Skill};
+    use crate::report::model::{level_for_points, Exit, Skill};
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
@@ -17388,6 +17711,373 @@ mod tests {
             disabling_all(&[codes::UNIT_DOES_NOTHING, codes::PRODUCE_NOT_HERE]),
         );
         assert_eq!(produce_codes(&not_here_off), ["produce-without-skill"]);
+    }
+
+    // --- skills after this month's gifts of men (ah-z73s.2) -------------------------------------
+
+    /// A skill at `points` per man - `level` is derived the same way the report's own figure is,
+    /// which matters here because `merge_skills` weighs by `points`, not by `level`.
+    fn skill_pts(tag: &str, points: u32) -> Skill {
+        Skill {
+            name: tag.to_lowercase(),
+            tag: tag.to_string(),
+            level: level_for_points(points),
+            points,
+        }
+    }
+
+    fn with_skill_pts(mut unit: ReportUnit, tag: &str, points: u32) -> ReportUnit {
+        unit.skills.push(skill_pts(tag, points));
+        unit
+    }
+
+    /// `unit(id)`, with `men` set and that many HUMN reported - what a GIVE/TAKE of men reads via
+    /// `Ordered::holding`.
+    fn men_holder(id: &str, men: i64) -> ReportUnit {
+        let mut unit = with_men(unit(id), men);
+        unit.items.push(ItemAmount {
+            amount: men,
+            name: "men".to_string(),
+            tag: "HUMN".to_string(),
+        });
+        unit
+    }
+
+    /// Reads one hex's units and orders and resolves this month's gifts of men against them. The
+    /// increments below assert on the merge itself - `Ordered::skill_level`/`skills` and
+    /// `skills_after_gifts` directly - rather than through any one check's wording, which is what
+    /// increment 6 exercises instead.
+    fn hex_after_gifts<'a>(region: &'a ReportRegion, ordered: &'a OrderedUnits) -> Hex<'a> {
+        let mut hex = Hex::read(region, ordered, &[]);
+        apply_gifts_of_men(&mut hex.units, Some(&ruleset()));
+        hex
+    }
+
+    #[test]
+    fn a_formed_unit_given_skilled_men_is_not_told_it_lacks_the_skill() {
+        let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
+        let orders = "unit 1010\nFORM 1\nPRODUCE WOOD\nEND\nGIVE NEW 1 5 HUMN\n";
+
+        let findings = check_turn(
+            &report(vec![region(vec![giver])]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !codes(&findings).contains(&"produce-without-skill"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_gift_of_all_men_uses_what_the_giver_actually_holds() {
+        let receiver = with_men(unit("2200"), 5);
+        let giver = with_skill_pts(men_holder("1010", 10), "LUMB", 450);
+
+        let all_orders = "unit 1010\nGIVE 2200 ALL HUMN\n";
+        let all_ordered = OrderedUnits::read(all_orders);
+        let all_region = region(vec![receiver.clone(), giver.clone()]);
+        let all_hex = hex_after_gifts(&all_region, &all_ordered);
+        // (5*0 + 10*450) / 15 = 300, level 4.
+        assert_eq!(all_hex.find("2200").unwrap().skill_level("LUMB"), Some(4));
+
+        let except_orders = "unit 1010\nGIVE 2200 ALL HUMN EXCEPT 8\n";
+        let except_ordered = OrderedUnits::read(except_orders);
+        let except_region = region(vec![receiver, giver]);
+        let except_hex = hex_after_gifts(&except_region, &except_ordered);
+        // Only 2 move: (5*0 + 2*450) / 7 = 128, level 2.
+        assert_eq!(
+            except_hex.find("2200").unwrap().skill_level("LUMB"),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn two_gifts_into_one_unit_are_merged_in_document_order() {
+        let receiver = with_skill_pts(with_men(unit("2200"), 5), "LUMB", 180);
+        let skilled_giver = with_skill_pts(men_holder("1010", 3), "LUMB", 30);
+        let unskilled_giver = men_holder("1020", 4);
+
+        // (5*180 + 3*30) / 8 = 123 (level 2), then (8*123 + 4*0) / 12 = 82 (level 1).
+        let orders = "unit 1010\nGIVE 2200 3 HUMN\nunit 1020\nGIVE 2200 4 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let first_region = region(vec![
+            receiver.clone(),
+            skilled_giver.clone(),
+            unskilled_giver.clone(),
+        ]);
+        let hex = hex_after_gifts(&first_region, &ordered);
+        assert_eq!(hex.find("2200").unwrap().skill_level("LUMB"), Some(1));
+
+        // Reversed: (5*180 + 4*0) / 9 = 100 (level 2), then (9*100 + 3*30) / 12 = 82 (level 1) -
+        // the arithmetic commutes here, so the order of the two blocks does not matter.
+        let reversed_orders = "unit 1020\nGIVE 2200 4 HUMN\nunit 1010\nGIVE 2200 3 HUMN\n";
+        let reversed_ordered = OrderedUnits::read(reversed_orders);
+        let reversed_region = region(vec![receiver, skilled_giver, unskilled_giver]);
+        let reversed_hex = hex_after_gifts(&reversed_region, &reversed_ordered);
+        assert_eq!(
+            reversed_hex.find("2200").unwrap().skill_level("LUMB"),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn a_gift_of_men_leaves_the_giver_untouched() {
+        let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
+        let receiver = unit("2200");
+        let orders = "unit 1010\nGIVE 2200 3 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver, receiver]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        assert_eq!(
+            hex.find("1010").unwrap().skill_level("LUMB"),
+            Some(level_for_points(30))
+        );
+    }
+
+    #[test]
+    fn giving_men_to_nobody_takes_them_off_the_giver() {
+        let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
+        let orders = "unit 1010\nGIVE 0 5 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver]);
+
+        // Chiefly that this does not panic: there is no receiver to credit.
+        let hex = hex_after_gifts(&region, &ordered);
+        assert_eq!(hex.find("1010").unwrap().skill_level("LUMB"), Some(1));
+    }
+
+    #[test]
+    fn a_gift_of_goods_is_not_a_gift_of_men() {
+        let giver = with_item(
+            with_skill_pts(unit("1010"), "LUMB", 30),
+            10,
+            "swords",
+            "SWOR",
+        );
+        let receiver = unit("2200");
+        let orders = "unit 1010\nGIVE 2200 10 SWOR\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver, receiver]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        assert!(matches!(
+            hex.find("1010").unwrap().skills_after_gifts,
+            SkillsAfterGifts::Unchanged
+        ));
+        assert!(matches!(
+            hex.find("2200").unwrap().skills_after_gifts,
+            SkillsAfterGifts::Unchanged
+        ));
+    }
+
+    #[test]
+    fn men_taken_rather_than_given_leave_the_taker_unjudged() {
+        let taker = unit("1010");
+        let source = unit("2200");
+        let orders = "unit 1010\nPRODUCE WOOD\nTAKE FROM 2200 5 HUMN\n";
+
+        let findings = check_turn(
+            &report(vec![region(vec![taker, source])]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !codes(&findings).contains(&"produce-without-skill"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_gift_of_a_whole_class_leaves_the_receiver_unjudged() {
+        for class in ["MEN", "ITEMS"] {
+            let giver = men_holder("1010", 5);
+            let receiver = unit("2200");
+            let orders = format!("unit 1010\nGIVE 2200 ALL {class}\n");
+            let ordered = OrderedUnits::read(&orders);
+            let region = region(vec![giver, receiver]);
+            let hex = hex_after_gifts(&region, &ordered);
+
+            assert!(
+                matches!(
+                    hex.find("2200").unwrap().skills_after_gifts,
+                    SkillsAfterGifts::Unknowable
+                ),
+                "GIVE ALL {class} should leave the receiver unjudged: {:?}",
+                hex.find("2200").unwrap().skills_after_gifts
+            );
+        }
+    }
+
+    #[test]
+    fn a_gift_of_a_class_that_holds_no_people_judges_normally() {
+        let giver = with_item(unit("1010"), 3, "swords", "SWOR");
+        let receiver = unit("2200");
+        let orders = "unit 1010\nGIVE 2200 ALL WEAPONS\nunit 2200\nPRODUCE WOOD\n";
+
+        let findings = check_turn(
+            &report(vec![region(vec![giver, receiver])]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            codes(&findings).contains(&"produce-without-skill"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn an_inexact_headcount_leaves_the_receiver_unjudged() {
+        let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
+        let mut receiver = unit("2200");
+        receiver.men_estimated = true;
+        let orders = "unit 1010\nGIVE 2200 3 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver, receiver]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        assert!(matches!(
+            hex.find("2200").unwrap().skills_after_gifts,
+            SkillsAfterGifts::Unknowable
+        ));
+    }
+
+    /// The giver's own headcount does not enter the arithmetic at all - what arrives is its
+    /// points per man, times the amount the order states - so an estimated giver still lets a
+    /// receiver with an exact headcount be judged normally.
+    #[test]
+    fn the_givers_own_estimated_headcount_does_not_doubt_the_receiver() {
+        let mut giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
+        giver.men_estimated = true;
+        let receiver = unit("2200");
+        let orders = "unit 1010\nGIVE 2200 3 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver, receiver]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        // Judged normally - the merge is computed, not silenced - regardless of what its result
+        // is; the receiver started with its own man and no lumberjack, so the arriving points
+        // are diluted to level 0 rather than kept at the giver's level 1.
+        assert!(matches!(
+            hex.find("2200").unwrap().skills_after_gifts,
+            SkillsAfterGifts::Merged(_)
+        ));
+        assert_eq!(hex.find("2200").unwrap().skill_level("LUMB"), Some(0));
+    }
+
+    #[test]
+    fn doubt_carries_to_the_next_unit_along() {
+        let middle = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
+        let source = unit("999");
+        let receiver = unit("2200");
+        let orders = "unit 1010\nTAKE FROM 999 5 HUMN\nGIVE 2200 3 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![middle, source, receiver]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        assert!(matches!(
+            hex.find("2200").unwrap().skills_after_gifts,
+            SkillsAfterGifts::Unknowable
+        ));
+    }
+
+    #[test]
+    fn giving_a_whole_unit_away_is_not_a_merge() {
+        let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
+        let receiver = unit("2200");
+        let orders = "unit 1010\nGIVE 2200 UNIT\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver, receiver]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        assert!(matches!(
+            hex.find("2200").unwrap().skills_after_gifts,
+            SkillsAfterGifts::Unchanged
+        ));
+    }
+
+    // --- the same six checks, each reading the merged view -----------------------------------
+
+    #[test]
+    fn a_unit_given_the_mining_skill_is_no_longer_warned_about_a_mine() {
+        let builder = in_structure(unit("4021"), "1");
+        let giver = with_skill_pts(men_holder("1010", 5), "MINI", 450);
+        let orders = "unit 4021\nBUILD\nunit 1010\nGIVE 4021 5 HUMN\n";
+        let region = ReportRegion {
+            structures: vec![unfinished_mine("1")],
+            ..region(vec![builder, giver])
+        };
+
+        let findings = check(vec![region], orders);
+
+        assert!(
+            !codes(&findings).contains(&"build-without-skill"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_teacher_given_the_skill_can_now_teach_it() {
+        let teacher = with_men(with_silver(unit("500"), 1000), 1);
+        let pupil = with_men(with_silver(unit("700"), 1000), 2);
+        let giver = with_skill_pts(men_holder("1010", 5), "COMB", 300);
+        let orders = "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 1010\nGIVE 500 5 HUMN\n";
+
+        let findings = check(vec![region(vec![teacher, pupil, giver])], orders);
+
+        assert!(
+            !codes(&findings).contains(&"teacher-cannot-teach"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_teacher_given_the_skill_is_offered_the_free_slots_it_now_has() {
+        let teacher = with_men(with_silver(unit("500"), 1000), 1);
+        let taught = with_men(with_silver(unit("700"), 1000), 2);
+        let untaught = with_men(with_silver(unit("900"), 1000), 2);
+        let giver = with_skill_pts(men_holder("1010", 5), "COMB", 300);
+        let orders = "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n\
+                      unit 1010\nGIVE 500 5 HUMN\n";
+
+        let findings = check(vec![region(vec![teacher, taught, untaught, giver])], orders);
+
+        assert!(
+            codes(&findings).contains(&"teacher-has-free-slots"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_unit_diluted_below_the_maximum_is_no_longer_warned() {
+        let receiver = with_skill_pts(with_silver(unit("5"), 1000), "OBSE", 450);
+        let giver = men_holder("1010", 4);
+        let orders = "unit 5\nSTUDY OBSE\nunit 1010\nGIVE 5 4 HUMN\n";
+
+        let findings = check(vec![region(vec![receiver, giver])], orders);
+
+        assert!(
+            !codes(&findings).contains(&"study-at-maximum"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_mage_diluted_up_past_level_two_by_a_gift_is_now_warned() {
+        let receiver = with_skill_pts(with_silver(unit("5"), 1000), "FORC", 30);
+        let giver = with_skill_pts(men_holder("1010", 1), "FORC", 180);
+        let orders = "unit 5\nSTUDY FORC\nunit 1010\nGIVE 5 1 HUMN\n";
+
+        let finding = only(check(vec![region(vec![receiver, giver])], orders));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
     }
 
     // --- PRODUCE aboard a vessel that is sailing away (`ah-jk9h`, `gh-679`) ---------------------
