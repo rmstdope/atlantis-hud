@@ -308,6 +308,7 @@ describe("formatItems and itemsTooltip", () => {
           affordable: 19,
           available: 30,
           marketHas: 30,
+          alreadyBought: 0,
           silverAvailable: 356,
           price: 18,
           cappedBy: "silver"

@@ -38,11 +38,11 @@ use crate::orders::silver::{
     forecast_unit, late_income, parse_wage_centis, pillage_threshold, pool_wants, price_buy_all,
     price_cast, price_claim, price_pillage, price_production, price_purchase, price_sale_line,
     price_study, price_tax, quantity_bought, readiness, recipe_for, settle_unclaimed, split_pool,
-    taxes, transfer_shape, transmute_argument, unit_upkeep, Caster, ContendedPool, FactionFoodPass,
-    FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketSide,
-    PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages,
-    SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
-    UpkeepSettlement, FOOD_TAGS,
+    taxes, transfer_shape, transmute_argument, unit_upkeep, BuyAllCap, Caster, ContendedPool,
+    FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
+    MarketSide, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts,
+    RegionWages, SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver,
+    UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
 };
 use crate::report::composition;
 use crate::report::model::{
@@ -129,6 +129,7 @@ pub mod codes {
     pub const NOTHING_LEFT_TO_SELL: Code = Code("nothing-left-to-sell");
     pub const ARRIVALS_LOWER_A_SKILL: Code = Code("arrivals-lower-a-skill");
     pub const ITEMS_CANNOT_BE_GIVEN: Code = Code("items-cannot-be-given");
+    pub const NOTHING_LEFT_TO_BUY: Code = Code("nothing-left-to-buy");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -137,7 +138,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 36] = [
+    pub const ALL: [Code; 37] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -174,6 +175,7 @@ pub mod codes {
         NOTHING_LEFT_TO_SELL,
         ARRIVALS_LOWER_A_SKILL,
         ITEMS_CANNOT_BE_GIVEN,
+        NOTHING_LEFT_TO_BUY,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -459,6 +461,7 @@ pub fn review_turn(
         );
         check_markets(hex, ruleset, &options, &mut findings);
         check_emptied_sales(hex, ledger, ruleset, &plurals, &options, &mut findings);
+        check_emptied_buys(hex, ledger, ruleset, &plurals, &options, &mut findings);
         let pillaged = own_unit_pillages(hex);
         check_pillaged_tax(hex, pillaged, &options, &mut findings);
         check_guarded_tax(
@@ -664,6 +667,11 @@ fn market_shares_for(
     // it can supply ten into, wins a share it is not owed, and can push the line into a false
     // `region-pool-oversubscribed` (`ah-vw8e`).
     let mut claimed: BTreeMap<(usize, String), i64> = BTreeMap::new();
+    // Which units wrote an unbounded `BUY` for each tag. `rules/buy` splits a line "in proportion
+    // to the amount each buyer attempted to buy" - per buyer, against one purse - so a unit's two
+    // `BUY ALL` lines are one attempt, not two. Settled after the loop rather than inside it, so
+    // the claim does not depend on which line the player typed first (`ah-lauy`).
+    let mut unbounded: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
 
     for (index, ordered) in hex.units.iter().enumerate() {
         for placed in ordered.intents {
@@ -681,8 +689,10 @@ fn market_shares_for(
                 MarketSide::Buying => &hex.region.for_sale,
             };
             // A tag this market has no line for has no pool, so there is nothing to divide - and
-            // the goods are unsellable or unpriceable, which the arms already answer for.
-            let Some(pool) = lines
+            // the goods are unsellable or unpriceable, which the arms already answer for. The
+            // pool itself is read again after the loop, once every unit's claims are in
+            // (`ah-lauy`); this guard only needs to know one exists.
+            let Some(_pool) = lines
                 .iter()
                 .find(|line| line.tag.eq_ignore_ascii_case(&tag))
                 .map(|line| line.amount)
@@ -708,8 +718,15 @@ fn market_shares_for(
                     Amount::Exact(count) => *count,
                     // An unbounded order attempts to buy everything there is, so that is what it
                     // contends for. What it can afford is not known until the deferred pass, which
-                    // runs after this settlement must.
-                    Amount::All { .. } => pool,
+                    // runs after this settlement must. Recorded rather than added: see
+                    // `unbounded` above.
+                    Amount::All { .. } => {
+                        unbounded.entry(tag.clone()).or_default().insert(index);
+                        wants
+                            .entry((tag, side))
+                            .or_insert_with(|| vec![0; hex.units.len()]);
+                        continue;
+                    }
                 },
                 _ => continue,
             };
@@ -730,7 +747,7 @@ fn market_shares_for(
 
     wants
         .into_iter()
-        .map(|((tag, side), claims)| {
+        .map(|((tag, side), mut claims)| {
             let lines = match side {
                 MarketSide::Selling => &hex.region.wanted,
                 MarketSide::Buying => &hex.region.for_sale,
@@ -739,6 +756,19 @@ fn market_shares_for(
                 .iter()
                 .find(|line| line.tag.eq_ignore_ascii_case(&tag))
                 .map_or(0, |line| line.amount);
+            // Every unbounded purchase, settled once its unit's bounded asks are all counted: the
+            // unit claims the whole line, or its bounded asks where those already exceed it. Two
+            // `BUY ALL` lines therefore claim the line once, and a `BUY ALL` beside a `BUY 3`
+            // claims the line rather than the line plus three (`ah-lauy`). A unit that writes
+            // `BUY 200` where 100 exist still overruns: a stated number that overshoots is a real
+            // mistake, and an unbounded line states no number at all.
+            if matches!(side, MarketSide::Buying) {
+                if let Some(buyers) = unbounded.get(&tag) {
+                    for index in buyers {
+                        claims[*index] = claims[*index].max(pool);
+                    }
+                }
+            }
             // Only a line that is genuinely short is an overrun (`ah-t2pn.4`). Unlike the silver
             // pools, one trader is enough: `ah-t2pn.3` settles a market whenever anybody trades,
             // which is what caps a unit ordering `BUY 200` where 100 exist.
@@ -2462,6 +2492,27 @@ struct Ledger<'a> {
     /// total already lives so `check_emptied_sales` need not compute the same fact a second time
     /// (`ah-vw8e`) - which is how this column and that warning drifted apart before (`ah-ycuj`).
     dead_sales: Vec<DeadSale>,
+    /// How many of one tag a unit's own `BUY` lines have already taken out of its settled share
+    /// this month. A block may name the same goods twice, and the second line can only buy what
+    /// the first left (`ah-lauy`). Keyed as `balance` is, and with the same caveat: two units
+    /// carrying one id share an entry.
+    bought: BTreeMap<(String, String), i64>,
+    /// Every `BUY` line that found none of its goods left when it ran, recorded where the running
+    /// total already lives so `check_emptied_buys` need not compute the same fact a second time
+    /// (`ah-lauy`) - which is how this column and a warning drifted apart before (`ah-ycuj`).
+    dead_buys: Vec<DeadBuy>,
+}
+
+/// A `BUY` line with nothing left to buy, and the limit its own earlier lines had emptied.
+struct DeadBuy {
+    unit_id: String,
+    tag: String,
+    placed: PlacedIntent,
+    /// This unit's settled share of the line, which its earlier lines had wholly taken.
+    available: i64,
+    /// The whole line, so the sentence can tell "all this market has" from "all it can have
+    /// here".
+    market_has: i64,
 }
 
 /// How much of one tag one unit's earlier `SELL` lines this month have already moved.
@@ -2488,8 +2539,9 @@ pub(crate) struct DeferredBuy {
     /// The canonical tag, uppercased, as `Ledger::balance` keys it.
     pub tag: String,
     pub price: i64,
-    /// This unit's settled share of the line, or the line itself where nothing was settled.
-    pub available: i64,
+    /// This unit's settled share of the line. `None` where nothing was settled, and
+    /// `settle_buy_all` then falls back to the line itself (`ah-t2pn.3`).
+    pub share: Option<i64>,
     /// The whole line.
     pub market_has: i64,
 }
@@ -2600,6 +2652,8 @@ fn ledger_for<'a>(
         buy_all: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
+        bought: BTreeMap::new(),
+        dead_buys: Vec::new(),
     };
 
     for ordered in &hex.units {
@@ -3157,6 +3211,53 @@ fn check_emptied_sales(
         findings.push(ordered.finding(
             hex,
             codes::NOTHING_LEFT_TO_SELL,
+            message,
+            Some(&dead.placed),
+        ));
+    }
+}
+
+/// A `BUY` of goods this unit's own earlier orders have already bought from this market
+/// (`ah-lauy`). The buying-side counterpart of [`check_emptied_sales`], and unlike it this fires on
+/// the exact form as well as the unbounded one: an exact `BUY` has no hover sentence at all, so the
+/// finding is the only thing that can say what happened.
+fn check_emptied_buys(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::NOTHING_LEFT_TO_BUY) {
+        return;
+    }
+    for dead in &ledger.dead_buys {
+        let Some(ordered) = hex.find(&dead.unit_id) else {
+            continue;
+        };
+        // "this market has" is only true where the unit had the whole line to itself; where its
+        // faction-mates split it, the unit never had more than its share to buy (round-2 Q1).
+        let limit = if dead.available == dead.market_has {
+            "this market has"
+        } else {
+            "it can have here"
+        };
+        let goods = if dead.available == 1 {
+            format!("the only {}", item_name(&dead.tag, hex, ruleset))
+        } else {
+            format!(
+                "all {} {}",
+                dead.available,
+                plural_name(&dead.tag, hex, ruleset, plurals)
+            )
+        };
+        let message = format!(
+            "an earlier order of its own has already bought {goods} {limit}, so this buys nothing"
+        );
+        findings.push(ordered.finding(
+            hex,
+            codes::NOTHING_LEFT_TO_BUY,
             message,
             Some(&dead.placed),
         ));
@@ -3744,13 +3845,10 @@ fn buy(
     let tag = offer.tag.to_ascii_uppercase();
 
     let Amount::Exact(count) = amount else {
-        // What this hex's other own buyers left of the line, or the line itself where nothing
-        // was settled (`market_shares_for` already gives an unbounded order a claim of the whole
-        // pool). `BUY ALL` is settled once the unit's whole month is counted - see
-        // `Ledger::buy_all`.
-        let available = standing
-            .share_of(&tag, MarketSide::Buying)
-            .unwrap_or(offer.amount);
+        // What this hex's other own buyers left of the line. `None` where nothing was settled, and
+        // `settle_buy_all` then falls back to the line itself (`ah-t2pn.3`). `BUY ALL` is settled
+        // once the unit's whole month is counted - see `Ledger::buy_all`.
+        let share = standing.share_of(&tag, MarketSide::Buying);
         ledger
             .buy_all
             .entry(who.clone())
@@ -3759,23 +3857,43 @@ fn buy(
                 placed: placed.clone(),
                 tag,
                 price: offer.price,
-                available,
+                share,
                 market_has: offer.amount,
             });
         return;
     };
 
+    let already = ledger
+        .bought
+        .get(&(who.clone(), tag.clone()))
+        .copied()
+        .unwrap_or(0);
     // The bounded form's own fallback differs on purpose from the unbounded arm's above:
     // `share_of` returns `None` only where nothing was settled, and this arm falls back to what
-    // the unit *asked for* - the unbounded arm falls back to the whole line instead (`ah-t2pn.3`).
-    let allowed = standing
-        .share_of(&tag, MarketSide::Buying)
-        .unwrap_or(*count);
+    // the unit *asked for* - which is not a quantity of goods, so there is nothing there for an
+    // earlier line to have spent down (`ah-lauy`). The unbounded arm falls back to the whole line
+    // instead (`ah-t2pn.3`).
+    let allowed = match standing.share_of(&tag, MarketSide::Buying) {
+        Some(share) => (share - already).max(0),
+        None => *count,
+    };
     let priced = price_purchase(*count, offer.price, allowed);
     let bought = quantity_bought(*count, allowed);
 
     charge(ledger, who, SILVER, priced.spends, placed);
     credit(ledger, who, &tag, bought);
+    *ledger.bought.entry((who.clone(), tag.clone())).or_default() += bought;
+    if bought == 0 && already > 0 {
+        if let Some(share) = standing.share_of(&tag, MarketSide::Buying) {
+            ledger.dead_buys.push(DeadBuy {
+                unit_id: who.clone(),
+                tag: tag.clone(),
+                placed: placed.clone(),
+                available: share,
+                market_has: offer.amount,
+            });
+        }
+    }
     if bought != 0 {
         ledger.movements.push(ItemMovement {
             unit_id: who.clone(),
@@ -3825,14 +3943,38 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
             continue;
         }
 
+        let already = ledger
+            .bought
+            .get(&(who.clone(), deferred.tag.clone()))
+            .copied()
+            .unwrap_or(0);
+        let available = deferred.share.unwrap_or(deferred.market_has);
         let (priced, plan) = price_buy_all(
             balance_of(ledger, who, SILVER),
             deferred.price,
-            deferred.available,
+            available,
             deferred.market_has,
+            already,
         );
         charge(ledger, who, SILVER, priced.spends, &deferred.placed);
         credit(ledger, who, &deferred.tag, plan.bought);
+        *ledger
+            .bought
+            .entry((who.clone(), deferred.tag.clone()))
+            .or_default() += plan.bought;
+        // `capped_by`, not merely `already > 0`: a second line can find nothing bought because
+        // its own earlier line spent the share, or - independently - because silver ran out first
+        // (`ah-lauy`, round 1 Q4 and out of scope: "a BUY stopped by silver"). Only the first is
+        // this warning's subject; `price_buy_all` has already told the two apart.
+        if plan.bought == 0 && plan.capped_by == BuyAllCap::AlreadyBought {
+            ledger.dead_buys.push(DeadBuy {
+                unit_id: who.clone(),
+                tag: deferred.tag.clone(),
+                placed: deferred.placed.clone(),
+                available: plan.available,
+                market_has: deferred.market_has,
+            });
+        }
         if plan.bought != 0 {
             ledger.movements.push(ItemMovement {
                 unit_id: who.clone(),
@@ -11787,6 +11929,208 @@ mod tests {
         );
     }
 
+    /// `ah-lauy`, increment 6. The buying-side counterpart of `check_emptied_sales` - a second
+    /// `BUY ALL` of the same goods this unit's own earlier line already took warns on the line
+    /// that finds nothing left, unbounded and exact alike.
+    mod nothing_left_to_buy {
+        use super::*;
+
+        fn grain_line(amount: i64, price: i64) -> MarketItem {
+            MarketItem {
+                amount,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price,
+            }
+        }
+
+        fn findings_for(review: &TurnReview) -> Vec<&Finding> {
+            review
+                .findings
+                .iter()
+                .filter(|finding| finding.code == codes::NOTHING_LEFT_TO_BUY)
+                .collect()
+        }
+
+        #[test]
+        fn a_second_buy_of_goods_its_own_line_took_warns() {
+            let hex = ReportRegion {
+                for_sale: vec![grain_line(5, 12)],
+                ..region(vec![with_silver(unit("2390"), 100)])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nBUY ALL grain\nBUY ALL grain\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let findings = findings_for(&review);
+            assert_eq!(findings.len(), 1, "{:?}", codes(&review.findings));
+            assert_eq!(findings[0].line, Some(3));
+            assert_eq!(
+                findings[0].message,
+                "an earlier order of its own has already bought all 5 grain this market has, so this buys nothing"
+            );
+        }
+
+        #[test]
+        fn a_second_exact_buy_of_goods_its_own_line_took_warns() {
+            let hex = ReportRegion {
+                for_sale: vec![grain_line(5, 12)],
+                ..region(vec![with_silver(unit("2390"), 100)])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nBUY 5 grain\nBUY 5 grain\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let findings = findings_for(&review);
+            assert_eq!(findings.len(), 1, "{:?}", codes(&review.findings));
+            assert_eq!(
+                findings[0].message,
+                "an earlier order of its own has already bought all 5 grain this market has, so this buys nothing"
+            );
+        }
+
+        /// Round-2 Q1: where the unit's own earlier lines only ever had a *share* of the line,
+        /// the sentence says "it can have here", not "this market has".
+        #[test]
+        fn a_shared_line_names_the_share_not_the_market() {
+            let hex = ReportRegion {
+                for_sale: vec![grain_line(5, 12)],
+                ..region(vec![
+                    with_silver(unit("2390"), 100),
+                    with_silver(unit("2391"), 100),
+                ])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nBUY ALL grain\nBUY ALL grain\nunit 2391\nBUY 2 grain\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let findings = findings_for(&review);
+            assert_eq!(findings.len(), 1, "{:?}", codes(&review.findings));
+            assert_eq!(
+                findings[0].message,
+                "an earlier order of its own has already bought all 3 grain it can have here, so this buys nothing"
+            );
+        }
+
+        /// Round-2 Q2: a share of one reads "the only", not "all 1".
+        #[test]
+        fn the_only_one_of_a_line_reads_singular() {
+            let hex = ReportRegion {
+                for_sale: vec![grain_line(1, 12)],
+                ..region(vec![with_silver(unit("2390"), 100)])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nBUY ALL grain\nBUY ALL grain\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let findings = findings_for(&review);
+            assert_eq!(findings.len(), 1, "{:?}", codes(&review.findings));
+            assert_eq!(
+                findings[0].message,
+                "an earlier order of its own has already bought the only grain this market has, so this buys nothing"
+            );
+        }
+
+        /// A unit whose settled share is zero because a faction-mate claimed the line buys
+        /// nothing, but `region-pool-oversubscribed` already speaks for the hex - no
+        /// `nothing-left-to-buy` besides it.
+        #[test]
+        fn a_buy_a_faction_mate_emptied_does_not_warn() {
+            let hex = ReportRegion {
+                for_sale: vec![grain_line(5, 12)],
+                ..region(vec![
+                    with_silver(unit("2390"), 100),
+                    with_silver(unit("2391"), 100),
+                ])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nBUY ALL grain\nunit 2391\nBUY ALL grain\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert!(
+                findings_for(&review).is_empty(),
+                "a faction-mate's share must not warn: {:?}",
+                codes(&review.findings)
+            );
+        }
+
+        /// The market still has stock; the shipped silver sentence stands and nothing about a
+        /// duplicate line applies.
+        #[test]
+        fn a_buy_all_stopped_by_silver_does_not_warn() {
+            let hex = ReportRegion {
+                for_sale: vec![grain_line(100, 12)],
+                ..region(vec![with_silver(unit("2390"), 24)])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nBUY ALL grain\nBUY ALL grain\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert!(
+                findings_for(&review).is_empty(),
+                "a purse-limited buy must not warn: {:?}",
+                codes(&review.findings)
+            );
+        }
+
+        /// `not-traded-here` already speaks for a line the market does not sell; a second warning
+        /// on the same line is worse than one.
+        #[test]
+        fn a_buy_of_untraded_goods_does_not_warn_twice() {
+            let review = review_turn(
+                &report(vec![region(vec![unit("2390")])]),
+                "unit 2390\nBUY ALL silk\nBUY ALL silk\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert!(
+                findings_for(&review).is_empty(),
+                "untraded goods must not also raise nothing-left-to-buy: {:?}",
+                codes(&review.findings)
+            );
+        }
+
+        /// The switch silences this code and nothing else.
+        #[test]
+        fn a_disabled_nothing_left_to_buy_emits_nothing() {
+            let hex = ReportRegion {
+                for_sale: vec![grain_line(5, 12)],
+                ..region(vec![with_silver(unit("2390"), 100)])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nBUY ALL grain\nBUY ALL grain\n",
+                Some(&ruleset()),
+                disabling(codes::NOTHING_LEFT_TO_BUY),
+            );
+
+            assert!(
+                findings_for(&review).is_empty(),
+                "the switch should silence the code: {:?}",
+                codes(&review.findings)
+            );
+        }
+    }
+
     /// `ah-t2pn.3`. A market's stock is shared: own units buying or selling the same goods in one
     /// hex split what the market will trade, in proportion to what each tried to trade - which is
     /// the rules' own wording for this pool.
@@ -11949,6 +12293,89 @@ mod tests {
                 "unit 2390\nBUY ALL horse\n",
             );
             assert_eq!(silver_of(&poor, "2390").expense, Some(10 * 60));
+        }
+
+        /// `ah-lauy`, increment 5. `rules/buy` splits a line "in proportion to the amount each
+        /// buyer attempted to buy" - per buyer, against one purse - so a unit's two `BUY ALL`
+        /// lines are one attempt, not two: it claims 15 of a line of 30 shared with one
+        /// faction-mate, not 20.
+        #[test]
+        fn two_buy_all_lines_claim_the_line_once() {
+            let review = market_review(
+                vec![],
+                vec![line(30, 60)],
+                vec![trader("2390", 0, 20_000), trader("2391", 0, 20_000)],
+                "unit 2390\nBUY ALL horse\nBUY ALL horse\nunit 2391\nBUY ALL horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").expense, Some(15 * 60));
+            assert_eq!(silver_of(&review, "2391").expense, Some(15 * 60));
+        }
+
+        /// `ah-lauy`, increment 5. A lone unit writing `BUY ALL` twice against a line of 5 was
+        /// never going to buy more than the line holds, so it must not raise a false
+        /// `region-pool-oversubscribed`.
+        #[test]
+        fn a_lone_doubled_buy_all_is_not_an_overrun() {
+            let review = market_review(
+                vec![],
+                vec![line(5, 60)],
+                vec![trader("2390", 0, 20_000)],
+                "unit 2390\nBUY ALL horse\nBUY ALL horse\n",
+            );
+
+            assert!(
+                !review
+                    .findings
+                    .iter()
+                    .any(|finding| finding.code == codes::REGION_POOL_OVERSUBSCRIBED),
+                "a lone doubled BUY ALL must not overrun the line: {:?}",
+                review.findings
+            );
+        }
+
+        /// `ah-lauy`, increment 5. `BUY 3` plus `BUY ALL` claims the whole line once, not the
+        /// line plus three - either way round.
+        #[test]
+        fn a_buy_all_beside_an_exact_buy_claims_the_line_once() {
+            let all_first = market_review(
+                vec![],
+                vec![line(30, 60)],
+                vec![trader("2390", 0, 20_000), trader("2391", 0, 20_000)],
+                "unit 2390\nBUY ALL horse\nBUY 15 horse\nunit 2391\nBUY ALL horse\n",
+            );
+            assert_eq!(silver_of(&all_first, "2390").expense, Some(15 * 60));
+            assert_eq!(silver_of(&all_first, "2391").expense, Some(15 * 60));
+
+            let exact_first = market_review(
+                vec![],
+                vec![line(30, 60)],
+                vec![trader("2390", 0, 20_000), trader("2391", 0, 20_000)],
+                "unit 2390\nBUY 15 horse\nBUY ALL horse\nunit 2391\nBUY ALL horse\n",
+            );
+            assert_eq!(silver_of(&exact_first, "2390").expense, Some(15 * 60));
+            assert_eq!(silver_of(&exact_first, "2391").expense, Some(15 * 60));
+        }
+
+        /// `ah-lauy`, increment 5. Regression net: a stated number that overshoots the line is a
+        /// real mistake and still overruns - an unbounded line states no number at all.
+        #[test]
+        fn an_exact_buy_over_the_line_still_overruns() {
+            let review = market_review(
+                vec![],
+                vec![line(100, 60)],
+                vec![trader("2390", 0, 20_000)],
+                "unit 2390\nBUY 200 horse\n",
+            );
+
+            assert!(
+                review
+                    .findings
+                    .iter()
+                    .any(|finding| finding.code == codes::REGION_POOL_OVERSUBSCRIBED),
+                "BUY 200 against a line of 100 must still overrun: {:?}",
+                review.findings
+            );
         }
 
         #[test]
@@ -12343,6 +12770,40 @@ mod tests {
                     );
                 },
             );
+        }
+
+        /// `ah-lauy`, increment 4. A second `BUY ALL` of the same goods finds nothing left of this
+        /// unit's own earlier line, in the ledger exactly as the SILVER column reads it.
+        #[test]
+        fn a_second_buy_all_buys_nothing_the_first_already_took() {
+            let hex = ReportRegion {
+                for_sale: vec![line(5, 12, "horse", "HORS")],
+                ..region(vec![with_silver(unit("2390"), 100)])
+            };
+            with_ledger(hex, "unit 2390\nBUY ALL horse\nBUY ALL horse\n", |ledger| {
+                assert_eq!(balance_of(ledger, "2390", "SILV"), 40);
+                assert_eq!(balance_of(ledger, "2390", "HORS"), 5);
+                let bought: i64 = ledger
+                    .movements
+                    .iter()
+                    .filter(|m| m.unit_id == "2390" && m.tag == "HORS")
+                    .map(|m| m.delta)
+                    .sum();
+                assert_eq!(bought, 5);
+            });
+        }
+
+        /// `ah-lauy`, increment 4. The exact form shares the same running total.
+        #[test]
+        fn two_exact_buys_share_one_settled_total_in_the_ledger() {
+            let hex = ReportRegion {
+                for_sale: vec![line(5, 12, "horse", "HORS")],
+                ..region(vec![with_silver(unit("2390"), 100)])
+            };
+            with_ledger(hex, "unit 2390\nBUY 5 horse\nBUY 5 horse\n", |ledger| {
+                assert_eq!(balance_of(ledger, "2390", "SILV"), 40);
+                assert_eq!(balance_of(ledger, "2390", "HORS"), 5);
+            });
         }
 
         #[test]
@@ -19783,6 +20244,21 @@ mod tests {
                     ..region(vec![with_item(unit("5"), 10, "furs", "FUR"), unit("7")])
                 }],
                 orders: "unit 5\nGIVE 7 10 FUR\nSELL ALL FUR\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::NOTHING_LEFT_TO_BUY,
+                regions: vec![ReportRegion {
+                    for_sale: vec![MarketItem {
+                        amount: 5,
+                        name: "grain".to_string(),
+                        tag: "GRAI".to_string(),
+                        price: 12,
+                    }],
+                    ..region(vec![with_silver(unit("5"), 100)])
+                }],
+                orders: "unit 5\nBUY ALL grain\nBUY ALL grain\n",
                 allowance: None,
                 unclaimed: None,
             },

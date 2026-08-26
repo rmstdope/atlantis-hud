@@ -3,4 +3,4 @@
 /**
  * Which limit settled a `BUY ALL`.
  */
-export type BuyAllCap = "silver" | "market" | "shared";
+export type BuyAllCap = "silver" | "market" | "shared" | "already-bought";

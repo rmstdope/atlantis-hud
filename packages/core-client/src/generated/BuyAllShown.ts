@@ -20,6 +20,12 @@ boughtNamed: string,
  */
 marketNamed: string, bought: number, affordable: number, available: number, marketHas: number, 
 /**
+ * How many of these goods this unit's own earlier `BUY` lines already took out of
+ * `available`. Zero for the first such line, which is what keeps every shipped sentence
+ * unchanged (`ah-lauy`).
+ */
+alreadyBought: number, 
+/**
  * What the unit holds when this line is reached, for the "cannot afford one" sentence.
  */
 silverAvailable: number, 
