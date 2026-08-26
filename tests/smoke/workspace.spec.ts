@@ -4163,6 +4163,25 @@ test("a bought item marks the ITEMS cell as a projection", async ({ page }) => {
 });
 
 /**
+ * ah-ofpb.1: a PRODUCE now shows what it makes. Unit 18642 is a one-man leader with no lumberjack
+ * skill, and that is deliberate: the projection is taken from the recipe, the men and the
+ * holdings, and never from whether the unit can actually do it - a unit ordered to make what it
+ * cannot make is `produce-without-skill`'s business and not the column's.
+ */
+test("a produced item marks the ITEMS cell as a projection", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await fillOrders(page, "PRODUCE wood");
+
+  const itemsCell = row.locator('[data-predicted="true"]').first();
+  await expect(itemsCell).toContainText("WOOD");
+  await expect(itemsCell).toHaveAttribute("title", /this unit will produce/);
+});
+
+/**
  * ah-cp8: a narrow window used to clip the right-hand end of the header (Export, the settings
  * gear) instead of adapting. The header now wraps into two groups, with the actions group
  * dropping to its own right-aligned row when the game-state group has already taken the width.
