@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-3sp7 — round 2: the exact words, and the states behind them</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:70ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:104ch; }
+  .note b { color:var(--ink); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:24px 0 8px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:104ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .warn { background:var(--raised); border-left:3px solid var(--brass); padding:9px 13px; font-family:system-ui,sans-serif;
+    font-size:12.5px; color:var(--ink); max-width:96ch; margin:7px 0; }
+  .warn .w { color:var(--brass); }
+  .hover { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 13px;
+    font-family:system-ui,sans-serif; font-size:12.5px; color:var(--ink); max-width:84ch; margin:7px 0; }
+  .caselbl { color:var(--ink-dim); font-size:11px; letter-spacing:1.3px; text-transform:uppercase; margin:16px 0 4px; }
+  .row { background:var(--panel); border:1px solid var(--edge); border-radius:6px; margin:10px 0; overflow-x:auto; }
+  table.units { width:100%; border-collapse:collapse; font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; min-width:620px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:8px 12px; border-bottom:1px solid rgba(38,48,61,.5); }
+  table.units td.pred { color:var(--brass); font-style:italic; }
+  table.units td.same { color:var(--ink-dim); }
+  .none { color:var(--ink-dim); font-style:italic; font-size:12.5px; margin:8px 0; font-family:system-ui,sans-serif; }
+</style></head><body>
+<header>
+<h1>Round two — <span>the words as they will ship, and the states the happy path hides</span></h1>
+<p>You chose all twelve classes, a warning only where the game refuses, and a hover that names the
+class. Everything below is the wording of those two, written out exactly, with the cases each has to
+survive. Whatever you pick here is what the implementer writes; it will not be asked again.</p>
+</header>
+<main>
+
+<h3 class="sec">1 — the refusal finding, in all four of its states</h3>
+<p>Unit 900 holds twenty lions, three wolves and one skeleton. Lions and wolves say
+<code>This item cannot be given to other units.</code>; the skeleton does not.</p>
+
+<div class="opt">WORDING A — name what is refused, and what is left</div>
+<pre class="ord">unit 900
+<b>GIVE 901 ALL MONSTERS</b></pre>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be given away, so this order moves only the skeleton.</div>
+<div class="caselbl">state: nothing at all can move (no skeleton)</div>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be given away, so this order moves nothing.</div>
+<div class="caselbl">state: the same order written as a TAKE</div>
+<pre class="ord">unit 901
+<b>TAKE FROM 900 ALL MONSTERS</b></pre>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be taken from another unit, so this order moves only the skeleton.</div>
+<div class="caselbl">state: the unit holds none of that class at all</div>
+<p class="none">Nothing is said. Nothing was refused; there was simply nothing there.</p>
+<ul class="notes">
+<li>Says what was refused and what survives, so the row below it is explained rather than merely odd.</li>
+<li class="con">Two shapes of the sentence ("only the skeleton" / "nothing"), and a list that grows with the holding.</li>
+</ul>
+
+<div class="opt">WORDING B — one sentence, no list</div>
+<div class="warn"><span class="w">line 2</span> — some of this unit's monsters cannot be given away, so this order moves only part of them.</div>
+<div class="caselbl">state: nothing at all can move</div>
+<div class="warn"><span class="w">line 2</span> — this unit's monsters cannot be given away, so this order moves nothing.</div>
+<ul class="notes">
+<li>Short, and never grows with the holding.</li>
+<li class="con">"some" and "part of them" leave the player to work out which, which is the whole thing they wanted to know.</li>
+</ul>
+
+<div class="opt">WORDING C — name the rule, not the items</div>
+<div class="warn"><span class="w">line 2</span> — lions and wolves cannot be given to another unit. This order moves only the skeleton.</div>
+<div class="caselbl">state: nothing at all can move</div>
+<div class="warn"><span class="w">line 2</span> — lions and wolves cannot be given to another unit. This order moves nothing.</div>
+<ul class="notes">
+<li>Names the items without their counts, so the sentence is stable as the stack changes.</li>
+<li>Two short sentences rather than one long one; reads well when the list is long.</li>
+<li class="con">Loses the counts, which are what tell a player how much they were about to lose.</li>
+</ul>
+
+<h3 class="sec">2 — is it a warning, or an error?</h3>
+<p>The order is <b>valid</b>: the game accepts it and executes it, just with less effect than the
+player probably meant. It is not a syntax mistake and the server will not reject it.</p>
+
+<h3 class="sec">3 — the hover, and how the class is spelled back</h3>
+<p>The player may type the class in any case; <code>rules/give</code> prints them upper-case.</p>
+<pre class="ord">unit 900
+<b>GIVE 901 all magic</b></pre>
+<div class="opt">SPELLING A — always upper-case, as the rules print it</div>
+<div class="hover">This unit is giving away all its MAGIC items, and this application cannot tell which items those are.</div>
+<div class="opt">SPELLING B — as the player wrote it</div>
+<div class="hover">This unit is giving away all its magic items, and this application cannot tell which items those are.</div>
+<div class="opt">SPELLING C — lower-case always, reading as ordinary prose</div>
+<div class="hover">This unit is giving away all its magic items, and this application cannot tell which items those are.</div>
+<div class="caselbl">the other two classes, under A</div>
+<div class="hover">This unit is giving away all its ADVANCED items, and this application cannot tell which items those are.</div>
+<div class="hover">This unit is giving away all its SPECIAL items, and this application cannot tell which items those are.</div>
+<div class="caselbl">and <code>GIVE 901 UNIT</code>, which names no class — today's sentence, kept</div>
+<div class="hover">This unit is giving away a whole class of goods, which cannot be counted.</div>
+
+<h3 class="sec">4 — giving away centaurs</h3>
+<p>A centaur is people <i>and</i> a mount, so <code>GIVE 901 ALL MOUNTS</code> moves men: the MEN cell falls,
+the receiver's rises, and the receiver's skills are diluted by the arrivals exactly as a gift of
+men already does. Unit 900 holds 10 centaurs, 4 horses and knows lumberjack 3.</p>
+<pre class="ord">unit 900
+<b>GIVE 901 ALL MOUNTS</b></pre>
+<div class="row"><table class="units">
+<tr><th>Unit</th><th>Men</th><th>Skills</th><th>Items</th></tr>
+<tr><td>Herd (900)</td><td class="pred">0</td><td class="same">lumberjack 3 (180)</td><td class="pred">—</td></tr>
+<tr><td>Camp (901)</td><td class="pred">15</td><td class="pred">lumberjack 1 (60)</td><td class="pred">10 centaurs, 4 horses</td></tr>
+</table></div>
+<div class="note">This follows on its own from the twelve classes and from work already shipped — no
+new rule is needed to make it happen. The question is only whether it deserves a sentence, since a
+player who thinks of centaurs as livestock will be surprised to watch their headcount and their
+skill level move.</div>
+
+</main></body></html>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-3sp7 — what the hover says for the three classes left</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:70ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:104ch; }
+  .note b { color:var(--ink); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:30px 0 8px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:104ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .row { background:var(--panel); border:1px solid var(--edge); border-radius:6px; margin:10px 0; overflow-x:auto; }
+  table.units { width:100%; border-collapse:collapse; font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; min-width:620px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:8px 12px; border-bottom:1px solid rgba(38,48,61,.5); }
+  table.units td.q { color:var(--ink-dim); }
+  .hover { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 13px;
+    font-family:system-ui,sans-serif; font-size:12.5px; color:var(--ink); max-width:84ch; margin:8px 0; }
+  .hover .lbl { color:var(--ink-dim); font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; display:block; margin-bottom:5px; }
+  .caselbl { color:var(--ink-dim); font-size:11px; letter-spacing:1.3px; text-transform:uppercase; margin:18px 0 4px; }
+</style></head><body>
+<header>
+<h1>The sentence for the three classes <span>that are still unknowable</span></h1>
+<p>After this bead, <code>GIVE 901 ALL MAGIC</code> is the only shape of order left that the SILVER column
+cannot price — that, its two siblings ADVANCED and SPECIAL, and <code>GIVE 901 UNIT</code>. Today one sentence
+covers all fifteen classes. It will now cover three, and it does not say which. <b>The question is
+whether it should.</b></p>
+<p style="margin-top:8px">What happens is already settled and is not being reopened: the cell shows
+<code>?</code>, the hex's combat-ready sum goes unanswerable and the pillage warning goes quiet — decided in
+<code>ah-dxfd.2</code>.</p>
+</header>
+<main>
+
+<pre class="ord">unit 900
+<b>GIVE 901 ALL MAGIC</b></pre>
+<div class="row"><table class="units">
+<tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+<tr><td>Archive (900)</td><td>4</td><td>1 staff of fire, 2 mithril <span class="q">+ ?</span></td><td class="q">?</td></tr>
+</table></div>
+
+<div class="opt">OPTION A — leave the sentence exactly as it is</div>
+<div class="hover"><span class="lbl">SILVER cell</span>
+This unit is giving away a whole class of goods, which cannot be counted.</div>
+<ul class="notes">
+<li>No string changes anywhere; nothing to translate, test or keep in step.</li>
+<li>Still true of every case it now fires for, <code>GIVE 901 UNIT</code> included.</li>
+<li class="con">It reads as though <em>any</em> class defeats the application, which stopped being true the day this bead ships — a player who saw it for <code>ALL WEAPONS</code> last month will not try again.</li>
+<li class="con">Gives the player nothing to act on: they cannot tell that naming the items outright would work.</li>
+</ul>
+
+<div class="opt">OPTION B — name the class</div>
+<div class="hover"><span class="lbl">SILVER cell</span>
+This unit is giving away all its MAGIC items, and this application cannot tell which items those are.</div>
+<div class="caselbl">the same sentence for the other two</div>
+<div class="hover">This unit is giving away all its ADVANCED items, and this application cannot tell which items those are.</div>
+<div class="hover">This unit is giving away all its SPECIAL items, and this application cannot tell which items those are.</div>
+<div class="caselbl">and for <code>GIVE 901 UNIT</code>, which has no class to name — the old sentence, kept</div>
+<div class="hover">This unit is giving away a whole class of goods, which cannot be counted.</div>
+<ul class="notes">
+<li>Names the one thing the player can act on: this class, not classes in general.</li>
+<li>Silent about <em>why</em>, which is a fact about the game's data page and not about their orders.</li>
+<li>Reuses the machinery that already puts a subject in a sentence — <code>doubtSubject</code>, which the "this region is not selling <em>horses</em>" hover already uses.</li>
+<li class="con">Two sentences to keep true instead of one, because <code>GIVE … UNIT</code> still needs the old one.</li>
+</ul>
+
+<div class="opt">OPTION C — name the class and say why</div>
+<div class="hover"><span class="lbl">SILVER cell</span>
+This unit is giving away all its MAGIC items. The game's data page never says which items are MAGIC,
+so what leaves cannot be counted.</div>
+<div class="caselbl">for <code>GIVE 901 UNIT</code></div>
+<div class="hover">This unit is giving away a whole class of goods, which cannot be counted.</div>
+<ul class="notes">
+<li>Tells a player who wonders whether it is their mistake that it is not.</li>
+<li>True and checkable — the page really never says.</li>
+<li class="con">Two sentences of hover on a cell that shows one character.</li>
+<li class="con">Explains an implementation limit to somebody who wants to write orders, and would need rewording if a future ruleset ever did print the flag.</li>
+</ul>
+
+<h3 class="sec">The states this sentence has to survive</h3>
+<ul class="notes">
+<li><b>A class that is <em>not</em> one of the three</b> — <code>ALL WEAPONS</code>, <code>ALL FOOD</code>. No doubt at all now; the cell shows a figure and this hover never appears. That is the change this bead is for.</li>
+<li><b><code>GIVE 901 UNIT</code></b> — hands over the whole unit, names no class, and keeps today's doubt. Shown above for B and C.</li>
+<li><b>A class with an amount the rules do not define</b> — <code>GIVE 901 ALL WEAPONS EXCEPT 2</code>. <code>rules/give</code> gives <code>EXCEPT</code> to the named-item forms only, so this stays unresolved and keeps the old sentence, whichever option wins.</li>
+<li><b>No ruleset loaded</b> — nothing resolves, every class doubts, and the old sentence is the only one that can be shown. Under B and C the class name is still available from the order itself, so naming it would still work; under A nothing changes.</li>
+<li><b>Two doubts at once</b> — a unit that both gives <code>ALL MAGIC</code> and taxes an unknown base shows one sentence, the first raised, exactly as today.</li>
+</ul>
+
+</main></body></html>
