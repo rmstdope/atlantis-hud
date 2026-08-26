@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ofpb.4 &mdash; what a cast costs, when it makes more than one</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h2.q { margin:44px 0 4px; font-size:19px; color:var(--ink); border-top:1px solid var(--edge); padding-top:26px; }
+  h2.q span { color:var(--brass); }
+  h2.q + p { color:var(--ink-soft); font-size:14px; max-width:104ch; margin-top:10px; }
+  h3.sec { margin:30px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:104ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  table.units td.num { text-align:right; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .unk { color:var(--ink-dim); }
+  .red { color:var(--danger); }
+  .warnmark { color:var(--danger); font-weight:bold; }
+  .cellbox { border:1px dashed var(--edge); }
+  .clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright);
+            background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            margin:12px 0 0; white-space:pre; display:inline-block; }
+  .orders .c { color:var(--ink-dim); }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; vertical-align:top; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip .rows { display:grid; grid-template-columns:auto auto; gap:1px 18px; font-variant-numeric:tabular-nums; }
+  .tip .rows span:nth-child(even) { text-align:right; }
+  .tip .note { color:var(--ink-soft); display:block; margin-top:7px; max-width:52ch; white-space:normal; }
+  .problems { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+              font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; margin-top:8px; display:inline-block; }
+  .problems b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .problems div { color:var(--ink-soft); }
+  .problems .code { color:var(--danger); font-family:'SF Mono',Menlo,Consolas,monospace; }
+  .problems.none { color:var(--ink-dim); font-style:italic; }
+  .quote { background:var(--raised); border-left:3px solid var(--brass); border-radius:0 6px 6px 0;
+           padding:9px 13px; margin:12px 0; font-size:13px; color:var(--ink-soft); max-width:112ch; }
+  .quote b { color:var(--brass-bright); }
+  .quote .src { display:block; margin-top:5px; color:var(--ink-dim); font-size:11.5px; font-family:'SF Mono',Menlo,Consolas,monospace; }
+  table.data { border-collapse:collapse; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; margin-top:10px; }
+  table.data th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                  color:var(--ink-soft); font-weight:400; padding:4px 16px 4px 0; border-bottom:1px solid var(--edge); }
+  table.data td { padding:3px 16px 3px 0; border-bottom:1px solid var(--edge-soft); color:var(--ink); }
+  table.data td.t { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .pair { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:104ch; border-top:1px solid var(--edge); padding-top:18px; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-left:8px; }
+</style></head><body>
+<header>
+<h1>ah-ofpb.4 &mdash; <span>what a cast costs, when the spell makes more than one</span></h1>
+<p>Today <code>cast()</code> charges a spell's stated cost <b>exactly once</b>, whatever the mage's level. The rules state that cost <i>per item created</i>, and every creating spell makes more than one at higher levels &mdash; so a level 3 amulet maker makes three amulets and the app charges for one. This bead fixes the arithmetic. It moves the <b>Silver</b> column, and it changes which units the shipped <code>not-enough-silver</code> and <code>not-enough-items</code> warnings fire on, which is why all three questions below are yours and not mine.</p>
+<p><b>Already settled, and not being re-asked:</b> that a percentage total past 100 makes whole items and carries the remainder as a chance (so 90&thinsp;&times;&thinsp;3 = 270% is two runeswords certain and a 70% chance of a third), and that the ruleset records what every creating spell makes. Both were decided on 26 Aug while planning <code>ah-ofpb.3</code>. What is <i>not</i> settled is which single number a column can show for &ldquo;between $1,200 and $1,800&rdquo;, and that is Q2.</p>
+<p>Five mages, all level 3, one man each. Maintenance is left out of every figure below so the cast is the only thing moving:</p>
+<div class="orders">unit 8901  <span class="c">; Amuletsmith  &mdash; create amulet of protection [CRPA] 3, holds $400</span>
+  cast Create_Amulet_Of_Protection  <span class="c">; "may create their level in amulets [AMPR] ... at a cost of 200 silver"</span>
+
+unit 8902  <span class="c">; Swordwright  &mdash; enchant swords [ESWO] 3, holds 4 SWOR</span>
+  cast Enchant_Swords               <span class="c">; "may create 5 times their level in mithril swords [MSWO] ... at a cost of sword [SWOR]"</span>
+
+unit 8903  <span class="c">; Ringmaker    &mdash; create ring of invisibility [CRRI] 3, holds $700</span>
+  cast Create_Ring_Of_Invisibility  <span class="c">; "a 20 percent times their level chance to create a ring [RING] ... at a cost of 600 silver"</span>
+
+unit 8904  <span class="c">; Runesmith    &mdash; create runesword [CRRU] 3, holds $1,500</span>
+  cast Create_Runesword             <span class="c">; "a 90 percent times their level chance to create a runesword [RUNE] ... at a cost of 600 silver"</span>
+
+unit 8905  <span class="c">; Gatewright   &mdash; construct gate [CGAT] 3, holds $1,000</span>
+  cast Construct_Gate               <span class="c">; "the attempt costs 1000 silver" &mdash; makes a Gate, which is not an item</span></div>
+<table class="data">
+<thead><tr><th>Mage</th><th>Total percent</th><th>Makes</th><th>Cost each</th><th>Charged today</th><th>Should be charged</th></tr></thead>
+<tbody>
+<tr><td class="t">8901 CRPA 3</td><td>100 &times; 3 = 300%</td><td>3 amulets</td><td>$200</td><td>$200</td><td>$600</td></tr>
+<tr><td class="t">8902 ESWO 3</td><td>500 &times; 3 = 1500%</td><td>15 mithril swords</td><td>1 sword</td><td>1 sword</td><td>15 swords</td></tr>
+<tr><td class="t">8903 CRRI 3</td><td>20 &times; 3 = 60%</td><td>0, or 1 at 60%</td><td>$600</td><td>$600</td><td><b>Q2</b></td></tr>
+<tr><td class="t">8904 CRRU 3</td><td>90 &times; 3 = 270%</td><td>2, or 3 at 70%</td><td>$600</td><td>$600</td><td><b>Q2</b></td></tr>
+<tr><td class="t">8905 CGAT 3</td><td>&mdash;</td><td>a Gate (not an item)</td><td>$1,000 the attempt</td><td>$1,000</td><td>$1,000, unchanged</td></tr>
+</tbody></table>
+<p style="margin-top:14px;">The Gatewright is the control, and it is settled by a lookup rather than by you: its page says <i>the attempt</i> costs 1000 silver, and it creates nothing an item catalogue can hold, so it goes on being charged once. Every option below leaves row 8905 exactly as it is.</p>
+</header>
+<main>
+
+<h2 class="q">Q1 &mdash; <span>the mage that cannot afford the whole run</span></h2>
+<p>The Amuletsmith's level says three amulets, $600, and it holds $400. The Swordwright's level says fifteen mithril swords, and it holds four swords. This is the same shape as a <code>PRODUCE</code> whose unit is short of silver or materials &mdash; and that case is already answered in this app: <code>ah-ofpb.1</code> shows the <i>capped</i> figure and explains it in the hover, and no warning fires. <b>The question is whether a cast follows PRODUCE, or goes on warning.</b> It decides whether a shipped warning &mdash; the one that today tells an enchanter with no swords that its cast will do nothing &mdash; survives this bead.</p>
+<p style="margin-top:8px;">Only the two certain spells appear here, so Q2 does not muddy it. Silver shown is the month-end figure the column actually prints.</p>
+
+<h3 class="sec">A &mdash; cap it, exactly like a PRODUCE</h3>
+<p>The mage makes what it can pay for. The figures are the capped ones and the hover says what capped them. No warning: nothing is short, because the cast simply does less.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:56px"><col style="width:120px"><col style="width:96px"><col style="width:230px"><col style="width:150px"><col style="width:80px"></colgroup>
+<thead><tr><th></th><th>Id</th><th>Unit</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th><th class="colhi num">Silver</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8901</td><td>Amuletsmith</td><td>CRPA 3</td><td class="colhi cellbox"><span class="clip"><span class="pred">2 AMPR</span></span></td><td>cast Create_Amulet&hellip;</td><td class="colhi num"><span class="pred">0</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8902</td><td>Swordwright</td><td>ESWO 3</td><td class="colhi cellbox"><span class="clip"><span class="pred">4 MSWO</span></span></td><td>cast Enchant_Swords</td><td class="colhi num">0</td></tr>
+</tbody></table>
+</div>
+<div class="pair">
+<div class="tip"><b>hover on 8901's Silver cell</b><span class="rows"><span>Held now</span><span>400</span><span>In, in time</span><span>0</span><span>In, too late</span><span>0</span><span>Out</span><span>400</span><span>At month end</span><span>0</span></span><span class="note">This unit has silver for 2 amulets of protection, not the 3 its level could make.</span></div>
+<div class="problems none"><b>Problems panel</b>nothing about either unit</div>
+</div>
+<ul class="notes">
+<li>One rule for PRODUCE and CAST, and the sentence already exists &mdash; <code>productionCapSentence</code> in <code>unitTooltip.ts</code> is reused rather than copied.</li>
+<li>Never overstates what the month spends, so the Silver column stays honest for everything downstream of it.</li>
+<li>Agrees exactly with what <code>ah-ofpb.5</code> was already told to show in Items: capped by what the unit holds.</li>
+<li class="con"><b>A shipped warning disappears.</b> An enchanter holding <i>no</i> swords is told nothing at all today &mdash; it currently reads <code>not-enough-items: short 1 sword</code> &mdash; and under this option its cast quietly makes zero and the panel is silent.</li>
+<li class="con">A mage that will be <i>given</i> silver this month still reads as capped, because the cap is judged on what it holds now. (That is already true of PRODUCE.)</li>
+</ul></div>
+
+<h3 class="sec">B &mdash; cap it, but say so when the cast can make nothing at all<span class="rec">recommended</span></h3>
+<p>As A, with one exception: a cast whose mage can make <b>zero</b> of the thing is a cast that will not happen, and that keeps its warning.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:56px"><col style="width:120px"><col style="width:96px"><col style="width:230px"><col style="width:150px"><col style="width:80px"></colgroup>
+<thead><tr><th></th><th>Id</th><th>Unit</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th><th class="colhi num">Silver</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8901</td><td>Amuletsmith</td><td>CRPA 3</td><td class="colhi cellbox"><span class="clip"><span class="pred">2 AMPR</span></span></td><td>cast Create_Amulet&hellip;</td><td class="colhi num"><span class="pred">0</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8902</td><td>Swordwright</td><td>ESWO 3</td><td class="colhi cellbox"><span class="clip"><span class="pred">4 MSWO</span></span></td><td>cast Enchant_Swords</td><td class="colhi num">0</td></tr>
+<tr><td class="own">*</td><td class="uid">8906</td><td>Apprentice</td><td>ESWO 3</td><td class="colhi cellbox"><span class="clip"><span class="unk">&mdash;</span></span></td><td>cast Enchant_Swords</td><td class="colhi num">0</td></tr>
+</tbody></table>
+</div>
+<div class="pair">
+<div class="tip"><b>hover on 8901's Silver cell</b><span class="rows"><span>Held now</span><span>400</span><span>In, in time</span><span>0</span><span>In, too late</span><span>0</span><span>Out</span><span>400</span><span>At month end</span><span>0</span></span><span class="note">This unit has silver for 2 amulets of protection, not the 3 its level could make.</span></div>
+<div class="problems"><b>Problems panel</b><div><span class="code">not-enough-items</span> &nbsp;unit 8906 &mdash; this cast makes nothing: it needs 1 sword and holds none</div></div>
+</div>
+<ul class="notes">
+<li>Keeps the only warning in this area that a player really wants: <b>your order will do nothing</b>.</li>
+<li>Silent for every mage that gets <i>some</i> of what it asked for, so a level 5 enchanter with 12 swords is not nagged for the other 13.</li>
+<li class="con">Two rules where A has one: &ldquo;capped&rdquo; and &ldquo;capped to nothing&rdquo; are different cases and the code has to say so.</li>
+<li class="n">The wording above is a placeholder. The exact sentence is the next round's question.</li>
+</ul></div>
+
+<h3 class="sec">C &mdash; charge the whole run and warn on the shortfall</h3>
+<p>The order asked for fifteen swords' worth of enchantment, so fifteen is what the ledger charges; the panel says how far short the unit is. This is today's behaviour with the arithmetic corrected, and nothing new is invented.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:56px"><col style="width:120px"><col style="width:96px"><col style="width:230px"><col style="width:150px"><col style="width:80px"></colgroup>
+<thead><tr><th></th><th>Id</th><th>Unit</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th><th class="colhi num">Silver</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8901</td><td>Amuletsmith</td><td>CRPA 3</td><td class="colhi cellbox"><span class="clip"><span class="pred">3 AMPR</span></span></td><td>cast Create_Amulet&hellip;</td><td class="colhi num"><span class="red">&minus;200</span> <span class="warnmark">!</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8902</td><td>Swordwright</td><td>ESWO 3</td><td class="colhi cellbox"><span class="clip"><span class="pred">15 MSWO</span></span></td><td>cast Enchant_Swords</td><td class="colhi num">0</td></tr>
+</tbody></table>
+</div>
+<div class="pair">
+<div class="tip"><b>hover on 8901's Silver cell</b><span class="rows"><span>Held now</span><span>400</span><span>In, in time</span><span>0</span><span>In, too late</span><span>0</span><span>Out</span><span>600</span><span>At month end</span><span class="red">&minus;200</span></span><span class="note">This unit cannot pay for what it casts.</span></div>
+<div class="problems"><b>Problems panel</b><div><span class="code">not-enough-silver</span> &nbsp;unit 8901 &mdash; short $200: this unit can have $400 and its orders spend $600</div><div><span class="code">not-enough-items</span> &nbsp;unit 8902 &mdash; short 11 swords: this unit can have 4 and its orders spend 15</div></div>
+</div>
+<ul class="notes">
+<li>Smallest change, and every existing warning goes on firing.</li>
+<li>Loud about a mage that ordered far more than it can do &mdash; the level 3 enchanter with four swords is arguably wasting its month.</li>
+<li class="con"><b>Contradicts what <code>ah-ofpb.5</code> was already told to show</b> in Items: &ldquo;a mage holding only 4 swords shows 4 MSWO, because you cannot enchant swords you do not have&rdquo;. The Items cell would say four while the panel says it is eleven short.</li>
+<li class="con">Fires on the ordinary case. A mage that enchants whatever swords it happens to have is normal play, and this warns about every one of them.</li>
+<li class="con">The Silver column goes red for a unit that will not actually overspend &mdash; the engine takes $400 and makes two amulets.</li>
+</ul></div>
+
+<h2 class="q">Q2 &mdash; <span>the chance spells: which number does a column show?</span></h2>
+<p>The Ringmaker's cast is 60% &mdash; no ring for certain, a 60% chance of one, at $600. The Runesmith's is 270% &mdash; two runeswords certain, a 70% chance of a third, at $600 each, so somewhere between $1,200 and $1,800. The Silver column has one number to print. <b>Which end?</b> Both mages here can afford either answer, so Q1 does not muddy it.</p>
+<div class="quote">The page's own wording for the one spell that <i>only</i> ever attempts: &ldquo;The mage has a 20 percent times his skill level chance of success, and <b>the attempt costs 1000 silver</b>.&rdquo; Construct Gate is charged whether or not it succeeds &mdash; which is a reason to think a failed roll may cost the mage too, and an argument for B. The seventeen artifact spells say &ldquo;at a cost of&rdquo; and never say &ldquo;the attempt&rdquo;.<span class="src">data/CGAT, committed data page</span></div>
+
+<h3 class="sec">A &mdash; the least it can cost: only what is certain</h3>
+<p>Two runeswords, $1,200. The Ringmaker's 60% is not a whole item, so its cast costs nothing at all and its Silver does not move.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:56px"><col style="width:120px"><col style="width:96px"><col style="width:230px"><col style="width:150px"><col style="width:80px"></colgroup>
+<thead><tr><th></th><th>Id</th><th>Unit</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th><th class="colhi num">Silver</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8903</td><td>Ringmaker</td><td>CRRI 3</td><td class="colhi cellbox"><span class="clip"><span class="pred">0-1 RING</span></span></td><td>cast Create_Ring&hellip;</td><td class="colhi num">700</td></tr>
+<tr><td class="own">*</td><td class="uid">8904</td><td>Runesmith</td><td>CRRU 3</td><td class="colhi cellbox"><span class="clip"><span class="pred">2-3 RUNE</span></span></td><td>cast Create_Runesword</td><td class="colhi num"><span class="pred">300</span></td></tr>
+</tbody></table>
+</div>
+<div class="pair">
+<div class="tip"><b>hover on 8903's Silver cell</b><span class="rows"><span>Held now</span><span>700</span><span>In, in time</span><span>0</span><span>In, too late</span><span>0</span><span>Out</span><span>0</span><span>At month end</span><span>700</span></span></div>
+<div class="tip"><b>hover on 8904's Silver cell</b><span class="rows"><span>Held now</span><span>1500</span><span>In, in time</span><span>0</span><span>In, too late</span><span>0</span><span>Out</span><span>1200</span><span>At month end</span><span>300</span></span></div>
+</div>
+<ul class="notes">
+<li>Never claims a unit spent money it may not spend.</li>
+<li class="con"><b>The Ringmaker's month costs nothing.</b> A mage ordered to cast a $600 spell shows an unmoved Silver column &mdash; which is precisely the defect this epic was filed about, reappearing at levels 1&ndash;4 of every 20%-per-level spell.</li>
+<li class="con">A shipped warning goes: the level 3 ring maker holding $200 is told <code>short $400</code> today, and would be told nothing.</li>
+<li class="con">Understates the spend, which is the dangerous direction for a column whose negatives are what a player acts on.</li>
+</ul></div>
+
+<h3 class="sec">B &mdash; the most it can cost: round the chance up<span class="rec">recommended</span></h3>
+<p>A remainder chance is charged as a whole item, so the Ringmaker pays $600 and the Runesmith $1,800. The player is never told it can afford something it cannot.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:56px"><col style="width:120px"><col style="width:96px"><col style="width:230px"><col style="width:150px"><col style="width:80px"></colgroup>
+<thead><tr><th></th><th>Id</th><th>Unit</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th><th class="colhi num">Silver</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8903</td><td>Ringmaker</td><td>CRRI 3</td><td class="colhi cellbox"><span class="clip"><span class="pred">0-1 RING</span></span></td><td>cast Create_Ring&hellip;</td><td class="colhi num"><span class="pred">100</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8904</td><td>Runesmith</td><td>CRRU 3</td><td class="colhi cellbox"><span class="clip"><span class="pred">2-3 RUNE</span></span></td><td>cast Create_Runesword</td><td class="colhi num"><span class="red">&minus;300</span> <span class="warnmark">!</span></td></tr>
+</tbody></table>
+</div>
+<div class="pair">
+<div class="tip"><b>hover on 8903's Silver cell</b><span class="rows"><span>Held now</span><span>700</span><span>In, in time</span><span>0</span><span>In, too late</span><span>0</span><span>Out</span><span>600</span><span>At month end</span><span>100</span></span></div>
+<div class="tip"><b>hover on 8904's Silver cell</b><span class="rows"><span>Held now</span><span>1500</span><span>In, in time</span><span>0</span><span>In, too late</span><span>0</span><span>Out</span><span>1800</span><span>At month end</span><span class="red">&minus;300</span></span></div>
+</div>
+<ul class="notes">
+<li>Matches the shipped behaviour for every sub-100% spell &mdash; the level 3 ring maker is charged $600 today and goes on being charged $600.</li>
+<li>Agrees with the module's stated posture: round in the direction that does not flatter the player.</li>
+<li>Agrees with Construct Gate, the one spell whose page prices <i>the attempt</i>.</li>
+<li class="con"><b>The Runesmith goes red on a coin flip.</b> It holds $1,500, it will very likely spend $1,200, and the column says it is $300 overdrawn.</li>
+<li class="con">Nothing on the screen says which part of the figure is a certainty, so a warning that fired on the 70% third runesword looks the same as one that fired on a real shortfall.</li>
+</ul></div>
+
+<h3 class="sec">C &mdash; the most, with the hover saying how much is certain</h3>
+<p>The figures of B, plus a sentence in the Silver hover that separates the certain part from the chance. The warning still fires on the pessimistic figure, but a player who opens the hover can see why.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:56px"><col style="width:120px"><col style="width:96px"><col style="width:230px"><col style="width:150px"><col style="width:80px"></colgroup>
+<thead><tr><th></th><th>Id</th><th>Unit</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th><th class="colhi num">Silver</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8903</td><td>Ringmaker</td><td>CRRI 3</td><td class="colhi cellbox"><span class="clip"><span class="pred">0-1 RING</span></span></td><td>cast Create_Ring&hellip;</td><td class="colhi num"><span class="pred">100</span></td></tr>
+<tr><td class="own">*</td><td class="uid">8904</td><td>Runesmith</td><td>CRRU 3</td><td class="colhi cellbox"><span class="clip"><span class="pred">2-3 RUNE</span></span></td><td>cast Create_Runesword</td><td class="colhi num"><span class="red">&minus;300</span> <span class="warnmark">!</span></td></tr>
+</tbody></table>
+</div>
+<div class="pair">
+<div class="tip"><b>hover on 8903's Silver cell</b><span class="rows"><span>Held now</span><span>700</span><span>In, in time</span><span>0</span><span>In, too late</span><span>0</span><span>Out</span><span>600</span><span>At month end</span><span>100</span></span><span class="note">This cast makes no ring of invisibility for certain: the one it may make is a 60% chance, and it is charged for.</span></div>
+<div class="tip"><b>hover on 8904's Silver cell</b><span class="rows"><span>Held now</span><span>1500</span><span>In, in time</span><span>0</span><span>In, too late</span><span>0</span><span>Out</span><span>1800</span><span>At month end</span><span class="red">&minus;300</span></span><span class="note">$1,200 of this is certain. The third runesword is a 70% chance, and it is charged for.</span></div>
+</div>
+<ul class="notes">
+<li>The safe figure, with the one thing B cannot say: which part of it is real.</li>
+<li>The sentence has somewhere to live &mdash; the Silver hover already prints a note under its rows, and prints every note that applies.</li>
+<li class="con">More words on a hover that already carries up to six rows and several notes.</li>
+<li class="n">The wording above is a placeholder. The exact sentence is the next round's question.</li>
+</ul></div>
+
+<h2 class="q">Q3 &mdash; <span>the mage that can create none of it</span></h2>
+<p>Three units order a cast that its own level cannot produce anything from. Under the arithmetic, all three create zero &mdash; so under &ldquo;cost per item&rdquo; all three cost nothing, and today all three are charged the full stated cost.</p>
+<table class="data">
+<thead><tr><th>Unit</th><th>Orders</th><th>Why it makes none</th><th>Charged today</th></tr></thead>
+<tbody>
+<tr><td class="t">8907 Windcaller</td><td><code>cast Summon_Wind</code></td><td>SWIN 2 &mdash; the cloudship is stated at level 3</td><td>75 FLOA + 75 IRWD</td></tr>
+<tr><td class="t">8908 Birdkeeper</td><td><code>cast Bird_Lore</code></td><td>BIRD 2 &mdash; its eagles are &ldquo;level minus 2&rdquo;</td><td>nothing (the page prices it nowhere)</td></tr>
+<tr><td class="t">8909 Novice</td><td><code>cast Create_Runesword</code></td><td>does not have CRRU at all</td><td>$600</td></tr>
+</tbody></table>
+
+<h3 class="sec">A &mdash; it creates nothing, so it costs nothing<span class="rec">recommended</span></h3>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:56px"><col style="width:120px"><col style="width:96px"><col style="width:230px"><col style="width:150px"><col style="width:80px"></colgroup>
+<thead><tr><th></th><th>Id</th><th>Unit</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th><th class="colhi num">Silver</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8907</td><td>Windcaller</td><td>SWIN 2</td><td class="colhi cellbox"><span class="clip">80 FLOA, 80 IRWD</span></td><td>cast Summon_Wind</td><td class="colhi num">0</td></tr>
+<tr><td class="own">*</td><td class="uid">8909</td><td>Novice</td><td>&mdash;</td><td class="colhi cellbox"><span class="clip">600 SILV</span></td><td>cast Create_Runesword</td><td class="colhi num">600</td></tr>
+</tbody></table>
+</div>
+<div class="problems none"><b>Problems panel</b>nothing about either unit</div>
+<ul class="notes">
+<li>One rule, and it is the bead's own rule: the cost is per item created, and none are created.</li>
+<li>The Windcaller's hides and ironwood stay put, which is what will actually happen.</li>
+<li class="con">A unit ordered to cast a spell it does not have looks like a unit with a perfectly good month. Nothing anywhere says the order is a mistake &mdash; and nothing does today either, since this app has no <i>&ldquo;you cannot cast that&rdquo;</i> check at all.</li>
+</ul></div>
+
+<h3 class="sec">B &mdash; the attempt is charged once, as it is today</h3>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:56px"><col style="width:120px"><col style="width:96px"><col style="width:230px"><col style="width:150px"><col style="width:80px"></colgroup>
+<thead><tr><th></th><th>Id</th><th>Unit</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th><th class="colhi num">Silver</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8907</td><td>Windcaller</td><td>SWIN 2</td><td class="colhi cellbox"><span class="clip"><span class="pred">5 FLOA, 5 IRWD</span></span></td><td>cast Summon_Wind</td><td class="colhi num">0</td></tr>
+<tr><td class="own">*</td><td class="uid">8909</td><td>Novice</td><td>&mdash;</td><td class="colhi cellbox"><span class="clip"><span class="pred">0 SILV</span></span></td><td>cast Create_Runesword</td><td class="colhi num"><span class="pred">0</span></td></tr>
+</tbody></table>
+</div>
+<div class="problems none"><b>Problems panel</b>nothing about either unit</div>
+<ul class="notes">
+<li>Nothing shipped changes: the same units are charged the same amounts they are charged today.</li>
+<li>Pessimistic, in the direction the module already prefers.</li>
+<li class="con"><b>It spends 150 items on nothing.</b> The Windcaller loses 75 hides and 75 ironwood in the Items column for a spell that cannot fire, and there is no reading of the page under which that happens.</li>
+<li class="con">Two rules where the bead has one, and the second one contradicts the first.</li>
+</ul></div>
+
+</main>
+<footer>
+Every spell number above is from the committed data page &mdash; <code>data/CRPA</code>, <code>data/ESWO</code>, <code>data/CRRI</code>, <code>data/CRRU</code>, <code>data/CGAT</code>, <code>data/SWIN</code>, <code>data/TRNS</code> &mdash; and the percentages are <code>ah-ofpb.3</code>'s single formula: total percent = percent-per-level &times; level, every whole 100 an item for certain, the remainder a chance of one more. The rules page states nothing at all about spell outputs; the data page is the whole of the evidence, and that was established and recorded on 26 Aug. Items cells are drawn as <code>ah-ofpb.5</code> will render them, only so the choices have a consequence you can look at; they are not what is being asked here.
+</footer>
+</body></html>

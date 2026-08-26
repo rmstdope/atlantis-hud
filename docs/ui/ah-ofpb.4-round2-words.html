@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ofpb.4 &mdash; round 2: the words, and the edges</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h2.q { margin:44px 0 4px; font-size:19px; color:var(--ink); border-top:1px solid var(--edge); padding-top:26px; }
+  h2.q span { color:var(--brass); }
+  h2.q + p { color:var(--ink-soft); font-size:14px; max-width:104ch; margin-top:10px; }
+  h3.sec { margin:30px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:104ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  table.units td.num { text-align:right; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .unk { color:var(--ink-dim); }
+  .red { color:var(--danger); }
+  .warnmark { color:var(--danger); font-weight:bold; }
+  .cellbox { border:1px dashed var(--edge); }
+  .clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright);
+            background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            margin:12px 0 0; white-space:pre; display:inline-block; }
+  .orders .c { color:var(--ink-dim); }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; vertical-align:top; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip .rows { display:grid; grid-template-columns:auto auto; gap:1px 18px; font-variant-numeric:tabular-nums; }
+  .tip .rows span:nth-child(even) { text-align:right; }
+  .tip .note { color:var(--ink-soft); display:block; margin-top:7px; max-width:52ch; white-space:normal; }
+  .problems { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+              font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; margin-top:8px; display:inline-block; }
+  .problems b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .problems div { color:var(--ink-soft); }
+  .problems .code { color:var(--danger); font-family:'SF Mono',Menlo,Consolas,monospace; }
+  .problems.none { color:var(--ink-dim); font-style:italic; }
+  .quote { background:var(--raised); border-left:3px solid var(--brass); border-radius:0 6px 6px 0;
+           padding:9px 13px; margin:12px 0; font-size:13px; color:var(--ink-soft); max-width:112ch; }
+  .quote b { color:var(--brass-bright); }
+  .quote .src { display:block; margin-top:5px; color:var(--ink-dim); font-size:11.5px; font-family:'SF Mono',Menlo,Consolas,monospace; }
+  table.data { border-collapse:collapse; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; margin-top:10px; }
+  table.data th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                  color:var(--ink-soft); font-weight:400; padding:4px 16px 4px 0; border-bottom:1px solid var(--edge); }
+  table.data td { padding:3px 16px 3px 0; border-bottom:1px solid var(--edge-soft); color:var(--ink); }
+  table.data td.t { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .pair { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:104ch; border-top:1px solid var(--edge); padding-top:18px; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; margin-left:8px; }
+</style></head>
+<body>
+<header>
+<h1>ah-ofpb.4 &mdash; <span>round 2: the words, and the edges</span></h1>
+<p>Round 1 is settled: <b>Q1&nbsp;B</b> &mdash; a cast makes what the mage can pay for, and a cast that can make nothing keeps a warning. <b>Q2&nbsp;B</b> &mdash; a remainder chance is charged as a whole item, so the level 3 runesmith's Out is $1,800. <b>Q3&nbsp;A</b> &mdash; a mage that can create none of it is charged nothing. What is left is the wording, which ships exactly as written here, and three edges the first round's examples did not reach.</p>
+<div class="orders">unit 8901  <span class="c">; Amuletsmith  &mdash; CRPA 3, holds $400          &rarr; 3 amulets at $200; can pay for 2</span>
+unit 8902  <span class="c">; Swordwright  &mdash; ESWO 3, holds 4 SWOR       &rarr; 15 swords at 1 SWOR; can enchant 4</span>
+unit 8910  <span class="c">; Runesmith    &mdash; CRRU 3, holds $1,000        &rarr; 2 certain + 70% of a third, $600 each; can pay for 1</span>
+unit 8906  <span class="c">; Apprentice   &mdash; ESWO 3, holds no swords    &rarr; makes NONE</span>
+unit 8911  <span class="c">; Pauper       &mdash; CRPA 3, holds $100          &rarr; makes NONE</span>
+unit 8912  <span class="c">; Wanderer     &mdash; CRPA 3, holds $0, given $600 by a neighbour this month</span></div>
+</header>
+<main>
+
+<h2 class="q">R1 &mdash; <span>the sentence under the Silver hover, when a cast is capped</span></h2>
+<p>PRODUCE already has this sentence, and it ships today as <i>&ldquo;This unit has materials for 5 swords, not the 8 its men could make.&rdquo;</i> A cast is capped by the same two things, but by the mage's <b>level</b> rather than by its men. All three read the Amuletsmith ($400, 3 amulets at $200) and then the Swordwright (4 swords, 15 possible).</p>
+
+<h3 class="sec">V1 &mdash; the PRODUCE sentence, with &ldquo;its level&rdquo; for &ldquo;its men&rdquo;<span class="rec">recommended</span></h3>
+<div class="card">
+<div class="pair">
+<div class="tip"><b>8901 Amuletsmith</b><span class="note" style="margin-top:0;">This unit has silver for 2 amulets of protection, not the 3 its level could make.</span></div>
+<div class="tip"><b>8902 Swordwright</b><span class="note" style="margin-top:0;">This unit has materials for 4 mithril swords, not the 15 its level could make.</span></div>
+</div>
+<ul class="notes">
+<li>One sentence for both orders: <code>productionCapSentence</code> is already exported and already read by two hovers, so nothing is copied.</li>
+<li>A player who has met it on a PRODUCE recognises it instantly on a CAST.</li>
+<li class="con">&ldquo;materials&rdquo; for a single sword is a slightly grand word, and it is what PRODUCE says today.</li>
+</ul></div>
+
+<h3 class="sec">V2 &mdash; name the cast</h3>
+<div class="card">
+<div class="pair">
+<div class="tip"><b>8901 Amuletsmith</b><span class="note" style="margin-top:0;">This cast makes 2 amulets of protection, not the 3 its level could: it has silver for 2.</span></div>
+<div class="tip"><b>8902 Swordwright</b><span class="note" style="margin-top:0;">This cast makes 4 mithril swords, not the 15 its level could: it has 4 swords.</span></div>
+</div>
+<ul class="notes">
+<li>Says what the mage is short <i>of</i>, by name &mdash; &ldquo;it has 4 swords&rdquo; rather than &ldquo;materials&rdquo;.</li>
+<li class="con">A second sentence to keep in step with the PRODUCE one, and they will drift.</li>
+<li class="con">Longer, on a hover that already carries six rows and can carry several notes.</li>
+</ul></div>
+
+<h3 class="sec">V3 &mdash; the short form</h3>
+<div class="card">
+<div class="pair">
+<div class="tip"><b>8901 Amuletsmith</b><span class="note" style="margin-top:0;">This unit has silver for 2 of the 3 amulets of protection its level could make.</span></div>
+<div class="tip"><b>8902 Swordwright</b><span class="note" style="margin-top:0;">This unit has materials for 4 of the 15 mithril swords its level could make.</span></div>
+</div>
+<ul class="notes">
+<li>Shortest of the three, and both numbers sit beside each other where they are compared.</li>
+<li class="con">Changes the PRODUCE sentence too, or leaves two shapes in the app.</li>
+</ul></div>
+
+<h2 class="q">R2 &mdash; <span>the cast that makes nothing at all</span></h2>
+<p>You chose to keep a warning here. There are two ways to say it, and they differ in more than words: one reuses the shipped codes and their messages, the other is a new warning with its own switch in Settings.</p>
+
+<h3 class="sec">W1 &mdash; charge it for one, and let the shipped warnings fire<span class="rec">recommended</span></h3>
+<p>The rule becomes &ldquo;a cast is charged for what the mage can pay for, and never for fewer than one&rdquo;. The mage is then short by exactly one item's cost, and the two warnings this app already ships say so in the words they already use.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:56px"><col style="width:120px"><col style="width:96px"><col style="width:220px"><col style="width:150px"><col style="width:80px"></colgroup>
+<thead><tr><th></th><th>Id</th><th>Unit</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th><th class="colhi num">Silver</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8906</td><td>Apprentice</td><td>ESWO 3</td><td class="colhi cellbox"><span class="clip"><span class="red">&minus;1 SWOR</span></span></td><td>cast Enchant_Swords</td><td class="colhi num">0</td></tr>
+<tr><td class="own">*</td><td class="uid">8911</td><td>Pauper</td><td>CRPA 3</td><td class="colhi cellbox"><span class="clip"><span class="red">&minus;100 SILV</span></span></td><td>cast Create_Amulet&hellip;</td><td class="colhi num"><span class="red">&minus;100</span> <span class="warnmark">!</span></td></tr>
+</tbody></table>
+</div>
+<div class="problems"><b>Problems panel</b><div><span class="code">not-enough-items</span> &nbsp;unit 8906 &mdash; short 1 sword: this unit can have 0 and its orders spend 1</div><div><span class="code">not-enough-silver</span> &nbsp;unit 8911 &mdash; short $100: this unit can have $100 and its orders spend $200</div></div>
+<ul class="notes">
+<li>Not one new string, not one new code, and no new switch in Settings.</li>
+<li>Identical to what both units are told today, so nothing a player has learned changes.</li>
+<li>The rule is one line and reads as a rule: <i>never fewer than one</i>.</li>
+<li class="con">The Items cell shows a negative for a moment that will not happen &mdash; the engine will simply not enchant.</li>
+</ul></div>
+
+<h3 class="sec">W2 &mdash; a warning of its own</h3>
+<p>A new code, <code>cast-makes-nothing</code>, with its own sentence and its own toggle in Settings beside the other warnings. The mage is charged nothing, so its Silver does not move.</p>
+<div class="card"><div class="stage">
+<table class="units">
+<colgroup><col style="width:34px"><col style="width:56px"><col style="width:120px"><col style="width:96px"><col style="width:220px"><col style="width:150px"><col style="width:80px"></colgroup>
+<thead><tr><th></th><th>Id</th><th>Unit</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th><th class="colhi num">Silver</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="uid">8906</td><td>Apprentice</td><td>ESWO 3</td><td class="colhi cellbox"><span class="clip"><span class="unk">&mdash;</span></span></td><td>cast Enchant_Swords</td><td class="colhi num">0</td></tr>
+<tr><td class="own">*</td><td class="uid">8911</td><td>Pauper</td><td>CRPA 3</td><td class="colhi cellbox"><span class="clip">100 SILV</span></td><td>cast Create_Amulet&hellip;</td><td class="colhi num">100</td></tr>
+</tbody></table>
+</div>
+<div class="problems"><b>Problems panel</b><div><span class="code">cast-makes-nothing</span> &nbsp;unit 8906 &mdash; this cast makes nothing: it needs 1 sword and this unit holds none</div><div><span class="code">cast-makes-nothing</span> &nbsp;unit 8911 &mdash; this cast makes nothing: it needs $200 and this unit has $100</div></div>
+<ul class="notes">
+<li>Says the true thing plainly &mdash; the month is wasted &mdash; where &ldquo;short 1 sword&rdquo; leaves the reader to work it out.</li>
+<li>No figure anywhere claims silver or items moved when they will not.</li>
+<li class="con">A new switch in Settings, a new entry in the warning list, and a second code that means almost what <code>not-enough-items</code> means.</li>
+<li class="con">Two shipped tests change their message rather than their arithmetic, which is the kind of change that hides a real regression.</li>
+</ul></div>
+
+<h2 class="q">R3 &mdash; <span>the second number, when the spell is a chance</span></h2>
+<p>The Runesmith holds $1,000. Its level says two runeswords for certain and a 70% chance of a third; you chose to charge the pessimistic three, $1,800 &mdash; and it can pay for one. So the cap sentence has to name a number the mage &ldquo;could make&rdquo;, and there are three candidates. All three sit under the same figures: <span class="mono">Out 600</span>, <span class="mono">At month end 400</span>.</p>
+<div class="card">
+<div class="pair">
+<div class="tip"><b>P1 &mdash; the number the charge used</b><span class="note" style="margin-top:0;">This unit has silver for 1 runesword, not the 3 its level could make.</span></div>
+<div class="tip"><b>P2 &mdash; the range</b><span class="note" style="margin-top:0;">This unit has silver for 1 runesword, not the 2 to 3 its level could make.</span></div>
+<div class="tip"><b>P3 &mdash; what is certain</b><span class="note" style="margin-top:0;">This unit has silver for 1 runesword, not the 2 its level makes for certain.</span></div>
+</div>
+<ul class="notes">
+<li class="n"><b>P1</b> agrees with the arithmetic above it: 3 is the number the Out row was computed from, so hover and figure cannot be read as disagreeing. It never mentions the chance.<span class="rec">recommended</span></li>
+<li class="n"><b>P2</b> is the only one that tells the truth about the spell, and it is the same range <code>ah-ofpb.5</code> will print in Items (<code>2-3 RUNE</code>). It needs the sentence to hold two numbers where PRODUCE's holds one.</li>
+<li class="n"><b>P3</b> reads best and quietly contradicts the figure: the reader is told 2 while $1,800 &mdash; three &mdash; is what the column charged.</li>
+</ul></div>
+
+<h2 class="q">R4 &mdash; <span>silver that has not arrived yet</span></h2>
+<p>The Wanderer holds nothing and a neighbour is ordered to give it $600 this month, in time to be spent. Is the cap judged on what it holds <i>now</i>, or on what it will have? PRODUCE judges on what it holds now, and the committed turn has a unit in exactly this position &mdash; unit 12881 <i>Carpenters</i>, which shows zero catapults for want of silver it does not hold.</p>
+<div class="card">
+<div class="pair">
+<div class="tip"><b>Y1 &mdash; what it holds now, as PRODUCE does</b><span class="rows"><span>Held now</span><span>0</span><span>In, in time</span><span>600</span><span>Out</span><span>0</span><span>At month end</span><span>600</span></span><span class="note">This unit has silver for no amulets of protection, not the 3 its level could make.</span></div>
+<div class="tip"><b>Y2 &mdash; count what arrives in time</b><span class="rows"><span>Held now</span><span>0</span><span>In, in time</span><span>600</span><span>Out</span><span>600</span><span>At month end</span><span>0</span></span><span class="note">no cap sentence &mdash; it makes all 3</span></div>
+</div>
+<ul class="notes">
+<li class="n"><b>Y1</b> is one rule for PRODUCE and CAST, and it is what ships today for the other order.<span class="rec">recommended</span></li>
+<li class="n"><b>Y1</b> understates a mage that is about to be funded, and a player who set that gift up will think the app has not noticed it.</li>
+<li class="n"><b>Y2</b> is truer for this unit and makes the two orders disagree &mdash; the same hex, the same gift, a PRODUCE capped and a CAST not.</li>
+<li class="n"><b>Y2</b> also has an ordering problem the app has met before: what a unit can afford depends on everything else its month does, so a cast priced from money still on its way has to wait for the running total.</li>
+</ul></div>
+
+</main>
+<footer>Spell numbers from the committed data page: <code>data/CRPA</code> &ldquo;may create their level in amulets of protection [AMPR] via magic at a cost of 200 silver&rdquo;; <code>data/ESWO</code> &ldquo;may create 5 times their level in mithril swords [MSWO] via magic at a cost of sword [SWOR]&rdquo;; <code>data/CRRU</code> &ldquo;a 90 percent times their level chance to create a runesword [RUNE] via magic at a cost of 600 silver&rdquo;. The PRODUCE sentence quoted in R1 is <code>productionCapSentence</code> in <code>packages/shared/src/unitTooltip.ts</code>, shipped.</footer>
+</body></html>
