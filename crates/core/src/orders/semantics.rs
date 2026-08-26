@@ -35,14 +35,14 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, ItemKind, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
     because_clause, combat_ready, feed_after_silver, feed_from_faction_food, food_claim,
-    forecast_unit, late_income, parse_wage_centis, pillage_threshold, pool_wants, price_cast,
-    price_claim, price_pillage, price_production, price_purchase, price_sale, price_study,
-    price_tax, quantity_bought, quantity_sold, readiness, recipe_for, settle_unclaimed, split_pool,
-    taxes, transfer_shape, transmute_argument, unit_upkeep, Caster, ContendedPool, FactionFoodPass,
-    FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketSide,
-    PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionWages,
-    SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
-    UpkeepSettlement, FOOD_TAGS,
+    forecast_unit, late_income, parse_wage_centis, pillage_threshold, pool_wants, price_buy_all,
+    price_cast, price_claim, price_pillage, price_production, price_purchase, price_sale,
+    price_study, price_tax, quantity_bought, quantity_sold, readiness, recipe_for,
+    settle_unclaimed, split_pool, taxes, transfer_shape, transmute_argument, unit_upkeep, Caster,
+    ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
+    LateFoodRelief, Lookups, MarketSide, PoolOverrun, PoolShare, PoolShares, PoolWants,
+    PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, TransferShape, Transmuting,
+    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
 };
 use crate::report::composition;
 use crate::report::model::{
@@ -876,6 +876,21 @@ fn forecast_hex(
         // calls: shadowing it here would make the closure recurse (`ah-ofpb.4`).
         let counted_by_name =
             |count: i64, tag: &str| counted_item(count, tag, hex, ruleset, plurals);
+        // `Lookups::counted_or_none`: a sentence that states an absence reads "buys no grain",
+        // never "buys 0 grain" (`ah-jown`).
+        let counted_or_none_by_name = |count: i64, tag: &str| {
+            if count == 0 {
+                format!(
+                    "no {}",
+                    plurals
+                        .get(&tag.to_ascii_uppercase())
+                        .cloned()
+                        .unwrap_or_else(|| item_name(tag, hex, ruleset))
+                )
+            } else {
+                counted_item(count, tag, hex, ruleset, plurals)
+            }
+        };
 
         let facts = UnitFacts {
             unit_id: &ordered.unit.unit_id,
@@ -908,6 +923,7 @@ fn forecast_hex(
                 item_name: &name_of,
                 market_share: &market_share,
                 counted_item: &counted_by_name,
+                counted_or_none: &counted_or_none_by_name,
             },
             ruleset,
         ));
@@ -2110,6 +2126,28 @@ struct Ledger<'a> {
     /// What each unit's `BUILD` orders spend, in document order (`ah-ofpb.2`). Keyed by unit id,
     /// exactly as `uncounted` is, because a `BUILD` records more than a movement can carry.
     pub(crate) built: BTreeMap<String, Vec<super::effects::BuildSpend>>,
+    /// `BUY ALL` lines, per unit, in document order, read but not yet settled.
+    ///
+    /// `rules/buy` gives a `BUY ALL` as many as the unit can afford, and what it can afford is
+    /// not known until the rest of its month has been applied - `credit_tax` runs *after* a
+    /// unit's intents in `ledger_for`, so settling in document order would price the purchase
+    /// against a balance that has not been credited its tax. `forecast_unit` defers it for the
+    /// same reason, and the two must defer to the same figure or the SILVER and ITEMS cells go
+    /// back to contradicting each other.
+    pub(crate) buy_all: BTreeMap<String, Vec<DeferredBuy>>,
+}
+
+/// One `BUY ALL` the ledger has read and not yet settled.
+#[derive(Debug, Clone)]
+pub(crate) struct DeferredBuy {
+    pub placed: PlacedIntent,
+    /// The canonical tag, uppercased, as `Ledger::balance` keys it.
+    pub tag: String,
+    pub price: i64,
+    /// This unit's settled share of the line, or the line itself where nothing was settled.
+    pub available: i64,
+    /// The whole line.
+    pub market_has: i64,
 }
 
 /// One item this month's orders move into or out of a unit (`ah-agbm`).
@@ -2215,6 +2253,7 @@ fn ledger_for<'a>(
         movements: Vec::new(),
         uncounted: BTreeMap::new(),
         built: BTreeMap::new(),
+        buy_all: BTreeMap::new(),
     };
 
     for ordered in &hex.units {
@@ -2255,6 +2294,7 @@ fn ledger_for<'a>(
             );
         }
         credit_tax(&mut ledger, hex, ordered, pillaged);
+        settle_buy_all(&mut ledger, hex, ordered);
     }
 
     charge_upkeep(&mut ledger, hex);
@@ -3147,22 +3187,33 @@ fn buy(
         return;
     };
 
+    let tag = offer.tag.to_ascii_uppercase();
+    // What this hex's other own buyers left of the line, for a `BUY ALL` - or the line itself
+    // where nothing was settled (`market_shares_for` already gives an unbounded order a claim of
+    // the whole pool). Read once, here, so both arms below need not repeat the lookup.
+    let available = standing
+        .share_of(&tag, MarketSide::Buying)
+        .unwrap_or(offer.amount);
+
     let Amount::Exact(count) = amount else {
-        // "BUY ALL" takes as many as the unit can pay for, so it cannot overdraw. What it ends up
-        // holding is another matter, and not one any check here reads - and not one the ITEMS
-        // column can show either (`ah-agbm`).
+        // `BUY ALL` is settled once the unit's whole month is counted - see `Ledger::buy_all`.
         ledger
-            .uncounted
+            .buy_all
             .entry(who.clone())
             .or_default()
-            .push(placed.line);
+            .push(DeferredBuy {
+                placed: placed.clone(),
+                tag,
+                price: offer.price,
+                available,
+                market_has: offer.amount,
+            });
         return;
     };
 
-    let tag = offer.tag.to_ascii_uppercase();
-    // What this hex's other own buyers left of the line, or the ask itself where nothing was
-    // settled. The settled figure is already capped by what the market has, so this is also what
-    // stops a lone unit being charged for goods that do not exist (`ah-t2pn.3`).
+    // The bounded form's own fallback differs on purpose: `share_of` returns `None` only where
+    // nothing was settled, and this arm falls back to what the unit *asked for* - the unbounded
+    // arm above falls back to the whole line instead (`ah-t2pn.3`).
     let allowed = standing
         .share_of(&tag, MarketSide::Buying)
         .unwrap_or(*count);
@@ -3182,6 +3233,85 @@ fn buy(
             created: None,
         });
     }
+}
+
+/// Settles this unit's `BUY ALL` lines, in document order, once the rest of its month has been
+/// applied.
+///
+/// Called from `ledger_for` right after `credit_tax`, which is the moment the unit's silver
+/// balance matches `forecast_unit`'s `running` - report holding, plus every credit, less every
+/// eager charge, and **not** the late income, which `charge_upkeep` nets off the fee rather than
+/// crediting (`ah-uwa3`).
+fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
+    let who = &actor.unit.unit_id;
+    let Some(lines) = ledger.buy_all.remove(who) else {
+        return;
+    };
+
+    for deferred in lines {
+        // A doubted unit is left uncounted: `forecast_unit` skips its whole deferred pass when
+        // either side is doubted, so there is no figure on the column to agree with.
+        if ledger.doubted.contains(who) {
+            ledger
+                .uncounted
+                .entry(who.clone())
+                .or_default()
+                .push(deferred.placed.line);
+            continue;
+        }
+        // A `BUY ALL` followed by a `GIVE ... ALL SILV` is the one case the two surfaces cannot
+        // be made to agree cheaply (see the bead's Known traps), so it is left uncounted too,
+        // keeping today's ` + ?`.
+        if gives_all_silver_after(hex, actor, ledger.ruleset, deferred.placed.line) {
+            ledger
+                .uncounted
+                .entry(who.clone())
+                .or_default()
+                .push(deferred.placed.line);
+            continue;
+        }
+
+        let (priced, plan) = price_buy_all(
+            balance_of(ledger, who, SILVER),
+            deferred.price,
+            deferred.available,
+            deferred.market_has,
+        );
+        charge(ledger, who, SILVER, priced.spends, &deferred.placed);
+        credit(ledger, who, &deferred.tag, plan.bought);
+        if plan.bought != 0 {
+            ledger.movements.push(ItemMovement {
+                unit_id: who.clone(),
+                tag: deferred.tag.clone(),
+                name: item_name(&deferred.tag, hex, ledger.ruleset),
+                delta: plan.bought,
+                from_unshown: None,
+                produced: false,
+            });
+        }
+    }
+}
+
+/// Whether a later order gives away every silver this unit has, which the ledger settles eagerly
+/// and the column defers - so the two would disagree about what is left to buy with. Only a
+/// *later* one matters: written first, both surfaces leave nothing.
+fn gives_all_silver_after(
+    hex: &Hex<'_>,
+    actor: &Ordered<'_>,
+    ruleset: Option<&Ruleset>,
+    after: usize,
+) -> bool {
+    actor.intents.iter().any(|placed| {
+        placed.line > after
+            && matches!(
+                &placed.intent,
+                Intent::Give {
+                    what: Selector::Item(text),
+                    amount: Amount::All { .. },
+                    ..
+                } if resolve_item(text, hex, actor, ruleset).is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER))
+            )
+    })
 }
 
 /// How this hex's market lines are split between the faction's own units, and which of them is
@@ -10498,6 +10628,119 @@ mod tests {
                     }]
                 );
             });
+        }
+
+        // --- ah-jown: BUY ALL reaches the ITEMS column -------------------------------------
+
+        #[test]
+        fn a_buy_all_reaches_the_items_column() {
+            let hex_region = ReportRegion {
+                for_sale: vec![line(30, 18, "grain", "GRAI")],
+                ..region(vec![with_silver(unit("2390"), 356)])
+            };
+            with_ledger(hex_region, "unit 2390\nBUY ALL grain\n", |ledger| {
+                let movement = ledger
+                    .movements
+                    .iter()
+                    .find(|m| m.unit_id == "2390" && m.tag == "GRAI");
+                assert_eq!(movement.map(|m| m.delta), Some(19));
+                assert!(!ledger.uncounted.contains_key("2390"));
+            });
+        }
+
+        #[test]
+        fn a_buy_all_spends_the_tax_it_collects_this_month() {
+            let hex_region = ReportRegion {
+                tax_base: Some(1000),
+                for_sale: vec![line(30, 18, "grain", "GRAI")],
+                ..region(vec![with_flag(
+                    with_item(unit("2390"), 0, "grain", "GRAI"),
+                    "taxing",
+                )])
+            };
+            with_ledger(
+                hex_region,
+                "unit 2390\nBUY ALL grain\nunit 2390\nTAX\n",
+                |ledger| {
+                    let movement = ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "2390" && m.tag == "GRAI");
+                    assert!(
+                        movement.is_some_and(|m| m.delta > 0),
+                        "the tax this unit collects this month should fund its BUY ALL: {:?}",
+                        ledger.movements
+                    );
+                },
+            );
+        }
+
+        #[test]
+        fn a_buy_all_that_can_afford_none_leaves_the_list_alone() {
+            let hex_region = ReportRegion {
+                for_sale: vec![line(30, 18, "grain", "GRAI")],
+                ..region(vec![with_silver(unit("2390"), 10)])
+            };
+            with_ledger(hex_region, "unit 2390\nBUY ALL grain\n", |ledger| {
+                assert!(
+                    !ledger
+                        .movements
+                        .iter()
+                        .any(|m| m.unit_id == "2390" && m.tag == "GRAI"),
+                    "a BUY ALL that affords nothing records no movement: {:?}",
+                    ledger.movements
+                );
+                assert!(!ledger.uncounted.contains_key("2390"));
+            });
+        }
+
+        #[test]
+        fn a_doubted_units_buy_all_stays_uncounted() {
+            let hex_region = ReportRegion {
+                for_sale: vec![line(30, 18, "grain", "GRAI")],
+                ..region(vec![with_silver(unit("2390"), 356)])
+            };
+            with_ledger(
+                hex_region,
+                "unit 2390\nBUY ALL grain\nunit 2390\nGIVE 902 ALL WEAPONS\n",
+                |ledger| {
+                    assert!(
+                        !ledger
+                            .movements
+                            .iter()
+                            .any(|m| m.unit_id == "2390" && m.tag == "GRAI"),
+                        "a doubted unit's BUY ALL is left uncounted: {:?}",
+                        ledger.movements
+                    );
+                    assert!(ledger.uncounted.contains_key("2390"));
+                },
+            );
+        }
+
+        #[test]
+        fn a_buy_all_followed_by_giving_all_silver_stays_uncounted() {
+            let hex_region = ReportRegion {
+                for_sale: vec![line(30, 18, "grain", "GRAI")],
+                ..region(vec![with_silver(unit("2390"), 356)])
+            };
+            with_ledger(
+                hex_region,
+                "unit 2390\nBUY ALL grain\nGIVE 902 ALL SILV\n",
+                |ledger| {
+                    assert!(
+                        !ledger
+                            .movements
+                            .iter()
+                            .any(|m| m.unit_id == "2390" && m.tag == "GRAI"),
+                        "a BUY ALL followed by giving away all silver is left uncounted: {:?}",
+                        ledger.movements
+                    );
+                    assert_eq!(
+                        ledger.uncounted.get("2390").map(Vec::as_slice),
+                        Some([2].as_slice())
+                    );
+                },
+            );
         }
 
         #[test]

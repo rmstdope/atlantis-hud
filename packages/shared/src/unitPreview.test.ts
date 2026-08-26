@@ -287,6 +287,42 @@ describe("formatItems and itemsTooltip", () => {
     );
   });
 
+  // `ah-jown`. Positioned after a `produced` line and before a production cap sentence, for the
+  // same turn-order reason the core settles a `BUY ALL` before the market's own PRODUCE phase.
+  it("says what a BUY ALL bought and what stopped it", () => {
+    const row = previewedUnit({
+      items: [{ amount: 19, name: "grain", tag: "GRAI" }],
+      previewChanges: [{ field: "items", original: "0 GRAI" }],
+      produced: [{ amount: 5, tag: "SWOR" }]
+    });
+    const silver = aUnitSilver({
+      produced: 5,
+      producedName: "sword",
+      productionWanted: 8,
+      productionCappedBy: "materials",
+      buyAll: [
+        {
+          boughtNamed: "19 grain",
+          marketNamed: "30 grain",
+          bought: 19,
+          affordable: 19,
+          available: 30,
+          marketHas: 30,
+          silverAvailable: 356,
+          price: 18,
+          cappedBy: "silver"
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row, silver)).toBe(
+      "was: 0 GRAI\n" +
+        "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "This unit has silver for 19 grain, not the 30 this market offers.\n" +
+        "This unit has materials for 5 swords, not the 8 its men could make."
+    );
+  });
+
   // `ah-ofpb.2`. Every string below is quoted verbatim in the plan and is the navigator's own
   // wording - nothing here is left for the test to word differently.
 
