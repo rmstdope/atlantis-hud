@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-z73s.3 — the exact words of the clause</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  .fix { border-left:3px solid var(--ok); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  .prob { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:10px 13px;
+    font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; max-width:110ch; }
+  .prob .w { color:var(--brass); } .prob .ttl { color:var(--ink-dim); font-size:11px; letter-spacing:1.4px;
+    text-transform:uppercase; margin-bottom:6px; }
+  .prob div.row { padding:4px 0; }
+  .prob .case { color:var(--ink-dim); font-size:11px; letter-spacing:1px; text-transform:uppercase;
+    display:inline-block; min-width:130px; }
+  .prob .same { color:var(--ink-dim); }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:110ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:70ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+</style></head><body>
+<header>
+  <h1>ah-z73s.3 &mdash; <span>the exact words of the clause</span></h1>
+  <p>You chose <b>Q</b> &mdash; the sentence shows the report's figure and then the judged one, with a clause saying
+  when the second applies. You also chose <b>B</b>, which puts <b>recruiting</b> inside the same clause. A recruit is
+  not a transfer, so the words Q was written with are now not quite true. This page is only about those words.</p>
+</header>
+<main>
+
+<div class="note fix"><b>Nothing else is being re-opened.</b> The shape stays exactly as you chose it:
+<i>&ldquo;&lt;report's figure&gt; sailing levels aboard, &lt;judged figure&gt; &lt;clause&gt;, it needs N, so it will
+not sail.&rdquo;</i> The give-away sentence stays exactly as it ships today. Only the clause is in question.</div>
+
+<h3 class="sec">The four cases the clause has to be true of</h3>
+<pre class="ord"><b>drop by gift</b>      GIVE 9508 2 PEAS        two peasants who cannot sail join the crew
+<b>rise by gift</b>      GIVE 11125 1 GNOL       a sailor joins, and it is still short
+<b>drop by recruiting</b> unit 9508 / BUY 4 PEAS  four peasants recruited straight into the crew
+<b>both at once</b>      GIVE 9508 2 PEAS then GIVE 0 1 GNOL</pre>
+
+<span class="opt">Q1 &mdash; &ldquo;once this month's transfers of men have run&rdquo; &nbsp;(the words as you chose them)</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">drop by gift</span> Raft [218] is short of sailors: 2 sailing levels aboard, <b>0 once this month's transfers of men have run</b>, it needs 2, so it will not sail.</div>
+<div class="row"><span class="case">rise by gift</span> Longship [329] is short of sailors: 1 sailing levels aboard, <b>2 once this month's transfers of men have run</b>, it needs 4, so it will not sail.</div>
+<div class="row"><span class="case">by recruiting</span> Raft [218] is short of sailors: 2 sailing levels aboard, <b>0 once this month's transfers of men have run</b>, it needs 2, so it will not sail.</div>
+<div class="row"><span class="case">both at once</span> Raft [218] is short of sailors: 2 sailing levels aboard, <b>0 once this month's transfers of men have run</b>, it needs 2, so it will not sail.</div>
+</div>
+<ul class="notes">
+  <li>Says plainly that it is <i>men</i> moving that changed the number, which is the thing a player will not guess.</li>
+  <li class="con"><b>A recruit is not a transfer.</b> The third row points at a <code>BUY</code> and calls it a
+      transfer; a player looking for the GIVE that caused it will not find one.</li>
+</ul>
+
+<span class="opt">Q2 &mdash; &ldquo;once the men joining the crew this month are counted&rdquo;</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">drop by gift</span> Raft [218] is short of sailors: 2 sailing levels aboard, <b>0 once the men joining the crew this month are counted</b>, it needs 2, so it will not sail.</div>
+<div class="row"><span class="case">rise by gift</span> Longship [329] is short of sailors: 1 sailing levels aboard, <b>2 once the men joining the crew this month are counted</b>, it needs 4, so it will not sail.</div>
+<div class="row"><span class="case">by recruiting</span> Raft [218] is short of sailors: 2 sailing levels aboard, <b>0 once the men joining the crew this month are counted</b>, it needs 2, so it will not sail.</div>
+<div class="row"><span class="case">both at once</span> Raft [218] is short of sailors: 2 sailing levels aboard, <b>0 once the men joining the crew this month are counted</b>, it needs 2, so it will not sail.</div>
+</div>
+<ul class="notes">
+  <li>True of a gift and of a recruit alike &mdash; &ldquo;joining&rdquo; is about the men, not about the order that
+      brought them.</li>
+  <li>Names <b>the crew</b> rather than saying &ldquo;it&rdquo;, which would otherwise read as the fleet when the men
+      actually join a unit inside it.</li>
+  <li class="con">Longest of the three, on a sentence that already carries five numbers.</li>
+  <li class="con">In the fourth row men also <i>left</i>, and this clause mentions only the ones that joined.</li>
+</ul>
+
+<span class="opt">Q3 &mdash; &ldquo;once this month's orders have run&rdquo;</span>
+<div class="prob"><div class="ttl">Problems</div>
+<div class="row"><span class="case">drop by gift</span> Raft [218] is short of sailors: 2 sailing levels aboard, <b>0 once this month's orders have run</b>, it needs 2, so it will not sail.</div>
+<div class="row"><span class="case">rise by gift</span> Longship [329] is short of sailors: 1 sailing levels aboard, <b>2 once this month's orders have run</b>, it needs 4, so it will not sail.</div>
+<div class="row"><span class="case">by recruiting</span> Raft [218] is short of sailors: 2 sailing levels aboard, <b>0 once this month's orders have run</b>, it needs 2, so it will not sail.</div>
+<div class="row"><span class="case">both at once</span> Raft [218] is short of sailors: 2 sailing levels aboard, <b>0 once this month's orders have run</b>, it needs 2, so it will not sail.</div>
+</div>
+<ul class="notes">
+  <li>True of every case there is, including the fourth, and shortest of the three.</li>
+  <li>Matches the vocabulary the panel already uses elsewhere for a predicted figure.</li>
+  <li class="con">Says the least. It tells a player the number will change but nothing about <i>why</i>, and the
+      &ldquo;why&rdquo; here &mdash; unskilled men dilute a skilled crew &mdash; is genuinely surprising.</li>
+</ul>
+
+<h3 class="sec">The one row that no clause covers well</h3>
+<p>&ldquo;Both at once&rdquo; is men joining <i>and</i> men leaving. Every option above describes it with a clause about
+one side or with a clause about nothing in particular. Writing a sentence that names both movements means a fifth
+shape, and the numbers it would carry (two joined, one left, 2 &rarr; 0) do not add up in any obvious way for a
+reader &mdash; the level fell because of dilution, not because of the man who left.</p>
+<div class="note"><b>My recommendation is to accept that</b> and let whichever clause you choose cover it, rather
+than build a shape for the rarest case. Say so if you would rather it were spelled out.</div>
+
+</main></body></html>
