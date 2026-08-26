@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-q7jd — SELL ALL emptied before the market opens</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  pre.ord { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:70ch; margin:8px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:104ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  table.cases { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); max-width:1100px; margin-top:8px; }
+  table.cases th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.cases td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  table.cases td.n { font-family:'SF Mono',Menlo,monospace; color:var(--brass); white-space:nowrap; }
+  table.cases td.tags { font-family:'SF Mono',Menlo,monospace; color:var(--ink-dim); font-size:11px; }
+  .yes { color:var(--ok); } .no { color:var(--danger); } .dim { color:var(--ink-dim); }
+  .row { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:0; margin:10px 0; overflow-x:auto; }
+  table.units { width:100%; border-collapse:collapse; font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; min-width:640px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:8px 12px; border-bottom:1px solid rgba(38,48,61,.5); }
+  table.units td.pred { color:var(--brass); font-style:italic; }
+  table.units td.q { color:var(--ink-dim); }
+  .hover { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:8px 12px;
+    font-family:system-ui,sans-serif; font-size:12.5px; color:var(--ink); max-width:78ch; margin:8px 0; }
+  .hover .lbl { color:var(--ink-dim); font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; display:block; margin-bottom:5px; }
+  .warn { background:var(--raised); border-left:3px solid var(--brass); padding:8px 12px; font-family:system-ui,sans-serif;
+    font-size:12.5px; color:var(--ink); max-width:92ch; margin:8px 0; }
+  .none { color:var(--ink-dim); font-style:italic; font-size:12.5px; margin:8px 0; }
+</style>
+</head>
+<body>
+
+<h1>ah-q7jd &mdash; a SELL ALL its own month has already emptied</h1>
+<p class="lead">A unit holds <b>10 furs</b>. Its orders this month are
+<code>GIVE 5512 10 FUR</code> then <code>SELL ALL FUR</code>, in a hex whose market wants furs at
+<b>$42</b> each. The rules process <b>GIVE before SELL</b>
+(<code>rules/sequenceofevents</code>), so by the time the market opens the unit holds no furs and
+the sale earns nothing.</p>
+
+<div class="banner" style="border-left-color:#7fb069"><strong>Chosen, over two rounds with the
+navigator.</strong> The SILVER column, the ITEMS column and the market-share settlement all settle a
+<code>SELL &hellip; ALL</code> against what the unit holds when the <em>market</em> phase runs &mdash;
+the report&rsquo;s stock moved by this month&rsquo;s <code>GIVE</code> and <code>TAKE</code> and by
+nothing else, which is what <code>rules/sequenceofevents</code> describes. A sale those transfers
+empty <em>entirely</em> then carries a new <strong>nothing-left-to-sell</strong> warning on its own
+line, switchable off under <strong>Markets</strong> in the Warnings tab as <em>Sale with nothing
+left to sell</em>.
+<br><br>
+<strong>Rejected:</strong> correcting the number and saying nothing (the sale would become an
+invisible no-op, while the same month written <code>SELL 10 FUR</code> already warns); two shorter
+wordings; warning when a gift only <em>partly</em> reduces a sale; filing the toggle under the
+catch-all <em>Orders</em> group; a neutral sentence covering both <code>GIVE</code> and
+<code>TAKE</code>; staying silent when a <code>TAKE</code> was the cause; and repeating the sentence
+in the SILVER column&rsquo;s hover. The full interview is in bead ah-q7jd&rsquo;s design field.</div>
+
+<div class="banner">This is a <strong>warning</strong>, never blocking, and it stays silent whenever
+it cannot be sure &mdash; a market that does not want the goods, a report that showed none to begin
+with, or a transfer this month&rsquo;s projection could not follow. That is the house rule for every
+semantic check.</div>
+
+<h2 class="sec">What ships today &mdash; the two columns disagree</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>the units table, today</b></p>
+    <table class="units">
+      <tr><th>Unit</th><th>Orders</th><th style="text-align:right">Silver</th><th>Items</th></tr>
+      <tr>
+        <td>Trapper (4411)</td>
+        <td>GIVE 5512 10 FUR<br>SELL ALL FUR</td>
+        <td class="num bad">+$420</td>
+        <td>FUR 10 &rarr; <span class="bad">0</span></td>
+      </tr>
+    </table>
+    <p class="note">The SILVER column pays for ten furs the ITEMS column has already given away.
+    Same order, two answers.</p>
+  </div>
+  <div>
+    <p class="cap"><b>the units table, after the fix &mdash; both variants</b></p>
+    <table class="units">
+      <tr><th>Unit</th><th>Orders</th><th style="text-align:right">Silver</th><th>Items</th></tr>
+      <tr>
+        <td>Trapper (4411)</td>
+        <td>GIVE 5512 10 FUR<br>SELL ALL FUR</td>
+        <td class="num ok">$0</td>
+        <td>FUR 10 &rarr; <span class="ok">0</span></td>
+      </tr>
+    </table>
+    <p class="note">Both columns settle the sale against what the unit holds when the market phase
+    runs. This part is not in question &mdash; it is the bug. <b>The question is what, if anything,
+    the SELL line then says.</b></p>
+  </div>
+</div>
+
+<h2 class="sec">Option B &mdash; a new warning says why the sale earns nothing</h2>
+<p class="lead">A new check fires when a <code>SELL &hellip; ALL</code> is reduced to nothing by an
+order the rules process earlier in the same month. It is a warning, never blocking, and stays
+silent whenever it cannot be sure.</p>
+<div class="row">
+  <div>
+    <p class="cap"><b>in the orders editor</b>, on the SELL line</p>
+    <div class="ed">
+      <div class="ln"><span class="gut"></span><span class="txt">unit 4411</span></div>
+      <div class="ln"><span class="gut"></span><span class="txt">GIVE 5512 10 FUR</span></div>
+      <div class="ln"><span class="gut warn"></span><span class="txt"><span class="wavy">SELL ALL FUR</span></span></div>
+      <div class="diag">this unit gives away all 10 of its furs before the market opens, so this sells nothing</div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>in the Warnings tab</b>, where it can be switched off</p>
+    <div class="set">
+      <div class="set-head">Orders</div>
+      <div class="set-row">
+        <span class="box"></span>
+        <span><span class="set-title">Sale with nothing left to sell</span><br>
+        <span class="set-desc">A SELL ALL of goods this month&rsquo;s earlier orders have already moved away.</span></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2 class="sec">The wording &mdash; B1 chosen</h2>
+<p class="lead">House voice is lowercase, addressed to the player, and names the numbers.</p>
+<div class="row">
+  <div>
+    <p class="cap"><b>B1 &mdash; chosen.</b> Names the cause and the phase order</p>
+    <div class="ed" style="width:400px">
+      <div class="ln"><span class="gut warn"></span><span class="txt"><span class="wavy">SELL ALL FUR</span></span></div>
+      <div class="diag">this unit gives away all 10 of its furs before the market opens, so this sells nothing</div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>B2</b> &mdash; leads with the outcome</p>
+    <div class="ed" style="width:400px">
+      <div class="ln"><span class="gut warn"></span><span class="txt"><span class="wavy">SELL ALL FUR</span></span></div>
+      <div class="diag">nothing left to sell: this month&rsquo;s earlier orders move all 10 furs away first</div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>B3</b> &mdash; the shape the other checks use</p>
+    <div class="ed" style="width:400px">
+      <div class="ln"><span class="gut warn"></span><span class="txt"><span class="wavy">SELL ALL FUR</span></span></div>
+      <div class="diag">this unit can have 10 furs and gives all 10 away before the market opens</div>
+    </div>
+  </div>
+</div>
+
+<h2 class="sec">Where it must stay quiet</h2>
+<table class="units" style="margin-top:10px">
+  <tr><th>The month</th><th>Warns?</th><th>Why</th></tr>
+  <tr><td>SELL ALL FUR, unit holds no furs at all</td><td class="dim">no</td>
+      <td>Nothing this month caused it &mdash; the report already showed none. Saying so is a
+      different check.</td></tr>
+  <tr><td>GIVE 5512 4 FUR, then SELL ALL FUR (of 10)</td><td class="dim">no</td>
+      <td>Six furs still sell. The order does something, so there is nothing to warn about.</td></tr>
+  <tr><td>PRODUCE FUR, then SELL ALL FUR (of 0)</td><td class="dim">no</td>
+      <td>Production runs after the market, so it never had furs to sell &mdash; same as the first
+      row. Also already silent today.</td></tr>
+  <tr><td>GIVE 5512 ALL FUR, then SELL ALL FUR</td><td class="mark">yes</td>
+      <td>Same shape as the headline case; the gift being <code>ALL</code> rather than a number
+      changes nothing.</td></tr>
+</table>
+<p class="note">This is the whole of the new check&rsquo;s behaviour, so it is also the whole of
+what the tests will pin.</p>
+
+<h2 class="sec">Which group the toggle joins — Markets chosen</h2>
+<p class="lead">The first mockup put it under <b>Orders</b>. That was wrong: there is already a
+<b>Markets</b> group, and it holds one entry today.</p>
+<div class="row">
+  <div>
+    <p class="cap"><b>M — the Markets group. Chosen.</b></p>
+    <div class="set">
+      <div class="set-head">Markets</div>
+      <div class="set-row"><span class="box"></span>
+        <span><span class="set-title">Buying what is not sold</span><br>
+        <span class="set-desc">A BUY or SELL order for something this hex&rsquo;s market does not trade.</span></span></div>
+      <div class="set-row" style="background:rgba(217,164,65,.07)"><span class="box"></span>
+        <span><span class="set-title">Sale with nothing left to sell</span><br>
+        <span class="set-desc">A SELL ALL of goods this month&rsquo;s earlier orders have already moved away.</span></span></div>
+    </div>
+    <p class="note">Reads as a pair: one is about the market not wanting the goods, the other about
+    the unit not having them.</p>
+  </div>
+  <div>
+    <p class="cap"><b>O — the Orders group</b>, as first mocked</p>
+    <div class="set">
+      <div class="set-head">Orders</div>
+      <div class="set-row"><span class="box"></span>
+        <span><span class="set-title">Reused FORM numbers</span><br>
+        <span class="set-desc">Two units formed in the same hex this month with the same NEW number.</span></span></div>
+      <div class="set-row" style="background:rgba(217,164,65,.07)"><span class="box"></span>
+        <span><span class="set-title">Sale with nothing left to sell</span><br>
+        <span class="set-desc">A SELL ALL of goods this month&rsquo;s earlier orders have already moved away.</span></span></div>
+    </div>
+    <p class="note">Orders is the catch-all. Putting it here leaves Markets with a single entry
+    forever.</p>
+  </div>
+</div>
+
+<h2 class="sec">One item, not ten — S2 chosen</h2>
+<p class="lead">The unit holds a single fur and gives it away. B1 as written produces
+<em>“all 1 of its furs”</em>.</p>
+<div class="row">
+  <div><p class="cap"><b>S1</b> — keep the count, let the plural handle it</p>
+    <div class="ed"><div class="ln"><span class="gut warn"></span><span class="txt"><span class="wavy">SELL ALL FUR</span></span></div>
+    <div class="diag">this unit gives away all 1 fur before the market opens, so this sells nothing</div></div>
+    <p class="note">“all 1 fur” is grammatical but graceless.</p></div>
+  <div><p class="cap"><b>S2 — chosen.</b> A singular form of its own</p>
+    <div class="ed"><div class="ln"><span class="gut warn"></span><span class="txt"><span class="wavy">SELL ALL FUR</span></span></div>
+    <div class="diag">this unit gives away its only fur before the market opens, so this sells nothing</div></div>
+    <p class="note">One extra branch, and the sentence reads as written.</p></div>
+  <div><p class="cap"><b>S3</b> — drop the count entirely, both ways</p>
+    <div class="ed"><div class="ln"><span class="gut warn"></span><span class="txt"><span class="wavy">SELL ALL FUR</span></span></div>
+    <div class="diag">this unit gives away all its furs before the market opens, so this sells nothing</div></div>
+    <p class="note">One sentence for every case &mdash; but the ten-fur case loses the number, and
+    the house voice names numbers.</p></div>
+</div>
+
+<h2 class="sec">Taken, not given — T1 chosen</h2>
+<p class="lead">Another unit writes <code>TAKE FROM 4411 10 FUR</code>. Our unit&rsquo;s stock is
+emptied in the very same phase, but it did not give anything &mdash; so <em>“this unit gives
+away”</em> is a false statement about whose order it was.</p>
+<div class="row">
+  <div><p class="cap"><b>T1 — chosen.</b> A second sentence for TAKE</p>
+    <div class="ed"><div class="ln"><span class="gut warn"></span><span class="txt"><span class="wavy">SELL ALL FUR</span></span></div>
+    <div class="diag">another unit takes all 10 of its furs before the market opens, so this sells nothing</div></div>
+    <p class="note">Two sentences to maintain; each is exactly true.</p></div>
+  <div><p class="cap"><b>T2</b> — one neutral sentence for both causes</p>
+    <div class="ed"><div class="ln"><span class="gut warn"></span><span class="txt"><span class="wavy">SELL ALL FUR</span></span></div>
+    <div class="diag">all 10 of its furs move away before the market opens, so this sells nothing</div></div>
+    <p class="note">Replaces B1 everywhere. One sentence, never wrong, slightly vaguer about who
+    did it.</p></div>
+  <div><p class="cap"><b>T3</b> — stay silent when a TAKE is the cause</p>
+    <div class="ed"><div class="ln"><span class="gut"></span><span class="txt">SELL ALL FUR</span></div></div>
+    <p class="note">B1 keeps its wording and the check only looks at this unit&rsquo;s own GIVE
+    orders. The Silver column is still corrected; the player is just told nothing in the rarer
+    case.</p></div>
+</div>
+
+<h2 class="sec">Does the Silver hover say anything? — no</h2>
+<p class="lead">The Silver column&rsquo;s hover has no per-sale sentence today &mdash; it explains
+only the things it cannot price. It could gain one for this.</p>
+<div class="row">
+  <div><p class="cap"><b>H1 — chosen.</b> The hover is left alone</p>
+    <div class="ed" style="width:420px">
+      <div class="ln"><span class="txt">Trapper (4411) &mdash; $0</span></div>
+      <div class="ln"><span class="txt">&nbsp;</span></div>
+      <div class="ln"><span class="txt">Upkeep $20 comes off next month.</span></div>
+    </div>
+    <p class="note">The warning on the SELL line already says it, in the place the player is
+    editing. The hover stays a silver explanation.</p></div>
+  <div><p class="cap"><b>H2</b> — the hover repeats it</p>
+    <div class="ed" style="width:420px">
+      <div class="ln"><span class="txt">Trapper (4411) &mdash; $0</span></div>
+      <div class="ln"><span class="txt">&nbsp;</span></div>
+      <div class="ln"><span class="txt">This month&rsquo;s SELL earns nothing: the furs</span></div>
+      <div class="ln"><span class="txt">move away before the market opens.</span></div>
+      <div class="ln"><span class="txt">Upkeep $20 comes off next month.</span></div>
+    </div>
+    <p class="note">Reaches a player reading the table rather than the editor &mdash; but the hover
+    is already long, and it would be the only order-specific sentence in it.</p></div>
+</div>
+
+</body></html>
