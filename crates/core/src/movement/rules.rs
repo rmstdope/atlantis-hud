@@ -395,6 +395,43 @@ pub struct CastInput {
     pub amount: i64,
 }
 
+/// One thing a CAST creates, as the skill's own level paragraph states it.
+///
+/// The data page states a creation in four shapes and this records all four as one number, because
+/// one arithmetic covers them: `percent_per_level` times the caster's level is a total in percent,
+/// of which every whole hundred is an item the cast makes for certain and the remainder is the
+/// chance of one more. `may create 5 times their level in mithril swords [MSWO]` is `500`, so a
+/// level 3 mage makes 1500 percent - fifteen swords and nothing left over. `has a 20 percent times
+/// their level chance to create a ring of invisibility [RING]` is `20`, so a level 3 mage makes 60
+/// percent - no ring for certain and a 60 percent chance of one. Create runesword is `90`, so a
+/// level 5 mage makes 450 - four runeswords and a 50 percent chance of a fifth.
+///
+/// Nothing here is charged or shown; `ah-ofpb.4` charges against it and `ah-ofpb.5` renders it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/CastOutput.ts")
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CastOutput {
+    /// The item tag one cast creates.
+    pub tag: String,
+    /// The lowest skill level whose paragraph states this creation, and so the lowest level at
+    /// which a cast makes it at all. `1` for every creation on the page but transmutation's later
+    /// outputs - `IRWD` at 2, `FLOA` at 3, `YEW` at 4, `WING` and `ADMT` at 5 - and bird lore's
+    /// eagles, at 3.
+    pub level: u32,
+    /// How much of `tag` one cast creates, in percent per level of the caster's skill. See this
+    /// type's own documentation for what a total past 100 means.
+    pub percent_per_level: i64,
+    /// Added to the caster's skill level before `percent_per_level` is applied. `-2` for bird
+    /// lore, whose prose states its eagles as "100 percent times his skill level minus 2" while
+    /// its normalised sentence says "their level"; the navigator chose the prose (2026-08-26).
+    /// `0` for every other creation the page states.
+    pub level_offset: i64,
+}
+
 /// What CASTing a skill consumes, as the data page states it and as ah-dbb.2 charges it: `costs`
 /// once per cast, and for transmutation the output tag -> the source tag it is made from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -407,6 +444,11 @@ pub struct CastInput {
 pub struct CastCost {
     pub costs: Vec<CastInput>,
     pub transmute: BTreeMap<String, String>,
+    /// What the cast creates. Empty for a spell that creates nothing an item catalogue can carry -
+    /// construct gate makes a Gate, which is a region feature - and for a ruleset generated before
+    /// creations were scraped.
+    #[serde(default)]
+    pub creates: Vec<CastOutput>,
 }
 
 /// One thing a production recipe consumes: an item tag (`SILV` for silver) and how many.
@@ -1216,6 +1258,20 @@ mod tests {
         assert!(!production.inputs_are_alternatives);
         assert_eq!(production.man_months, None);
         assert_eq!(production.outputs, None);
+    }
+
+    /// A ruleset cached before `ah-ofpb.3` carries a `cast` with `costs` and `transmute` and no
+    /// `creates`, and must still load: `deny_unknown_fields` is about keys the struct has never
+    /// heard of, and `#[serde(default)]` is what covers keys the JSON has not got yet.
+    #[test]
+    fn a_ruleset_without_cast_creations_still_loads() {
+        let json = r#"{
+            "costs": [{ "tag": "SILV", "amount": 200 }],
+            "transmute": {}
+        }"#;
+        let cast: CastCost =
+            serde_json::from_str(json).expect("a cast missing creates should still parse");
+        assert_eq!(cast.creates, Vec::new());
     }
 
     /// force, pattern, spirit, necromancy, teleportation and illusion are magic; mining, lumberjack,

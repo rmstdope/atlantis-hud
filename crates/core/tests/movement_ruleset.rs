@@ -5,7 +5,7 @@
 //! what the game says. Both are worth a failing test.
 
 use atlantis_hud_core::movement::rules::{
-    CastInput, ItemKind, MovementMode, Ruleset, RulesetError,
+    CastInput, CastOutput, ItemKind, MovementMode, Ruleset, RulesetError,
 };
 
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
@@ -414,6 +414,76 @@ fn reads_what_a_cast_consumes() {
         .find_skill("FIRE")
         .expect("FIRE is in the catalogue");
     assert!(fire.cast.is_none());
+}
+
+/// What CASTing a skill creates, as `ah-ofpb.4` will charge against and `ah-ofpb.5` will render.
+/// Nothing here is charged or shown yet - this bead only records the figure.
+#[test]
+fn reads_what_a_cast_creates() {
+    let ruleset = ruleset();
+
+    let eswo = ruleset
+        .find_skill("ESWO")
+        .expect("ESWO is in the catalogue");
+    assert_eq!(
+        eswo.cast.as_ref().expect("ESWO has a casting cost").creates,
+        vec![CastOutput {
+            tag: "MSWO".into(),
+            level: 1,
+            percent_per_level: 500,
+            level_offset: 0
+        }]
+    );
+
+    let crru = ruleset
+        .find_skill("CRRU")
+        .expect("CRRU is in the catalogue");
+    let crru_creates = &crru.cast.as_ref().expect("CRRU has a casting cost").creates;
+    assert_eq!(crru_creates.len(), 1);
+    assert_eq!(crru_creates[0].percent_per_level, 90);
+
+    let trns = ruleset
+        .find_skill("TRNS")
+        .expect("TRNS is in the catalogue");
+    let trns_creates = &trns.cast.as_ref().expect("TRNS has a casting cost").creates;
+    let yew = trns_creates
+        .iter()
+        .find(|made| made.tag == "YEW")
+        .expect("TRNS creates yew");
+    assert_eq!(yew.level, 4);
+
+    let bird = ruleset
+        .find_skill("BIRD")
+        .expect("BIRD is in the catalogue");
+    let bird_creates = &bird.cast.as_ref().expect("BIRD has a casting cost").creates;
+    let eagl = bird_creates
+        .iter()
+        .find(|made| made.tag == "EAGL")
+        .expect("BIRD creates eagles");
+    assert_eq!(eagl.level_offset, -2);
+
+    let cgat = ruleset
+        .find_skill("CGAT")
+        .expect("CGAT is in the catalogue");
+    let cgat_cast = cgat.cast.as_ref().expect("CGAT has a casting cost");
+    assert!(cgat_cast.creates.is_empty());
+    assert!(!cgat_cast.costs.is_empty());
+
+    // WOLF states no cost anywhere on the page, so before this bead it had no `cast` at all.
+    let wolf = ruleset
+        .find_skill("WOLF")
+        .expect("WOLF is in the catalogue");
+    let wolf_cast = wolf.cast.as_ref().expect("WOLF now has a cast block");
+    assert!(wolf_cast.costs.is_empty());
+    assert_eq!(
+        wolf_cast.creates,
+        vec![CastOutput {
+            tag: "WOLF".into(),
+            level: 1,
+            percent_per_level: 200,
+            level_offset: 0
+        }]
+    );
 }
 
 /// A ruleset from before casting costs were scraped must still load: the shell serves whatever

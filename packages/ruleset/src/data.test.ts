@@ -586,14 +586,39 @@ describe("parseSkillReference", () => {
     const skills = parseSkillReference(DATA_HTML);
 
     // "create ring of invisibility [CRRI] 1: ... via magic at a cost of 600 silver [SILV]."
-    expect(skills.CRRI.cast).toEqual({ costs: [{ tag: "SILV", amount: 600 }], transmute: {} });
+    expect(skills.CRRI.cast?.costs).toEqual([{ tag: "SILV", amount: 600 }]);
   });
 
   it("reads an item cost with no number as one", () => {
     const skills = parseSkillReference(DATA_HTML);
 
     // "enchant swords [ESWO] 1: ... via magic at a cost of sword [SWOR]."
-    expect(skills.ESWO.cast).toEqual({ costs: [{ tag: "SWOR", amount: 1 }], transmute: {} });
+    expect(skills.ESWO.cast?.costs).toEqual([{ tag: "SWOR", amount: 1 }]);
+  });
+
+  /**
+   * What a CAST creates, read from the "may create N times their level in ... [TAG]" sentences -
+   * the arithmetic ah-ofpb.4 will charge against and ah-ofpb.5 will render. `data/ESWO`: "may
+   * create 5 times their level in mithril swords [MSWO] via magic at a cost of sword [SWOR]."
+   */
+  it("reads what a level-scaled spell creates", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.ESWO.cast?.creates).toEqual([
+      { tag: "MSWO", level: 1, percentPerLevel: 500, levelOffset: 0 }
+    ]);
+  });
+
+  /**
+   * "may create their level in amulets of protection [AMPR]" states no number, meaning one per
+   * level - a hundred percent per level.
+   */
+  it("reads a creation stated without a number as one per level", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.CRPA.cast?.creates).toEqual([
+      { tag: "AMPR", level: 1, percentPerLevel: 100, levelOffset: 0 }
+    ]);
   });
 
   it("reads several inputs joined by and, stated on a later level", () => {
@@ -601,13 +626,10 @@ describe("parseSkillReference", () => {
 
     // "summon wind [SWIN] 3: ... via magic at a cost of 75 floater hides [FLOA] and 75 ironwood
     //  [IRWD]." - the cost is on level 3, not level 1, and the fold has to keep it.
-    expect(skills.SWIN.cast).toEqual({
-      costs: [
-        { tag: "FLOA", amount: 75 },
-        { tag: "IRWD", amount: 75 }
-      ],
-      transmute: {}
-    });
+    expect(skills.SWIN.cast?.costs).toEqual([
+      { tag: "FLOA", amount: 75 },
+      { tag: "IRWD", amount: 75 }
+    ]);
   });
 
   /**
@@ -635,7 +657,49 @@ describe("parseSkillReference", () => {
     const skills = parseSkillReference(DATA_HTML);
 
     // "construct gate [CGAT] 1: ... the attempt costs 1000 silver."
-    expect(skills.CGAT.cast).toEqual({ costs: [{ tag: "SILV", amount: 1000 }], transmute: {} });
+    expect(skills.CGAT.cast?.costs).toEqual([{ tag: "SILV", amount: 1000 }]);
+  });
+
+  /**
+   * Construct Gate makes a Gate, a region feature rather than an item, and its sentence says
+   * "chance of success" rather than "chance to create ... [TAG]" - no creation pattern matches it,
+   * and it must stay that way (the navigator's decision, `ah-ofpb.3`).
+   */
+  it("records no creation for a spell that makes something the catalogue cannot carry", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.CGAT.cast?.creates).toEqual([]);
+  });
+
+  /**
+   * Nine summoning skills state their output in the same shapes as the priced spells but state no
+   * cost at all, so before this bead they were `cast: null`. The navigator chose to record every
+   * creation the page states, priced or not (`ah-ofpb.3`, 2026-08-26).
+   */
+  it("records what a summoning spell creates, though it states no cost", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "wolf lore [WOLF] 1: ... A mage with this skill may create 2 times their level in wolves
+    //  [WOLF] via magic." - no "via magic at a cost of ..." clause anywhere in the paragraph.
+    expect(skills.WOLF.cast).toEqual({
+      costs: [],
+      transmute: {},
+      creates: [{ tag: "WOLF", level: 1, percentPerLevel: 200, levelOffset: 0 }]
+    });
+  });
+
+  /**
+   * Bird lore's prose says "100 percent times his skill level minus 2 eagles per month"; its
+   * normalised sentence says "their level in eagles [EAGL]" - one eagle against three, for a
+   * level 3 mage. The navigator chose the prose (`ah-ofpb.3`, 2026-08-26), which is why
+   * `CastOutput` carries a `levelOffset` at all - it is the only skill on the page needing one.
+   */
+  it("reads bird lore's eagles from the prose that states the level offset", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.BIRD.cast?.creates).toEqual([
+      { tag: "EAGL", level: 3, percentPerLevel: 100, levelOffset: -2 }
+    ]);
   });
 
   it("reads what transmutation turns into what, across levels", () => {
@@ -652,6 +716,29 @@ describe("parseSkillReference", () => {
     expect(skills.TRNS.cast?.costs).toEqual([]);
   });
 
+  /**
+   * Transmutation's outputs stated as `creates`, so `ah-ofpb.4` and `ah-ofpb.5` can treat every
+   * cast the same way rather than special-casing `transmute`. `2 <source> [TAG] times the skill
+   * level into <output> [OUT]` is `percentPerLevel: 200`, and the level is whichever paragraph
+   * introduced it - the same order `.transmute` above pins.
+   */
+  it("reads what transmutation creates, and the level each output arrives at", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.TRNS.cast?.creates).toEqual([
+      { tag: "ROOT", level: 1, percentPerLevel: 200, levelOffset: 0 },
+      { tag: "MITH", level: 1, percentPerLevel: 200, levelOffset: 0 },
+      { tag: "IRWD", level: 2, percentPerLevel: 200, levelOffset: 0 },
+      { tag: "FLOA", level: 3, percentPerLevel: 200, levelOffset: 0 },
+      { tag: "YEW", level: 4, percentPerLevel: 200, levelOffset: 0 },
+      { tag: "WING", level: 5, percentPerLevel: 200, levelOffset: 0 },
+      { tag: "ADMT", level: 5, percentPerLevel: 200, levelOffset: 0 }
+    ]);
+    expect(skills.TRNS.cast?.creates.map((made) => made.tag)).toEqual(
+      Object.keys(skills.TRNS.cast?.transmute ?? {})
+    );
+  });
+
   it("records no casting cost for a spell the page prices nowhere", () => {
     const skills = parseSkillReference(DATA_HTML);
 
@@ -664,6 +751,28 @@ describe("parseSkillReference", () => {
       "<html><body><pre>broken [BROK] 1: A mage with this skill has a chance to create " +
       "something via magic at a cost of some things. To use this spell, the mage should CAST " +
       "Broken.</pre></body></html>";
+
+    expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
+  });
+
+  /**
+   * "has a 20 percent times their level chance to create a ring of invisibility [RING]" - the
+   * chance shape, recorded as the same `percentPerLevel` number as the certain shapes.
+   */
+  it("reads a creation stated as a chance", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "create ring of invisibility [CRRI] 1: ... has a 20 percent times their level chance to
+    //  create a ring of invisibility [RING] via magic at a cost of 600 silver [SILV]."
+    expect(skills.CRRI.cast?.creates).toEqual([
+      { tag: "RING", level: 1, percentPerLevel: 20, levelOffset: 0 }
+    ]);
+  });
+
+  it("fails loudly on a creation it cannot read", () => {
+    const html =
+      "<html><body><pre>whatnot [WHAT] 1: A mage with this skill may create 3 times their " +
+      "level in whatnots. This skill costs 100 silver per month of study.</pre></body></html>";
 
     expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
   });

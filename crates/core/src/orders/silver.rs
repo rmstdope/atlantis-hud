@@ -3065,6 +3065,7 @@ mod tests {
                     amount,
                 }],
                 transmute: BTreeMap::new(),
+                creates: Vec::new(),
             }),
             produces: Vec::new(),
             magic: true,
