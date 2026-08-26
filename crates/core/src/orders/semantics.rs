@@ -10828,8 +10828,18 @@ mod tests {
             name: "sailing".to_string(),
             tag: "SAIL".to_string(),
             level,
-            points: 0,
+            points: 15 * level * (level + 1),
         }
+    }
+
+    /// `sail`'s points must imply its level under `level_for_points`, or every crew merge built on
+    /// this fixture would drop the skill at 0 points and pass for the wrong reason.
+    #[test]
+    fn the_sail_fixture_carries_the_points_its_level_implies() {
+        assert_eq!(sail(1).points, 30);
+        assert_eq!(sail(2).points, 90);
+        assert_eq!(sail(3).points, 180);
+        assert_eq!(sail(4).points, 300);
     }
 
     fn report(regions: Vec<ReportRegion>) -> ParsedReport {
