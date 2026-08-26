@@ -1586,8 +1586,15 @@ fn apply_gifts_of_men(units: &mut [Ordered<'_>], ruleset: Option<&Ruleset>) {
                     &giver_skills,
                     moved,
                 );
-                receiver_state.men += moved;
             }
+            // Either way, the receiver now holds these men - a later GIVE of the same tag within
+            // this hex must see them, whether or not this arrival's skills could be judged. Left
+            // uncredited, a unit that re-gives men it only just received would have its second
+            // GIVE clamped to its own *reported* holdings, silently moving fewer men than the
+            // order says and leaving a downstream unit judged on stale figures - the review
+            // comment on this PR caught exactly this gap.
+            receiver_state.men += moved;
+            *receiver_state.held.entry(tag.clone()).or_insert(0) += moved;
         }
 
         // Either way, the giver: skills untouched, per `rules/give` - an even split leaves
@@ -17821,6 +17828,25 @@ mod tests {
             reversed_hex.find("2200").unwrap().skill_level("LUMB"),
             Some(1)
         );
+    }
+
+    /// A unit that receives men this month, and then re-gives some of them onward in the same
+    /// hex, must be able to give what it just received - not be clamped to what the *report*
+    /// showed it holding before any gift arrived. Caught by review on this PR: the receiver's own
+    /// running `held`/`men` were only ever credited by later reads, never by an arrival, so a
+    /// re-gift moved 0 and the downstream unit was silently judged on stale figures.
+    #[test]
+    fn men_received_this_month_can_be_re_given_within_the_same_hex() {
+        let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
+        let middle = with_men(unit("2200"), 0);
+        let receiver = with_men(unit("3300"), 0);
+
+        let orders = "unit 1010\nGIVE 2200 3 HUMN\nunit 2200\nGIVE 3300 3 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver, middle, receiver]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        assert_eq!(hex.find("3300").unwrap().skill_level("LUMB"), Some(1));
     }
 
     #[test]
