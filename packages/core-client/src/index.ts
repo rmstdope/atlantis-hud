@@ -344,6 +344,23 @@ export type TakenUnshown = {
 /** One item a PRODUCE order makes this month. */
 export type ProducedItem = { amount: number; tag: string };
 
+/** Which limit decided how much work a BUILD does, when it was not the unit's men. */
+export type BuildCap = "materials" | "needs";
+
+/** What one BUILD order spends this month (`ah-ofpb.2`). */
+export type BuildSpend = {
+  amount: number;
+  tag: string;
+  /** The material's display name, as the cap sentence says it - "wood". */
+  name: string;
+  /** The structure worked on: its label, or the kind being founded. */
+  place: string;
+  founding: boolean;
+  helping: string | null;
+  couldDo: number;
+  cappedBy: BuildCap | null;
+};
+
 /** One unit as the orders leave it: the full predicted state, so the row renders like any other. */
 export type UnitPreview = {
   unit: ReportUnit;
@@ -367,6 +384,8 @@ export type UnitPreview = {
   takenUnshown: TakenUnshown[];
   /** What this unit's PRODUCE orders make this month (`ah-ofpb.1`). */
   produced: ProducedItem[];
+  /** What this unit's BUILD orders spend this month (`ah-ofpb.2`). */
+  built: BuildSpend[];
 };
 
 /** Every previewed unit standing in (or bound for) one region. */

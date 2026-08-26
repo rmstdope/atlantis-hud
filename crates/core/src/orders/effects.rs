@@ -72,6 +72,10 @@ pub struct UnitPreview {
     /// the month's last phase. Empty for a unit not producing, and for one whose run comes to
     /// nothing (`ah-ofpb.1`).
     pub produced: Vec<ProducedItem>,
+    /// What this unit's `BUILD` orders spend this month, so the hover can say where the material
+    /// went and what cut the work short. Empty for a unit not building, and for one whose build
+    /// comes to nothing (`ah-ofpb.2`).
+    pub built: Vec<BuildSpend>,
 }
 
 /// Goods taken from a unit the report does not show in this hex (`ah-agbm`).
@@ -89,6 +93,38 @@ pub struct TakenUnshown {
 pub struct ProducedItem {
     pub amount: i64,
     pub tag: String,
+}
+
+/// Which limit decided how much work a `BUILD` does, when it was not the unit's men.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BuildCap {
+    /// The unit holds less of the material than its men could work.
+    Materials,
+    /// The structure wants less work than its men could do - the last month of every build.
+    Needs,
+}
+
+/// What one `BUILD` order spends this month (`ah-ofpb.2`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildSpend {
+    /// Material consumed, which is also the units of work done.
+    pub amount: i64,
+    /// The material's tag, as the item list keys it - `WOOD`.
+    pub tag: String,
+    /// The material's display name, as the cap sentence says it - `wood`.
+    pub name: String,
+    /// What is being worked on: `structure_label` for one that exists, or the kind the player
+    /// wrote when `founding`.
+    pub place: String,
+    /// Set when `place` names a kind being founded rather than a structure that is already there.
+    pub founding: bool,
+    /// The unit being helped, for a `BUILD HELP`. `None` for a unit building on its own account.
+    pub helping: Option<String>,
+    /// What this unit's men alone could have done.
+    pub could_do: i64,
+    pub capped_by: Option<BuildCap>,
 }
 
 /// Every previewed unit standing in (or bound for) one region.
@@ -282,6 +318,7 @@ pub fn preview_orders_on_map(
         let uncounted = entry.uncounted.clone();
         let taken_unshown = entry.taken_unshown.clone();
         let produced = entry.produced.clone();
+        let built = entry.built.clone();
 
         let departed = status == UnitPreviewStatus::Departing;
         if changes.is_empty()
@@ -319,6 +356,7 @@ pub fn preview_orders_on_map(
                     uncounted: uncounted.clone(),
                     taken_unshown: taken_unshown.clone(),
                     produced: produced.clone(),
+                    built: built.clone(),
                 });
             regions
                 .entry(entry.unit.region_id.clone())
@@ -333,6 +371,7 @@ pub fn preview_orders_on_map(
                     uncounted,
                     taken_unshown,
                     produced,
+                    built,
                 });
         } else {
             regions
@@ -348,6 +387,7 @@ pub fn preview_orders_on_map(
                     uncounted,
                     taken_unshown,
                     produced,
+                    built,
                 });
         }
     }
@@ -455,6 +495,9 @@ struct WorkingUnit {
     /// What this unit's `PRODUCE` orders make this month. Written once by `apply_item_effects`
     /// (`ah-ofpb.1`).
     produced: Vec<ProducedItem>,
+    /// What this unit's `BUILD` orders spend this month. Written once by `apply_item_effects`
+    /// (`ah-ofpb.2`).
+    built: Vec<BuildSpend>,
 }
 
 impl WorkingUnit {
@@ -561,6 +604,7 @@ impl Working {
                 uncounted: Vec::new(),
                 taken_unshown: Vec::new(),
                 produced: Vec::new(),
+                built: Vec::new(),
             });
         }
         Self {
@@ -693,6 +737,7 @@ impl Working {
                     tag: movement.tag.clone(),
                 })
                 .collect();
+            unit.built = effect.built.clone();
         }
     }
 
@@ -733,6 +778,7 @@ impl Working {
             uncounted: Vec::new(),
             taken_unshown: Vec::new(),
             produced: Vec::new(),
+            built: Vec::new(),
         });
         self.forming.push(Some(index));
     }
@@ -2838,6 +2884,89 @@ mod tests {
                 vec![ProducedItem {
                     amount: 8,
                     tag: "SWOR".to_string(),
+                }]
+            );
+        }
+
+        /// A hex whose one own unit stands in an unfinished Stockade, for the `BUILD` cases
+        /// (`ah-ofpb.2`).
+        ///
+        /// The men must be the *first* item on the line: `count_men` reads the headcount off
+        /// `items.first()`, which is the report's own convention.
+        fn report_with_a_builder() -> String {
+            [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  Southeast : plain (2,2) in Nowhere.",
+                "",
+                "+ Building [4] : Stockade, needs 45.",
+                "  * Builders (900), Foo (1), behind, 10 humans [HUMN], 120 wood [WOOD]. Weight: \
+                 1300. Capacity: 0/0/120/0. Skills: building [BUIL] 3 (250).",
+                "",
+            ]
+            .join("\n")
+        }
+
+        #[test]
+        fn a_built_material_leaves_the_previewed_unit() {
+            let response = preview_over(&report_with_a_builder(), "unit 900\nBUILD\n");
+            let unit = only_unit(&response);
+
+            let wood = unit
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "WOOD")
+                .expect("the remaining wood is in the previewed list");
+            assert_eq!(wood.amount, 90);
+            change(unit, "items");
+        }
+
+        #[test]
+        fn a_material_spent_to_nothing_disappears_from_the_previewed_list() {
+            let hex_region = [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  Southeast : plain (2,2) in Nowhere.",
+                "",
+                "+ Building [4] : Stockade, needs 45.",
+                "  * Builders (900), Foo (1), behind, 10 humans [HUMN], 30 wood [WOOD]. Weight: \
+                 1300. Capacity: 0/0/120/0. Skills: building [BUIL] 3 (250).",
+                "",
+            ]
+            .join("\n");
+            let response = preview_over(&hex_region, "unit 900\nBUILD\n");
+            let unit = only_unit(&response);
+
+            assert!(
+                !unit.unit.items.iter().any(|item| item.tag == "WOOD"),
+                "an emptied stock must not be shown, even as zero: {:?}",
+                unit.unit.items
+            );
+        }
+
+        #[test]
+        fn a_build_is_named_on_the_preview() {
+            let response = preview_over(&report_with_a_builder(), "unit 900\nBUILD\n");
+            let unit = only_unit(&response);
+
+            assert_eq!(
+                unit.built,
+                vec![BuildSpend {
+                    amount: 30,
+                    tag: "WOOD".to_string(),
+                    name: "wood".to_string(),
+                    place: "Building 4".to_string(),
+                    founding: false,
+                    helping: None,
+                    could_do: 30,
+                    capped_by: None,
                 }]
             );
         }

@@ -26,7 +26,8 @@ describe("mergePreview", () => {
           aboard: null,
           uncounted: [],
           takenUnshown: [],
-          produced: []
+          produced: [],
+          built: []
         }
       ])
     );
@@ -57,7 +58,8 @@ describe("mergePreview", () => {
           aboard: null,
           uncounted: [],
           takenUnshown: [],
-          produced: []
+          produced: [],
+          built: []
         },
         {
           unit: unit({ unitId: "new-1", name: "Recruits" }),
@@ -68,7 +70,8 @@ describe("mergePreview", () => {
           aboard: null,
           uncounted: [],
           takenUnshown: [],
-          produced: []
+          produced: [],
+          built: []
         }
       ])
     );
@@ -92,7 +95,8 @@ describe("mergePreview", () => {
           aboard: "Wavecrest [329]",
           uncounted: [],
           takenUnshown: [],
-          produced: []
+          produced: [],
+          built: []
         },
         {
           unit: unit({ unitId: "901", name: "Passengers" }),
@@ -103,7 +107,8 @@ describe("mergePreview", () => {
           aboard: "Wavecrest [329]",
           uncounted: [],
           takenUnshown: [],
-          produced: []
+          produced: [],
+          built: []
         }
       ])
     );
@@ -125,7 +130,8 @@ describe("mergePreview", () => {
           aboard: null,
           uncounted: [],
           takenUnshown: [],
-          produced: []
+          produced: [],
+          built: []
         }
       ])
     );
@@ -152,7 +158,8 @@ describe("changeFor and originalTooltip", () => {
           aboard: null,
           uncounted: [],
           takenUnshown: [],
-          produced: []
+          produced: [],
+          built: []
         }
       ])
     );
@@ -270,6 +277,209 @@ describe("formatItems and itemsTooltip", () => {
 
     expect(itemsTooltip(row, silver)).toBe(
       "was: 3 SWOR\nThis unit has materials for 0 catapults, not the 3 its men could make."
+    );
+  });
+
+  // `ah-ofpb.2`. Every string below is quoted verbatim in the plan and is the navigator's own
+  // wording - nothing here is left for the test to word differently.
+
+  it("words the hover for a unit building at full rate", () => {
+    const row = previewedUnit({
+      items: [
+        { amount: 10, name: "humans", tag: "HUMN" },
+        { amount: 120, name: "wood", tag: "WOOD" }
+      ],
+      built: [
+        {
+          amount: 30,
+          tag: "WOOD",
+          name: "wood",
+          place: "Building 4",
+          founding: false,
+          helping: null,
+          couldDo: 30,
+          cappedBy: null
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 10 HUMN, 120 WOOD\nSpends 30 WOOD on Building 4 this month."
+    );
+  });
+
+  it("words the hover for a builder short of material", () => {
+    const row = previewedUnit({
+      items: [{ amount: 15, name: "wood", tag: "WOOD" }],
+      built: [
+        {
+          amount: 15,
+          tag: "WOOD",
+          name: "wood",
+          place: "Building 4",
+          founding: false,
+          helping: null,
+          couldDo: 30,
+          cappedBy: "materials"
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 15 WOOD\n" +
+        "Spends 15 WOOD on Building 4 this month.\n" +
+        "This unit has wood for 15 units of work, not the 30 its men could do."
+    );
+  });
+
+  it("words the hover for a builder on a nearly finished structure", () => {
+    const row = previewedUnit({
+      items: [{ amount: 120, name: "wood", tag: "WOOD" }],
+      built: [
+        {
+          amount: 6,
+          tag: "WOOD",
+          name: "wood",
+          place: "Guild Hall",
+          founding: false,
+          helping: null,
+          couldDo: 30,
+          cappedBy: "needs"
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 120 WOOD\n" +
+        "Spends 6 WOOD on Guild Hall this month.\n" +
+        "Guild Hall needs 6 more units of work, not the 30 its men could do."
+    );
+  });
+
+  it("words the hover for a unit founding a structure", () => {
+    const row = previewedUnit({
+      items: [{ amount: 120, name: "wood", tag: "WOOD" }],
+      built: [
+        {
+          amount: 30,
+          tag: "WOOD",
+          name: "wood",
+          place: "Stockade",
+          founding: true,
+          helping: null,
+          couldDo: 30,
+          cappedBy: null
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 120 WOOD\nSpends 30 WOOD on a new Stockade this month."
+    );
+  });
+
+  it("words the hover for a unit founding a structure it cannot finish this month", () => {
+    const row = previewedUnit({
+      items: [{ amount: 120, name: "stone", tag: "STON" }],
+      built: [
+        {
+          amount: 10,
+          tag: "STON",
+          name: "stone",
+          place: "Tower",
+          founding: true,
+          helping: null,
+          couldDo: 30,
+          cappedBy: "needs"
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 120 STON\n" +
+        "Spends 10 STON on a new Tower this month.\n" +
+        "A new Tower needs 10 units of work, not the 30 its men could do."
+    );
+  });
+
+  it("words the hover for a unit helping another build", () => {
+    const row = previewedUnit({
+      items: [{ amount: 120, name: "wood", tag: "WOOD" }],
+      built: [
+        {
+          amount: 30,
+          tag: "WOOD",
+          name: "wood",
+          place: "Building 4",
+          founding: false,
+          helping: "5541",
+          couldDo: 30,
+          cappedBy: null
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 120 WOOD\nSpends 30 WOOD helping unit 5541 build Building 4 this month."
+    );
+  });
+
+  it("words the hover for a unit helping another found a structure", () => {
+    const row = previewedUnit({
+      items: [{ amount: 120, name: "wood", tag: "WOOD" }],
+      built: [
+        {
+          amount: 30,
+          tag: "WOOD",
+          name: "wood",
+          place: "Tower",
+          founding: true,
+          helping: "5541",
+          couldDo: 30,
+          cappedBy: null
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 120 WOOD\nSpends 30 WOOD helping unit 5541 build a new Tower this month."
+    );
+  });
+
+  it("puts the build lines after the production lines", () => {
+    const row = previewedUnit({
+      items: [
+        { amount: 5, name: "iron", tag: "IRON" },
+        { amount: 15, name: "wood", tag: "WOOD" }
+      ],
+      previewChanges: [{ field: "items", original: "5 IRON, 30 WOOD" }],
+      produced: [{ amount: 5, tag: "SWOR" }],
+      built: [
+        {
+          amount: 15,
+          tag: "WOOD",
+          name: "wood",
+          place: "Building 4",
+          founding: false,
+          helping: null,
+          couldDo: 30,
+          cappedBy: "materials"
+        }
+      ]
+    });
+    const silver = aUnitSilver({
+      produced: 5,
+      producedName: "sword",
+      productionWanted: 8,
+      productionCappedBy: "materials"
+    });
+
+    expect(itemsTooltip(row, silver)).toBe(
+      "was: 5 IRON, 30 WOOD\n" +
+        "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "This unit has materials for 5 swords, not the 8 its men could make.\n" +
+        "Spends 15 WOOD on Building 4 this month.\n" +
+        "This unit has wood for 15 units of work, not the 30 its men could do."
     );
   });
 });

@@ -4182,6 +4182,30 @@ test("a produced item marks the ITEMS cell as a projection", async ({ page }) =>
 });
 
 /**
+ * ah-ofpb.2: a BUILD the column cannot put a figure to marks the cell.
+ *
+ * The mark rather than a counted build, and that is forced rather than chosen: no own unit on the
+ * turn-71 fixture has a skill that builds anything, and none holds wood or stone, so no BUILD on
+ * this report moves an item at all. The counted path is covered by `effects.rs` and
+ * `UnitTableDock.test.tsx`; this walk proves the order reaches the cell in a real browser.
+ *
+ * Located by title rather than by `data-predicted`: an uncounted-only row has no `items` change,
+ * so the cell is deliberately not marked as a projection (`UnitTableDock.tsx:894`).
+ */
+test("a build that cannot be counted marks the ITEMS cell", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await fillOrders(page, "BUILD Barn");
+
+  const itemsCell = row.locator('td[title*="cannot be counted"]');
+  await expect(itemsCell).toContainText("+ ?");
+  await expect(itemsCell).toHaveAttribute("title", /and more that cannot be counted: BUILD Barn/);
+});
+
+/**
  * ah-cp8: a narrow window used to clip the right-hand end of the header (Export, the settings
  * gear) instead of adapting. The header now wraps into two groups, with the actions group
  * dropping to its own right-aligned row when the game-state group has already taken the width.

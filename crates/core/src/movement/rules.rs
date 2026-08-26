@@ -950,6 +950,25 @@ impl Ruleset {
         Some((building.build_skill.as_deref()?, building.build_level?))
     }
 
+    /// What a structure costs in work and material, and which materials may be spent on it.
+    ///
+    /// `None` when the catalogue states neither - 22 of the data page's 58 structures (a Shaft, a
+    /// Lair, a Gateway), every ship, and anything the player has misspelt. That is the catalogue
+    /// declining to say, and this column marks such a build rather than guessing (`ah-ofpb.2`).
+    ///
+    /// The materials are the page's own **lower-case display names** - `["wood", "stone"]`, not
+    /// tags - because that is what the scraper writes (`packages/ruleset/src/data.ts:817`).
+    /// Resolve each through [`Ruleset::find_item`] before it touches an item list.
+    #[must_use]
+    pub fn build_recipe(&self, kind: &str) -> Option<(i64, &[String])> {
+        let building = self.buildings.get(&kind.to_ascii_uppercase())?;
+        let materials = building
+            .materials
+            .as_deref()
+            .filter(|list| !list.is_empty())?;
+        Some((building.cost?, materials))
+    }
+
     /// Whether this ruleset carries the buildings table at all.
     ///
     /// [`Ruleset::mage_capacity`] answers `None` both for a kind the table does not name and for a
@@ -1093,6 +1112,29 @@ mod tests {
         assert_eq!(ruleset.build_requirement("Lair"), None);
         // Nor is a kind the catalogue has never heard of - a ship.
         assert_eq!(ruleset.build_requirement("Longship"), None);
+    }
+
+    #[test]
+    fn a_building_states_its_cost_and_its_materials() {
+        let ruleset = ruleset();
+
+        assert_eq!(
+            ruleset.build_recipe("Stockade"),
+            Some((60, ["wood".to_string()].as_slice()))
+        );
+        assert_eq!(
+            ruleset.build_recipe("Mine"),
+            Some((10, ["wood".to_string(), "stone".to_string()].as_slice()))
+        );
+        // The map is keyed upper-case, as `build_requirement` already assumes.
+        assert_eq!(
+            ruleset.build_recipe("mine"),
+            Some((10, ["wood".to_string(), "stone".to_string()].as_slice()))
+        );
+        // A structure no skill's entry names states neither half.
+        assert_eq!(ruleset.build_recipe("Shaft"), None);
+        // Nor does a kind the catalogue has never heard of.
+        assert_eq!(ruleset.build_recipe("Barn"), None);
     }
 
     /// Half an entry is not a state ah-bwly.1 can produce, but reading it as "no requirement" is
