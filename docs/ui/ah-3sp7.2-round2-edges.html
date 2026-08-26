@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-3sp7.2 — round 2: two edges the pages do not settle</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1080px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:104ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:38px 0 10px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass);
+    border-top:1px solid var(--edge); padding-top:22px; }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:22px 0 8px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:104ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  pre.ord { background:#0c1016; border:1px solid var(--edge); border-left:3px solid var(--ink-dim);
+    padding:9px 13px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12.5px; color:var(--ink-soft); margin:10px 0; }
+  pre.ord b { color:var(--ink); }
+  table.units { border-collapse:collapse; width:100%; font-family:system-ui,-apple-system,sans-serif;
+    font-size:12.5px; background:var(--panel); border:1px solid var(--edge); margin:8px 0; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:600; font-size:10.5px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:8px 12px; border-bottom:1px solid rgba(38,48,61,.5); }
+  table.units tr:last-child td { border-bottom:0; }
+  table.units td.pred { color:var(--brass); font-style:italic; }
+  table.units td.same { color:var(--ink-dim); }
+  .warn { background:var(--raised); border-left:3px solid var(--brass); padding:9px 13px; font-family:system-ui,sans-serif;
+    font-size:12.5px; color:var(--ink); max-width:104ch; margin:8px 0; }
+  .warn .w { color:var(--brass); }
+  .none { color:var(--ink-dim); font-style:italic; font-size:12.5px; margin:10px 0; font-family:system-ui,sans-serif; }
+  .caselbl { color:var(--ink-dim); font-size:11px; letter-spacing:1.3px; text-transform:uppercase; margin:18px 0 4px; }
+  .lede { color:var(--ink-soft); font-size:13.5px; max-width:104ch; margin:8px 0 4px; }
+  .settled { background:#131a22; border:1px solid var(--edge); border-left:3px solid var(--ok); padding:12px 15px; margin:14px 0;
+    font-size:13px; color:var(--ink-soft); max-width:104ch; }
+  .settled b { color:var(--ink); }
+</style></head><body>
+<header>
+<h1>Round two — <span>two edges neither page settles</span></h1>
+<p>You chose: the refusal and the warning apply to <b>every</b> form, <code>ALL ITEMS</code> and a named
+item alike; the sentence <b>names every survivor with counts</b>; and <code>GIVE 901 20 LION</code> gets
+both the refusing row and the sentence.</p>
+<div class="settled">
+<b>Settled, and written into the plan as it stands:</b><br>
+&bull; <code>A GIVE or TAKE naming items that cannot change hands, such as most monsters.</code> replaces the
+Settings description; the title <b>Gifts the game will refuse</b> is unchanged.<br>
+&bull; <code>GIVE 901 ALL ITEMS</code> → <span style="color:var(--ink)">20 lions and 3 wolves cannot be given
+away, so this order moves only 1 skeleton, 4 swords, 2 horses and 12 grain.</span><br>
+&bull; <code>GIVE 901 20 LION</code> → <span style="color:var(--ink)">20 lions cannot be given away, so this
+order moves nothing.</span><br>
+&bull; A unit holding none of what the order names still says nothing at all.
+</div>
+<p style="margin-top:10px">Two cases are left, and I will not guess at either. Unit 900 holds
+<b>20 lions, 3 wolves and 1 skeleton</b>.</p>
+</header>
+<main>
+
+<h3 class="sec">1 — <code>GIVE 0</code>, which destroys rather than gives</h3>
+<p class="lede"><code>rules/give</code>: <i>"If 0 is specified as the unit number, then the items are
+discarded."</i> The data page's restriction is worded <code>This item cannot be given to <b>other
+units</b>.</code> — and unit 0 is not another unit, it is the bin. <b>Neither the rules page nor the
+data page says whether the game lets you destroy a lion.</b> I have no lookup that settles it, so the
+application has to choose what it claims.</p>
+
+<div class="opt">OPTION 1A — a discard is a transfer like any other: the lions stay</div>
+<pre class="ord">unit 900
+<b>GIVE 0 ALL MONSTERS</b></pre>
+<table class="units">
+<tr><th>Unit</th><th>Items</th></tr>
+<tr><td>Beasts (900)</td><td class="pred">20 lions, 3 wolves</td></tr>
+</table>
+<div class="warn"><span class="w">line 2</span> — 20 lions and 3 wolves cannot be given away, so this order moves only 1 skeleton.</div>
+<ul class="notes">
+<li>One rule about lions, everywhere, which is what you chose in round one for exactly this reason.</li>
+<li>Errs toward "it did not move" — the direction the item's own sentence points.</li>
+<li class="con">If the engine does allow a discard, the row keeps lions the player has actually destroyed, and the warning is simply wrong.</li>
+</ul>
+
+<div class="opt">OPTION 1B — a discard is not a gift: the lions go</div>
+<pre class="ord">unit 900
+<b>GIVE 0 ALL MONSTERS</b></pre>
+<table class="units">
+<tr><th>Unit</th><th>Items</th></tr>
+<tr><td>Beasts (900)</td><td class="pred">—</td></tr>
+</table>
+<p class="none">No warning. Nothing was refused: the restriction names other units, and there is no
+other unit here.</p>
+<ul class="notes">
+<li>Reads the data page's sentence literally, which is the only evidence either page offers.</li>
+<li class="con">If the engine refuses it, the row shows a unit emptied of animals it still owns.</li>
+</ul>
+
+<div class="opt">OPTION 1C — say nothing either way: <code>GIVE 0</code> of a class stays uncountable</div>
+<pre class="ord">unit 900
+<b>GIVE 0 ALL MONSTERS</b></pre>
+<table class="units">
+<tr><th>Unit</th><th>Items</th><th>Silver</th></tr>
+<tr><td>Beasts (900)</td><td class="same">20 lions, 3 wolves, 1 skeleton <span style="color:var(--ink-dim)">+ ?</span></td><td class="same">?</td></tr>
+</table>
+<div class="warn" style="border-left-color:var(--ink-dim)"><i>hover:</i> This unit is giving away a whole class of goods, which cannot be counted.</div>
+<ul class="notes">
+<li>Claims nothing the pages do not support — today's behaviour, kept for this one shape.</li>
+<li class="con">A <code>?</code> that survives this whole family, on the one order shape where the application now has every fact it needs except one.</li>
+<li class="con">Needs its own branch and its own explanation for ever after.</li>
+</ul>
+
+<h3 class="sec">2 — a named order that asks for more than the unit holds</h3>
+<p class="lede">Unit 900 holds 20 lions. The order asks for 30. Nothing moves either way; the question
+is which number the sentence prints.</p>
+
+<div class="opt">OPTION 2A — count what would actually have moved</div>
+<pre class="ord">unit 900
+<b>GIVE 901 30 LION</b></pre>
+<div class="warn"><span class="w">line 2</span> — 20 lions cannot be given away, so this order moves nothing.</div>
+<div class="caselbl">and, with a reserve — <code>GIVE 901 ALL LION EXCEPT 5</code>, so 15 would have moved</div>
+<div class="warn"><span class="w">line 2</span> — 15 lions cannot be given away, so this order moves nothing.</div>
+<ul class="notes">
+<li>The same rule the class form already uses: count what the transfer would have carried.</li>
+<li>Never prints a number the unit does not have, so it can never look like a stock report that disagrees with the row.</li>
+<li class="con">"15 lions cannot be given away" is odd when all 20 of them equally cannot — the number is about the order, not about lions.</li>
+</ul>
+
+<div class="opt">OPTION 2B — count what the unit holds of it</div>
+<pre class="ord">unit 900
+<b>GIVE 901 30 LION</b></pre>
+<div class="warn"><span class="w">line 2</span> — 20 lions cannot be given away, so this order moves nothing.</div>
+<div class="caselbl">and, with a reserve — <code>GIVE 901 ALL LION EXCEPT 5</code></div>
+<div class="warn"><span class="w">line 2</span> — 20 lions cannot be given away, so this order moves nothing.</div>
+<ul class="notes">
+<li>The sentence is about lions, and it is true of every lion the unit has.</li>
+<li>One number whatever the order says, so two lines about the same stack agree with each other.</li>
+<li class="con">Diverges from the class form, which counts what would have moved — two rules where round one bought you one.</li>
+</ul>
+
+<div class="opt">OPTION 2C — count what the order asked for</div>
+<pre class="ord">unit 900
+<b>GIVE 901 30 LION</b></pre>
+<div class="warn"><span class="w">line 2</span> — 30 lions cannot be given away, so this order moves nothing.</div>
+<ul class="notes">
+<li>Echoes the line the player wrote, so the sentence and the order read as one.</li>
+<li class="con">Prints a count of lions the unit does not own, beside a row that shows 20.</li>
+</ul>
+
+</main></body></html>
