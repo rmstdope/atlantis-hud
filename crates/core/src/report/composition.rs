@@ -11,7 +11,7 @@
 use std::collections::BTreeSet;
 
 use crate::movement::rules::Ruleset;
-use crate::report::model::ReportUnit;
+use crate::report::model::{ItemAmount, ReportUnit};
 use crate::report::ParsedReport;
 
 /// What classifying a report turned up.
@@ -62,13 +62,59 @@ fn classify_unit(unit: &mut ReportUnit, ruleset: &Ruleset, unknown: &mut BTreeSe
         return;
     }
 
-    // Order follows the report's own, so a unit reads the way it was written.
-    unit.men_by_race = unit
-        .items
+    let (by_race, total) = men_in(&unit.items, ruleset);
+    unit.men_by_race = by_race;
+    unit.men = total;
+    unit.men_estimated = false;
+}
+
+/// The people in an item list: the man-tagged entries in the list's own order, and their total.
+///
+/// The one place this rule is written. A unit's headcount is not something a report states; it is
+/// its man-tagged items, counted. Every pass that moves a unit's items has to read men back the
+/// same way, or two cells of one row end up disagreeing about one unit.
+pub(crate) fn men_in(items: &[ItemAmount], ruleset: &Ruleset) -> (Vec<ItemAmount>, i64) {
+    let by_race: Vec<ItemAmount> = items
         .iter()
         .filter(|item| ruleset.is_man(&item.tag))
         .cloned()
         .collect();
-    unit.men = unit.men_by_race.iter().map(|race| race.amount).sum();
-    unit.men_estimated = false;
+    let total = by_race.iter().map(|race| race.amount).sum();
+    (by_race, total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn men_in_counts_the_man_tagged_items() {
+        let ruleset = Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
+            .expect("the fixture ruleset is valid");
+
+        let items = vec![
+            ItemAmount {
+                amount: 10,
+                name: "orcs".to_string(),
+                tag: "ORC".to_string(),
+            },
+            ItemAmount {
+                amount: 3,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+            },
+        ];
+
+        let (by_race, total) = men_in(&items, &ruleset);
+
+        assert_eq!(
+            by_race,
+            vec![ItemAmount {
+                amount: 10,
+                name: "orcs".to_string(),
+                tag: "ORC".to_string(),
+            }]
+        );
+        assert_eq!(total, 10);
+    }
 }

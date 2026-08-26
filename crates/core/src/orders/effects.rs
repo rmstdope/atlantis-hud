@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache::ReportCache;
 use crate::movement::rules::item_spellings;
 use crate::orders::standing::{standing_after, BoardingOrder};
+use crate::report::composition;
 use crate::report::model::{level_for_points, ReportUnit, Skill};
 
 /// How a previewed unit relates to the hex its row sits in.
@@ -172,6 +173,7 @@ pub fn preview_orders_on_map(
     let item_effects =
         super::semantics::item_effects(&report, orders_document, Some(ruleset.as_ref()));
     working.apply_item_effects(&item_effects);
+    settle_headcounts(&mut working.units, &ruleset);
 
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
@@ -780,6 +782,8 @@ impl Working {
             self.board(active, BoardingOrder::Leave);
         } else if command.is("give") {
             self.give(active, arguments);
+        } else if command.is("take") {
+            self.take(active, arguments);
         }
     }
 
@@ -829,7 +833,7 @@ impl Working {
     /// makes the whole order a no-op: the validator flags what the server would refuse, and
     /// half-applying it here would show a transfer that will not happen.
     fn give(&mut self, giver: usize, arguments: &[super::lexer::Token]) {
-        use super::forms::{Amount, Party, Selector};
+        use super::forms::Party;
 
         let Some((target, rest)) = super::forms::read_party(arguments) else {
             return;
@@ -867,50 +871,211 @@ impl Working {
             return;
         }
 
-        let Selector::Item(item) = what else {
-            // `GIVE target UNIT` hands over the whole unit, and `ALL ITEMS` a whole class of them.
-            // Ownership is a different question from what a row shows, and a class needs every
-            // item the unit holds classified; both are left to a later issue.
-            return;
-        };
-        let Some(held) = find_item(&self.units[giver].unit.items, &item) else {
-            return;
-        };
-        let (name, tag, held_amount) = {
-            let held = &self.units[giver].unit.items[held];
-            (held.name.clone(), held.tag.clone(), held.amount)
-        };
-
-        let requested = match amount {
-            // `GIVE target ALL item EXCEPT n` keeps n back.
-            Amount::All { except } => held_amount.saturating_sub(except),
-            Amount::Exact(count) => count,
-        };
-        let moved = requested.clamp(0, held_amount);
-        if moved == 0 {
-            return;
-        }
-
-        take_item(&mut self.units[giver].unit.items, held, moved);
-        if let Some(receiver) = receiver {
-            add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
-        }
-
-        // A race is people, so giving one moves men as well as stock.
-        if self.ruleset.is_man(&tag) {
-            let unit = &mut self.units[giver].unit;
-            unit.men -= moved;
-            if let Some(race) = unit.men_by_race.iter().position(|race| race.tag == tag) {
-                take_item(&mut unit.men_by_race, race, moved);
-            }
+        for (name, tag, moved) in self.tags_moved(giver, &what, &amount) {
+            // Re-resolved by tag rather than kept from the snapshot: an earlier tag in this same
+            // loop may have removed an item ahead of this one and shifted every index after it.
+            let Some(held) = self.units[giver]
+                .unit
+                .items
+                .iter()
+                .position(|item| item.tag == tag)
+            else {
+                continue;
+            };
+            take_item(&mut self.units[giver].unit.items, held, moved);
             if let Some(receiver) = receiver {
-                let arriving = self.units[giver].unit.skills.clone();
-                let unit = &mut self.units[receiver].unit;
-                unit.skills = merge_skills(&unit.skills, unit.men, &arriving, moved);
-                unit.men += moved;
-                add_item(&mut unit.men_by_race, &name, &tag, moved);
+                add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
+            }
+
+            // A race is people, so giving one moves men as well as stock.
+            if self.ruleset.is_man(&tag) {
+                let unit = &mut self.units[giver].unit;
+                unit.men -= moved;
+                if let Some(race) = unit.men_by_race.iter().position(|race| race.tag == tag) {
+                    take_item(&mut unit.men_by_race, race, moved);
+                }
+                if let Some(receiver) = receiver {
+                    let arriving = self.units[giver].unit.skills.clone();
+                    let unit = &mut self.units[receiver].unit;
+                    unit.skills = merge_skills(&unit.skills, unit.men, &arriving, moved);
+                    unit.men += moved;
+                    add_item(&mut unit.men_by_race, &name, &tag, moved);
+                }
             }
         }
+    }
+
+    /// `TAKE FROM source amount item`, which `rules/take` defines as a GIVE with the direction
+    /// reversed and confines to "another unit in the same faction" - so the source is always one
+    /// of ours, found the same way `give` finds its receiver.
+    ///
+    /// Deliberately moves **no items**: the ledger records a TAKE as a movement
+    /// (`RecordMovement::Yes`, `semantics.rs:2384`) and `apply_item_effects` applies it a moment
+    /// later, so moving them here as well would move them twice - and `settle_headcounts` would
+    /// then double the headcount too, since it derives from exactly that list. What is left is
+    /// the half nothing applies: the skills the arriving men bring, and a running headcount for
+    /// the merge that follows to weigh against.
+    fn take(&mut self, taker: usize, arguments: &[super::lexer::Token]) {
+        use super::forms::Party;
+
+        let Some((_, rest)) = arguments.split_first().filter(|(kw, _)| kw.is("FROM")) else {
+            return;
+        };
+        let Some((source, rest)) = super::forms::read_party(rest) else {
+            return;
+        };
+        let Some((what, amount)) = super::forms::read_transfer(rest) else {
+            return;
+        };
+
+        let source_index = match source {
+            Party::New(alias) => {
+                let key = (self.units[taker].unit.region_id.clone(), alias);
+                match self.by_alias.get(&key) {
+                    Some(&index) => index,
+                    None => return,
+                }
+            }
+            // Nobody to take from: `rules/take` confines a TAKE to a faction-mate, so another
+            // faction's unit and the discard target both leave the taker unchanged.
+            Party::Discard | Party::Foreign { .. } => return,
+            Party::Unit(id) => match self.by_id.get(&id) {
+                Some(&index)
+                    if self.units[index].unit.region_id == self.units[taker].unit.region_id =>
+                {
+                    index
+                }
+                _ => return,
+            },
+        };
+
+        if source_index == taker {
+            return;
+        }
+
+        for (_, tag, moved) in self.tags_moved(source_index, &what, &amount) {
+            if !self.ruleset.is_man(&tag) {
+                continue;
+            }
+            let arriving = self.units[source_index].unit.skills.clone();
+            self.units[source_index].unit.men -= moved;
+            let unit = &mut self.units[taker].unit;
+            unit.skills = merge_skills(&unit.skills, unit.men, &arriving, moved);
+            unit.men += moved;
+        }
+    }
+
+    /// What one transfer actually moves out of `holder`: the tag, the name the holder writes it
+    /// by, and how many.
+    ///
+    /// Snapshotted before anything moves, because the caller mutates the list this was read
+    /// from.
+    ///
+    /// `rules/give` lists the classes and defines `ITEM`/`ITEMS` as "the combination of all of
+    /// the previous categories", so it needs no classifying: it is everything. `MAN`/`MEN` is
+    /// `composition::men_in`'s filter, the same one that derived the headcount to begin with.
+    /// Every other class - `WEAPON`, `FOOD`, `TRADE` and the rest - needs a classification the
+    /// catalogue does not carry (`ItemKind` is `Man`/`Mount`/`Monster`/`Ship`/`Equipment`), so it
+    /// is left exactly as it is today: unresolvable, and turned away.
+    ///
+    /// `GIVE target UNIT` hands over the whole unit rather than anything it holds - ownership is
+    /// a different question from what a row shows, and is left to a later issue.
+    fn tags_moved(
+        &self,
+        holder: usize,
+        what: &super::forms::Selector,
+        amount: &super::forms::Amount,
+    ) -> Vec<(String, String, i64)> {
+        use super::forms::{Amount, Selector};
+
+        match what {
+            Selector::Item(item) => {
+                let Some(held) = find_item(&self.units[holder].unit.items, item) else {
+                    return Vec::new();
+                };
+                let (name, tag, held_amount) = {
+                    let held = &self.units[holder].unit.items[held];
+                    (held.name.clone(), held.tag.clone(), held.amount)
+                };
+                let requested = match amount {
+                    Amount::All { except } => held_amount.saturating_sub(*except),
+                    Amount::Exact(count) => *count,
+                };
+                let moved = requested.clamp(0, held_amount);
+                if moved == 0 {
+                    Vec::new()
+                } else {
+                    vec![(name, tag, moved)]
+                }
+            }
+            // `rules/give` gives `EXCEPT` and a stated amount to the named-item forms alone; the
+            // class form is `GIVE [unit] ALL [item class]` and nothing else. A class arriving
+            // with either is a shape the rules do not define, so it is left exactly as today.
+            Selector::Class(_) if *amount != (Amount::All { except: 0 }) => Vec::new(),
+            Selector::Class(name)
+                if name.eq_ignore_ascii_case("MAN") || name.eq_ignore_ascii_case("MEN") =>
+            {
+                self.units[holder]
+                    .unit
+                    .items
+                    .iter()
+                    .filter(|item| self.ruleset.is_man(&item.tag))
+                    .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
+                    .collect()
+            }
+            Selector::Class(name)
+                if name.eq_ignore_ascii_case("ITEM") || name.eq_ignore_ascii_case("ITEMS") =>
+            {
+                self.units[holder]
+                    .unit
+                    .items
+                    .iter()
+                    .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
+                    .collect()
+            }
+            Selector::Class(_) | Selector::WholeUnit => Vec::new(),
+        }
+    }
+}
+
+/// Puts every unit's headcount back in step with the items it will actually hold.
+///
+/// `men` is derived from the item list (`composition::men_in`), so any pass that moves items has to
+/// re-derive it or the two drift apart - which is what `TAKE FROM 1234 10 HUMN` did before this
+/// function existed, leaving a row reading `20 HUMN` in ITEMS and `10` in MEN.
+///
+/// Men that arrived by a route the walk did not see were bought. `rules/economy_recruiting`: "New
+/// recruits will not have any skills or items" - so they merge in at zero and dilute the unit's
+/// skills exactly as gifted men do, by the same rule in `rules/give`.
+fn settle_headcounts(units: &mut [WorkingUnit], ruleset: &crate::movement::rules::Ruleset) {
+    for working in units {
+        // A headcount the report itself could only estimate stays exactly as the parser left it:
+        // re-deriving from a list the catalogue cannot fully read is the guess `classify_unit`
+        // refuses to make (`composition.rs:56-63`), under another name.
+        if working.unit.men_estimated {
+            continue;
+        }
+        let before = working.unit.men;
+        let (by_race, total) = composition::men_in(&working.unit.items, ruleset);
+        if total > before {
+            // A man tag credited from a unit this hex does not show (`ah-agbm`'s
+            // `taken_unshown`) is not a recruit: its true skills are unknown, not zero, exactly
+            // as `apply_gifts_of_men` already marks that unit `Unknowable` rather than guessing.
+            // Left out of the merge here, or the checks and the units table would disagree about
+            // the same arrival.
+            let taken_unknown: i64 = working
+                .taken_unshown
+                .iter()
+                .filter(|taken| ruleset.is_man(&taken.tag))
+                .map(|taken| taken.amount)
+                .sum();
+            let recruited = total - before - taken_unknown;
+            if recruited > 0 {
+                working.unit.skills = merge_skills(&working.unit.skills, before, &[], recruited);
+            }
+        }
+        working.unit.men_by_race = by_race;
+        working.unit.men = total;
     }
 }
 
@@ -1066,6 +1231,25 @@ mod tests {
             "",
             "* Walker (900), Foo (1), behind, leader [LEAD], 3 swords [SWOR], 10 fur [FUR]. Weight: 20. Capacity: 0/0/15/0.",
             "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
+    /// Like `report_with_market()`, but the market sells people and the unit already has men, a
+    /// skill and the silver to spend - for `settle_headcounts`' recruiting cases.
+    fn report_with_market_selling_people() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 20 humans [HUMN] at $38.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Crew (900), Foo (1), 10 humans [HUMN], 400 silver [SILV]. Weight: 100. \
+             Capacity: 0/0/150/0. Skills: lumberjack [LUMB] 3 (180).",
             "",
         ]
         .join("\n")
@@ -1359,16 +1543,21 @@ mod tests {
     /// exactly this order as the example of one the ITEMS column cannot count, so it is now
     /// admitted rather than silently dropped. Renamed from
     /// `giving_a_class_of_items_previews_nothing`; see the sibling test above for why.
+    ///
+    /// `ITEM`/`ITEMS` and `MAN`/`MEN` are resolved by `ah-dxfd.1` and no longer land here - see
+    /// `a_gift_of_all_men_moves_every_race` and `a_gift_of_all_items_moves_the_swords_too` below.
+    /// A class the catalogue cannot classify at all, `WEAPONS`, still turns away exactly as
+    /// every class once did, which is what proves the change is narrow.
     #[test]
-    fn giving_a_class_of_items_moves_no_items_but_is_marked_uncounted() {
-        let response = preview("unit 900\nGIVE 901 ALL ITEMS\n");
+    fn giving_a_class_this_walk_cannot_resolve_still_moves_nothing() {
+        let response = preview("unit 900\nGIVE 901 ALL WEAPONS\n");
         let unit = only_unit(&response);
         assert!(
             !unit.changes.iter().any(|change| change.field == "items"),
             "a class the preview cannot classify must move nothing: {:?}",
             unit.changes
         );
-        assert_eq!(unit.uncounted, vec!["GIVE 901 ALL ITEMS".to_string()]);
+        assert_eq!(unit.uncounted, vec!["GIVE 901 ALL WEAPONS".to_string()]);
 
         // The control: `ALL` of one named item is modelled and counted, so the row above is the
         // class being turned away rather than `ALL` failing to read. Both units change here, so
@@ -1380,6 +1569,116 @@ mod tests {
             .find(|unit| unit.unit.unit_id == "900")
             .expect("the giver changed");
         assert!(giver.uncounted.is_empty());
+    }
+
+    /// `classify_unit`'s own filter, run over a GIVE: every race the giver holds moves, and its
+    /// equipment stays behind.
+    #[test]
+    fn a_gift_of_all_men_moves_every_race() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Mixed (900), Foo (1), 10 orcs [ORC], 1 leader [LEAD], 3 swords [SWOR]. \
+             Weight: 100. Capacity: 0/0/150/0.",
+            "* Empty (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nGIVE 901 ALL MEN\n",
+        )
+        .expect("the ruleset loads");
+
+        let region = &response.regions[0];
+        let giver = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the giver changed");
+        let receiver = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "901")
+            .expect("the receiver changed");
+
+        assert_eq!(giver.unit.men, 0, "every race it holds moved away");
+        assert!(
+            giver.unit.items.iter().any(|item| item.tag == "SWOR"),
+            "the giver keeps its three swords: {:?}",
+            giver.unit.items
+        );
+        assert_eq!(
+            receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "ORC")
+                .map(|item| item.amount),
+            Some(10)
+        );
+        assert_eq!(
+            receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "LEAD")
+                .map(|item| item.amount),
+            Some(2),
+            "the receiver's own leader plus the one given"
+        );
+        assert!(!receiver.unit.items.iter().any(|item| item.tag == "SWOR"));
+    }
+
+    /// `rules/give`: `ITEM`/`ITEMS` is "the combination of all of the previous categories" -
+    /// everything the unit holds, silver included, so the giver ends up with nothing.
+    #[test]
+    fn a_gift_of_all_items_moves_the_swords_too() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Mixed (900), Foo (1), 10 orcs [ORC], 1 leader [LEAD], 3 swords [SWOR]. \
+             Weight: 100. Capacity: 0/0/150/0.",
+            "* Empty (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nGIVE 901 ALL ITEMS\n",
+        )
+        .expect("the ruleset loads");
+
+        let region = &response.regions[0];
+        let giver = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the giver changed");
+        let receiver = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "901")
+            .expect("the receiver changed");
+
+        assert!(
+            giver.unit.items.is_empty(),
+            "the giver ends up holding nothing: {:?}",
+            giver.unit.items
+        );
+        assert_eq!(giver.unit.men, 0);
+        assert!(receiver.unit.items.iter().any(|item| item.tag == "SWOR"));
+        assert!(receiver.unit.items.iter().any(|item| item.tag == "ORC"));
     }
 
     /// A gift to another faction's new unit leaves this faction's rows alone. The shared reader
@@ -1683,6 +1982,118 @@ mod tests {
             "the giver's skills must not be marked changed: {:?}",
             giver.changes
         );
+    }
+
+    /// `rules/take`: "works just like the GIVE order, except that the direction of transfer is
+    /// reversed" - so a TAKE has to move the headcount and merge skills exactly as a GIVE does,
+    /// even though the item movement itself belongs to the ledger (`ah-agbm`) rather than here.
+    #[test]
+    fn a_take_of_men_moves_the_headcount_and_merges_their_skills() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Teachers (1234), Foo (1), 10 orcs [ORC]. Weight: 100. Capacity: 0/0/150/0. \
+             Skills: lumberjack [LUMB] 3 (180).",
+            "* Students (2200), Foo (1), 10 orcs [ORC]. Weight: 100. Capacity: 0/0/150/0. \
+             Skills: lumberjack [LUMB] 1 (30).",
+            "",
+        ]
+        .join("\n");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 2200\nTAKE FROM 1234 5 ORC\n",
+        )
+        .expect("the ruleset loads");
+
+        let region = &response.regions[0];
+        let source = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "1234")
+            .expect("the source changed");
+        let taker = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "2200")
+            .expect("the taker changed");
+
+        assert_eq!(taker.unit.men, 15, "10 already there plus 5 taken");
+        assert_eq!(source.unit.men, 5, "10 less the 5 taken");
+        // Taker: 10 men at (30) merge with 5 arriving at (180) -> (80), level 1.
+        assert_eq!(
+            taker.unit.skills,
+            vec![lumberjack(80)],
+            "{:?}",
+            taker.unit.skills
+        );
+        // The source's own skills are untouched by losing men.
+        assert_eq!(source.unit.skills, vec![lumberjack(180)]);
+    }
+
+    /// A `TAKE FROM` a unit this hex does not show still credits the item optimistically
+    /// (`ah-agbm`'s `taken_unshown` path), but the arriving men's true skills are unknown, not
+    /// zero - the checks side (`apply_gifts_of_men`) already marks a unit taking from an unshown
+    /// source `Unknowable` rather than guessing, and `settle_headcounts` must not quietly guess
+    /// zero either by treating the arrival as a bought recruit.
+    #[test]
+    fn men_taken_from_an_unshown_source_do_not_dilute_the_takers_skills() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Teachers (1234), Foo (1), 10 humans [HUMN]. Weight: 100. Capacity: 0/0/150/0. \
+             Skills: lumberjack [LUMB] 3 (180).",
+            "",
+        ]
+        .join("\n");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 1234\nTAKE FROM 999 5 HUMN\n",
+        )
+        .expect("the ruleset loads");
+
+        let unit = only_unit(&response);
+        assert_eq!(
+            unit.unit.men, 15,
+            "the item still arrives optimistically, per `ah-agbm`"
+        );
+        assert_eq!(
+            unit.unit.skills,
+            vec![lumberjack(180)],
+            "arriving from an unshown source must not be assumed skill-less: {:?}",
+            unit.unit.skills
+        );
+    }
+
+    /// `rules/economy_recruiting`: "New recruits will not have any skills or items" - so a `BUY`
+    /// of people has to reach the headcount and dilute the unit's skills exactly as a gift of men
+    /// does, even though `BUY` never touches `Working::give` at all.
+    #[test]
+    fn bought_men_join_the_unit_and_bring_no_skills() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nBUY 5 HUMN\n",
+        );
+        let unit = only_unit(&response);
+
+        assert_eq!(unit.unit.men, 15, "10 already there plus 5 bought");
+        // (10 * 180 + 5 * 0) / 15 = 120, level 2.
+        assert_eq!(
+            unit.unit.skills,
+            vec![lumberjack(120)],
+            "{:?}",
+            unit.unit.skills
+        );
+        assert_eq!(change(unit, "men").original, "10");
     }
 
     #[test]
