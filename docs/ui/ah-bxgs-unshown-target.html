@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-bxgs &mdash; Q2: a target your report does not show</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .ord { color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; }
+  .unk { color:var(--ink-dim); }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+</style></head><body>
+<header><h1>Question 2 &mdash; <span>a target your report does not show</span></h1>
+<p>A transport's target need only be <b>FRIENDLY</b> (<code>rules/economy_transport</code>) &mdash; it does not have to be yours. So the ordinary, correct case is transporting to <b>an ally's quartermaster</b>, a unit your report never describes. The goods leave; nothing you can see receives them.</p>
+<p>The same shape covers a plain mistake: a unit number that is yours but three hexes off, or a typo.</p>
+<p><b>Today a <code>GIVE</code> to a unit the walker cannot find is a total no-op</b> &mdash; the giver keeps the goods and the row does not move &mdash; on the grounds that the validator flags what the server would refuse. For a transport that reasoning does not hold: sending to an ally's quartermaster is not a mistake, it is the point of the order.</p>
+<p class="mono" style="color:var(--brass-bright);font-size:13px;margin-top:12px">unit 5530<br>&nbsp;&nbsp;transport 1234 30 STON&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--ink-dim)">; 1234 is nowhere in your report</span></p></header>
+<main>
+
+<h3 class="sec">U1 &mdash; the goods leave, and the hover says where to <span class="rec">&nbsp;&nbsp;recommended</span></h3>
+<p>The sender's list falls by 30 stone and goes italic. The hover names the unit the report cannot vouch for. This is the same answer the column already gives for a <code>TAKE</code> from a source your report does not show.</p>
+<div class="card">
+<div class="stage">
+  <table class="units"><colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:48px"><col style="width:150px"><col style="width:220px"><col style="width:120px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th></tr>
+  <tr><td class="own">*</td><td class="uid">5530</td><td>Miners</td><td>6</td><td>mining 3</td><td class="pred colhi">120 SILV, 10 STON</td><td class="ord">&mdash;</td></tr>
+  </table>
+</div>
+<div class="tip"><b>hover</b>was: 120 SILV, 40 STON
+Sends 30 STON to unit 1234, which your report does not show.</div>
+<ul class="notes">
+  <li>Matches the column's existing answer for the mirror case: a stated quantity is granted, and the hover qualifies the source. Same rule, opposite direction.</li>
+  <li>Transporting to an ally is a legitimate, ordinary order. Refusing to project it would blind the column on exactly the play the order exists for.</li>
+  <li class="con">If the number really was a typo, the column shows stone leaving that will not leave.</li>
+</ul>
+</div>
+
+<h3 class="sec">U2 &mdash; the goods stay, and the cell admits it could not count the order</h3>
+<p>Nothing moves. The cell carries the <code>+ ?</code> mark the column already uses for an order it cannot count, and the hover names the line.</p>
+<div class="card">
+<div class="stage">
+  <table class="units"><colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:48px"><col style="width:150px"><col style="width:220px"><col style="width:120px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th></tr>
+  <tr><td class="own">*</td><td class="uid">5530</td><td>Miners</td><td>6</td><td>mining 3</td><td class="colhi">120 SILV, 40 STON<span class="unk"> + ?</span></td><td class="ord">&mdash;</td></tr>
+  </table>
+</div>
+<div class="tip"><b>hover</b>was: 120 SILV, 40 STON
+and more that cannot be counted: transport 1234 30 STON</div>
+<ul class="notes">
+  <li>Never states a departure that might not happen.</li>
+  <li class="con">The goods really do leave whenever the target is a real allied quartermaster &mdash; so the honest case is shown as doubt, and the column is upright and wrong.</li>
+  <li class="con">Reads as <i>we did not understand your order</i>, when the order is perfectly well formed.</li>
+</ul>
+</div>
+
+<h3 class="sec">U3 &mdash; nothing at all, exactly as a misdirected <code>GIVE</code> behaves today</h3>
+<p>No movement, no mark, no hover. The row is identical to one with no orders.</p>
+<div class="card">
+<div class="stage">
+  <table class="units"><colgroup><col style="width:34px"><col style="width:64px"><col style="width:150px"><col style="width:48px"><col style="width:150px"><col style="width:220px"><col style="width:120px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Skills</th><th class="colhi">Items</th><th>Long order</th></tr>
+  <tr><td class="own">*</td><td class="uid">5530</td><td>Miners</td><td>6</td><td>mining 3</td><td class="colhi">120 SILV, 40 STON</td><td class="ord">&mdash;</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Consistent with <code>GIVE</code>, and needs no new wording at all.</li>
+  <li class="con">A player who wrote an order sees a row that looks as though they wrote nothing &mdash; the state the column was told to stop showing.</li>
+</ul>
+</div>
+
+</main>
+<footer>The word <b>Sends</b> in U1 is a proposal, not a decision; if you pick U1 the exact sentence is settled in the next round.</footer>
+</body></html>

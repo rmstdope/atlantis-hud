@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-bxgs &mdash; round 2: the states the happy path hides</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .ord { color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; }
+  .unk { color:var(--ink-dim); }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+</style></head><body>
+<header><h1>Round 2 &mdash; <span>the states the happy path hides</span></h1>
+<p>Every state below is one the column will actually reach. Most are settled by rules already agreed and are drawn here only so you can stop me if one is wrong. <b>Two are open questions</b> and are marked as such.</p></header>
+<main>
+
+<h3 class="sec">Settled &mdash; the three forms of the order</h3>
+<p><code>rules/transport</code> gives exactly three shapes, the same three <code>GIVE</code> has, so the existing reader handles all of them. A unit holding <b>40 STON</b>:</p>
+<div class="card">
+<div class="split3">
+  <div><div class="hexlab">transport 6857 30 STON</div>
+    <div class="stage"><table class="units"><colgroup><col style="width:60px"><col></colgroup>
+    <tr><th>Unit</th><th class="colhi">Items</th></tr>
+    <tr><td class="uid">5530</td><td class="pred colhi">120 SILV, 10 STON</td></tr></table></div>
+    <ul class="notes"><li class="n">the stated amount</li></ul></div>
+  <div><div class="hexlab">transport 6857 ALL STON</div>
+    <div class="stage"><table class="units"><colgroup><col style="width:60px"><col></colgroup>
+    <tr><th>Unit</th><th class="colhi">Items</th></tr>
+    <tr><td class="uid">5530</td><td class="pred colhi">120 SILV</td></tr></table></div>
+    <ul class="notes"><li class="n">the stock empties and leaves the line entirely, as a gift of ALL does</li></ul></div>
+  <div><div class="hexlab">transport 6857 ALL STON EXCEPT 10</div>
+    <div class="stage"><table class="units"><colgroup><col style="width:60px"><col></colgroup>
+    <tr><th>Unit</th><th class="colhi">Items</th></tr>
+    <tr><td class="uid">5530</td><td class="pred colhi">120 SILV, 10 STON</td></tr></table></div>
+    <ul class="notes"><li class="n">ten kept back</li></ul></div>
+</div>
+</div>
+
+<h3 class="sec">Settled &mdash; more ordered away than the unit holds</h3>
+<p><code>transport 6857 90 STON</code> from a unit holding 40. The same clamp a gift uses: what is there goes, the stock empties, nothing goes negative.</p>
+<div class="card">
+<div class="stage"><table class="units"><colgroup><col style="width:60px"><col style="width:220px"><col></colgroup>
+<tr><th>Unit</th><th class="colhi">Items</th><th></th></tr>
+<tr><td class="uid">5530</td><td class="pred colhi">120 SILV</td><td class="ord">&nbsp;</td></tr></table></div>
+<div class="tip"><b>hover</b>was: 120 SILV, 40 STON
+Sends 40 STON to unit 6857.</div>
+<ul class="notes"><li class="n">The sentence names <b>what actually goes</b>, not what was asked for &mdash; so the hover and the receiving row agree.</li></ul>
+</div>
+
+<h3 class="sec">Settled &mdash; the market runs before transport, so a sale wins</h3>
+<p><code>rules/sequenceofevents</code>: <i>Market orders</i> come long before <i>TRANSPORT</i>. A unit holding 40 stone told to sell 40 and transport 30 sells all forty; there is nothing left to transport, whichever line was written first.</p>
+<div class="card">
+<p class="mono" style="color:var(--brass-bright);font-size:12.5px;margin-bottom:10px">unit 5530<br>&nbsp;&nbsp;transport 6857 30 STON<br>&nbsp;&nbsp;sell 40 STON</p>
+<div class="stage"><table class="units"><colgroup><col style="width:60px"><col style="width:220px"><col></colgroup>
+<tr><th>Unit</th><th class="colhi">Items</th><th></th></tr>
+<tr><td class="uid">5530</td><td class="pred colhi">520 SILV</td><td class="ord">&nbsp;</td></tr></table></div>
+<ul class="notes"><li class="n">Nothing is sent, so the hover carries no <b>Sends</b> line and the receiving quartermaster's row does not move.</li>
+<li class="n">This is the whole reason transport is worked out <b>after</b> everything else rather than where it sits on the page.</li></ul>
+</div>
+
+<h3 class="sec">Settled &mdash; targets that are not units</h3>
+<p>The order's grammar accepts more than a unit number, and none of the rest can be a quartermaster who owns a Caravanserai. Each of these moves <b>nothing</b>, exactly as it stands today:</p>
+<div class="card">
+<table class="units" style="table-layout:auto"><colgroup><col style="width:260px"><col></colgroup>
+<tr><th>Written</th><th>What the column does</th></tr>
+<tr><td class="ord">transport 0 30 STON</td><td>nothing &mdash; there is no rule making transport-to-zero destroy goods, unlike <code>GIVE 0</code></td></tr>
+<tr><td class="ord">transport NEW 1 30 STON</td><td>nothing &mdash; a unit formed this month owns no Caravanserai</td></tr>
+<tr><td class="ord">transport FACTION 15 NEW 1 30 STON</td><td>nothing &mdash; likewise, and it is not a row of ours</td></tr>
+<tr><td class="ord">transport 5530 30 STON <span class="unk">(itself)</span></td><td>nothing &mdash; the server refuses it</td></tr>
+</table>
+<ul class="notes"><li class="n">No hover line for any of them: they are refusals of shape, not of substance, and the syntax checker already speaks about malformed orders.</li></ul>
+</div>
+
+<h3 class="sec">Open &mdash; Q6: a row where as much arrives as leaves</h3>
+<p>A quartermaster in the middle of a chain: 30 stone in, 30 stone out. <b>The list is identical to the report's.</b> Today a cell goes italic only when its figures changed, and here they did not &mdash; but the hover has two things to say.</p>
+<div class="split">
+  <div class="card"><h2><em>N1</em> upright, hover still speaks &nbsp;<span class="rec">recommended</span></h2>
+  <p class="concept">Italic keeps its exact meaning: <i>this figure is a projection that differs from your report</i>. It does not differ.</p>
+  <div class="stage"><table class="units"><colgroup><col style="width:60px"><col style="width:220px"><col></colgroup>
+  <tr><th>Unit</th><th class="colhi">Items</th><th></th></tr>
+  <tr><td class="uid">6857</td><td class="colhi">88 SILV, 15 STON</td><td class="ord">&nbsp;</td></tr></table></div>
+  <ul class="notes"><li>Consistent with the state you already chose for a unit whose only order cannot be counted: upright, but with something to say.</li><li class="con">Nothing on the row invites the player to hover, so the two transports are invisible until they look.</li></ul>
+  </div>
+  <div class="card"><h2><em>N2</em> italic whenever a transport touched the row</h2>
+  <p class="concept">Italic comes to mean <i>the orders did something here</i>, whether or not the total moved.</p>
+  <div class="stage"><table class="units"><colgroup><col style="width:60px"><col style="width:220px"><col></colgroup>
+  <tr><th>Unit</th><th class="colhi">Items</th><th></th></tr>
+  <tr><td class="uid">6857</td><td class="pred colhi">88 SILV, 15 STON</td><td class="ord">&nbsp;</td></tr></table></div>
+  <ul class="notes"><li>The row advertises that there is a hover worth reading.</li><li class="con">Changes what italic means everywhere in the table, on a bead about one order.</li></ul>
+  </div>
+</div>
+
+<h3 class="sec">Open &mdash; Q5: the five items no rule reaches</h3>
+<p>After your <code>create &hellip;</code> rule, five items are refused by nothing: <code>PORT</code> portal, <code>MWAG</code> magic wagon, <code>GLID</code> glider, <code>HPOT</code> healing potion, <code>IENT</code> imprisoned entity. Your rule makes them transportable. Drawn here so you can see what that means:</p>
+<div class="card">
+<p class="mono" style="color:var(--brass-bright);font-size:12.5px;margin-bottom:10px">unit 5530<br>&nbsp;&nbsp;transport 6857 1 MWAG</p>
+<div class="stage"><table class="units"><colgroup><col style="width:60px"><col style="width:220px"><col></colgroup>
+<tr><th>Unit</th><th class="colhi">Items</th><th></th></tr>
+<tr><td class="uid">5530</td><td class="pred colhi">120 SILV, 40 STON</td><td class="ord">&nbsp;</td></tr></table></div>
+<div class="tip"><b>hover</b>was: 120 SILV, 40 STON, 1 MWAG
+Sends 1 MWAG to unit 6857.</div>
+<ul class="notes">
+<li class="n">A <b>magic wagon</b> and a <b>glider</b> are advanced items, not artefacts; a <b>healing potion</b> and a <b>portal</b> likewise; an <b>imprisoned entity</b> is a monster the game already refuses to hand over at all.</li>
+<li class="n">The alternative is to add these five by hand, which is a list in the code that the game's own data does not support and that would silently rot if the game changed.</li>
+</ul>
+</div>
+
+</main>
+<footer>The <b>ITEMS</b> column is outlined in brass throughout. Everything under &ldquo;Settled&rdquo; is drawn from a rule already agreed or from the rules page; say the word if any of it looks wrong.</footer>
+</body></html>

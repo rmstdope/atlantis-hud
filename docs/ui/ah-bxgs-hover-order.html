@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-bxgs &mdash; round 3: two last details in the hover</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .ord { color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; }
+  .unk { color:var(--ink-dim); }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+</style></head><body>
+<header><h1>Round 3 &mdash; <span>two last details in the hover</span></h1>
+<p>Everything else is settled. These two are shipped text, so they are yours rather than mine, and then I can write the plan.</p>
+<p><b>The unit below is doing a lot at once</b>, which is the only way to see the reading order: it produces, buys, builds, receives a transport, sends two, and is ordered to send one thing the game refuses.</p>
+<p class="mono" style="color:var(--brass-bright);font-size:12.5px;margin-top:12px">unit 6857<br>&nbsp;&nbsp;buy 5 GRAI<br>&nbsp;&nbsp;produce STON<br>&nbsp;&nbsp;transport 16340 30 STON<br>&nbsp;&nbsp;transport 16340 2 HORS<br>&nbsp;&nbsp;transport 4670 5 FUR<br><span style="color:var(--ink-dim)">; and unit 5530, two hexes off, transports 12 SPEA to 6857</span></p></header>
+<main>
+
+<h3 class="sec">Q7 &mdash; where the transport lines sit among the ones already there</h3>
+<p>The hover already has a fixed reading order: what the report said, what was taken, what will be produced, what a <code>BUY ALL</code> settles at, what a cast will bring, the production cap, what a <code>BUILD</code> spends, the cast cap, and last of all what could not be counted.</p>
+
+<div class="split">
+<div class="card"><h2><em>H1</em> gains with the gains, losses just before the end &nbsp;<span class="rec">recommended</span></h2>
+<p class="concept">What arrives joins the other <b>Includes&hellip;</b> lines. What leaves, and what refused to leave, go together after everything the unit gained &mdash; still ahead of the <i>cannot be counted</i> line, which stays last always.</p>
+<div class="tip"><b>hover</b>was: 88 SILV, 15 STON, 2 HORS, 5 FUR
+Includes 12 STON this unit will produce. Production resolves last, so they cannot be spent this month.
+Includes 12 SPEA transported from unit 5530. Transport resolves last, so they cannot be spent this month.
+Sends 30 STON to unit 16340.
+The game will not transport horses, so they stay with this unit.
+Sends 5 FUR to unit 4670.</div>
+<ul class="notes">
+<li>Everything the unit gains reads as one block, everything it loses as another. The two transport ends never interleave with each other.</li>
+<li>The three transport lines that came from the player's own block stay in the order the player wrote them.</li>
+</ul>
+</div>
+
+<div class="card"><h2><em>H2</em> all five transport lines together, at the end</h2>
+<p class="concept">Transport is one subject, so it reads as one paragraph &mdash; arrivals first, then departures and refusals in document order.</p>
+<div class="tip"><b>hover</b>was: 88 SILV, 15 STON, 2 HORS, 5 FUR
+Includes 12 STON this unit will produce. Production resolves last, so they cannot be spent this month.
+Includes 12 SPEA transported from unit 5530. Transport resolves last, so they cannot be spent this month.
+Sends 30 STON to unit 16340.
+The game will not transport horses, so they stay with this unit.
+Sends 5 FUR to unit 4670.</div>
+<ul class="notes">
+<li class="n">On this unit H1 and H2 read <b>identically</b> &mdash; and that is the point of showing it. They only differ when a <code>BUILD</code> or a cast cap is also present, where H2 would push those two <i>above</i> the arrivals and H1 would leave them below.</li>
+<li class="con">Pulls the transport block away from the <b>Includes&hellip;</b> family it belongs to grammatically.</li>
+</ul>
+</div>
+</div>
+
+<h3 class="sec">Q8 &mdash; how the refusal sentence names the item</h3>
+<p>You approved <b>&ldquo;The game will not transport horses, so they stay with this unit.&rdquo;</b> There is a catch worth one question: the plural comes from <b>what your report happened to print</b>, which follows the amount the unit holds, not the amount being transported.</p>
+<div class="split3">
+<div class="card"><h2><em>P1</em> the report's own word</h2>
+<p class="concept">Reads naturally when the unit holds several.</p>
+<div class="tip"><b>holding 2 horses</b>The game will not transport horses, so they stay with this unit.</div>
+<div class="tip"><b>holding 1 horse</b>The game will not transport horse, so they stay with this unit.</div>
+<ul class="notes"><li>The sentence you approved, unchanged, in the common case.</li><li class="con">Ungrammatical whenever the unit holds exactly one.</li></ul>
+</div>
+<div class="card"><h2><em>P2</em> the tag &nbsp;<span class="rec">recommended</span></h2>
+<p class="concept">Every other sentence in this hover already names items by tag.</p>
+<div class="tip"><b>holding 2 horses</b>The game will not transport HORS, so they stay with this unit.</div>
+<div class="tip"><b>holding 1 horse</b>The game will not transport HORS, so they stay with this unit.</div>
+<ul class="notes"><li>Correct at every amount, and matches <b>Includes 30 STON&hellip;</b> and <b>Sends 5 FUR&hellip;</b> in the same hover.</li><li>The tag is what the player typed in the order.</li><li class="con">Reads as jargon rather than English.</li></ul>
+</div>
+<div class="card"><h2><em>P3</em> the amount and the tag</h2>
+<p class="concept">Says how much did not go, matching the <b>Sends&hellip;</b> lines exactly.</p>
+<div class="tip"><b>holding 2 horses</b>Will not send 2 HORS to unit 16340: the game does not transport them.</div>
+<ul class="notes"><li>Names the target too, so a unit with several refusals says which order each one was.</li><li class="con">A longer sentence, and it leads with a negative.</li></ul>
+</div>
+</div>
+
+</main>
+<footer>Whatever you choose is quoted verbatim in the plan; the implementer words nothing.</footer>
+</body></html>
