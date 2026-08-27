@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
 import { loadReport, selectHex, selectUnit } from "./gameSetup";
 
@@ -266,23 +266,23 @@ const rows = (page: Page) => page.locator('tr[data-testid^="unit-row-"]');
 const armyEntry = (page: Page) => page.getByTestId(/^unit-source-army-/);
 
 /**
- * Drags from one element to another with the mouse, crossing the 4px threshold on the way.
+ * Drags from one element onto another, leaving the pointer over the target and the button down.
  *
- * Two moves rather than one: the first is what turns the press into a drag, and the second is what
- * puts the pointer over the target - a single move would arrive with the chip not yet made.
+ * `hover()` rather than coordinates worked out from a bounding box. A press point computed as
+ * "twenty pixels in from the row's left edge" is a guess about column widths, and on CI's fonts it
+ * was the wrong one: the press landed somewhere that was not the row, so no drag ever began while
+ * the pick itself stood there untouched. `hover()` asks Playwright for a point the element
+ * actually receives events at, which is the only thing this walk ever meant by "press the row".
+ *
+ * Two hovers onto the target: the first crosses the 4px threshold and is what makes the chip, and
+ * the second is a move the hit-test reads once there is one.
  */
-async function dragOnto(page: Page, from: ReturnType<typeof rows>, onto: ReturnType<typeof rows>) {
-  const start = await from.boundingBox();
-  const target = await onto.boundingBox();
-  if (!start || !target) {
-    throw new Error("nothing to drag, or nowhere to drop it");
-  }
-  await page.mouse.move(start.x + 20, start.y + start.height / 2);
+async function dragOnto(page: Page, from: Locator, onto: Locator) {
+  await from.hover();
   await page.mouse.down();
-  await page.mouse.move(start.x + 40, start.y + start.height / 2);
+  await onto.hover();
   await expect(page.getByTestId("unit-drag-chip")).toBeVisible();
-  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2);
-  await page.mouse.move(target.x + target.width / 2 + 1, target.y + target.height / 2);
+  await onto.hover();
 }
 
 test("shift-clicking picks the run between two rows, and ctrl-clicking takes one back out", async ({
