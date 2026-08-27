@@ -14,7 +14,8 @@ import {
   snapshotOf,
   unitsByIdIn,
   withMember,
-  withoutMember
+  withoutMember,
+  alreadyIn
 } from "./armies";
 
 const NOW = "2026-08-01T09:00:00Z";
@@ -150,6 +151,24 @@ describe("withMember and withoutMember", () => {
 
     expect(withoutMember(army, "1", LATER).members).toEqual([]);
     expect(withoutMember(army, "999", LATER)).toBe(army);
+  });
+});
+
+describe("alreadyIn", () => {
+  const held = (unitIds: string[]) =>
+    anArmyWith(unitIds.map((unitId) => snapshotOf(aReportUnit({ unitId }), 71, NOW)));
+
+  it("counts only the named units the Army holds", () => {
+    expect(alreadyIn(held(["1", "2", "3"]), ["2", "9"])).toBe(1);
+  });
+
+  it("is the whole list when every one is a member", () => {
+    expect(alreadyIn(held(["1", "2", "3"]), ["1", "3"])).toBe(2);
+  });
+
+  it("is nought for an Army holding none of them, and for a list naming nobody", () => {
+    expect(alreadyIn(held(["1"]), ["7", "8"])).toBe(0);
+    expect(alreadyIn(held(["1"]), [])).toBe(0);
   });
 });
 

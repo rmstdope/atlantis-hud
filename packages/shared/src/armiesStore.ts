@@ -57,6 +57,23 @@ export type ArmiesState = {
     turn: number,
     now: string
   ) => Promise<void>;
+  /**
+   * Several units added in one write, for the bulk line, the right-click menu and the drag
+   * (`ah-1mpx.4`).
+   *
+   * One save and one rollback rather than n of each, for the reason `removeUnits` already gives.
+   * A unit the Army already holds has its snapshot replaced rather than being added twice - that
+   * is `withMember`'s stated behaviour, and it is why a partial add lifts the Army's count by the
+   * number of *new* units only.
+   */
+  addUnits: (
+    client: CoreClient,
+    game: OpenedGame,
+    armyId: string,
+    units: readonly ReportUnit[],
+    turn: number,
+    now: string
+  ) => Promise<void>;
   removeUnit: (
     client: CoreClient,
     game: OpenedGame,
@@ -157,6 +174,12 @@ export const useArmiesStore = create<ArmiesState>()((set, get) => ({
   addUnit: async (client, game, armyId, unit, turn, now) => {
     await replaceAndSave(set, get, client, game, armyId, (army) =>
       withMember(army, unit, turn, now)
+    );
+  },
+
+  addUnits: async (client, game, armyId, units, turn, now) => {
+    await replaceAndSave(set, get, client, game, armyId, (army) =>
+      units.reduce((one, unit) => withMember(one, unit, turn, now), army)
     );
   },
 

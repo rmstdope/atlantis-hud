@@ -25,6 +25,9 @@ function draw(
     foreignCount?: number;
     mode?: RailMode;
     canEdit?: boolean;
+    dropOver?: { kind: "army"; armyId: string } | { kind: "new" } | null;
+    dropFull?: ReadonlySet<string>;
+    dragging?: boolean;
   } = {}
 ): string {
   return renderToStaticMarkup(
@@ -38,9 +41,15 @@ function draw(
       mode={overrides.mode ?? { kind: "idle" }}
       onEvent={() => {}}
       canEdit={overrides.canEdit ?? true}
+      dropOver={overrides.dropOver ?? null}
+      dropFull={overrides.dropFull ?? new Set()}
+      dragging={overrides.dragging ?? false}
     />
   );
 }
+
+const entryFor = (markup: string, id: string) =>
+  new RegExp(`<button[^>]*data-testid="unit-source-${id}"[\\s\\S]*?</button>`).exec(markup)?.[0] ?? "";
 
 describe("the units dock's source rail", () => {
   it("lists every Army under the heading, with This hex and All my units above it", () => {
@@ -121,7 +130,7 @@ describe("the units dock's source rail", () => {
   });
 
   it("puts a name field in the rail while a new Army is being created", () => {
-    const markup = draw({ mode: { kind: "creating", draft: "Coastal", withUnit: null } });
+    const markup = draw({ mode: { kind: "creating", draft: "Coastal", withUnits: [] } });
 
     expect(markup).toContain('data-testid="rail-name-field"');
     expect(markup).toContain('value="Coastal"');
@@ -148,5 +157,46 @@ describe("the units dock's source rail", () => {
     ];
 
     expect(draw({ armies: [withMembers] })).toContain(">2<");
+  });
+
+  it("outlines the Army a drag is over", () => {
+    const markup = draw({ dragging: true, dropOver: { kind: "army", armyId: "b" } });
+
+    expect(entryFor(markup, "army-b")).toContain("border-dashed");
+    expect(entryFor(markup, "army-a")).not.toContain("border-dashed");
+  });
+
+  it("outlines + New Army when the drag is over it", () => {
+    const markup = draw({ dragging: true, dropOver: { kind: "new" } });
+    const newArmy = /<button[^>]*data-testid="rail-new-army"[\s\S]*?<\/button>/.exec(markup)?.[0] ?? "";
+
+    expect(newArmy).toContain("border-dashed");
+  });
+
+  it("marks an Army that would take nothing and gives it no drop attribute", () => {
+    const markup = draw({ dragging: true, dropFull: new Set(["a"]) });
+
+    // W3: you learn before letting go, in the same ✓ the menu uses for the same fact.
+    expect(entryFor(markup, "army-a")).toContain("✓");
+    expect(entryFor(markup, "army-a")).toContain("opacity-40");
+    expect(entryFor(markup, "army-a")).not.toContain("data-drop-army");
+    expect(entryFor(markup, "army-b")).toContain('data-drop-army="b"');
+  });
+
+  it("carries the drop attributes only while a drag is in flight", () => {
+    expect(draw()).not.toContain("data-drop-army");
+    expect(draw()).not.toContain("data-drop-new");
+    expect(draw({ dragging: true })).toContain('data-drop-army="a"');
+    expect(draw({ dragging: true })).toContain('data-drop-new="true"');
+  });
+
+  it("leaves This hex and All my units alone during a drag", () => {
+    const markup = draw({ dragging: true, dropOver: { kind: "army", armyId: "a" } });
+
+    // Dimming them was rejected: brass on `This hex` already means something else (U4).
+    expect(entryFor(markup, "hex")).not.toContain("data-drop");
+    expect(entryFor(markup, "hex")).not.toContain("opacity-40");
+    expect(entryFor(markup, "own")).not.toContain("data-drop");
+    expect(entryFor(markup, "own")).not.toContain("opacity-40");
   });
 });

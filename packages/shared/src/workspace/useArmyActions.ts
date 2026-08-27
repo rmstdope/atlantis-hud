@@ -15,10 +15,12 @@ import { useArmiesStore } from "../armiesStore";
 
 /** What the rail, the strip and the popover call. Every one has already reported its own failure. */
 export type ArmyActions = {
-  create: (name: string, withUnit: ReportUnit | null) => Promise<void>;
+  create: (name: string, withUnits: readonly ReportUnit[]) => Promise<void>;
   rename: (armyId: string, name: string) => Promise<void>;
   remove: (armyId: string) => Promise<void>;
   addUnit: (armyId: string, unit: ReportUnit) => Promise<void>;
+  /** Several rows in one write, for the bulk line, the right-click menu and the drag. */
+  addUnits: (armyId: string, units: readonly ReportUnit[]) => Promise<void>;
   removeUnit: (armyId: string, unitId: string) => Promise<void>;
   removeUnits: (armyId: string, unitIds: readonly string[]) => Promise<void>;
 };
@@ -28,6 +30,7 @@ const NO_ACTIONS: ArmyActions = {
   rename: async () => {},
   remove: async () => {},
   addUnit: async () => {},
+  addUnits: async () => {},
   removeUnit: async () => {},
   removeUnits: async () => {}
 };
@@ -75,13 +78,14 @@ export function useArmyActions({
     };
 
     return {
-      create: (name, withUnit) =>
+      create: (name, withUnits) =>
         guarded(name.trim(), async () => {
           const army = await store().create(client, game, name, now());
-          // The popover's `New Army…` puts the unit in: created first, so there is an Army id to
-          // add it to, and both failures report under the same name.
-          if (withUnit !== null && currentTurn !== null) {
-            await store().addUnit(client, game, army.id, withUnit, currentTurn, now());
+          // The popover's `New Army…` and a drop on `+ New Army` put their rows in: created
+          // first, so there is an Army id to add them to, and both failures report under the same
+          // name. One write for the whole list, as `addUnits` exists to make.
+          if (withUnits.length > 0 && currentTurn !== null) {
+            await store().addUnits(client, game, army.id, withUnits, currentTurn, now());
           }
         }),
       rename: (armyId, name) =>
@@ -94,6 +98,13 @@ export function useArmyActions({
             return;
           }
           await store().addUnit(client, game, armyId, unit, currentTurn, now());
+        }),
+      addUnits: (armyId, units) =>
+        guarded(nameOf(armyId), async () => {
+          if (currentTurn === null) {
+            return;
+          }
+          await store().addUnits(client, game, armyId, units, currentTurn, now());
         }),
       removeUnit: (armyId, unitId) =>
         guarded(nameOf(armyId), () => store().removeUnit(client, game, armyId, unitId, now())),

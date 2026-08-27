@@ -103,6 +103,18 @@ export function withMember(
   return { ...army, members, updatedAt: now };
 }
 
+/**
+ * How many of `unitIds` this Army already holds.
+ *
+ * Two callers, one rule: the `Add to army` menu's `N already in` note, and whether a drop on this
+ * Army would add nothing at all (`alreadyIn === unitIds.length`), which is what makes the rail
+ * refuse it before the pointer is released (`ah-1mpx.4` W3).
+ */
+export function alreadyIn(army: ArmyRecord, unitIds: readonly string[]): number {
+  const members = new Set(army.members.map((member) => member.unitId));
+  return unitIds.filter((unitId) => members.has(unitId)).length;
+}
+
 /** Removes one member by unit number. Returns the same object when it was not a member. */
 export function withoutMember(army: ArmyRecord, unitId: string, now: string): ArmyRecord {
   const members = army.members.filter((member) => member.unitId !== unitId);
