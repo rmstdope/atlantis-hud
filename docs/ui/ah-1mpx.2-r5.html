@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-1mpx.2 &mdash; round 5: the states the happy path hides</title><style>
+/* ---- Explanatory chrome (docs/ui house style) ---- */
+:root {
+  --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+  --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+  --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  /* ---- the application's own tokens, from packages/shared/src/theme.css ---- */
+  --a-ground:#1b212a; --a-panel:#222933; --a-raised:#2a323d; --a-edge:#46525f; --a-edge-soft:#333d49;
+  --a-ink:#d4dce6; --a-ink-soft:#a8b4c2; --a-ink-dim:#99a4b2;
+  --a-brass:#e0b25a; --a-brass-bright:#eebe63; --a-select:#5aa9de; --a-ok:#4fb783;
+  --a-warn:#d9a441; --a-danger:#e89494; --a-gain:#7fb069;
+  --a-unit-own:#5ec8f0; --a-unit-foreign:#f07070; --a-ring:#f5f8fc;
+  --a-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+header, main, footer { max-width:1420px; margin:0 auto; }
+h1 { font-size:26px; letter-spacing:0.4px; }
+h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+p.lede { color:var(--brass-bright); font-size:15.5px; font-style:italic; max-width:96ch; margin-top:12px; }
+code, .mono { font-family:var(--a-mono); }
+header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+.stage { background:#0b0f15; border:1px solid var(--edge-soft); border-radius:8px; padding:12px; overflow-x:auto; }
+.hexlab { font:10.5px/1 var(--a-mono); letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
+.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+.notes li.con::before { content:"\2212 "; color:var(--danger); }
+.notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+.split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+.split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+footer { margin-top:42px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+.rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+.new { outline:1px dashed var(--brass); outline-offset:2px; }
+.newtag { font:9.5px/1 var(--a-mono); letter-spacing:.1em; text-transform:uppercase; color:#1b212a;
+          background:var(--brass); border-radius:3px; padding:3px 5px; }
+
+/* ================= the application, reproduced ================= */
+.app { width:1280px; height:720px; position:relative; overflow:hidden; border-radius:6px;
+       border:1px solid #000; background:var(--a-ground); color:var(--a-ink);
+       font:13px/1.35 var(--a-mono); display:flex; flex-direction:column; }
+.app.short { height:470px; }
+.app *, .app *::before { box-sizing:border-box; }
+
+/* header: min-h-9, border-b border-edge, bg-panel, px-3, gap-x-3.5 */
+.ahead { flex:none; min-height:36px; display:flex; align-items:center; gap:14px; padding:0 12px;
+         border-bottom:1px solid var(--a-edge); background:var(--a-panel); white-space:nowrap; }
+.ahead .wordmark { letter-spacing:.06em; color:var(--a-brass); }
+.ahead .lbl { color:var(--a-ink-soft); }
+.ahead .chip { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink);
+               border-radius:4px; padding:1px 8px; }
+.ahead .chip.plain { border-color:transparent; background:transparent; }
+.ahead .chip.warn { border-color:var(--a-warn); color:var(--a-warn); background:transparent; }
+.ahead .chip.gain { border-color:var(--a-gain); color:var(--a-gain); background:transparent; }
+.ahead .chip.dim { color:var(--a-ink-dim); }
+.ahead .right { margin-left:auto; display:flex; align-items:center; gap:14px; }
+.ahead .btn-imp { border:1px solid var(--a-brass); color:var(--a-brass); border-radius:4px; padding:3px 10px; }
+.ahead .btn-o { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink); border-radius:4px; padding:3px 10px; }
+.dotstat { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--a-ink-dim); }
+
+/* map stage + floating overlay: p-2.5 pt-12, gap-2.5 */
+.stagewrap { position:relative; flex:1; min-height:0; }
+.mapsvg { position:absolute; inset:0; width:100%; height:100%; }
+.mapctl { position:absolute; right:10px; top:10px; z-index:20; display:flex; align-items:center; gap:6px;
+          border:1px solid var(--a-edge); background:#222933f2; border-radius:6px; padding:4px 8px;
+          box-shadow:0 10px 15px -3px #0007; }
+.mapctl .sq { width:26px; height:26px; border:1px solid var(--a-edge); background:#222933f2;
+              border-radius:4px; color:var(--a-ink-soft); display:flex; align-items:center; justify-content:center; }
+.overlay { position:absolute; inset:0; padding:10px; padding-top:48px; display:flex; flex-direction:column; gap:10px; }
+.orow { display:flex; flex:1; min-height:0; justify-content:space-between; gap:10px; }
+.railL { width:304px; display:flex; flex-direction:column; }
+.railR { width:336px; display:flex; flex-direction:column; gap:10px; }
+
+/* CollapsiblePanel: rounded-md border-edge bg-pane shadow-lg backdrop-blur; header h-7 */
+.pane { display:flex; flex-direction:column; min-height:0; overflow:hidden; border-radius:6px;
+        border:1px solid var(--a-edge); background:#222933cc; backdrop-filter:blur(7px);
+        box-shadow:0 10px 15px -3px #0007,0 4px 6px -4px #0007; }
+.pane > .ttl { height:28px; flex:none; display:flex; align-items:center; gap:8px; padding:0 10px;
+               border-bottom:1px solid var(--a-edge); font-size:12px; letter-spacing:.12em;
+               text-transform:uppercase; color:var(--a-brass); }
+.pane > .ttl .hint { text-transform:none; letter-spacing:normal; color:var(--a-ink-dim); }
+.pane > .ttl .caret { margin-left:auto; color:var(--a-ink-dim); }
+.pane > .bd { min-height:0; flex:1; overflow:auto; padding:8px 10px; line-height:1.3; }
+.pane.grow { flex:1; min-height:0; }
+
+/* units dock, full width along the bottom: h-20.625rem = 330px */
+.dockU { height:330px; flex:none; }
+
+/* units table */
+table.ut { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0; font-variant-numeric:tabular-nums; }
+table.ut th { position:sticky; top:0; z-index:10; background:var(--a-panel); border-bottom:1px solid var(--a-edge);
+              padding:4px 8px; text-align:left; font-size:12px; font-weight:500; letter-spacing:.06em;
+              text-transform:uppercase; color:var(--a-ink-soft); }
+table.ut th .g { color:var(--a-ink-dim); }
+table.ut th.act { color:var(--a-brass); }
+table.ut td { height:24px; padding:2px 8px; border-bottom:1px solid var(--a-edge-soft);
+              white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+table.ut tr { color:var(--a-ink); }
+table.ut tr.foreign { color:var(--a-ink-soft); }
+table.ut tr.sel td { background:#5aa9de40; color:var(--a-ink); }
+table.ut tr.pick td { background:#5aa9de26; }
+.o { color:var(--a-ok); } .f { color:var(--a-danger); }
+.idown { color:var(--a-select); } .idfor { color:#f07070b3; }
+.dim { color:var(--a-ink-dim); } .warnc { color:var(--a-warn); } .okc { color:var(--a-ok); }
+.gone { color:var(--a-ink-dim); text-decoration:line-through; }
+.filter { width:176px; border:1px solid var(--a-edge); background:var(--a-ground); color:var(--a-ink-dim);
+          border-radius:4px; padding:1px 8px; font-size:13px; }
+
+/* small controls inside panes */
+.b { display:inline-block; border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink);
+     border-radius:4px; padding:3px 9px; font-size:12px; }
+.b.pri { border-color:var(--a-brass); color:var(--a-brass); background:transparent; }
+.b.gh { border-color:transparent; background:transparent; color:var(--a-ink-dim); padding:3px 6px; }
+.b.dg { border-color:#6b4444; color:var(--a-danger); background:transparent; }
+.kbd { display:inline-block; font-size:11px; padding:2px 6px; border:1px solid var(--a-edge);
+       border-bottom-width:2px; border-radius:4px; background:var(--a-ground); color:var(--a-brass-bright); }
+dl.kv { display:grid; grid-template-columns:74px 1fr; gap:4px 10px; font-size:13px; }
+dl.kv dt { color:var(--a-ink-dim); font-size:12px; }
+dl.kv dt.sep, dl.kv dd.sep { border-top:1px solid var(--a-edge-soft); padding-top:7px; margin-top:4px; }
+.chip2 { display:inline-block; background:#5aa9de26; border:1px solid #5aa9de66; color:var(--a-ink);
+         border-radius:10px; padding:1px 8px; font-size:12px; margin:0 4px 4px 0; }
+.chip2 .x { color:var(--a-ink-dim); margin-left:5px; }
+.arow { display:flex; align-items:center; gap:8px; padding:4px 7px; border-radius:4px; font-size:13px; }
+.arow.on { background:#5aa9de26; box-shadow:inset 2px 0 0 var(--a-select); }
+.arow .ct { margin-left:auto; color:var(--a-ink-dim); font-size:12px; }
+.sw { width:10px; height:10px; border-radius:2px; flex:none; }
+.sw.off { background:transparent; border:1px solid var(--a-edge); }
+.tagw { font-size:11px; border:1px solid #6b5a2a; color:var(--a-warn); border-radius:3px; padding:1px 5px; }
+.empty { color:var(--a-ink-dim); font-size:12px; line-height:1.6; text-align:center; padding:18px 12px; }
+.empty b { color:var(--a-ink-soft); display:block; font-weight:500; margin-bottom:4px; font-size:13px; }
+.st { font-size:12px; color:var(--a-ink-dim); margin-top:7px; line-height:1.5; }
+.st b { color:var(--a-brass-bright); font-weight:500; }
+
+/* the source rail (P3) */
+.srail { width:172px; flex:none; border-right:1px solid var(--a-edge); background:#2a323db3; overflow:auto; padding:6px; }
+.srail .grp { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--a-ink-dim); margin:10px 0 4px 6px; }
+.srail .s { display:flex; align-items:center; gap:6px; padding:3px 7px; border-radius:4px; color:var(--a-ink-soft); font-size:13px; }
+.srail .s.on { background:#5aa9de26; color:var(--a-ink); box-shadow:inset 2px 0 0 var(--a-select); }
+.srail .s.drop { border:1px dashed var(--a-brass); background:#e0b25a1f; color:var(--a-brass-bright); }
+.srail .s .ct { margin-left:auto; color:var(--a-ink-dim); font-size:12px; }
+.ghostdrag { position:absolute; border:1px dashed var(--a-brass); border-radius:4px; background:#2a323dee;
+             color:var(--a-brass-bright); font-size:12px; padding:4px 9px; box-shadow:0 8px 20px #000a; }
+
+/* dialog */
+.backdrop { position:absolute; inset:0; background:#00000080; display:flex; align-items:center; justify-content:center; z-index:40; }
+.dlg { border:1px solid var(--a-edge); background:var(--a-raised); border-radius:6px;
+       box-shadow:0 10px 15px -3px #0009; overflow:hidden; }
+.dlg > .h { display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid var(--a-edge); color:var(--a-ink-soft); }
+.dlg > .b2 { padding:12px; }
+pre.json { font:12px/1.5 var(--a-mono); color:var(--a-ink-soft); background:var(--a-ground);
+           border:1px solid var(--a-edge-soft); border-radius:5px; padding:10px; overflow-x:auto; }
+pre.json .k { color:var(--a-select); } pre.json .s { color:var(--a-ok); } pre.json .n { color:var(--a-brass-bright); }
+
+</style></head><body>
+<header>
+<h1>ah-1mpx.2 &mdash; round 5: <span>the states the happy path hides</span></h1>
+<p>Rounds 1&ndash;4 settled what an Army <em>is</em>, where it lives, and every word of the busy case.
+This round is only about <code>ah-1mpx.2</code> &mdash; the source rail itself &mdash; and only about the
+moments the earlier mockups did not draw: while the Armies are still coming out of storage, when a save
+fails, when an Army has nothing in it yet, and what the Rename&nbsp;/&nbsp;Delete strip looks like
+<em>before</em> there is anything to export.</p>
+<p class="lede">Two of these exist only because this bead ships before its siblings. Export arrives in
+<code>ah-1mpx.3</code> and dragging in <code>ah-1mpx.4</code> &mdash; so a control and a sentence that both
+assume them have to say something honest in the meantime, and then either change or not.</p>
+</header>
+
+<main>
+
+<h3 class="sec">S1 &mdash; the rail while the Armies are still loading</h3>
+<p>Armies come out of SQLite or IndexedDB after the pane has already painted. On a fast machine this is
+one frame; on a cold web start with a large database it is visible. The rail must say something in
+between.</p>
+<div class="split">
+  <div class="card">
+    <div class="hexlab">Option A &mdash; the rail is complete from the first paint <span class="rec">recommended</span></div>
+    <div class="stage">
+      <div class="app short" style="width:520px;height:250px">
+        <div class="pane dockU" style="height:250px;flex:1">
+          <div class="ttl">Units in hex <span class="hint">&mdash; plain (7,53), 6 units</span><span class="caret">&#9662;</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail">
+              <div class="s on">This hex <span class="ct">6</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s" style="color:var(--a-brass)">+ New Army</div>
+            </div>
+            <div style="flex:1;padding:10px">
+              <table class="ut"><tr><th>*</th><th>Id</th><th>Unit</th><th>Men</th></tr>
+              <tr><td class="o">*</td><td class="idown">3192</td><td>Vanguard</td><td>1</td></tr>
+              <tr><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>10</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Nothing is ever disabled and nothing ever says &ldquo;loading&rdquo;. The two built-in sources
+        work from the first frame, because they need no storage &mdash; they read the report.</li>
+      <li>Identical to the settled &ldquo;no Armies yet&rdquo; state from P3, so there is one drawing
+        fewer to build and one fewer to get wrong.</li>
+      <li class="con">For the one frame before they arrive, a game <em>with</em> Armies looks like a
+        game with none. Armies then appear under the heading.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="hexlab">Option B &mdash; the rail says it is waiting</div>
+    <div class="stage">
+      <div class="app short" style="width:520px;height:250px">
+        <div class="pane dockU" style="height:250px;flex:1">
+          <div class="ttl">Units in hex <span class="hint">&mdash; plain (7,53), 6 units</span><span class="caret">&#9662;</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail">
+              <div class="s on">This hex <span class="ct">6</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s dim" style="font-style:italic">loading&hellip;</div>
+              <div class="s dim" style="color:var(--a-ink-dim)">+ New Army</div>
+            </div>
+            <div style="flex:1;padding:10px">
+              <table class="ut"><tr><th>*</th><th>Id</th><th>Unit</th><th>Men</th></tr>
+              <tr><td class="o">*</td><td class="idown">3192</td><td>Vanguard</td><td>1</td></tr>
+              <tr><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>10</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Never lies. A game with Armies never briefly reads as a game without them.</li>
+      <li class="con">A word that flickers past in one frame on every single game open, for a wait
+        nobody was going to notice.</li>
+      <li class="con">&ldquo;+&nbsp;New Army&rdquo; disabled for that frame means a click that lands
+        in the gap does nothing, with no explanation.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">S2 &mdash; the strip above the table, before there is an export</h3>
+<p>Rounds 3 and 4 drew it as <b>Rename&nbsp;&middot;&nbsp;Delete&nbsp;&middot;&nbsp;Export&hellip;</b>.
+Export is built in the <em>next</em> bead. So for one bead's worth of time this strip either carries a
+control that does nothing, or it is one control shorter and grows later.</p>
+<div class="split">
+  <div class="card">
+    <div class="hexlab">Option A &mdash; Export&hellip; is there, and disabled</div>
+    <div class="stage">
+      <div style="background:var(--a-panel);border:1px solid var(--a-edge);border-radius:5px;padding:8px 10px;display:flex;align-items:center;gap:8px;font:13px/1.35 var(--a-mono);color:var(--a-ink)">
+        <b style="color:var(--a-brass-bright);font-weight:500">Northern Host</b>
+        <span style="margin-left:auto"></span>
+        <span class="b">Rename</span><span class="b dg">Delete</span>
+        <span class="b" style="color:var(--a-ink-dim);border-color:var(--a-edge-soft);opacity:.55">Export&hellip;</span>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>The strip is its final shape from the first day; nothing moves under the navigator's hand
+        when the next bead lands.</li>
+      <li class="con">A dead control. Every dead control is a small promise that the application is
+        broken, and there is no honest tooltip that is not an apology for the backlog.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="hexlab">Option B &mdash; two buttons now, three next bead <span class="rec">recommended</span></div>
+    <div class="stage">
+      <div style="background:var(--a-panel);border:1px solid var(--a-edge);border-radius:5px;padding:8px 10px;display:flex;align-items:center;gap:8px;font:13px/1.35 var(--a-mono);color:var(--a-ink)">
+        <b style="color:var(--a-brass-bright);font-weight:500">Northern Host</b>
+        <span style="margin-left:auto"></span>
+        <span class="b">Rename</span><span class="b dg">Delete</span>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Everything on screen works. Nothing has to be explained away.</li>
+      <li>The strip is already a row of buttons, so a third arriving is not a redesign &mdash; it is
+        one more button on the end.</li>
+      <li class="con">The strip changes shape between two releases, which somebody watching closely
+        will notice.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">S3 &mdash; an Army with nothing in it, before dragging exists</h3>
+<p>P3 quoted this as <em>&ldquo;Drag units here from any list, or use Add to army on a unit.&rdquo;</em>
+&mdash; but dragging is <code>ah-1mpx.4</code>. In this bead the only way in is the right-click menu.
+The line either tells the truth now and is rewritten later, or is written once to be true in both.</p>
+<div class="split3">
+  <div class="card">
+    <div class="hexlab">Option A &mdash; true now, rewritten in .4</div>
+    <div class="stage" style="min-height:150px;display:flex;align-items:center;justify-content:center;background:var(--a-ground)">
+      <div class="empty" style="max-width:320px">
+        <b>Northern Host has no units yet.</b>
+        Right-click any unit and choose <span style="color:var(--a-brass-bright)">Add to army</span>.
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Names the one gesture that actually works today, and names it exactly.</li>
+      <li class="con">A string that is scheduled to change one bead later, which means a smoke test
+        that is scheduled to change with it.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="hexlab">Option B &mdash; written once, true in both <span class="rec">recommended</span></div>
+    <div class="stage" style="min-height:150px;display:flex;align-items:center;justify-content:center;background:var(--a-ground)">
+      <div class="empty" style="max-width:320px">
+        <b>Northern Host has no units yet.</b>
+        Add units to it with <span style="color:var(--a-brass-bright)">Add to army</span>, on any unit
+        in any list.
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Never wrong, never rewritten. Dragging arrives later as a shortcut for something the line
+        already told you was possible.</li>
+      <li>&ldquo;in any list&rdquo; is the part that matters: it says an Army is not tied to the hex
+        on screen.</li>
+      <li class="con">Says nothing about dragging even after dragging is the nicer gesture.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="hexlab">Option C &mdash; just the fact</div>
+    <div class="stage" style="min-height:150px;display:flex;align-items:center;justify-content:center;background:var(--a-ground)">
+      <div class="empty" style="max-width:320px">
+        <b>Northern Host has no units yet.</b>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Nothing to keep true. The shortest thing that can be said.</li>
+      <li class="con">An empty state that does not say how to leave it is the one place the
+        application had the navigator's full attention and said nothing.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">S4 &mdash; when the save fails</h3>
+<p>Every change to an Army is optimistic: the rail moves at once and storage catches up. When the write
+fails the store rolls the change back, so the Army silently returns to what it was &mdash; a renamed
+Army un-renames itself, an added unit vanishes from the count. The question is whether anything says so.</p>
+<div class="split3">
+  <div class="card">
+    <div class="hexlab">Option A &mdash; nothing is said</div>
+    <div class="stage">
+      <div class="app short" style="width:400px;height:150px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; Northern Host, 12 units</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail" style="width:100%">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="grp">Armies</div>
+              <div class="s on">Northern Host <span class="ct">12</span></div>
+              <div class="s">Coastal Watch <span class="ct">4</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>No new surface at all.</li>
+      <li class="con">The count went 13 and came back 12 on its own. The navigator concludes the
+        application dropped their unit, which is exactly what happened &mdash; without being told why
+        they cannot trust it not to happen again.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="hexlab">Option B &mdash; the header status line <span class="rec">recommended</span></div>
+    <div class="stage">
+      <div class="app short" style="width:400px;height:150px">
+        <div class="ahead" style="font:13px/1.35 var(--a-mono)"><span class="wordmark">ATLANTIS HUD</span>
+          <span class="chip warn">could not save Northern Host</span></div>
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; Northern Host, 12 units</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail" style="width:100%">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="grp">Armies</div>
+              <div class="s on">Northern Host <span class="ct">12</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Uses the line the application already has for &ldquo;something happened&rdquo;, in the place
+        the navigator already looks for it &mdash; and where round 4 already put
+        &ldquo;exported Northern Host&rdquo;.</li>
+      <li>One sentence, no dialog, nothing to dismiss, and the rail is left alone.</li>
+      <li class="con">Top of the window; the navigator's eyes were at the bottom, on the rail.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="hexlab">Option C &mdash; a line in the rail itself</div>
+    <div class="stage">
+      <div class="app short" style="width:400px;height:150px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; Northern Host, 12 units</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail" style="width:100%">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="grp">Armies</div>
+              <div class="s on">Northern Host <span class="ct">12</span></div>
+              <div style="font-size:11.5px;color:var(--a-danger);padding:2px 7px 4px;line-height:1.4">
+                could not be saved &mdash; the change was undone</div>
+              <div class="s">Coastal Watch <span class="ct">4</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Right where the change was made and undone; impossible to miss.</li>
+      <li class="con">A new surface inside a 172px rail, which must then decide when to go away, and
+        pushes every Army below it down while it is there.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">S5 &mdash; the two removals, drawn</h3>
+<p>Round 3 settled that <em>both</em> exist: a standing line above the table for the stale ones, and a
+<b>Remove</b> on the selected row for any one member. Two things it did not settle: exactly where the row
+control sits, and whether the bulk one asks first.</p>
+<div class="card">
+  <div class="hexlab">Where the row Remove sits &mdash; a trailing action cell, shown on the selected row only</div>
+  <div class="stage">
+    <table class="ut" style="max-width:900px">
+      <tr><th style="width:26px">*</th><th style="width:64px">Id</th><th style="width:150px">Unit</th>
+        <th style="width:74px">Seen</th><th style="width:78px">Hex</th><th style="width:60px">Men</th>
+        <th>Items</th><th style="width:86px"></th></tr>
+      <tr><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>now</td><td>(7,53)</td><td>146</td><td>146 hill dwarves, 94 swords</td><td></td></tr>
+      <tr class="sel"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td>now</td><td>(9,53)</td><td>8</td><td>8 longbows, 8 leather armor</td><td><span class="b gh" style="color:var(--a-danger)">Remove</span></td></tr>
+      <tr><td class="o">*</td><td class="idown">3192</td><td>Vanguard</td><td>now</td><td>(7,53)</td><td>1</td><td>leader, horse, sword</td><td></td></tr>
+      <tr><td class="f">&minus;</td><td class="idfor">1204</td><td>Skirmishers</td><td class="warnc">turn 68</td><td class="dim">(9,55)</td><td>22</td><td>22 nomads, 22 swords</td><td></td></tr>
+    </table>
+  </div>
+  <ul class="notes">
+    <li>A fixed 86px column at the end, empty on every row but the selected one. The column exists
+      only while an Army is the source, alongside <b>Seen</b>.</li>
+    <li>Nothing reflows when the selection moves, because the column is always there.</li>
+    <li class="n">The alternative &mdash; floating the control over the last cell of the selected row
+      &mdash; costs no width but covers whatever that row was showing.</li>
+  </ul>
+</div>
+<div class="split">
+  <div class="card">
+    <div class="hexlab">Bulk removal &mdash; Option A: it just happens <span class="rec">recommended</span></div>
+    <div class="stage">
+      <div style="background:var(--a-panel);border:1px solid var(--a-edge);border-radius:5px;padding:8px 10px;display:flex;align-items:center;gap:10px;font:13px/1.35 var(--a-mono);color:var(--a-ink-soft)">
+        <span class="warnc">2 units were not in this turn's report.</span>
+        <span class="b">Remove them</span>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>The two rows are on screen, named, and sorted where you can see them; you are looking at
+        exactly what you are about to remove.</li>
+      <li>Removing a unit from an Army destroys nothing &mdash; the unit is untouched, and it can be
+        added back from any list.</li>
+      <li class="con">No way back if it was a slip, since there is no undo.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="hexlab">Bulk removal &mdash; Option B: it asks</div>
+    <div class="stage" style="display:flex;justify-content:center;padding:18px">
+      <div class="dlg" style="width:400px">
+        <div class="b2" style="padding:14px 16px;font:13px/1.5 var(--a-mono);color:var(--a-ink)">
+          Remove 2 units from Northern Host? They were not in this turn's report. The units themselves
+          are not affected.
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+            <span class="b">Cancel</span><span class="b dg">Remove</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Matches the delete-an-Army confirmation already agreed, so the two destructive-looking
+        actions behave alike.</li>
+      <li class="con">A dialog for something reversible by hand in two clicks, on a bar you must pass
+        every turn until you deal with it.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+Everything else in <code>ah-1mpx.2</code> is already decided &mdash; the rail, the Seen and Hex columns,
+inline naming, the delete confirmation and every string in the busy case are quoted in
+<code>docs/ui/ah-1mpx-r3.html</code> and recorded in the epic's design. Once these five are answered the
+plan can be written with nothing left for the implementer to choose.
+</footer>
+</main>
+</body></html>

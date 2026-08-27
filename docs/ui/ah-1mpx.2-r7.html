@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-1mpx.2 &mdash; round 7: the last four strings</title><style>
+/* ---- Explanatory chrome (docs/ui house style) ---- */
+:root {
+  --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+  --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+  --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  /* ---- the application's own tokens, from packages/shared/src/theme.css ---- */
+  --a-ground:#1b212a; --a-panel:#222933; --a-raised:#2a323d; --a-edge:#46525f; --a-edge-soft:#333d49;
+  --a-ink:#d4dce6; --a-ink-soft:#a8b4c2; --a-ink-dim:#99a4b2;
+  --a-brass:#e0b25a; --a-brass-bright:#eebe63; --a-select:#5aa9de; --a-ok:#4fb783;
+  --a-warn:#d9a441; --a-danger:#e89494; --a-gain:#7fb069;
+  --a-unit-own:#5ec8f0; --a-unit-foreign:#f07070; --a-ring:#f5f8fc;
+  --a-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+header, main, footer { max-width:1420px; margin:0 auto; }
+h1 { font-size:26px; letter-spacing:0.4px; }
+h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+p.lede { color:var(--brass-bright); font-size:15.5px; font-style:italic; max-width:96ch; margin-top:12px; }
+code, .mono { font-family:var(--a-mono); }
+header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+.stage { background:#0b0f15; border:1px solid var(--edge-soft); border-radius:8px; padding:12px; overflow-x:auto; }
+.hexlab { font:10.5px/1 var(--a-mono); letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
+.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+.notes li.con::before { content:"\2212 "; color:var(--danger); }
+.notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+.split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+.split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+footer { margin-top:42px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+.rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+.new { outline:1px dashed var(--brass); outline-offset:2px; }
+.newtag { font:9.5px/1 var(--a-mono); letter-spacing:.1em; text-transform:uppercase; color:#1b212a;
+          background:var(--brass); border-radius:3px; padding:3px 5px; }
+
+/* ================= the application, reproduced ================= */
+.app { width:1280px; height:720px; position:relative; overflow:hidden; border-radius:6px;
+       border:1px solid #000; background:var(--a-ground); color:var(--a-ink);
+       font:13px/1.35 var(--a-mono); display:flex; flex-direction:column; }
+.app.short { height:470px; }
+.app *, .app *::before { box-sizing:border-box; }
+
+/* header: min-h-9, border-b border-edge, bg-panel, px-3, gap-x-3.5 */
+.ahead { flex:none; min-height:36px; display:flex; align-items:center; gap:14px; padding:0 12px;
+         border-bottom:1px solid var(--a-edge); background:var(--a-panel); white-space:nowrap; }
+.ahead .wordmark { letter-spacing:.06em; color:var(--a-brass); }
+.ahead .lbl { color:var(--a-ink-soft); }
+.ahead .chip { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink);
+               border-radius:4px; padding:1px 8px; }
+.ahead .chip.plain { border-color:transparent; background:transparent; }
+.ahead .chip.warn { border-color:var(--a-warn); color:var(--a-warn); background:transparent; }
+.ahead .chip.gain { border-color:var(--a-gain); color:var(--a-gain); background:transparent; }
+.ahead .chip.dim { color:var(--a-ink-dim); }
+.ahead .right { margin-left:auto; display:flex; align-items:center; gap:14px; }
+.ahead .btn-imp { border:1px solid var(--a-brass); color:var(--a-brass); border-radius:4px; padding:3px 10px; }
+.ahead .btn-o { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink); border-radius:4px; padding:3px 10px; }
+.dotstat { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--a-ink-dim); }
+
+/* map stage + floating overlay: p-2.5 pt-12, gap-2.5 */
+.stagewrap { position:relative; flex:1; min-height:0; }
+.mapsvg { position:absolute; inset:0; width:100%; height:100%; }
+.mapctl { position:absolute; right:10px; top:10px; z-index:20; display:flex; align-items:center; gap:6px;
+          border:1px solid var(--a-edge); background:#222933f2; border-radius:6px; padding:4px 8px;
+          box-shadow:0 10px 15px -3px #0007; }
+.mapctl .sq { width:26px; height:26px; border:1px solid var(--a-edge); background:#222933f2;
+              border-radius:4px; color:var(--a-ink-soft); display:flex; align-items:center; justify-content:center; }
+.overlay { position:absolute; inset:0; padding:10px; padding-top:48px; display:flex; flex-direction:column; gap:10px; }
+.orow { display:flex; flex:1; min-height:0; justify-content:space-between; gap:10px; }
+.railL { width:304px; display:flex; flex-direction:column; }
+.railR { width:336px; display:flex; flex-direction:column; gap:10px; }
+
+/* CollapsiblePanel: rounded-md border-edge bg-pane shadow-lg backdrop-blur; header h-7 */
+.pane { display:flex; flex-direction:column; min-height:0; overflow:hidden; border-radius:6px;
+        border:1px solid var(--a-edge); background:#222933cc; backdrop-filter:blur(7px);
+        box-shadow:0 10px 15px -3px #0007,0 4px 6px -4px #0007; }
+.pane > .ttl { height:28px; flex:none; display:flex; align-items:center; gap:8px; padding:0 10px;
+               border-bottom:1px solid var(--a-edge); font-size:12px; letter-spacing:.12em;
+               text-transform:uppercase; color:var(--a-brass); }
+.pane > .ttl .hint { text-transform:none; letter-spacing:normal; color:var(--a-ink-dim); }
+.pane > .ttl .caret { margin-left:auto; color:var(--a-ink-dim); }
+.pane > .bd { min-height:0; flex:1; overflow:auto; padding:8px 10px; line-height:1.3; }
+.pane.grow { flex:1; min-height:0; }
+
+/* units dock, full width along the bottom: h-20.625rem = 330px */
+.dockU { height:330px; flex:none; }
+
+/* units table */
+table.ut { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0; font-variant-numeric:tabular-nums; }
+table.ut th { position:sticky; top:0; z-index:10; background:var(--a-panel); border-bottom:1px solid var(--a-edge);
+              padding:4px 8px; text-align:left; font-size:12px; font-weight:500; letter-spacing:.06em;
+              text-transform:uppercase; color:var(--a-ink-soft); }
+table.ut th .g { color:var(--a-ink-dim); }
+table.ut th.act { color:var(--a-brass); }
+table.ut td { height:24px; padding:2px 8px; border-bottom:1px solid var(--a-edge-soft);
+              white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+table.ut tr { color:var(--a-ink); }
+table.ut tr.foreign { color:var(--a-ink-soft); }
+table.ut tr.sel td { background:#5aa9de40; color:var(--a-ink); }
+table.ut tr.pick td { background:#5aa9de26; }
+.o { color:var(--a-ok); } .f { color:var(--a-danger); }
+.idown { color:var(--a-select); } .idfor { color:#f07070b3; }
+.dim { color:var(--a-ink-dim); } .warnc { color:var(--a-warn); } .okc { color:var(--a-ok); }
+.gone { color:var(--a-ink-dim); text-decoration:line-through; }
+.filter { width:176px; border:1px solid var(--a-edge); background:var(--a-ground); color:var(--a-ink-dim);
+          border-radius:4px; padding:1px 8px; font-size:13px; }
+
+/* small controls inside panes */
+.b { display:inline-block; border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink);
+     border-radius:4px; padding:3px 9px; font-size:12px; }
+.b.pri { border-color:var(--a-brass); color:var(--a-brass); background:transparent; }
+.b.gh { border-color:transparent; background:transparent; color:var(--a-ink-dim); padding:3px 6px; }
+.b.dg { border-color:#6b4444; color:var(--a-danger); background:transparent; }
+.kbd { display:inline-block; font-size:11px; padding:2px 6px; border:1px solid var(--a-edge);
+       border-bottom-width:2px; border-radius:4px; background:var(--a-ground); color:var(--a-brass-bright); }
+dl.kv { display:grid; grid-template-columns:74px 1fr; gap:4px 10px; font-size:13px; }
+dl.kv dt { color:var(--a-ink-dim); font-size:12px; }
+dl.kv dt.sep, dl.kv dd.sep { border-top:1px solid var(--a-edge-soft); padding-top:7px; margin-top:4px; }
+.chip2 { display:inline-block; background:#5aa9de26; border:1px solid #5aa9de66; color:var(--a-ink);
+         border-radius:10px; padding:1px 8px; font-size:12px; margin:0 4px 4px 0; }
+.chip2 .x { color:var(--a-ink-dim); margin-left:5px; }
+.arow { display:flex; align-items:center; gap:8px; padding:4px 7px; border-radius:4px; font-size:13px; }
+.arow.on { background:#5aa9de26; box-shadow:inset 2px 0 0 var(--a-select); }
+.arow .ct { margin-left:auto; color:var(--a-ink-dim); font-size:12px; }
+.sw { width:10px; height:10px; border-radius:2px; flex:none; }
+.sw.off { background:transparent; border:1px solid var(--a-edge); }
+.tagw { font-size:11px; border:1px solid #6b5a2a; color:var(--a-warn); border-radius:3px; padding:1px 5px; }
+.empty { color:var(--a-ink-dim); font-size:12px; line-height:1.6; text-align:center; padding:18px 12px; }
+.empty b { color:var(--a-ink-soft); display:block; font-weight:500; margin-bottom:4px; font-size:13px; }
+.st { font-size:12px; color:var(--a-ink-dim); margin-top:7px; line-height:1.5; }
+.st b { color:var(--a-brass-bright); font-weight:500; }
+
+/* the source rail (P3) */
+.srail { width:172px; flex:none; border-right:1px solid var(--a-edge); background:#2a323db3; overflow:auto; padding:6px; }
+.srail .grp { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--a-ink-dim); margin:10px 0 4px 6px; }
+.srail .s { display:flex; align-items:center; gap:6px; padding:3px 7px; border-radius:4px; color:var(--a-ink-soft); font-size:13px; }
+.srail .s.on { background:#5aa9de26; color:var(--a-ink); box-shadow:inset 2px 0 0 var(--a-select); }
+.srail .s.drop { border:1px dashed var(--a-brass); background:#e0b25a1f; color:var(--a-brass-bright); }
+.srail .s .ct { margin-left:auto; color:var(--a-ink-dim); font-size:12px; }
+.ghostdrag { position:absolute; border:1px dashed var(--a-brass); border-radius:4px; background:#2a323dee;
+             color:var(--a-brass-bright); font-size:12px; padding:4px 9px; box-shadow:0 8px 20px #000a; }
+
+/* dialog */
+.backdrop { position:absolute; inset:0; background:#00000080; display:flex; align-items:center; justify-content:center; z-index:40; }
+.dlg { border:1px solid var(--a-edge); background:var(--a-raised); border-radius:6px;
+       box-shadow:0 10px 15px -3px #0009; overflow:hidden; }
+.dlg > .h { display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid var(--a-edge); color:var(--a-ink-soft); }
+.dlg > .b2 { padding:12px; }
+pre.json { font:12px/1.5 var(--a-mono); color:var(--a-ink-soft); background:var(--a-ground);
+           border:1px solid var(--a-edge-soft); border-radius:5px; padding:10px; overflow-x:auto; }
+pre.json .k { color:var(--a-select); } pre.json .s { color:var(--a-ok); } pre.json .n { color:var(--a-brass-bright); }
+
+</style></head><body>
+<header>
+<h1>ah-1mpx.2 &mdash; round 7: <span>the last four</span></h1>
+<p>Everything else is settled. These are the four places where I would otherwise be writing
+&ldquo;the implementer chooses&rdquo; into the plan: what the pane calls itself for each source, what
+<b>New Army&hellip;</b> does when it is reached from the popover rather than the rail, how the popover
+shows an Army the unit is already in, and exactly when <b>This hex</b> lights in brass.</p>
+</header>
+
+<main>
+
+<h3 class="sec">U1 &mdash; what the pane calls itself</h3>
+<p>The pane's header is a fixed title plus a grey hint &mdash; today <code>Units in hex</code> and
+<code>&mdash; plain (7,53), 6 units</code>. Round 3 quoted the Army case as
+<code>Units &mdash; Northern Host, 12 units</code>. The other two have never been written down.</p>
+<div class="split">
+  <div class="card">
+    <div class="hexlab">Set A &mdash; the pane stays called &ldquo;Units&rdquo; <span class="rec">recommended</span></div>
+    <div class="stage">
+      <div style="display:grid;gap:8px">
+        <div style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--a-edge);border-radius:4px;background:var(--a-panel);font:12px/1 var(--a-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--a-brass)">
+          Units in hex <span style="text-transform:none;letter-spacing:normal;color:var(--a-ink-dim)">&mdash; plain (7,53), 6 units</span></div>
+        <div style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--a-edge);border-radius:4px;background:var(--a-panel);font:12px/1 var(--a-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--a-brass)">
+          Units <span style="text-transform:none;letter-spacing:normal;color:var(--a-ink-dim)">&mdash; all my units, 38 units</span></div>
+        <div style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--a-edge);border-radius:4px;background:var(--a-panel);font:12px/1 var(--a-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--a-brass)">
+          Units <span style="text-transform:none;letter-spacing:normal;color:var(--a-ink-dim)">&mdash; Northern Host, 12 units</span></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>The pane keeps one identity across every source; only the grey part moves. Matches the
+        Army line round 3 already agreed.</li>
+      <li><code>Units in hex</code> is untouched, so the default view is byte-identical to today.</li>
+      <li class="con">&ldquo;all my units, 38 units&rdquo; says &ldquo;units&rdquo; twice.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="hexlab">Set B &mdash; the title becomes the source</div>
+    <div class="stage">
+      <div style="display:grid;gap:8px">
+        <div style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--a-edge);border-radius:4px;background:var(--a-panel);font:12px/1 var(--a-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--a-brass)">
+          Units in hex <span style="text-transform:none;letter-spacing:normal;color:var(--a-ink-dim)">&mdash; plain (7,53), 6 units</span></div>
+        <div style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--a-edge);border-radius:4px;background:var(--a-panel);font:12px/1 var(--a-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--a-brass)">
+          All my units <span style="text-transform:none;letter-spacing:normal;color:var(--a-ink-dim)">&mdash; 38 units</span></div>
+        <div style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--a-edge);border-radius:4px;background:var(--a-panel);font:12px/1 var(--a-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--a-brass)">
+          Northern Host <span style="text-transform:none;letter-spacing:normal;color:var(--a-ink-dim)">&mdash; 12 units</span></div>
+    </div>
+    </div>
+    <ul class="notes">
+      <li>Reads as a heading rather than a caption; the source is in brass capitals where the eye
+        goes first.</li>
+      <li class="con">Contradicts the Army line already agreed in round 3, so that decision reopens.</li>
+      <li class="con">An Army's name goes through the header's uppercase transform, so
+        &ldquo;Northern Host&rdquo; ships as NORTHERN HOST whatever the navigator typed.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">U2 &mdash; <b>New Army&hellip;</b>, reached from the popover</h3>
+<p>Naming was settled as inline in the rail: <b>+ New Army</b> adds a row with the cursor in it, Enter
+commits, Escape abandons. But the popover offers <b>New Army&hellip;</b> too, and there the navigator is
+looking at a unit, not at the rail.</p>
+<div class="split3">
+  <div class="card">
+    <div class="hexlab">Option A &mdash; it drops into the rail's own editor <span class="rec">recommended</span></div>
+    <div class="stage" style="position:relative;min-height:170px">
+      <div class="app short" style="width:400px;height:150px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units in hex <span class="hint">&mdash; plain (7,53), 6 units</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail" style="width:172px">
+              <div class="s on">This hex <span class="ct">6</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s">Northern Host <span class="ct">12</span></div>
+              <div style="padding:2px 4px"><input style="width:100%;border:1px solid var(--a-brass);background:var(--a-ground);color:var(--a-ink);border-radius:3px;padding:2px 6px;font:13px var(--a-mono)" value="Sec" readonly></div>
+            </div>
+            <div style="flex:1;padding:8px;font-size:12px;color:var(--a-ink-dim)">the popover has closed</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>One naming control in the whole feature, in one place, behaving one way. Enter commits and
+        the unit goes in; Escape abandons the Army <em>and</em> adds nothing.</li>
+      <li>You see the new Army land among the others, in the order it will keep.</li>
+      <li class="con">Attention jumps from the row you right-clicked to the far left of the pane.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="hexlab">Option B &mdash; the popover becomes a name field</div>
+    <div class="stage" style="position:relative;min-height:170px;display:flex;align-items:center;justify-content:center">
+      <div class="dlg" style="width:210px">
+        <div style="padding:8px;font:12.5px/1.4 var(--a-mono)">
+          <div style="color:var(--a-ink-dim);font-size:11.5px;margin-bottom:6px">New Army, with Outriders (9977) in it</div>
+          <input style="width:100%;border:1px solid var(--a-brass);background:var(--a-ground);color:var(--a-ink);border-radius:3px;padding:3px 6px;font:13px var(--a-mono)" value="Sec" readonly>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Never leaves the spot you were looking at, and says in one line what is about to happen.</li>
+      <li class="con">A second naming control, which must refuse an empty name and handle Escape the
+        same way the rail's does &mdash; two implementations of one rule.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="hexlab">Option C &mdash; not offered here</div>
+    <div class="stage" style="position:relative;min-height:170px;display:flex;align-items:center;justify-content:center">
+      <div class="dlg" style="width:190px">
+        <div style="padding:4px;font:12.5px/1.35 var(--a-mono)">
+          <div style="padding:3px 8px;color:var(--a-ink-dim);font-size:11.5px">Outriders (9977) into&hellip;</div>
+          <div style="padding:4px 8px;color:var(--a-ink-soft)">Northern Host</div>
+          <div style="padding:4px 8px;color:var(--a-ink-soft)">Coastal Watch</div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>The popover lists Armies and nothing else. Simplest thing that can work.</li>
+      <li class="con">With no Armies yet the popover is empty, and the answer &mdash; go and use the
+        rail &mdash; is somewhere the popover is covering.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">U3 &mdash; an Army the unit is already in</h3>
+<p>A unit may belong to any number of Armies, so the popover will regularly list one it is already a
+member of.</p>
+<div class="split3">
+  <div class="card">
+    <div class="hexlab">Option A &mdash; ticked and inert <span class="rec">recommended</span></div>
+    <div class="stage" style="display:flex;justify-content:center;padding:14px">
+      <div class="dlg" style="width:196px"><div style="padding:4px;font:12.5px/1.35 var(--a-mono)">
+        <div style="padding:3px 8px;color:var(--a-ink-dim);font-size:11.5px">Outriders (9977) into&hellip;</div>
+        <div style="padding:4px 8px;color:var(--a-ink-dim);display:flex"><span class="okc" style="margin-right:6px">&#10003;</span>Northern Host</div>
+        <div style="padding:4px 8px;color:var(--a-ink-soft)">Coastal Watch</div>
+        <div style="border-top:1px solid var(--a-edge);margin:4px 0"></div>
+        <div style="padding:4px 8px;color:var(--a-brass-bright)">New Army&hellip;</div>
+      </div></div>
+    </div>
+    <ul class="notes">
+      <li>Answers &ldquo;is it in there already?&rdquo; without you having to go and look.</li>
+      <li>A menu called <em>Add to army</em> only ever adds. Nothing destructive can happen by
+        mis-clicking in it.</li>
+      <li class="con">A row you cannot click, when removing is what you wanted.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="hexlab">Option B &mdash; ticked, and clicking takes it out</div>
+    <div class="stage" style="display:flex;justify-content:center;padding:14px">
+      <div class="dlg" style="width:196px"><div style="padding:4px;font:12.5px/1.35 var(--a-mono)">
+        <div style="padding:3px 8px;color:var(--a-ink-dim);font-size:11.5px">Outriders (9977) &mdash; in&hellip;</div>
+        <div style="padding:4px 8px;background:#5aa9de26;color:var(--a-ink);display:flex"><span class="okc" style="margin-right:6px">&#10003;</span>Northern Host</div>
+        <div style="padding:4px 8px;color:var(--a-ink-soft)">Coastal Watch</div>
+      </div></div>
+    </div>
+    <ul class="notes">
+      <li>One control for membership in both directions; the whole picture in one place.</li>
+      <li class="con">A button labelled <em>Add to army</em> that also removes, and one click from a
+        tick to a silent removal &mdash; the one place in this bead something is lost by accident.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="hexlab">Option C &mdash; no mark at all</div>
+    <div class="stage" style="display:flex;justify-content:center;padding:14px">
+      <div class="dlg" style="width:196px"><div style="padding:4px;font:12.5px/1.35 var(--a-mono)">
+        <div style="padding:3px 8px;color:var(--a-ink-dim);font-size:11.5px">Outriders (9977) into&hellip;</div>
+        <div style="padding:4px 8px;color:var(--a-ink-soft)">Northern Host</div>
+        <div style="padding:4px 8px;color:var(--a-ink-soft)">Coastal Watch</div>
+      </div></div>
+    </div>
+    <ul class="notes">
+      <li>Adding twice is harmless &mdash; membership is a set, so the second add changes nothing.</li>
+      <li class="con">Silently changes nothing, which is indistinguishable from being broken.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">U4 &mdash; when <b>This hex</b> lights in brass</h3>
+<p>Round 3 settled &ldquo;stay, but say so&rdquo;: clicking a hex while an Army is the source keeps the
+Army and marks <b>This hex</b> in brass with a &#9679; and the new hex's count. What it did not settle is
+whether the mark is about <em>having clicked</em>, or simply about the two not matching.</p>
+<div class="split">
+  <div class="card">
+    <div class="hexlab">Option A &mdash; brass whenever the source is not This hex <span class="rec">recommended</span></div>
+    <div class="stage">
+      <div class="srail" style="width:190px;border:1px solid var(--a-edge);border-radius:4px">
+        <div class="s" style="color:var(--a-brass-bright)">This hex <span class="ct" style="color:var(--a-brass-bright)">9 &#9679;</span></div>
+        <div class="s">All my units <span class="ct">38</span></div>
+        <div class="grp">Armies</div>
+        <div class="s on">Northern Host <span class="ct">12</span></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>One rule, stated in one sentence, with no history in it: the mark means
+        <em>the table is not about the hex on the map</em>, which is true from the moment you leave
+        <b>This hex</b>.</li>
+      <li>Nothing to remember and nothing to reset &mdash; no &ldquo;has the hex changed since&hellip;&rdquo;
+        state to get wrong when a turn loads or a game opens.</li>
+      <li class="con">Brass from the instant you pick an Army, so the mark is on screen the whole time
+        you work in one &mdash; and a permanent highlight is a weak signal.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="hexlab">Option B &mdash; brass only once the hex changes underneath you</div>
+    <div class="stage">
+      <div style="display:grid;gap:10px">
+        <div class="srail" style="width:190px;border:1px solid var(--a-edge);border-radius:4px">
+          <div class="s">This hex <span class="ct">6</span></div>
+          <div class="s on">Northern Host <span class="ct">12</span></div>
+        </div>
+        <div style="font-size:12px;color:var(--a-ink-dim);padding-left:4px">&#8595; you click hex (9,55) on the map</div>
+        <div class="srail" style="width:190px;border:1px solid var(--a-edge);border-radius:4px">
+          <div class="s" style="color:var(--a-brass-bright)">This hex <span class="ct" style="color:var(--a-brass-bright)">9 &#9679;</span></div>
+          <div class="s on">Northern Host <span class="ct">12</span></div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>The mark appears at the moment it has news, so it means something when it does.</li>
+      <li class="con">Needs a remembered &ldquo;the hex when you left This hex&rdquo;, and a decision
+        about what clears it &mdash; a turn load, a game open, coming back to This hex and leaving again.</li>
+      <li class="con">Sitting on an Army with the map on a completely different hex looks calm, which
+        is the state round 3 wanted made visible.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+After these four the plan is written with every string quoted and no decision left to the implementer.
+</footer>
+</main>
+</body></html>
