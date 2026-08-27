@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { MageStanding, SkillStanding, StandingKind } from "../magicStanding";
 import type { MagicBranch, MagicPrerequisite, MagicSkillNode, MagicTree } from "../magicTree";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { MagePicker } from "./MagePicker";
 import { buildMagicGraph, type MagicTreeView } from "./magicGraphLayout";
 import { MagicGraphView, type MagicGraphHandle } from "./MagicGraphView";
 import type { Viewport } from "./mapViewport";
@@ -20,7 +22,13 @@ import type { Viewport } from "./mapViewport";
  * centred on it. The view choice and the graph's pan and zoom live above this component, in
  * `AppShell`, because they outlive the dialog; the light does not, and dies with it.
  *
- * Static: nothing about the player's own mages appears (`ah-67h8`). The frame - the backdrop, the
+ * **Tinted for one mage at a time** (`ah-67h8`), whenever a report is loaded: every skill says
+ * whether he knows it and can still raise it, knows it and is stuck, has it at the game's
+ * maximum, may begin it now, or cannot begin it at all. Both views are tinted from the same
+ * `SkillStanding`s, so the toggle never changes what you are told, only how it is drawn. With no
+ * report the tree is the untinted reference page `ah-gjbs.1` ships.
+ *
+ * The frame - the backdrop, the
  * dismiss guard and the two heights that must move together - is `GameDataDialog`'s, on purpose:
  * the two reference dialogs should not drift apart.
  */
@@ -32,7 +40,12 @@ export function MagicTreeDialog({
   graphViewport,
   onGraphViewport,
   onOpenGameData,
-  onDismiss
+  onDismiss,
+  mages = [],
+  picked = null,
+  onPick,
+  label = (regionId) => regionId,
+  reportLoaded = false
 }: {
   tree: MagicTree;
   /** The skill to scroll to and pick out, or null to open at the top. */
@@ -46,6 +59,18 @@ export function MagicTreeDialog({
   /** Opens a skill in the game data dictionary. */
   onOpenGameData: (entryId: string) => void;
   onDismiss: () => void;
+  /** The faction's mages, adepts first. Empty when no report is loaded or none has studied magic. */
+  mages?: readonly MageStanding[];
+  /** The mage the tree is tinted for, or null for the untinted reference page. */
+  picked?: MageStanding | null;
+  onPick?: (unitId: string) => void;
+  /** How a region id reads to a player. `AppShell`'s `hexLabel`. */
+  label?: (regionId: string) => string;
+  /**
+   * Whether a report is loaded at all. An empty `mages` means two different things - no report, or
+   * a report whose units have never studied magic - and the two empty states say different things.
+   */
+  reportLoaded?: boolean;
 }) {
   useEscapeToDismiss(onDismiss);
 
@@ -77,9 +102,14 @@ export function MagicTreeDialog({
   }, []);
 
   // Keyed on `highlighted` rather than on `initialTag`: following a crossing chip must move the
-  // view to the skill it names, and an effect keyed on the prop would fire only on open. Effects
-  // run on mount too, which is the whole of why toggling back to Branches lands on the skill the
-  // graph was lighting - there is no code here about the toggle at all.
+  // view to the skill it names, and an effect keyed on the prop would fire only on open.
+  //
+  // Keyed on the view as well, because toggling back to Branches does not remount the dialog - it
+  // swaps the body - so an effect keyed on `highlighted` alone never runs for the cards that have
+  // just appeared, and the skill the graph was lighting is only found when it happens to be on
+  // screen already. The cards are a multi-column layout that scrolls sideways: with a mage picked
+  // every row carries a chip, the body grows past three screen-widths, and "happens to be on
+  // screen" stops being true (ah-67h8).
   const cards = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (highlighted === null) {
@@ -88,8 +118,8 @@ export function MagicTreeDialog({
     const row = cards.current?.querySelector(
       `[data-testid="magic-tree-skill-${CSS.escape(highlighted)}"]`
     );
-    row?.scrollIntoView({ block: "center" });
-  }, [highlighted]);
+    row?.scrollIntoView({ block: "center", inline: "center" });
+  }, [highlighted, view]);
 
   return (
     <div
@@ -137,6 +167,14 @@ export function MagicTreeDialog({
               Whole graph
             </ViewButton>
           </div>
+          {picked === null || onPick === undefined ? null : (
+            <>
+              <MagePicker mages={mages} picked={picked} label={label} onPick={onPick} />
+              <span data-testid="magic-tree-tally" className="text-ink-dim">
+                {tally(picked)}
+              </span>
+            </>
+          )}
           {showingGraph ? (
             <>
               <ZoomButton
@@ -200,14 +238,56 @@ export function MagicTreeDialog({
         </div>
 
         {/*
-          Stated once, under the header, rather than once per card: ten cards fit on one screen, and
-          the same sentence ten times reads as decoration. `rules/magic_skills`: magic skills
-          "cannot be learnt to a higher level than the skills they depend upon".
+          One grid row, however many banners are in it: the box is `grid-rows-[auto_auto_1fr]`, and
+          a banner rendered as a sibling would take the `1fr` meant for the tree itself.
         */}
-        <p data-testid="magic-tree-cap" className="m-0 border-b border-edge px-3 py-1.5 text-ink-dim">
-          A magic skill can never rise above the skills it stands on — the levels below are floors to
-          begin, and ceilings thereafter.
-        </p>
+        <div>
+          {picked !== null ? null : reportLoaded ? (
+            // The two kinds of nothing are different facts, and saying neither would make them
+            // look like the same one. The tree itself is still drawn, untinted: it is the
+            // reference page whether or not a report is loaded.
+            <p
+              data-testid="magic-tree-no-mages"
+              className="m-0 border-b border-edge px-3 py-1.5 text-ink-dim"
+            >
+              None of your units has studied magic. A unit becomes a mage by studying force,
+              pattern or spirit.
+            </p>
+          ) : (
+            <p
+              data-testid="magic-tree-no-report"
+              className="m-0 border-b border-edge px-3 py-1.5 text-ink-dim"
+            >
+              No turn report is loaded. The tree shows every magic skill and what it stands on.
+              Load a report and it will also show what your own mages know.
+            </p>
+          )}
+
+          {picked === null || picked.missing.length === 0 ? null : (
+            // About the picked mage only, and about what he holds: the ruleset we scraped is
+            // missing two magic skills reports do name, and a player holding one must not
+            // conclude the tree is simply wrong.
+            <p
+              data-testid="magic-tree-missing"
+              className="m-0 border-b border-edge px-3 py-1.5 text-warn"
+            >
+              {missingLine(picked)}
+            </p>
+          )}
+
+          {/*
+            Stated once, under the header, rather than once per card: ten cards fit on one screen,
+            and the same sentence ten times reads as decoration. `rules/magic_skills`: magic skills
+            "cannot be learnt to a higher level than the skills they depend upon".
+          */}
+          <p
+            data-testid="magic-tree-cap"
+            className="m-0 border-b border-edge px-3 py-1.5 text-ink-dim"
+          >
+            A magic skill can never rise above the skills it stands on — the levels below are
+            floors to begin, and ceilings thereafter.
+          </p>
+        </div>
 
         {/*
           A CSS multi-column layout rather than a grid: it gives one column on a narrow window with
@@ -221,6 +301,7 @@ export function MagicTreeDialog({
             <MagicGraphView
               graph={graph}
               lit={highlighted}
+              standing={picked?.byTag ?? null}
               onLight={setHighlighted}
               onOpenGameData={onOpenGameData}
               viewport={graphViewport}
@@ -235,6 +316,7 @@ export function MagicTreeDialog({
                 key={branch.key}
                 branch={branch}
                 highlighted={highlighted}
+                standing={picked?.byTag ?? null}
                 onOpenGameData={onOpenGameData}
                 onFollow={setHighlighted}
               />
@@ -300,11 +382,14 @@ function ZoomButton({
 function Card({
   branch,
   highlighted,
+  standing,
   onOpenGameData,
   onFollow
 }: {
   branch: MagicBranch;
   highlighted: string | null;
+  /** Where the picked mage stands in each skill, or null for the untinted reference page. */
+  standing: ReadonlyMap<string, SkillStanding> | null;
   onOpenGameData: (entryId: string) => void;
   onFollow: (tag: string) => void;
 }) {
@@ -327,6 +412,7 @@ function Card({
           skill={skill}
           floor={floor}
           highlighted={highlighted === skill.tag}
+          standing={standing?.get(skill.tag) ?? null}
           onOpenGameData={onOpenGameData}
           onFollow={onFollow}
         />
@@ -339,22 +425,28 @@ function Skill({
   skill,
   floor,
   highlighted,
+  standing,
   onOpenGameData,
   onFollow
 }: {
   skill: MagicSkillNode;
   floor: number;
   highlighted: boolean;
+  /** Where the picked mage stands in this one skill, or null when nothing is tinted. */
+  standing: SkillStanding | null;
   onOpenGameData: (entryId: string) => void;
   onFollow: (tag: string) => void;
 }) {
+  const style = standing === null ? null : ROW_STYLE[standing.kind];
   return (
     <div
       data-testid={`magic-tree-skill-${skill.tag}`}
       // An inline indent rather than a Tailwind class: the depth is a number, and a class name
       // built from one is a class Tailwind's scanner never sees and so never emits.
       style={{ paddingLeft: `${(skill.depth - floor) * 0.75}rem` }}
-      className={`rounded px-1 ${highlighted ? "bg-panel text-ink" : "text-ink-soft"}`}
+      className={`rounded px-1 ${highlighted ? "bg-panel " : ""}${
+        style === null ? (highlighted ? "text-ink" : "text-ink-soft") : `${style.edge} ${style.text}`
+      }`}
     >
       <button
         type="button"
@@ -377,8 +469,99 @@ function Skill({
           +{need.tag} {need.level}
         </button>
       ))}
+      {standing === null || standing.kind === "locked" ? null : (
+        // Locked takes no chip and keeps its gate text: what is missing is the reason for showing
+        // a locked row at all.
+        <span
+          data-testid={`magic-tree-standing-${skill.tag}`}
+          className={`ml-1 rounded border px-1 ${ROW_STYLE[standing.kind].chip}`}
+        >
+          {standingWords(standing)}
+        </span>
+      )}
     </div>
   );
+}
+
+/**
+ * The five states, each separated from the other four by shape as well as by colour, so they read
+ * for somebody who cannot tell green from amber and in a monochrome print.
+ *
+ * Locked takes no edge rather than a fifth border style: four patterns, and the fifth state is the
+ * absence of one.
+ */
+const ROW_STYLE: Record<StandingKind, { edge: string; text: string; chip: string }> = {
+  known: {
+    edge: "border-l-4 border-solid border-ok",
+    text: "text-ink",
+    chip: "border-ok text-ok"
+  },
+  ceiling: {
+    edge: "border-l-4 border-double border-warn",
+    text: "text-ink",
+    chip: "border-warn text-warn"
+  },
+  maxed: {
+    edge: "border-l-4 border-dotted border-ink-soft",
+    text: "text-ink",
+    chip: "border-ink-soft text-ink-soft"
+  },
+  open: {
+    edge: "border-l-4 border-dashed border-select",
+    text: "text-ink-soft",
+    chip: "border-select text-select"
+  },
+  locked: { edge: "border-l-4 border-transparent", text: "text-ink-dim", chip: "" }
+};
+
+/**
+ * `bird lore and wolf lore`; `bird lore, wolf lore and dragon lore`. Three is the widest real case
+ * in the shipped ruleset.
+ */
+function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) {
+    return names.join("");
+  }
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** The chip's words. Spends words making the ceiling explicit rather than leaning on the colour. */
+function standingWords(standing: SkillStanding): string {
+  switch (standing.kind) {
+    case "known":
+      return `at ${standing.level}, ceiling ${standing.ceiling}`;
+    case "ceiling":
+      return `at ${standing.level}, held by ${joinNames(standing.heldBy.map((need) => need.name))}`;
+    case "maxed":
+      return `at ${standing.level}, the highest there is`;
+    case "open":
+      return "can study";
+    case "locked":
+      return "";
+  }
+}
+
+/** The header tally, in a fixed order and with a zero count left out entirely. */
+function tally(picked: MageStanding): string {
+  const words: [StandingKind, string][] = [
+    ["known", "known"],
+    ["ceiling", "at ceiling"],
+    ["maxed", "at maximum"],
+    ["open", "can study"],
+    ["locked", "locked"]
+  ];
+  return words
+    .filter(([kind]) => picked.counts[kind] > 0)
+    .map(([kind, word]) => `${picked.counts[kind]} ${word}`)
+    .join(" · ");
+}
+
+/** What the mage knows that this tree cannot draw, because the ruleset we hold lacks the skill. */
+function missingLine(picked: MageStanding): string {
+  if (picked.missing.length === 1) {
+    return `${picked.name} knows ${picked.missing[0].name}, which this tree cannot show: it is not in the ruleset we hold.`;
+  }
+  return `${picked.name} knows ${picked.missing.length} skills this tree cannot show: they are not in the ruleset we hold.`;
 }
 
 /**

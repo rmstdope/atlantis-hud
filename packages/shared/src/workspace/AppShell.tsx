@@ -159,6 +159,7 @@ import type { MagicTreeView } from "./magicGraphLayout";
 import type { Viewport } from "./mapViewport";
 import { parseGameData } from "../gameData";
 import { buildMagicTree } from "../magicTree";
+import { magesOf, openingMage } from "../magicStanding";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { buildPaletteEntries } from "../commandPalette";
 import { structurePaletteLabel } from "../structureLabel";
@@ -469,6 +470,31 @@ export function AppShell({
   const [gameDataOpen, setGameDataOpen] = useState<{ entryId: string | null } | null>(null);
   // The magic study tree, derived from the same index and gated the same way: no ruleset, no tree.
   const magicTree = useMemo(() => (gameData === null ? null : buildMagicTree(gameData)), [gameData]);
+  /**
+   * The faction's own mages, and where each stands in every magic skill (ah-67h8).
+   *
+   * `own` is the report's own marker and is never inferred - `ReportUnit`'s doc-comment says so -
+   * which is what keeps a foreign mage out of a list about your own study plans.
+   */
+  const mages = useMemo(
+    () =>
+      parsed === null || magicTree === null || gameData === null
+        ? []
+        : magesOf(
+            parsed.regions.flatMap((region) => region.units).filter((unit) => unit.own),
+            magicTree,
+            gameData
+          ),
+    [parsed, magicTree, gameData]
+  );
+  /**
+   * Which mage the tree is tinted for, remembered for the app session.
+   *
+   * A remembered id that is no longer among `mages` - a new turn where he died, or a switch of
+   * game - simply fails the `find` and falls through to `openingMage`, which re-derives. That is
+   * the whole of the persistence rule, and it is why no cleanup effect is needed.
+   */
+  const [pickedMage, setPickedMage] = useState<string | null>(null);
   /** Null while the tree is closed; `tag` is the skill to open on, or null for the top. */
   const [magicTreeOpen, setMagicTreeOpen] = useState<{ tag: string | null } | null>(null);
   /**
@@ -799,6 +825,12 @@ export function AppShell({
       return unexplored ? `unexplored (${unexplored.x},${unexplored.y})` : regionId;
     },
     [model]
+  );
+
+  /** The mage the study tree opens on and stays on, or null when the faction has none. */
+  const picked = useMemo(
+    () => mages.find((mage) => mage.unitId === pickedMage) ?? openingMage(mages, selectedUnitId),
+    [mages, pickedMage, selectedUnitId]
   );
 
   /** The selected hex's slice of the preview, or nothing when the orders leave it alone. */
@@ -3177,6 +3209,11 @@ export function AppShell({
             setGameDataOpen({ entryId });
           }}
           onDismiss={() => setMagicTreeOpen(null)}
+          mages={mages}
+          picked={picked}
+          onPick={setPickedMage}
+          label={hexLabel}
+          reportLoaded={parsed !== null}
         />
       ) : null}
     </>
@@ -3576,6 +3613,11 @@ export function AppShell({
                     gameData === null ? undefined : (entryId) => setGameDataOpen({ entryId })
                   }
                   magicTree={magicTree}
+                  standing={
+                    unit === null
+                      ? null
+                      : (mages.find((mage) => mage.unitId === unit.unitId) ?? null)
+                  }
                   onOpenMagicTree={
                     magicTree === null ? undefined : (tag) => setMagicTreeOpen({ tag })
                   }
