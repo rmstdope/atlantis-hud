@@ -153,6 +153,8 @@ import type { OrdersEditorHandle } from "./OrdersEditor";
 import { CommandPalette } from "./CommandPalette";
 import { GameDataDialog } from "./GameDataDialog";
 import { MagicTreeDialog } from "./MagicTreeDialog";
+import type { MagicTreeView } from "./magicGraphLayout";
+import type { Viewport } from "./mapViewport";
 import { parseGameData } from "../gameData";
 import { buildMagicTree } from "../magicTree";
 import { ShortcutHelp } from "./ShortcutHelp";
@@ -467,6 +469,16 @@ export function AppShell({
   const magicTree = useMemo(() => (gameData === null ? null : buildMagicTree(gameData)), [gameData]);
   /** Null while the tree is closed; `tag` is the skill to open on, or null for the top. */
   const [magicTreeOpen, setMagicTreeOpen] = useState<{ tag: string | null } | null>(null);
+  /**
+   * The tree's view choice and the graph's pan and zoom, remembered for the app session.
+   *
+   * Component state rather than a `workspaceStore` field: both are read by one component tree,
+   * both must die with a reload, and adding them to the store would mean remembering to keep them
+   * out of `Persisted` and out of `partialize` - two omissions that are invisible when correct and
+   * silent when wrong. A `useState` here is already exactly "remembered until the app is reloaded".
+   */
+  const [magicTreeView, setMagicTreeView] = useState<MagicTreeView>("branches");
+  const [magicGraphViewport, setMagicGraphViewport] = useState<Viewport | null>(null);
   const [route, setRoute] = useState<RoutePlanResponse | null>(null);
   const [planning, setPlanning] = useState(false);
   // The selected unit's written MOVE order, traced so the map can draw it. Follows the editor
@@ -3137,6 +3149,10 @@ export function AppShell({
         <MagicTreeDialog
           tree={magicTree}
           initialTag={magicTreeOpen.tag}
+          view={magicTreeView}
+          onView={setMagicTreeView}
+          graphViewport={magicGraphViewport}
+          onGraphViewport={setMagicGraphViewport}
           // The tree closes as the dictionary opens, so the two reference views never stack.
           onOpenGameData={(entryId) => {
             setMagicTreeOpen(null);

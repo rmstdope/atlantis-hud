@@ -36,6 +36,8 @@ export * from "./magicTree";
 export * from "./workspace/GameDataDialog";
 export * from "./workspace/gameDataDialogState";
 export * from "./workspace/MagicTreeDialog";
+export * from "./workspace/magicGraphLayout";
+export * from "./workspace/MagicGraphView";
 export * from "./workspace/GameGate";
 export * from "./workspace/GamePicker";
 export * from "./workspace/MergedFactionsPanel";
