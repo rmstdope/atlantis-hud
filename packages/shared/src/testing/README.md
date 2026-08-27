@@ -58,7 +58,7 @@ is an id no test in this package can reach. That distinction is why the throwing
 `expected null not to be null`.
 
 ```tsx
-findByTestId(panel(), "dossier-unit-104").props.onClick as () => void; // present, or a real message
+findByTestId(panel(), "dossier-hex-1:8,54").props.onClick as () => void; // present, or a real message
 expect(queryByTestId(panel(), "dossier-back")).toBeNull();             // asserting absence
 ```
 
