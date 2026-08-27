@@ -7,7 +7,8 @@
  * before it did.
  */
 
-import type { CoreClient, MapExportContent } from "@atlantis/core-client";
+import type { ArmyRecord, CoreClient, MapExportContent } from "@atlantis/core-client";
+import { battleFileName, battleFileOf, battleFileText } from "../armyExport";
 import type { TextFileSaver } from "../downloadFile";
 import { backupFileName } from "../gameBackup";
 import { exportFileName, exportRequestOf } from "../mapExport";
@@ -78,4 +79,25 @@ export async function deliverMapExport(
   const text = await client.exportMap(rawReport, rememberedJson, exportRequestOf(rect, level, content));
   const fileName = exportFileName(turnNumber, level);
   return saveTextFile(fileName, text, "text/plain");
+}
+
+/**
+ * Builds and delivers an Army battle file (`ah-1mpx.3`).
+ *
+ * Nothing crosses to the core: the file is built from `ArmyRecord`s already in memory, which is
+ * why this takes no client while `deliverMapExport` does.
+ *
+ * Resolves with the path written, `""` for a browser download, or `null` when the player cancelled
+ * the save - the caller uses that to decide whether the dialog may close.
+ */
+export async function deliverArmyExport(
+  saveTextFile: TextFileSaver,
+  attackers: ArmyRecord | null,
+  defenders: ArmyRecord | null
+): Promise<string | null> {
+  return saveTextFile(
+    battleFileName(attackers, defenders),
+    battleFileText(battleFileOf(attackers, defenders)),
+    "application/json"
+  );
 }

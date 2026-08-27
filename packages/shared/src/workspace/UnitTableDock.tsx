@@ -135,6 +135,7 @@ export function UnitTableDock({
   client,
   game = null,
   onFailure,
+  onExportArmy,
   initialSource = HEX_SOURCE
 }: {
   hex: HexNode | null;
@@ -163,6 +164,13 @@ export function UnitTableDock({
   game?: OpenedGame | null;
   /** A save that failed and was rolled back. Wired to the header status line. */
   onFailure?: (message: string) => void;
+  /**
+   * Opens the export dialog for an Army. Absent in a component test, where the strip is inert.
+   *
+   * The dock does not own the dialog: every modal in this application is mounted by `AppShell`,
+   * and a `fixed inset-0` backdrop rendered from inside a pane is a pane pretending to be a window.
+   */
+  onExportArmy?: (armyId: string) => void;
   /**
    * The source the pane starts on, `This hex` unless told otherwise.
    *
@@ -611,6 +619,8 @@ export function UnitTableDock({
               name={army.name}
               memberCount={army.members.length}
               confirming={mode.kind === "deleting" && mode.armyId === army.id}
+              canExport={currentTurn !== null && onExportArmy !== undefined}
+              onExport={() => onExportArmy?.(army.id)}
               onRename={() => dispatch({ type: "rename-clicked", armyId: army.id, name: army.name })}
               onDelete={() => dispatch({ type: "delete-clicked", armyId: army.id })}
               onCancelDelete={() => dispatch({ type: "delete-cancelled" })}
@@ -897,15 +907,19 @@ function ExtraTh({
 }
 
 /**
- * The strip above the table while an Army is the source: its name, `Rename` and `Delete`.
+ * The strip above the table while an Army is the source: its name, `Export…`, `Rename` and
+ * `Delete`.
  *
- * Two buttons, not three. `Export…` is not drawn at all until `ah-1mpx.3` builds it (S2): a dead
- * control has no honest tooltip that is not an apology for the backlog.
+ * `Export…` comes first of the three: it is the primary action, and putting it before the
+ * destructive one keeps `Delete` last, where the strip already trained the eye to find it. Never
+ * hidden, only disabled - the policy this dock states for `Add to army`.
  */
 function ArmyStrip({
   name,
   memberCount,
   confirming,
+  canExport,
+  onExport,
   onRename,
   onDelete,
   onCancelDelete,
@@ -914,6 +928,10 @@ function ArmyStrip({
   name: string;
   memberCount: number;
   confirming: boolean;
+  /** False when the report names no turn: there is then no way to tell fresh from remembered. */
+  canExport: boolean;
+  /** Opens the export dialog for this Army. */
+  onExport: () => void;
   onRename: () => void;
   onDelete: () => void;
   onCancelDelete: () => void;
@@ -923,6 +941,8 @@ function ArmyStrip({
     "rounded border border-edge px-2 py-0.5 text-pane text-ink hover:bg-panel focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass";
   const danger =
     "rounded border border-danger/60 px-2 py-0.5 text-pane text-danger hover:bg-panel focus-visible:outline focus-visible:outline-1 focus-visible:outline-danger";
+  const primary =
+    "rounded border border-brass px-2 py-0.5 text-pane text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim";
 
   return (
     <div
@@ -946,6 +966,15 @@ function ArmyStrip({
         <>
           <b className="font-medium text-brass-bright">{name}</b>
           <span className="ml-auto" />
+          <button
+            type="button"
+            data-testid="army-export"
+            disabled={!canExport}
+            onClick={onExport}
+            className={primary}
+          >
+            Export…
+          </button>
           <button type="button" data-testid="army-rename" onClick={onRename} className={button}>
             Rename
           </button>

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
 import { loadReport, selectHex, selectUnit } from "./gameSetup";
@@ -131,4 +132,42 @@ test("deleting an Army asks first, and Cancel leaves it there", async ({ page })
   await expect(page.getByTestId(/^unit-source-army-/)).toHaveCount(0);
   // The source falls back to This hex once the Army it was pointing at has gone.
   await expect(page.getByTestId("panel-units")).toContainText("Units in hex");
+});
+
+test("exports an Army as a battle file", async ({ page }, testInfo) => {
+  await workspace(page);
+  await newArmy(page, "Northern Host");
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("add-to-army").click();
+  await page.getByTestId("add-to-army-panel").getByText("Northern Host").click();
+  await page.getByTestId(/^unit-source-army-/).click();
+
+  await page.getByTestId("army-export").click();
+  await expect(page.getByTestId("army-export-panel")).toBeVisible();
+  await expect(page.getByTestId("army-export-summary")).toContainText("1 unit will be exported.");
+  await expect(page.getByTestId("army-export-notice")).toContainText(
+    "The defending side will be empty."
+  );
+
+  const downloading = page.waitForEvent("download");
+  await page.getByTestId("army-export-confirm").click();
+  const download = await downloading;
+  const path = testInfo.outputPath("northern-host.json");
+  await download.saveAs(path);
+
+  expect(download.suggestedFilename()).toBe("northern-host.json");
+  const file = JSON.parse(readFileSync(path, "utf8")) as {
+    attackers: { units: { name: string; skills: unknown[] }[] };
+    defenders: { units: unknown[] };
+  };
+
+  // Both keys, always: the simulator refuses the whole file when either is missing, and `skills`
+  // is the array its format sniff reads even when the unit has none.
+  expect(Object.keys(file)).toEqual(["attackers", "defenders"]);
+  expect(file.defenders.units).toEqual([]);
+  expect(file.attackers.units).toHaveLength(1);
+  expect(file.attackers.units[0].name).toContain(`(${OWN_UNIT})`);
+  expect(Array.isArray(file.attackers.units[0].skills)).toBe(true);
+
+  await expect(page.getByTestId("import-status")).toContainText("exported Northern Host");
 });

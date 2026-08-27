@@ -13,6 +13,7 @@ function member(overrides: Partial<ArmyMemberRecord> = {}): ArmyMemberRecord {
     flags: [],
     items: [],
     skills: [],
+    combatSpell: null,
     men: 4,
     seenTurn: 71,
     seenAt: "2026-08-01T09:00:00Z",

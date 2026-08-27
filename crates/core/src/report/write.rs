@@ -285,6 +285,12 @@ fn unit_line(unit: &ReportUnit) -> String {
             .join(", ");
         head.push_str(&format!(" Skills: {skills}."));
     }
+    // After the skills, where a report itself prints it. Written for the same reason the skills
+    // are: `export_map` produces a file the parser reads back, so a field the parser fills and
+    // this writer drops is data quietly lost in the sharing.
+    if let Some(spell) = &unit.combat_spell {
+        head.push_str(&format!(" Combat spell: {} [{}].", spell.name, spell.tag));
+    }
 
     head
 }
@@ -409,7 +415,9 @@ fn words_of(body: &str) -> Vec<Word<'_>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::report::model::{CombatSpell, Skill};
     use crate::report::region::parse_region_block;
+    use crate::report::unit::parse_unit;
     use crate::report::unwrap::unwrap_lines;
 
     const SETTLED: &str = concat!(
@@ -472,6 +480,49 @@ mod tests {
      * unit and not the building it stood in. Written outdoors rather than dropped: a unit that
      * vanished from the file would be an army the recipient never learns about.
      */
+    #[test]
+    fn writes_a_mage_s_combat_spell_so_a_reparse_reads_it_back() {
+        // The round trip is the point: `export_map` writes a report-shaped file and the parser
+        // reads it, so a field the parser fills and the writer drops is data lost in sharing.
+        let unit = ReportUnit {
+            unit_id: "7954".to_string(),
+            name: "Pyromancer".to_string(),
+            own: true,
+            skills: vec![Skill {
+                name: "fire".to_string(),
+                tag: "FIRE".to_string(),
+                level: 3,
+                points: 180,
+            }],
+            combat_spell: Some(CombatSpell {
+                name: "fire".to_string(),
+                tag: "FIRE".to_string(),
+            }),
+            ..ReportUnit::default()
+        };
+
+        let line = unit_line(&unit);
+
+        assert!(
+            line.ends_with(" Combat spell: fire [FIRE]."),
+            "the spell goes after the skills: {line}"
+        );
+        assert_eq!(
+            parse_unit(&line, true, "1:7,53", None)
+                .expect("the written line parses")
+                .combat_spell,
+            unit.combat_spell
+        );
+        assert!(
+            !unit_line(&ReportUnit {
+                combat_spell: None,
+                ..unit
+            })
+            .contains("Combat spell"),
+            "a unit with no spell writes no section at all"
+        );
+    }
+
     #[test]
     fn writes_a_unit_whose_structure_the_region_does_not_name() {
         let mut region = region_of(SETTLED);

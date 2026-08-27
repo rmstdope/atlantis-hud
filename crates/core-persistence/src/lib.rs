@@ -1897,7 +1897,7 @@ pub fn delete_army(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use atlantis_hud_core::report::model::{ItemAmount, Skill};
+    use atlantis_hud_core::report::model::{CombatSpell, ItemAmount, Skill};
     use rusqlite::Connection;
     use tempfile::tempdir;
 
@@ -2856,6 +2856,10 @@ mod tests {
                 level: 2,
                 points: 90,
             }],
+            combat_spell: Some(CombatSpell {
+                name: "fire".to_string(),
+                tag: "FIRE".to_string(),
+            }),
             men: 12,
             seen_turn,
             seen_at: "2026-08-01T09:00:00Z".to_string(),
@@ -2915,6 +2919,38 @@ mod tests {
         assert!(list_armies(&created.database_path, GAME_ID)
             .expect("list should succeed")
             .is_empty());
+    }
+
+    #[test]
+    fn a_member_stored_before_combat_spells_still_reads_back() {
+        // `members_json` is one serde blob and there is no migration behind this field, so a row
+        // written by an earlier build must list back with `combat_spell: None`.
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+
+        let connection = Connection::open(&created.database_path).expect("open should succeed");
+        connection
+            .execute(
+                "INSERT INTO armies (id, game_id, name, members_json, created_at, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    "army-old",
+                    GAME_ID,
+                    "Old escort",
+                    r#"[{"unitId":"204","name":"Pikes","factionId":null,"factionName":null,
+                        "own":false,"regionId":"1:7,53","flags":[],"items":[],"skills":[],
+                        "men":12,"seenTurn":68,"seenAt":"2026-08-01T09:00:00Z"}]"#,
+                    "2026-08-01T09:00:00Z",
+                    "2026-08-01T09:00:00Z"
+                ],
+            )
+            .expect("insert should succeed");
+
+        let listed = list_armies(&created.database_path, GAME_ID).expect("list should succeed");
+
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].members[0].combat_spell, None);
     }
 
     #[test]

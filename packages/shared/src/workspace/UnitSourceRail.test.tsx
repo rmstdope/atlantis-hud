@@ -115,8 +115,8 @@ describe("the units dock's source rail", () => {
   it("counts each Army's members beside it", () => {
     const withMembers = army("c", "Siege Train");
     withMembers.members = [
-      { unitId: "1", name: "a", factionId: null, factionName: null, own: true, regionId: "1:7,53", flags: [], items: [], skills: [], men: 1, seenTurn: 71, seenAt: "x" },
-      { unitId: "2", name: "b", factionId: null, factionName: null, own: true, regionId: "1:7,53", flags: [], items: [], skills: [], men: 1, seenTurn: 71, seenAt: "x" }
+      { unitId: "1", name: "a", factionId: null, factionName: null, own: true, regionId: "1:7,53", flags: [], items: [], skills: [], combatSpell: null, men: 1, seenTurn: 71, seenAt: "x" },
+      { unitId: "2", name: "b", factionId: null, factionName: null, own: true, regionId: "1:7,53", flags: [], items: [], skills: [], combatSpell: null, men: 1, seenTurn: 71, seenAt: "x" }
     ];
 
     expect(draw({ armies: [withMembers] })).toContain(">2<");

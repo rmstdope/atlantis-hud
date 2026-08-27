@@ -526,6 +526,8 @@ pub(crate) fn formed_unit(parent: &ReportUnit, alias: &str) -> ReportUnit {
         flags: Vec::new(),
         items: Vec::new(),
         skills: Vec::new(),
+        // A newly formed unit has cast nothing and been set to cast nothing.
+        combat_spell: None,
         men: 0,
         // Nothing has been given yet, and what is given is counted exactly.
         men_estimated: false,

@@ -46,6 +46,7 @@ export function snapshotOf(unit: ReportUnit, turn: number, now: string): ArmyMem
     flags: [...unit.flags],
     items: unit.items.map((item) => ({ ...item })),
     skills: unit.skills.map((skill) => ({ ...skill })),
+    combatSpell: unit.combatSpell === null ? null : { ...unit.combatSpell },
     men: unit.men,
     seenTurn: turn,
     seenAt: now
@@ -192,8 +193,26 @@ function sameSnapshot(a: ArmyMemberRecord, b: ArmyMemberRecord): boolean {
         one.name === other.name &&
         one.level === other.level &&
         one.points === other.points
-    )
+    ) &&
+    sameCombatSpell(a.combatSpell, b.combatSpell)
   );
+}
+
+/**
+ * Whether two snapshots name the same combat spell.
+ *
+ * Compared rather than ignored on purpose: `sameSnapshot` decides whether a turn load rewrites an
+ * Army, so a field it does not read is a field that never refreshes - a mage who switches from
+ * `force shield` to `fire` would keep exporting the shield for ever.
+ */
+function sameCombatSpell(
+  a: ArmyMemberRecord["combatSpell"],
+  b: ArmyMemberRecord["combatSpell"]
+): boolean {
+  if (a === null || b === null) {
+    return a === b;
+  }
+  return a.tag === b.tag && a.name === b.name;
 }
 
 function sameList<T>(a: readonly T[], b: readonly T[], same: (one: T, other: T) => boolean): boolean {

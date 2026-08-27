@@ -1,5 +1,6 @@
 import type {
   CaretCompletions,
+  ArmyRecord,
   CoreClient,
   GameManifest,
   ImportedTurnSummary,
@@ -38,7 +39,13 @@ import { silverKey } from "../unitTable";
 import type { MapShape } from "@atlantis/core-client";
 import { mapShapeJson, mapShapeOfGame } from "../mapShape";
 import { ordersExportText } from "./ordersExport";
-import { deliverGameBackupExport, deliverMapExport, deliverOrdersExport } from "./exportActions";
+import {
+  deliverArmyExport,
+  deliverGameBackupExport,
+  deliverMapExport,
+  deliverOrdersExport
+} from "./exportActions";
+import { exportedStatus } from "../armyExport";
 import {
   EMPTY_MEMORY,
   mergeTurn,
@@ -125,6 +132,7 @@ import { FactionPanel } from "./FactionPanel";
 import { MergedFactionsPanel } from "./MergedFactionsPanel";
 import { MapViewControls } from "./MapViewControls";
 import { MapCanvas, type MapCanvasHandle } from "./MapCanvas";
+import { ArmyExportDialog } from "./ArmyExportDialog";
 import { MapExportDialog } from "./MapExportDialog";
 import { SendOrdersDialog } from "./SendOrdersDialog";
 import type { SendOrdersPhase } from "./sendOrdersView";
@@ -534,6 +542,8 @@ export function AppShell({
   // Subscribed, not read through `getState()`: the refresh effect below depends on it, so the
   // Armies that arrive after an asynchronous load are still refreshed against the turn on screen.
   const armiesStatus = useArmiesStore((state) => state.status);
+  /** The same list `UnitTableDock` reads, for the export dialog's two pickers (`ah-1mpx.3`). */
+  const armies = useArmiesStore((state) => state.armies);
   /** Which header popover is open - one at a time, by construction. Dialogs keep their own flags. */
   const [openPopover, setOpenPopover] = useState<HeaderPopoverId | null>(null);
   /** Closes the named popover if it is the open one, and touches nothing otherwise. */
@@ -561,6 +571,9 @@ export function AppShell({
   // The map export: whether its dialog is open, the rectangle a Shift+drag left behind, and how
   // the last attempt went. The rectangle outlives the dialog so re-opening it offers the same
   // area, and a drag while the dialog is closed is remembered rather than wasted.
+  const [armyExportId, setArmyExportId] = useState<string | null>(null);
+  const [armyExportBusy, setArmyExportBusy] = useState(false);
+  const [armyExportError, setArmyExportError] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportRect, setExportRect] = useState<MapRect | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
@@ -2912,6 +2925,32 @@ export function AppShell({
     [client, level, parsed, rawReport, rememberedJson, saveTextFile]
   );
 
+  /**
+   * Writes one or two Armies out as a battle file the simulator loads (`ah-1mpx.3`).
+   *
+   * Same contract as the map export above: a cancelled save dialog leaves this one standing,
+   * because nothing was written and closing would look as though something had been.
+   */
+  const exportArmies = useCallback(
+    async (attackers: ArmyRecord | null, defenders: ArmyRecord | null) => {
+      setArmyExportError(null);
+      await runReported(
+        async () => {
+          const path = await deliverArmyExport(saveTextFile, attackers, defenders);
+          if (path === null) {
+            return;
+          }
+          setArmyExportId(null);
+          // A finished export is worth a glance and nothing went wrong, which is `notice`.
+          setStatus(noticeStatus(exportedStatus(attackers, defenders)));
+        },
+        setArmyExportError,
+        { busy: setArmyExportBusy }
+      );
+    },
+    [saveTextFile]
+  );
+
   const factionLabel = factionLabelOf(parsed);
   const turnLabel =
     parsed?.header.turnNumber === null || parsed?.header.turnNumber === undefined
@@ -3725,6 +3764,7 @@ export function AppShell({
               // The header status line, which never expires: it stands until the next `setStatus`,
               // which is the existing behaviour and is right for a failure.
               onFailure={(message) => setStatus(failedStatus(message))}
+              onExportArmy={(armyId) => setArmyExportId(armyId)}
               renderFactionName={(factionId, label) => (
                 <button
                   type="button"
@@ -3775,6 +3815,17 @@ export function AppShell({
           error={exportError}
           onExport={(rect, content) => void exportMap(rect, content)}
           onDismiss={() => setExportOpen(false)}
+        />
+      ) : null}
+      {armyExportId !== null && parsed?.header.turnNumber != null ? (
+        <ArmyExportDialog
+          armies={armies}
+          initialAttackerId={armyExportId}
+          currentTurn={parsed.header.turnNumber}
+          busy={armyExportBusy}
+          error={armyExportError}
+          onExport={(attackers, defenders) => void exportArmies(attackers, defenders)}
+          onDismiss={() => setArmyExportId(null)}
         />
       ) : null}
       {battlesOpen && parsed && parsed.battles.length > 0 ? (
