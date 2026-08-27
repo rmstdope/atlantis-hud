@@ -3,8 +3,11 @@ import { useRef } from "react";
 import type { MapLevel } from "../hexMapModel";
 import { SURFACE_LEVEL } from "../hexMapModel";
 import { useWorkspaceStore } from "../workspaceStore";
-import { describeTurnMessages } from "../turnMessages";
-import { unreadableChipLabel, unreadableChipName } from "../unreadableLines";
+import {
+  type TurnReportCounts,
+  turnReportChipLabel,
+  turnReportIsWarning
+} from "../turnReport";
 import { ExportMenu } from "./ExportMenu";
 import { ChipPopover } from "./popover";
 import type { StatusLine, StatusTone } from "./shellStatus";
@@ -21,21 +24,13 @@ function dotClass(tone: Exclude<StatusTone, "routine">): string {
   }
 }
 
-/** What the engine said about the loaded turn, as the report printed it. */
-export type TurnMessages = {
-  errors: string[];
-  events: string[];
-};
-
 /** The header's popovers, at most one of which is open. Dialogs (settings, battles, changes) are not popovers and keep their own flags. */
 export type HeaderPopoverId =
   | "games"
   | "turns"
   | "merged"
   | "faction"
-  | "messages"
-  | "problems"
-  | "unreadable"
+  | "report"
   | "trade"
   | "export";
 
@@ -85,21 +80,13 @@ type AppHeaderProps = {
   /** The panel itself, rendered under the faction name when it is open. */
   factionPanel: ReactNode;
   status: StatusLine | null;
-  /** The loaded turn's errors and events, or null when no turn is loaded. */
-  messages: TurnMessages | null;
-  /** The panel itself, rendered under the chip when it is open. */
-  messagesPanel: ReactNode;
   /**
-   * How many things order validation found across the whole map. Zero hides the chip entirely.
-   *
-   * Counted over every hex rather than the one on screen: the mistake that goes out with the turn
-   * is the one in the hex nobody clicked on.
+   * What the loaded turn wants checked, folded from three sources into one chip (ah-30hg.2).
+   * Null when no report is loaded, which is what hides the chip entirely.
    */
-  problemCount: number;
-  problemsPanel: ReactNode;
-  /** How many lines of the loaded report the parser could not read. */
-  unreadableCount: number;
-  unreadablePanel: ReactNode;
+  counts: TurnReportCounts | null;
+  /** The panel itself, rendered under the chip when it is open. */
+  reportPanel: ReactNode;
   /**
    * How many trade routes the known map currently offers, counted in rows as shown - a folded
    * circuit counts once. Unlike every other counted chip here, this one is shown at zero too (the
@@ -200,12 +187,8 @@ export function AppHeader({
   mergedPanel,
   factionPanel,
   status,
-  messages,
-  messagesPanel,
-  problemCount,
-  problemsPanel,
-  unreadableCount,
-  unreadablePanel,
+  counts,
+  reportPanel,
   tradeCount,
   tradePanel,
   battleCount,
@@ -234,9 +217,6 @@ export function AppHeader({
   const setLevel = useWorkspaceStore((state) => state.setLevel);
   const toggle = (id: HeaderPopoverId) => onOpenPopover(openPopover === id ? null : id);
   const close = () => onOpenPopover(null);
-
-  const errorCount = messages?.errors.length ?? 0;
-  const chipLabel = describeTurnMessages(errorCount, messages?.events.length ?? 0);
 
   const onDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -457,87 +437,36 @@ export function AppHeader({
       </span>
 
       {/*
-        What the engine said about the turn, and the way to read it.
+        Everything the turn wants checked, in one chip (ah-30hg.2). Three chips stood here - what
+        the engine reported, what order validation found, and what the parser could not read - and
+        the header grew a row every time an advisory was added. A fourth now costs a tab rather than
+        a chip.
 
-        A control of its own rather than more text in the status above, because that line shows a
-        message *instead of* its counts whenever there is one - so on a restored turn the errors
-        would have had nowhere to appear at all. Relative, because the panel hangs off it.
-
-        Always shown when there is something to say: the chip counts the turn on screen, and
-        stays whatever the status line says about it.
+        Present whenever a report is loaded, amber only when something is actually wrong: a control
+        that appears and disappears as counts move is one the player cannot learn the position of.
       */}
-      {chipLabel ? (
-        <ChipPopover open={openPopover === "messages"} onDismiss={close} panel={messagesPanel}>
+      {counts ? (
+        <ChipPopover open={openPopover === "report"} onDismiss={close} panel={reportPanel}>
           <button
             type="button"
-            data-testid="turn-messages-chip"
+            data-testid="turn-report-chip"
+            // The four counts the visible text folds together, so a test can wait on the one it
+            // means rather than on a total that moves for three different reasons (ah-30hg.2).
+            data-problems={counts.problems}
+            data-errors={counts.engine}
+            data-unreadable={counts.unreadable}
+            data-events={counts.events}
             aria-haspopup="dialog"
-            aria-expanded={openPopover === "messages"}
-            onClick={() => toggle("messages")}
+            aria-expanded={openPopover === "report"}
+            onClick={() => toggle("report")}
             className={`rounded border px-2 py-0.5 ${
-              errorCount > 0
+              turnReportIsWarning(counts)
                 ? "border-warn text-warn"
                 : "border-edge bg-panel-raised text-ink-soft hover:border-brass"
             }`}
           >
-            {errorCount > 0 ? <span aria-hidden>⚠ </span> : null}
-            {chipLabel}
-            <span aria-hidden className="ml-1 text-ink-dim">
-              ▾
-            </span>
-          </button>
-        </ChipPopover>
-      ) : null}
-
-      {/*
-        What order validation found across the whole map.
-
-        Here rather than only in the region panel because the region panel shows the hex you are
-        looking at, and the mistake that reaches the server is the one in the hex you are not.
-        Hidden entirely when there is nothing wrong: a chip reading "0 problems" is a chip that
-        earns none of the room it takes.
-      */}
-      {problemCount > 0 ? (
-        <ChipPopover open={openPopover === "problems"} onDismiss={close} panel={problemsPanel}>
-          <button
-            type="button"
-            data-testid="problems-chip"
-            aria-haspopup="dialog"
-            aria-expanded={openPopover === "problems"}
-            onClick={() => toggle("problems")}
-            className="rounded border border-warn px-2 py-0.5 text-warn"
-          >
-            <span aria-hidden>⚠ </span>
-            {problemCount} problem{problemCount === 1 ? "" : "s"}
-            <span aria-hidden className="ml-1 text-ink-dim">
-              ▾
-            </span>
-          </button>
-        </ChipPopover>
-      ) : null}
-
-      {/*
-        What the parser could not read at all. Amber whatever is in the list, including a lost hex:
-        the chip's job is to get the panel opened, and the panel is what explains. Absent when the
-        report was read completely, which is the only "off" this needs.
-      */}
-      {unreadableCount > 0 ? (
-        <ChipPopover
-          open={openPopover === "unreadable"}
-          onDismiss={close}
-          panel={unreadablePanel}
-        >
-          <button
-            type="button"
-            data-testid="unreadable-chip"
-            aria-haspopup="dialog"
-            aria-expanded={openPopover === "unreadable"}
-            aria-label={unreadableChipName(unreadableCount)}
-            onClick={() => toggle("unreadable")}
-            className="rounded border border-warn px-2 py-0.5 text-warn"
-          >
-            <span aria-hidden>⚠ </span>
-            {unreadableChipLabel(unreadableCount)}
+            {turnReportIsWarning(counts) ? <span aria-hidden>⚠ </span> : null}
+            {turnReportChipLabel(counts)}
             <span aria-hidden className="ml-1 text-ink-dim">
               ▾
             </span>

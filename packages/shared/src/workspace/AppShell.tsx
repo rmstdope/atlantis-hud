@@ -16,6 +16,7 @@ import type {
   TradeRoute
 } from "@atlantis/core-client";
 import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildHexMapModel,
@@ -199,13 +200,19 @@ import { PanelSplitter } from "./PanelSplitter";
 import { RailSplitter } from "./RailSplitter";
 import { chooseRouteOverlay } from "./routeOverlay";
 import { RegionPanel } from "./RegionPanel";
-import { ProblemsPanel } from "./ProblemsPanel";
-import { UnreadableLinesPanel } from "./UnreadableLinesPanel";
+import { ProblemsList } from "./ProblemsList";
+import { UnreadableCopyButton, UnreadableLinesList } from "./UnreadableLinesList";
 import { unreadableFactionLabel } from "../unreadableLines";
 import type { UnreadableLine } from "@atlantis/core-client";
 import { TradePanel } from "./TradePanel";
 import { arrowFor } from "./tradeArrow";
-import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
+import { TurnMessagesList } from "./TurnMessagesList";
+import { TurnReportPanel } from "./TurnReportPanel";
+import {
+  type TurnReportCounts,
+  type TurnReportTab,
+  turnReportOpeningTab
+} from "../turnReport";
 import { UnitMovementSlot } from "./UnitMovementSlot";
 import { UnitTableDock } from "./UnitTableDock";
 import { dossierFor } from "../factionDossier";
@@ -602,11 +609,12 @@ export function AppShell({
   const leftRailRef = useRef<HTMLDivElement | null>(null);
   const rightRailRef = useRef<HTMLDivElement | null>(null);
   const [gameError, setGameError] = useState<string | null>(null);
-  // Which of the turn's two lists is being read. Local rather than in the store, exactly as the
-  // game picker is: it is a panel that is open for a moment, not a preference.
+  // Which of the turn report's four sections is being read. Local rather than in the store,
+  // exactly as the game picker is: it is a panel that is open for a moment, not a preference, so
+  // it is remembered for the session and forgotten on reload (ah-30hg.2, round 5).
   const [battlesOpen, setBattlesOpen] = useState(false);
   const [selectedBattleIndex, setSelectedBattleIndex] = useState(0);
-  const [messagesTab, setMessagesTab] = useState<TurnMessagesTab>("errors");
+  const [reportTab, setReportTab] = useState<TurnReportTab>("problems");
   // A report from another faction, parsed and waiting for the player to say what to do with it,
   // and whose reports have already been folded into the turn on screen.
   const [pendingLoad, setPendingLoad] = useState<PendingReportLoad | null>(null);
@@ -923,7 +931,7 @@ export function AppShell({
    * selecting and then switching would leave nothing selected at all.
    */
   const goToUnit = useCallback(
-    (unitId: string, closing: HeaderPopoverId | null = "messages") => {
+    (unitId: string, closing: HeaderPopoverId | null = "report") => {
       const regionId = unitRegions.get(unitId);
       if (!regionId) {
         return;
@@ -941,8 +949,8 @@ export function AppShell({
       // already the one on screen - which is exactly the case where a second message names a
       // different unit standing beside the first.
       selectUnit(unitId);
-      // Whichever popover asked for the jump, rather than always the turn-messages one: the problems
-      // panel closes itself the same way, and the region pane is not a popover and closes nothing.
+      // Whichever popover asked for the jump, rather than always the turn report: the region pane
+      // is not a popover and closes nothing, and the palette closes itself.
       if (closing) {
         closePopover(closing);
       }
@@ -2391,6 +2399,25 @@ export function AppShell({
   const unreadable: readonly UnreadableLine[] = parsed?.unreadableLines ?? [];
 
   /**
+   * The four sources the header's one chip folds together (ah-30hg.2).
+   *
+   * `messages` is non-null exactly when a report is loaded, so this is also the test the chip's
+   * presence needs: null hides it entirely rather than showing a count of nothing.
+   */
+  const reportCounts = useMemo<TurnReportCounts | null>(
+    () =>
+      messages
+        ? {
+            problems: problemsByHex.reduce((count, hex) => count + hex.findings.length, 0),
+            engine: messages.errors.length,
+            unreadable: unreadable.length,
+            events: messages.events.length
+          }
+        : null,
+    [messages, problemsByHex, unreadable]
+  );
+
+  /**
    * Each own unit's silver forecast, by hex and unit (`ah-1wcw.1`).
    *
    * By hex as well as by id (`silverKey`, `ah-jw85`): a unit a `FORM 1` creates this month is
@@ -2972,10 +2999,10 @@ export function AppShell({
    */
   const handleOpenPopover = useCallback(
     async (id: HeaderPopoverId | null) => {
-      if (id === "messages") {
-        // Opening lands on the list that has something in it (unchanged rule, was inline in the
-        // toggle).
-        setMessagesTab(messages && messages.errors.length > 0 ? "errors" : "events");
+      if (id === "report" && reportCounts) {
+        // Opens on whichever tab was open last, falling to the first one with something in it
+        // (ah-30hg.2, round 4).
+        setReportTab(turnReportOpeningTab(reportTab, reportCounts));
       }
       setOpenPopover(id);
       if (id !== "turns" || !game || !parsed?.header.factionId) {
@@ -2997,7 +3024,7 @@ export function AppShell({
         setTurnSummaries(summaries);
       }
     },
-    [client, game, parsed, messages, closePopover]
+    [client, game, parsed, reportTab, reportCounts, closePopover]
   );
 
   /**
@@ -3260,6 +3287,51 @@ export function AppShell({
     </>
   );
 
+  /**
+   * The open tab's list, for the one report panel (ah-30hg.2).
+   *
+   * A function rather than an inline ternary chain because TypeScript will not narrow `messages`
+   * from `reportCounts` being truthy - the two are separate values, however tightly related.
+   */
+  const reportBody = (tab: TurnReportTab): ReactNode => {
+    if (!messages) {
+      return null;
+    }
+    switch (tab) {
+      case "problems":
+        return (
+          <ProblemsList
+            hexes={problemsByHex}
+            labelFor={hexLabel}
+            onSelectHex={selectHex}
+            onDismiss={() => closePopover("report")}
+            known={knownUnitIds}
+            onSelectUnit={(unitId) => goToUnit(unitId)}
+          />
+        );
+      case "engine":
+        return (
+          <TurnMessagesList
+            kind="errors"
+            lines={messages.errors}
+            knownUnitIds={knownUnitIds}
+            onSelectUnit={(unitId) => goToUnit(unitId)}
+          />
+        );
+      case "unreadable":
+        return <UnreadableLinesList entries={unreadable} />;
+      case "events":
+        return (
+          <TurnMessagesList
+            kind="events"
+            lines={messages.events}
+            knownUnitIds={knownUnitIds}
+            onSelectUnit={(unitId) => goToUnit(unitId)}
+          />
+        );
+    }
+  };
+
   // No game means there is nowhere to put a report, an order or a remembered map, so the workspace
   // is not rendered at all and creating a game is the only thing on offer.
   if (!game) {
@@ -3363,40 +3435,28 @@ export function AppShell({
           )
         }
         status={status}
-        messages={messages}
-        messagesPanel={
-          messages ? (
-            <TurnMessagesPanel
+        counts={reportCounts}
+        reportPanel={
+          reportCounts ? (
+            <TurnReportPanel
+              counts={reportCounts}
+              tab={reportTab}
+              onTab={setReportTab}
               turnLabel={turnLabel}
-              errors={messages.errors}
-              events={messages.events}
-              tab={messagesTab}
-              onTab={setMessagesTab}
-              knownUnitIds={knownUnitIds}
-              onSelectUnit={goToUnit}
-              onDismiss={() => closePopover("messages")}
+              hexCount={problemsByHex.length}
+              headerAction={
+                reportTab === "unreadable" && unreadable.length > 0 ? (
+                  <UnreadableCopyButton
+                    entries={unreadable}
+                    turnNumber={parsed?.header.turnNumber ?? null}
+                    factionLabel={parsed ? unreadableFactionLabel(parsed.header) : null}
+                  />
+                ) : null
+              }
+              onDismiss={() => closePopover("report")}
+              body={reportBody(reportTab)}
             />
           ) : null
-        }
-        problemCount={problemsByHex.reduce((count, hex) => count + hex.findings.length, 0)}
-        problemsPanel={
-          <ProblemsPanel
-            hexes={problemsByHex}
-            labelFor={hexLabel}
-            onSelectHex={selectHex}
-            onDismiss={() => closePopover("problems")}
-            known={knownUnitIds}
-            onSelectUnit={(unitId) => goToUnit(unitId, "problems")}
-          />
-        }
-        unreadableCount={unreadable.length}
-        unreadablePanel={
-          <UnreadableLinesPanel
-            entries={unreadable}
-            turnNumber={parsed?.header.turnNumber ?? null}
-            factionLabel={parsed ? unreadableFactionLabel(parsed.header) : null}
-            onDismiss={() => closePopover("unreadable")}
-          />
         }
         tradeCount={tradeRoutes.length}
         tradePanel={

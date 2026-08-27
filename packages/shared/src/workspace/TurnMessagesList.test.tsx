@@ -1,25 +1,21 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { TurnMessagesPanel } from "./TurnMessagesPanel";
+import { TurnMessagesList } from "./TurnMessagesList";
 
-describe("TurnMessagesPanel", () => {
-  // ah-cp8: the list body used to be capped at a fixed 60vh regardless of how much window there
-  // was to use.
-  it("the body is clamped to the window, not to 60vh", () => {
+describe("TurnMessagesList", () => {
+  // ah-cp8 clamped this body to the window rather than to a fixed 60vh; ah-30hg.2 moved that clamp
+  // up to the turn-report panel, which holds four such bodies and must scroll once, not four times.
+  it("the list does not scroll on its own - the report panel is the one scroller", () => {
     const markup = renderToStaticMarkup(
-      <TurnMessagesPanel
-        turnLabel="71"
-        errors={[]}
-        events={[]}
-        tab="errors"
-        onTab={() => {}}
+      <TurnMessagesList
+        kind="errors"
+        lines={[]}
         knownUnitIds={new Set()}
         onSelectUnit={() => {}}
-        onDismiss={() => {}}
       />
     );
-    expect(markup).toContain("max-h-[calc(100vh-6rem)]");
-    expect(markup).not.toContain("max-h-[60vh]");
+    expect(markup).not.toContain("overflow-y-auto");
+    expect(markup).not.toContain("max-h-[calc(100vh-6rem)]");
   });
 
   // ah-7rd: the events list was one flat run of lines, so following one unit through a turn meant
@@ -34,15 +30,11 @@ describe("TurnMessagesPanel", () => {
 
     const renderEvents = (knownUnitIds: ReadonlySet<string> = new Set(["8047", "9431"])) =>
       renderToStaticMarkup(
-        <TurnMessagesPanel
-          turnLabel="71"
-          errors={[]}
-          events={EVENTS}
-          tab="events"
-          onTab={() => {}}
+        <TurnMessagesList
+          kind="events"
+          lines={EVENTS}
           knownUnitIds={knownUnitIds}
           onSelectUnit={() => {}}
-          onDismiss={() => {}}
         />
       );
 
@@ -79,23 +71,35 @@ describe("TurnMessagesPanel", () => {
       expect(markup).not.toContain("<details");
     });
 
-    it("leaves the errors tab a flat list", () => {
+    it("leaves the errors list flat", () => {
       const markup = renderToStaticMarkup(
-        <TurnMessagesPanel
-          turnLabel="71"
-          errors={["Unit (1387): BUY: Unit attempted to buy more than it could afford."]}
-          events={EVENTS}
-          tab="errors"
-          onTab={() => {}}
+        <TurnMessagesList
+          kind="errors"
+          lines={["Unit (1387): BUY: Unit attempted to buy more than it could afford."]}
           knownUnitIds={new Set(["1387"])}
           onSelectUnit={() => {}}
-          onDismiss={() => {}}
         />
       );
 
       expect(markup).toContain('data-testid="turn-messages-row-0"');
       expect(markup).not.toContain('data-testid="turn-messages-group-');
       expect(markup).toContain("BUY");
+    });
+
+    // The two lists are one component now (ah-30hg.2), so which one a tab is showing has to be
+    // legible from the markup - the smoke suite reads the panel by tab, not by panel id.
+    it("says which of the two lists it is", () => {
+      expect(renderEvents()).toContain('data-testid="turn-report-events"');
+      expect(
+        renderToStaticMarkup(
+          <TurnMessagesList
+            kind="errors"
+            lines={[]}
+            knownUnitIds={new Set()}
+            onSelectUnit={() => {}}
+          />
+        )
+      ).toContain('data-testid="turn-report-errors"');
     });
   });
 });

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  describeTurnMessages,
   groupTurnMessages,
   splitTurnMessage,
   splitTurnMessages
@@ -98,21 +97,6 @@ describe("splitTurnMessages", () => {
     ]);
 
     expect(messages.map((message) => message.verb)).toEqual(["BUY", "STUDY"]);
-  });
-});
-
-describe("describeTurnMessages", () => {
-  it("names both counts", () => {
-    expect(describeTurnMessages(3, 12)).toBe("3 errors · 12 events");
-  });
-
-  it("leaves out a count of nothing", () => {
-    expect(describeTurnMessages(0, 12)).toBe("12 events");
-    expect(describeTurnMessages(1, 0)).toBe("1 error");
-  });
-
-  it("has nothing to say about a turn with neither", () => {
-    expect(describeTurnMessages(0, 0)).toBeNull();
   });
 });
 

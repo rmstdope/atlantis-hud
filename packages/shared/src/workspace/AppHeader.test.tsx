@@ -23,12 +23,8 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
       mergedPanel={null}
       factionPanel={null}
       status={null}
-      messages={null}
-      messagesPanel={null}
-      problemCount={0}
-      problemsPanel={null}
-      unreadableCount={0}
-      unreadablePanel={null}
+      counts={null}
+      reportPanel={null}
       tradeCount={0}
       tradePanel={null}
       battleCount={0}
@@ -265,13 +261,13 @@ describe("AppHeader status line", () => {
     expect(markup).toContain("bg-warn");
   });
 
-  it("a failure is visible with a red dot and leaves the messages chip in place", () => {
+  it("a failure is visible with a red dot and leaves the report chip in place", () => {
     const markup = draw({
       status: failedStatus("could not read x.rep: no faction header"),
-      messages: { errors: ["e"], events: [] }
+      counts: { problems: 0, engine: 1, unreadable: 0, events: 0 }
     });
     expect(markup).toContain("bg-danger");
-    expect(markup).toContain('data-testid="turn-messages-chip"');
+    expect(markup).toContain('data-testid="turn-report-chip"');
   });
 
   it("no status says no report loaded", () => {
@@ -338,5 +334,36 @@ describe("AppHeader map level", () => {
 
   it("falls back to the surface word when there are no levels at all", () => {
     expect(draw({ levels: [] })).toContain("surface");
+  });
+});
+
+// ah-30hg.2: three amber chips - what the engine reported, what order validation found and what the
+// parser could not read - stood side by side and cost the header a row. They are one.
+describe("AppHeader, one chip for everything the turn wants checked (ah-30hg.2)", () => {
+  it("folds the three advisory chips into one", () => {
+    const markup = draw({ counts: { problems: 10, engine: 1, unreadable: 6, events: 333 } });
+    expect(markup).toContain('data-testid="turn-report-chip"');
+    expect(markup).toContain("17 to check");
+    for (const gone of ["turn-messages-chip", "problems-chip", "unreadable-chip"]) {
+      expect(markup).not.toContain(`data-testid="${gone}"`);
+    }
+  });
+
+  it("carries each source's own count, so a test can wait on the one it means", () => {
+    const markup = draw({ counts: { problems: 10, engine: 1, unreadable: 6, events: 333 } });
+    expect(markup).toContain('data-problems="10"');
+    expect(markup).toContain('data-errors="1"');
+    expect(markup).toContain('data-unreadable="6"');
+    expect(markup).toContain('data-events="333"');
+  });
+
+  it("is not amber when the turn only has events to report", () => {
+    const markup = draw({ counts: { problems: 0, engine: 0, unreadable: 0, events: 333 } });
+    expect(markup).toContain("Turn report");
+    expect(markup).not.toContain("border-warn");
+  });
+
+  it("has no chip at all until a report is loaded", () => {
+    expect(draw({ counts: null })).not.toContain('data-testid="turn-report-chip"');
   });
 });

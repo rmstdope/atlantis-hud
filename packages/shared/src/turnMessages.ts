@@ -136,19 +136,3 @@ export function groupTurnMessages(messages: readonly TurnMessage[]): TurnMessage
   return general ? [general, ...units] : units;
 }
 
-const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
-
-/**
- * What the header chip says, or null when there is nothing to open.
- *
- * A count of zero is left out rather than printed. "0 errors" beside a dozen events reads as a
- * warning about nothing, and the header has one line to spend.
- */
-export function describeTurnMessages(errorCount: number, eventCount: number): string | null {
-  const parts = [
-    ...(errorCount > 0 ? [plural(errorCount, "error")] : []),
-    ...(eventCount > 0 ? [plural(eventCount, "event")] : [])
-  ];
-
-  return parts.length > 0 ? parts.join(" · ") : null;
-}

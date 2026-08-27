@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { ReportHeaderInfo, UnreadableLine } from "@atlantis/core-client";
 import {
   unreadableFactionLabel,
-  unreadableChipLabel,
-  unreadableChipName,
   unreadableClipboardText,
   unreadableCostNote,
   unreadableKindLabel,
@@ -20,22 +18,6 @@ function entry(over: Partial<UnreadableLine> = {}): UnreadableLine {
     ...over,
   };
 }
-
-describe("unreadableChipLabel", () => {
-  it("builds the chip label and its accessible name", () => {
-    expect(unreadableChipLabel(6)).toBe("6 unreadable");
-    expect(unreadableChipName(6)).toBe("6 lines could not be read");
-  });
-
-  it("is not rendered at all when there is nothing to say", () => {
-    expect(unreadableChipLabel(0)).toBeNull();
-  });
-
-  it("says line in the singular at one", () => {
-    expect(unreadableChipLabel(1)).toBe("1 unreadable");
-    expect(unreadableChipName(1)).toBe("1 line could not be read");
-  });
-});
 
 describe("unreadableKindLabel", () => {
   it("names each kind with one capitalised word", () => {
