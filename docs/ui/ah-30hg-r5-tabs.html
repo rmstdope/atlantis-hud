@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-30hg.2 round 5 — the tab row, and the states it has to survive</title>
+<style>
+  :root{ --page:#161b23; --panel:#222933; --raised:#2a323d; --edge:#46525f;
+         --ink:#d4dce6; --soft:#a8b4c2; --dim:#99a4b2; --brass:#e0b25a; --warn:#d9a441;
+         --danger:#d9534f; --gain:#7fb069; }
+  body{ background:var(--page); color:var(--ink); font:14px/1.55 system-ui,-apple-system,sans-serif;
+        margin:0; padding:24px 32px 90px; }
+  h1{ font-size:21px; margin:0 0 6px; }
+  h2{ font-size:16px; margin:36px 0 4px; border-top:1px solid #2a3442; padding-top:20px; }
+  h3{ font-size:13px; margin:20px 0 4px; color:var(--soft); }
+  p.note{ color:var(--dim); max-width:98ch; }
+  b.kw{ color:var(--ink); font-weight:600; }
+  .cap{ color:var(--dim); font-size:12px; margin:6px 0 0; max-width:56ch; }
+  .cap b{ color:var(--ink); }
+  .row{ display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start; margin-top:14px; }
+  .tag{ color:var(--brass); font:11px/1 ui-monospace,monospace; letter-spacing:.1em;
+        text-transform:uppercase; margin:0 0 6px; }
+  .pop{ width:512px; box-sizing:border-box; background:var(--raised);
+        border:1px solid var(--edge); border-radius:4px;
+        font:13px/19.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:var(--ink); }
+  .pop .top{ display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--edge);
+             padding:6px 8px; color:var(--soft); }
+  .pop .top .sp{ flex:1; }
+  .pop .x{ color:var(--dim); padding:0 6px; }
+  .copy{ border:1px solid var(--edge); border-radius:4px; color:var(--dim);
+         padding:0 6px; font:inherit; background:none; }
+  .tabs{ display:flex; gap:4px; padding:6px 8px 0; flex-wrap:wrap; }
+  .tab{ border:1px solid var(--edge); border-radius:4px; padding:1px 8px; color:var(--soft);
+        font:inherit; background:none; }
+  .tab.on{ border-color:var(--brass); color:var(--brass); }
+  .tab.warn{ border-color:var(--warn); color:var(--warn); }
+  .tab.off{ opacity:.4; }
+  .body{ padding:8px; }
+  .foot{ border-top:1px solid var(--edge); padding:6px 8px; color:var(--dim); font-size:12px;
+         white-space:normal; line-height:1.45; }
+  .hexcard{ border:1px solid var(--edge); border-radius:4px; margin:0 0 8px; overflow:hidden; }
+  .hexhdr{ display:flex; align-items:baseline; gap:6px; background:rgba(224,178,90,.10);
+           border-bottom:1px solid var(--edge); padding:2px 6px; color:var(--brass);
+           font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; }
+  .hexhdr .n{ margin-left:auto; color:var(--dim); text-transform:none; letter-spacing:0; }
+  .prow{ display:flex; gap:6px; padding:2px 6px; border-top:1px solid #37414d; }
+  .prow:first-child{ border-top:0; }
+  .w{ color:var(--warn); } .unit{ color:var(--brass); } .msg{ white-space:normal; }
+  .empty{ display:flex; align-items:center; justify-content:center; color:var(--dim);
+          height:64px; text-align:center; white-space:normal; padding:0 24px; }
+  .ruler{ font:11px/1 ui-monospace,monospace; color:#6c7f93; margin:4px 0 0; }
+  ul.q{ color:var(--dim); max-width:92ch; }
+  ul.q b{ color:var(--ink); }
+</style>
+</head>
+<body>
+
+<h1>ah-30hg.2 round 5 — the tab row, and the states it has to survive</h1>
+<p class="note">
+  You chose <b class="kw">S3</b>: four tabs, one body, each body exactly the panel it is today.
+  You also chose that the panel <b class="kw">opens on whichever tab you had open last</b>, and that
+  a completely silent turn says <b class="kw">“This turn reported nothing, and your orders look
+  sound.”</b> Everything below follows from those three, and all of it is at true size — the panel
+  is 512&nbsp;px, the same width the “lines that could not be read” panel already has.
+</p>
+
+<h2>1 · What the four tabs are called</h2>
+<p class="note">
+  Round 2 named the <em>sections</em> — <b class="kw">Order problems</b>, <b class="kw">The engine
+  said</b>, <b class="kw">Lines not read</b>, <b class="kw">Turn events</b>. A tab row is narrower
+  than a stack of headings, and at 512&nbsp;px the four full names plus their counts do not fit on
+  one line. Three ways out, all drawn at 13&nbsp;px in place.
+</p>
+
+<h3>T1 — the round-2 names, wrapping to two lines</h3>
+<div class="pop">
+  <div class="top"><span>17 to check · turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+  <div class="tabs">
+    <button class="tab warn">Order problems 10</button><button class="tab warn">The engine said 1</button>
+    <button class="tab warn">Lines not read 6</button><button class="tab on">Turn events 333</button>
+  </div>
+  <div class="body"><div class="empty">…the chosen tab’s body…</div></div>
+</div>
+<p class="cap">Nothing is renamed and the panel says exactly what round 2 agreed. The tab row takes
+  <b>two lines</b> whenever all four are present, which is the busy turn.</p>
+
+<h3>T2 — shortened for the tab, full name kept as the section’s own heading</h3>
+<div class="pop">
+  <div class="top"><span>17 to check · turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+  <div class="tabs">
+    <button class="tab on">Problems 10</button><button class="tab">Engine 1</button>
+    <button class="tab">Not read 6</button><button class="tab">Events 333</button>
+  </div>
+  <div class="body"><div class="empty">…the chosen tab’s body…</div></div>
+</div>
+<p class="cap">One line, always. <b>“Engine”</b> and <b>“Not read”</b> are new words the player has
+  not seen before; the footer under each body still explains in full.</p>
+
+<h3>T3 — the count only, and the word only on the open one</h3>
+<div class="pop">
+  <div class="top"><span>17 to check · turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+  <div class="tabs">
+    <button class="tab on">Order problems 10</button><button class="tab">1</button>
+    <button class="tab">6</button><button class="tab">333</button>
+  </div>
+  <div class="body"><div class="empty">…the chosen tab’s body…</div></div>
+</div>
+<p class="cap">Narrowest by far, and the open tab keeps its full name. <b>A closed tab is a bare
+  number</b> — you cannot tell the engine’s 1 from the unread 6 without opening one.</p>
+
+<h2>2 · A section with nothing in it</h2>
+<p class="note">
+  Round 2 decided that <b class="kw">a section with nothing in it is not drawn</b>. As a stack of
+  headings that meant one fewer heading. As a tab row it means one of two different things, and
+  they are not the same for a player watching counts move while they type orders.
+</p>
+<div class="row">
+  <div>
+    <p class="tag">X1 — the tab is gone</p>
+    <div class="pop">
+      <div class="top"><span>10 to check · turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="tabs">
+        <button class="tab on">Problems 10</button><button class="tab">Events 333</button>
+      </div>
+      <div class="body">
+        <div class="hexcard"><div class="hexhdr">mountain (7,53)<span class="n">3</span></div>
+          <div class="prow"><span class="w">⚠</span><span class="unit">18642</span><span class="msg">has $0 and owes $50 in maintenance</span></div></div>
+      </div>
+      <div class="foot">These never block an export. They are what the report says will go wrong,
+        not what the server will refuse.</div>
+    </div>
+    <p class="cap">Literally round 2’s rule. <b>The tabs move under the pointer</b> as counts change
+      — fix the last unreadable line and every tab to its right shifts left.</p>
+  </div>
+  <div>
+    <p class="tag">X2 — the tab stays, disabled</p>
+    <div class="pop">
+      <div class="top"><span>10 to check · turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="tabs">
+        <button class="tab on">Problems 10</button><button class="tab off">Engine 0</button>
+        <button class="tab off">Not read 0</button><button class="tab">Events 333</button>
+      </div>
+      <div class="body">
+        <div class="hexcard"><div class="hexhdr">mountain (7,53)<span class="n">3</span></div>
+          <div class="prow"><span class="w">⚠</span><span class="unit">18642</span><span class="msg">has $0 and owes $50 in maintenance</span></div></div>
+      </div>
+      <div class="foot">These never block an export. They are what the report says will go wrong,
+        not what the server will refuse.</div>
+    </div>
+    <p class="cap"><b>What the messages panel does today</b> — a list with nothing in it is a dimmed
+      tab, not a missing one. Four tabs always, in the same four places, and a zero is itself
+      information: the parser read the whole report.</p>
+  </div>
+</div>
+
+<h2>3 · You chose “opens on whichever you had open last”. Two things that does not answer.</h2>
+<ul class="q">
+  <li><b>The remembered tab is now empty.</b> You read “Lines not read”, closed the panel, loaded a
+    clean report, and opened it again. Under <b>X1</b> that tab does not exist; under <b>X2</b> it is
+    disabled. Something has to choose a different one.</li>
+  <li><b>How long “last” lasts.</b> Until the panel is next opened, or across a turn switch, or
+    across a reload of the whole application.</li>
+</ul>
+<div class="row">
+  <div>
+    <p class="tag">R — remembered tab empty</p>
+    <div class="pop">
+      <div class="top"><span>Turn 72</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="tabs">
+        <button class="tab off">Problems 0</button><button class="tab off">Engine 0</button>
+        <button class="tab off">Not read 0</button><button class="tab on">Events 41</button>
+      </div>
+      <div class="body"><div class="empty" style="height:48px">…the events…</div></div>
+    </div>
+    <p class="cap">Drawn here as “fall to the first tab that has something”, which would be
+      <b>Events 41</b>.</p>
+  </div>
+</div>
+
+<h2>4 · The line above the tabs, and the Copy all button</h2>
+<p class="note">
+  Each of the three panels has its own header line today: <b class="kw">“17 problems in 4 hexes”</b>,
+  <b class="kw">“Turn 71”</b>, <b class="kw">“Lines that could not be read”</b> — and the unreadable
+  one carries a <b class="kw">Copy all</b> button that puts every unread line on the clipboard for a
+  bug report. One panel gets one line. Two shapes:
+</p>
+<div class="row">
+  <div>
+    <p class="tag">H1 — the chip’s own words, and the turn</p>
+    <div class="pop">
+      <div class="top"><span>17 to check · turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="tabs"><button class="tab">Problems 10</button><button class="tab">Engine 1</button>
+        <button class="tab on">Not read 6</button><button class="tab">Events 333</button></div>
+      <div class="body"><div class="empty" style="height:48px">…the unread lines…</div>
+        <div style="text-align:right;padding:4px 0 0"><button class="copy">Copy all</button></div></div>
+      <div class="foot">None of this reached the map.</div>
+    </div>
+    <p class="cap">The line repeats the chip, so the panel names itself the same way the control
+      that opened it does. <b>Copy all sits inside the “Not read” body</b>, where it belongs to what
+      it copies and is absent everywhere else.</p>
+  </div>
+  <div>
+    <p class="tag">H2 — the open tab names itself</p>
+    <div class="pop">
+      <div class="top"><span>Lines that could not be read</span><span class="sp"></span>
+        <button class="copy">Copy all</button><span class="x">✕</span></div>
+      <div class="tabs"><button class="tab">Problems 10</button><button class="tab">Engine 1</button>
+        <button class="tab on">Not read 6</button><button class="tab">Events 333</button></div>
+      <div class="body"><div class="empty" style="height:48px">…the unread lines…</div></div>
+      <div class="foot">None of this reached the map.</div>
+    </div>
+    <p class="cap">The line changes with the tab, and each section keeps the exact heading it has
+      today. <b>Copy all stays in the header</b>, appearing and disappearing as you change tab.</p>
+  </div>
+</div>
+
+<h2>5 · A narrow window</h2>
+<p class="note">
+  The panel is 512&nbsp;px and already capped at <b class="kw">max-w-[calc(100vw-2rem)]</b>, so at
+  520&nbsp;px of window it is 488&nbsp;px wide. Under <b>T2</b> the four tabs still fit on one line;
+  under <b>T1</b> they take three. Nothing else about the panel changes.
+</p>
+<div class="pop" style="width:488px">
+  <div class="top"><span>17 to check · turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+  <div class="tabs"><button class="tab on">Problems 10</button><button class="tab">Engine 1</button>
+    <button class="tab">Not read 6</button><button class="tab">Events 333</button></div>
+  <div class="body"><div class="empty" style="height:48px">…the chosen tab’s body…</div></div>
+</div>
+<p class="cap">488&nbsp;px, the widest this panel can be in a 520&nbsp;px window.</p>
+
+</body>
+</html>

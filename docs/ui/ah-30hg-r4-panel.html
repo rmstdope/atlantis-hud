@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-30hg.2 round 4 — what the one panel looks like inside</title>
+<style>
+  :root{ --page:#161b23; --panel:#222933; --raised:#2a323d; --edge:#46525f;
+         --ink:#d4dce6; --soft:#a8b4c2; --dim:#99a4b2; --brass:#e0b25a; --warn:#d9a441;
+         --danger:#d9534f; --gain:#7fb069; }
+  body{ background:var(--page); color:var(--ink); font:14px/1.55 system-ui,-apple-system,sans-serif;
+        margin:0; padding:24px 32px 90px; }
+  h1{ font-size:21px; margin:0 0 6px; }
+  h2{ font-size:16px; margin:38px 0 4px; border-top:1px solid #2a3442; padding-top:20px; }
+  p.note{ color:var(--dim); max-width:98ch; }
+  b.kw{ color:var(--ink); font-weight:600; }
+  .cap{ color:var(--dim); font-size:12px; margin:6px 0 0; max-width:52ch; }
+  .cap b{ color:var(--ink); }
+  .row{ display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start; margin-top:14px; }
+  .stack{ width:512px; }
+  .tag{ color:var(--brass); font:11px/1 ui-monospace,monospace; letter-spacing:.1em;
+        text-transform:uppercase; margin:0 0 6px; }
+
+  /* --- the header strip, true size --- */
+  .frame{ overflow-x:auto; border:1px solid #2a3442; border-radius:6px; margin:8px 0 2px;
+          background:#0b0e13; padding:16px 0 20px; }
+  .stage{ width:1280px; position:relative; }
+  .hdr{ width:1280px; box-sizing:border-box; display:flex; flex-wrap:wrap; align-items:center;
+        column-gap:14px; min-height:36px; padding:0 12px;
+        border-bottom:1px solid var(--edge); background:var(--panel); color:var(--ink);
+        font:13px/19.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace; white-space:nowrap; }
+  .grp{ display:flex; flex-wrap:wrap; align-items:center; gap:14px; min-height:36px; min-width:0; }
+  .acts{ margin-left:auto; display:flex; height:36px; align-items:center; gap:14px; }
+  .chip{ border:1px solid var(--edge); background:var(--raised); color:var(--ink);
+         border-radius:4px; padding:2px 8px; font:inherit; }
+  .chip.warn{ border-color:var(--warn); color:var(--warn); background:transparent; }
+  .chip.zero{ border-color:var(--edge); color:var(--dim); background:transparent; }
+  .chip.soft{ color:var(--soft); }
+  .btn{ border:1px solid var(--edge); background:var(--raised); color:var(--ink);
+        border-radius:4px; padding:4px 10px; font:inherit; }
+  .btn.brass{ border-color:var(--brass); color:var(--brass); background:transparent; }
+  .cr{ color:var(--dim); margin-left:4px; }
+
+  /* --- the popover, true size (w-[32rem] = 512px) --- */
+  .pop{ width:512px; box-sizing:border-box; background:var(--raised);
+        border:1px solid var(--edge); border-radius:4px;
+        font:13px/19.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:var(--ink); }
+  .pop .top{ display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--edge);
+             padding:6px 8px; color:var(--soft); }
+  .pop .top .sp{ flex:1; }
+  .pop .x{ color:var(--dim); padding:0 6px; }
+  .pop .copy{ border:1px solid var(--edge); border-radius:4px; color:var(--dim);
+              padding:0 6px; font:inherit; }
+  .body{ height:330px; overflow-y:auto; padding:8px; }
+  .foot{ border-top:1px solid var(--edge); padding:6px 8px; color:var(--dim); font-size:12px;
+         white-space:normal; line-height:1.45; }
+
+  .sech{ display:flex; align-items:baseline; gap:8px; color:var(--brass); font-size:11px;
+         letter-spacing:.1em; text-transform:uppercase; padding:10px 2px 4px; }
+  .sech .n{ margin-left:auto; color:var(--dim); letter-spacing:0; text-transform:none;
+            font-size:13px; }
+  .sech.first{ padding-top:2px; }
+  .sech.clickable{ cursor:pointer; border-top:1px solid #37414d; }
+  .caret{ color:var(--dim); font-size:12px; }
+
+  .hexcard{ border:1px solid var(--edge); border-radius:4px; margin:0 0 8px; overflow:hidden; }
+  .hexhdr{ display:flex; align-items:baseline; gap:6px; background:rgba(224,178,90,.10);
+           border-bottom:1px solid var(--edge); padding:2px 6px; color:var(--brass);
+           font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; }
+  .hexhdr .n{ margin-left:auto; color:var(--dim); text-transform:none; letter-spacing:0; }
+  .prow{ display:flex; gap:6px; padding:2px 6px; border-top:1px solid #37414d; }
+  .prow:first-child{ border-top:0; }
+  .w{ color:var(--warn); } .d{ color:var(--danger); }
+  .unit{ color:var(--brass); }
+  .msg{ color:var(--ink); white-space:normal; }
+
+  .erow{ padding:3px 4px; border-top:1px solid #37414d; }
+  .erow:first-child{ border-top:0; }
+  .verb{ color:var(--dim); padding-right:8px; }
+
+  .ugrp{ border-top:1px solid #37414d; padding:3px 4px; }
+  .ugrp:first-child{ border-top:0; }
+  .ugrp .h{ display:flex; gap:8px; }
+  .ugrp .h .n{ margin-left:auto; color:var(--dim); }
+  .ugrp ul{ margin:0; padding:0 0 0 10px; list-style:none; }
+
+  .ur{ display:grid; grid-template-columns:80px 72px 1fr; gap:2px 8px; padding:3px 4px;
+       border-top:1px solid #37414d; }
+  .ur:first-child{ border-top:0; }
+  .ur pre{ margin:0; white-space:pre-wrap; word-break:break-all; border-left:2px solid var(--warn);
+           padding-left:8px; color:var(--ink); font:inherit; }
+  .ur pre.lost{ border-left-color:var(--danger); }
+
+  .tabs{ display:flex; gap:4px; padding:6px 8px 0; flex-wrap:wrap; }
+  .tab{ border:1px solid var(--edge); border-radius:4px; padding:1px 8px; color:var(--soft);
+        font:inherit; }
+  .tab.on{ border-color:var(--brass); color:var(--brass); }
+  .tab.off{ opacity:.4; }
+</style>
+</head>
+<body>
+
+<h1>ah-30hg.2 round 4 — what the one panel looks like inside</h1>
+<p class="note">
+  Round 2 settled the chip’s words (<b class="kw">⚠&nbsp;N to check</b>, <b class="kw">Turn report</b>
+  when nothing is wrong) and the order of the sections
+  (<b class="kw">Order problems · The engine said · Lines not read · Turn events</b>, fixable first,
+  an empty section not drawn). What it did not settle is <b class="kw">how much of each section you
+  see at once</b> — and that matters, because three panels are being folded into one and each of them
+  has a body of its own today: the problems panel groups by hex and each hex is a button that takes
+  you there; the unreadable panel has a <b class="kw">Copy all</b> button and a fixed three-column
+  grid; the messages panel groups 333 events by the unit that caused them.
+</p>
+<p class="note">
+  All three below are at <b class="kw">true size</b> — 512&nbsp;px wide, the width of today’s widest
+  of the three — with the real turn-71 numbers: 10 order problems across 4 hexes, 1 engine error,
+  6 lines not read, 333 events. The body is boxed to the height it actually gets, so what you see
+  is what fits before scrolling.
+</p>
+
+<h2>The chip that opens it — unchanged, and already agreed</h2>
+<div class="frame"><div class="stage">
+  <div class="hdr"><div class="grp">
+    <button class="chip">Smoke game<span class="cr">▾</span></button>
+    <button class="chip">Turn 71<span class="cr">▾</span></button>
+    <span><button class="chip">Borg TNG (95)</button><span class="cr">▾</span></span>
+    <button class="chip warn">⚠ 17 to check<span class="cr">▾</span></button>
+    <button class="chip zero">Trade 0<span class="cr">▾</span></button>
+    <button class="chip soft">2 battles</button>
+  </div><div class="acts">
+    <button class="btn">Import</button><button class="btn">Export<span class="cr">▾</span></button>
+    <button class="btn brass">Send</button><button class="btn">⚙</button>
+  </div></div>
+</div></div>
+<p class="cap"><b>17</b> = 10 order problems + 1 engine error + 6 lines not read. The 333 events
+  are not counted, by round 2’s decision.</p>
+
+<h2>S1 — every section in full, one scroll</h2>
+<div class="row">
+<div class="stack">
+<div class="pop">
+  <div class="top"><span>17 to check · turn 71</span><span class="sp"></span>
+    <button class="copy">Copy all</button><span class="x">✕</span></div>
+  <div class="body">
+    <div class="sech first">Order problems <span class="n">10</span></div>
+    <div class="hexcard">
+      <div class="hexhdr">mountain (7,53)<span class="n">3</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">18642</span><span class="msg">has $0 and owes $50 in maintenance</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">18642</span><span class="msg">their orders spend more silver than they have</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">14451</span><span class="msg">has no order that spends its month</span></div>
+    </div>
+    <div class="hexcard">
+      <div class="hexhdr">forest (26,52)<span class="n">2</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">13402</span><span class="msg">is already at the ruleset’s maximum in combat</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">13432</span><span class="msg">has no order that spends its month</span></div>
+    </div>
+    <div class="hexcard">
+      <div class="hexhdr">plain (12,40)<span class="n">1</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">1901</span><span class="msg">studies outside a building that allows it</span></div>
+    </div>
+    <div class="sech clickable">The engine said <span class="n">1 error</span></div>
+    <div class="erow"><span class="unit">Seven of Eight (18642)</span>
+      <div><span class="verb">DECLARE</span><span class="msg">Can’t declare towards your own faction.</span></div></div>
+    <div class="sech clickable">Lines not read <span class="n">6</span></div>
+    <div class="ur"><span style="color:var(--dim)">4102</span><span style="color:var(--soft)">Unit</span>
+      <pre>* Scout (4471), Borg TNG (95), avoiding, behind, won't cross water, 1 wolf [WOLF]</pre></div>
+    <div class="ur"><span style="color:var(--dim)">4711–4712</span><span style="color:var(--soft)">Region</span>
+      <div><pre class="lost">mountain (44,18) in Gorge, contains Nurplishglen [town]</pre>
+      <p style="margin:0;padding-left:8px;color:var(--danger);white-space:normal">The whole hex was lost — 38 further lines, including 6 units.</p></div></div>
+    <div class="sech clickable">Turn events <span class="n">333</span></div>
+    <div class="ugrp"><div class="h"><span class="unit">Seven of Eight (18642)</span><span class="n">4</span></div>
+      <ul><li>Claims $50.</li><li>Studies combat.</li></ul></div>
+    <div class="ugrp"><div class="h"><span class="unit">Lookout (12159)</span><span class="n">2</span></div>
+      <ul><li>Gives 50 silver [SILV] to Scout (4471).</li></ul></div>
+  </div>
+  <div class="foot">Order problems never block an export. Nothing under “Lines not read” reached the map.</div>
+</div>
+</div>
+<p class="cap" style="max-width:34ch">
+  <b>Nothing changes shape.</b> Each section is the panel it is today, under a heading — the hex
+  cards still navigate, the unit names still jump, <b>Copy all</b> still copies.<br><br>
+  <b>The cost:</b> one long scroll, and on a busy turn the events section is hundreds of rows below
+  the fold. You scroll past what you have already read to reach what you have not.
+</p>
+</div>
+
+<h2>S2 — sections collapse; the first thing that needs you is open</h2>
+<div class="row">
+<div class="stack">
+<div class="pop">
+  <div class="top"><span>17 to check · turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+  <div class="body">
+    <div class="sech first"><span class="caret">▾</span> Order problems <span class="n">10</span></div>
+    <div class="hexcard">
+      <div class="hexhdr">mountain (7,53)<span class="n">3</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">18642</span><span class="msg">has $0 and owes $50 in maintenance</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">18642</span><span class="msg">their orders spend more silver than they have</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">14451</span><span class="msg">has no order that spends its month</span></div>
+    </div>
+    <div class="hexcard">
+      <div class="hexhdr">forest (26,52)<span class="n">2</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">13402</span><span class="msg">is already at the ruleset’s maximum in combat</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">13432</span><span class="msg">has no order that spends its month</span></div>
+    </div>
+    <div class="hexcard">
+      <div class="hexhdr">plain (12,40)<span class="n">1</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">1901</span><span class="msg">studies outside a building that allows it</span></div>
+    </div>
+    <div class="sech clickable"><span class="caret">▸</span> The engine said <span class="n">1 error</span></div>
+    <div class="sech clickable"><span class="caret">▸</span> Lines not read <span class="n">6</span></div>
+    <div class="sech clickable"><span class="caret">▸</span> Turn events <span class="n">333</span></div>
+  </div>
+  <div class="foot">Order problems never block an export. Nothing under “Lines not read” reached the map.</div>
+</div>
+</div>
+<p class="cap" style="max-width:34ch">
+  <b>Every heading is on screen at once</b>, so the panel tells you in one look what the turn has to
+  answer for, whatever the counts are. Opening one closes nothing.<br><br>
+  <b>The cost:</b> reading the engine’s error is now a click it is not today, and the panel’s height
+  changes under the pointer as sections open.
+</p>
+</div>
+
+<h2>S3 — the four sections are tabs; one body at a time</h2>
+<div class="row">
+<div class="stack">
+<div class="pop">
+  <div class="top"><span>17 to check · turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+  <div class="tabs">
+    <button class="tab on">Problems 10</button><button class="tab">Engine 1</button>
+    <button class="tab">Not read 6</button><button class="tab">Events 333</button>
+  </div>
+  <div class="body" style="height:300px">
+    <div class="hexcard">
+      <div class="hexhdr">mountain (7,53)<span class="n">3</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">18642</span><span class="msg">has $0 and owes $50 in maintenance</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">18642</span><span class="msg">their orders spend more silver than they have</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">14451</span><span class="msg">has no order that spends its month</span></div>
+    </div>
+    <div class="hexcard">
+      <div class="hexhdr">forest (26,52)<span class="n">2</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">13402</span><span class="msg">is already at the ruleset’s maximum in combat</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">13432</span><span class="msg">has no order that spends its month</span></div>
+    </div>
+    <div class="hexcard">
+      <div class="hexhdr">plain (12,40)<span class="n">1</span></div>
+      <div class="prow"><span class="w">⚠</span><span class="unit">1901</span><span class="msg">studies outside a building that allows it</span></div>
+    </div>
+  </div>
+  <div class="foot">These never block an export. They are what the report says will go wrong, not what
+    the server will refuse.</div>
+</div>
+</div>
+<p class="cap" style="max-width:34ch">
+  <b>The panel keeps one height and one footer</b> — the footer is the open tab’s own, so each
+  section keeps the sentence it has today, and <b>Copy all</b> appears only on the “Not read” tab
+  where it means something.<br><br>
+  <b>It is what the messages panel already does</b> (errors / events tabs), widened from two to
+  four, and an empty section is a disabled tab rather than a missing one.<br><br>
+  <b>The cost:</b> you can only see one at a time, and the count in the chip is a total you cannot
+  see broken down without clicking.
+</p>
+</div>
+
+<h2>The same three when the turn is quiet</h2>
+<p class="note">Nothing wrong, nothing unread, 333 events. The chip is
+  <b class="kw">Turn report</b> and not amber, by round 2’s decision.</p>
+<div class="row">
+  <div>
+    <p class="tag">S1 / S2</p>
+    <div class="pop" style="width:512px">
+      <div class="top"><span>Turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="body" style="height:120px">
+        <div class="sech first">Turn events <span class="n">333</span></div>
+        <div class="ugrp"><div class="h"><span class="unit">Seven of Eight (18642)</span><span class="n">4</span></div>
+          <ul><li>Claims $50.</li></ul></div>
+      </div>
+    </div>
+    <p class="cap" style="max-width:50ch">Three sections are gone, so the panel is the events list
+      with one heading over it.</p>
+  </div>
+  <div>
+    <p class="tag">S3</p>
+    <div class="pop" style="width:512px">
+      <div class="top"><span>Turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="tabs">
+        <button class="tab off">Problems 0</button><button class="tab off">Engine 0</button>
+        <button class="tab off">Not read 0</button><button class="tab on">Events 333</button>
+      </div>
+      <div class="body" style="height:95px">
+        <div class="ugrp"><div class="h"><span class="unit">Seven of Eight (18642)</span><span class="n">4</span></div>
+          <ul><li>Claims $50.</li></ul></div>
+      </div>
+    </div>
+    <p class="cap" style="max-width:50ch">Three disabled tabs, which is how the messages panel shows
+      an empty list today.</p>
+  </div>
+</div>
+
+<h2>And when the turn is completely silent</h2>
+<p class="note">
+  A restored turn with no events, no errors, nothing unread and no orders written yet — the chip is
+  <b class="kw">Turn report</b> and the panel has nothing at all to show. It needs a sentence.
+</p>
+<div class="row">
+  <div>
+    <div class="pop" style="width:512px">
+      <div class="top"><span>Turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="body" style="height:70px; display:flex; align-items:center; justify-content:center;
+           color:var(--dim)">Nothing to check in this turn.</div>
+    </div>
+    <p class="cap" style="max-width:50ch"><b>E1</b> — “Nothing to check in this turn.”</p>
+  </div>
+  <div>
+    <div class="pop" style="width:512px">
+      <div class="top"><span>Turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="body" style="height:70px; display:flex; align-items:center; justify-content:center;
+           color:var(--dim)">This turn reported nothing, and your orders look sound.</div>
+    </div>
+    <p class="cap" style="max-width:50ch"><b>E2</b> — names both halves: the report said nothing and
+      validation found nothing.</p>
+  </div>
+</div>
+
+</body>
+</html>
