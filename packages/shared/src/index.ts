@@ -32,6 +32,7 @@ export * from "./workspace/AppShell";
 export * from "./workspace/FactionDossierPanel";
 export * from "./workspace/ForeignReportPrompt";
 export * from "./gameData";
+export * from "./magicStanding";
 export * from "./magicTree";
 export * from "./workspace/GameDataDialog";
 export * from "./workspace/gameDataDialogState";

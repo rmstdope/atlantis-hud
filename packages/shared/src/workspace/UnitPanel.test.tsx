@@ -4,6 +4,7 @@ import { aReportUnit } from "@atlantis/core-client";
 import { readRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataEntry, type GameDataIndex } from "../gameData";
 import { buildMagicTree } from "../magicTree";
+import { standingOf } from "../magicStanding";
 import { findByTestId } from "../testing/elementTree";
 import { SURFACE, type HexNode } from "../hexMapModel";
 import { UnitPanel } from "./UnitPanel";
@@ -138,5 +139,31 @@ describe("the study tree door in the unit pane (ah-gjbs.1)", () => {
     const html = renderToStaticMarkup(<UnitPanel unit={mage} hex={HEX} />);
     expect(html).not.toContain('data-testid="unit-magic-tree"');
     expect(html).not.toContain("Show in study tree");
+  });
+
+  it("says how much is open to a mage", () => {
+    const index = parseGameData(readRuleset()) as GameDataIndex;
+    const standing = standingOf(mage, buildMagicTree(index), index);
+    const html = renderToStaticMarkup(
+      <UnitPanel
+        unit={mage}
+        hex={HEX}
+        magicTree={tree}
+        onOpenMagicTree={() => {}}
+        standing={standing}
+      />
+    );
+
+    expect(html).toContain(`Mage — ${standing.counts.open} magic skills open`);
+    expect(html).toContain("Show in study tree");
+  });
+
+  it("says only Mage without a standing", () => {
+    const html = renderToStaticMarkup(
+      <UnitPanel unit={mage} hex={HEX} magicTree={tree} onOpenMagicTree={() => {}} />
+    );
+
+    expect(html).toContain("Mage");
+    expect(html).not.toContain("magic skills open");
   });
 });

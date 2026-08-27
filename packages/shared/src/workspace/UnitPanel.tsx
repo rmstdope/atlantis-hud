@@ -5,6 +5,7 @@ import { describeMen } from "../unitComposition";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { skillEntryId, type GameDataIndex } from "../gameData";
 import { highestMagicSkill, type MagicTree } from "../magicTree";
+import type { MageStanding } from "../magicStanding";
 import {
   Absent,
   Field,
@@ -33,7 +34,8 @@ export function UnitPanelBody({
   gameData = null,
   onOpenGameData,
   magicTree = null,
-  onOpenMagicTree
+  onOpenMagicTree,
+  standing = null
 }: {
   unit: ReportUnit | null;
   hex: HexNode | null;
@@ -50,6 +52,11 @@ export function UnitPanelBody({
   magicTree?: MagicTree | null;
   /** Absent while the ruleset has not loaded; the study-tree row is then not offered. */
   onOpenMagicTree?: (tag: string) => void;
+  /**
+   * Where this unit stands in the magic study tree, when it is one of the faction's own mages.
+   * Null leaves the row reading `Mage` exactly as it did before `ah-67h8`.
+   */
+  standing?: MageStanding | null;
 }) {
   /** Both must be present: a link with nothing to open is worse than plain text. */
   const linkable = gameData !== null && onOpenGameData !== undefined ? onOpenGameData : null;
@@ -121,7 +128,12 @@ export function UnitPanelBody({
       */}
       {mage === null || magicLinkable === null ? null : (
         <p className="m-0 mt-2 text-ink-soft">
-          Mage{" "}
+          {/* No pronoun: a unit may be a woman, a dozen people, or a dragon. */}
+          {standing === null ? (
+            "Mage"
+          ) : (
+            <span className="text-warn">Mage — {standing.counts.open} magic skills open</span>
+          )}{" "}
           <button
             type="button"
             data-testid="unit-magic-tree"
