@@ -35,6 +35,11 @@ target-dir = "target"
 # makes cargo resolve the path against the directory holding this file — the repository root, or a
 # worktree's own root, since the file is tracked and cargo takes the nearest one. Large integers cross
 # as JSON numbers, so they are `number` in TypeScript, not `bigint`.
+#
+# `TS_RS_EXPORT_DIR` deliberately carries no `force = true`. Cargo's `[env]` only overrides a value
+# already in the caller's environment when `force` is set, and scripts/checkGenerated.ts relies on
+# that: it regenerates the bindings into a temporary tree by passing its own TS_RS_EXPORT_DIR. Add
+# `force` here and that gate silently compares the working tree against itself.
 [env]
 TS_RS_EXPORT_DIR = { value = "packages/core-client/src/generated", relative = true }
 TS_RS_LARGE_INT = "number"
