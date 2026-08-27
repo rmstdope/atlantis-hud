@@ -35,7 +35,9 @@ export function MagicTreeDialog({
 
   // Focus returns where it was summoned from, for the reason `GameDataDialog` documents: this
   // opens from the command palette, which itself opens from the orders editor, and without the
-  // return trip dismissing it would leave the caret nowhere.
+  // return trip dismissing it would leave the caret nowhere. Captured during the first render,
+  // because by the time an effect runs the close button's `autoFocus` has already moved focus in
+  // here - which is also the premise this whole block rests on.
   const summonedFrom = useRef<Element | null>(null);
   if (summonedFrom.current === null) {
     summonedFrom.current = typeof document === "undefined" ? null : document.activeElement;
@@ -93,6 +95,12 @@ export function MagicTreeDialog({
           <button
             type="button"
             data-testid="magic-tree-close"
+            // Focus starts inside the dialog rather than behind it, as `ShortcutHelp` and the
+            // dictionary both do. Without it `aria-modal="true"` is a claim the dialog does not
+            // keep: opening on F3 from the document body would leave focus in the background, and
+            // a keyboard user would tab through the whole workspace to reach the tree's own
+            // controls.
+            autoFocus
             onClick={onDismiss}
             className="rounded px-1.5 text-ink-dim hover:text-ink"
           >

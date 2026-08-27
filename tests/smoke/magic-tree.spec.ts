@@ -23,6 +23,9 @@ test("F3 opens the tree, a chip walks it, and a name opens the dictionary", asyn
   await expect(dialog).toBeVisible();
   await expect(page.getByTestId("magic-tree-branch-ARTI")).toBeVisible();
   await expect(page.getByTestId("magic-tree-branch-FOUND")).toBeVisible();
+  // `aria-modal="true"` is only honest if focus is actually inside: opened on F3 from the document
+  // body, it must not be left behind the dialog.
+  await expect(page.getByTestId("magic-tree-close")).toBeFocused();
   await expect(page.getByTestId("magic-tree-cap")).toContainText("can never rise above");
 
   // Following a crossing prerequisite moves the view to the skill it names and picks it out.
