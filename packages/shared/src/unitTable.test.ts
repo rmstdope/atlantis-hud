@@ -22,6 +22,8 @@ import {
   silverShown,
   shareOf,
   REORDERABLE_COLUMNS,
+  sharesFor,
+  EXTRA_COLUMN_SHARES,
   type SortState,
   type UnitColumn
 } from "./unitTable";
@@ -686,5 +688,73 @@ describe("the Silver column (ah-1wcw.1)", () => {
       silver
     ).map((unit) => unit.unitId);
     expect(descending).toEqual(["1", "3", "2"]);
+  });
+});
+
+describe("the source-dependent columns (ah-1mpx.2)", () => {
+  const sum = (shares: Record<string, number | undefined>) =>
+    Object.values(shares).reduce<number>((total, share) => total + (share ?? 0), 0);
+
+  it("sharesFor with every column visible and no extras returns the shares unchanged", () => {
+    expect(sharesFor([...UNIT_COLUMNS], null, 0)).toEqual(DEFAULT_COLUMN_SHARES);
+  });
+
+  it("sharesFor scales the visible columns to fill what the extra columns leave", () => {
+    const extra = EXTRA_COLUMN_SHARES.hex + EXTRA_COLUMN_SHARES.seen + EXTRA_COLUMN_SHARES.remove;
+    const visible = UNIT_COLUMNS.filter((column) => column !== "faction");
+
+    const shares = sharesFor([...visible], null, extra);
+
+    expect(Object.keys(shares).sort()).toEqual([...visible].sort());
+    expect(sum(shares) + extra).toBeCloseTo(1, 10);
+  });
+
+  it("sharesFor honours a stored preference and still fills the table", () => {
+    const stored = columnSharesFromStorage({ ...DEFAULT_COLUMN_SHARES, name: 0.3 });
+    const extra = EXTRA_COLUMN_SHARES.hex;
+
+    const shares = sharesFor([...UNIT_COLUMNS], stored, extra);
+
+    expect(sum(shares) + extra).toBeCloseTo(1, 10);
+    // The stored preference is still the widest column, scaled but not reordered.
+    expect(shares.name).toBeGreaterThan(shares.faction ?? 0);
+  });
+
+  it("sortUnits orders by seen, oldest first, own units still grouped", () => {
+    const units = [
+      unit("1", true, { name: "Recent" }),
+      unit("2", false, { name: "Ancient" }),
+      unit("3", true, { name: "Older" })
+    ];
+    const seen = new Map([
+      ["1", 71],
+      ["2", 12],
+      ["3", 40]
+    ]);
+
+    const sorted = sortUnits(units, { ...DEFAULT_SORT, column: "seen" }, [], undefined, undefined, seen);
+
+    expect(ids(sorted)).toEqual(["3", "1", "2"]);
+  });
+
+  it("sortUnits puts a row with no seen turn last, in either direction", () => {
+    const units = [unit("1", false), unit("2", false)];
+    const seen = new Map([["2", 12]]);
+
+    expect(
+      ids(sortUnits(units, { ...DEFAULT_SORT, column: "seen" }, [], undefined, undefined, seen))
+    ).toEqual(["2", "1"]);
+    expect(
+      ids(
+        sortUnits(
+          units,
+          { ...DEFAULT_SORT, column: "seen", direction: "desc" },
+          [],
+          undefined,
+          undefined,
+          seen
+        )
+      )
+    ).toEqual(["2", "1"]);
   });
 });

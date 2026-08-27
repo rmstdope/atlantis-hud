@@ -38,7 +38,9 @@ export type SortColumn =
   | "men"
   | "structure"
   | "longOrder"
-  | "silver";
+  | "silver"
+  /** Only ever drawn for an Army source, where each member carries the turn it was last seen. */
+  | "seen";
 
 /**
  * The table's columns, in the order they are drawn.
@@ -183,7 +185,8 @@ function valueOf(
   column: SortColumn,
   structures: ReadonlyMap<string, StructureInfo>,
   longOrders: ReadonlyMap<string, string | null>,
-  silver: ReadonlyMap<string, number | null>
+  silver: ReadonlyMap<string, number | null>,
+  seen: ReadonlyMap<string, number>
 ): number | string | null {
   switch (column) {
     case "unitId":
@@ -202,6 +205,10 @@ function valueOf(
     // - which `compareValues` already sorts last in either direction, so neither needs a sentinel.
     case "silver":
       return silver.get(unit.unitId) ?? null;
+    // A row with no entry - every row of a source that is not an Army - is null, which
+    // `compareValues` already sorts last in either direction.
+    case "seen":
+      return seen.get(unit.unitId) ?? null;
   }
 }
 
@@ -275,7 +282,9 @@ export function sortUnits(
   /** Each own unit's month-long order, for the column that sorts on it. */
   longOrders: ReadonlyMap<string, string | null> = new Map(),
   /** Each own unit's forecast silver at month end, for the column that sorts on it. `ah-1wcw.1`. */
-  silver: ReadonlyMap<string, number | null> = new Map()
+  silver: ReadonlyMap<string, number | null> = new Map(),
+  /** Each Army member's `seenTurn`, for the column that sorts on it. `ah-1mpx.2`. */
+  seen: ReadonlyMap<string, number> = new Map()
 ): ReportUnit[] {
   const direction = sort.direction === "asc" ? 1 : -1;
   const byId = indexById(structures);
@@ -286,8 +295,8 @@ export function sortUnits(
     }
 
     const outcome = compareValues(
-      valueOf(left, sort.column, byId, longOrders, silver),
-      valueOf(right, sort.column, byId, longOrders, silver)
+      valueOf(left, sort.column, byId, longOrders, silver, seen),
+      valueOf(right, sort.column, byId, longOrders, silver, seen)
     );
     return "settled" in outcome ? outcome.settled : outcome.compare * direction;
   });
@@ -360,6 +369,57 @@ export const DEFAULT_COLUMN_SHARES: Record<UnitColumn, number> = {
   longOrder: 144 / NOMINAL_TABLE_PX,
   silver: 96 / NOMINAL_TABLE_PX
 };
+
+/**
+ * The source-dependent columns, drawn to the right of `name` in this order and deliberately NOT
+ * members of `UNIT_COLUMNS` - see `sharesFor` for why.
+ *
+ * `hex` for any source that spans hexes, `seen` and `remove` only for an Army. They are fixed
+ * width and take no part in dragging, reordering or the stored preferences (`ah-1mpx.2`).
+ */
+export type ExtraColumn = "hex" | "seen" | "remove";
+
+/** Their shares, against the same nominal 1440px table `DEFAULT_COLUMN_SHARES` is measured on. */
+export const EXTRA_COLUMN_SHARES: Record<ExtraColumn, number> = {
+  hex: 79 / NOMINAL_TABLE_PX, // `(11,55)` and its ellipsis
+  seen: 75 / NOMINAL_TABLE_PX, // `turn 68`
+  remove: 86 / NOMINAL_TABLE_PX // the Remove button
+};
+
+/**
+ * The visible columns' shares, renormalised so they and the extra columns exactly fill the table.
+ *
+ * `table-fixed` will not stretch to cover a gap, and the whole argument for shares over pixels
+ * (see `ColumnShares`) is that the values always sum to 1. Hiding a column for one source, or
+ * giving a fixed slice to a column that is not in `UNIT_COLUMNS` at all, breaks that unless the
+ * remainder is scaled back up - so this is the one place a width is computed when the drawn set
+ * is not the whole set.
+ *
+ * `extra` is the total share taken by columns outside `UNIT_COLUMNS`, between 0 and 1.
+ */
+export function sharesFor(
+  visible: readonly UnitColumn[],
+  shares: ColumnShares | null,
+  extra: number
+): ColumnShares {
+  const own = visible.map((column) => [column, shareOf(column, shares)] as const);
+  // The whole set with nothing beside it already sums to 1 - `columnSharesFromStorage` guarantees
+  // it, and the defaults are measured to it - so there is nothing to redistribute. Handed back
+  // untouched rather than divided by its own total and multiplied by one: that round trip is
+  // exact in arithmetic and not in floating point, and it would put a few ulps of drift into
+  // every `<col>` of the default view for no gain at all.
+  if (extra <= 0 && visible.length === UNIT_COLUMNS.length) {
+    return Object.fromEntries(own);
+  }
+  const total = own.reduce((sum, [, share]) => sum + share, 0);
+  // Nothing visible, or an `extra` that already fills the table, leaves nothing to scale: hand
+  // back what was asked for rather than dividing by zero and writing `NaN%` into every `<col>`.
+  const room = 1 - extra;
+  if (total <= 0 || room <= 0) {
+    return Object.fromEntries(own);
+  }
+  return Object.fromEntries(own.map(([column, share]) => [column, (share / total) * room]));
+}
 
 /**
  * No column may be dragged narrower than this on screen, whatever the table's width - enough for
