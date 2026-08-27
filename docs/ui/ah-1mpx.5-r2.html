@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-1mpx.5 &mdash; round 2: the bridge, the words, and what is not known</title><style>
+
+/* ---- Explanatory chrome (docs/ui house style) ---- */
+:root {
+  --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+  --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+  --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  /* ---- the application's own tokens, from packages/shared/src/theme.css ---- */
+  --a-ground:#1b212a; --a-panel:#222933; --a-raised:#2a323d; --a-edge:#46525f; --a-edge-soft:#333d49;
+  --a-ink:#d4dce6; --a-ink-soft:#a8b4c2; --a-ink-dim:#99a4b2;
+  --a-brass:#e0b25a; --a-brass-bright:#eebe63; --a-select:#5aa9de; --a-ok:#4fb783;
+  --a-warn:#d9a441; --a-danger:#e89494; --a-gain:#7fb069;
+  --a-unit-own:#5ec8f0; --a-unit-foreign:#f07070; --a-ring:#f5f8fc;
+  --a-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+header, main, footer { max-width:1420px; margin:0 auto; }
+h1 { font-size:26px; letter-spacing:0.4px; }
+h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+p.lede { color:var(--brass-bright); font-size:15.5px; font-style:italic; max-width:96ch; margin-top:12px; }
+code, .mono { font-family:var(--a-mono); }
+header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+.stage { background:#0b0f15; border:1px solid var(--edge-soft); border-radius:8px; padding:12px; overflow-x:auto; }
+.hexlab { font:10.5px/1 var(--a-mono); letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
+.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+.notes li.con::before { content:"\2212 "; color:var(--danger); }
+.notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+.split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+.split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+footer { margin-top:42px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+.rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+.new { outline:1px dashed var(--brass); outline-offset:2px; }
+.newtag { font:9.5px/1 var(--a-mono); letter-spacing:.1em; text-transform:uppercase; color:#1b212a;
+          background:var(--brass); border-radius:3px; padding:3px 5px; }
+
+/* ================= the application, reproduced ================= */
+.app { width:1280px; height:720px; position:relative; overflow:hidden; border-radius:6px;
+       border:1px solid #000; background:var(--a-ground); color:var(--a-ink);
+       font:13px/1.35 var(--a-mono); display:flex; flex-direction:column; }
+.app.short { height:470px; }
+.app *, .app *::before { box-sizing:border-box; }
+
+/* header: min-h-9, border-b border-edge, bg-panel, px-3, gap-x-3.5 */
+.ahead { flex:none; min-height:36px; display:flex; align-items:center; gap:14px; padding:0 12px;
+         border-bottom:1px solid var(--a-edge); background:var(--a-panel); white-space:nowrap; }
+.ahead .wordmark { letter-spacing:.06em; color:var(--a-brass); }
+.ahead .lbl { color:var(--a-ink-soft); }
+.ahead .chip { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink);
+               border-radius:4px; padding:1px 8px; }
+.ahead .chip.plain { border-color:transparent; background:transparent; }
+.ahead .chip.warn { border-color:var(--a-warn); color:var(--a-warn); background:transparent; }
+.ahead .chip.gain { border-color:var(--a-gain); color:var(--a-gain); background:transparent; }
+.ahead .chip.dim { color:var(--a-ink-dim); }
+.ahead .right { margin-left:auto; display:flex; align-items:center; gap:14px; }
+.ahead .btn-imp { border:1px solid var(--a-brass); color:var(--a-brass); border-radius:4px; padding:3px 10px; }
+.ahead .btn-o { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink); border-radius:4px; padding:3px 10px; }
+.dotstat { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--a-ink-dim); }
+
+/* map stage + floating overlay: p-2.5 pt-12, gap-2.5 */
+.stagewrap { position:relative; flex:1; min-height:0; }
+.mapsvg { position:absolute; inset:0; width:100%; height:100%; }
+.mapctl { position:absolute; right:10px; top:10px; z-index:20; display:flex; align-items:center; gap:6px;
+          border:1px solid var(--a-edge); background:#222933f2; border-radius:6px; padding:4px 8px;
+          box-shadow:0 10px 15px -3px #0007; }
+.mapctl .sq { width:26px; height:26px; border:1px solid var(--a-edge); background:#222933f2;
+              border-radius:4px; color:var(--a-ink-soft); display:flex; align-items:center; justify-content:center; }
+.overlay { position:absolute; inset:0; padding:10px; padding-top:48px; display:flex; flex-direction:column; gap:10px; }
+.orow { display:flex; flex:1; min-height:0; justify-content:space-between; gap:10px; }
+.railL { width:304px; display:flex; flex-direction:column; }
+.railR { width:336px; display:flex; flex-direction:column; gap:10px; }
+
+/* CollapsiblePanel: rounded-md border-edge bg-pane shadow-lg backdrop-blur; header h-7 */
+.pane { display:flex; flex-direction:column; min-height:0; overflow:hidden; border-radius:6px;
+        border:1px solid var(--a-edge); background:#222933cc; backdrop-filter:blur(7px);
+        box-shadow:0 10px 15px -3px #0007,0 4px 6px -4px #0007; }
+.pane > .ttl { height:28px; flex:none; display:flex; align-items:center; gap:8px; padding:0 10px;
+               border-bottom:1px solid var(--a-edge); font-size:12px; letter-spacing:.12em;
+               text-transform:uppercase; color:var(--a-brass); }
+.pane > .ttl .hint { text-transform:none; letter-spacing:normal; color:var(--a-ink-dim); }
+.pane > .ttl .caret { margin-left:auto; color:var(--a-ink-dim); }
+.pane > .bd { min-height:0; flex:1; overflow:auto; padding:8px 10px; line-height:1.3; }
+.pane.grow { flex:1; min-height:0; }
+
+/* units dock, full width along the bottom: h-20.625rem = 330px */
+.dockU { height:330px; flex:none; }
+
+/* units table */
+table.ut { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0; font-variant-numeric:tabular-nums; }
+table.ut th { position:sticky; top:0; z-index:10; background:var(--a-panel); border-bottom:1px solid var(--a-edge);
+              padding:4px 8px; text-align:left; font-size:12px; font-weight:500; letter-spacing:.06em;
+              text-transform:uppercase; color:var(--a-ink-soft); }
+table.ut th .g { color:var(--a-ink-dim); }
+table.ut th.act { color:var(--a-brass); }
+table.ut td { height:24px; padding:2px 8px; border-bottom:1px solid var(--a-edge-soft);
+              white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+table.ut tr { color:var(--a-ink); }
+table.ut tr.foreign { color:var(--a-ink-soft); }
+table.ut tr.sel td { background:#5aa9de40; color:var(--a-ink); }
+table.ut tr.pick td { background:#5aa9de26; }
+.o { color:var(--a-ok); } .f { color:var(--a-danger); }
+.idown { color:var(--a-select); } .idfor { color:#f07070b3; }
+.dim { color:var(--a-ink-dim); } .warnc { color:var(--a-warn); } .okc { color:var(--a-ok); }
+.gone { color:var(--a-ink-dim); text-decoration:line-through; }
+.filter { width:176px; border:1px solid var(--a-edge); background:var(--a-ground); color:var(--a-ink-dim);
+          border-radius:4px; padding:1px 8px; font-size:13px; }
+
+/* small controls inside panes */
+.b { display:inline-block; border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink);
+     border-radius:4px; padding:3px 9px; font-size:12px; }
+.b.pri { border-color:var(--a-brass); color:var(--a-brass); background:transparent; }
+.b.gh { border-color:transparent; background:transparent; color:var(--a-ink-dim); padding:3px 6px; }
+.b.dg { border-color:#6b4444; color:var(--a-danger); background:transparent; }
+.kbd { display:inline-block; font-size:11px; padding:2px 6px; border:1px solid var(--a-edge);
+       border-bottom-width:2px; border-radius:4px; background:var(--a-ground); color:var(--a-brass-bright); }
+dl.kv { display:grid; grid-template-columns:74px 1fr; gap:4px 10px; font-size:13px; }
+dl.kv dt { color:var(--a-ink-dim); font-size:12px; }
+dl.kv dt.sep, dl.kv dd.sep { border-top:1px solid var(--a-edge-soft); padding-top:7px; margin-top:4px; }
+.chip2 { display:inline-block; background:#5aa9de26; border:1px solid #5aa9de66; color:var(--a-ink);
+         border-radius:10px; padding:1px 8px; font-size:12px; margin:0 4px 4px 0; }
+.chip2 .x { color:var(--a-ink-dim); margin-left:5px; }
+.arow { display:flex; align-items:center; gap:8px; padding:4px 7px; border-radius:4px; font-size:13px; }
+.arow.on { background:#5aa9de26; box-shadow:inset 2px 0 0 var(--a-select); }
+.arow .ct { margin-left:auto; color:var(--a-ink-dim); font-size:12px; }
+.sw { width:10px; height:10px; border-radius:2px; flex:none; }
+.sw.off { background:transparent; border:1px solid var(--a-edge); }
+.tagw { font-size:11px; border:1px solid #6b5a2a; color:var(--a-warn); border-radius:3px; padding:1px 5px; }
+.empty { color:var(--a-ink-dim); font-size:12px; line-height:1.6; text-align:center; padding:18px 12px; }
+.empty b { color:var(--a-ink-soft); display:block; font-weight:500; margin-bottom:4px; font-size:13px; }
+.st { font-size:12px; color:var(--a-ink-dim); margin-top:7px; line-height:1.5; }
+.st b { color:var(--a-brass-bright); font-weight:500; }
+
+/* the source rail (P3) */
+.srail { width:172px; flex:none; border-right:1px solid var(--a-edge); background:#2a323db3; overflow:auto; padding:6px; }
+.srail .grp { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--a-ink-dim); margin:10px 0 4px 6px; }
+.srail .s { display:flex; align-items:center; gap:6px; padding:3px 7px; border-radius:4px; color:var(--a-ink-soft); font-size:13px; }
+.srail .s.on { background:#5aa9de26; color:var(--a-ink); box-shadow:inset 2px 0 0 var(--a-select); }
+.srail .s.drop { border:1px dashed var(--a-brass); background:#e0b25a1f; color:var(--a-brass-bright); }
+.srail .s .ct { margin-left:auto; color:var(--a-ink-dim); font-size:12px; }
+.ghostdrag { position:absolute; border:1px dashed var(--a-brass); border-radius:4px; background:#2a323dee;
+             color:var(--a-brass-bright); font-size:12px; padding:4px 9px; box-shadow:0 8px 20px #000a; }
+
+/* dialog */
+.backdrop { position:absolute; inset:0; background:#00000080; display:flex; align-items:center; justify-content:center; z-index:40; }
+.dlg { border:1px solid var(--a-edge); background:var(--a-raised); border-radius:6px;
+       box-shadow:0 10px 15px -3px #0009; overflow:hidden; }
+.dlg > .h { display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid var(--a-edge); color:var(--a-ink-soft); }
+.dlg > .b2 { padding:12px; }
+pre.json { font:12px/1.5 var(--a-mono); color:var(--a-ink-soft); background:var(--a-ground);
+           border:1px solid var(--a-edge-soft); border-radius:5px; padding:10px; overflow-x:auto; }
+pre.json .k { color:var(--a-select); } pre.json .s { color:var(--a-ok); } pre.json .n { color:var(--a-brass-bright); }
+
+.pop { width:300px; background:var(--a-panel); border:1px solid var(--a-edge); border-radius:6px;
+       box-shadow:0 8px 24px #0009; padding:8px 10px; font:12.5px/1.4 var(--a-mono); color:var(--a-ink); }
+.pop h4 { font-size:13px; color:var(--a-ink); margin-bottom:6px; display:flex; }
+.pop h4 .x { margin-left:auto; color:var(--a-ink-dim); }
+.pop .lab { font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--a-ink-dim); margin:8px 0 3px; }
+.pop .row { padding:2px 4px; border-radius:3px; color:var(--a-ink-soft); }
+.astrip { flex:none; display:flex; align-items:center; gap:8px; padding:4px 10px; font-size:12px;
+          border-bottom:1px solid var(--a-edge-soft); background:#2a323d66; color:var(--a-ink-soft); }
+.astrip b { color:var(--a-ink); font-weight:normal; }
+.astrip .att { color:var(--a-brass); }
+.chip2 { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--a-brass);
+         border-radius:3px; padding:0 4px 0 7px; color:var(--a-brass-bright); }
+.chip2 .x { color:var(--a-ink-dim); padding:0 2px; }
+.fbox { border:1px solid var(--a-edge); border-radius:3px; padding:0 6px; color:var(--a-ink);
+        background:var(--a-ground); min-width:110px; display:inline-block; }
+.empty { padding:14px 12px; color:var(--a-ink-dim); font-size:12.5px; }
+.empty b { color:var(--a-ink); font-weight:normal; }
+.empty .brass { color:var(--a-brass); }
+.wordrow { display:grid; grid-template-columns:150px 1fr; gap:8px 14px; font-size:13px; align-items:baseline; }
+.wordrow .k { color:var(--a-ink-dim); font-size:11px; letter-spacing:.1em; text-transform:uppercase; }
+.wordrow .v { font-family:var(--a-mono); color:var(--a-brass-bright); font-size:12.5px; }
+</style></head><body>
+<header>
+<h1>ah-1mpx.5 &mdash; <span>round 2: the bridge, the words, and what is not known</span></h1>
+<p>Round 1 settled the shape: <b>one <i>Other factions</i> entry in the rail</b>, and the dossier popover
+keeps <b>Attitude</b> and <b>Seen in</b> while losing <b>Known units</b>, gaining a line that sends you to
+the list. This round is the parts the happy path hides.</p>
+<p class="lede">The load-bearing one is Q1. &ldquo;One faction is still one click&rdquo; was the argument that
+carried option B &mdash; but the click has to land on <i>their</i> units and nobody else's, and the filter box
+alone cannot promise that.</p>
+</header>
+
+<main>
+
+<h3 class="sec">Q1 &mdash; what &ldquo;Show their 52 units in the list&rdquo; actually does</h3>
+<p>The existing filter box is a case-insensitive substring match over <b>unit name, unit number, faction
+name and structure</b> (<code>unitTable.ts:132</code>, read not recalled). It never sees a faction
+<i>number</i>. So filtering for the text <code>Thane's Ring</code> also matches a unit <i>called</i>
+&ldquo;Thane's Ring&rdquo;, and any other faction whose name contains it.</p>
+
+<div class="split3">
+
+  <div class="card">
+    <div class="hexlab">Option A &mdash; put the faction name in the filter box</div>
+    <div class="stage">
+      <div class="app short" style="width:420px;height:210px">
+        <div class="pane grow">
+          <div class="ttl">Units <span class="hint">&mdash; other factions, 254 units, 53 shown</span></div>
+          <div class="astrip">filter <span class="fbox">Thane's Ring</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail" style="width:140px">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="s on">Other factions <span class="ct">254</span></div>
+            </div>
+            <div style="flex:1;min-width:0;overflow:hidden">
+              <table class="ut">
+                <tr><th style="width:22px">*</th><th style="width:46px">Id</th><th>Unit</th><th style="width:92px">Faction</th></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>Thane's Ring (10)</td></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3044</td><td>Ring Guard</td><td>Thane's Ring (10)</td></tr>
+                <tr class="foreign" style="outline:1px dashed var(--a-danger)"><td class="f">&minus;</td><td class="idfor">8871</td><td>Thane's Ring</td><td>Fresh Meat (12)</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Nothing new is built. What happened is visible in a box you already know, and editable.</li>
+      <li class="con"><b>53 shown, not 52.</b> A unit of <i>Fresh Meat</i> happens to be named
+        &ldquo;Thane's Ring&rdquo; and comes along. The count in the popover and the count in the table disagree,
+        and nothing explains why.</li>
+      <li class="con">It silently discards whatever you had typed in the filter.</li>
+      <li class="con">Attitude still has nowhere to live.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="hexlab">Option B &mdash; a faction strip above the table <span class="rec">recommended</span></div>
+    <div class="stage">
+      <div class="app short" style="width:420px;height:210px">
+        <div class="pane grow">
+          <div class="ttl">Units <span class="hint">&mdash; other factions, 52 of 254 units</span></div>
+          <div class="astrip"><span class="chip2">Thane's Ring (10) <span class="x">&#10005;</span></span>
+            <span class="att">hostile</span>
+            <span style="margin-left:auto;color:var(--a-ink-dim)">filter</span> <span class="fbox" style="min-width:70px">&nbsp;</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail" style="width:140px">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="s on">Other factions <span class="ct">254</span></div>
+            </div>
+            <div style="flex:1;min-width:0;overflow:hidden">
+              <table class="ut">
+                <tr><th style="width:22px">*</th><th style="width:46px">Id</th><th>Unit</th><th style="width:92px">Faction</th></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>Thane's Ring (10)</td></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3044</td><td>Ring Guard</td><td>Thane's Ring (10)</td></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3102</td><td>Scouts</td><td>Thane's Ring (10)</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li><b>Exact.</b> It matches on the faction's <i>number</i>, so 52 means 52 and the popover and the
+        table agree.</li>
+      <li>The filter box stays yours &mdash; type in it to narrow <i>within</i> the faction.</li>
+      <li><b>Attitude gets a home</b>, which is what option A of round 1's Q2 had nowhere to put.</li>
+      <li>The strip is the same furniture an Army already has (<code>ArmyStrip</code>), in the same place.</li>
+      <li>Dismissed by the <b>&#10005;</b>, by Escape, and by leaving the source.</li>
+      <li class="con">Two narrowing mechanisms side by side. The strip has to look clearly unlike the
+        filter box or it reads as one thing that half works.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="hexlab">Option C &mdash; sort by Faction and scroll to them</div>
+    <div class="stage">
+      <div class="app short" style="width:420px;height:210px">
+        <div class="pane grow">
+          <div class="ttl">Units <span class="hint">&mdash; other factions, 254 units</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail" style="width:140px">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="s on">Other factions <span class="ct">254</span></div>
+            </div>
+            <div style="flex:1;min-width:0;overflow:hidden">
+              <table class="ut">
+                <tr><th style="width:22px">*</th><th style="width:46px">Id</th><th>Unit</th><th class="act" style="width:92px">Faction &darr;</th></tr>
+                <tr class="foreign" style="opacity:.45"><td class="f">&minus;</td><td class="idfor">7710</td><td>Peasants</td><td>Semargl (4)</td></tr>
+                <tr class="foreign sel"><td class="f">&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>Thane's Ring (10)</td></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3044</td><td>Ring Guard</td><td>Thane's Ring (10)</td></tr>
+                <tr class="foreign" style="opacity:.45"><td class="f">&minus;</td><td class="idfor">9902</td><td>Traders</td><td>Under Pressure (57)</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Nothing new at all, and you see the faction among its neighbours.</li>
+      <li class="con"><b>&ldquo;Show their units&rdquo; does not show only their units.</b> Their block sits in a
+        254-row list; scroll once and you have lost it.</li>
+      <li class="con">Nothing to dismiss, so nothing tells you the list is still &ldquo;about&rdquo; that faction.</li>
+      <li class="con">Attitude still homeless.</li>
+    </ul>
+  </div>
+
+</div>
+
+<h3 class="sec">Q2 &mdash; what the rail entry is called</h3>
+<p>It sits directly under <i>All my units</i>, and the two are read together.</p>
+<div class="split3">
+  <div class="card"><div class="hexlab">Option A &mdash; <b>Other factions</b></div>
+    <div class="stage"><div class="app short" style="width:200px;height:104px"><div class="srail" style="height:100%;width:100%">
+      <div class="s">This hex <span class="ct">6</span></div>
+      <div class="s">All my units <span class="ct">38</span></div>
+      <div class="s on">Other factions <span class="ct">254</span></div></div></div></div>
+    <ul class="notes"><li>Says whose they are, which is the thing you are choosing by.</li>
+      <li class="n">Names factions where its neighbour names units, so the two do not read as a pair.</li></ul></div>
+  <div class="card"><div class="hexlab">Option B &mdash; <b>All their units</b> <span class="rec">recommended</span></div>
+    <div class="stage"><div class="app short" style="width:200px;height:104px"><div class="srail" style="height:100%;width:100%">
+      <div class="s">This hex <span class="ct">6</span></div>
+      <div class="s">All my units <span class="ct">38</span></div>
+      <div class="s on">All their units <span class="ct">254</span></div></div></div></div>
+    <ul class="notes"><li>An exact mirror of the entry above it &mdash; same shape, one word changed, and both
+      count units.</li>
+      <li class="n">&ldquo;Their&rdquo; has no antecedent on first reading; it means &ldquo;not mine&rdquo;.</li></ul></div>
+  <div class="card"><div class="hexlab">Option C &mdash; <b>Everyone else</b></div>
+    <div class="stage"><div class="app short" style="width:200px;height:104px"><div class="srail" style="height:100%;width:100%">
+      <div class="s">This hex <span class="ct">6</span></div>
+      <div class="s">All my units <span class="ct">38</span></div>
+      <div class="s on">Everyone else <span class="ct">254</span></div></div></div></div>
+    <ul class="notes"><li>Plainest of the three, and takes in the units whose faction is hidden without
+      pretending they have one.</li>
+      <li class="n">Counts units but names people.</li></ul></div>
+</div>
+
+<h3 class="sec">Q3 &mdash; how an Army says a foreign member's skills are not known</h3>
+<p>A report never discloses a foreign unit's skills (<code>rules/world_regions</code>: <code>Skills:</code>
+prints only on your own <code>*</code> lines). So a foreign member sits in an Army with an empty Skills
+cell and exports with <code>"skills": []</code>. <code>ah-1mpx.3</code> already says so <b>in the export
+dialog</b>. The question is whether the Army itself says so too &mdash; you assemble it weeks before you
+export it, and assembling is when you could still pick a different unit.</p>
+<div class="split3">
+  <div class="card"><div class="hexlab">Option A &mdash; nothing here; the export dialog says it</div>
+    <div class="stage"><div class="app short" style="width:400px;height:150px"><div class="pane grow">
+      <div class="ttl">Units <span class="hint">&mdash; Northern Host, 12 units</span></div>
+      <div class="astrip"><b>Northern Host</b> &mdash; 12 units <span style="margin-left:auto">Rename Delete</span></div>
+      <table class="ut">
+        <tr><th style="width:22px">*</th><th style="width:46px">Id</th><th>Unit</th><th style="width:104px">Skills</th></tr>
+        <tr><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>comb 3, tact 2</td></tr>
+        <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td></td></tr>
+        <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3044</td><td>Ring Guard</td><td></td></tr>
+      </table></div></div></div>
+    <ul class="notes"><li>No new noise, and the fact is stated at the one moment it changes an outcome.</li>
+      <li class="con">An empty cell is what a unit with <i>no</i> skills also shows. Nothing distinguishes
+        &ldquo;none&rdquo; from &ldquo;not disclosed&rdquo;.</li></ul></div>
+  <div class="card"><div class="hexlab">Option B &mdash; the cell says it <span class="rec">recommended</span></div>
+    <div class="stage"><div class="app short" style="width:400px;height:150px"><div class="pane grow">
+      <div class="ttl">Units <span class="hint">&mdash; Northern Host, 12 units</span></div>
+      <div class="astrip"><b>Northern Host</b> &mdash; 12 units <span style="margin-left:auto">Rename Delete</span></div>
+      <table class="ut">
+        <tr><th style="width:22px">*</th><th style="width:46px">Id</th><th>Unit</th><th style="width:104px">Skills</th></tr>
+        <tr><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>comb 3, tact 2</td></tr>
+        <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td style="color:var(--a-ink-dim);font-style:italic">not disclosed</td></tr>
+        <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3044</td><td>Ring Guard</td><td style="color:var(--a-ink-dim);font-style:italic">not disclosed</td></tr>
+      </table></div></div></div>
+    <ul class="notes"><li>Tells the truth in the one cell that is lying by omission, on every row it applies
+      to, in every source &mdash; not only inside an Army.</li>
+      <li>Distinguishes &ldquo;has none&rdquo; from &ldquo;we are not told&rdquo;.</li>
+      <li class="con">Repeats on every foreign row, and the units table is mostly foreign rows.</li></ul></div>
+  <div class="card"><div class="hexlab">Option C &mdash; a line under the Army strip</div>
+    <div class="stage"><div class="app short" style="width:400px;height:150px"><div class="pane grow">
+      <div class="ttl">Units <span class="hint">&mdash; Northern Host, 12 units</span></div>
+      <div class="astrip"><b>Northern Host</b> &mdash; 12 units <span style="margin-left:auto">Rename Delete</span></div>
+      <div style="padding:3px 10px;font-size:12px;color:var(--a-warn);border-bottom:1px solid var(--a-edge-soft)">
+        3 units belong to other factions. Their skills are not disclosed and will export as none.</div>
+      <table class="ut">
+        <tr><th style="width:22px">*</th><th style="width:46px">Id</th><th>Unit</th><th style="width:104px">Skills</th></tr>
+        <tr><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>comb 3, tact 2</td></tr>
+        <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td></td></tr>
+      </table></div></div></div>
+    <ul class="notes"><li>Said once, where the consequence is, and it names the export outcome.</li>
+      <li>Sits beside the stale line, which is the same kind of statement about the same Army.</li>
+      <li class="con">Two standing lines above one small table when an Army is both stale and mixed.</li>
+      <li class="con">Says nothing outside an Army, so the units table still shows a misleading blank.</li></ul></div>
+</div>
+
+<h3 class="sec">Q4 &mdash; the units whose owner is hidden</h3>
+<p><b>61 of 254 foreign units at turn 82</b> show no faction at all &mdash; <code>rules/stealthobs</code>:
+with Observation only <i>equal</i> to their Stealth you see the unit and not who owns it. They belong to no
+dossier (<code>dossierFor</code> matches on <code>factionId</code>, so a hidden unit is in none of them) and
+the popover says so out loud today: <i>&ldquo;A unit hiding its faction is not counted here.&rdquo;</i>
+The new list is the first place they can all be seen together.</p>
+<div class="split3">
+  <div class="card"><div class="hexlab">Option A &mdash; leave the cell as it is today</div>
+    <div class="stage"><div class="app short" style="width:390px;height:150px"><div class="pane grow">
+      <div class="ttl">Units <span class="hint">&mdash; all their units, 254 units</span></div>
+      <table class="ut">
+        <tr><th style="width:22px">*</th><th style="width:46px">Id</th><th>Unit</th><th style="width:104px">Faction</th></tr>
+        <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td style="color:var(--a-select)">Thane's Ring (10)</td></tr>
+        <tr class="foreign"><td class="f">&minus;</td><td class="idfor">8144</td><td>Masters</td><td>&mdash;</td></tr>
+        <tr class="foreign"><td class="f">&minus;</td><td class="idfor">8906</td><td>Family of Ogres</td><td>&mdash;</td></tr>
+      </table></div></div></div>
+    <ul class="notes"><li>No change at all &mdash; the dash is what the table already prints.</li>
+      <li class="con">A dash reads as &ldquo;nothing here&rdquo;. It actually means &ldquo;somebody owns this and
+        you are not allowed to know who&rdquo;, which is a fact about the <i>game</i>, not a gap.</li>
+      <li class="con">No way to see the 61 together.</li></ul></div>
+  <div class="card"><div class="hexlab">Option B &mdash; say it, and let it be pinned <span class="rec">recommended</span></div>
+    <div class="stage"><div class="app short" style="width:390px;height:150px"><div class="pane grow">
+      <div class="ttl">Units <span class="hint">&mdash; all their units, 61 of 254 units</span></div>
+      <div class="astrip"><span class="chip2">Faction not shown <span class="x">&#10005;</span></span>
+        <span style="color:var(--a-ink-dim);font-size:11.5px">Their owner is concealed from you this turn.</span></div>
+      <table class="ut">
+        <tr><th style="width:22px">*</th><th style="width:46px">Id</th><th>Unit</th><th style="width:104px">Faction</th></tr>
+        <tr class="foreign"><td class="f">&minus;</td><td class="idfor">8144</td><td>Masters</td><td style="color:var(--a-select)">not shown</td></tr>
+        <tr class="foreign"><td class="f">&minus;</td><td class="idfor">8906</td><td>Family of Ogres</td><td style="color:var(--a-select)">not shown</td></tr>
+      </table></div></div></div>
+    <ul class="notes"><li>The cell states the game's own fact instead of a dash that could mean anything.</li>
+      <li>Clicking it pins them exactly as a faction pins &mdash; <b>the same strip, no new mechanism</b>.</li>
+      <li>These are the units hiding from you. Seeing all 61 at once is a thing you would actually want.</li>
+      <li class="con">One more clickable cell in a table where every row is already a click target.</li></ul></div>
+  <div class="card"><div class="hexlab">Option C &mdash; say it, but do not make it clickable</div>
+    <div class="stage"><div class="app short" style="width:390px;height:150px"><div class="pane grow">
+      <div class="ttl">Units <span class="hint">&mdash; all their units, 254 units</span></div>
+      <table class="ut">
+        <tr><th style="width:22px">*</th><th style="width:46px">Id</th><th>Unit</th><th style="width:104px">Faction</th></tr>
+        <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td style="color:var(--a-select)">Thane's Ring (10)</td></tr>
+        <tr class="foreign"><td class="f">&minus;</td><td class="idfor">8144</td><td>Masters</td><td style="color:var(--a-ink-dim);font-style:italic">not shown</td></tr>
+        <tr class="foreign"><td class="f">&minus;</td><td class="idfor">8906</td><td>Family of Ogres</td><td style="color:var(--a-ink-dim);font-style:italic">not shown</td></tr>
+      </table></div></div></div>
+    <ul class="notes"><li>Honest, and adds nothing to click.</li>
+      <li>Sorting by Faction still gathers them, since they sort together.</li>
+      <li class="con">The one group you might most want to isolate is the one group you cannot pin.</li></ul></div>
+</div>
+
+<h3 class="sec">Every new string, as it would ship</h3>
+<p>Correct any of these in your answer &mdash; they go into the plan verbatim and the implementer will not
+invent one.</p>
+<div class="card"><div class="wordrow">
+  <div class="k">Rail entry</div><div class="v">All their units</div>
+  <div class="k">Pane title</div><div class="v">Units</div>
+  <div class="k">Hint, unpinned</div><div class="v">&mdash; all their units, 254 units</div>
+  <div class="k">Hint, pinned</div><div class="v">&mdash; Thane's Ring (10), 52 of 254 units</div>
+  <div class="k">Hint, filtered too</div><div class="v">&mdash; Thane's Ring (10), 52 of 254 units, 7 shown</div>
+  <div class="k">Popover line</div><div class="v">Show their 52 units in the list</div>
+  <div class="k">&hellip;for one unit</div><div class="v">Show their 1 unit in the list</div>
+  <div class="k">Strip pin, &#10005; label</div><div class="v">stop showing only this faction</div>
+  <div class="k">Hidden-owner cell</div><div class="v">not shown</div>
+  <div class="k">Hidden-owner pin</div><div class="v">Faction not shown</div>
+  <div class="k">&hellip;its note</div><div class="v">Their owner is concealed from you this turn.</div>
+  <div class="k">Skills cell, foreign</div><div class="v">not disclosed</div>
+  <div class="k">Empty: no report</div><div class="v">No report loaded.</div>
+  <div class="k">Empty: none seen</div><div class="v">No other faction's units in this turn's report.</div>
+  <div class="k">Empty: pinned, gone</div><div class="v">Thane's Ring (10) has no units in this turn's report.</div>
+  <div class="k">Empty: filter</div><div class="v">No unit matches that filter.</div>
+</div></div>
+
+<h3 class="sec">Decided without you, and why</h3>
+<div class="card"><ul class="notes">
+  <li class="n"><b>Columns on this source:</b> the same as <i>All my units</i> &mdash; the ten, plus <b>Hex</b>,
+    since it spans hexes. No <b>Seen</b> column (everything here is this turn) and no <b>Remove</b>
+    (nothing to remove from).</li>
+  <li class="n"><b>The pin does not survive</b> leaving the source, a turn load, or a reload. It is a way of
+    looking, not a setting.</li>
+  <li class="n"><b>Own units never appear here</b>, and foreign units never appear in <i>All my units</i>.
+    The two are exact complements, and <i>This hex</i> keeps showing both as it always has.</li>
+  <li class="n"><b>Nothing changes about picking or dragging.</b> <code>ah-1mpx.4</code> puts no ownership
+    test on either, so a row here drags into an Army like any other.</li>
+</ul></div>
+
+<footer><p><b>Verified, not recalled:</b> <code>rules/stealthobs</code> &mdash; the faction is named only when
+Observation <i>beats</i> Stealth. <code>rules/world_regions</code> &mdash; the sample report prints
+<code>Skills: none.</code> on the <code>*</code> line and nothing of the sort on the <code>-</code> line.
+<code>rules/reportformat</code> &mdash; large items are disclosed, silver and herbs are not. Counts from
+<code>tests/fixtures/reports/</code>; the filter's fields from <code>unitTable.ts:132</code>.</p></footer>
+</main></body></html>

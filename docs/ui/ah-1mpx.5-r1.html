@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-1mpx.5 &mdash; round 1: where other factions' units live</title><style>
+
+/* ---- Explanatory chrome (docs/ui house style) ---- */
+:root {
+  --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+  --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+  --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  /* ---- the application's own tokens, from packages/shared/src/theme.css ---- */
+  --a-ground:#1b212a; --a-panel:#222933; --a-raised:#2a323d; --a-edge:#46525f; --a-edge-soft:#333d49;
+  --a-ink:#d4dce6; --a-ink-soft:#a8b4c2; --a-ink-dim:#99a4b2;
+  --a-brass:#e0b25a; --a-brass-bright:#eebe63; --a-select:#5aa9de; --a-ok:#4fb783;
+  --a-warn:#d9a441; --a-danger:#e89494; --a-gain:#7fb069;
+  --a-unit-own:#5ec8f0; --a-unit-foreign:#f07070; --a-ring:#f5f8fc;
+  --a-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+header, main, footer { max-width:1420px; margin:0 auto; }
+h1 { font-size:26px; letter-spacing:0.4px; }
+h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+p.lede { color:var(--brass-bright); font-size:15.5px; font-style:italic; max-width:96ch; margin-top:12px; }
+code, .mono { font-family:var(--a-mono); }
+header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+.stage { background:#0b0f15; border:1px solid var(--edge-soft); border-radius:8px; padding:12px; overflow-x:auto; }
+.hexlab { font:10.5px/1 var(--a-mono); letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
+.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+.notes li.con::before { content:"\2212 "; color:var(--danger); }
+.notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+.split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+.split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+footer { margin-top:42px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+.rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+.new { outline:1px dashed var(--brass); outline-offset:2px; }
+.newtag { font:9.5px/1 var(--a-mono); letter-spacing:.1em; text-transform:uppercase; color:#1b212a;
+          background:var(--brass); border-radius:3px; padding:3px 5px; }
+
+/* ================= the application, reproduced ================= */
+.app { width:1280px; height:720px; position:relative; overflow:hidden; border-radius:6px;
+       border:1px solid #000; background:var(--a-ground); color:var(--a-ink);
+       font:13px/1.35 var(--a-mono); display:flex; flex-direction:column; }
+.app.short { height:470px; }
+.app *, .app *::before { box-sizing:border-box; }
+
+/* header: min-h-9, border-b border-edge, bg-panel, px-3, gap-x-3.5 */
+.ahead { flex:none; min-height:36px; display:flex; align-items:center; gap:14px; padding:0 12px;
+         border-bottom:1px solid var(--a-edge); background:var(--a-panel); white-space:nowrap; }
+.ahead .wordmark { letter-spacing:.06em; color:var(--a-brass); }
+.ahead .lbl { color:var(--a-ink-soft); }
+.ahead .chip { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink);
+               border-radius:4px; padding:1px 8px; }
+.ahead .chip.plain { border-color:transparent; background:transparent; }
+.ahead .chip.warn { border-color:var(--a-warn); color:var(--a-warn); background:transparent; }
+.ahead .chip.gain { border-color:var(--a-gain); color:var(--a-gain); background:transparent; }
+.ahead .chip.dim { color:var(--a-ink-dim); }
+.ahead .right { margin-left:auto; display:flex; align-items:center; gap:14px; }
+.ahead .btn-imp { border:1px solid var(--a-brass); color:var(--a-brass); border-radius:4px; padding:3px 10px; }
+.ahead .btn-o { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink); border-radius:4px; padding:3px 10px; }
+.dotstat { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--a-ink-dim); }
+
+/* map stage + floating overlay: p-2.5 pt-12, gap-2.5 */
+.stagewrap { position:relative; flex:1; min-height:0; }
+.mapsvg { position:absolute; inset:0; width:100%; height:100%; }
+.mapctl { position:absolute; right:10px; top:10px; z-index:20; display:flex; align-items:center; gap:6px;
+          border:1px solid var(--a-edge); background:#222933f2; border-radius:6px; padding:4px 8px;
+          box-shadow:0 10px 15px -3px #0007; }
+.mapctl .sq { width:26px; height:26px; border:1px solid var(--a-edge); background:#222933f2;
+              border-radius:4px; color:var(--a-ink-soft); display:flex; align-items:center; justify-content:center; }
+.overlay { position:absolute; inset:0; padding:10px; padding-top:48px; display:flex; flex-direction:column; gap:10px; }
+.orow { display:flex; flex:1; min-height:0; justify-content:space-between; gap:10px; }
+.railL { width:304px; display:flex; flex-direction:column; }
+.railR { width:336px; display:flex; flex-direction:column; gap:10px; }
+
+/* CollapsiblePanel: rounded-md border-edge bg-pane shadow-lg backdrop-blur; header h-7 */
+.pane { display:flex; flex-direction:column; min-height:0; overflow:hidden; border-radius:6px;
+        border:1px solid var(--a-edge); background:#222933cc; backdrop-filter:blur(7px);
+        box-shadow:0 10px 15px -3px #0007,0 4px 6px -4px #0007; }
+.pane > .ttl { height:28px; flex:none; display:flex; align-items:center; gap:8px; padding:0 10px;
+               border-bottom:1px solid var(--a-edge); font-size:12px; letter-spacing:.12em;
+               text-transform:uppercase; color:var(--a-brass); }
+.pane > .ttl .hint { text-transform:none; letter-spacing:normal; color:var(--a-ink-dim); }
+.pane > .ttl .caret { margin-left:auto; color:var(--a-ink-dim); }
+.pane > .bd { min-height:0; flex:1; overflow:auto; padding:8px 10px; line-height:1.3; }
+.pane.grow { flex:1; min-height:0; }
+
+/* units dock, full width along the bottom: h-20.625rem = 330px */
+.dockU { height:330px; flex:none; }
+
+/* units table */
+table.ut { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0; font-variant-numeric:tabular-nums; }
+table.ut th { position:sticky; top:0; z-index:10; background:var(--a-panel); border-bottom:1px solid var(--a-edge);
+              padding:4px 8px; text-align:left; font-size:12px; font-weight:500; letter-spacing:.06em;
+              text-transform:uppercase; color:var(--a-ink-soft); }
+table.ut th .g { color:var(--a-ink-dim); }
+table.ut th.act { color:var(--a-brass); }
+table.ut td { height:24px; padding:2px 8px; border-bottom:1px solid var(--a-edge-soft);
+              white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+table.ut tr { color:var(--a-ink); }
+table.ut tr.foreign { color:var(--a-ink-soft); }
+table.ut tr.sel td { background:#5aa9de40; color:var(--a-ink); }
+table.ut tr.pick td { background:#5aa9de26; }
+.o { color:var(--a-ok); } .f { color:var(--a-danger); }
+.idown { color:var(--a-select); } .idfor { color:#f07070b3; }
+.dim { color:var(--a-ink-dim); } .warnc { color:var(--a-warn); } .okc { color:var(--a-ok); }
+.gone { color:var(--a-ink-dim); text-decoration:line-through; }
+.filter { width:176px; border:1px solid var(--a-edge); background:var(--a-ground); color:var(--a-ink-dim);
+          border-radius:4px; padding:1px 8px; font-size:13px; }
+
+/* small controls inside panes */
+.b { display:inline-block; border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink);
+     border-radius:4px; padding:3px 9px; font-size:12px; }
+.b.pri { border-color:var(--a-brass); color:var(--a-brass); background:transparent; }
+.b.gh { border-color:transparent; background:transparent; color:var(--a-ink-dim); padding:3px 6px; }
+.b.dg { border-color:#6b4444; color:var(--a-danger); background:transparent; }
+.kbd { display:inline-block; font-size:11px; padding:2px 6px; border:1px solid var(--a-edge);
+       border-bottom-width:2px; border-radius:4px; background:var(--a-ground); color:var(--a-brass-bright); }
+dl.kv { display:grid; grid-template-columns:74px 1fr; gap:4px 10px; font-size:13px; }
+dl.kv dt { color:var(--a-ink-dim); font-size:12px; }
+dl.kv dt.sep, dl.kv dd.sep { border-top:1px solid var(--a-edge-soft); padding-top:7px; margin-top:4px; }
+.chip2 { display:inline-block; background:#5aa9de26; border:1px solid #5aa9de66; color:var(--a-ink);
+         border-radius:10px; padding:1px 8px; font-size:12px; margin:0 4px 4px 0; }
+.chip2 .x { color:var(--a-ink-dim); margin-left:5px; }
+.arow { display:flex; align-items:center; gap:8px; padding:4px 7px; border-radius:4px; font-size:13px; }
+.arow.on { background:#5aa9de26; box-shadow:inset 2px 0 0 var(--a-select); }
+.arow .ct { margin-left:auto; color:var(--a-ink-dim); font-size:12px; }
+.sw { width:10px; height:10px; border-radius:2px; flex:none; }
+.sw.off { background:transparent; border:1px solid var(--a-edge); }
+.tagw { font-size:11px; border:1px solid #6b5a2a; color:var(--a-warn); border-radius:3px; padding:1px 5px; }
+.empty { color:var(--a-ink-dim); font-size:12px; line-height:1.6; text-align:center; padding:18px 12px; }
+.empty b { color:var(--a-ink-soft); display:block; font-weight:500; margin-bottom:4px; font-size:13px; }
+.st { font-size:12px; color:var(--a-ink-dim); margin-top:7px; line-height:1.5; }
+.st b { color:var(--a-brass-bright); font-weight:500; }
+
+/* the source rail (P3) */
+.srail { width:172px; flex:none; border-right:1px solid var(--a-edge); background:#2a323db3; overflow:auto; padding:6px; }
+.srail .grp { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--a-ink-dim); margin:10px 0 4px 6px; }
+.srail .s { display:flex; align-items:center; gap:6px; padding:3px 7px; border-radius:4px; color:var(--a-ink-soft); font-size:13px; }
+.srail .s.on { background:#5aa9de26; color:var(--a-ink); box-shadow:inset 2px 0 0 var(--a-select); }
+.srail .s.drop { border:1px dashed var(--a-brass); background:#e0b25a1f; color:var(--a-brass-bright); }
+.srail .s .ct { margin-left:auto; color:var(--a-ink-dim); font-size:12px; }
+.ghostdrag { position:absolute; border:1px dashed var(--a-brass); border-radius:4px; background:#2a323dee;
+             color:var(--a-brass-bright); font-size:12px; padding:4px 9px; box-shadow:0 8px 20px #000a; }
+
+/* dialog */
+.backdrop { position:absolute; inset:0; background:#00000080; display:flex; align-items:center; justify-content:center; z-index:40; }
+.dlg { border:1px solid var(--a-edge); background:var(--a-raised); border-radius:6px;
+       box-shadow:0 10px 15px -3px #0009; overflow:hidden; }
+.dlg > .h { display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid var(--a-edge); color:var(--a-ink-soft); }
+.dlg > .b2 { padding:12px; }
+pre.json { font:12px/1.5 var(--a-mono); color:var(--a-ink-soft); background:var(--a-ground);
+           border:1px solid var(--a-edge-soft); border-radius:5px; padding:10px; overflow-x:auto; }
+pre.json .k { color:var(--a-select); } pre.json .s { color:var(--a-ok); } pre.json .n { color:var(--a-brass-bright); }
+
+.pop { width:320px; background:var(--a-panel); border:1px solid var(--a-edge); border-radius:6px;
+       box-shadow:0 8px 24px #0009; padding:8px 10px; font:12.5px/1.4 var(--a-mono); color:var(--a-ink); }
+.pop h4 { font-size:13px; color:var(--a-ink); margin-bottom:6px; display:flex; }
+.pop h4 .x { margin-left:auto; color:var(--a-ink-dim); }
+.pop .lab { font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--a-ink-dim); margin:8px 0 3px; }
+.pop .note { font-size:11px; color:var(--a-ink-dim); font-style:italic; margin-bottom:4px; }
+.pop .row { padding:2px 4px; border-radius:3px; color:var(--a-ink-soft); }
+.pop .row:hover { background:var(--a-raised); }
+.astrip { flex:none; display:flex; align-items:center; gap:10px; padding:4px 10px; font-size:12px;
+          border-bottom:1px solid var(--a-edge-soft); background:#2a323d66; color:var(--a-ink-soft); }
+.astrip b { color:var(--a-ink); font-weight:normal; }
+.astrip .att { color:var(--a-brass); }
+.astrip .hx { color:var(--a-select); text-decoration:underline dotted; }
+.tall { max-height:206px; overflow:auto; }
+.count { color:var(--a-warn); }
+</style></head><body>
+<header>
+<h1>ah-1mpx.5 &mdash; <span>where other factions' units live</span></h1>
+<p>The epic's round&nbsp;4 asked whether the faction dossier folds into the source rail, and you said
+<b>later</b> &mdash; this bead. That drawing showed a <i>Factions seen</i> group with two factions in it.
+Before building it I counted what the fixtures actually contain, and the number changes the shape of the answer.</p>
+<p class="lede">A mid-game report sees <b>17&ndash;29 other factions</b> at once. A turn-0 report sees <b>102</b>.
+A 172&nbsp;px rail with one entry per faction is a scroll, not a list &mdash; so the drawing from round&nbsp;4
+cannot be built as drawn.</p>
+<p>Counted over <code>tests/fixtures/reports/</code>: turn&nbsp;40 &rarr; 17 factions / 112 foreign units;
+turn&nbsp;42 &rarr; 18 / 126; turn&nbsp;82 &rarr; <b>29 factions / 254 units / 61 units whose faction is hidden</b>;
+turn&nbsp;0 &rarr; <b>102 factions</b>. Hiding is the rules working as written &mdash;
+<code>rules/stealthobs</code>: you see the faction only when your Observation <i>beats</i> its Stealth, so
+equal Observation shows you the unit and not who owns it.</p>
+<p><b>Open this page before answering.</b> All three options for each question are side by side, drawn at
+the real 172&nbsp;px rail width with real fixture data &mdash; the difference is in the scrolling and does not
+survive being described.</p>
+</header>
+
+<main>
+
+<h3 class="sec">R1 &mdash; what the rail offers for other factions' units</h3>
+<p>Each is the units dock at turn&nbsp;82: 29 factions, 254 foreign units, 61 of them with no faction shown.
+Your own 38 units and two Armies are unchanged in all three.</p>
+
+<div class="split3">
+
+  <!-- ============ A ============ -->
+  <div class="card">
+    <div class="hexlab">Option A &mdash; one entry per faction (round 4 as drawn)</div>
+    <div class="stage">
+      <div class="app short" style="width:430px;height:300px">
+        <div class="pane grow">
+          <div class="ttl">Units <span class="hint">&mdash; Thane's Ring (10), 52 units</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail tall">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s">Northern Host <span class="ct">12</span></div>
+              <div class="s">Coastal Watch <span class="ct">5</span></div>
+              <div class="s" style="color:var(--a-brass-bright)">+ New Army</div>
+              <div class="grp">Factions seen</div>
+              <div class="s on">Thane's Ring <span class="ct">52</span></div>
+              <div class="s">Iron Harlequins <span class="ct">19</span></div>
+              <div class="s">Bleak Creek tribe <span class="ct">13</span></div>
+              <div class="s">Fenris Knights <span class="ct">12</span></div>
+              <div class="s">Under Pressure <span class="ct">11</span></div>
+              <div class="s">Merchants of Nav&hellip; <span class="ct">9</span></div>
+              <div class="s">The Filras <span class="ct">8</span></div>
+              <div class="s">Fresh Meat <span class="ct">7</span></div>
+              <div class="s">The Most Righte&hellip; <span class="ct">6</span></div>
+              <div class="s">Avalon Empire <span class="ct">5</span></div>
+              <div class="s">Semargl <span class="ct">4</span></div>
+              <div class="s" style="color:var(--a-ink-dim)">&hellip;18 more</div>
+            </div>
+            <div style="flex:1;min-width:0;overflow:hidden">
+              <table class="ut">
+                <tr><th style="width:22px">*</th><th style="width:50px">Id</th><th>Unit</th><th style="width:58px">Hex</th><th style="width:40px">Men</th></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td><td>40</td></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3044</td><td>Ring Guard</td><td>(11,55)</td><td>40</td></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3102</td><td>Scouts</td><td>(13,51)</td><td>2</td></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3140</td><td>Miners</td><td>(9,57)</td><td>18</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>A faction is one click, and its count is visible without opening anything.</li>
+      <li class="con"><b>29 entries at turn 82, 102 at turn 0.</b> The rail becomes a scrolling list that
+        buries <i>This hex</i>, your Armies and <b>+ New Army</b> above the fold.</li>
+      <li class="con">172&nbsp;px truncates most faction names &mdash; <i>Merchants of Nav&hellip;</i>,
+        <i>The Most Righte&hellip;</i> &mdash; and the faction number is nowhere.</li>
+      <li class="con">The 61 units with no faction shown belong to no entry, so they are reachable only
+        through <i>This hex</i>, one hex at a time.</li>
+    </ul>
+  </div>
+
+  <!-- ============ B ============ -->
+  <div class="card">
+    <div class="hexlab">Option B &mdash; one <b>Other factions</b> entry <span class="rec">recommended</span></div>
+    <div class="stage">
+      <div class="app short" style="width:430px;height:300px">
+        <div class="pane grow">
+          <div class="ttl">Units <span class="hint">&mdash; other factions, 254 units, 52 shown</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail tall">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="s on">Other factions <span class="ct">254</span></div>
+              <div class="grp">Armies</div>
+              <div class="s">Northern Host <span class="ct">12</span></div>
+              <div class="s">Coastal Watch <span class="ct">5</span></div>
+              <div class="s" style="color:var(--a-brass-bright)">+ New Army</div>
+            </div>
+            <div style="flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column">
+              <div class="astrip" style="gap:6px">
+                <span style="color:var(--a-ink-dim)">filter</span>
+                <span style="border:1px solid var(--a-brass);border-radius:3px;padding:0 6px;color:var(--a-brass-bright)">Thane's Ring</span>
+              </div>
+              <table class="ut">
+                <tr><th style="width:22px">*</th><th style="width:50px">Id</th><th>Unit</th><th class="act" style="width:88px">Faction &darr;</th><th style="width:58px">Hex</th></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>Thane's Ring (10)</td><td>(11,55)</td></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3044</td><td>Ring Guard</td><td>Thane's Ring (10)</td><td>(11,55)</td></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3102</td><td>Scouts</td><td>Thane's Ring (10)</td><td>(13,51)</td></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3140</td><td>Miners</td><td>Thane's Ring (10)</td><td>(9,57)</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li><b>The rail gains exactly one row</b>, whatever the report holds. <i>This hex</i>, the Armies and
+        <b>+ New Army</b> never move.</li>
+      <li>The table's own <b>Faction</b> column already sorts, and the filter box already searches
+        <code>factionName</code> &mdash; verified in <code>unitTable.ts:132</code>. Sorting by Faction groups
+        every faction without a rail entry each.</li>
+      <li>Clicking a faction name anywhere selects this source and sets the filter to that faction, so
+        one faction is still one click.</li>
+      <li>The 61 units with no faction shown are <b>in</b> this list, with an empty Faction cell &mdash;
+        the only place in the app they can be seen together.</li>
+      <li class="con">A faction's count is not visible until you filter for it.</li>
+    </ul>
+  </div>
+
+  <!-- ============ C ============ -->
+  <div class="card">
+    <div class="hexlab">Option C &mdash; <b>Other factions</b>, plus the ones you have an opinion about</div>
+    <div class="stage">
+      <div class="app short" style="width:430px;height:300px">
+        <div class="pane grow">
+          <div class="ttl">Units <span class="hint">&mdash; Thane's Ring (10), 52 units</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail tall">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="s">Other factions <span class="ct">254</span></div>
+              <div class="grp">Armies</div>
+              <div class="s">Northern Host <span class="ct">12</span></div>
+              <div class="s">Coastal Watch <span class="ct">5</span></div>
+              <div class="s" style="color:var(--a-brass-bright)">+ New Army</div>
+              <div class="grp">Declared</div>
+              <div class="s on">Thane's Ring <span class="ct">52</span></div>
+              <div class="s">Fenris Knights <span class="ct">12</span></div>
+              <div class="s">Avalon Empire <span class="ct">5</span></div>
+            </div>
+            <div style="flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column">
+              <div class="astrip"><b>Thane's Ring (10)</b> <span class="att">hostile</span>
+                <span style="color:var(--a-ink-dim)">seen in</span>
+                <span class="hx">plain (11,55)</span> <span class="hx">forest (13,51)</span></div>
+              <table class="ut">
+                <tr><th style="width:22px">*</th><th style="width:50px">Id</th><th>Unit</th><th style="width:58px">Hex</th><th style="width:40px">Men</th></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td><td>40</td></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3044</td><td>Ring Guard</td><td>(11,55)</td><td>40</td></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3102</td><td>Scouts</td><td>(13,51)</td><td>2</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Bounded: only factions you have <b>declared an attitude toward</b> get a row, so the rail
+        stays short and the entries are the ones you actually care about.</li>
+      <li>Keeps a per-faction strip with attitude and clickable hexes &mdash; the dossier's own content,
+        in the pane.</li>
+      <li class="con"><b>Two ways to reach one faction</b>, which is the duplication round 4 objected to,
+        moved rather than removed.</li>
+      <li class="con">Attitudes are declared for diplomacy, not for browsing. A faction you have
+        <i>not</i> declared is often exactly the one you have just met and most want to look at.</li>
+      <li class="con">Most work of the three: a second source kind, a strip, and the declared-attitude
+        wiring.</li>
+    </ul>
+  </div>
+
+</div>
+
+<h3 class="sec">R2 &mdash; what becomes of the faction dossier popover</h3>
+<p>The dossier (<code>ah-bu2c</code>) opens two ways: floating beside a faction name in the units table, and
+<i>inline</i> in the right-hand Faction panel from the attitudes list. It shows three things &mdash; <b>Attitude</b>,
+<b>Seen in</b>, and <b>Known units</b> &mdash; and hovering a row rings that hex on the map, which was its own
+bead (<code>ah-mwqa</code>). Only the third of those three is what the rail replaces.</p>
+
+<div class="split3">
+
+  <div class="card">
+    <div class="hexlab">Option A &mdash; delete the popover</div>
+    <div class="stage" style="min-height:250px">
+      <div class="app short" style="width:400px;height:230px">
+        <div class="pane grow">
+          <div class="ttl">Units <span class="hint">&mdash; other factions, 254 units, 52 shown</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="s on">Other factions <span class="ct">254</span></div>
+            </div>
+            <div style="flex:1;min-width:0;overflow:hidden">
+              <table class="ut">
+                <tr><th style="width:22px">*</th><th style="width:50px">Id</th><th>Unit</th><th class="act" style="width:96px">Faction</th></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td style="color:var(--a-select)">Thane's Ring (10)</td></tr>
+                <tr class="foreign"><td class="f">&minus;</td><td class="idfor">3044</td><td>Ring Guard</td><td style="color:var(--a-select)">Thane's Ring (10)</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>One surface deleted outright. A faction name is one thing everywhere: it puts that faction in
+        the list below.</li>
+      <li class="con"><b>Attitude and &ldquo;seen in&rdquo; have nowhere to go</b> unless a strip is built for them,
+        and the strip is what option C of R1 costs.</li>
+      <li class="con">Loses hover-to-ring on a faction's hexes &mdash; the whole of <code>ah-mwqa</code>.</li>
+      <li class="con">The attitudes list is in the <b>right rail</b>; its dossier opens there, in place.
+        Sending it to the dock at the bottom of the screen is a real change in where your eye goes.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="hexlab">Option B &mdash; keep the popover exactly as it is</div>
+    <div class="stage" style="min-height:250px">
+      <div class="pop">
+        <h4>Thane's Ring (10) <span class="x">&#10005;</span></h4>
+        <div class="lab">Attitude</div><div class="row">hostile</div>
+        <div class="lab">Seen in</div>
+        <div class="note">Where their units are this turn. Earlier turns are not remembered.</div>
+        <div class="row">plain (11,55) &mdash; 40 units</div>
+        <div class="row">forest (13,51) &mdash; 12 units</div>
+        <div class="lab">Known units</div>
+        <div class="note">A unit hiding its faction is not counted here.</div>
+        <div class="row">Ring Guard (3021) &mdash; plain (11,55)</div>
+        <div class="row">Ring Guard (3044) &mdash; plain (11,55)</div>
+        <div class="row" style="color:var(--a-ink-dim)">&hellip;50 more</div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Nothing is lost and nothing is touched. Smallest bead of the three.</li>
+      <li class="con"><b>Two places list the same units</b> &mdash; the objection round 4 raised by name.</li>
+      <li class="con">The popover's list is the worse of the two: no sorting, no filtering, no columns,
+        capped height, and nothing can be dragged out of it into an Army.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="hexlab">Option C &mdash; the popover keeps what only it can do <span class="rec">recommended</span></div>
+    <div class="stage" style="min-height:250px">
+      <div class="pop">
+        <h4>Thane's Ring (10) <span class="x">&#10005;</span></h4>
+        <div class="lab">Attitude</div><div class="row">hostile</div>
+        <div class="lab">Seen in</div>
+        <div class="note">Where their units are this turn. Earlier turns are not remembered.</div>
+        <div class="row">plain (11,55) &mdash; 40 units</div>
+        <div class="row">forest (13,51) &mdash; 12 units</div>
+        <div style="margin-top:10px;border-top:1px solid var(--a-edge-soft);padding-top:8px">
+          <div class="row new" style="color:var(--a-brass-bright)">Show their 52 units in the list</div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li><b>Only the duplicated part goes.</b> &ldquo;Known units&rdquo; is what the rail does better;
+        attitude and hover-to-ring are things the table cannot do at all, and they stay.</li>
+      <li>The popover keeps opening where you clicked &mdash; beside the name in the table, inline in the
+        Faction panel &mdash; so neither route changes where your eye goes.</li>
+      <li>One new line is the bridge into the rail, and it carries the count the rail entry does not show.</li>
+      <li class="con">The popover survives, so there are still two surfaces &mdash; but they no longer say the
+        same thing.</li>
+    </ul>
+  </div>
+
+</div>
+
+<footer>
+<p><b>Where this sits.</b> <code>ah-1mpx.3</code> (the export, PR&nbsp;#758) already ships the notice that a
+foreign member exports with no skills, and <code>ah-1mpx.4</code> already lets any row be picked and dragged
+into an Army without an ownership test. So a foreign unit can <i>already</i> join an Army through
+<i>This hex</i>. What is missing, and what this bead is really about, is a way to reach a foreign unit
+without walking the map hex by hex.</p>
+<p><b>Verified, not recalled:</b> <code>rules/stealthobs</code> (the faction is shown only when Observation
+beats Stealth); <code>rules/reportformat</code> (&ldquo;if you can see a unit, you can see any large items it is
+carrying&rdquo;, silver and herbs excepted). Counts are from <code>tests/fixtures/reports/</code>.</p>
+</footer>
+</main></body></html>
