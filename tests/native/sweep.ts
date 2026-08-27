@@ -288,6 +288,47 @@ export const SWEEP: SweepEntry[] = [
       note_id: "binding-sweep-note"
     })
   },
+  {
+    command: "list_armies",
+    args: () => ({ database_path: context.databasePath, game_id: GAME_ID })
+  },
+  {
+    command: "save_army",
+    args: () => ({
+      database_path: context.databasePath,
+      army: {
+        id: "binding-sweep-army",
+        gameId: GAME_ID,
+        name: "binding sweep",
+        members: [
+          {
+            unitId: "1",
+            name: "Scouts",
+            factionId: "95",
+            factionName: "Borg TNG",
+            own: true,
+            regionId: "1:7,53",
+            flags: [],
+            items: [],
+            skills: [],
+            men: 1,
+            seenTurn: 71,
+            seenAt: ISO
+          }
+        ],
+        createdAt: ISO,
+        updatedAt: ISO
+      }
+    })
+  },
+  {
+    command: "delete_army",
+    args: () => ({
+      database_path: context.databasePath,
+      game_id: GAME_ID,
+      army_id: "binding-sweep-army"
+    })
+  },
   // Immediately before delete_game and after every scoped command: a reset empties the game, so
   // anything ordered after it would run against a game with none of the sweep's seeded data.
   { command: "reset_game", args: () => ({ game_id: GAME_ID, now: ISO }) },

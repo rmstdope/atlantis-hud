@@ -120,7 +120,10 @@ export const TAURI_COMMANDS = {
   ],
   listHexNotes: ["list_hex_notes", "database_path", "game_id"],
   saveHexNote: ["save_hex_note", "database_path", "note"],
-  deleteHexNote: ["delete_hex_note", "database_path", "game_id", "note_id"]
+  deleteHexNote: ["delete_hex_note", "database_path", "game_id", "note_id"],
+  listArmies: ["list_armies", "database_path", "game_id"],
+  saveArmy: ["save_army", "database_path", "army"],
+  deleteArmy: ["delete_army", "database_path", "game_id", "army_id"]
 } as const satisfies CommandTable;
 
 /**
