@@ -113,9 +113,9 @@ export default defineConfig({
    * what ships.
    *
    * `vite build` directly rather than the `build` script, which is `build:wasm && vite build`. The
-   * wasm module is built once before the suite runs - by CI explicitly, and locally by whatever
-   * last touched it - so letting each server rebuild it made four wasm builds per CI run instead
-   * of one.
+   * wasm module is built once before the suite runs - by CI's `wasm` job, and locally by the root
+   * `test:smoke` script, which runs `scripts/ensure-wasm.mjs` before Playwright starts - so letting
+   * each server rebuild it made four wasm builds per CI run instead of one.
    *
    * ATLANTIS_PWA_DISABLE keeps the web build's service worker out of the way, exactly as the dev
    * server did by never registering one; `tests/pwa` covers the worker against the real build.
