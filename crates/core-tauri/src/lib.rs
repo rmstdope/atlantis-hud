@@ -20,12 +20,13 @@ use atlantis_hud_core::{
     ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
-    create_game, delete_game, delete_hex_note, export_game, import_game, insert_imported_turn,
-    list_games, list_hex_notes, list_imported_turns, load_imported_turn, load_imported_turn_stamps,
-    load_latest_imported_turn, load_merged_reports, load_order_draft, load_region_sightings,
-    open_game, preview_imported_turn, reset_game, set_active_faction, set_game_map, set_game_name,
-    set_game_ruleset, upsert_hex_note, upsert_imported_turn, upsert_merged_report,
-    upsert_order_draft, upsert_region_sightings, HexNote, ImportedTurnKey, ImportedTurnPreview,
+    create_game, delete_army, delete_game, delete_hex_note, export_game, import_game,
+    insert_imported_turn, list_armies, list_games, list_hex_notes, list_imported_turns,
+    load_imported_turn, load_imported_turn_stamps, load_latest_imported_turn, load_merged_reports,
+    load_order_draft, load_region_sightings, open_game, preview_imported_turn, reset_game,
+    set_active_faction, set_game_map, set_game_name, set_game_ruleset, upsert_army,
+    upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
+    upsert_region_sightings, Army, ArmyMember, HexNote, ImportedTurnKey, ImportedTurnPreview,
     ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey, OrderDraftRecord,
     PersistenceError,
 };
@@ -130,6 +131,45 @@ impl From<HexNoteDto> for HexNote {
             text: value.text,
             on_map: value.on_map,
             turn: value.turn,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+/// One Army over the wire. Members cross as they are - `ArmyMember` is already `camelCase` serde,
+/// so no per-field DTO is needed for them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArmyDto {
+    pub id: String,
+    pub game_id: String,
+    pub name: String,
+    pub members: Vec<ArmyMember>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<Army> for ArmyDto {
+    fn from(value: Army) -> Self {
+        Self {
+            id: value.id,
+            game_id: value.game_id,
+            name: value.name,
+            members: value.members,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+impl From<ArmyDto> for Army {
+    fn from(value: ArmyDto) -> Self {
+        Self {
+            id: value.id,
+            game_id: value.game_id,
+            name: value.name,
+            members: value.members,
             created_at: value.created_at,
             updated_at: value.updated_at,
         }
@@ -601,6 +641,53 @@ pub mod commands {
             .map_err(|error| error.to_string())
     }
 
+    /// Lists a game's Armies for the Tauri command surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the game's database cannot be read.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "list_armies")
+    )]
+    pub fn command_list_armies(database_path: &str, game_id: &str) -> Result<Vec<ArmyDto>, String> {
+        list_armies(Path::new(database_path), game_id)
+            .map(|armies| armies.into_iter().map(Into::into).collect())
+            .map_err(|error| error.to_string())
+    }
+
+    /// Saves one Army for the Tauri command surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the game's database cannot be written.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "save_army")
+    )]
+    pub fn command_save_army(database_path: &str, army: ArmyDto) -> Result<ArmyDto, String> {
+        let army: Army = army.into();
+        upsert_army(Path::new(database_path), &army).map_err(|error| error.to_string())?;
+        Ok(army.into())
+    }
+
+    /// Deletes one Army for the Tauri command surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the game's database cannot be written.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "delete_army")
+    )]
+    pub fn command_delete_army(
+        database_path: &str,
+        game_id: &str,
+        army_id: &str,
+    ) -> Result<bool, String> {
+        delete_army(Path::new(database_path), game_id, army_id).map_err(|error| error.to_string())
+    }
+
     /// Loads one imported turn payload for the Tauri command surface.
     #[cfg_attr(
         feature = "tauri",
@@ -1024,15 +1111,16 @@ pub mod commands {
 }
 
 pub use commands::{
-    command_commit_report_import, command_completions_at_caret, command_delete_hex_note,
-    command_export_map, command_get_engine_info, command_known_map, command_list_hex_notes,
-    command_list_imported_turns, command_load_imported_turn, command_load_latest_imported_turn,
-    command_load_merged_reports, command_load_order_draft, command_load_region_sightings,
-    command_merge_report, command_order_argument_completions, command_order_commands,
-    command_order_vocabulary, command_parse_report, command_parse_report_classified,
-    command_parse_report_full, command_plan_route, command_preview_orders,
-    command_preview_report_import, command_save_hex_note, command_save_order_draft,
-    command_trace_move_orders, command_trade_routes, command_validate_orders,
+    command_commit_report_import, command_completions_at_caret, command_delete_army,
+    command_delete_hex_note, command_export_map, command_get_engine_info, command_known_map,
+    command_list_armies, command_list_hex_notes, command_list_imported_turns,
+    command_load_imported_turn, command_load_latest_imported_turn, command_load_merged_reports,
+    command_load_order_draft, command_load_region_sightings, command_merge_report,
+    command_order_argument_completions, command_order_commands, command_order_vocabulary,
+    command_parse_report, command_parse_report_classified, command_parse_report_full,
+    command_plan_route, command_preview_orders, command_preview_report_import, command_save_army,
+    command_save_hex_note, command_save_order_draft, command_trace_move_orders,
+    command_trade_routes, command_validate_orders,
 };
 
 /// Creates a game under the application's games directory and applies migrations.
@@ -2225,6 +2313,55 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             !command_delete_hex_note(&created.database_path, "faction-12", "note-1")
                 .expect("delete note"),
             "deleting an already-deleted note reports false"
+        );
+    }
+
+    #[test]
+    fn army_commands_round_trip() {
+        let dir = tempdir().expect("tempdir");
+        let created = command_create_game(
+            dir.path().to_str().expect("a path"),
+            a_manifest("faction-12", "Faction 12"),
+        )
+        .expect("create game");
+
+        let army = ArmyDto {
+            id: "army-1".to_string(),
+            game_id: "faction-12".to_string(),
+            name: "Northern escort".to_string(),
+            members: vec![ArmyMember {
+                unit_id: "204".to_string(),
+                name: "Pikes".to_string(),
+                faction_id: None,
+                faction_name: None,
+                own: false,
+                region_id: "1:7,53".to_string(),
+                flags: vec!["behind".to_string()],
+                items: vec![],
+                skills: vec![],
+                men: 12,
+                seen_turn: 68,
+                seen_at: "2026-08-07T12:00:00Z".to_string(),
+            }],
+            created_at: "2026-08-07T12:00:00Z".to_string(),
+            updated_at: "2026-08-07T12:00:00Z".to_string(),
+        };
+        let saved = command_save_army(&created.database_path, army.clone()).expect("save army");
+        assert_eq!(saved, army);
+
+        let listed =
+            command_list_armies(&created.database_path, "faction-12").expect("list armies");
+        assert_eq!(listed, vec![army]);
+
+        assert!(
+            command_delete_army(&created.database_path, "faction-12", "army-1")
+                .expect("delete army"),
+            "deleting an existing Army reports true"
+        );
+        assert!(
+            !command_delete_army(&created.database_path, "faction-12", "army-1")
+                .expect("delete army"),
+            "deleting an already-deleted Army reports false"
         );
     }
 

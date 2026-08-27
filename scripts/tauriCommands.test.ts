@@ -299,13 +299,13 @@ describe("the live Tauri command lockstep", () => {
     expect(Object.keys(table).sort()).toEqual([...registered].sort());
 
     // Every rename says what the function name says, and every renamed command is registered.
-    // A 27th command that forgets the attribute, or one that forgets to be registered, is what
+    // A 32nd command that forgets the attribute, or one that forgets to be registered, is what
     // the pinned count catches — update it in the same commit that adds a path-registered command.
     for (const [fn, wire] of renames) {
       expect(wire, `${fn} renames to`).toBe(fn.slice("command_".length));
       expect(registered, `${fn} is registered`).toContain(wire);
     }
-    expect(renames.size).toBe(28);
+    expect(renames.size).toBe(31);
 
     // Keys: every row's keys are the Rust parameter names, in order.
     for (const [command, keys] of Object.entries(table)) {

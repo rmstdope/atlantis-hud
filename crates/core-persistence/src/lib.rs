@@ -3,8 +3,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// The snapshot a membership carries. The core owns it because the backup carries it too.
+pub use atlantis_hud_core::backup::ArmyMember;
 use atlantis_hud_core::backup::{
-    apply_manifest_edit, encode_game_backup, GameBackupContent, GameBackupHexNote,
+    apply_manifest_edit, encode_game_backup, GameBackupArmy, GameBackupContent, GameBackupHexNote,
     GameBackupImportedTurn, GameBackupMergedReport, GameBackupOrderDraft, GameBackupRegionSighting,
     ManifestEdit,
 };
@@ -19,7 +21,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 8;
+pub const CURRENT_SCHEMA_VERSION: u32 = 9;
 /// The manifest file inside a game's directory. The directory is named after the game's id, so the
 /// file itself does not have to be, and a game can be found without parsing any filename.
 pub const GAME_MANIFEST_FILE_NAME: &str = "game.json";
@@ -34,13 +36,14 @@ const MIGRATION_0006_ISO_IMPORT_TIMESTAMPS: &str =
     include_str!("../migrations/0006_iso_import_timestamps.sql");
 const MIGRATION_0007_MERGED_REPORTS: &str = include_str!("../migrations/0007_merged_reports.sql");
 const MIGRATION_0008_HEX_NOTES: &str = include_str!("../migrations/0008_hex_notes.sql");
+const MIGRATION_0009_ARMIES: &str = include_str!("../migrations/0009_armies.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 8] = [
+const MIGRATIONS: [Migration; 9] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -72,6 +75,10 @@ const MIGRATIONS: [Migration; 8] = [
     Migration {
         version: 8,
         sql: MIGRATION_0008_HEX_NOTES,
+    },
+    Migration {
+        version: 9,
+        sql: MIGRATION_0009_ARMIES,
     },
 ];
 
@@ -166,6 +173,17 @@ pub struct HexNote {
     pub text: String,
     pub on_map: bool,
     pub turn: u32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// A named group of units, scoped to the game and outliving any one turn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Army {
+    pub id: String,
+    pub game_id: String,
+    pub name: String,
+    pub members: Vec<ArmyMember>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -677,6 +695,34 @@ pub fn export_game(
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
+    let mut army_rows = connection.prepare(
+        "SELECT id, name, members_json, created_at, updated_at
+           FROM armies
+          WHERE game_id = ?1",
+    )?;
+    let armies = army_rows
+        .query_map(params![game_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(|(id, name, members_json, created_at, updated_at)| {
+            Ok(GameBackupArmy {
+                id,
+                name,
+                members: serde_json::from_str(&members_json)?,
+                created_at,
+                updated_at,
+            })
+        })
+        .collect::<Result<Vec<_>, serde_json::Error>>()?;
+
     encode_game_backup(
         GameBackupContent {
             manifest,
@@ -685,6 +731,7 @@ pub fn export_game(
             region_sightings,
             merged_reports,
             hex_notes,
+            armies,
         },
         exported_at,
     )
@@ -825,6 +872,27 @@ pub fn import_game(
                     note.turn,
                     note.created_at.as_str(),
                     note.updated_at.as_str(),
+                ],
+            )?;
+        }
+
+        for army in &decoded.armies {
+            transaction.execute(
+                "INSERT INTO armies (
+                    id,
+                    game_id,
+                    name,
+                    members_json,
+                    created_at,
+                    updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    army.id.as_str(),
+                    game_id.as_str(),
+                    army.name.as_str(),
+                    serde_json::to_string(&army.members)?.as_str(),
+                    army.created_at.as_str(),
+                    army.updated_at.as_str(),
                 ],
             )?;
         }
@@ -1708,9 +1776,128 @@ pub fn delete_hex_note(
     Ok(rows_affected > 0)
 }
 
+/// Inserts or updates one Army. An edit keeps its original `created_at`.
+///
+/// Members are stored as one JSON text column - one row per Army, matching the web side, where
+/// IndexedDB stores the whole record and nested members come free. `imported_turns` already keeps a
+/// structured payload the same way.
+///
+/// # Errors
+///
+/// Returns an error when the database is missing, cannot be opened, or the members cannot be
+/// serialized.
+pub fn upsert_army(database_path: &Path, army: &Army) -> Result<(), PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let members_json = serde_json::to_string(&army.members)?;
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    connection.execute(
+        "INSERT INTO armies (
+            id,
+            game_id,
+            name,
+            members_json,
+            created_at,
+            updated_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            members_json = excluded.members_json,
+            updated_at = excluded.updated_at",
+        params![
+            army.id.as_str(),
+            army.game_id.as_str(),
+            army.name.as_str(),
+            members_json.as_str(),
+            army.created_at.as_str(),
+            army.updated_at.as_str(),
+        ],
+    )?;
+    Ok(())
+}
+
+/// Lists a game's Armies, in no particular order — the client orders them.
+///
+/// # Errors
+///
+/// Returns an error when the database is missing, cannot be opened, or a stored `members_json`
+/// cannot be read. Unreadable members are reported rather than rounded down to an empty Army: a
+/// silently empty Army looks to the player exactly like one that lost its units, and this is the
+/// last layer that can still tell the difference.
+pub fn list_armies(database_path: &Path, game_id: &str) -> Result<Vec<Army>, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    let mut statement = connection.prepare(
+        "SELECT id, game_id, name, members_json, created_at, updated_at
+           FROM armies
+          WHERE game_id = ?1",
+    )?;
+    let rows = statement.query_map(params![game_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, String>(5)?,
+        ))
+    })?;
+
+    let mut armies = Vec::new();
+    for row in rows {
+        let (id, game_id, name, members_json, created_at, updated_at) = row?;
+        armies.push(Army {
+            id,
+            game_id,
+            name,
+            members: serde_json::from_str(&members_json)?,
+            created_at,
+            updated_at,
+        });
+    }
+    Ok(armies)
+}
+
+/// Deletes one Army; `Ok(true)` when a row existed, `Ok(false)` otherwise.
+///
+/// # Errors
+///
+/// Returns an error when the database is missing or cannot be opened.
+pub fn delete_army(
+    database_path: &Path,
+    game_id: &str,
+    army_id: &str,
+) -> Result<bool, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    let rows_affected = connection.execute(
+        "DELETE FROM armies WHERE game_id = ?1 AND id = ?2",
+        params![game_id, army_id],
+    )?;
+    Ok(rows_affected > 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use atlantis_hud_core::report::model::{ItemAmount, Skill};
     use rusqlite::Connection;
     use tempfile::tempdir;
 
@@ -2329,6 +2516,56 @@ mod tests {
         assert_eq!(record.raw_report, "raw report");
     }
 
+    /// The migration path a real database takes: version 8 with data in it, opened by this build.
+    /// Starting from an empty database never exercises it.
+    #[test]
+    fn upgrading_from_version_eight_gains_armies_and_keeps_hex_notes() {
+        let dir = tempdir().expect("tempdir");
+        let manifest = fixture_manifest();
+        let home = dir.path().join(GAME_ID);
+        fs::create_dir_all(&home).expect("game home");
+        save_game_manifest(&home.join(GAME_MANIFEST_FILE_NAME), &manifest)
+            .expect("manifest save should succeed");
+
+        let database_path = home.join("game.sqlite");
+        let connection = Connection::open(&database_path).expect("db should open");
+        connection
+            .execute_batch(&format!(
+                "{MIGRATION_0001_INITIAL}
+                 {MIGRATION_0002_IMPORTED_TURNS}
+                 {MIGRATION_0003_ORDER_DRAFTS}
+                 {MIGRATION_0004_REGION_SIGHTINGS}
+                 {MIGRATION_0005_RENAME_PROJECT_TO_GAME}
+                 {MIGRATION_0006_ISO_IMPORT_TIMESTAMPS}
+                 {MIGRATION_0007_MERGED_REPORTS}
+                 {MIGRATION_0008_HEX_NOTES}
+                 INSERT INTO schema_migrations (version)
+                     VALUES (1), (2), (3), (4), (5), (6), (7), (8);
+                 INSERT INTO hex_notes
+                     (id, game_id, region_id, text, on_map, turn, created_at, updated_at)
+                 VALUES ('note-1', 'faction-12', '1:7,53', 'Kept', 1, 12,
+                         '2026-08-01T09:00:00Z', '2026-08-01T09:00:00Z');"
+            ))
+            .expect("legacy version 8 setup should succeed");
+        drop(connection);
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("upgrade should succeed");
+
+        assert_eq!(reopened.schema_version, CURRENT_SCHEMA_VERSION);
+        let notes = list_hex_notes(&reopened.database_path, GAME_ID).expect("list should succeed");
+        assert_eq!(
+            notes.len(),
+            1,
+            "a note written before the migration survives it"
+        );
+        assert!(
+            list_armies(&reopened.database_path, GAME_ID)
+                .expect("the armies table exists after the upgrade")
+                .is_empty(),
+            "the upgraded database has an armies table, and it is empty"
+        );
+    }
+
     #[test]
     fn open_game_reuses_saved_manifest_and_schema() {
         let dir = tempdir().expect("tempdir");
@@ -2522,8 +2759,8 @@ mod tests {
 
         assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
-            created.schema_version, 8,
-            "storing manual hex notes added migration 8"
+            created.schema_version, 9,
+            "storing Armies added migration 9"
         );
     }
 
@@ -2597,6 +2834,168 @@ mod tests {
         let listed_after_delete =
             list_hex_notes(&created.database_path, GAME_ID).expect("list should succeed");
         assert_eq!(listed_after_delete.len(), 1);
+    }
+
+    fn a_member(unit_id: &str, name: &str, seen_turn: u32) -> ArmyMember {
+        ArmyMember {
+            unit_id: unit_id.to_string(),
+            name: name.to_string(),
+            faction_id: Some("95".to_string()),
+            faction_name: Some("Borg TNG".to_string()),
+            own: true,
+            region_id: "1:7,53".to_string(),
+            flags: vec!["behind".to_string()],
+            items: vec![ItemAmount {
+                amount: 57,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+            }],
+            skills: vec![Skill {
+                name: "combat".to_string(),
+                tag: "COMB".to_string(),
+                level: 2,
+                points: 90,
+            }],
+            men: 12,
+            seen_turn,
+            seen_at: "2026-08-01T09:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn army_round_trips_with_its_members() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+
+        let army = Army {
+            id: "army-1".to_string(),
+            game_id: GAME_ID.to_string(),
+            name: "Northern escort".to_string(),
+            members: vec![a_member("1", "Scouts", 71), a_member("204", "Pikes", 68)],
+            created_at: "2026-08-01T09:00:00Z".to_string(),
+            updated_at: "2026-08-01T09:00:00Z".to_string(),
+        };
+        upsert_army(&created.database_path, &army).expect("army should persist");
+
+        let listed = list_armies(&created.database_path, GAME_ID).expect("list should succeed");
+        assert_eq!(
+            listed,
+            vec![army.clone()],
+            "an Army comes back with both members, their items and their skills intact"
+        );
+
+        let renamed = Army {
+            name: "Southern escort".to_string(),
+            members: vec![a_member("1", "Scouts", 72)],
+            updated_at: "2026-08-02T09:00:00Z".to_string(),
+            ..army.clone()
+        };
+        upsert_army(&created.database_path, &renamed).expect("second upsert should persist");
+        let listed_after =
+            list_armies(&created.database_path, GAME_ID).expect("list should succeed");
+        assert_eq!(
+            listed_after,
+            vec![renamed.clone()],
+            "a second upsert on the same id updates rather than duplicating"
+        );
+        assert_eq!(
+            listed_after[0].created_at, army.created_at,
+            "an edit must not move created_at"
+        );
+
+        assert!(
+            delete_army(&created.database_path, GAME_ID, "army-1").expect("delete should succeed"),
+            "deleting an existing Army reports true"
+        );
+        assert!(
+            !delete_army(&created.database_path, GAME_ID, "army-1").expect("delete should succeed"),
+            "deleting an already-deleted Army reports false"
+        );
+        assert!(list_armies(&created.database_path, GAME_ID)
+            .expect("list should succeed")
+            .is_empty());
+    }
+
+    #[test]
+    fn list_armies_returns_only_the_given_games_armies() {
+        let dir = tempdir().expect("tempdir");
+        let mine =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let army = Army {
+            id: "army-1".to_string(),
+            game_id: GAME_ID.to_string(),
+            name: "Mine".to_string(),
+            members: vec![a_member("1", "Scouts", 71)],
+            created_at: CREATED_AT.to_string(),
+            updated_at: CREATED_AT.to_string(),
+        };
+        let theirs = Army {
+            id: "army-2".to_string(),
+            game_id: "other-game".to_string(),
+            name: "Theirs".to_string(),
+            ..army.clone()
+        };
+        upsert_army(&mine.database_path, &army).expect("army should persist");
+        upsert_army(&mine.database_path, &theirs).expect("other game's army should persist");
+
+        let listed = list_armies(&mine.database_path, GAME_ID).expect("list should succeed");
+
+        assert_eq!(listed, vec![army]);
+    }
+
+    /// A silently empty Army looks exactly like one that lost its units, and this is the last layer
+    /// that can still tell the difference - so malformed stored members are an error, not `[]`.
+    #[test]
+    fn malformed_stored_members_are_an_error_rather_than_an_empty_army() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let connection = Connection::open(&created.database_path).expect("open database");
+        connection
+            .execute(
+                "INSERT INTO armies (id, game_id, name, members_json, created_at, updated_at)
+                 VALUES ('army-1', ?1, 'Broken', 'not json', ?2, ?2)",
+                params![GAME_ID, CREATED_AT],
+            )
+            .expect("insert should succeed");
+
+        let listed = list_armies(&created.database_path, GAME_ID);
+
+        assert!(
+            matches!(listed, Err(PersistenceError::Serialization(_))),
+            "unreadable members are reported, not rounded down to an empty Army"
+        );
+    }
+
+    #[test]
+    fn export_and_import_carry_armies() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let army = Army {
+            id: "army-1".to_string(),
+            game_id: GAME_ID.to_string(),
+            name: "Northern escort".to_string(),
+            members: vec![a_member("1", "Scouts", 71), a_member("204", "Pikes", 68)],
+            created_at: CREATED_AT.to_string(),
+            updated_at: CREATED_AT.to_string(),
+        };
+        upsert_army(&created.database_path, &army).expect("army should persist");
+
+        let exported = export_game(dir.path(), GAME_ID, "2026-08-05T09:00:00Z")
+            .expect("export should succeed");
+        let restored_root = tempdir().expect("tempdir");
+        let restored = import_game(restored_root.path(), &exported, "2026-08-06T09:00:00Z")
+            .expect("import should succeed");
+
+        let listed = list_armies(&restored.database_path, GAME_ID).expect("list should succeed");
+
+        assert_eq!(
+            listed,
+            vec![army],
+            "an Army and its members survive the round trip"
+        );
     }
 
     /// The store writes whatever two stamps it is given, on both the first import and a
@@ -3411,6 +3810,7 @@ mod region_sighting_tests {
             region_sightings: Vec::new(),
             merged_reports: Vec::new(),
             hex_notes: Vec::new(),
+            armies: Vec::new(),
         })
         .expect("serialize backup");
         backup_json
@@ -3453,6 +3853,7 @@ mod region_sighting_tests {
             region_sightings: Vec::new(),
             merged_reports: Vec::new(),
             hex_notes: Vec::new(),
+            armies: Vec::new(),
         })
         .expect("serialize backup");
 

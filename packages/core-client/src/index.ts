@@ -1,4 +1,8 @@
 import type { AdvisoryCheckCode } from "./coreVocabulary.generated";
+// Both are re-exported below; `ArmyMemberRecord` also names them, which a re-export alone does not
+// bring into this file's scope.
+import type { ItemAmount } from "./generated/ItemAmount";
+import type { SkillInfo } from "./generated/SkillInfo";
 
 // The report model and the parse family are generated from the Rust core by ts-rs
 // (crates/core, `cargo test`); see docs/implementation-plan.md §Generated bindings.
@@ -525,6 +529,43 @@ export type HexNoteRecord = {
   updatedAt: string;
 };
 
+/**
+ * One unit as an Army remembers it: the last report that showed it, whichever turn that was.
+ *
+ * A member the current report does not mention is kept and still exported - it may be another
+ * faction's unit that is simply not visible this turn - so a membership is a snapshot rather than a
+ * unit number, and carries everything an export needs.
+ */
+export type ArmyMemberRecord = {
+  /** The report's unit number. The key: stable across turns, and never withheld. */
+  unitId: string;
+  name: string;
+  /** Null when the unit was concealing its faction when last seen (`ReportUnit.factionId`). */
+  factionId: string | null;
+  factionName: string | null;
+  own: boolean;
+  /** Where it was when last seen; `hexMapModel`'s `"z:x,y"`. */
+  regionId: string;
+  flags: string[];
+  items: ItemAmount[];
+  skills: SkillInfo[];
+  men: number;
+  /** The turn of the report this snapshot came from. */
+  seenTurn: number;
+  /** When the snapshot was taken, ISO 8601, from the caller's clock. */
+  seenAt: string;
+};
+
+/** A named group of units, scoped to the game and outliving any one turn. */
+export type ArmyRecord = {
+  id: string;
+  gameId: string;
+  name: string;
+  members: ArmyMemberRecord[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ImportedTurnRecord = {
   key: OrderDraftKey;
   rawReport: string;
@@ -719,6 +760,9 @@ export interface CoreAdapter {
   listHexNotes(databasePath: string, gameId: string): Promise<HexNoteRecord[]>;
   saveHexNote(databasePath: string, note: HexNoteRecord): Promise<HexNoteRecord>;
   deleteHexNote(databasePath: string, gameId: string, noteId: string): Promise<void>;
+  listArmies(databasePath: string, gameId: string): Promise<ArmyRecord[]>;
+  saveArmy(databasePath: string, army: ArmyRecord): Promise<ArmyRecord>;
+  deleteArmy(databasePath: string, gameId: string, armyId: string): Promise<void>;
 }
 
 /**
@@ -745,6 +789,23 @@ export function sortHexNotes(notes: readonly HexNoteRecord[]): HexNoteRecord[] {
   return [...notes].sort((a, b) => {
     if (a.createdAt !== b.createdAt) {
       return a.createdAt < b.createdAt ? 1 : -1;
+    }
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+/**
+ * A game's Armies by name, then `id` for stability. The one place this order is written.
+ *
+ * Name first because the source rail lists them by name; `id` second because duplicate names are
+ * allowed - an Army is never identified by its name - so name alone is not a total order and two
+ * Armies called "Escort" would otherwise swap places between renders. Both comparisons are on code
+ * points, as every other sort in this file is.
+ */
+export function sortArmies(armies: readonly ArmyRecord[]): ArmyRecord[] {
+  return [...armies].sort((a, b) => {
+    if (a.name !== b.name) {
+      return a.name < b.name ? -1 : 1;
     }
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
@@ -826,6 +887,9 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     },
     async listHexNotes(databasePath, gameId) {
       return sortHexNotes(await adapter.listHexNotes(databasePath, gameId));
+    },
+    async listArmies(databasePath, gameId) {
+      return sortArmies(await adapter.listArmies(databasePath, gameId));
     }
   };
 }

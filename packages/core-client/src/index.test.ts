@@ -3,6 +3,8 @@ import { aParsedReport, aReportRegion } from "./builders";
 import {
   createCoreClient,
   createTauriAdapter,
+  sortArmies,
+  type ArmyRecord,
   type CoreAdapter,
   type GameManifest,
   type HexNoteRecord,
@@ -58,6 +60,14 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     text: "Mustn't forget the mountain pass",
     onMap: true,
     turn: 12,
+    createdAt: "2026-08-07T12:00:00Z",
+    updatedAt: "2026-08-07T12:00:00Z"
+  };
+  const army: ArmyRecord = {
+    id: "army-1",
+    gameId: "faction-12",
+    name: "Northern escort",
+    members: [],
     createdAt: "2026-08-07T12:00:00Z",
     updatedAt: "2026-08-07T12:00:00Z"
   };
@@ -136,6 +146,9 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     listHexNotes: vi.fn().mockResolvedValue([hexNote]),
     saveHexNote: vi.fn().mockResolvedValue(hexNote),
     deleteHexNote: vi.fn().mockResolvedValue(undefined),
+    listArmies: vi.fn().mockResolvedValue([army]),
+    saveArmy: vi.fn().mockResolvedValue(army),
+    deleteArmy: vi.fn().mockResolvedValue(undefined),
     ...overrides
   };
 }
@@ -488,5 +501,53 @@ describe("createCoreClient", () => {
     const listed = await client.listHexNotes("db", "g");
 
     expect(listed.map((n) => n.id)).toEqual(["z", "a", "b"]);
+  });
+
+  it("orders armies by name, whatever order the adapter answered in", async () => {
+    const unordered = [anArmy("c", "Escort"), anArmy("a", "Anvil"), anArmy("b", "Vanguard")];
+    const fake = fakeAdapter({ listArmies: vi.fn().mockResolvedValue(unordered) });
+    const client = createCoreClient(fake);
+
+    const listed = await client.listArmies("db", "g");
+
+    expect(listed.map((one) => one.id)).toEqual(["a", "c", "b"]);
+  });
+});
+
+/** An Army with no members: this file is about ordering, which never reads one. */
+function anArmy(id: string, name: string): ArmyRecord {
+  return {
+    id,
+    gameId: "g",
+    name,
+    members: [],
+    createdAt: "2026-08-07T12:00:00Z",
+    updatedAt: "2026-08-07T12:00:00Z"
+  };
+}
+
+describe("sortArmies", () => {
+  it("orders by name, then by id so two Armies with one name keep a stable order", () => {
+    const armies = [
+      anArmy("z", "Escort"),
+      anArmy("m", "Anvil"),
+      anArmy("a", "Escort"),
+      anArmy("b", "Vanguard")
+    ];
+
+    expect(sortArmies(armies).map((one) => [one.name, one.id])).toEqual([
+      ["Anvil", "m"],
+      ["Escort", "a"],
+      ["Escort", "z"],
+      ["Vanguard", "b"]
+    ]);
+  });
+
+  it("leaves what it was given alone", () => {
+    const armies = [anArmy("z", "Escort"), anArmy("a", "Anvil")];
+
+    sortArmies(armies);
+
+    expect(armies.map((one) => one.id)).toEqual(["z", "a"]);
   });
 });

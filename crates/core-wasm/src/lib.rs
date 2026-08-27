@@ -367,7 +367,7 @@ pub fn latest_turn_state(
 }
 
 /// Encodes one game's rows as one backup document. `content_json` is the browser store's own
-/// records under the six keys of `GameBackupContent`; keys the codec does not know are ignored.
+/// records under the seven keys of `GameBackupContent`; keys the codec does not know are ignored.
 #[wasm_bindgen]
 pub fn encode_game_backup_state(
     content_json: String,
