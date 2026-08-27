@@ -52,6 +52,43 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
     />
   );
 
+/** The turn chip's own text, tags stripped and whitespace collapsed. */
+const turnChipText = (markup: string) => {
+  const m = markup.match(/<button[^>]*data-testid="turn-chip"[^>]*>([\s\S]*?)<\/button>/);
+  expect(m).not.toBeNull();
+  return m![1]
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+describe("AppHeader the game-state strip", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("the turn chip carries the word Turn", () => {
+    expect(turnChipText(draw())).toContain("Turn 71");
+  });
+
+  it("the turn chip still says which turns are being compared", () => {
+    const text = turnChipText(draw({ comparedTurnLabel: "70" }));
+    expect(text).toContain("Turn 71");
+    expect(text).toContain("\u21c4");
+    expect(text).toContain("70");
+  });
+
+  it("the faction chip is bordered like the game and turn chips", () => {
+    const cls = draw().match(
+      /<button[^>]*data-testid="faction-chip"[^>]*class="([^"]*)"/
+    )![1];
+    expect(cls).toContain("border-edge");
+    expect(cls).toContain("bg-panel-raised");
+  });
+
+  it("the header strip does not repeat the application's name", () => {
+    expect(draw()).not.toContain("ATLANTIS HUD");
+  });
+});
+
 describe("AppHeader wrapping", () => {
   beforeEach(resetWorkspaceStore);
 

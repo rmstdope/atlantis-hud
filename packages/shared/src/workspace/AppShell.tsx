@@ -2957,7 +2957,7 @@ export function AppShell({
   const turnLabel =
     parsed?.header.turnNumber === null || parsed?.header.turnNumber === undefined
       ? null
-      : `${parsed.header.turnNumber} · ${parsed.header.month}, Year ${parsed.header.year}`;
+      : String(parsed.header.turnNumber);
 
   /**
    * Opens (or closes) a header popover - closing whichever else was open, since only one is ever

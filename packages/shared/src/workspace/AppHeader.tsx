@@ -278,10 +278,10 @@ export function AppHeader({
         Game state, grouped so it can wrap internally on a very narrow window without disturbing
         the actions group's own wrap onto a second row.
       */}
-      <div className="flex min-h-9 flex-wrap items-center gap-3.5 min-w-0">
-      {/* Just the title: which build this is belongs to the About tab, not the title bar. */}
-      <span className="tracking-[0.06em] text-brass">ATLANTIS HUD</span>
-
+      <div
+        data-testid="header-game-state"
+        className="flex min-h-9 flex-wrap items-center gap-3.5 min-w-0"
+      >
       {/*
         The game indicator. Relative, because the picker hangs off it and should open under the
         name it belongs to rather than at the edge of the window.
@@ -302,8 +302,7 @@ export function AppHeader({
         </button>
       </ChipPopover>
       {turnLabel ? (
-        <span className="text-ink-soft">
-          Turn{" "}
+        <>
           {/*
             Its own `ChipPopover`, sibling to the game indicator's rather than sharing one - the
             same reason the faction and merged chips each get their own (see below).
@@ -317,6 +316,7 @@ export function AppHeader({
               onClick={() => toggle("turns")}
               className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink hover:border-brass"
             >
+              Turn{" "}
               {comparedTurnLabel ? (
                 <>
                   {workingTurnNumber ?? turnLabel}
@@ -345,7 +345,7 @@ export function AppHeader({
               </button>
             ) : null}
           </ChipPopover>
-        </span>
+        </>
       ) : null}
       {/*
         The faction, and whose reports have been folded into it.
@@ -357,7 +357,6 @@ export function AppHeader({
       */}
       {factionLabel ? (
         <span className="text-ink-soft">
-          Faction{" "}
           {/*
             Its own `ChipPopover`, sibling to the merged chip's rather than sharing one - never one
             inside the other's wrapper, or a press on one chip would count as *inside* the other's
@@ -370,7 +369,7 @@ export function AppHeader({
               aria-haspopup="dialog"
               aria-expanded={openPopover === "faction"}
               onClick={() => toggle("faction")}
-              className="text-ink hover:text-brass"
+              className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink hover:border-brass"
             >
               {factionLabel}
               <span aria-hidden className="ml-1 text-ink-dim">
