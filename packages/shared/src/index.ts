@@ -58,5 +58,6 @@ export * from "./workspace/SettingsDialog";
 export * from "./workspace/TurnMessagesPanel";
 export * from "./workspace/UnitPanel";
 export * from "./workspace/unitSource";
+export * from "./workspace/foreignUnits";
 export * from "./workspace/armyRows";
 export * from "./workspace/UnitTableDock";
