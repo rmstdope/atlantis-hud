@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Magic study tree — interaction and the cap</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1400px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:20px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:94ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:14px 12px; display:flex; justify-content:center; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; align-items:start; }
+
+  .panel { background:var(--raised); border:1px solid var(--edge); border-radius:6px; width:100%; max-width:27rem;
+           font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; overflow:hidden; }
+  .phead { display:flex; align-items:center; gap:9px; padding:8px 11px; border-bottom:1px solid var(--edge); }
+  .phead h4 { font:600 13px/1.3 'Helvetica Neue',Arial,sans-serif; }
+  .close { margin-left:auto; color:var(--ink-dim); }
+  .filt { background:var(--ground); border:0; border-bottom:1px solid var(--edge); color:var(--ink);
+          padding:6px 11px; font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; width:100%; display:block; }
+  .body { padding:10px 11px; }
+  .br { background:var(--ground); border:1px solid var(--edge); border-radius:6px; padding:8px 10px 9px; margin-bottom:11px; }
+  .br > h5 { font:600 12.5px/1.3 'Helvetica Neue',Arial,sans-serif; color:var(--brass-bright);
+             border-bottom:1px solid var(--edge-soft); padding-bottom:4px; margin-bottom:5px; display:flex; gap:6px; align-items:baseline; }
+  .br > h5 .tg { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:9.5px; color:var(--ink-dim); }
+  .br > h5 .ct { margin-left:auto; font-weight:400; font-size:10px; color:var(--ink-dim); }
+  .sk { display:flex; align-items:baseline; gap:6px; padding:2px 0; }
+  .sk .nm { color:var(--ink); } .sk .tg { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:9.5px; color:var(--ink-dim); }
+  .sk .gate { font-size:9.5px; color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; }
+  .sk .also { margin-left:auto; font-size:9.5px; color:#a98cc4; font-family:'SF Mono',Menlo,Consolas,monospace; }
+  .d2{padding-left:12px}.d3{padding-left:24px}
+  .sk.dep::before { content:"└ "; color:#3a4757; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:10px; }
+  .lnkrow .nm { color:var(--select); border-bottom:1px dotted rgba(74,159,216,.45); cursor:pointer; }
+  .lnkrow .also { color:#a98cc4; border-bottom:1px dotted rgba(169,140,196,.5); cursor:pointer; }
+  .mark { color:var(--ink-dim); font-size:10px; }
+  .hl { background:#3a3520; }
+  .cap { border-radius:4px; padding:6px 8px; font-size:11px; background:rgba(217,164,65,.11);
+         border:1px solid rgba(217,164,65,.4); color:#e8cd93; margin-top:7px; display:flex; gap:6px; }
+  .capline { font-size:9.5px; color:#c9a961; font-family:'SF Mono',Menlo,Consolas,monospace; margin-left:auto; }
+  .foot { border-top:1px solid var(--edge); padding:5px 11px; color:var(--ink-dim); font-size:10.5px; }
+  .up { background:var(--raised); border:1px solid var(--edge); border-radius:6px; width:100%; max-width:20rem;
+        font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; overflow:hidden; }
+  .up h4 { font:600 12.5px/1.3 'Helvetica Neue',Arial,sans-serif; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  .up .row { display:flex; gap:8px; padding:2.5px 10px; }
+  .up .row .k { color:var(--ink-soft); width:9rem; }
+  .up .row .v { color:var(--ink); }
+  .up .row .v a { color:var(--select); border-bottom:1px dotted rgba(74,159,216,.45); }
+  .up .sub { padding:1px 10px 2px 10px; }
+  .up .sub a { color:var(--select); font-size:11px; border-bottom:1px dotted rgba(74,159,216,.45); }
+  .up .mg { color:var(--brass); font-size:9.5px; letter-spacing:1px; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Magic study tree — <span>interaction, and the rule that matters most</span></h1>
+  <p>Settled so far: <b>branch cards</b> with a <b>Whole graph</b> toggle, <b>static</b> (no faction
+  overlay yet), <b>MANI set apart</b>, opened by <b>F3</b>, the palette and a mage's skill; the view
+  choice is <b>remembered for the session</b>; the graph <b>pans and zooms</b> on a narrow window; and
+  the wording is the <b>plain</b> set.</p>
+  <p>Four things are still open, and each one is a place an implementer would otherwise have to guess.</p>
+</header>
+<main>
+
+<h3 class="sec">1 · A filter over the branches</h3>
+<p>Seventy skills over ten cards. The dictionary next door has a filter box; this may or may not want one.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>1A</em>With a filter</h2>
+    <div class="concept">Typing hides non-matching rows and any card left empty. <code>summon</code> shown.</div>
+    <div class="stage"><div class="panel">
+      <div class="phead"><h4>Magic study tree</h4><span class="close">✕</span></div>
+      <input class="filt" value="summon" readonly>
+      <div class="body">
+        <div class="br"><h5>Necromancy<span class="tg">NECR</span><span class="ct">2 of 7</span></h5>
+          <div class="sk d2 dep"><span class="nm"><span class="hl">summon</span> skeletons</span><span class="tg">SUSK</span><span class="gate">NECR 1</span></div>
+          <div class="sk d2 dep"><span class="nm"><span class="hl">summon</span> black wind</span><span class="tg">SBLA</span><span class="gate">NECR 5</span></div>
+        </div>
+        <div class="br"><h5>Demons<span class="tg">DEMO</span><span class="ct">3 of 5</span></h5>
+          <div class="sk d2 dep"><span class="nm"><span class="hl">summon</span> imps</span><span class="tg">SUIM</span><span class="gate">DEMO 1</span></div>
+          <div class="sk d3 dep"><span class="nm"><span class="hl">summon</span> demon</span><span class="tg">SUDE</span><span class="gate">SUIM 3</span></div>
+          <div class="sk d3 dep"><span class="nm"><span class="hl">summon</span> balrog</span><span class="tg">SUBA</span><span class="gate">SUDE 3</span></div>
+        </div>
+        <div class="br"><h5>Weather<span class="tg">WEAT</span><span class="ct">3 of 6</span></h5>
+          <div class="sk d2 dep"><span class="nm"><span class="hl">summon</span> wind</span><span class="tg">SWIN</span><span class="gate">WEAT 1</span></div>
+          <div class="sk d2 dep"><span class="nm"><span class="hl">summon</span> storm</span><span class="tg">SSTO</span><span class="gate">WEAT 1</span></div>
+          <div class="sk d2 dep"><span class="nm"><span class="hl">summon</span> tornado</span><span class="tg">STOR</span><span class="gate">WEAT 3</span></div>
+        </div>
+      </div>
+      <div class="foot">8 of 70 skills match</div>
+    </div></div>
+    <ul class="notes">
+      <li>Finding one skill in seventy stops being a scroll.</li>
+      <li>Matches the dictionary's filter, so the gesture is already learned.</li>
+      <li class="con">Filtering a picture-of-structure hides the structure — a card reading "2 of 7" is no longer a branch.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>1B</em>No filter</h2>
+    <div class="concept">The whole picture, always. Finding a named skill is the dictionary's job (F2).</div>
+    <div class="stage"><div class="panel">
+      <div class="phead"><h4>Magic study tree</h4><span class="close">✕</span></div>
+      <div class="body">
+        <div class="br"><h5>Necromancy<span class="tg">NECR</span><span class="ct">7</span></h5>
+          <div class="sk"><span class="nm">necromancy</span><span class="tg">NECR</span><span class="gate">FORC 1, SPIR 1</span></div>
+          <div class="sk d2 dep"><span class="nm">banish undead</span><span class="tg">BUND</span><span class="gate">NECR 1</span></div>
+          <div class="sk d2 dep"><span class="nm">create aura of fear</span><span class="tg">FEAR</span><span class="gate">NECR 1</span></div>
+          <div class="sk d2 dep"><span class="nm">summon black wind</span><span class="tg">SBLA</span><span class="gate">NECR 5</span></div>
+          <div class="sk d2 dep"><span class="nm">summon skeletons</span><span class="tg">SUSK</span><span class="gate">NECR 1</span></div>
+          <div class="sk d3 dep"><span class="nm">raise undead</span><span class="tg">RAIS</span><span class="gate">SUSK 3</span></div>
+          <div class="sk d3 dep"><span class="nm">summon lich</span><span class="tg">SULI</span><span class="gate">RAIS 3</span></div>
+        </div>
+      </div>
+      <div class="foot">70 skills · 10 branches</div>
+    </div></div>
+    <ul class="notes">
+      <li>The view has exactly one job and does it at every moment.</li>
+      <li>Less to build, and nothing to specify about empty results.</li>
+      <li class="con">"Where is <code>dragon lore</code>?" means scrolling ten cards.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · What a row does when clicked</h3>
+<p>The dictionary already holds every skill's full description and levels. The tree could hand off to it.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>2A</em>Rows and chips are links</h2>
+    <div class="concept">A skill name opens that skill in the dictionary. A violet chip jumps to that skill's own row in the tree.</div>
+    <div class="stage"><div class="panel">
+      <div class="phead"><h4>Magic study tree</h4><span class="close">✕</span></div>
+      <div class="body"><div class="br"><h5>Artifacts<span class="tg">ARTI</span><span class="ct">26</span></h5>
+        <div class="sk lnkrow"><span class="nm">artifact lore</span><span class="tg">ARTI</span><span class="gate">FORC 1, PATT 1, SPIR 1</span></div>
+        <div class="sk d2 dep lnkrow"><span class="nm">create ring of invisibility</span><span class="tg">CRRI</span><span class="gate">ARTI 2</span><span class="also">+INVI 3</span></div>
+        <div class="sk d2 dep lnkrow"><span class="nm">create runesword</span><span class="tg">CRRU</span><span class="gate">ARTI 2</span><span class="also">+FEAR 3</span></div>
+      </div></div>
+      <div class="foot">Name → dictionary · chip → jump within the tree</div>
+    </div></div>
+    <ul class="notes">
+      <li>Reaches the full description without leaving the keyboard.</li>
+      <li>The chip becomes navigation rather than a note — the DAG's cross edges get followed.</li>
+      <li class="con">Two different destinations from one row is a thing to learn.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>2B</em>Read-only picture</h2>
+    <div class="concept">Nothing clicks. The tree shows structure; the dictionary shows detail; they do not link.</div>
+    <div class="stage"><div class="panel">
+      <div class="phead"><h4>Magic study tree</h4><span class="close">✕</span></div>
+      <div class="body"><div class="br"><h5>Artifacts<span class="tg">ARTI</span><span class="ct">26</span></h5>
+        <div class="sk"><span class="nm">artifact lore</span><span class="tg">ARTI</span><span class="gate">FORC 1, PATT 1, SPIR 1</span></div>
+        <div class="sk d2 dep"><span class="nm">create ring of invisibility</span><span class="tg">CRRI</span><span class="gate">ARTI 2</span><span class="also">+INVI 3</span></div>
+        <div class="sk d2 dep"><span class="nm">create runesword</span><span class="tg">CRRU</span><span class="gate">ARTI 2</span><span class="also">+FEAR 3</span></div>
+      </div></div>
+      <div class="foot">70 skills · 10 branches</div>
+    </div></div>
+    <ul class="notes">
+      <li>Nothing to mis-click, nothing to explain, much less to build.</li>
+      <li class="con">A dead end: the description you want is one key away but you must retype the name to reach it.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">3 · The cap rule</h3>
+<p><code>rules/magic_skills</code>: a magic skill <b>can never rise above the skills it depends on</b>. If a
+mage wants <code>summon lich</code> at 3 he needs <code>raise undead</code> at 3, which needs
+<code>summon skeletons</code> at 3. It is the single most useful thing the tree knows, and the branch
+cards do not say it anywhere.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>3A</em>One line per card</h2>
+    <div class="concept">A footnote at the foot of every card, in the same words each time.</div>
+    <div class="stage"><div class="panel">
+      <div class="phead"><h4>Magic study tree</h4><span class="close">✕</span></div>
+      <div class="body"><div class="br"><h5>Necromancy<span class="tg">NECR</span><span class="ct">7</span></h5>
+        <div class="sk"><span class="nm">necromancy</span><span class="tg">NECR</span><span class="gate">FORC 1, SPIR 1</span></div>
+        <div class="sk d2 dep"><span class="nm">summon skeletons</span><span class="tg">SUSK</span><span class="gate">NECR 1</span></div>
+        <div class="sk d3 dep"><span class="nm">raise undead</span><span class="tg">RAIS</span><span class="gate">SUSK 3</span></div>
+        <div class="sk d3 dep"><span class="nm">summon lich</span><span class="tg">SULI</span><span class="gate">RAIS 3</span></div>
+        <div class="cap"><span>⚑</span><span>No skill here can rise above the skills it stands on.</span></div>
+      </div></div>
+    </div></div>
+    <ul class="notes"><li>Impossible to miss.</li><li class="con">Ten times on one screen is nine times too many.</li></ul>
+  </div>
+  <div class="card">
+    <h2><em>3B</em>Once, under the header</h2>
+    <div class="concept">Stated once for the whole view, where it is read on arrival.</div>
+    <div class="stage"><div class="panel">
+      <div class="phead"><h4>Magic study tree</h4><span class="close">✕</span></div>
+      <div style="padding:7px 11px;border-bottom:1px solid var(--edge)">
+        <div class="cap" style="margin:0"><span>⚑</span><span>A magic skill can never rise above the skills it stands on — the levels below are floors to begin, and ceilings thereafter.</span></div>
+      </div>
+      <div class="body"><div class="br"><h5>Necromancy<span class="tg">NECR</span><span class="ct">7</span></h5>
+        <div class="sk"><span class="nm">necromancy</span><span class="tg">NECR</span><span class="gate">FORC 1, SPIR 1</span></div>
+        <div class="sk d2 dep"><span class="nm">summon skeletons</span><span class="tg">SUSK</span><span class="gate">NECR 1</span></div>
+        <div class="sk d3 dep"><span class="nm">raise undead</span><span class="tg">RAIS</span><span class="gate">SUSK 3</span></div>
+        <div class="sk d3 dep"><span class="nm">summon lich</span><span class="tg">SULI</span><span class="gate">RAIS 3</span></div>
+      </div></div>
+    </div></div>
+    <ul class="notes"><li>Said once, in the one place everyone passes.</li><li class="con">Scrolled away by the time it applies.</li></ul>
+  </div>
+</div>
+
+<h3 class="sec">4 · The unit-pane door</h3>
+<p><code>UnitPanel.tsx:117-140</code> already renders every skill as a link into the dictionary. Which skills also offer the tree?</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>4A</em>Magic skills only</h2>
+    <div class="concept">A second link under a magic skill. Non-magic skills are unchanged.</div>
+    <div class="stage"><div class="up">
+      <h4>Mage of the Tower · 421</h4>
+      <div class="row"><span class="k">force <span style="color:var(--ink-dim)">FORC</span></span><span class="v"><a>3 (450)</a></span></div>
+      <div class="sub"><a>Show in study tree</a></div>
+      <div class="row"><span class="k">pattern <span style="color:var(--ink-dim)">PATT</span></span><span class="v"><a>2 (180)</a></span></div>
+      <div class="sub"><a>Show in study tree</a></div>
+      <div class="row"><span class="k">combat <span style="color:var(--ink-dim)">COMB</span></span><span class="v"><a>1 (30)</a></span></div>
+      <div class="row"><span class="k">stealth <span style="color:var(--ink-dim)">STEA</span></span><span class="v"><a>2 (90)</a></span></div>
+    </div></div>
+    <ul class="notes">
+      <li>The link only ever leads somewhere real — a non-magic skill is not in the tree at all.</li>
+      <li class="con">Two rows per magic skill; a mage with four of them grows the pane.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>4B</em>One link per mage, at the top</h2>
+    <div class="concept">A single link on any unit holding at least one magic skill, landing on its highest.</div>
+    <div class="stage"><div class="up">
+      <h4>Mage of the Tower · 421</h4>
+      <div class="sub" style="padding:5px 10px 6px"><span class="mg">Mage</span> · <a>Show in study tree</a></div>
+      <div class="row"><span class="k">force <span style="color:var(--ink-dim)">FORC</span></span><span class="v"><a>3 (450)</a></span></div>
+      <div class="row"><span class="k">pattern <span style="color:var(--ink-dim)">PATT</span></span><span class="v"><a>2 (180)</a></span></div>
+      <div class="row"><span class="k">combat <span style="color:var(--ink-dim)">COMB</span></span><span class="v"><a>1 (30)</a></span></div>
+      <div class="row"><span class="k">stealth <span style="color:var(--ink-dim)">STEA</span></span><span class="v"><a>2 (90)</a></span></div>
+    </div></div>
+    <ul class="notes">
+      <li>One row however many magic skills the mage has, and it labels the unit as a mage.</li>
+      <li class="con">"Its highest" needs a tie-break rule, and it may not be the skill you were looking at.</li>
+    </ul>
+  </div>
+</div>
+</main>
+</body>
+</html>

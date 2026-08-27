@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Magic study tree — the states</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1400px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, main code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:20px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:94ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:14px 12px; display:flex; justify-content:center; overflow-x:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; align-items:start; }
+
+  .dlg { background:var(--raised); border:1px solid var(--edge); border-radius:6px; width:100%;
+         font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; box-shadow:0 12px 34px rgba(0,0,0,.6); overflow:hidden; }
+  .dlg.wide { width:58rem; max-width:100%; }
+  .dlg.narrow { width:23rem; }
+  .dhead { display:flex; align-items:center; gap:9px; padding:9px 12px; border-bottom:1px solid var(--edge); }
+  .dhead h4 { font:600 14px/1.3 'Helvetica Neue',Arial,sans-serif; }
+  .seg { display:flex; border:1px solid var(--edge); border-radius:4px; overflow:hidden; }
+  .seg span { padding:2.5px 10px; color:var(--ink-soft); font-size:11.5px; }
+  .seg span.on { background:#243040; color:var(--brass-bright); }
+  .cnt { margin-left:auto; color:var(--ink-dim); font-size:11px; }
+  .close { color:var(--ink-dim); }
+  .body { padding:12px; max-height:29rem; overflow:auto; }
+  .grid { column-width:19rem; column-gap:13px; }
+  .grid.one { column-width:auto; column-count:1; }
+  .br { break-inside:avoid; background:var(--ground); border:1px solid var(--edge); border-radius:6px;
+        padding:8px 10px 9px; margin:0 0 13px; display:inline-block; width:100%; }
+  .br > h5 { font:600 12.5px/1.3 'Helvetica Neue',Arial,sans-serif; color:var(--brass-bright);
+             border-bottom:1px solid var(--edge-soft); padding-bottom:4px; margin-bottom:5px;
+             display:flex; align-items:baseline; gap:6px; }
+  .br > h5 .tg { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:9.5px; color:var(--ink-dim); }
+  .br > h5 .ct { margin-left:auto; font-weight:400; font-size:10px; color:var(--ink-dim); }
+  .blurb { color:var(--ink-dim); font-size:10.5px; line-height:1.45; margin:-1px 0 5px; }
+  .sk { display:flex; align-items:baseline; gap:6px; padding:1.5px 0; }
+  .sk .nm { color:var(--ink); } .sk .tg { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:9.5px; color:var(--ink-dim); }
+  .sk .gate { font-size:9.5px; color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; }
+  .sk .also { margin-left:auto; font-size:9.5px; color:#a98cc4; font-family:'SF Mono',Menlo,Consolas,monospace; white-space:nowrap; }
+  .d1{padding-left:0}.d2{padding-left:12px}.d3{padding-left:24px}.d4{padding-left:36px}
+  .sk.dep::before { content:"└ "; color:#3a4757; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:10px; }
+  .found h5 { color:var(--brass); } .found .sk .nm { color:var(--brass-bright); font-weight:600; }
+  .appr { border-style:dashed; border-color:var(--select); }
+  .appr h5 { color:var(--select); }
+  .sk.hit { background:#2c3a4d; outline:1px solid var(--select); border-radius:3px; margin:0 -4px; padding-left:4px; padding-right:4px; }
+  .sk.hit .nm { color:#cfe6f8; font-weight:600; }
+  .empty { display:grid; place-items:center; gap:9px; padding:56px 20px; text-align:center; }
+  .empty .big { color:var(--ink-soft); font-size:13.5px; }
+  .empty .sub { color:var(--ink-dim); font-size:11.5px; max-width:46ch; line-height:1.5; }
+  .foot { border-top:1px solid var(--edge); padding:6px 12px; color:var(--ink-dim); font-size:11px; display:flex; gap:14px; }
+  .kbd { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:10px; border:1px solid var(--edge);
+         border-radius:3px; padding:0 4px; color:var(--ink-soft); }
+  table.w { width:100%; border-collapse:collapse; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  table.w th { text-align:left; color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase;
+               border-bottom:1px solid var(--edge); padding:5px 8px; font-weight:400; }
+  table.w td { border-bottom:1px solid var(--edge-soft); padding:5px 8px; vertical-align:top; color:var(--ink-soft); }
+  table.w td.k { color:var(--ink-dim); width:15rem; }
+  table.w td b { color:var(--ink); font-weight:600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Magic study tree — <span>the states, and the words</span></h1>
+  <p>You chose <b>branch cards as the default, with a whole-graph toggle</b>, <b>static for now</b> (the
+  faction overlay becomes its own bead), <b>MANI shown but set apart</b>, and three doors: the command
+  palette, a mage's skill in the unit pane, and a shortcut of its own.</p>
+  <p>What follows is everything the happy path hides. Read the wording table at the bottom — those are
+  the strings as they would ship.</p>
+</header>
+<main>
+
+<h3 class="sec">1 · The default, and landing on a skill</h3>
+<p>Opened from the palette you get the whole picture. Opened from <code>invisibility</code> in a mage's
+unit pane, the same picture arrives scrolled to that card with the skill picked out.</p>
+<div class="card">
+  <h2><em>STATE</em>Landed on a skill from the unit pane</h2>
+  <div class="concept">Same view, scrolled to the branch, one row highlighted. Nothing else differs.</div>
+  <div class="stage"><div class="dlg wide">
+    <div class="dhead"><h4>Magic study tree</h4>
+      <div class="seg"><span class="on">Branches</span><span>Whole graph</span></div>
+      <span class="cnt">70 skills</span><span class="close">✕</span></div>
+    <div class="body"><div class="grid" id="landed"></div></div>
+    <div class="foot"><span><span class="kbd">Esc</span> close</span><span><span class="kbd">Tab</span> move between branches</span></div>
+  </div></div>
+  <ul class="notes">
+    <li class="n">Highlight is the same blue the map uses for a selection, and it fades on the next click.</li>
+  </ul>
+</div>
+
+<h3 class="sec">2 · A narrow window</h3>
+<p>The header of the app already wraps as one unit. The dialog has to survive the same squeeze.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>NARROW</em>One column, cards intact</h2>
+    <div class="concept">Columns collapse to one; no card is ever split.</div>
+    <div class="stage"><div class="dlg narrow">
+      <div class="dhead"><h4>Magic study tree</h4><span class="close">✕</span></div>
+      <div style="padding:5px 12px;border-bottom:1px solid var(--edge)">
+        <div class="seg" style="width:fit-content"><span class="on">Branches</span><span>Whole graph</span></div>
+      </div>
+      <div class="body" style="max-height:22rem"><div class="grid one" id="narrow"></div></div>
+    </div></div>
+    <ul class="notes">
+      <li>The toggle drops to its own row rather than shrinking the title.</li>
+      <li class="con">The whole-graph view cannot usefully narrow — it pans instead.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>NO RULESET</em>The ruleset never loaded</h2>
+    <div class="concept"><code>RulesetState</code> is <code>unavailable</code>, so there are no skills to draw.</div>
+    <div class="stage"><div class="dlg narrow">
+      <div class="dhead"><h4>Magic study tree</h4><span class="close">✕</span></div>
+      <div class="body" style="max-height:22rem"><div class="empty">
+        <div style="font-size:22px;color:var(--ink-dim)">⌘</div>
+        <div class="big">The game data has not loaded.</div>
+        <div class="sub">The study tree is drawn from the ruleset, and this game's ruleset could not be
+        fetched. Reload the page, or pick the game again.</div>
+      </div></div>
+    </div></div>
+    <ul class="notes">
+      <li class="n">Same cause already handled elsewhere — <code>docs/ui/ah-6yj2-ruleset-missing.html</code>.</li>
+      <li class="n">There is no loading state worth drawing: the ruleset is already in memory before the dialog can be opened.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">3 · The words, as they would ship</h3>
+<p>Every string the bead introduces. These are what I will quote verbatim in the plan.</p>
+<div class="card">
+  <h2><em>WORDING</em>Option 1 — plain</h2>
+  <table class="w">
+    <tr><th>Where</th><th>String</th></tr>
+    <tr><td class="k">Dialog title</td><td><b>Magic study tree</b></td></tr>
+    <tr><td class="k">Palette entry</td><td><b>Magic study tree</b></td></tr>
+    <tr><td class="k">View toggle</td><td><b>Branches</b> / <b>Whole graph</b></td></tr>
+    <tr><td class="k">Count in header</td><td><b>70 skills</b></td></tr>
+    <tr><td class="k">Foundations card</td><td><b>The foundations</b> — “Studied first. Everything else stands on these.”</td></tr>
+    <tr><td class="k">MANI card</td><td><b>Apprenticeship</b> — “Not a foundation, and nothing builds on it: manipulation makes an apprentice, who may use a mage’s items but cast no spell.”</td></tr>
+    <tr><td class="k">Leftovers card</td><td><b>Straight from a foundation</b> — “One step from a foundation, and nothing further needs them.”</td></tr>
+    <tr><td class="k">Cross-branch chip</td><td><b>+INVI 3</b> <span style="color:var(--ink-dim)">(tooltip: “also needs invisibility at level 3”)</span></td></tr>
+    <tr><td class="k">No ruleset</td><td><b>The game data has not loaded.</b> / “The study tree is drawn from the ruleset, and this game’s ruleset could not be fetched. Reload the page, or pick the game again.”</td></tr>
+    <tr><td class="k">Unit pane link</td><td><b>Show in study tree</b></td></tr>
+  </table>
+</div>
+<div class="card">
+  <h2><em>WORDING</em>Option 2 — the game’s own register</h2>
+  <table class="w">
+    <tr><th>Where</th><th>String</th></tr>
+    <tr><td class="k">Dialog title</td><td><b>The paths of magic</b></td></tr>
+    <tr><td class="k">Palette entry</td><td><b>Magic: study paths</b></td></tr>
+    <tr><td class="k">View toggle</td><td><b>By path</b> / <b>Everything</b></td></tr>
+    <tr><td class="k">Count in header</td><td><b>70 magic skills</b></td></tr>
+    <tr><td class="k">Foundations card</td><td><b>Foundations</b> — “Force, pattern and spirit. A mage begins here.”</td></tr>
+    <tr><td class="k">MANI card</td><td><b>Apprentices</b> — “Manipulation stands alone. An apprentice wields a mage’s items but casts nothing.”</td></tr>
+    <tr><td class="k">Leftovers card</td><td><b>Single steps</b> — “One step past a foundation, and no further.”</td></tr>
+    <tr><td class="k">Cross-branch chip</td><td><b>also INVI 3</b></td></tr>
+    <tr><td class="k">No ruleset</td><td><b>No game data.</b> / “The paths are read from the ruleset, which this game could not load. Reload, or choose the game again.”</td></tr>
+    <tr><td class="k">Unit pane link</td><td><b>Find in the paths of magic</b></td></tr>
+  </table>
+</div>
+</main>
+<script>
+const SK = [{"t":"FORC","n":"force","c":100,"m":5,"r":[]},{"t":"PATT","n":"pattern","c":100,"m":5,"r":[]},{"t":"SPIR","n":"spirit","c":100,"m":5,"r":[]},{"t":"FIRE","n":"fire","c":100,"m":5,"r":[{"t":"FORC","l":1}]},{"t":"EQUA","n":"earthquake","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"PATT","l":1}]},{"t":"FSHI","n":"force shield","c":100,"m":5,"r":[{"t":"FORC","l":1}]},{"t":"ESHI","n":"energy shield","c":100,"m":5,"r":[{"t":"FORC","l":1}]},{"t":"SSHI","n":"spirit shield","c":100,"m":5,"r":[{"t":"SPIR","l":1},{"t":"FORC","l":1}]},{"t":"MHEA","n":"magical healing","c":100,"m":5,"r":[{"t":"PATT","l":1}]},{"t":"GATE","n":"gate lore","c":100,"m":5,"r":[{"t":"PATT","l":1},{"t":"SPIR","l":1}]},{"t":"FARS","n":"farsight","c":100,"m":5,"r":[{"t":"PATT","l":1},{"t":"SPIR","l":1}]},{"t":"TELE","n":"teleportation","c":100,"m":5,"r":[{"t":"GATE","l":1},{"t":"FARS","l":2}]},{"t":"PORT","n":"portal lore","c":100,"m":5,"r":[{"t":"GATE","l":2},{"t":"FARS","l":1}]},{"t":"MIND","n":"mind reading","c":100,"m":5,"r":[{"t":"PATT","l":1}]},{"t":"WEAT","n":"weather lore","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"PATT","l":1}]},{"t":"SWIN","n":"summon wind","c":100,"m":5,"r":[{"t":"WEAT","l":1}]},{"t":"SSTO","n":"summon storm","c":100,"m":5,"r":[{"t":"WEAT","l":1}]},{"t":"STOR","n":"summon tornado","c":100,"m":5,"r":[{"t":"WEAT","l":3}]},{"t":"CALL","n":"call lightning","c":100,"m":5,"r":[{"t":"WEAT","l":5}]},{"t":"CLEA","n":"clear skies","c":100,"m":5,"r":[{"t":"WEAT","l":1}]},{"t":"EART","n":"earth lore","c":100,"m":5,"r":[{"t":"PATT","l":1},{"t":"FORC","l":1}]},{"t":"WOLF","n":"wolf lore","c":100,"m":5,"r":[{"t":"EART","l":1}]},{"t":"BIRD","n":"bird lore","c":100,"m":5,"r":[{"t":"EART","l":1}]},{"t":"DRAG","n":"dragon lore","c":100,"m":5,"r":[{"t":"BIRD","l":3},{"t":"WOLF","l":3}]},{"t":"NECR","n":"necromancy","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"SPIR","l":1}]},{"t":"SUSK","n":"summon skeletons","c":100,"m":5,"r":[{"t":"NECR","l":1}]},{"t":"RAIS","n":"raise undead","c":100,"m":5,"r":[{"t":"SUSK","l":3}]},{"t":"SULI","n":"summon lich","c":100,"m":5,"r":[{"t":"RAIS","l":3}]},{"t":"FEAR","n":"create aura of fear","c":100,"m":5,"r":[{"t":"NECR","l":1}]},{"t":"SBLA","n":"summon black wind","c":100,"m":5,"r":[{"t":"NECR","l":5}]},{"t":"BUND","n":"banish undead","c":100,"m":5,"r":[{"t":"NECR","l":1}]},{"t":"DEMO","n":"demon lore","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"SPIR","l":1}]},{"t":"SUIM","n":"summon imps","c":100,"m":5,"r":[{"t":"DEMO","l":1}]},{"t":"SUDE","n":"summon demon","c":100,"m":5,"r":[{"t":"SUIM","l":3}]},{"t":"SUBA","n":"summon balrog","c":100,"m":5,"r":[{"t":"SUDE","l":3}]},{"t":"BDEM","n":"banish demons","c":100,"m":5,"r":[{"t":"DEMO","l":1}]},{"t":"ILLU","n":"illusion","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"PATT","l":1}]},{"t":"PHEN","n":"phantasmal entertainment","c":100,"m":5,"r":[{"t":"ILLU","l":1}]},{"t":"PHBE","n":"create phantasmal beasts","c":100,"m":5,"r":[{"t":"ILLU","l":1}]},{"t":"PHDE","n":"create phantasmal demons","c":100,"m":5,"r":[{"t":"ILLU","l":1}]},{"t":"INVI","n":"invisibility","c":100,"m":5,"r":[{"t":"ILLU","l":3}]},{"t":"TRUE","n":"true seeing","c":100,"m":5,"r":[{"t":"ILLU","l":3}]},{"t":"DISP","n":"dispel illusions","c":100,"m":5,"r":[{"t":"ILLU","l":1}]},{"t":"ARTI","n":"artifact lore","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"PATT","l":1},{"t":"SPIR","l":1}]},{"t":"CRRI","n":"create ring of invisibility","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"INVI","l":3}]},{"t":"CRCL","n":"create cloak of invulnerability","c":100,"m":5,"r":[{"t":"ARTI","l":4},{"t":"FSHI","l":4}]},{"t":"CRSF","n":"create staff of fire","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FIRE","l":3}]},{"t":"CRTA","n":"create amulet of true seeing","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"TRUE","l":3}]},{"t":"CRPA","n":"create amulet of protection","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"SSHI","l":3}]},{"t":"CRRU","n":"create runesword","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FEAR","l":3}]},{"t":"CRSS","n":"create shieldstone","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"ESHI","l":3}]},{"t":"CRMA","n":"create magic carpet","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"WEAT","l":3}]},{"t":"ENGR","n":"engrave runes of warding","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"ESHI","l":3},{"t":"SSHI","l":3}]},{"t":"CGAT","n":"construct gate","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"GATE","l":3}]},{"t":"ESWO","n":"enchant swords","c":100,"m":5,"r":[{"t":"ARTI","l":2}]},{"t":"EARM","n":"enchant armor","c":100,"m":5,"r":[{"t":"ARTI","l":2}]},{"t":"ESHD","n":"enchant shields","c":100,"m":5,"r":[{"t":"ARTI","l":1}]},{"t":"CPOR","n":"construct portal","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"PORT","l":2}]},{"t":"MANI","n":"manipulation","c":100,"m":5,"r":[]},{"t":"CFSW","n":"create flaming sword","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FIRE","l":3}]},{"t":"CRAG","n":"create aegis","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"TRUE","l":5}]},{"t":"CRWC","n":"create windchime","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"SWIN","l":2}]},{"t":"CRGC","n":"create gate crystal","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"GATE","l":2}]},{"t":"CRSH","n":"create staff of healing","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"MHEA","l":2}]},{"t":"CRSO","n":"create scrying orb","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FARS","l":2}]},{"t":"CRCO","n":"create cornucopia","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"EART","l":2}]},{"t":"CRBX","n":"create book of exorcism","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"BDEM","l":2}]},{"t":"CRHS","n":"create holy symbol","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"BUND","l":2}]},{"t":"CRCN","n":"create censer of protection","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FSHI","l":3}]},{"t":"TRNS","n":"transmutation","c":100,"m":5,"r":[{"t":"ARTI","l":1}]}];
+const byTag = new Map(SK.map(s => [s.t, s]));
+const memo = new Map();
+function depth(t){ if(memo.has(t)) return memo.get(t); const s=byTag.get(t); if(!s) return 0;
+  const d = s.r.length===0?0:1+Math.max(...s.r.map(r=>depth(r.t))); memo.set(t,d); return d; }
+SK.forEach(s => s.d = depth(s.t));
+function branchOf(t){ const s=byTag.get(t);
+  if(s.d===0) return s.t==="MANI"?"MANI":"FOUND";
+  if(s.d===1) return s.t; return branchOf(s.r[0].t); }
+SK.forEach(s => s.b = branchOf(s.t));
+const raw=new Map(); SK.forEach(s=>{ if(!raw.has(s.b)) raw.set(s.b,[]); raw.get(s.b).push(s); });
+const groups=new Map();
+for(const [k,v] of raw){ if(v.length===1 && k!=="MANI"){ if(!groups.has("DIRECT")) groups.set("DIRECT",[]); groups.get("DIRECT").push(...v);} else groups.set(k,v); }
+const NAMES={FOUND:"The foundations",MANI:"Apprenticeship",DIRECT:"Straight from a foundation",
+  WEAT:"Weather",EART:"Earth and beasts",NECR:"Necromancy",DEMO:"Demons",ILLU:"Illusion",
+  ARTI:"Artifacts",GATE:"Gates and travel"};
+const BLURB={FOUND:"Studied first. Everything else stands on these.",
+  MANI:"Not a foundation, and nothing builds on it: manipulation makes an apprentice, who may use a mage&#39;s items but cast no spell.",
+  DIRECT:"One step from a foundation, and nothing further needs them."};
+function esc(x){ return x.replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+function cards(order, hit){
+  let out="";
+  for(const b of order){
+    if(!groups.has(b)) continue;
+    const list=groups.get(b).slice().sort((a,x)=> a.d-x.d || a.n.localeCompare(x.n));
+    const root=(b==="FOUND"||b==="DIRECT")?null:byTag.get(b);
+    out+='<div class="br'+(b==="FOUND"?" found":"")+(b==="MANI"?" appr":"")+'"><h5>'+NAMES[b]
+       + (root?'<span class="tg">'+b+'</span>':'')+'<span class="ct">'+list.length+'</span></h5>';
+    if(BLURB[b]) out+='<p class="blurb">'+BLURB[b]+'</p>';
+    for(const s of list){
+      const inB=s.r.filter(r=>byTag.get(r.t).b===s.b), outB=s.r.filter(r=>byTag.get(r.t).b!==s.b);
+      const gate=s.d===0?"":(inB.length?inB.map(r=>r.t+" "+r.l).join(", "):"");
+      const also=outB.length?outB.map(r=>"+"+r.t+" "+r.l).join(" "):"";
+      out+='<div class="sk d'+Math.min(4,Math.max(1,s.d))+(s.d>1?' dep':'')+(s.t===hit?' hit':'')+'">'
+         + '<span class="nm">'+esc(s.n)+'</span><span class="tg">'+s.t+'</span>'
+         + (gate?'<span class="gate">'+gate+'</span>':'')+(also?'<span class="also">'+also+'</span>':'')+'</div>';
+    }
+    out+='</div>';
+  }
+  return out;
+}
+document.getElementById("landed").innerHTML =
+  cards(["ILLU","FOUND","ARTI","NECR","WEAT","DEMO","EART","GATE","DIRECT","MANI"], "INVI");
+document.getElementById("narrow").innerHTML = cards(["FOUND","MANI","GATE"], null);
+</script>
+</body>
+</html>
