@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ArmyRecord } from "@atlantis/core-client";
-import { HEX_SOURCE, OWN_SOURCE, type UnitSource } from "./unitSource";
+import { FOREIGN_SOURCE, HEX_SOURCE, OWN_SOURCE, type UnitSource } from "./unitSource";
 import { UnitSourceRail } from "./UnitSourceRail";
 import type { RailMode } from "./railEditState";
 
@@ -22,6 +22,7 @@ function draw(
     armies?: readonly ArmyRecord[];
     hexCount?: number | null;
     ownCount?: number;
+    foreignCount?: number;
     mode?: RailMode;
     canEdit?: boolean;
   } = {}
@@ -33,6 +34,7 @@ function draw(
       armies={overrides.armies ?? ARMIES}
       hexCount={overrides.hexCount === undefined ? 6 : overrides.hexCount}
       ownCount={overrides.ownCount ?? 38}
+      foreignCount={overrides.foreignCount ?? 254}
       mode={overrides.mode ?? { kind: "idle" }}
       onEvent={() => {}}
       canEdit={overrides.canEdit ?? true}
@@ -53,6 +55,32 @@ describe("the units dock's source rail", () => {
     expect(markup.indexOf("This hex")).toBeLessThan(markup.indexOf("All my units"));
     expect(markup.indexOf("All my units")).toBeLessThan(markup.indexOf("Armies"));
     expect(markup.indexOf("Armies")).toBeLessThan(markup.indexOf("Coastal Watch"));
+  });
+
+  it("the rail offers Other factions between All my units and the Armies", () => {
+    const markup = draw();
+
+    expect(markup).toContain('data-testid="unit-source-foreign"');
+    expect(markup).toContain("Other factions");
+    expect(markup.indexOf("All my units")).toBeLessThan(markup.indexOf("Other factions"));
+    expect(markup.indexOf("Other factions")).toBeLessThan(markup.indexOf("Armies"));
+  });
+
+  it("offers Other factions with no game open, and counts them", () => {
+    // It needs a report, not a game: unlike the Armies group it is always drawn, and a count of
+    // zero is a true and useful statement.
+    const markup = draw({ canEdit: false, foreignCount: 0 });
+
+    expect(markup).toContain('data-testid="unit-source-foreign"');
+    expect(markup).toContain("Other factions");
+    expect(markup).not.toContain("+ New Army");
+  });
+
+  it("marks Other factions as the chosen source when it is", () => {
+    const markup = draw({ source: FOREIGN_SOURCE });
+
+    expect(markup).toMatch(/data-testid="unit-source-foreign"[^>]*data-selected="true"/u);
+    expect(markup).toMatch(/data-testid="unit-source-own"[^>]*data-selected="false"/u);
   });
 
   it("counts the hex and the player's own units beside their entries", () => {

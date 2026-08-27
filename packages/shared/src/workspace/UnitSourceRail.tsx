@@ -1,7 +1,7 @@
 import type { ArmyRecord } from "@atlantis/core-client";
 import type { RailEvent, RailMode } from "./railEditState";
 import { canCommit, keyToAction } from "./railEditState";
-import { HEX_SOURCE, OWN_SOURCE, sameSource, type UnitSource } from "./unitSource";
+import { FOREIGN_SOURCE, HEX_SOURCE, OWN_SOURCE, sameSource, type UnitSource } from "./unitSource";
 
 /**
  * The units dock's source rail: *This hex*, *All my units*, then each Army (`ah-1mpx.2`).
@@ -22,6 +22,7 @@ export function UnitSourceRail({
   armies,
   hexCount,
   ownCount,
+  foreignCount,
   mode,
   onEvent,
   canEdit
@@ -32,6 +33,8 @@ export function UnitSourceRail({
   /** The selected hex's unit count, or null when no hex is selected - the count is then omitted. */
   hexCount: number | null;
   ownCount: number;
+  /** Units in the report belonging to anyone but you. Always drawn, and zero is a real answer. */
+  foreignCount: number;
   mode: RailMode;
   onEvent: (event: RailEvent) => void;
   /** False when no game is open: the Armies group and "+ New Army" are then not rendered at all. */
@@ -61,6 +64,13 @@ export function UnitSourceRail({
         count={ownCount}
         selected={source.kind === "own"}
         onSelect={() => onSource(OWN_SOURCE)}
+      />
+      <RailEntry
+        testId="unit-source-foreign"
+        label="Other factions"
+        count={foreignCount}
+        selected={source.kind === "foreign"}
+        onSelect={() => onSource(FOREIGN_SOURCE)}
       />
 
       {canEdit ? (

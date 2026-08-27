@@ -1,13 +1,17 @@
 import type {
   CoreClient,
+  DeclaredAttitudes,
   OpenedGame,
   RegionPreview,
   ReportUnit,
   UnitSilver
 } from "@atlantis/core-client";
 import {
+  forwardRef,
   Fragment,
+  useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useReducer,
@@ -52,20 +56,25 @@ import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
 import { useSettingsStore } from "../settingsStore";
 import { useWorkspaceStore } from "../workspaceStore";
 import { useArmiesStore } from "../armiesStore";
+import { attitudeToward } from "../factionDossier";
 import { AddToArmyMenu } from "./AddToArmyMenu";
 import { armyRows, seenLabel, staleLine, type ArmyRows } from "./armyRows";
 import { ChipPopover } from "./popover";
+import { ForeignStrip } from "./ForeignStrip";
+import { foreignEmptyLine, pinForRow, pinnedRows, pinStillApplies } from "./foreignUnits";
 import { reduce as reduceRail, type RailMode } from "./railEditState";
 import { UnitSourceRail } from "./UnitSourceRail";
 import { useArmyActions } from "./useArmyActions";
 import {
   drawnColumnsFor,
   extraColumnsFor,
+  FOREIGN_SOURCE,
   headerFor,
   HEX_SOURCE,
   sortSurvives,
   sourceStillThere,
   type DrawnColumn,
+  type FactionPin,
   type UnitSource
 } from "./unitSource";
 import { CollapsiblePanel } from "./CollapsiblePanel";
@@ -121,23 +130,16 @@ const SORTABLE_COLUMNS: ReadonlySet<UnitColumn> = new Set<UnitColumn>([
 const NO_LONG_ORDERS: ReadonlyMap<string, string | null> = new Map();
 const NO_SILVER: ReadonlyMap<string, number | null> = new Map();
 
-export function UnitTableDock({
-  hex,
-  preview = null,
-  getLongOrder,
-  getSilver,
-  silverWarnings,
-  onSelectUnit,
-  renderFactionName,
-  ownUnits,
-  unitsById,
-  currentTurn = null,
-  client,
-  game = null,
-  onFailure,
-  onExportArmy,
-  initialSource = HEX_SOURCE
-}: {
+/**
+ * What the shell may ask of the dock. The state stays here; only the action crosses the boundary.
+ * Modelled on `MapCanvasHandle` and `OrdersEditorHandle`.
+ */
+export type UnitTableDockHandle = {
+  /** Shows one faction's units: selects `Other factions` and pins it. */
+  showForeignFaction(pin: FactionPin): void;
+};
+
+type UnitTableDockProps = {
   hex: HexNode | null;
   /** The hex's slice of the orders preview, so rows show the coming month. */
   preview?: RegionPreview | null;
@@ -180,7 +182,41 @@ export function UnitTableDock({
    * way in (`testing/README.md`).
    */
   initialSource?: UnitSource;
-}) {
+  /** Every unit in this turn's report that is not yours, for `Other factions` (`ah-1mpx.5`). */
+  foreignUnits?: ReportUnit[];
+  /**
+   * The pin the pane starts with. A test seam exactly like `initialSource`: the shell never passes
+   * it, and a static render cannot click its way to a pinned state.
+   */
+  initialPin?: FactionPin | null;
+  /** The faction attitudes this turn's report declares, for the `Other factions` strip. */
+  attitudes?: DeclaredAttitudes | null;
+};
+
+export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>(
+  function UnitTableDock(
+    {
+      hex,
+      preview = null,
+      getLongOrder,
+      getSilver,
+      silverWarnings,
+      onSelectUnit,
+      renderFactionName,
+      ownUnits,
+      unitsById,
+      currentTurn = null,
+      client,
+      game = null,
+      onFailure,
+      onExportArmy,
+      initialSource = HEX_SOURCE,
+      foreignUnits,
+      initialPin = null,
+      attitudes = null
+    },
+    ref
+  ) {
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
   const columnShares = useWorkspaceStore((state) => state.unitColumnShares);
@@ -207,6 +243,7 @@ export function UnitTableDock({
   // the rail is complete from its first paint (`ah-1mpx.2` S1).
   const armies = useArmiesStore((state) => state.armies);
   const [source, setSource] = useState<UnitSource>(initialSource);
+  const [pin, setPin] = useState<FactionPin | null>(initialPin);
   const [mode, dispatch] = useReducer(reduceRail, { kind: "idle" } as RailMode);
   const [menuOpen, setMenuOpen] = useState(false);
   const canEditArmies = Boolean(client && game);
@@ -224,6 +261,10 @@ export function UnitTableDock({
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const refocusWanted = useRef(false);
+  // The strip's ✕, so a pin that leaves the table empty has somewhere to put the keyboard.
+  const unpinRef = useRef<HTMLButtonElement | null>(null);
+  // Set by `showForeignFaction`; spent by the effect below, once the rows it asks for exist.
+  const focusFirstWanted = useRef(false);
 
   const regionId = hex?.regionId ?? null;
 
@@ -237,6 +278,12 @@ export function UnitTableDock({
   useEffect(() => {
     setSource((current) => sourceStillThere(current, armyIds));
   }, [armyIds]);
+
+  // The pin dies when the source changes and survives everything else - a turn load included,
+  // since a pin is a faction *number* and those are stable across turns (round 3, Q1).
+  useEffect(() => {
+    setPin((current) => pinStillApplies(source, current));
+  }, [source]);
 
   // A sort on a column the new source does not draw is a table in an order nothing explains.
   useEffect(() => {
@@ -262,8 +309,12 @@ export function UnitTableDock({
     if (source.kind === "own") {
       return { ...NO_ARMY_ROWS, rows: ownUnits ?? [] };
     }
+    if (source.kind === "foreign") {
+      // The spread is `ArmyRows.rows` being `ReportUnit[]` where `pinnedRows` answers readonly.
+      return { ...NO_ARMY_ROWS, rows: [...pinnedRows(foreignUnits ?? [], pin)] };
+    }
     return army ? armyRows(army, unitsById ?? new Map(), currentTurn) : NO_ARMY_ROWS;
-  }, [source, hex, preview, ownUnits, army, unitsById, currentTurn]);
+  }, [source, hex, preview, ownUnits, foreignUnits, pin, army, unitsById, currentTurn]);
 
   const units = sourced.rows;
   const extras = useMemo(() => extraColumnsFor(source), [source]);
@@ -317,6 +368,37 @@ export function UnitTableDock({
     () => visible.findIndex((unit) => unit.unitId === selectedUnitId),
     [visible, selectedUnitId]
   );
+
+  /**
+   * Shows one faction's units, for the dossier popover's line into the list.
+   *
+   * The state stays here and only the action crosses the boundary, as `MapCanvas` puts it: the
+   * shell holds a ref, not a copy of the source. Focus cannot be taken here, because the row it
+   * wants does not exist until the rows recompute - the effect below spends the request instead.
+   */
+  const showForeignFaction = useCallback((next: FactionPin) => {
+    setSource(FOREIGN_SOURCE);
+    setPin(next);
+    focusFirstWanted.current = true;
+  }, []);
+  useImperativeHandle(ref, () => ({ showForeignFaction }), [showForeignFaction]);
+
+  useEffect(() => {
+    if (!focusFirstWanted.current) {
+      return;
+    }
+    focusFirstWanted.current = false;
+    // The first row *after* sorting and filtering: the row the eye lands on (round 3, Q2). It is
+    // also the cursor, so the Unit panel fills in at once.
+    const first = visible[0];
+    if (first) {
+      selectUnit(first.unitId);
+      // The existing scroll-into-view-then-focus machinery, not a second focus effect.
+      refocusWanted.current = true;
+    } else {
+      unpinRef.current?.focus();
+    }
+  }, [visible, selectUnit]);
 
   const { start, end } = windowRange(
     scrollTop,
@@ -494,7 +576,10 @@ export function UnitTableDock({
       End: () => moveSelection(visible.length - 1),
       Enter: () => selectUnit(visible[index]?.unitId ?? null),
       // Without this, Space scrolls the container out from under the row.
-      " ": () => selectUnit(visible[index]?.unitId ?? null)
+      " ": () => selectUnit(visible[index]?.unitId ?? null),
+      // Escape on a row means "unpin", not "close the window" - the shared tail below
+      // preventDefaults it, which is right here. It does not change the source.
+      Escape: () => setPin(null)
     };
     const handler = keys[event.key];
     if (handler) {
@@ -529,7 +614,9 @@ export function UnitTableDock({
     armyName: army?.name ?? null,
     unitCount: units.length,
     shownCount: visible.length,
-    hexHint
+    hexHint,
+    pin,
+    foreignTotal: foreignUnits?.length ?? 0
   });
 
   const selectedUnit = useMemo(
@@ -537,7 +624,24 @@ export function UnitTableDock({
     [visible, selectedUnitId]
   );
   const missing = staleLine(sourced.missing);
-  const nothingToSay = emptyLine({ source, hex, stale, armyName: army?.name ?? null, hasReport: currentTurn !== null });
+  const foreignEmpty =
+    source.kind === "foreign"
+      ? foreignEmptyLine({
+          hasReport: currentTurn !== null,
+          total: foreignUnits?.length ?? 0,
+          pinned: units.length,
+          shown: visible.length,
+          pin
+        })
+      : null;
+  const nothingToSay = emptyLine({
+    source,
+    hex,
+    stale,
+    armyName: army?.name ?? null,
+    hasReport: currentTurn !== null,
+    foreign: foreignEmpty?.text ?? null
+  });
 
   return (
     <CollapsiblePanel
@@ -604,6 +708,7 @@ export function UnitTableDock({
           armies={armies}
           hexCount={hex ? unitsForHex(hex).length : null}
           ownCount={ownUnits?.length ?? 0}
+          foreignCount={foreignUnits?.length ?? 0}
           mode={mode}
           onEvent={(event) => {
             dispatch(event);
@@ -628,6 +733,14 @@ export function UnitTableDock({
                 void actions.remove(army.id);
                 dispatch({ type: "deleted" });
               }}
+            />
+          ) : null}
+          {source.kind === "foreign" && pin ? (
+            <ForeignStrip
+              pin={pin}
+              attitude={pin.kind === "hidden" ? null : attitudeToward(attitudes, pin.factionId)}
+              onClear={() => setPin(null)}
+              buttonRef={unpinRef}
             />
           ) : null}
           {army && missing ? (
@@ -657,9 +770,21 @@ export function UnitTableDock({
             </p>
           ) : null}
       {units.length === 0 ? (
-        <Absent>{nothingToSay}</Absent>
+        <Absent>
+          {nothingToSay}
+          {foreignEmpty?.showAll ? (
+            <button
+              type="button"
+              data-testid="foreign-show-all"
+              onClick={() => setPin(null)}
+              className="ml-2 rounded border border-edge px-2 py-0.5 text-pane text-ink hover:bg-panel focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
+            >
+              {foreignEmpty.showAll}
+            </button>
+          ) : null}
+        </Absent>
       ) : visible.length === 0 ? (
-        <Absent>No unit matches that filter.</Absent>
+        <Absent>{foreignEmpty?.text ?? "No unit matches that filter."}</Absent>
       ) : (
         <div
           ref={setScroller}
@@ -815,6 +940,7 @@ export function UnitTableDock({
                   countUpkeep={countUpkeep}
                   onSelectUnit={onSelectUnit}
                   renderFactionName={renderFactionName}
+                  onPinFaction={source.kind === "foreign" ? setPin : undefined}
                   onKeyDown={onRowKeyDown}
                   onPointerRest={restOn}
                   onPointerAt={(point) => {
@@ -843,7 +969,7 @@ export function UnitTableDock({
       </div>
     </CollapsiblePanel>
   );
-}
+});
 
 /**
  * What the Hex column shows: the hex's coordinates, out of the `z:x,y` a region id is.
@@ -999,6 +1125,8 @@ function emptyLine(args: {
   stale: boolean;
   armyName: string | null;
   hasReport: boolean;
+  /** `foreignEmptyLine`'s sentence for the `Other factions` source; every word of it is its rule. */
+  foreign?: string | null;
 }): ReactNode {
   if (args.source.kind === "hex") {
     return args.hex
@@ -1012,6 +1140,9 @@ function emptyLine(args: {
   }
   if (args.source.kind === "own") {
     return "No units of your own in this turn's report.";
+  }
+  if (args.source.kind === "foreign") {
+    return args.foreign;
   }
   return (
     <>
@@ -1178,6 +1309,7 @@ function UnitRow({
   countUpkeep,
   onSelectUnit,
   renderFactionName,
+  onPinFaction,
   seen,
   fromReport,
   onRemove
@@ -1216,6 +1348,11 @@ function UnitRow({
   onSelectUnit?: (unitId: string) => void;
   /** Wraps a foreign faction's name so it can open that faction's dossier (ah-bu2c). */
   renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
+  /**
+   * Narrows `Other factions` to what this row's faction cell names. Absent in every other source:
+   * pinning narrows a list, and no other source has a list to narrow (`ah-1mpx.5`, Q4).
+   */
+  onPinFaction?: (pin: FactionPin) => void;
   /** What the Seen column reads: `now`, or `turn 68` for a remembered member. */
   seen: string;
   /** False for an Army member this turn's report does not mention - its Hex reads dimmed. */
@@ -1248,6 +1385,10 @@ function UnitRow({
   // `FORM` - a unit that does not exist cannot be selected, and its orders are typed there anyway
   // (decisions C1, I2, `ah-jw85`).
   const rowTarget = silver?.formed?.formedBy ?? unit.unitId;
+  // Which pin this row's faction cell would set, and so whether that cell is a control at all.
+  // One rule, in `foreignUnits.ts`, rather than a second concealed-test spelled out down here that
+  // could drift from it.
+  const factionPin = onPinFaction ? pinForRow(unit) : null;
   // The silver findings that name this unit - `not-enough-silver`, or `upkeep-exceeds-unclaimed`
   // where the faction's unclaimed fund could not reach it (`ah-fjty`). In a hex whose units share,
   // the shortfall finding is anchored to the hex and names no unit, and blaming one of several
@@ -1317,19 +1458,39 @@ function UnitRow({
         ) : null}
       </Td>
     ),
-    // A foreign faction that names itself can be opened; a concealed one (factionId null) has
-    // nothing to open, so it stays a dash, and our own faction is printed plainly - the faction
-    // view already says everything a dossier would, and a second button in a row of ours would
-    // make "the button in this row" ambiguous for everything that selects a unit that way.
+    // A foreign faction that names itself can be opened; a concealed one has nothing to open, and
+    // our own faction is printed plainly - the faction view already says everything a dossier
+    // would, and a second button in a row of ours would make "the button in this row" ambiguous
+    // for everything that selects a unit that way.
+    //
+    // `not shown` rather than the dash it used to read: the dash says "nothing here" where the
+    // truth is that somebody owns this unit and the rules do not let you know who (`rules/stealthobs`,
+    // Q4). Inside `Other factions` it also pins every unit hiding its owner; elsewhere it is plain
+    // text, because there is no list for it to narrow.
     faction: (
       <Td className="truncate">
-        {unit.factionName === null || unit.factionId === null
-          ? "—"
-          : unit.own
-            ? `${unit.factionName} (${unit.factionId})`
-            : renderFactionName
-              ? renderFactionName(unit.factionId, `${unit.factionName} (${unit.factionId})`)
-              : `${unit.factionName} (${unit.factionId})`}
+        {unit.factionName === null || unit.factionId === null ? (
+          onPinFaction && factionPin?.kind === "hidden" ? (
+            <button
+              type="button"
+              data-testid="foreign-pin-hidden"
+              // Every control inside a row: the table is one tab stop per row with a roving index.
+              tabIndex={-1}
+              onClick={() => onPinFaction(factionPin)}
+              className={UNIT_LINK_CLASS}
+            >
+              not shown
+            </button>
+          ) : (
+            <span className="text-ink-dim">not shown</span>
+          )
+        ) : unit.own ? (
+          `${unit.factionName} (${unit.factionId})`
+        ) : renderFactionName ? (
+          renderFactionName(unit.factionId, `${unit.factionName} (${unit.factionId})`)
+        ) : (
+          `${unit.factionName} (${unit.factionId})`
+        )}
       </Td>
     ),
     // A tilde marks a count the parser guessed at; the unit panel spells out why. A count the
@@ -1342,13 +1503,20 @@ function UnitRow({
         {describeMenBriefly(unit)}
       </Td>
     ),
+    // A report discloses a foreign unit's large items and never its skills (`rules/reportformat`),
+    // so an empty cell there would be indistinguishable from a unit that genuinely has none - which
+    // for one of ours it does mean, since our own report prints `Skills: none.` (Q3).
     skills: (
       <Td
         className={`truncate${skillsChange ? ` ${PREDICTED}` : ""}`}
         predicted={Boolean(skillsChange)}
         title={originalTooltip(skillsChange)}
       >
-        {skills}
+        {skills === "" && !unit.own ? (
+          <span className="italic text-ink-dim">not disclosed</span>
+        ) : (
+          skills
+        )}
       </Td>
     ),
     items: (
