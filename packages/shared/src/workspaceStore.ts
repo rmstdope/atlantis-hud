@@ -35,8 +35,14 @@ import {
 import type { SavedMapView } from "./workspace/mapViewportStorage";
 import type { Viewport } from "./workspace/mapViewport";
 
-/** The four panels that can be folded away to open up the map. */
-export type PanelName = "region" | "unit" | "orders" | "units" | "planner";
+/**
+ * The four panels that can be folded away to open up the map.
+ *
+ * `unit` is the shared Unit/Movement slot: the movement planner stopped being a panel of its own in
+ * ah-zh5i.2, when the two came to share one slot as two tabs, and one fold covers both. The name
+ * stayed `unit` because `data-testid="panel-unit"` is load-bearing across three smoke spec files.
+ */
+export type PanelName = "region" | "unit" | "orders" | "units";
 
 /**
  * Map layers the toolbar toggles. Every one of them drives the map.
@@ -103,9 +109,19 @@ export type PlannerState = {
   destinationId: string | null;
 };
 
+/** Which of the shared Unit/Movement slot's two tabs the player is looking at. */
+export type SlotTab = "unit" | "movement";
+
 export type WorkspaceState = {
   game: WorkspaceGame | null;
   planner: PlannerState;
+  /**
+   * Which tab of the shared Unit/Movement slot the player last asked for; null while nobody has.
+   *
+   * Transient on purpose, like `planner` itself: a reload has no route, so a remembered Movement
+   * tab would open on an empty one.
+   */
+  unitSlotTab: SlotTab | null;
   selectedRegionId: string | null;
   selectedUnitId: string | null;
   /**
@@ -261,14 +277,15 @@ export type WorkspaceState = {
   planTo: (destinationId: string) => void;
   /** Clears the route and any armed pick. */
   clearPlan: () => void;
+  /** Records a tab the player clicked. */
+  showUnitSlotTab: (tab: SlotTab) => void;
 };
 
 const INITIAL_COLLAPSED: Record<PanelName, boolean> = {
   region: false,
   unit: false,
   orders: false,
-  units: false,
-  planner: false
+  units: false
 };
 
 const INITIAL_LAYERS: Record<LayerName, boolean> = {
@@ -378,6 +395,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       badges: allBadges(true),
       regionProblemsShown: true,
       planner: { armed: false, destinationId: null },
+      unitSlotTab: null,
       mapView: NO_MAP_VIEW,
 
       openGame: (game, saved) =>
@@ -519,9 +537,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set((state) => ({ regionProblemsShown: !state.regionProblemsShown })),
       showRegionProblems: () => set({ regionProblemsShown: true }),
 
-      armPlanner: () => set((state) => ({ planner: { ...state.planner, armed: true } })),
-      planTo: (destinationId) => set(() => ({ planner: { armed: false, destinationId } })),
-      clearPlan: () => set(() => ({ planner: { armed: false, destinationId: null } }))
+      // Anything the planner has to say - armed, working, routed or refused - takes the shared
+      // slot, so an auto-switch always wins over a tab the player chose earlier. Clearing gives the
+      // slot back to the unit, which is what null means.
+      armPlanner: () =>
+        set((state) => ({ planner: { ...state.planner, armed: true }, unitSlotTab: "movement" })),
+      planTo: (destinationId) =>
+        set(() => ({ planner: { armed: false, destinationId }, unitSlotTab: "movement" })),
+      clearPlan: () =>
+        set(() => ({ planner: { armed: false, destinationId: null }, unitSlotTab: null })),
+      showUnitSlotTab: (tab) => set({ unitSlotTab: tab })
     }),
     {
       name: "atlantis-hud-workspace",
@@ -599,6 +624,7 @@ export function resetWorkspaceStore() {
     layers: INITIAL_LAYERS,
     badges: allBadges(true),
     regionProblemsShown: true,
+    unitSlotTab: null,
     mapView: NO_MAP_VIEW
   });
 }

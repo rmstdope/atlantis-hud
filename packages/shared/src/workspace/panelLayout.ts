@@ -20,6 +20,19 @@ const STRIP = "flex-none";
 const FLEXIBLE = "min-h-0 flex-1";
 
 /**
+ * The shared Unit/Movement slot, open: the flexible one, but with a floor under it.
+ *
+ * `FLEXIBLE`'s `min-h-0` is precisely what let this slot be crushed to two pixels once the Movement
+ * panel stood beside the unit's own lines and asked for 245px of a 249px column - the orders editor
+ * below it was then laid out underneath the units pane and could not be clicked at all (ah-zh5i.2).
+ *
+ * Written out literally rather than interpolated from `SLOT_MIN_REM`: Tailwind scans source for
+ * whole class names, so a templated one emits no CSS. The two must agree, and the test in
+ * `panelLayout.test.ts` is what holds them together.
+ */
+const FLOORED = "min-h-[5.75rem] flex-1";
+
+/**
  * The right column's default division: the unit panel takes the slack and the editor is pinned.
  *
  * The floor and ceiling both matter. Nineteen rems is around fifteen order lines, and the ceiling
@@ -34,13 +47,22 @@ const CUSTOM_EDITOR = "min-h-[9rem] flex-none";
 /** The editor's default pin, and the bounds the drag and the stored value respect. */
 export const ORDERS_DEFAULT_REM = 19;
 export const ORDERS_MIN_REM = 9; // today's min-h-[9rem], kept
-export const UNIT_MIN_REM = 6; // the unit panel may not be dragged below this
+/**
+ * The shared Unit/Movement slot may not be squeezed below this, by a drag or by its own content.
+ *
+ * 5.75rem = 92px, the same derivation `UNITS_MIN_REM` uses: title bar 28 + body padding 16 + 48px
+ * of content. It came down from 6rem for a pixel: 6 + 9 + 0.625 = 15.625rem = 250px, one pixel more
+ * than the 249px the right-hand column actually gets at the pinned 1280x720 window - see
+ * `rightColumnRemFor`, which is what makes that a checkable number rather than an observed one.
+ */
+export const SLOT_MIN_REM = 5.75;
 export const ORDERS_MAX_REM = 60; // sanity ceiling for stored values only
 export const SPLIT_STEP_REM = 1; // one arrow-key press
 export const RAIL_GAP_REM = 0.625; // the column's gap-2.5
 
-export function unitSlotClass(collapsed: Collapsed): string {
-  return collapsed.unit ? STRIP : FLEXIBLE;
+/** The shared Unit/Movement slot: a title bar when folded, otherwise the flexible one with a floor. */
+export function slotClass(collapsed: Collapsed): string {
+  return collapsed.unit ? STRIP : FLOORED;
 }
 
 export function ordersSlotClass(collapsed: Collapsed, hasCustomHeight: boolean): string {
@@ -77,12 +99,12 @@ export type DragResult = { rem: number; atLimit: boolean };
  * `startRem` is where the editor stood when the gesture began, `deltaRem` is how far the pointer
  * moved converted to rem (positive means the editor grows), and `railRem` is the whole column's
  * height. The ceiling follows the rail, not a fixed number, so a short window still leaves the
- * unit panel `UNIT_MIN_REM` plus one gap of its own; if the rail is too short to hold both floors
+ * shared slot `SLOT_MIN_REM` plus one gap of its own; if the rail is too short to hold both floors
  * at once, the orders floor wins outright.
  */
 export function dragOrdersHeight(startRem: number, deltaRem: number, railRem: number): DragResult {
   const raw = startRem + deltaRem;
-  const ceiling = railRem - UNIT_MIN_REM - RAIL_GAP_REM;
+  const ceiling = railRem - SLOT_MIN_REM - RAIL_GAP_REM;
   if (ceiling < ORDERS_MIN_REM) {
     return { rem: ORDERS_MIN_REM, atLimit: true };
   }
@@ -121,13 +143,55 @@ export function railRemFor(viewportPx: number, headerPx: number, rootFontPx: num
  * arithmetic, because a seam that can disagree with the thing it describes would still be believed.
  */
 export function railHasRoomToDrag(railRem: number): boolean {
-  return railRem - UNIT_MIN_REM - RAIL_GAP_REM > 0;
+  return railRem - SLOT_MIN_REM - RAIL_GAP_REM > 0;
+}
+
+/** The overlay column's `pt-12`, which keeps the map's control strip clear. */
+export const OVERLAY_TOP_REM = 3;
+/** The overlay column's `p-2.5`, at the bottom edge. */
+export const OVERLAY_PAD_REM = 0.625;
+
+/**
+ * How much vertical room the right-hand column has, in rem, once the header, the overlay's own
+ * padding, the gap above the units pane and the units pane itself have taken their share.
+ *
+ * `railRemFor` answers a different and larger question - the whole overlay - and nothing in the
+ * shell calls it; it is a seam with tests only. This is the number the panels in the right-hand
+ * column actually divide up, and it is what turns "the editor ended up behind the units pane" into
+ * an arithmetic a test can check before anybody opens a window.
+ */
+export function rightColumnRemFor(
+  viewportPx: number,
+  headerPx: number,
+  rootFontPx: number,
+  unitsPaneRem: number
+): number {
+  if (!Number.isFinite(rootFontPx) || rootFontPx <= 0) {
+    return 0;
+  }
+  const leftoverPx = viewportPx - headerPx;
+  if (!Number.isFinite(leftoverPx) || leftoverPx <= 0) {
+    return 0;
+  }
+  const rem =
+    leftoverPx / rootFontPx - OVERLAY_TOP_REM - OVERLAY_PAD_REM - RAIL_GAP_REM - unitsPaneRem;
+  return Number.isFinite(rem) && rem > 0 ? rem : 0;
+}
+
+/**
+ * What the right-hand column must be able to hold: both floors and the gap between them.
+ *
+ * Kept against `rightColumnRemFor` by a test at the suite's pinned 1280x720 viewport, so a panel
+ * that grows its floor fails there rather than by painting itself over the units pane.
+ */
+export function rightColumnFloorsRem(): number {
+  return SLOT_MIN_REM + RAIL_GAP_REM + ORDERS_MIN_REM;
 }
 
 /**
  * Inline style for the orders slot, or null while the default pin applies.
  *
- * The `maxHeight` is the clamp-to-fit on a short window: the unit panel keeps `UNIT_MIN_REM` plus
+ * The `maxHeight` is the clamp-to-fit on a short window: the shared slot keeps `SLOT_MIN_REM` plus
  * one gap of the rail's `gap-2.5` above the editor and below the region column's own padding, and
  * the stored preference is untouched underneath it - it comes back once the window grows again.
  */
@@ -140,7 +204,7 @@ export function ordersSlotStyle(
   }
   return {
     height: `${ordersHeightRem}rem`,
-    maxHeight: `calc(100% - ${UNIT_MIN_REM + RAIL_GAP_REM}rem)`
+    maxHeight: `calc(100% - ${SLOT_MIN_REM + RAIL_GAP_REM}rem)`
   };
 }
 

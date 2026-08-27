@@ -180,7 +180,7 @@ import {
   RAIL_LEFT_DEFAULT_REM,
   RAIL_RIGHT_DEFAULT_REM,
   railWidthStyle,
-  unitSlotClass,
+  slotClass,
   unitsSlotClass,
   unitsSlotStyle,
   UNITS_DEFAULT_REM,
@@ -189,7 +189,6 @@ import {
 } from "./panelLayout";
 import { PanelSplitter } from "./PanelSplitter";
 import { RailSplitter } from "./RailSplitter";
-import { PlannerPanel } from "./PlannerPanel";
 import { chooseRouteOverlay } from "./routeOverlay";
 import { RegionPanel } from "./RegionPanel";
 import { ProblemsPanel } from "./ProblemsPanel";
@@ -199,7 +198,7 @@ import type { UnreadableLine } from "@atlantis/core-client";
 import { TradePanel } from "./TradePanel";
 import { arrowFor } from "./tradeArrow";
 import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
-import { UnitPanel } from "./UnitPanel";
+import { UnitMovementSlot } from "./UnitMovementSlot";
 import { UnitTableDock } from "./UnitTableDock";
 import { dossierFor } from "../factionDossier";
 import { FloatingFactionDossier, MeasuredFactionDossier } from "./FactionDossierPanel";
@@ -3603,8 +3602,15 @@ export function AppShell({
               style={railWidthStyle(rightRailWidthRem ?? RAIL_RIGHT_DEFAULT_REM) ?? undefined}
               data-map-overlay="right"
             >
-              <div className={unitSlotClass(collapsed)}>
-                <UnitPanel
+              {/*
+                One slot for the unit and the movement planner, as two tabs. The column has 249px
+                at 1280x720 and two panels is what fits in it; stacking the planner as a third put
+                the orders editor underneath the units pane (ah-zh5i.2). The planner is still
+                behind its feature flag, off by default, and with it off this is the unit panel
+                exactly as it always was.
+              */}
+              <div className={slotClass(collapsed)}>
+                <UnitMovementSlot
                   unit={unit}
                   hex={hex}
                   preview={unitPreview}
@@ -3621,25 +3627,23 @@ export function AppShell({
                   onOpenMagicTree={
                     magicTree === null ? undefined : (tag) => setMagicTreeOpen({ tag })
                   }
+                  planner={
+                    movementPlanner
+                      ? {
+                          armed: planner.armed,
+                          busy: planning,
+                          answer: route,
+                          onArm: armPlanner,
+                          onClear: () => {
+                            clearPlan();
+                            setRoute(null);
+                          },
+                          onApply: applyRoute
+                        }
+                      : null
+                  }
                 />
               </div>
-              {/* Behind its feature flag, off by default: the pane is still finding its shape. */}
-              {movementPlanner ? (
-                <div className="flex-none">
-                  <PlannerPanel
-                    unit={unit}
-                    armed={planner.armed}
-                    busy={planning}
-                    answer={route}
-                    onArm={armPlanner}
-                    onClear={() => {
-                      clearPlan();
-                      setRoute(null);
-                    }}
-                    onApply={applyRoute}
-                  />
-                </div>
-              ) : null}
               {!collapsed.unit && !collapsed.orders ? (
                 <PanelSplitter
                   slot={ordersSlotRef}

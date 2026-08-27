@@ -670,6 +670,92 @@ describe("the planner's own state", () => {
   });
 });
 
+describe("the fold flags a build before the shared slot wrote (ah-zh5i.2)", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("keeps a stored unit fold and drops a stored planner one", () => {
+    // `planner` was its own panel until the Unit and Movement panels came to share one slot. A
+    // record written then still carries the key; `reconcile` drops anything outside the defaults,
+    // which is the whole of the migration - and the `unit` flag, which the shared slot now uses,
+    // has to survive it.
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+    const merged = merge?.(
+      { collapsed: { unit: true, planner: false }, layers: {}, badges: {} },
+      store()
+    ) as ReturnType<typeof store> | undefined;
+
+    expect(merged?.collapsed.unit).toBe(true);
+    expect(merged?.collapsed).not.toHaveProperty("planner");
+  });
+
+  it("has no planner panel left to fold", () => {
+    expect(store().collapsed).not.toHaveProperty("planner");
+  });
+});
+
+describe("the shared Unit/Movement slot's tab", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("starts on the unit tab", () => {
+    expect(store().unitSlotTab).toBeNull();
+  });
+
+  it("switches to movement when the planner is armed", () => {
+    store().armPlanner();
+
+    expect(store().unitSlotTab).toBe("movement");
+  });
+
+  it("switches to movement when a destination is picked", () => {
+    store().planTo("1:7,51");
+
+    expect(store().unitSlotTab).toBe("movement");
+  });
+
+  it("goes back to the unit tab when the plan is cleared", () => {
+    store().planTo("1:7,51");
+
+    store().clearPlan();
+
+    expect(store().unitSlotTab).toBeNull();
+  });
+
+  it("lets the player choose, and takes it back on the next plan", () => {
+    store().planTo("1:7,51");
+    store().showUnitSlotTab("unit");
+    expect(store().unitSlotTab).toBe("unit");
+
+    store().armPlanner();
+
+    expect(store().unitSlotTab).toBe("movement");
+  });
+
+  /**
+   * A reload has no route, so a remembered Movement tab would open on an empty one. The tab is
+   * transient for the same reason `planner` itself is.
+   */
+  it("is not among the things that survive a reload", () => {
+    store().armPlanner();
+
+    const storage = useWorkspaceStore.persist.getOptions().storage;
+    const persisted = storage?.getItem("atlantis-hud-workspace") as
+      | { state?: Record<string, unknown> }
+      | null
+      | undefined;
+
+    expect(persisted?.state).toBeDefined();
+    expect(persisted?.state).not.toHaveProperty("unitSlotTab");
+  });
+
+  it("is forgotten when the store is reset", () => {
+    store().armPlanner();
+
+    resetWorkspaceStore();
+
+    expect(store().unitSlotTab).toBeNull();
+  });
+});
+
 describe("the units table's stored column shares (ah-1owr.2)", () => {
   beforeEach(resetWorkspaceStore);
 

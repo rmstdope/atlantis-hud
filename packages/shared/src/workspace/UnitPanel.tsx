@@ -27,7 +27,7 @@ const PREVIEW = 8;
  * With an orders preview for the unit, the name and flags show the coming month - the fields the
  * table has no room for - each styled as predicted and carrying what the report said.
  */
-export function UnitPanel({
+export function UnitPanelBody({
   unit,
   hex,
   preview = null,
@@ -64,32 +64,21 @@ export function UnitPanel({
   const magicLinkable =
     magicTree !== null && onOpenMagicTree !== undefined ? onOpenMagicTree : null;
   const stale = hex?.knowledge === "stale";
-  const asOf = stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null;
 
   if (!unit) {
-    return (
-      <CollapsiblePanel panel="unit" title="Unit">
-        <Absent>No unit selected.</Absent>
-      </CollapsiblePanel>
-    );
+    return <Absent>No unit selected.</Absent>;
   }
 
   const items = [...unit.items].sort((left, right) => right.amount - left.amount);
   const mage = magicTree === null ? null : highestMagicSkill(unit.skills, magicTree);
 
-  // What the orders make of the unit, where they touch what this panel shows.
-  const nameChange = preview?.changes.find((change) => change.field === "name");
+  // What the orders make of the unit, where they touch what this panel shows. The predicted *name*
+  // belongs to the title bar rather than the body, so `unitPanelHint` derives it instead.
   const flagsChange = preview?.changes.find((change) => change.field === "flags");
-  const predictedName = nameChange ? preview?.unit.name : null;
   const predictedFlags = flagsChange ? preview?.unit.flags : null;
 
   return (
-    <CollapsiblePanel
-      panel="unit"
-      title="Unit"
-      hint={`— ${predictedName ?? unit.name} (${unit.unitId})`}
-      asOf={asOf}
-    >
+    <>
       {stale && hex.lastSeenTurn !== null ? (
         <StaleBanner lastSeenTurn={hex.lastSeenTurn} ageInTurns={hex.ageInTurns ?? 0} />
       ) : null}
@@ -205,6 +194,45 @@ export function UnitPanel({
           </>
         )}
       </Section>
+    </>
+  );
+}
+
+/**
+ * What the unit's title bar says about it: the `— name (id)` hint and the stale-turn marker.
+ *
+ * Pulled out of the panel because the shared Unit/Movement slot's title bar is a tab strip with no
+ * room for either, so the Unit tab renders these as its own first line instead (ah-zh5i.2). The
+ * name is the predicted one where the orders rename the unit, exactly as the panel always showed it.
+ */
+export function unitPanelHint(
+  unit: ReportUnit | null,
+  hex: HexNode | null,
+  preview: UnitPreview | null
+): { hint: string | undefined; asOf: string | null } {
+  const stale = hex?.knowledge === "stale";
+  const asOf = stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null;
+  if (!unit) {
+    return { hint: undefined, asOf };
+  }
+  const nameChange = preview?.changes.find((change) => change.field === "name");
+  const predictedName = nameChange ? preview?.unit.name : null;
+  return { hint: `— ${predictedName ?? unit.name} (${unit.unitId})`, asOf };
+}
+
+/**
+ * The selected unit in detail, as a panel of its own.
+ *
+ * This is the movement planner's off path, which is the default and so almost every player: no tab
+ * strip, no `Plan move`, exactly the panel that has always been here. With the planner on, the
+ * shared slot renders `UnitPanelBody` and `unitPanelHint` itself.
+ */
+export function UnitPanel(props: Parameters<typeof UnitPanelBody>[0]) {
+  const { hint, asOf } = unitPanelHint(props.unit, props.hex, props.preview ?? null);
+
+  return (
+    <CollapsiblePanel panel="unit" title="Unit" hint={hint} asOf={asOf}>
+      <UnitPanelBody {...props} />
     </CollapsiblePanel>
   );
 }

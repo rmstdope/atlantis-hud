@@ -12,14 +12,17 @@ import {
   railHasRoomToDrag,
   railRemFor,
   railWidthStyle,
+  rightColumnFloorsRem,
+  rightColumnRemFor,
   ORDERS_MIN_REM,
   RAIL_GAP_REM,
   RAIL_MAX_REM,
   RAIL_MIN_REM,
-  UNIT_MIN_REM,
-  unitSlotClass,
+  SLOT_MIN_REM,
+  slotClass,
   unitsSlotClass,
   unitsSlotStyle,
+  UNITS_DEFAULT_REM,
   UNITS_MAX_REM,
   UNITS_MIN_REM
 } from "./panelLayout";
@@ -29,8 +32,7 @@ const OPEN: Record<PanelName, boolean> = {
   region: false,
   unit: false,
   orders: false,
-  units: false,
-  planner: false
+  units: false
 };
 
 const folded = (...panels: PanelName[]): Record<PanelName, boolean> => ({
@@ -38,17 +40,54 @@ const folded = (...panels: PanelName[]): Record<PanelName, boolean> => ({
   ...Object.fromEntries(panels.map((panel) => [panel, true]))
 });
 
-describe("unitSlotClass", () => {
-  it("gives the unit panel the slack while it is open", () => {
-    expect(unitSlotClass(OPEN)).toContain("flex-1");
+describe("slotClass", () => {
+  it("gives the shared slot the slack while it is open", () => {
+    expect(slotClass(OPEN)).toContain("flex-1");
   });
 
   it("shrinks the slot to the title bar once the panel is folded", () => {
-    expect(unitSlotClass(folded("unit"))).toBe("flex-none");
+    expect(slotClass(folded("unit"))).toBe("flex-none");
   });
 
   it("keeps the slack when some other panel is folded", () => {
-    expect(unitSlotClass(folded("orders", "region", "units"))).toContain("flex-1");
+    expect(slotClass(folded("orders", "region", "units"))).toContain("flex-1");
+  });
+
+  it("gives the shared slot a floor so a tall Movement panel cannot crush it", () => {
+    // `min-h-0` is what let the slot be squeezed to 2px with the planner open.
+    expect(slotClass(OPEN)).toContain("min-h-[5.75rem]");
+    expect(slotClass(OPEN)).not.toContain("min-h-0");
+  });
+
+  it("writes the floor class with the same number the constant carries", () => {
+    expect(slotClass(OPEN)).toContain(`min-h-[${SLOT_MIN_REM}rem]`);
+  });
+});
+
+describe("rightColumnRemFor", () => {
+  it("is the 249px the right-hand column actually gets at 1280x720", () => {
+    // Measured from the running application: header 73px, the column 121-370, so 249px tall.
+    expect(rightColumnRemFor(720, 73, 16, UNITS_DEFAULT_REM) * 16).toBeCloseTo(249, 3);
+  });
+
+  it("the right column's floors fit the pinned 1280x720 window", () => {
+    expect(rightColumnFloorsRem()).toBeLessThanOrEqual(
+      rightColumnRemFor(720, 73, 16, UNITS_DEFAULT_REM)
+    );
+  });
+
+  it("counts both floors and the gap between them", () => {
+    expect(rightColumnFloorsRem()).toBeCloseTo(SLOT_MIN_REM + RAIL_GAP_REM + ORDERS_MIN_REM, 5);
+  });
+
+  it("never goes below zero, however tall the header or the units pane", () => {
+    expect(rightColumnRemFor(720, 900, 16, UNITS_DEFAULT_REM)).toBe(0);
+    expect(rightColumnRemFor(720, 73, 16, 100)).toBe(0);
+  });
+
+  it("is zero rather than infinite when the root font size is nonsense", () => {
+    expect(rightColumnRemFor(720, 73, 0, UNITS_DEFAULT_REM)).toBe(0);
+    expect(rightColumnRemFor(720, 73, Number.NaN, UNITS_DEFAULT_REM)).toBe(0);
   });
 });
 
@@ -126,9 +165,9 @@ describe("dragOrdersHeight", () => {
   });
 
   it("clamps at the unit-panel floor on a tall rail", () => {
-    // RAIL - UNIT_MIN_REM(6) - RAIL_GAP_REM(0.625) = 33.375
+    // RAIL - SLOT_MIN_REM(5.75) - RAIL_GAP_REM(0.625) = 33.625
     const result = dragOrdersHeight(19, 20, RAIL);
-    expect(result.rem).toBeCloseTo(33.375, 3);
+    expect(result.rem).toBeCloseTo(33.625, 3);
     expect(result.atLimit).toBe(true);
   });
 
@@ -138,7 +177,7 @@ describe("dragOrdersHeight", () => {
   });
 
   it("floors to the orders minimum on a rail too short to hold both minimums", () => {
-    // A rail below 15.625rem (ORDERS_MIN 9 + UNIT_MIN 6 + GAP 0.625) inverts the range.
+    // A rail below 15.375rem (ORDERS_MIN 9 + SLOT_MIN 5.75 + GAP 0.625) inverts the range.
     const result = dragOrdersHeight(9, 0, 12);
     expect(result.rem).toBe(9);
     expect(result.atLimit).toBe(true);
@@ -171,15 +210,15 @@ describe("railHasRoomToDrag", () => {
   });
 
   it("is false when the header has eaten the rail", () => {
-    // UNIT_MIN_REM(6) + RAIL_GAP_REM(0.625) = 6.625: at or below that there is nothing to drag into.
-    expect(railHasRoomToDrag(6.625)).toBe(false);
+    // SLOT_MIN_REM(5.75) + RAIL_GAP_REM(0.625) = 6.375: at or below that there is nothing to drag into.
+    expect(railHasRoomToDrag(6.375)).toBe(false);
     expect(railHasRoomToDrag(4)).toBe(false);
   });
 
   it("agrees with dragOrdersHeight's own ceiling rather than re-deriving it", () => {
-    for (const railRem of [4, 6.625, 6.7, 10, 15.625, 16, 41]) {
+    for (const railRem of [4, 6.375, 6.4, 10, 15.375, 16, 41]) {
       const stuck = dragOrdersHeight(ORDERS_MIN_REM, 100, railRem).rem <= ORDERS_MIN_REM;
-      const ceilingPositive = railRem - UNIT_MIN_REM - RAIL_GAP_REM > 0;
+      const ceilingPositive = railRem - SLOT_MIN_REM - RAIL_GAP_REM > 0;
       expect(railHasRoomToDrag(railRem)).toBe(ceilingPositive);
       // Where the seam says there is no room, a maximal drag is already pinned at the floor.
       if (!ceilingPositive) {
@@ -197,7 +236,7 @@ describe("ordersSlotStyle", () => {
   it("carries the stored height and the fit ceiling while both panels are open", () => {
     expect(ordersSlotStyle(OPEN, 24)).toEqual({
       height: "24rem",
-      maxHeight: "calc(100% - 6.625rem)"
+      maxHeight: "calc(100% - 6.375rem)"
     });
   });
 
