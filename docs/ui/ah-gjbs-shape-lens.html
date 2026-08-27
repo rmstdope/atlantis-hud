@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Magic study tree — C: one skill at a time</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1400px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:20px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:94ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:16px 12px; display:flex; justify-content:center; overflow-x:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+
+  .dict { background:var(--raised); border:1px solid var(--edge); border-radius:6px; width:60rem; max-width:100%;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; box-shadow:0 12px 34px rgba(0,0,0,.6); overflow:hidden; }
+  .dhead { display:flex; align-items:center; gap:10px; padding:10px 13px; border-bottom:1px solid var(--edge); }
+  .dhead h4 { font:600 15px/1.3 'Helvetica Neue',Arial,sans-serif; }
+  .dhead .close { margin-left:auto; color:var(--ink-dim); }
+  .cols { display:grid; grid-template-columns:15rem 1fr; min-height:27rem; }
+  .lcol { border-right:1px solid var(--edge); display:flex; flex-direction:column; }
+  .filter { background:var(--ground); border:0; border-bottom:1px solid var(--edge); color:var(--ink);
+            padding:6px 10px; font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; width:100%; }
+  .filter:focus { outline:1px solid var(--select); }
+  .list { overflow:auto; max-height:26rem; }
+  .li { padding:3.5px 10px; color:var(--ink-soft); display:flex; gap:7px; align-items:baseline; cursor:pointer; }
+  .li:hover { background:#1f2836; }
+  .li.on { background:#243040; color:var(--ink); }
+  .li .tag { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:10.5px; color:var(--ink-dim); margin-left:auto; }
+  .li.on .tag { color:var(--brass); }
+  .li .ind { color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:10px; }
+  .rcol { padding:13px 16px; display:grid; gap:12px; align-content:start; overflow:auto; max-height:26rem; }
+  .rhead { display:flex; align-items:baseline; gap:9px; }
+  .rhead h5 { font:600 16px/1.3 'Helvetica Neue',Arial,sans-serif; }
+  .tagbig { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; color:var(--brass-bright); }
+  .chip { margin-left:auto; font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim);
+          border:1px solid var(--edge); border-radius:3px; padding:1px 6px; }
+  .grp { display:grid; gap:3px; }
+  .grplbl { font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink-dim);
+            border-bottom:1px solid var(--edge-soft); padding-bottom:2px; margin-bottom:3px; }
+  .none { color:var(--ink-dim); font-style:italic; font-size:12px; }
+  .lnk { color:var(--select); border-bottom:1px dotted rgba(74,159,216,.5); cursor:pointer; }
+  .step { display:flex; align-items:baseline; gap:7px; padding:1.5px 0; }
+  .step .tg { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:9.5px; color:var(--ink-dim); }
+  .step .lv { margin-left:auto; color:var(--ink-soft); font-size:11.5px; font-variant-numeric:tabular-nums; }
+  .step.f .lnk { color:var(--brass-bright); border-bottom-color:rgba(238,190,99,.5); }
+  .i1{padding-left:0}.i2{padding-left:15px}.i3{padding-left:30px}.i4{padding-left:45px}
+  .step.dep::before { content:"└ "; color:#3a4757; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:10px; }
+  .cap { border-radius:4px; padding:7px 9px; font-size:11.5px; display:flex; gap:7px;
+         background:rgba(217,164,65,.11); border:1px solid rgba(217,164,65,.4); color:#e8cd93; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Magic study tree — <span>C: one skill at a time</span></h1>
+  <p>No canvas and no graph. The magic skills in a list on the left; on the right, the chosen one with
+  <b>everything it stands on</b> above and <b>everything it opens</b> below. It answers the question the
+  bead was filed for — <i>what do I need before I can learn this</i> — in one reading, and never shows you
+  the other sixty skills you did not ask about.</p>
+  <p>This is the shape of the dictionary that already ships (<code>docs/ui/ah-5jkt-dictionary.html</code>),
+  so it inherits its list, its filter and its keyboard. <b>It is live — click a skill, or type in the
+  filter.</b> Try <code>create ring of invisibility</code>, which is four steps deep.</p>
+</header>
+<main>
+<h3 class="sec">The lens</h3>
+<p>The chain above a skill is expanded in full, not just its immediate prerequisites.</p>
+<div class="card">
+  <h2><em>OPTION C</em>One skill, its ancestry and what it unlocks</h2>
+  <div class="concept">Click any skill. The blue names in the right pane are clickable too.</div>
+  <div class="stage">
+    <div class="dict">
+      <div class="dhead">
+        <h4>Magic study tree</h4>
+        <span class="close">✕</span>
+      </div>
+      <div class="cols">
+        <div class="lcol">
+          <input class="filter" id="filter" placeholder="Filter skills…" autocomplete="off">
+          <div class="list" id="list"></div>
+        </div>
+        <div class="rcol" id="detail"></div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Answers the actual question directly. No panning, no zooming, no reading across a wide picture.</li>
+    <li>Cheapest to build by a distance: a list and a recursive walk, no layout engine and no SVG.</li>
+    <li>Reuses the dictionary shape that already ships, so filter, keyboard and focus behaviour come free.</li>
+    <li class="con">There is no "at a glance". You cannot see the shape of the whole tree, which is what the bead asks for in as many words.</li>
+    <li class="con">Comparing two branches means clicking twice and remembering the first.</li>
+  </ul>
+</div>
+</main>
+<script>
+const SK = [{"t":"FORC","n":"force","c":100,"m":5,"r":[]},{"t":"PATT","n":"pattern","c":100,"m":5,"r":[]},{"t":"SPIR","n":"spirit","c":100,"m":5,"r":[]},{"t":"FIRE","n":"fire","c":100,"m":5,"r":[{"t":"FORC","l":1}]},{"t":"EQUA","n":"earthquake","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"PATT","l":1}]},{"t":"FSHI","n":"force shield","c":100,"m":5,"r":[{"t":"FORC","l":1}]},{"t":"ESHI","n":"energy shield","c":100,"m":5,"r":[{"t":"FORC","l":1}]},{"t":"SSHI","n":"spirit shield","c":100,"m":5,"r":[{"t":"SPIR","l":1},{"t":"FORC","l":1}]},{"t":"MHEA","n":"magical healing","c":100,"m":5,"r":[{"t":"PATT","l":1}]},{"t":"GATE","n":"gate lore","c":100,"m":5,"r":[{"t":"PATT","l":1},{"t":"SPIR","l":1}]},{"t":"FARS","n":"farsight","c":100,"m":5,"r":[{"t":"PATT","l":1},{"t":"SPIR","l":1}]},{"t":"TELE","n":"teleportation","c":100,"m":5,"r":[{"t":"GATE","l":1},{"t":"FARS","l":2}]},{"t":"PORT","n":"portal lore","c":100,"m":5,"r":[{"t":"GATE","l":2},{"t":"FARS","l":1}]},{"t":"MIND","n":"mind reading","c":100,"m":5,"r":[{"t":"PATT","l":1}]},{"t":"WEAT","n":"weather lore","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"PATT","l":1}]},{"t":"SWIN","n":"summon wind","c":100,"m":5,"r":[{"t":"WEAT","l":1}]},{"t":"SSTO","n":"summon storm","c":100,"m":5,"r":[{"t":"WEAT","l":1}]},{"t":"STOR","n":"summon tornado","c":100,"m":5,"r":[{"t":"WEAT","l":3}]},{"t":"CALL","n":"call lightning","c":100,"m":5,"r":[{"t":"WEAT","l":5}]},{"t":"CLEA","n":"clear skies","c":100,"m":5,"r":[{"t":"WEAT","l":1}]},{"t":"EART","n":"earth lore","c":100,"m":5,"r":[{"t":"PATT","l":1},{"t":"FORC","l":1}]},{"t":"WOLF","n":"wolf lore","c":100,"m":5,"r":[{"t":"EART","l":1}]},{"t":"BIRD","n":"bird lore","c":100,"m":5,"r":[{"t":"EART","l":1}]},{"t":"DRAG","n":"dragon lore","c":100,"m":5,"r":[{"t":"BIRD","l":3},{"t":"WOLF","l":3}]},{"t":"NECR","n":"necromancy","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"SPIR","l":1}]},{"t":"SUSK","n":"summon skeletons","c":100,"m":5,"r":[{"t":"NECR","l":1}]},{"t":"RAIS","n":"raise undead","c":100,"m":5,"r":[{"t":"SUSK","l":3}]},{"t":"SULI","n":"summon lich","c":100,"m":5,"r":[{"t":"RAIS","l":3}]},{"t":"FEAR","n":"create aura of fear","c":100,"m":5,"r":[{"t":"NECR","l":1}]},{"t":"SBLA","n":"summon black wind","c":100,"m":5,"r":[{"t":"NECR","l":5}]},{"t":"BUND","n":"banish undead","c":100,"m":5,"r":[{"t":"NECR","l":1}]},{"t":"DEMO","n":"demon lore","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"SPIR","l":1}]},{"t":"SUIM","n":"summon imps","c":100,"m":5,"r":[{"t":"DEMO","l":1}]},{"t":"SUDE","n":"summon demon","c":100,"m":5,"r":[{"t":"SUIM","l":3}]},{"t":"SUBA","n":"summon balrog","c":100,"m":5,"r":[{"t":"SUDE","l":3}]},{"t":"BDEM","n":"banish demons","c":100,"m":5,"r":[{"t":"DEMO","l":1}]},{"t":"ILLU","n":"illusion","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"PATT","l":1}]},{"t":"PHEN","n":"phantasmal entertainment","c":100,"m":5,"r":[{"t":"ILLU","l":1}]},{"t":"PHBE","n":"create phantasmal beasts","c":100,"m":5,"r":[{"t":"ILLU","l":1}]},{"t":"PHDE","n":"create phantasmal demons","c":100,"m":5,"r":[{"t":"ILLU","l":1}]},{"t":"INVI","n":"invisibility","c":100,"m":5,"r":[{"t":"ILLU","l":3}]},{"t":"TRUE","n":"true seeing","c":100,"m":5,"r":[{"t":"ILLU","l":3}]},{"t":"DISP","n":"dispel illusions","c":100,"m":5,"r":[{"t":"ILLU","l":1}]},{"t":"ARTI","n":"artifact lore","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"PATT","l":1},{"t":"SPIR","l":1}]},{"t":"CRRI","n":"create ring of invisibility","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"INVI","l":3}]},{"t":"CRCL","n":"create cloak of invulnerability","c":100,"m":5,"r":[{"t":"ARTI","l":4},{"t":"FSHI","l":4}]},{"t":"CRSF","n":"create staff of fire","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FIRE","l":3}]},{"t":"CRTA","n":"create amulet of true seeing","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"TRUE","l":3}]},{"t":"CRPA","n":"create amulet of protection","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"SSHI","l":3}]},{"t":"CRRU","n":"create runesword","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FEAR","l":3}]},{"t":"CRSS","n":"create shieldstone","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"ESHI","l":3}]},{"t":"CRMA","n":"create magic carpet","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"WEAT","l":3}]},{"t":"ENGR","n":"engrave runes of warding","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"ESHI","l":3},{"t":"SSHI","l":3}]},{"t":"CGAT","n":"construct gate","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"GATE","l":3}]},{"t":"ESWO","n":"enchant swords","c":100,"m":5,"r":[{"t":"ARTI","l":2}]},{"t":"EARM","n":"enchant armor","c":100,"m":5,"r":[{"t":"ARTI","l":2}]},{"t":"ESHD","n":"enchant shields","c":100,"m":5,"r":[{"t":"ARTI","l":1}]},{"t":"CPOR","n":"construct portal","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"PORT","l":2}]},{"t":"MANI","n":"manipulation","c":100,"m":5,"r":[]},{"t":"CFSW","n":"create flaming sword","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FIRE","l":3}]},{"t":"CRAG","n":"create aegis","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"TRUE","l":5}]},{"t":"CRWC","n":"create windchime","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"SWIN","l":2}]},{"t":"CRGC","n":"create gate crystal","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"GATE","l":2}]},{"t":"CRSH","n":"create staff of healing","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"MHEA","l":2}]},{"t":"CRSO","n":"create scrying orb","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FARS","l":2}]},{"t":"CRCO","n":"create cornucopia","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"EART","l":2}]},{"t":"CRBX","n":"create book of exorcism","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"BDEM","l":2}]},{"t":"CRHS","n":"create holy symbol","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"BUND","l":2}]},{"t":"CRCN","n":"create censer of protection","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FSHI","l":3}]},{"t":"TRNS","n":"transmutation","c":100,"m":5,"r":[{"t":"ARTI","l":1}]}];
+const byTag = new Map(SK.map(s => [s.t, s]));
+const memo = new Map();
+function depth(t){
+  if(memo.has(t)) return memo.get(t);
+  const s = byTag.get(t); if(!s) return 0;
+  const d = s.r.length===0 ? 0 : 1 + Math.max(...s.r.map(r=>depth(r.t)));
+  memo.set(t,d); return d;
+}
+SK.forEach(s => s.d = depth(s.t));
+const sorted = SK.slice().sort((a,b)=> a.n.localeCompare(b.n));
+const dependents = new Map();
+SK.forEach(s => s.r.forEach(r => {
+  if(!dependents.has(r.t)) dependents.set(r.t, []);
+  dependents.get(r.t).push({ t:s.t, l:r.l });
+}));
+let sel = "CRRI", filt = "";
+
+function esc(x){ return x.replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+function renderList(){
+  const q = filt.trim().toLowerCase();
+  const rows = sorted.filter(s => q==="" || s.n.toLowerCase().includes(q) || s.t.toLowerCase().includes(q));
+  document.getElementById("list").innerHTML = rows.length === 0
+    ? '<div class="li" style="cursor:default"><span class="none">No skill matches.</span></div>'
+    : rows.map(s => '<div class="li'+(s.t===sel?' on':'')+'" data-t="'+s.t+'">'
+        + '<span class="ind">'+"·".repeat(s.d)+'</span><span>'+esc(s.n)+'</span>'
+        + '<span class="tag">'+s.t+'</span></div>').join("");
+  document.querySelectorAll("#list .li[data-t]").forEach(el =>
+    el.onclick = () => { sel = el.dataset.t; render(); });
+}
+
+// the full ancestry, deepest-first, each with the level this path demands
+function chain(t, need, seen, out, ind){
+  const s = byTag.get(t); if(!s) return;
+  const key = t;
+  if (seen.has(key) && seen.get(key) >= need) return;
+  seen.set(key, need);
+  out.push({ t, need, ind });
+  for (const r of s.r) chain(r.t, r.l, seen, out, ind+1);
+}
+
+function render(){
+  renderList();
+  const s = byTag.get(sel);
+  const seen = new Map(), steps = [];
+  for (const r of s.r) chain(r.t, r.l, seen, steps, 1);
+  // deduplicate keeping the shallowest indent, highest demanded level
+  const best = new Map();
+  for (const st of steps){
+    const cur = best.get(st.t);
+    if (!cur || st.ind < cur.ind || (st.ind===cur.ind && st.need>cur.need)) best.set(st.t, st);
+    else if (st.need > cur.need) cur.need = st.need;
+  }
+  const ordered = [...best.values()].sort((a,b)=> a.ind-b.ind || byTag.get(a.t).n.localeCompare(byTag.get(b.t).n));
+  const deps = (dependents.get(sel) || []).slice().sort((a,b)=> byTag.get(a.t).n.localeCompare(byTag.get(b.t).n));
+  const cap = s.r.length === 0 ? "" :
+    '<div class="cap"><span>⚑</span><span>A magic skill can never rise above the skills it stands on. '
+    + esc(s.n) + ' is capped at the lowest of ' + s.r.map(r=>byTag.get(r.t).n).join(" and ") + '.</span></div>';
+  document.getElementById("detail").innerHTML =
+      '<div class="rhead"><h5>'+esc(s.n)+'</h5><span class="tagbig">'+s.t+'</span>'
+    + '<span class="chip">'+(s.r.length===0?"foundation":"tier "+s.d)+'</span></div>'
+    + '<div class="grp"><div class="grplbl">Before you may begin</div>'
+    + (ordered.length === 0
+        ? '<span class="none">Nothing. This is a foundation — study it first.</span>'
+        : ordered.map(st => '<div class="step '+(byTag.get(st.t).d===0?"f ":"")+"i"+Math.min(4,st.ind)
+            + (st.ind>1?' dep':'')+'">'
+            + '<span class="lnk" data-go="'+st.t+'">'+esc(byTag.get(st.t).n)+'</span>'
+            + '<span class="tg">'+st.t+'</span><span class="lv">level '+st.need+'</span></div>').join(""))
+    + '</div>'
+    + cap
+    + '<div class="grp"><div class="grplbl">Studying it opens</div>'
+    + (deps.length === 0
+        ? '<span class="none">Nothing further. This is the end of its branch.</span>'
+        : deps.map(d => '<div class="step">'
+            + '<span class="lnk" data-go="'+d.t+'">'+esc(byTag.get(d.t).n)+'</span>'
+            + '<span class="tg">'+d.t+'</span>'
+            + '<span class="lv">at '+esc(s.n)+' '+d.l+'</span></div>').join(""))
+    + '</div>'
+    + '<div class="grp"><div class="grplbl">Study cost</div>'
+    + '<div class="step"><span>'+(s.c===null?"cannot be studied":s.c+" silver per man per month")+'</span>'
+    + '<span class="lv">max level '+s.m+'</span></div></div>';
+  document.querySelectorAll("[data-go]").forEach(el =>
+    el.onclick = () => { sel = el.dataset.go; render(); });
+}
+document.getElementById("filter").addEventListener("input", ev => { filt = ev.target.value; renderList(); });
+render();
+</script>
+</body>
+</html>

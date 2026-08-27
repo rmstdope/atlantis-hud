@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Magic study tree — A: the whole graph, layered</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1400px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:20px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:94ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:0; overflow:auto; max-height:720px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+  .chrome { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge);
+            font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; background:var(--raised); position:sticky; top:0; z-index:5; }
+  .chrome h4 { font:600 14px/1.3 'Helvetica Neue',Arial,sans-serif; }
+  .chrome .sp { margin-left:auto; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px; padding:2px 8px; font-size:12px; }
+  .btn.on { color:var(--brass-bright); border-color:var(--brass); }
+  svg { display:block; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .nd rect { fill:var(--raised); stroke:var(--edge); }
+  .nd.found rect { fill:#2a2312; stroke:var(--brass); }
+  .nd.appr rect { fill:#1a2430; stroke:var(--select); stroke-dasharray:3 2; }
+  .nd .nm { fill:var(--ink); font-size:10.5px; }
+  .nd.found .nm { fill:var(--brass-bright); font-weight:600; }
+  .nd .tg { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:8.5px; fill:var(--ink-dim); }
+  .lnk { fill:none; stroke:#3a4757; stroke-width:1; }
+  .lnk.cross { stroke:#4a3a57; stroke-dasharray:3 2; }
+  .lvl { font-size:8px; fill:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; }
+  .colhdr { fill:var(--brass); font-size:10px; letter-spacing:1.4px; text-transform:uppercase; }
+  .colsub { fill:var(--ink-dim); font-size:9px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Magic study tree — <span>A: the whole graph, layered</span></h1>
+  <p>Every one of the <b>70 magic skills</b> at once, in columns by how deep it sits: the foundations on
+  the left, then everything reachable from them. An arrow runs from a prerequisite to the skill it
+  unlocks, labelled with the level the prerequisite must reach. Pan and zoom to move about.</p>
+  <p>This is the honest picture. It is also a <b>directed graph and not a tree</b> — 34 of the 70 skills
+  have more than one prerequisite, so arrows cross between columns. Real data from the shipped
+  <code>config/public/ruleset.json</code>. <b>Scroll inside the frame below.</b></p>
+</header>
+<main>
+<h3 class="sec">The whole graph</h3>
+<p>Column 3 is the wide one: 38 skills sit exactly two steps from a foundation, and 25 of them are
+the <code>ARTI</code> artifact-creation skills.</p>
+<div class="card">
+  <h2><em>OPTION A</em>Layered, everything visible</h2>
+  <div class="concept">Foundations left → deepest right. Scroll the frame; in the app this pans and zooms.</div>
+  <div class="stage">
+    <div class="chrome">
+      <h4>Magic study tree</h4>
+      <span class="btn on">All skills</span>
+      <span class="btn">Fit</span>
+      <span class="sp"></span>
+      <span style="color:var(--ink-dim)">70 skills · 5 tiers</span>
+      <span class="btn">✕</span>
+    </div>
+    <div id="host"></div>
+  </div>
+  <ul class="notes">
+    <li>Nothing is hidden. Every skill and every prerequisite edge is on the one surface.</li>
+    <li>Depth is meaningful: how far right a skill sits is how many study steps it is from a foundation.</li>
+    <li class="con">Column 3 is 38 skills tall. At a readable node size that is roughly 1100px — taller than the window, so it always needs scrolling.</li>
+    <li class="con">Long edges cross a lot. <code>CRRI</code> reaches back to <code>INVI</code>, <code>CRCL</code> to <code>FSHI</code>, and those lines travel.</li>
+    <li class="n">Needs a real pan/zoom surface and an edge-routing pass. The most code of the three options.</li>
+  </ul>
+</div>
+</main>
+<script>
+const SK = [{"t":"FORC","n":"force","c":100,"m":5,"r":[]},{"t":"PATT","n":"pattern","c":100,"m":5,"r":[]},{"t":"SPIR","n":"spirit","c":100,"m":5,"r":[]},{"t":"FIRE","n":"fire","c":100,"m":5,"r":[{"t":"FORC","l":1}]},{"t":"EQUA","n":"earthquake","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"PATT","l":1}]},{"t":"FSHI","n":"force shield","c":100,"m":5,"r":[{"t":"FORC","l":1}]},{"t":"ESHI","n":"energy shield","c":100,"m":5,"r":[{"t":"FORC","l":1}]},{"t":"SSHI","n":"spirit shield","c":100,"m":5,"r":[{"t":"SPIR","l":1},{"t":"FORC","l":1}]},{"t":"MHEA","n":"magical healing","c":100,"m":5,"r":[{"t":"PATT","l":1}]},{"t":"GATE","n":"gate lore","c":100,"m":5,"r":[{"t":"PATT","l":1},{"t":"SPIR","l":1}]},{"t":"FARS","n":"farsight","c":100,"m":5,"r":[{"t":"PATT","l":1},{"t":"SPIR","l":1}]},{"t":"TELE","n":"teleportation","c":100,"m":5,"r":[{"t":"GATE","l":1},{"t":"FARS","l":2}]},{"t":"PORT","n":"portal lore","c":100,"m":5,"r":[{"t":"GATE","l":2},{"t":"FARS","l":1}]},{"t":"MIND","n":"mind reading","c":100,"m":5,"r":[{"t":"PATT","l":1}]},{"t":"WEAT","n":"weather lore","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"PATT","l":1}]},{"t":"SWIN","n":"summon wind","c":100,"m":5,"r":[{"t":"WEAT","l":1}]},{"t":"SSTO","n":"summon storm","c":100,"m":5,"r":[{"t":"WEAT","l":1}]},{"t":"STOR","n":"summon tornado","c":100,"m":5,"r":[{"t":"WEAT","l":3}]},{"t":"CALL","n":"call lightning","c":100,"m":5,"r":[{"t":"WEAT","l":5}]},{"t":"CLEA","n":"clear skies","c":100,"m":5,"r":[{"t":"WEAT","l":1}]},{"t":"EART","n":"earth lore","c":100,"m":5,"r":[{"t":"PATT","l":1},{"t":"FORC","l":1}]},{"t":"WOLF","n":"wolf lore","c":100,"m":5,"r":[{"t":"EART","l":1}]},{"t":"BIRD","n":"bird lore","c":100,"m":5,"r":[{"t":"EART","l":1}]},{"t":"DRAG","n":"dragon lore","c":100,"m":5,"r":[{"t":"BIRD","l":3},{"t":"WOLF","l":3}]},{"t":"NECR","n":"necromancy","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"SPIR","l":1}]},{"t":"SUSK","n":"summon skeletons","c":100,"m":5,"r":[{"t":"NECR","l":1}]},{"t":"RAIS","n":"raise undead","c":100,"m":5,"r":[{"t":"SUSK","l":3}]},{"t":"SULI","n":"summon lich","c":100,"m":5,"r":[{"t":"RAIS","l":3}]},{"t":"FEAR","n":"create aura of fear","c":100,"m":5,"r":[{"t":"NECR","l":1}]},{"t":"SBLA","n":"summon black wind","c":100,"m":5,"r":[{"t":"NECR","l":5}]},{"t":"BUND","n":"banish undead","c":100,"m":5,"r":[{"t":"NECR","l":1}]},{"t":"DEMO","n":"demon lore","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"SPIR","l":1}]},{"t":"SUIM","n":"summon imps","c":100,"m":5,"r":[{"t":"DEMO","l":1}]},{"t":"SUDE","n":"summon demon","c":100,"m":5,"r":[{"t":"SUIM","l":3}]},{"t":"SUBA","n":"summon balrog","c":100,"m":5,"r":[{"t":"SUDE","l":3}]},{"t":"BDEM","n":"banish demons","c":100,"m":5,"r":[{"t":"DEMO","l":1}]},{"t":"ILLU","n":"illusion","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"PATT","l":1}]},{"t":"PHEN","n":"phantasmal entertainment","c":100,"m":5,"r":[{"t":"ILLU","l":1}]},{"t":"PHBE","n":"create phantasmal beasts","c":100,"m":5,"r":[{"t":"ILLU","l":1}]},{"t":"PHDE","n":"create phantasmal demons","c":100,"m":5,"r":[{"t":"ILLU","l":1}]},{"t":"INVI","n":"invisibility","c":100,"m":5,"r":[{"t":"ILLU","l":3}]},{"t":"TRUE","n":"true seeing","c":100,"m":5,"r":[{"t":"ILLU","l":3}]},{"t":"DISP","n":"dispel illusions","c":100,"m":5,"r":[{"t":"ILLU","l":1}]},{"t":"ARTI","n":"artifact lore","c":100,"m":5,"r":[{"t":"FORC","l":1},{"t":"PATT","l":1},{"t":"SPIR","l":1}]},{"t":"CRRI","n":"create ring of invisibility","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"INVI","l":3}]},{"t":"CRCL","n":"create cloak of invulnerability","c":100,"m":5,"r":[{"t":"ARTI","l":4},{"t":"FSHI","l":4}]},{"t":"CRSF","n":"create staff of fire","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FIRE","l":3}]},{"t":"CRTA","n":"create amulet of true seeing","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"TRUE","l":3}]},{"t":"CRPA","n":"create amulet of protection","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"SSHI","l":3}]},{"t":"CRRU","n":"create runesword","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FEAR","l":3}]},{"t":"CRSS","n":"create shieldstone","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"ESHI","l":3}]},{"t":"CRMA","n":"create magic carpet","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"WEAT","l":3}]},{"t":"ENGR","n":"engrave runes of warding","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"ESHI","l":3},{"t":"SSHI","l":3}]},{"t":"CGAT","n":"construct gate","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"GATE","l":3}]},{"t":"ESWO","n":"enchant swords","c":100,"m":5,"r":[{"t":"ARTI","l":2}]},{"t":"EARM","n":"enchant armor","c":100,"m":5,"r":[{"t":"ARTI","l":2}]},{"t":"ESHD","n":"enchant shields","c":100,"m":5,"r":[{"t":"ARTI","l":1}]},{"t":"CPOR","n":"construct portal","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"PORT","l":2}]},{"t":"MANI","n":"manipulation","c":100,"m":5,"r":[]},{"t":"CFSW","n":"create flaming sword","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FIRE","l":3}]},{"t":"CRAG","n":"create aegis","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"TRUE","l":5}]},{"t":"CRWC","n":"create windchime","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"SWIN","l":2}]},{"t":"CRGC","n":"create gate crystal","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"GATE","l":2}]},{"t":"CRSH","n":"create staff of healing","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"MHEA","l":2}]},{"t":"CRSO","n":"create scrying orb","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FARS","l":2}]},{"t":"CRCO","n":"create cornucopia","c":100,"m":5,"r":[{"t":"ARTI","l":1},{"t":"EART","l":2}]},{"t":"CRBX","n":"create book of exorcism","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"BDEM","l":2}]},{"t":"CRHS","n":"create holy symbol","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"BUND","l":2}]},{"t":"CRCN","n":"create censer of protection","c":100,"m":5,"r":[{"t":"ARTI","l":2},{"t":"FSHI","l":3}]},{"t":"TRNS","n":"transmutation","c":100,"m":5,"r":[{"t":"ARTI","l":1}]}];
+const byTag = new Map(SK.map(s => [s.t, s]));
+const memo = new Map();
+function depth(t){
+  if (memo.has(t)) return memo.get(t);
+  const s = byTag.get(t); if(!s) return 0;
+  const d = s.r.length === 0 ? 0 : 1 + Math.max(...s.r.map(r => depth(r.t)));
+  memo.set(t,d); return d;
+}
+SK.forEach(s => s.d = depth(s.t));
+const COLW = 232, NH = 21, NGAP = 5, NW = 168, PADT = 46, PADL = 26;
+const cols = [];
+SK.forEach(s => { (cols[s.d] ||= []).push(s); });
+cols.forEach(c => c.sort((a,b)=> a.n.localeCompare(b.n)));
+const pos = new Map();
+cols.forEach((c,i)=> c.forEach((s,j)=> pos.set(s.t, {x: PADL + i*COLW, y: PADT + j*(NH+NGAP)})));
+const H = PADT + Math.max(...cols.map(c=>c.length))*(NH+NGAP) + 30;
+const W = PADL + cols.length*COLW;
+const TIER = ["Foundations","One step","Two steps","Three steps","Four steps"];
+let e = "", n = "";
+for (const s of SK){
+  const p = pos.get(s.t);
+  for (const req of s.r){
+    const q = pos.get(req.t); if(!q) continue;
+    const x1 = q.x + NW, y1 = q.y + NH/2, x2 = p.x, y2 = p.y + NH/2;
+    const cross = (s.d - byTag.get(req.t).d) > 1 || Math.abs(y2-y1) > 260;
+    const mx = (x1+x2)/2;
+    e += '<path class="lnk'+(cross?' cross':'')+'" d="M'+x1+' '+y1+' C'+mx+' '+y1+' '+mx+' '+y2+' '+x2+' '+y2+'"/>';
+    e += '<text class="lvl" x="'+(x2-13)+'" y="'+(y2-2)+'">'+req.l+'</text>';
+  }
+}
+for (const s of SK){
+  const p = pos.get(s.t);
+  const cls = s.r.length===0 ? (s.t==="MANI" ? "nd appr" : "nd found") : "nd";
+  const nm = s.n.length > 24 ? s.n.slice(0,23)+"…" : s.n;
+  n += '<g class="'+cls+'"><rect x="'+p.x+'" y="'+p.y+'" width="'+NW+'" height="'+NH+'" rx="3"/>'
+     + '<text class="nm" x="'+(p.x+7)+'" y="'+(p.y+14)+'">'+nm+'</text>'
+     + '<text class="tg" x="'+(p.x+NW-7)+'" y="'+(p.y+14)+'" text-anchor="end">'+s.t+'</text></g>';
+}
+let hdr = "";
+cols.forEach((c,i)=>{
+  hdr += '<text class="colhdr" x="'+(PADL+i*COLW)+'" y="20">'+TIER[i]+'</text>'
+       + '<text class="colsub" x="'+(PADL+i*COLW)+'" y="34">'+c.length+' skills</text>';
+});
+document.getElementById("host").innerHTML =
+  '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'+hdr+e+n+'</svg>';
+</script>
+</body>
+</html>
