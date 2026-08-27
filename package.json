@@ -14,7 +14,7 @@
     "typecheck:tooling": "tsc --noEmit -p tsconfig.tooling.json",
     "test": "tsx scripts/runSuites.ts",
     "test:tooling": "vitest run --config vitest.tooling.config.ts",
-    "test:smoke": "tsx scripts/withGateLock.ts pnpm exec playwright test",
+    "test:smoke": "node scripts/ensure-wasm.mjs && tsx scripts/withGateLock.ts pnpm exec playwright test",
     "test:native": "wdio run wdio.conf.ts",
     "build:web": "pnpm --filter @atlantis/web build",
     "test:pwa": "tsx scripts/withGateLock.ts pnpm exec playwright test --config playwright.pwa.config.ts",
