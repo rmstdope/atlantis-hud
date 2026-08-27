@@ -1,7 +1,4 @@
-import type { ReportUnit, RoutePlanResponse, UnitPreview } from "@atlantis/core-client";
-import type { HexNode } from "../hexMapModel";
-import type { GameDataIndex } from "../gameData";
-import type { MagicTree } from "../magicTree";
+import type { RoutePlanResponse } from "@atlantis/core-client";
 import { useWorkspaceStore, type SlotTab } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { PlannerActions, PlannerBody } from "./PlannerPanel";
@@ -19,14 +16,15 @@ export type SlotPlanner = {
   onApply: (order: string) => void;
 };
 
-type UnitMovementSlotProps = {
-  unit: ReportUnit | null;
-  hex: HexNode | null;
-  preview?: UnitPreview | null;
-  gameData?: GameDataIndex | null;
-  onOpenGameData?: (entryId: string) => void;
-  magicTree?: MagicTree | null;
-  onOpenMagicTree?: (tag: string) => void;
+/**
+ * Everything `UnitPanelBody` takes, plus the planner.
+ *
+ * Spelled as its props rather than written out again: this slot forwards the lot untouched, so a
+ * prop added to the unit panel is one this file has no opinion about. Written out by hand it went
+ * red in CI the first time main gave the panel a new one (`standing`), for a reason that had
+ * nothing to do with either change.
+ */
+type UnitMovementSlotProps = Parameters<typeof UnitPanelBody>[0] & {
   /** Absent when the movement-planner flag is off: no tab strip is drawn at all. */
   planner: SlotPlanner | null;
 };
