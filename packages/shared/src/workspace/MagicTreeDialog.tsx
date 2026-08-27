@@ -102,9 +102,14 @@ export function MagicTreeDialog({
   }, []);
 
   // Keyed on `highlighted` rather than on `initialTag`: following a crossing chip must move the
-  // view to the skill it names, and an effect keyed on the prop would fire only on open. Effects
-  // run on mount too, which is the whole of why toggling back to Branches lands on the skill the
-  // graph was lighting - there is no code here about the toggle at all.
+  // view to the skill it names, and an effect keyed on the prop would fire only on open.
+  //
+  // Keyed on the view as well, because toggling back to Branches does not remount the dialog - it
+  // swaps the body - so an effect keyed on `highlighted` alone never runs for the cards that have
+  // just appeared, and the skill the graph was lighting is only found when it happens to be on
+  // screen already. The cards are a multi-column layout that scrolls sideways: with a mage picked
+  // every row carries a chip, the body grows past three screen-widths, and "happens to be on
+  // screen" stops being true (ah-67h8).
   const cards = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (highlighted === null) {
@@ -113,8 +118,8 @@ export function MagicTreeDialog({
     const row = cards.current?.querySelector(
       `[data-testid="magic-tree-skill-${CSS.escape(highlighted)}"]`
     );
-    row?.scrollIntoView({ block: "center" });
-  }, [highlighted]);
+    row?.scrollIntoView({ block: "center", inline: "center" });
+  }, [highlighted, view]);
 
   return (
     <div
