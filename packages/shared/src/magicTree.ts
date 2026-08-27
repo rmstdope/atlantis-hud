@@ -15,6 +15,8 @@ export type MagicSkillNode = {
   id: string;
   tag: string;
   name: string;
+  /** The highest level the game allows in this skill. 5 for every magic skill in the shipped ruleset. */
+  maxLevel: number;
   /** Longest path to a root. 0 for FORC, PATT, SPIR and MANI. Drives indentation. */
   depth: number;
   /** The key of the branch this skill is filed under. */
@@ -71,6 +73,7 @@ type RawMagicSkill = {
   id: string;
   tag: string;
   name: string;
+  maxLevel: number;
   requires: readonly GameDataLink[];
 };
 
@@ -96,6 +99,7 @@ function magicSkillsOf(index: GameDataIndex): Map<string, RawMagicSkill> {
       id: entry.id,
       tag: entry.tag,
       name: entry.name,
+      maxLevel: detail.maxLevel,
       requires: detail.requires
     });
   }
@@ -249,6 +253,7 @@ export function buildMagicTree(index: GameDataIndex): MagicTree {
       id: skill.id,
       tag: skill.tag,
       name: skill.name,
+      maxLevel: skill.maxLevel,
       depth,
       branch,
       within,

@@ -56,6 +56,20 @@ describe("buildMagicTree", () => {
     expect(tree.byTag.has("FORC")).toBe(true);
     expect(tree.byTag.has("CRRI")).toBe(true);
   });
+
+  it("carries each skill's maximum level", () => {
+    const real = buildMagicTree(parseGameData(readRuleset()) as GameDataIndex);
+    expect(real.byTag.get("FORC")?.maxLevel).toBe(5);
+    expect(real.byTag.get("CRRI")?.maxLevel).toBe(5);
+
+    const capped = JSON.stringify({
+      skills: { FORC: { ...skill("FORC", "force", []), maxLevel: 3 } },
+      items: {},
+      buildings: {}
+    });
+    const tree = buildMagicTree(parseGameData(capped) as GameDataIndex);
+    expect(tree.byTag.get("FORC")?.maxLevel).toBe(3);
+  });
 });
 
 describe("depth", () => {
