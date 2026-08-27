@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-30hg — Option B: one advisory chip</title>
+<style>
+  :root{ --page:#161b23; --panel:#222933; --raised:#2a323d; --edge:#46525f;
+         --ink:#d4dce6; --soft:#a8b4c2; --dim:#99a4b2; --brass:#e0b25a; --warn:#d9a441; --gain:#7fb069; }
+  body{ background:var(--page); color:var(--ink); font:14px/1.55 system-ui,-apple-system,sans-serif;
+        margin:0; padding:24px 32px 90px; }
+  h1{ font-size:21px; margin:0 0 6px; }
+  h2{ font-size:16px; margin:38px 0 4px; border-top:1px solid #2a3442; padding-top:20px; }
+  h3{ font-size:13px; margin:22px 0 4px; color:var(--soft); }
+  p.note{ color:var(--dim); max-width:96ch; }
+  b.kw{ color:var(--ink); font-weight:600; }
+  .bad{ color:#d9534f; } .ok{ color:var(--gain); }
+  .frame{ overflow-x:auto; border:1px solid #2a3442; border-radius:6px; margin:8px 0 2px;
+          background:#0b0e13; padding:16px 0 20px; }
+  .stage{ width:1280px; position:relative; }
+  .limit{ position:absolute; left:1268px; top:-8px; bottom:-8px; width:0;
+          border-left:1px dashed #6c7f93; }
+  .limit::after{ content:"1268 — content edge"; position:absolute; left:6px; top:-14px;
+                 font:10px/1 ui-monospace,monospace; color:#6c7f93; white-space:nowrap; }
+  .hdr{ width:1280px; box-sizing:border-box; display:flex; flex-wrap:wrap; align-items:center;
+        column-gap:14px; row-gap:0; min-height:36px; padding:0 12px;
+        border-bottom:1px solid var(--edge); background:var(--panel); color:var(--ink);
+        font:13px/19.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace; white-space:nowrap; }
+  .grp{ display:flex; flex-wrap:wrap; align-items:center; gap:14px; min-height:36px; min-width:0; }
+  .acts{ margin-left:auto; display:flex; height:36px; align-items:center; gap:14px; }
+  .ttl{ color:var(--brass); letter-spacing:.78px; }
+  .chip{ border:1px solid var(--edge); background:var(--raised); color:var(--ink);
+         border-radius:4px; padding:2px 8px; font:inherit; }
+  .chip.warn{ border-color:var(--warn); color:var(--warn); background:transparent; }
+  .chip.zero{ border-color:var(--edge); color:var(--dim); background:transparent; }
+  .chip.soft{ color:var(--soft); }
+  .plain{ border:0; background:none; padding:0; color:var(--ink); font:inherit; }
+  .lbl{ color:var(--soft); }
+  .lvl{ margin-left:6px; color:var(--dim); }
+  .cr{ font-style:normal; color:var(--dim); margin-left:4px; }
+  .btn{ border:1px solid var(--edge); background:var(--raised); color:var(--ink);
+        border-radius:4px; padding:4px 10px; font:inherit; }
+  .btn.brass{ border-color:var(--brass); color:var(--brass); background:transparent; }
+  .btn.gear{ padding:4px 8px; color:var(--soft); }
+  .cap{ color:var(--dim); font-size:12px; margin:4px 0 0; }
+  .cap b{ color:var(--ink); }
+  table.m{ border-collapse:collapse; font-size:12.5px; margin:12px 0 4px; }
+  table.m td,table.m th{ border:1px solid #2a3442; padding:4px 10px; text-align:left; }
+  table.m th{ color:var(--brass); font-weight:500; font-size:11px; letter-spacing:.08em;
+              text-transform:uppercase; }
+  td.n{ font-family:ui-monospace,monospace; text-align:right; }
+  .col{ display:flex; gap:0; margin:14px 0 0; align-items:stretch; }
+  .colbox{ width:200px; border:1px solid #2a3442; background:#0b0e13; position:relative; }
+  .colhdr{ background:var(--panel); border-bottom:1px solid var(--edge); }
+  .colrail{ background:#1a2129; margin:6px; border:1px solid #2a3442; }
+  .pop{ width:380px; background:var(--panel); border:1px solid var(--edge); border-radius:6px;
+        font:13px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:var(--ink);
+        padding:6px 0 8px; margin:10px 0 0 12px; }
+  .pop .sec{ color:var(--brass); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+             padding:7px 12px 2px; }
+  .pop .prow{ padding:2px 12px; color:var(--soft); display:flex; gap:10px; }
+  .pop .prow .w{ color:var(--warn); flex:none; }
+  .pop .prow .d{ color:var(--dim); }
+  .pop hr{ border:0; border-top:1px solid #2a3442; margin:6px 0; }
+</style>
+</head>
+<body>
+<p class="note">
+  Everything below is at <b class="kw">true size</b> — 1280&nbsp;px wide, 13&nbsp;px monospace,
+  the real colours — so it lays out on your machine the way the app does at the pinned window.
+  If the page is narrower than 1280&nbsp;px each strip scrolls sideways inside its own frame;
+  widen the window rather than reading it scrolled. The dashed line is
+  <b class="kw">x&nbsp;=&nbsp;1268</b>, the last pixel the header may use.
+  This is the <b class="kw">desktop shell</b> (it has <i>Send</i>); the web build is 67&nbsp;px
+  roomier on the right and behaves identically.
+</p>
+
+<h2>Today — 102&nbsp;px, three rows of content in two</h2>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <span class="ttl">ATLANTIS HUD</span>
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <span class="lbl">Turn <button class="chip">71 · December, Year 6<i class="cr">▾</i></button></span>
+    <span class="lbl">Faction <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span></span>
+    <button class="chip warn">⚠ 1 error · 333 events<i class="cr">▾</i></button>
+    <button class="chip warn">⚠ 10 problems<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap">
+  <b>What you are looking at.</b> The chips want 1286.43&nbsp;px and have 1256. <i>2 battles</i>
+  is pushed onto a line of its own — it is the one that wraps, but the
+  <i>⚠&nbsp;10&nbsp;problems</i> chip is what pushes it, and that chip arrives about
+  310&nbsp;ms after the turn loads. Before it lands the header is 73&nbsp;px; after, 102&nbsp;px,
+  and every panel column below is 29&nbsp;px shorter for the rest of the session.
+  The Import/Export/Send/⚙ group already has a row to itself at this width and does in every
+  option here.
+</p>
+<h2>Option B — the three amber chips become one</h2>
+<p class="note">
+  The header can carry <b class="kw">three</b> advisory chips at once — what the engine reported
+  (<i>1 error · 333 events</i>), what order validation found (<i>10 problems</i>), and what the
+  parser could not read (<i>6 unreadable</i>) — and each new one costs another 130–200&nbsp;px.
+  Option B replaces all three with a single chip and gives its panel three sections.
+  The count is <b class="kw">things wrong</b>: errors + order problems + unreadable lines.
+  Turn <i>events</i> are not warnings and stop being counted; they keep their section in the panel.
+</p>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <span class="ttl">ATLANTIS HUD</span>
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <span class="lbl">Turn <button class="chip">71 · December, Year 6<i class="cr">▾</i></button></span>
+    <span class="lbl">Faction <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span></span>
+    <button class="chip warn">⚠ 11 to check<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap">
+  <b>73&nbsp;px.</b> 1070.41 of 1256 used — <b>185.59&nbsp;px spare</b>. <i>Turn</i> and
+  <i>Faction</i> keep their words. The unreadable chip no longer costs a row, because there
+  is no unreadable chip.
+</p>
+
+<h3>The panel it opens</h3>
+<div class="pop">
+  <div class="sec">Order problems — 10</div>
+  <div class="prow"><span class="w">⚠</span><span>2814 <span class="d">— MOVE into a hex it cannot reach</span></span></div>
+  <div class="prow"><span class="w">⚠</span><span>1901 <span class="d">— STUDY needs 200 silver, unit has 45</span></span></div>
+  <div class="prow"><span class="d">… 8 more</span></div>
+  <hr>
+  <div class="sec">The engine said — 1 error</div>
+  <div class="prow"><span class="w">⚠</span><span>Unit 1244: <span class="d">SELL: Can't sell that.</span></span></div>
+  <hr>
+  <div class="sec">Lines not read — 6</div>
+  <div class="prow"><span class="w">⚠</span><span>line 4102 <span class="d">— unrecognised structure</span></span></div>
+  <div class="prow"><span class="d">… 5 more</span></div>
+  <hr>
+  <div class="sec">Turn events — 333</div>
+  <div class="prow"><span class="d">333 things happened this turn</span></div>
+</div>
+<p class="cap">
+  Sections in cost order — what you can still fix first, what already went wrong second, what
+  was never read third, and the events last. A section with nothing in it is not drawn.
+</p>
+
+<h3>When there is nothing wrong</h3>
+<p class="note">
+  The chip loses its amber and its warning shape and just says what the turn contained, so it
+  never disappears and reappear as the counts move.
+</p>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <span class="ttl">ATLANTIS HUD</span>
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <span class="lbl">Turn <button class="chip">71 · December, Year 6<i class="cr">▾</i></button></span>
+    <span class="lbl">Faction <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span></span>
+    <button class="chip soft">333 events<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+
+<table class="m">
+  <tr><th>&nbsp;</th><th>Header</th><th>Group wants</th><th>Spare</th></tr>
+  <tr><td>Today</td><td class="n">102 px</td><td class="n">1286.43</td><td class="n bad">−30.43</td></tr>
+  <tr><td>Option B</td><td class="n">73 px</td><td class="n">1070.41</td><td class="n ok">+185.59</td></tr>
+  <tr><td>Option B, all three kinds present</td><td class="n">73 px</td><td class="n">1070.41</td><td class="n ok">+185.59</td></tr>
+</table>
+<p class="cap">
+  <b>The difference from Option A</b> is the last row: B does not grow when the turn has more to
+  complain about, because the chip's width is its count, not its causes.
+</p>
+
+</body>
+</html>

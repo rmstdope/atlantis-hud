@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-30hg round 3 — the faction chip and the turn picker</title>
+<style>
+  :root{ --page:#161b23; --panel:#222933; --raised:#2a323d; --edge:#46525f;
+         --ink:#d4dce6; --soft:#a8b4c2; --dim:#99a4b2; --brass:#e0b25a; --warn:#d9a441; --gain:#7fb069; }
+  body{ background:var(--page); color:var(--ink); font:14px/1.55 system-ui,-apple-system,sans-serif;
+        margin:0; padding:24px 32px 90px; }
+  h1{ font-size:21px; margin:0 0 6px; }
+  h2{ font-size:16px; margin:38px 0 4px; border-top:1px solid #2a3442; padding-top:20px; }
+  h3{ font-size:13px; margin:22px 0 4px; color:var(--soft); }
+  p.note{ color:var(--dim); max-width:96ch; }
+  b.kw{ color:var(--ink); font-weight:600; }
+  .bad{ color:#d9534f; } .ok{ color:var(--gain); }
+  .frame{ overflow-x:auto; border:1px solid #2a3442; border-radius:6px; margin:8px 0 2px;
+          background:#0b0e13; padding:16px 0 20px; }
+  .stage{ width:1280px; position:relative; }
+  .limit{ position:absolute; left:1268px; top:-8px; bottom:-8px; width:0;
+          border-left:1px dashed #6c7f93; }
+  .limit::after{ content:"1268 — content edge"; position:absolute; left:6px; top:-14px;
+                 font:10px/1 ui-monospace,monospace; color:#6c7f93; white-space:nowrap; }
+  .hdr{ width:1280px; box-sizing:border-box; display:flex; flex-wrap:wrap; align-items:center;
+        column-gap:14px; row-gap:0; min-height:36px; padding:0 12px;
+        border-bottom:1px solid var(--edge); background:var(--panel); color:var(--ink);
+        font:13px/19.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace; white-space:nowrap; }
+  .grp{ display:flex; flex-wrap:wrap; align-items:center; gap:14px; min-height:36px; min-width:0; }
+  .acts{ margin-left:auto; display:flex; height:36px; align-items:center; gap:14px; }
+  .ttl{ color:var(--brass); letter-spacing:.78px; }
+  .chip{ border:1px solid var(--edge); background:var(--raised); color:var(--ink);
+         border-radius:4px; padding:2px 8px; font:inherit; }
+  .chip.warn{ border-color:var(--warn); color:var(--warn); background:transparent; }
+  .chip.zero{ border-color:var(--edge); color:var(--dim); background:transparent; }
+  .chip.soft{ color:var(--soft); }
+  .plain{ border:0; background:none; padding:0; color:var(--ink); font:inherit; }
+  .lbl{ color:var(--soft); }
+  .lvl{ margin-left:6px; color:var(--dim); }
+  .cr{ font-style:normal; color:var(--dim); margin-left:4px; }
+  .btn{ border:1px solid var(--edge); background:var(--raised); color:var(--ink);
+        border-radius:4px; padding:4px 10px; font:inherit; }
+  .btn.brass{ border-color:var(--brass); color:var(--brass); background:transparent; }
+  .btn.gear{ padding:4px 8px; color:var(--soft); }
+  .cap{ color:var(--dim); font-size:12px; margin:4px 0 0; }
+  .cap b{ color:var(--ink); }
+  table.m{ border-collapse:collapse; font-size:12.5px; margin:12px 0 4px; }
+  table.m td,table.m th{ border:1px solid #2a3442; padding:4px 10px; text-align:left; }
+  table.m th{ color:var(--brass); font-weight:500; font-size:11px; letter-spacing:.08em;
+              text-transform:uppercase; }
+  td.n{ font-family:ui-monospace,monospace; text-align:right; }
+  .col{ display:flex; gap:0; margin:14px 0 0; align-items:stretch; }
+  .colbox{ width:200px; border:1px solid #2a3442; background:#0b0e13; position:relative; }
+  .colhdr{ background:var(--panel); border-bottom:1px solid var(--edge); }
+  .colrail{ background:#1a2129; margin:6px; border:1px solid #2a3442; }
+  .pop{ width:380px; background:var(--panel); border:1px solid var(--edge); border-radius:6px;
+        font:13px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:var(--ink);
+        padding:6px 0 8px; margin:10px 0 0 12px; }
+  .pop .sec{ color:var(--brass); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+             padding:7px 12px 2px; }
+  .pop .prow{ padding:2px 12px; color:var(--soft); display:flex; gap:10px; }
+  .pop .prow .w{ color:var(--warn); flex:none; }
+  .pop .prow .d{ color:var(--dim); }
+  .pop hr{ border:0; border-top:1px solid #2a3442; margin:6px 0; }
+</style>
+</head>
+<body>
+<p class="note">
+  <b class="kw">Settled in round one:</b> the header becomes <b class="kw">one row</b>, and
+  <b class="kw">ATLANTIS&nbsp;HUD comes out of the strip</b> in both builds. That is D plus the
+  title, and it leaves 229&nbsp;px spare in the ordinary case — 1026.70 of 1256.
+  Everything below is at <b class="kw">true size</b>; widen the window rather than reading a strip
+  scrolled sideways. Dashed line is x&nbsp;=&nbsp;1268.
+  Desktop shell shown (it has <i>Send</i>).
+</p>
+<h2>The shape you chose</h2>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <button class="chip">Turn 71<i class="cr">▾</i></button>
+    <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span>
+    <button class="chip warn">⚠ 11 to check<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap"><b>37&nbsp;px.</b> The words below are the only thing still undecided about it.</p>
+<h2>1 · The faction name, now that the word “Faction” is gone</h2>
+<p class="note">
+  The faction chip is the one control in the strip with <b class="kw">no border</b> — plain text
+  that turns brass on hover. That worked while the word <i>Faction</i> sat in front of it marking
+  where it began. With the word gone it is a bare name between two bordered chips.
+</p>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <button class="chip">Turn 71<i class="cr">▾</i></button>
+    <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span>
+    <button class="chip warn">⚠ 11 to check<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button><button class="btn" style="margin-left:14px">Export<i class="cr">▾</i></button><button class="btn" style="margin-left:14px">Send</button><button class="btn gear" style="margin-left:14px">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap"><b>F1 — leave it borderless.</b> Today's treatment, unchanged. 174.37&nbsp;px.</p>
+
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <button class="chip">Turn 71<i class="cr">▾</i></button>
+    <button class="chip">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span>
+    <button class="chip warn">⚠ 11 to check<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button><button class="btn" style="margin-left:14px">Export<i class="cr">▾</i></button><button class="btn" style="margin-left:14px">Send</button><button class="btn gear" style="margin-left:14px">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap">
+  <b>F2 — give it the same border as the game and turn chips.</b> Three chips of one kind, then the
+  advisories. Costs 18&nbsp;px. Still 37&nbsp;px tall, still 211&nbsp;px spare.
+</p>
+
+<h2>2 · The turn picker — it already has the date</h2>
+<p class="note">
+  You chose to move <i>December, Year 6</i> into the picker. It turns out to already be there:
+  every row carries its season, and the working turn is marked ● in brass
+  (<span style="font-family:ui-monospace,monospace">TurnPicker.tsx:56</span>). So the question is
+  only whether it also wants repeating as a heading.
+</p>
+<div style="display:flex;gap:44px;align-items:flex-start;flex-wrap:wrap">
+  <div>
+    <h3 style="margin-top:8px">T1 — as it is today, nothing added</h3>
+    <div class="pop" style="margin-left:0;width:288px">
+      <div class="sec">Turns of this game</div>
+      <div class="prow"><span style="width:12px;text-align:center;color:#e0b25a">●</span><span style="color:#d4dce6">71</span><span class="d">December, Year 6</span><span class="d" style="margin-left:auto;font-size:12px">playing</span></div>
+      <div class="prow"><span style="width:12px"></span><span style="color:#d4dce6">70</span><span class="d">November, Year 6</span></div>
+      <div class="prow"><span style="width:12px"></span><span style="color:#d4dce6">69</span><span class="d">October, Year 6</span></div>
+      <hr>
+      <div class="prow"><span class="d" style="font-size:12px">click a turn to compare it with 71 · click again to stop</span></div>
+    </div>
+    <p class="cap" style="width:288px">The season you are playing is on the ● row, in the list it
+      belongs to. Nothing is repeated.</p>
+  </div>
+  <div>
+    <h3 style="margin-top:8px">T2 — the working turn's season as a heading</h3>
+    <div class="pop" style="margin-left:0;width:288px">
+      <div style="padding:2px 12px 6px;color:#e0b25a;font-size:14px">December, Year 6</div>
+      <hr>
+      <div class="sec">Turns of this game</div>
+      <div class="prow"><span style="width:12px;text-align:center;color:#e0b25a">●</span><span style="color:#d4dce6">71</span><span class="d">December, Year 6</span><span class="d" style="margin-left:auto;font-size:12px">playing</span></div>
+      <div class="prow"><span style="width:12px"></span><span style="color:#d4dce6">70</span><span class="d">November, Year 6</span></div>
+      <div class="prow"><span style="width:12px"></span><span style="color:#d4dce6">69</span><span class="d">October, Year 6</span></div>
+      <hr>
+      <div class="prow"><span class="d" style="font-size:12px">click a turn to compare it with 71 · click again to stop</span></div>
+    </div>
+    <p class="cap" style="width:288px">One click always answers “what season is it?” at the top,
+      without reading a list — at the cost of saying it twice.</p>
+  </div>
+</div>
+
+<h2>3 · A game with no report loaded</h2>
+<p class="note">Unchanged from round two, repeated because it is the state the title's removal changes most.</p>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button><button class="btn" style="margin-left:14px">Export<i class="cr">▾</i></button><button class="btn" style="margin-left:14px">Send</button><button class="btn gear" style="margin-left:14px">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap">
+  In the web build there is no window title bar either, so this strip is the only chrome on screen.
+</p>
+
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-30hg — Option C: accept two rows</title>
+<style>
+  :root{ --page:#161b23; --panel:#222933; --raised:#2a323d; --edge:#46525f;
+         --ink:#d4dce6; --soft:#a8b4c2; --dim:#99a4b2; --brass:#e0b25a; --warn:#d9a441; --gain:#7fb069; }
+  body{ background:var(--page); color:var(--ink); font:14px/1.55 system-ui,-apple-system,sans-serif;
+        margin:0; padding:24px 32px 90px; }
+  h1{ font-size:21px; margin:0 0 6px; }
+  h2{ font-size:16px; margin:38px 0 4px; border-top:1px solid #2a3442; padding-top:20px; }
+  h3{ font-size:13px; margin:22px 0 4px; color:var(--soft); }
+  p.note{ color:var(--dim); max-width:96ch; }
+  b.kw{ color:var(--ink); font-weight:600; }
+  .bad{ color:#d9534f; } .ok{ color:var(--gain); }
+  .frame{ overflow-x:auto; border:1px solid #2a3442; border-radius:6px; margin:8px 0 2px;
+          background:#0b0e13; padding:16px 0 20px; }
+  .stage{ width:1280px; position:relative; }
+  .limit{ position:absolute; left:1268px; top:-8px; bottom:-8px; width:0;
+          border-left:1px dashed #6c7f93; }
+  .limit::after{ content:"1268 — content edge"; position:absolute; left:6px; top:-14px;
+                 font:10px/1 ui-monospace,monospace; color:#6c7f93; white-space:nowrap; }
+  .hdr{ width:1280px; box-sizing:border-box; display:flex; flex-wrap:wrap; align-items:center;
+        column-gap:14px; row-gap:0; min-height:36px; padding:0 12px;
+        border-bottom:1px solid var(--edge); background:var(--panel); color:var(--ink);
+        font:13px/19.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace; white-space:nowrap; }
+  .grp{ display:flex; flex-wrap:wrap; align-items:center; gap:14px; min-height:36px; min-width:0; }
+  .acts{ margin-left:auto; display:flex; height:36px; align-items:center; gap:14px; }
+  .ttl{ color:var(--brass); letter-spacing:.78px; }
+  .chip{ border:1px solid var(--edge); background:var(--raised); color:var(--ink);
+         border-radius:4px; padding:2px 8px; font:inherit; }
+  .chip.warn{ border-color:var(--warn); color:var(--warn); background:transparent; }
+  .chip.zero{ border-color:var(--edge); color:var(--dim); background:transparent; }
+  .chip.soft{ color:var(--soft); }
+  .plain{ border:0; background:none; padding:0; color:var(--ink); font:inherit; }
+  .lbl{ color:var(--soft); }
+  .lvl{ margin-left:6px; color:var(--dim); }
+  .cr{ font-style:normal; color:var(--dim); margin-left:4px; }
+  .btn{ border:1px solid var(--edge); background:var(--raised); color:var(--ink);
+        border-radius:4px; padding:4px 10px; font:inherit; }
+  .btn.brass{ border-color:var(--brass); color:var(--brass); background:transparent; }
+  .btn.gear{ padding:4px 8px; color:var(--soft); }
+  .cap{ color:var(--dim); font-size:12px; margin:4px 0 0; }
+  .cap b{ color:var(--ink); }
+  table.m{ border-collapse:collapse; font-size:12.5px; margin:12px 0 4px; }
+  table.m td,table.m th{ border:1px solid #2a3442; padding:4px 10px; text-align:left; }
+  table.m th{ color:var(--brass); font-weight:500; font-size:11px; letter-spacing:.08em;
+              text-transform:uppercase; }
+  td.n{ font-family:ui-monospace,monospace; text-align:right; }
+  .col{ display:flex; gap:0; margin:14px 0 0; align-items:stretch; }
+  .colbox{ width:200px; border:1px solid #2a3442; background:#0b0e13; position:relative; }
+  .colhdr{ background:var(--panel); border-bottom:1px solid var(--edge); }
+  .colrail{ background:#1a2129; margin:6px; border:1px solid #2a3442; }
+  .pop{ width:380px; background:var(--panel); border:1px solid var(--edge); border-radius:6px;
+        font:13px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:var(--ink);
+        padding:6px 0 8px; margin:10px 0 0 12px; }
+  .pop .sec{ color:var(--brass); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+             padding:7px 12px 2px; }
+  .pop .prow{ padding:2px 12px; color:var(--soft); display:flex; gap:10px; }
+  .pop .prow .w{ color:var(--warn); flex:none; }
+  .pop .prow .d{ color:var(--dim); }
+  .pop hr{ border:0; border-top:1px solid #2a3442; margin:6px 0; }
+</style>
+</head>
+<body>
+<p class="note">
+  Everything below is at <b class="kw">true size</b> — 1280&nbsp;px wide, 13&nbsp;px monospace,
+  the real colours — so it lays out on your machine the way the app does at the pinned window.
+  If the page is narrower than 1280&nbsp;px each strip scrolls sideways inside its own frame;
+  widen the window rather than reading it scrolled. The dashed line is
+  <b class="kw">x&nbsp;=&nbsp;1268</b>, the last pixel the header may use.
+  This is the <b class="kw">desktop shell</b> (it has <i>Send</i>); the web build is 67&nbsp;px
+  roomier on the right and behaves identically.
+</p>
+
+<h2>Today — 102&nbsp;px, three rows of content in two</h2>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <span class="ttl">ATLANTIS HUD</span>
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <span class="lbl">Turn <button class="chip">71 · December, Year 6<i class="cr">▾</i></button></span>
+    <span class="lbl">Faction <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span></span>
+    <button class="chip warn">⚠ 1 error · 333 events<i class="cr">▾</i></button>
+    <button class="chip warn">⚠ 10 problems<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap">
+  <b>What you are looking at.</b> The chips want 1286.43&nbsp;px and have 1256. <i>2 battles</i>
+  is pushed onto a line of its own — it is the one that wraps, but the
+  <i>⚠&nbsp;10&nbsp;problems</i> chip is what pushes it, and that chip arrives about
+  310&nbsp;ms after the turn loads. Before it lands the header is 73&nbsp;px; after, 102&nbsp;px,
+  and every panel column below is 29&nbsp;px shorter for the rest of the session.
+  The Import/Export/Send/⚙ group already has a row to itself at this width and does in every
+  option here.
+</p>
+<h2>Option C — accept it, and raise the budget to match</h2>
+<p class="note">
+  Nothing about the header changes. The guard's ceiling moves from 91 to about
+  <b class="kw">110&nbsp;px</b>, deliberately and in a commit that says so, and the header above is
+  simply what the header is. The work becomes: fix the guard so it measures the settled header,
+  raise the number, and re-check the tests that were quietly living on the 29&nbsp;px.
+</p>
+<p class="note">
+  <b class="kw">What it costs, at true height.</b> The right-hand panel column loses those
+  29&nbsp;px for the whole session, and so does the orders editor's ceiling
+  (<span style="font-family:ui-monospace,monospace">calc(100% − 6.625rem)</span>).
+</p>
+<div style="display:flex;gap:44px;align-items:flex-start;margin:16px 0 0">
+  <div>
+    <div style="font-size:12px;color:#99a4b2;margin-bottom:6px">What the budget promised — column <b style="color:#d4dce6">429&nbsp;px</b></div>
+    <div style="width:210px;height:429px;border:1px solid #46525f;background:#0b0e13;display:flex;flex-direction:column;box-sizing:border-box">
+      <div style="height:106px;border-bottom:1px solid #2a3442;background:#1a2129;font:11px/1.4 system-ui;color:#99a4b2;padding:6px 8px">unit panel<br><span style="color:#6c7f93">floor, 6.625rem</span></div>
+      <div style="flex:1;background:#222933;font:11px/1.4 system-ui;color:#a8b4c2;padding:6px 8px">orders editor<br><span style="color:#7fb069">ceiling 323&nbsp;px</span></div>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:12px;color:#99a4b2;margin-bottom:6px">What you get — column <b style="color:#d4dce6">400&nbsp;px</b></div>
+    <div style="width:210px;height:400px;border:1px solid #46525f;background:#0b0e13;display:flex;flex-direction:column;box-sizing:border-box">
+      <div style="height:106px;border-bottom:1px solid #2a3442;background:#1a2129;font:11px/1.4 system-ui;color:#99a4b2;padding:6px 8px">unit panel<br><span style="color:#6c7f93">floor, 6.625rem</span></div>
+      <div style="flex:1;background:#222933;font:11px/1.4 system-ui;color:#a8b4c2;padding:6px 8px">orders editor<br><span style="color:#d9534f">ceiling 294&nbsp;px</span></div>
+    </div>
+  </div>
+</div>
+<p class="cap">
+  29&nbsp;px, permanently, on every window. It is not nothing — it is the whole of why a drag
+  test two beads away is flaky — but it is also not visible unless you are looking for it.
+</p>
+
+<h3>A third row is a long way off, which is the argument for C</h3>
+<p class="note">
+  A report with unreadable lines adds a third amber chip. It does <b class="kw">not</b> add a
+  third row: the chip row already has a second line with room on it, so the header stays at
+  102&nbsp;px and only the second line gets fuller. The group would have to want more than about
+  2512&nbsp;px — roughly six more chips — before a third line appeared.
+  So <b class="kw">110 is a ceiling that would hold for a long time</b>.
+</p>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <span class="ttl">ATLANTIS HUD</span>
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <span class="lbl">Turn <button class="chip">71 · December, Year 6<i class="cr">▾</i></button></span>
+    <span class="lbl">Faction <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span></span>
+    <button class="chip warn">⚠ 1 error · 333 events<i class="cr">▾</i></button>
+    <button class="chip warn">⚠ 10 problems<i class="cr">▾</i></button>
+    <button class="chip warn">⚠ 6 unreadable<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap">
+  <b>Still 102&nbsp;px.</b> Three amber chips, and the height is unchanged.
+</p>
+
+<table class="m">
+  <tr><th>&nbsp;</th><th>Header</th><th>Right column</th><th>Orders ceiling</th></tr>
+  <tr><td>The budget as written (91)</td><td class="n">73 px</td><td class="n">429</td><td class="n">323</td></tr>
+  <tr><td>Today, actually</td><td class="n">102 px</td><td class="n">400</td><td class="n">294</td></tr>
+  <tr><td>With unreadable lines too</td><td class="n">102 px</td><td class="n">400</td><td class="n">294</td></tr>
+</table>
+<p class="cap">
+  <b>What C really asks</b> is not "may the header be tall" but "is 29&nbsp;px of every panel
+  column worth not touching the header". The other three options all answer no.
+</p>
+
+</body>
+</html>
