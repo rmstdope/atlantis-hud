@@ -1,8 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { readRuleset } from "@atlantis/fixtures";
-import { parseGameData } from "../gameData";
+import { aReportUnit, type SkillInfo } from "@atlantis/core-client";
+import { parseGameData, type GameDataIndex } from "../gameData";
 import { buildMagicTree } from "../magicTree";
+import { standingOf } from "../magicStanding";
 import { buildMagicGraph } from "./magicGraphLayout";
 import { findByTestId } from "../testing/elementTree";
 import { MagicGraphDrawing } from "./MagicGraphView";
@@ -11,7 +13,38 @@ const index = parseGameData(readRuleset());
 if (index === null) {
   throw new Error("the shipped ruleset did not parse; every assertion below is about its contents");
 }
-const graph = buildMagicGraph(buildMagicTree(index));
+const tree = buildMagicTree(index);
+const graph = buildMagicGraph(tree);
+
+const held = (levels: Record<string, number>): SkillInfo[] =>
+  Object.entries(levels).map(([tag, level]) => ({
+    name: tag.toLowerCase(),
+    tag,
+    level,
+    points: level * 30
+  }));
+
+/** Six of Seven (881) of the smoke fixture `g7f95t71`, verbatim. */
+const SIX_OF_SEVEN = standingOf(
+  aReportUnit({
+    unitId: "881",
+    name: "Six of Seven",
+    skills: held({
+      FORC: 4, PATT: 3, SPIR: 3, GATE: 1, FIRE: 2, ILLU: 3, PHEN: 1, EART: 3, BIRD: 3,
+      TRUE: 2, WOLF: 3, DRAG: 3, PHDE: 3, ARTI: 2, EARM: 2, WEAT: 3, STOR: 3
+    })
+  }),
+  tree,
+  index as GameDataIndex
+);
+
+/** Just the one skill's group, so an assertion cannot pass on a neighbour's markup. */
+const node = (html: string, tag: string) => {
+  const from = html.indexOf(`data-testid="magic-graph-skill-${tag}"`);
+  const rest = html.slice(from);
+  const next = rest.indexOf('data-testid="magic-graph-skill-', 1);
+  return next === -1 ? rest : rest.slice(0, next);
+};
 
 /**
  * `MagicGraphDrawing` rather than `MagicGraphView`: the view owns the gestures and therefore the
@@ -84,5 +117,52 @@ describe("MagicGraphDrawing", () => {
     (findByTestId(tree, "magic-graph-skill-FIRE").props.onClick as () => void)();
     expect(lightings).toEqual(["FIRE"]);
     expect(opened).toEqual(["skill:CRRI"]);
+  });
+});
+
+describe("tinting the graph for one mage", () => {
+  const tinted = (step: number) =>
+    renderToStaticMarkup(
+      <MagicGraphDrawing
+        graph={graph}
+        lit={null}
+        viewport={{ tx: 0, ty: 0, step }}
+        standing={SIX_OF_SEVEN.byTag}
+        onLight={() => {}}
+        onOpenGameData={() => {}}
+      />
+    );
+
+  it("bars each node with where the mage stands", () => {
+    const html = tinted(0);
+
+    expect(node(html, "FORC")).toContain('data-testid="magic-graph-bar-FORC"');
+    expect(node(html, "FORC")).toContain("stroke-ok");
+    expect(node(html, "ILLU")).toContain("stroke-warn");
+    expect(node(html, "INVI")).toContain("stroke-select");
+    // Locked takes no bar at all: it is the absence of a state, not a fifth pattern.
+    expect(node(html, "CRRI")).not.toContain('data-testid="magic-graph-bar-CRRI"');
+  });
+
+  it("marks the level only where the names fit", () => {
+    const names = tinted(0);
+    expect(node(names, "FORC")).toContain("4→5");
+    expect(node(names, "ILLU")).toContain("3▲");
+    expect(node(names, "INVI")).toContain("○");
+    expect(node(names, "CRRI")).not.toContain('data-testid="magic-graph-mark-CRRI"');
+
+    // The view opens at step -3, where a mark would be about six pixels: the bar is drawn there
+    // and the mark is not.
+    const tags = tinted(-2);
+    expect(node(tags, "FORC")).toContain('data-testid="magic-graph-bar-FORC"');
+    expect(node(tags, "FORC")).not.toContain('data-testid="magic-graph-mark-FORC"');
+    expect(tags).not.toContain("4→5");
+  });
+
+  it("draws nothing extra with no mage picked", () => {
+    const html = renderToStaticMarkup(drawing());
+
+    expect(html).not.toContain('data-testid="magic-graph-bar-');
+    expect(html).not.toContain('data-testid="magic-graph-mark-');
   });
 });

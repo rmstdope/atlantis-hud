@@ -29,6 +29,7 @@ import {
   type Viewport
 } from "./mapViewport";
 import { guardSelection } from "./selectionGuard";
+import type { SkillStanding, StandingKind } from "../magicStanding";
 
 /**
  * The whole magic prerequisite graph: seventy skills in five tiers, and the hundred and two lines
@@ -78,6 +79,57 @@ const APPRENTICE_BOX_STYLE = {
   strokeDasharray: constant(3) + " " + constant(2)
 } as const;
 
+/**
+ * Where the picked mage stands, drawn as a bar down the node's left edge and a mark at its right.
+ *
+ * A channel of its own: the node's own stroke already carries `NodeKind` - brass for a foundation,
+ * select for the apprenticeship, brass-bright for lit - and the two must not fight over it. Every
+ * length goes through `constant`, the dash patterns included, or the pattern stretches with the
+ * zoom and dissolves.
+ */
+const STANDING_STYLE: Record<
+  Exclude<StandingKind, "locked">,
+  { className: string; style: { strokeWidth: string; strokeDasharray?: string } }
+> = {
+  known: { className: "stroke-ok", style: { strokeWidth: constant(3) } },
+  ceiling: {
+    className: "stroke-warn",
+    style: { strokeWidth: constant(3), strokeDasharray: constant(7) + " " + constant(4) }
+  },
+  maxed: {
+    className: "stroke-ink-soft",
+    style: { strokeWidth: constant(3), strokeDasharray: constant(2) + " " + constant(2) }
+  },
+  open: {
+    className: "stroke-select",
+    style: { strokeWidth: constant(3), strokeDasharray: constant(4) + " " + constant(3) }
+  }
+};
+
+/** The state's colour for the level mark, which is a fill rather than a stroke. */
+const MARK_FILL: Record<Exclude<StandingKind, "locked">, string> = {
+  known: "fill-ok",
+  ceiling: "fill-warn",
+  maxed: "fill-ink-soft",
+  open: "fill-select"
+};
+
+/** `4→5`, `3▲`, `5`, `○`. Nothing at all for a skill that cannot be begun. */
+function markOf(standing: SkillStanding): string {
+  switch (standing.kind) {
+    case "known":
+      return `${standing.level}→${standing.ceiling}`;
+    case "ceiling":
+      return `${standing.level}▲`;
+    case "maxed":
+      return `${standing.level}`;
+    case "open":
+      return "○";
+    case "locked":
+      return "";
+  }
+}
+
 /** What the graph tells a screen reader it is, and where the readable form lives. */
 export function graphAriaLabel(graph: MagicGraph): string {
   return (
@@ -97,6 +149,7 @@ export function MagicGraphDrawing({
   graph,
   lit,
   viewport,
+  standing = null,
   onLight,
   onOpenGameData,
   wasDragged,
@@ -111,6 +164,11 @@ export function MagicGraphDrawing({
   lit: string | null;
   /** Where the view is, or null before anything has placed it - then it draws at the origin. */
   viewport: Viewport | null;
+  /**
+   * Where the picked mage stands in each skill, or null for the untinted reference page. The same
+   * map the branch cards tint from, so the two views never disagree.
+   */
+  standing?: ReadonlyMap<string, SkillStanding> | null;
   /** A first click on a skill, or a click on empty background, which passes null. */
   onLight: (tag: string | null) => void;
   /** A second click on the already-lit skill. Takes the dictionary id, e.g. `skill:CRRI`. */
@@ -205,6 +263,7 @@ export function MagicGraphDrawing({
               key={node.tag}
               node={node}
               band={band}
+              standing={standing?.get(node.tag) ?? null}
               lit={lit === node.tag}
               dimmed={lineage !== null && !lineage.skills.has(node.tag)}
               onClick={() => {
@@ -228,12 +287,15 @@ export function MagicGraphDrawing({
 function Skill({
   node,
   band,
+  standing,
   lit,
   dimmed,
   onClick
 }: {
   node: GraphNode;
   band: LabelBand;
+  /** Where the picked mage stands in this one skill, or null when nothing is tinted. */
+  standing: SkillStanding | null;
   lit: boolean;
   dimmed: boolean;
   onClick: () => void;
@@ -266,6 +328,31 @@ function Skill({
                 : "stroke-edge"
         }`}
       />
+      {standing === null || standing.kind === "locked" ? null : (
+        <line
+          data-testid={`magic-graph-bar-${node.tag}`}
+          x1={node.x + 2}
+          y1={node.y + 3}
+          x2={node.x + 2}
+          y2={node.y + NODE_HEIGHT - 3}
+          style={STANDING_STYLE[standing.kind].style}
+          className={STANDING_STYLE[standing.kind].className}
+        />
+      )}
+      {standing === null || standing.kind === "locked" || band !== "names" ? null : (
+        // The names band only: the view opens at step -3, and a mark that shrank with the box
+        // would be about six pixels there - a smudge rather than a number.
+        <text
+          data-testid={`magic-graph-mark-${node.tag}`}
+          x={node.x + NODE_WIDTH - 7}
+          y={node.y + NODE_HEIGHT / 2 + 3.5}
+          textAnchor="end"
+          style={LEVEL_STYLE}
+          className={MARK_FILL[standing.kind]}
+        >
+          {markOf(standing)}
+        </text>
+      )}
       {band === "none" ? null : band === "names" ? (
         <text
           x={node.x + 7}
@@ -308,6 +395,7 @@ export type MagicGraphHandle = { zoomBy: (steps: number) => void; fitAll: () => 
 export function MagicGraphView({
   graph,
   lit,
+  standing = null,
   onLight,
   onOpenGameData,
   viewport,
@@ -316,6 +404,8 @@ export function MagicGraphView({
 }: {
   graph: MagicGraph;
   lit: string | null;
+  /** Where the picked mage stands in each skill, or null for the untinted reference page. */
+  standing?: ReadonlyMap<string, SkillStanding> | null;
   onLight: (tag: string | null) => void;
   onOpenGameData: (entryId: string) => void;
   /** Where the view is, or null when it has never been placed - then it fits on mount. */
@@ -520,6 +610,7 @@ export function MagicGraphView({
       graph={graph}
       lit={lit}
       viewport={viewport}
+      standing={standing}
       onLight={onLight}
       onOpenGameData={onOpenGameData}
       wasDragged={() => draggedRef.current}
