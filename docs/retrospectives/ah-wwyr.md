@@ -30,3 +30,35 @@ guaranteed to be bash, and the failure mode (a `git` warning plus a wrong-lookin
 exactly like the code under test being broken.
 
 **Seen before.** None found.
+
+## CI on the PR's first head stayed queued for over 20 hours from a GitHub Actions incident, and needed a manual retrigger
+
+**What happened.** After the review and the retrospective commit, `gh pr checks 740` reported "no
+checks reported" for the pushed head, and the workflow run itself (`32984013844`, created
+2026-08-26T15:05:00Z) sat at `status: queued` indefinitely — still queued when checked again the
+next day (`2026-08-27`), with `gh run cancel`/`POST .../cancel` both refusing it
+("Cannot cancel a workflow run that has not been queued yet." on a run whose own `status` field
+read `queued`). A second, unrelated PR's run from the same window (`32984753781`, branch
+`ah-bxgs-transport-distribute-items-column`) was stuck the same way.
+
+**Why.** `githubstatus.com` records an Actions incident for exactly this window: "Actions jobs
+failed to start" 15:02-17:40 UTC on 2026-08-26, caused by database saturation and an
+upstream event-processing issue, with some jobs "remained stuck in a queued state and required
+forced cancellation around 18:40 UTC." This run was created at 15:05 UTC, inside the incident, and
+was never one of the ones GitHub force-cancelled.
+
+**Cost.** The run sat stuck long enough to span a date change in this session (per the environment's
+own date-change notice) before being noticed and acted on — call it most of a day of wall-clock,
+though the session itself was not continuously polling it throughout. Fixed in under a minute once
+diagnosed: an empty commit (`git commit --allow-empty`) pushed to the branch started a fresh run
+(`33080302014`) under the same `${{ github.workflow }}-${{ github.ref }}` concurrency group, which
+completed normally in about 5.5 minutes with all 11 checks green.
+
+**Prevent by.** When a PR's checks read "no checks reported" or a run's `status` stays `queued` well
+past this project's normal ~5-6 minute CI time, check `githubstatus.com` for an Actions incident
+before assuming the change or the wait loop is at fault. If a genuine incident matches the run's
+creation time and cancelling it via the API is refused, `git commit --allow-empty` and push is the
+recovery — no code change needed, and the existing concurrency group picks up the fresh run without
+any extra configuration.
+
+**Seen before.** None found.
