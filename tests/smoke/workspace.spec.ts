@@ -913,9 +913,10 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   // It was eleven baseline until ah-uwa3: unit 1688 owed $10 and orders "@work" in a hex paying
   // $26.0, and wages arrive in the turn's last phase - in time for maintenance, if not for
   // anything the orders spend. So its fee is covered and it is no longer short.
-  const chip = page.getByTestId("problems-chip");
-  await expect(chip).toContainText("12 problems");
+  const chip = page.getByTestId("turn-report-chip");
+  await expect(chip).toHaveAttribute("data-problems", "12");
   await chip.click();
+  await page.getByTestId("turn-report-tab-problems").click();
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
   await expect(page.getByTestId("problem-entry").first()).toContainText("⚠");
 
@@ -927,7 +928,7 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   const remaining = page.getByTestId("region-problems");
   await expect(remaining).toContainText("their orders spend");
   await expect(remaining).not.toContainText("upkeep");
-  await expect(page.getByTestId("problems-chip")).toContainText("12 problems");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "12");
 });
 
 /**
@@ -1034,7 +1035,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   // One fewer since ah-uwa3: unit 1688's $10 fee is covered by the wages its "@work" earns, which
   // arrive in the turn's last phase - in time for maintenance, if not for what the orders spend.
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("problems-chip")).toContainText("9 problems");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "9");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1042,7 +1043,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("problems-chip")).toContainText("8 problems");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "8");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1050,7 +1051,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("problems-chip")).toContainText("9 problems");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "9");
 });
 
 /**
@@ -1398,22 +1399,21 @@ test("a folded panel shrinks to its title bar", async ({ page }) => {
 /**
  * The tallest the header may be at the pinned viewport, in pixels.
  *
- * Measured, not chosen: on 2026-08-28, after ah-30hg.1 took the app name, the two label words and
- * the turn's date out of the strip, the header renders at 73px on the desktop shell and 37px on
- * web, at the pinned 1280x720 viewport with a 16px root font. The budget is ~125% of the taller of
- * those - loose enough that an ordinary change does not trip it, tight enough that one more chip or
- * a step up in the type scale does.
+ * Measured, not chosen: on 2026-08-28, after ah-30hg.2 folded the three amber advisory chips into
+ * one, the header renders at 37px on both the desktop shell and web, at the pinned 1280x720
+ * viewport with a 16px root font. The budget is ~125% of that - loose enough that an ordinary
+ * change does not trip it, tight enough that one more chip or a step up in the type scale does.
  *
- * It stays at 91 rather than dropping to ~46 because the actions group still has a row of its own
- * on the desktop shell, 4.75px over what one line would take. ah-30hg.2 folds the three amber chips
- * into one, which closes that gap and makes the header 37px in both projects; lowering this number
- * belongs in that bead, with the change that earns it.
+ * It was 91 while the desktop shell still gave the actions group a row of its own, 4.75px over what
+ * one line would take. Folding the chips saved ~216px on the game-state group, which closed that
+ * gap with about 211px to spare - so a fourth advisory now costs a tab in the report panel rather
+ * than a row here.
  *
  * Raising it is allowed and deliberate - a bead that genuinely needs a taller header changes this
  * number in the same commit as the header change, which is the whole point of ah-csni: the cost
  * lands on the change that caused it instead of on two unrelated drag tests a day later.
  */
-const HEADER_BUDGET_PX = 91;
+const HEADER_BUDGET_PX = 46;
 
 test("the header fits its budget, so a taller one fails here and not somewhere else", async ({
   page
@@ -3081,11 +3081,12 @@ test("the header chip opens the lines that could not be read", async ({ page }) 
   });
   await expect(page.getByTestId("import-status")).toContainText("11 regions");
 
-  const chip = page.getByTestId("unreadable-chip");
-  await expect(chip).toContainText("1 unreadable");
-  await expect(chip).toHaveAttribute("aria-label", "1 line could not be read");
+  const chip = page.getByTestId("turn-report-chip");
+  await expect(chip).toHaveAttribute("data-unreadable", "1");
+  await expect(chip).toContainText("1 to check");
 
   await chip.click();
+  await page.getByTestId("turn-report-tab-unreadable").click();
 
   const panel = page.getByTestId("unreadable-lines");
   await expect(panel).toBeVisible();
@@ -3093,16 +3094,17 @@ test("the header chip opens the lines that could not be read", async ({ page }) 
   // parser could not.
   await expect(panel).toContainText(UNREADABLE_UNIT);
   await expect(panel).toContainText("Unit");
-  await expect(panel).toContainText("None of this reached the map.");
+  // The footer belongs to the report panel now, which carries the open tab's own sentence.
+  await expect(page.getByTestId("turn-report")).toContainText("None of this reached the map.");
 
   await page.keyboard.press("Escape");
-  await expect(page.getByTestId("unreadable-lines")).toHaveCount(0);
+  await expect(page.getByTestId("turn-report")).toHaveCount(0);
 });
 
-test("shows no chip for a report it read completely", async ({ page }) => {
+test("a report it read completely has nothing on the Not read tab", async ({ page }) => {
   await loadReport(page);
 
-  await expect(page.getByTestId("unreadable-chip")).toHaveCount(0);
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-unreadable", "0");
 });
 
 /**
@@ -3114,16 +3116,17 @@ test("shows no chip for a report it read completely", async ({ page }) => {
 test("the header chip opens the turn's errors and events", async ({ page }) => {
   await loadReport(page);
 
-  const chip = page.getByTestId("turn-messages-chip");
-  await expect(chip).toContainText("1 error");
-  await expect(chip).toContainText("events");
+  const chip = page.getByTestId("turn-report-chip");
+  await expect(chip).toHaveAttribute("data-errors", "1");
+  await expect(chip).toHaveAttribute("data-events", /^[1-9]/);
 
   await chip.click();
 
-  // Opens on the errors, because this turn has one.
-  const panel = page.getByTestId("turn-messages");
+  // Opens on the problems, because this turn has ten of them and they come first (ah-30hg.2).
+  const panel = page.getByTestId("turn-report");
   await expect(panel).toBeVisible();
-  await expect(panel.getByTestId("turn-messages-tab-errors")).toHaveAttribute(
+  await panel.getByTestId("turn-report-tab-engine").click();
+  await expect(panel.getByTestId("turn-report-tab-engine")).toHaveAttribute(
     "aria-selected",
     "true"
   );
@@ -3132,19 +3135,19 @@ test("the header chip opens the turn's errors and events", async ({ page }) => {
   await expect(panel).toContainText("DECLARE");
   await expect(panel).toContainText("Can't declare towards your own faction.");
 
-  await panel.getByTestId("turn-messages-tab-events").click();
+  await panel.getByTestId("turn-report-tab-events").click();
   await expect(panel).toContainText("Claims $50.");
 });
 
 test("a unit named in a turn message is a way back to it", async ({ page }) => {
   await loadReport(page);
-  await page.getByTestId("turn-messages-chip").click();
-  await page.getByTestId("turn-messages-tab-events").click();
+  await page.getByTestId("turn-report-chip").click();
+  await page.getByTestId("turn-report-tab-events").click();
 
   await page.getByTestId(`turn-messages-unit-${OWN_UNIT}`).first().click();
 
   // The panel has said what it had to say, and the workspace behind it is now describing the unit.
-  await expect(page.getByTestId("turn-messages")).toHaveCount(0);
+  await expect(page.getByTestId("turn-report")).toHaveCount(0);
   await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 });
@@ -3161,7 +3164,9 @@ test("a unit named in the problems panel is a way to go there", async ({ page })
   await selectHex(page, "1:7,53");
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 
-  await page.getByTestId("problems-chip").click();
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", /^[1-9]/);
+  await page.getByTestId("turn-report-chip").click();
+  await page.getByTestId("turn-report-tab-problems").click();
   // Scoped to the panel: the region pane behind it carries links of its own, and this test is
   // about the top-bar one. Six of Two (13402) is one of the turn's own baseline findings - it is
   // already at the ruleset's maximum combat and still orders "@study comb" - and it stands in a
@@ -3171,7 +3176,7 @@ test("a unit named in the problems panel is a way to go there", async ({ page })
   await jump.click();
 
   // The panel got out of the way, and the workspace behind it followed the unit to its own hex.
-  await expect(page.getByTestId("problems-panel")).toHaveCount(0);
+  await expect(page.getByTestId("turn-report")).toHaveCount(0);
   await expect(page.getByTestId("panel-unit")).toContainText("13402");
   await expect(page.getByTestId("panel-region")).not.toContainText("Inholm");
 });
@@ -3199,20 +3204,20 @@ test("a unit named in the region pane's problems is a way to select it", async (
 test("opening a header popover moves focus to the panel", async ({ page }) => {
   await loadReport(page);
 
-  await page.getByTestId("turn-messages-chip").click();
+  await page.getByTestId("turn-report-chip").click();
 
-  await expect(page.getByTestId("turn-messages")).toBeFocused();
+  await expect(page.getByTestId("turn-report")).toBeFocused();
 });
 
 test("closing the panel with Escape puts focus back on the chip", async ({ page }) => {
   await loadReport(page);
 
-  await page.getByTestId("turn-messages-chip").click();
-  await expect(page.getByTestId("turn-messages")).toBeFocused();
+  await page.getByTestId("turn-report-chip").click();
+  await expect(page.getByTestId("turn-report")).toBeFocused();
 
   await page.keyboard.press("Escape");
 
-  await expect(page.getByTestId("turn-messages-chip")).toBeFocused();
+  await expect(page.getByTestId("turn-report-chip")).toBeFocused();
 });
 
 test("closing the panel with its own close button puts focus back on the chip", async ({
@@ -3220,11 +3225,11 @@ test("closing the panel with its own close button puts focus back on the chip", 
 }) => {
   await loadReport(page);
 
-  await page.getByTestId("turn-messages-chip").click();
-  await page.getByRole("button", { name: "close turn messages", exact: true }).click();
+  await page.getByTestId("turn-report-chip").click();
+  await page.getByRole("button", { name: "close turn report", exact: true }).click();
 
-  await expect(page.getByTestId("turn-messages")).toHaveCount(0);
-  await expect(page.getByTestId("turn-messages-chip")).toBeFocused();
+  await expect(page.getByTestId("turn-report")).toHaveCount(0);
+  await expect(page.getByTestId("turn-report-chip")).toBeFocused();
 });
 
 /**
@@ -3234,13 +3239,15 @@ test("closing the panel with its own close button puts focus back on the chip", 
 test("opening a second popover leaves focus in the second panel", async ({ page }) => {
   await loadReport(page);
 
-  await page.getByTestId("turn-messages-chip").click();
-  await expect(page.getByTestId("turn-messages")).toBeFocused();
+  await page.getByTestId("turn-report-chip").click();
+  await expect(page.getByTestId("turn-report")).toBeFocused();
 
-  await page.getByTestId("problems-chip").click();
+  // The trade chip, since the problems and messages chips this used to switch between are one
+  // popover now (ah-30hg.2) and switching a popover with itself proves nothing.
+  await page.getByTestId("trade-chip").click();
 
-  await expect(page.getByTestId("turn-messages")).toHaveCount(0);
-  await expect(page.getByTestId("problems-panel")).toBeFocused();
+  await expect(page.getByTestId("turn-report")).toHaveCount(0);
+  await expect(page.getByTestId("trade-panel")).toBeFocused();
 });
 
 /**
@@ -3257,8 +3264,7 @@ test("every header popover takes focus when it opens", async ({ page }) => {
     ["faction-chip", "faction-panel"],
     ["export-menu", "export-menu-panel"],
     ["trade-chip", "trade-panel"],
-    ["problems-chip", "problems-panel"],
-    ["turn-messages-chip", "turn-messages"]
+    ["turn-report-chip", "turn-report"]
   ];
 
   for (const [chip, panel] of chips) {
@@ -3269,15 +3275,15 @@ test("every header popover takes focus when it opens", async ({ page }) => {
   }
 });
 
-test("the turn messages panel closes on Escape", async ({ page }) => {
+test("the turn report panel closes on Escape", async ({ page }) => {
   await loadReport(page);
 
-  await page.getByTestId("turn-messages-chip").click();
-  await expect(page.getByTestId("turn-messages")).toBeVisible();
+  await page.getByTestId("turn-report-chip").click();
+  await expect(page.getByTestId("turn-report")).toBeVisible();
 
   await page.keyboard.press("Escape");
 
-  await expect(page.getByTestId("turn-messages")).toHaveCount(0);
+  await expect(page.getByTestId("turn-report")).toHaveCount(0);
 });
 
 /**
