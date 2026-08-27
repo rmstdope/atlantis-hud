@@ -161,13 +161,43 @@ export function refreshedAgainst(
 }
 
 /**
- * Whether two snapshots say the same thing about a unit. `seenAt` is excluded on purpose: it is
- * the clock, not the unit, so a report that showed nothing new must not count as a change.
+ * Whether two snapshots say the same thing about a unit.
+ *
+ * `seenAt` is excluded on purpose: it is the clock, not the unit, so a report that showed nothing
+ * new must not count as a change and must not cost a write. Field by field rather than by
+ * stringifying the whole record, because one side has been through storage and the other has not,
+ * and two JSON documents with the same fields in a different order are not the same text.
  */
 function sameSnapshot(a: ArmyMemberRecord, b: ArmyMemberRecord): boolean {
-  const { seenAt: _a, ...withoutClockA } = a;
-  const { seenAt: _b, ...withoutClockB } = b;
-  return JSON.stringify(withoutClockA) === JSON.stringify(withoutClockB);
+  return (
+    a.unitId === b.unitId &&
+    a.name === b.name &&
+    a.factionId === b.factionId &&
+    a.factionName === b.factionName &&
+    a.own === b.own &&
+    a.regionId === b.regionId &&
+    a.men === b.men &&
+    a.seenTurn === b.seenTurn &&
+    sameList(a.flags, b.flags, (one, other) => one === other) &&
+    sameList(
+      a.items,
+      b.items,
+      (one, other) => one.tag === other.tag && one.name === other.name && one.amount === other.amount
+    ) &&
+    sameList(
+      a.skills,
+      b.skills,
+      (one, other) =>
+        one.tag === other.tag &&
+        one.name === other.name &&
+        one.level === other.level &&
+        one.points === other.points
+    )
+  );
+}
+
+function sameList<T>(a: readonly T[], b: readonly T[], same: (one: T, other: T) => boolean): boolean {
+  return a.length === b.length && a.every((one, index) => same(one, b[index]));
 }
 
 /** True when this member's snapshot is older than the turn on screen. */

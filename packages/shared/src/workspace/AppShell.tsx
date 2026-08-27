@@ -101,6 +101,7 @@ import {
 import type { BackupImportMode } from "../gameBackup";
 import { DEFAULT_LEVEL, useWorkspaceStore, workspaceGameOf } from "../workspaceStore";
 import { useHexNotesStore } from "../hexNotesStore";
+import { useArmiesStore } from "../armiesStore";
 import { useSettingsStore } from "../settingsStore";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
 import { TurnPicker } from "./TurnPicker";
@@ -484,6 +485,9 @@ export function AppShell({
   const [gamesLoaded, setGamesLoaded] = useState(false);
   // The map's note pins (ah-o1t.3); the panel reads the same store directly.
   const hexNotes = useHexNotesStore((state) => state.notes);
+  // Subscribed, not read through `getState()`: the refresh effect below depends on it, so the
+  // Armies that arrive after an asynchronous load are still refreshed against the turn on screen.
+  const armiesStatus = useArmiesStore((state) => state.status);
   /** Which header popover is open - one at a time, by construction. Dialogs keep their own flags. */
   const [openPopover, setOpenPopover] = useState<HeaderPopoverId | null>(null);
   /** Closes the named popover if it is the open one, and touches nothing otherwise. */
@@ -1685,6 +1689,39 @@ export function AppShell({
       useHexNotesStore.getState().clear();
     }
   }, [client, openGameId, gameEpoch]);
+
+  /**
+   * The same for the Armies store (ah-1mpx.1), keyed the same way and for the same reasons: an
+   * Army is scoped to the game and does not change because the game was renamed.
+   */
+  useEffect(() => {
+    if (game) {
+      void useArmiesStore.getState().load(client, game);
+    } else {
+      useArmiesStore.getState().clear();
+    }
+  }, [client, openGameId, gameEpoch]);
+
+  /**
+   * Refreshes every Army's remembered units against the turn on screen (ah-1mpx.1).
+   *
+   * Driven off `parsed` rather than hooked into `applyLoadedTurn`, which is not in fact the only
+   * way a turn arrives: the restore effect below sets `parsed` directly, and that is how a turn
+   * appears every time the application is reopened - the commonest case of all. A refresh wired
+   * only into `applyLoadedTurn` would silently never run there.
+   *
+   * `refreshFor` is reached through `getState()`, as the effects above reach `load` and `clear`,
+   * so this does not re-run when the Armies themselves change and cannot chase its own writes
+   * round in a loop. `armiesStatus` is subscribed and in the dependency list on purpose: the load
+   * is asynchronous, so the first run can happen while the list is still empty.
+   */
+  useEffect(() => {
+    if (game === null || parsed === null || armiesStatus !== "ready") {
+      return;
+    }
+
+    void useArmiesStore.getState().refreshFor(client, game, parsed, new Date().toISOString());
+  }, [client, game, parsed, armiesStatus]);
 
   /**
    * Puts back the turn the player was last working on.

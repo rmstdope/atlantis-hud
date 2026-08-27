@@ -1,4 +1,8 @@
 import type { AdvisoryCheckCode } from "./coreVocabulary.generated";
+// Both are re-exported below; `ArmyMemberRecord` also names them, which a re-export alone does not
+// bring into this file's scope.
+import type { ItemAmount } from "./generated/ItemAmount";
+import type { SkillInfo } from "./generated/SkillInfo";
 
 // The report model and the parse family are generated from the Rust core by ts-rs
 // (crates/core, `cargo test`); see docs/implementation-plan.md §Generated bindings.

@@ -3,13 +3,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// The snapshot a membership carries. The core owns it because the backup carries it too.
+pub use atlantis_hud_core::backup::ArmyMember;
 use atlantis_hud_core::backup::{
     apply_manifest_edit, encode_game_backup, GameBackupArmy, GameBackupContent, GameBackupHexNote,
     GameBackupImportedTurn, GameBackupMergedReport, GameBackupOrderDraft, GameBackupRegionSighting,
     ManifestEdit,
 };
-/// The snapshot a membership carries. The core owns it because the backup carries it too.
-pub use atlantis_hud_core::backup::ArmyMember;
 use atlantis_hud_core::movement::graph::MapGeometry;
 // The row and the order it is listed in are the core's, so both platforms answer alike
 // (`ah-8z4y.3.2`). Re-exported here because this is where every caller already reaches for it.
@@ -2892,7 +2892,8 @@ mod tests {
             ..army.clone()
         };
         upsert_army(&created.database_path, &renamed).expect("second upsert should persist");
-        let listed_after = list_armies(&created.database_path, GAME_ID).expect("list should succeed");
+        let listed_after =
+            list_armies(&created.database_path, GAME_ID).expect("list should succeed");
         assert_eq!(
             listed_after,
             vec![renamed.clone()],
