@@ -197,7 +197,12 @@ test("a pane opening leaves the map where it is", async ({ page }) => {
   // host's bottom minus the pane's top). The region pane's collapse only changes its height inside
   // a fixed-width rail, which never moves the "left" edge's horizontal reach - so toggling it would
   // not exercise the insets path this test exists to cover.
-  const unitsPanelToggle = page.locator('[data-testid="panel-units"] header button');
+  // The fold toggle by the attribute this test then asserts on, not "the button in the header":
+  // the units pane's header also carries the Add to army trigger now (ah-1mpx.2), and a bare
+  // `header button` matches both.
+  const unitsPanelToggle = page.locator(
+    '[data-testid="panel-units"] header button[aria-expanded]'
+  );
   await unitsPanelToggle.click();
   await expect(unitsPanelToggle).toHaveAttribute("aria-expanded", "false");
   await unitsPanelToggle.click();
