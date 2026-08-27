@@ -72,7 +72,8 @@ export type ArmiesState = {
    * such a report, but the type permits it.
    *
    * Fire and forget: a failed cache write is logged and swallowed, because a turn that loaded
-   * correctly must not be rolled back over one.
+   * correctly must not be rolled back over one. What did not reach storage is put back in the
+   * cache, so the two never quietly disagree.
    */
   refreshFor: (
     client: CoreClient,
@@ -157,24 +158,45 @@ export const useArmiesStore = create<ArmiesState>()((set, get) => ({
       return;
     }
 
+    const before = get().armies;
     const units = unitsByIdIn(parsed);
-    const refreshed = get().armies.map((army) => refreshedAgainst(army, units, turn, now));
+    const refreshed = before.map((army) => refreshedAgainst(army, units, turn, now));
     // `refreshedAgainst` answers with the identical object when nothing moved, so this is what
     // keeps a turn load from rewriting every Army.
-    const moved = refreshed.filter((army, index) => army !== get().armies[index]);
+    const moved = refreshed.filter((army, index) => army !== before[index]);
     if (moved.length === 0) {
       return;
     }
 
     set({ armies: sortArmies(refreshed) });
-    try {
-      await Promise.all(moved.map((army) => saveArmy(client, game, army)));
-    } catch (error) {
-      console.warn("could not save refreshed Armies", error);
-      // Put the cache back to what storage still holds rather than showing snapshots that were
-      // never written.
-      await get().load(client, game);
+    const written = await Promise.allSettled(moved.map((army) => saveArmy(client, game, army)));
+
+    // Roll back exactly the Armies that did not reach storage, and leave the ones that did.
+    //
+    // Not `load`, and not a bare log. Re-reading storage would flip `status` back through
+    // `loading` to `ready`, which the shell's refresh effect is keyed on - so a write that keeps
+    // failing (a full disk, an exhausted quota) would refresh, fail, reload and refresh again
+    // without bound. Logging alone would be worse the other way: the cache would show snapshots
+    // that were never written, and the next refresh would find nothing changed and never retry.
+    const unwritten = new Set(
+      moved.filter((_army, index) => written[index].status === "rejected").map((army) => army.id)
+    );
+    if (unwritten.size === 0) {
+      return;
     }
+
+    console.warn(
+      `could not save ${unwritten.size} refreshed ${unwritten.size === 1 ? "Army" : "Armies"}`,
+      written.find((one) => one.status === "rejected")
+    );
+    const previous = new Map(before.map((army) => [army.id, army]));
+    set((state) => ({
+      armies: sortArmies(
+        state.armies.map((army) =>
+          unwritten.has(army.id) ? (previous.get(army.id) ?? army) : army
+        )
+      )
+    }));
   },
 
   clear: () => set({ gameId: null, status: "idle", armies: [] })

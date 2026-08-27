@@ -193,22 +193,69 @@ describe("the Armies store", () => {
     });
 
     // A turn that loaded correctly must not be rolled back because a cache write failed - so the
-    // caller sees nothing - and the cache is repaired from storage rather than left showing
-    // snapshots that were never written.
-    it("swallows a failed save and puts the cache back to what storage holds", async () => {
+    // caller sees nothing - and what did not reach storage is put back, so the cache and storage
+    // never quietly disagree.
+    it("swallows a failed save and puts the unwritten Army back", async () => {
       const stored = army({ members: [aMember({ men: 1, seenTurn: 71 })] });
-      const c = client({
-        saveArmy: vi.fn().mockRejectedValue(new Error("disk full")),
-        listArmies: vi.fn().mockResolvedValue([stored])
-      });
+      const c = client({ saveArmy: vi.fn().mockRejectedValue(new Error("disk full")) });
       useArmiesStore.setState({ gameId: "aug-2026", status: "ready", armies: [stored] });
 
       await expect(
         useArmiesStore.getState().refreshFor(c, game(), parsedWith([aReportUnit({ unitId: "1", men: 9 })]), NOW)
       ).resolves.toBeUndefined();
 
-      expect(c.listArmies).toHaveBeenCalled();
       expect(useArmiesStore.getState().armies[0].members[0].men).toBe(1);
+    });
+
+    /**
+     * The shell's refresh effect is keyed on this store's `status`, so a failure that put `status`
+     * back through `loading` to `ready` would re-invoke `refreshFor` with the same turn - and a
+     * write that keeps failing would refresh, fail and refresh again without bound. Nothing here
+     * may touch `status`, and nothing may re-list.
+     */
+    it("neither re-lists nor moves status when a save fails, so the shell's effect cannot loop", async () => {
+      const c = client({ saveArmy: vi.fn().mockRejectedValue(new Error("disk full")) });
+      useArmiesStore.setState({
+        gameId: "aug-2026",
+        status: "ready",
+        armies: [army({ members: [aMember({ men: 1, seenTurn: 71 })] })]
+      });
+      const seenStatuses: string[] = [];
+      const unsubscribe = useArmiesStore.subscribe((state) => seenStatuses.push(state.status));
+
+      await useArmiesStore
+        .getState()
+        .refreshFor(c, game(), parsedWith([aReportUnit({ unitId: "1", men: 9 })]), NOW);
+      unsubscribe();
+
+      expect(c.listArmies).not.toHaveBeenCalled();
+      expect(seenStatuses.every((status) => status === "ready")).toBe(true);
+    });
+
+    it("keeps an Army that did save and rolls back only the one that did not", async () => {
+      const saved = army({ id: "saved", name: "Saved", members: [aMember({ unitId: "1", men: 1 })] });
+      const failed = army({ id: "failed", name: "Failed", members: [aMember({ unitId: "2", men: 1 })] });
+      const c = client({
+        saveArmy: vi
+          .fn()
+          .mockImplementation((_db, one: ArmyRecord) =>
+            one.id === "failed" ? Promise.reject(new Error("disk full")) : Promise.resolve(one)
+          )
+      });
+      useArmiesStore.setState({ gameId: "aug-2026", status: "ready", armies: [saved, failed] });
+
+      await useArmiesStore
+        .getState()
+        .refreshFor(
+          c,
+          game(),
+          parsedWith([aReportUnit({ unitId: "1", men: 9 }), aReportUnit({ unitId: "2", men: 9 })]),
+          NOW
+        );
+
+      const armies = useArmiesStore.getState().armies;
+      expect(armies.find((one) => one.id === "saved")?.members[0].men).toBe(9);
+      expect(armies.find((one) => one.id === "failed")?.members[0].men).toBe(1);
     });
   });
 
