@@ -60,7 +60,7 @@ export function FactionPanel({
         </button>
       </div>
 
-      <div className={`${POPOVER_BODY_MAX_H} overflow-y-auto p-2`}>
+      <div data-testid="faction-panel-body" className={`${POPOVER_BODY_MAX_H} overflow-y-auto p-2`}>
         {factionTypes.length > 0 ? (
           <p className="text-ink-soft">{factionTypes.join(", ")}</p>
         ) : null}
@@ -114,7 +114,7 @@ export function FactionPanel({
                           {(() => {
                             const label = (
                               <span
-                                data-testid={`faction-attitude-name-${faction.id}`}
+                                data-testid={`attitude-faction-${faction.id}`}
                                 className={faction.merged ? "text-brass-bright" : undefined}
                               >
                                 {faction.name} ({faction.id})
