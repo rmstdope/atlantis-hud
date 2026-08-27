@@ -296,6 +296,30 @@ export async function waitForStableHeight(page: Page, panel: string) {
 }
 
 /**
+ * Waits for the app header to reach its settled height before anything below it is measured.
+ *
+ * The header is `flex flex-wrap` (`AppHeader.tsx:275`) and its chips arrive on their own schedule.
+ * The problems chip is the late one: it renders only once `problemCount > 0`
+ * (`AppHeader.tsx:500`), and that count comes from an async validation round trip to the core, so
+ * it lands well after `loadReport` has reported its region count. Measured on 2026-08-28, sampling
+ * every 100ms: it enters between 100 and 200ms after `selectHex` returns, wraps the header onto a
+ * second row, and takes it from 73px to 102px. Everything below - the map, and the panel columns
+ * over it - loses those 29px, which is enough to trip the orders slot's own `max-height` clamp.
+ *
+ * `waitForStableHeight` and `waitForStableBox` cannot stand in for this: at that moment the panel
+ * being polled is genuinely at rest under its own `max-h-[55%]`, so two equal samples prove
+ * nothing about the header. This waits on the chip itself - a state, not a duration and not a
+ * stable reading.
+ *
+ * Only for the standard fixture, which produces baseline problems with no orders typed (see the
+ * note at `workspace.spec.ts:905-912`). A walk that loads a report with none would wait here
+ * forever.
+ */
+export async function waitForSettledHeader(page: Page): Promise<void> {
+  await expect(page.getByTestId("problems-chip")).toBeVisible();
+}
+
+/**
  * Waits for a panel to stop *moving* as well as stop resizing, before its position is measured.
  *
  * The header gains a row once the loaded report's counts render, and everything below it - the

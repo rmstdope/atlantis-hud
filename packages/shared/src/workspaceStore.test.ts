@@ -436,6 +436,22 @@ describe("panels and layers", () => {
     expect(store().collapsed.units).toBe(false);
   });
 
+  it("keeps a dragged orders height across a fold and unfold of the unit panel", () => {
+    // The browser spec that used to be the only home for this claim compared two rendered heights,
+    // and could be beaten by a header row landing between them (ah-zh5i.4). The store half of the
+    // claim - that folding writes nothing to the stored height, in either direction - is pure, and
+    // belongs somewhere that cannot race. The value is the one measured during that failure.
+    store().setOrdersHeight(18.49609375);
+
+    store().togglePanel("unit");
+    expect(store().collapsed.unit).toBe(true);
+    expect(store().ordersHeightRem).toBe(18.49609375);
+
+    store().togglePanel("unit");
+    expect(store().collapsed.unit).toBe(false);
+    expect(store().ordersHeightRem).toBe(18.49609375);
+  });
+
   it("writes the layout to storage, and only the layout", async () => {
     // A reload builds a fresh store and hydrates it from here, so what is written decides what
     // survives. Selections deliberately are not: a reload leaves no report loaded, and restoring a

@@ -133,6 +133,16 @@ describe("ordersSlotClass", () => {
     expect(ordersSlotClass(folded("orders"), true)).toBe("flex-none");
     expect(ordersSlotClass(folded("orders", "unit"), true)).toBe("flex-none");
   });
+
+  it("hands the slot back its own class once the unit panel unfolds", () => {
+    // The other half of ah-zh5i.4's claim, kept out of the browser: folding hands the column to
+    // the editor and unfolding gives it back exactly the class it had, with no path through a
+    // rendered pixel that a late header row can move.
+    const before = ordersSlotClass(OPEN, true);
+
+    expect(ordersSlotClass(folded("unit"), true)).toContain("flex-1");
+    expect(ordersSlotClass(OPEN, true)).toBe(before);
+  });
 });
 
 describe("clampOrdersHeight", () => {
@@ -243,6 +253,16 @@ describe("ordersSlotStyle", () => {
   it("is null once either panel folds, even with a stored height", () => {
     expect(ordersSlotStyle(folded("unit"), 24)).toBeNull();
     expect(ordersSlotStyle(folded("orders"), 24)).toBeNull();
+  });
+
+  it("hands the slot back its own height once the unit panel unfolds", () => {
+    // ah-zh5i.4: the fold/unfold round trip returns the identical style object, so the height the
+    // editor comes back to is decided here rather than by whatever the window happened to measure.
+    const rem = 18.49609375;
+    const before = ordersSlotStyle(OPEN, rem);
+
+    expect(ordersSlotStyle(folded("unit"), rem)).toBeNull();
+    expect(ordersSlotStyle(OPEN, rem)).toEqual(before);
   });
 });
 
