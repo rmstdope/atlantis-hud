@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-1t41 &mdash; round 2: the three cases your answer reopens</title><style>
+:root {
+  --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+  --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+  --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  --a-ground:#1b212a; --a-panel:#222933; --a-raised:#2a323d; --a-edge:#46525f; --a-edge-soft:#333d49;
+  --a-ink:#d4dce6; --a-ink-soft:#a8b4c2; --a-ink-dim:#99a4b2;
+  --a-brass:#e0b25a; --a-brass-bright:#eebe63; --a-select:#5aa9de; --a-ok:#4fb783;
+  --a-warn:#d9a441; --a-danger:#e89494; --a-gain:#7fb069;
+  --a-unit-own:#5ec8f0; --a-unit-foreign:#f07070; --a-ring:#f5f8fc;
+  --a-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+header, main, footer { max-width:1420px; margin:0 auto; }
+h1 { font-size:26px; letter-spacing:0.4px; }
+h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+p.lede { color:var(--brass-bright); font-size:15.5px; font-style:italic; max-width:96ch; margin-top:12px; }
+code, .mono { font-family:var(--a-mono); }
+header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+.stage { background:#0b0f15; border:1px solid var(--edge-soft); border-radius:8px; padding:12px; overflow-x:auto; }
+.hexlab { font:10.5px/1 var(--a-mono); letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
+.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+.notes li.con::before { content:"\2212 "; color:var(--danger); }
+.notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+.split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+.split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+footer { margin-top:42px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+.rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+.bad { color:var(--danger); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+.new { outline:1px dashed var(--brass); outline-offset:2px; }
+.newtag { font:9.5px/1 var(--a-mono); letter-spacing:.1em; text-transform:uppercase; color:#1b212a;
+          background:var(--brass); border-radius:3px; padding:3px 5px; }
+table.g { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:6px; }
+table.g th { text-align:left; color:var(--brass); font-weight:400; font-size:11px; letter-spacing:.1em;
+             text-transform:uppercase; border-bottom:1px solid var(--edge); padding:5px 8px; }
+table.g td { border-bottom:1px solid var(--edge-soft); padding:5px 8px; color:var(--ink-soft); vertical-align:top; }
+table.g td.y { color:var(--ok); } table.g td.n2 { color:var(--ink-dim); }
+
+/* ================= the application, reproduced ================= */
+.app { width:660px; position:relative; overflow:hidden; border-radius:6px;
+       border:1px solid #000; background:var(--a-ground); color:var(--a-ink);
+       font:13px/1.35 var(--a-mono); display:flex; flex-direction:column; }
+.app *, .app *::before { box-sizing:border-box; }
+.pane { display:flex; flex-direction:column; min-height:0; overflow:hidden;
+        border:1px solid var(--a-edge); background:#222933; }
+.pane > .ttl { height:28px; flex:none; display:flex; align-items:center; gap:8px; padding:0 10px;
+               border-bottom:1px solid var(--a-edge); font-size:12px; letter-spacing:.12em;
+               text-transform:uppercase; color:var(--a-brass); }
+.pane > .ttl .hint { text-transform:none; letter-spacing:normal; color:var(--a-ink-dim); font-size:12px; }
+.pane > .ttl .acts { margin-left:auto; display:flex; align-items:center; gap:6px; }
+.filter { width:176px; border:1px solid var(--a-edge); background:var(--a-ground); color:var(--a-ink);
+          border-radius:4px; padding:1px 8px; font-size:13px; }
+.filter.ph { color:var(--a-ink-dim); }
+.filter.hot { border-color:var(--a-select); }
+.body { display:flex; min-height:0; height:214px; }
+.srail { width:172px; flex:none; border-right:1px solid var(--a-edge); background:#2a323db3; overflow:auto; padding:6px; }
+.srail .grp { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--a-ink-dim); margin:10px 0 4px 6px; }
+.srail .s { display:flex; align-items:center; gap:6px; padding:3px 7px; border-radius:4px; color:var(--a-ink-soft); font-size:13px; }
+.srail .s.on { background:#5aa9de26; color:var(--a-ink); box-shadow:inset 2px 0 0 var(--a-select); }
+.srail .s .ct { margin-left:auto; color:var(--a-ink-dim); font-size:12px; }
+.srail .s .mk { color:var(--a-brass); }
+.tw { flex:1; min-width:0; overflow:hidden; }
+table.ut { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0; font-variant-numeric:tabular-nums; }
+table.ut th { background:var(--a-panel); border-bottom:1px solid var(--a-edge);
+              padding:4px 8px; text-align:left; font-size:12px; font-weight:500; letter-spacing:.06em;
+              text-transform:uppercase; color:var(--a-ink-soft); }
+table.ut td { height:24px; padding:2px 8px; border-bottom:1px solid var(--a-edge-soft);
+              white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; }
+table.ut tr.foreign { color:var(--a-ink-soft); }
+.idown { color:var(--a-select); }
+.dim { color:var(--a-ink-dim); }
+.empty { color:var(--a-ink-dim); font-size:12px; line-height:1.6; text-align:center; padding:26px 12px; }
+.empty b { color:var(--a-ink-soft); display:block; font-weight:500; margin-bottom:4px; font-size:13px; }
+.cap { font:11px/1.4 var(--a-mono); color:var(--ink-dim); margin:8px 0 0; letter-spacing:.04em; }
+.cap b { color:var(--brass-bright); font-weight:400; }
+.step { display:flex; align-items:center; gap:10px; margin:0 0 8px; font:11px/1 var(--a-mono);
+        letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim); }
+.step .n { display:inline-flex; width:19px; height:19px; align-items:center; justify-content:center;
+           border-radius:50%; border:1px solid var(--brass); color:var(--brass); font-size:10px; }
+.arrow { text-align:center; color:var(--brass); font-size:22px; padding:2px 0; }
+
+</style></head><body>
+<header>
+<h1>ah-1t41 &mdash; <span>round 2: the three cases your answer reopens</span></h1>
+<p>Settled in round 1: <b>the box empties</b> (option A); a re-click of the entry you are already on
+changes nothing; the sort is left alone. And <b>selecting a different hex clears it too</b> &mdash; you
+took the wider rule, "any list replacement clears it".</p>
+<p class="lede">That phrase is why this round exists. Three more things replace the list, and the rule
+as worded would take all three. Each is drawn below; each is a separate answer.</p>
+</header>
+<main>
+
+<h3 class="sec">Case 1 &mdash; a new turn's report loads</h3>
+<p>Every unit in the list is replaced by its turn-72 self, and some are gone entirely. Nothing was
+clicked: the player dropped a file in, or pressed <span class="mono">Import</span>.</p>
+<div class="card"><div class="split3">
+  <div><div class="step"><span class="n">1</span>Turn 71, filtered</div>
+    <div class="stage"><div class="app">
+  <div class="pane">
+    <div class="ttl">Units in hex<span class="hint">&mdash; plain (7,53), 92 units, 2 shown</span>
+      <span class="acts"><span class="filter">scout</span></span></div>
+    <div class="body"><div class="srail"><div class="s on">This hex<span class="ct">92</span></div><div class="s">All my units<span class="ct">38</span></div><div class="grp">Armies</div><div class="s">Northern Host<span class="ct">12</span></div><div class="s">Coastal Watch<span class="ct">5</span></div></div><div class="tw"><table class="ut"><thead><tr><th style="width:74px">Unit</th><th>Name</th><th style="width:62px">Men</th></tr></thead><tbody><tr><td class="idown">18644</td><td>Scout North</td><td>1</td></tr><tr><td class="idown">18677</td><td>Scout South</td><td>1</td></tr></tbody></table></div></div>
+  </div>
+</div></div>
+    <p class="cap">Box holds <b>scout</b>.</p></div>
+  <div><div class="step"><span class="n">2a</span>Turn 72 loads &mdash; KEEP</div>
+    <div class="stage"><div class="app">
+  <div class="pane">
+    <div class="ttl">Units in hex<span class="hint">&mdash; plain (7,53), 88 units, 1 shown</span>
+      <span class="acts"><span class="filter">scout</span></span></div>
+    <div class="body"><div class="srail"><div class="s on">This hex<span class="ct">92</span></div><div class="s">All my units<span class="ct">38</span></div><div class="grp">Armies</div><div class="s">Northern Host<span class="ct">12</span></div><div class="s">Coastal Watch<span class="ct">5</span></div></div><div class="tw"><table class="ut"><thead><tr><th style="width:74px">Unit</th><th>Name</th><th style="width:62px">Men</th></tr></thead><tbody><tr><td class="idown">18644</td><td>Scout North</td><td>1</td></tr></tbody></table></div></div>
+  </div>
+</div></div>
+    <p class="cap">The filter holds, and the answer to "what happened to my scouts" is <b>right there</b>:
+      one of the two is gone. <span class="rec">recommended</span></p></div>
+  <div><div class="step"><span class="n">2b</span>Turn 72 loads &mdash; CLEAR</div>
+    <div class="stage"><div class="app">
+  <div class="pane">
+    <div class="ttl">Units in hex<span class="hint">&mdash; plain (7,53), 88 units</span>
+      <span class="acts"><span class="filter ph">filter units&hellip;</span></span></div>
+    <div class="body"><div class="srail"><div class="s on">This hex<span class="ct">92</span></div><div class="s">All my units<span class="ct">38</span></div><div class="grp">Armies</div><div class="s">Northern Host<span class="ct">12</span></div><div class="s">Coastal Watch<span class="ct">5</span></div></div><div class="tw"><table class="ut"><thead><tr><th style="width:74px">Unit</th><th>Name</th><th style="width:62px">Men</th></tr></thead><tbody><tr><td class="idown">18642</td><td>Seven of Eight</td><td>12</td></tr><tr><td class="idown">18644</td><td>Scout North</td><td>1</td></tr><tr><td class="idown">18651</td><td>Quarry Gang</td><td>24</td></tr><tr><td class="idown">14451</td><td>Drones</td><td>230</td></tr><tr><td class="idown">18660</td><td>Harbour Watch</td><td>8</td></tr><tr><td class="idown">18677</td><td>Scout South</td><td>1</td></tr></tbody></table></div></div>
+  </div>
+</div></div>
+    <p class="cap">The whole hex again. The comparison you had set up is gone, and it was the reason
+      you had the filter on.</p></div>
+</div>
+<ul class="notes">
+  <li class="n">The distinction that makes this different from a hex click: <b>you pointed at nothing</b>.
+      Clearing on a hex click punishes a deliberate act; clearing here punishes the arrival of data.</li>
+  <li class="n">It is also the one moment a player is most likely to have a filter set on purpose &mdash;
+      comparing one turn against the next is what the box is for.</li>
+</ul>
+</div>
+
+<h3 class="sec">Case 2 &mdash; a hex is clicked while an <i>Army</i> is the source</h3>
+<p>The Army is not about the hex, so the table does not move. <code>ah-1mpx.2</code> settled that
+deliberately, and <code>armies.spec.ts</code> pins it.</p>
+<div class="card"><div class="split3">
+  <div><div class="step"><span class="n">1</span>On Northern Host, filtered</div>
+    <div class="stage"><div class="app">
+  <div class="pane">
+    <div class="ttl">Units<span class="hint">&mdash; Northern Host, 12 units, 1 shown</span>
+      <span class="acts"><span class="filter">levy</span></span></div>
+    <div class="body"><div class="srail"><div class="s">This hex<span class="ct">92</span></div><div class="s">All my units<span class="ct">38</span></div><div class="grp">Armies</div><div class="s on">Northern Host<span class="ct">12</span></div><div class="s">Coastal Watch<span class="ct">5</span></div></div><div class="tw"><table class="ut"><thead><tr><th style="width:74px">Unit</th><th>Name</th><th style="width:62px">Men</th></tr></thead><tbody><tr><td class="idown">18691</td><td>Second Levy</td><td>31</td></tr></tbody></table></div></div>
+  </div>
+</div></div>
+    <p class="cap">Box holds <b>levy</b>.</p></div>
+  <div><div class="step"><span class="n">2a</span>Click hex (7,51) &mdash; KEEP</div>
+    <div class="stage"><div class="app">
+  <div class="pane">
+    <div class="ttl">Units<span class="hint">&mdash; Northern Host, 12 units, 1 shown</span>
+      <span class="acts"><span class="filter">levy</span></span></div>
+    <div class="body"><div class="srail"><div class="s">This hex<span class="ct">0</span></div><div class="s">All my units<span class="ct">38</span></div><div class="grp">Armies</div><div class="s on">Northern Host<span class="ct">12</span></div><div class="s">Coastal Watch<span class="ct">5</span></div></div><div class="tw"><table class="ut"><thead><tr><th style="width:74px">Unit</th><th>Name</th><th style="width:62px">Men</th></tr></thead><tbody><tr><td class="idown">18691</td><td>Second Levy</td><td>31</td></tr></tbody></table></div></div>
+  </div>
+</div></div>
+    <p class="cap">Nothing moved, because nothing about the list changed. Only the rail's
+      <b>This hex</b> count follows the map. <span class="rec">recommended</span></p></div>
+  <div><div class="step"><span class="n">2b</span>Click hex (7,51) &mdash; CLEAR</div>
+    <div class="stage"><div class="app">
+  <div class="pane">
+    <div class="ttl">Units<span class="hint">&mdash; Northern Host, 12 units</span>
+      <span class="acts"><span class="filter ph">filter units&hellip;</span></span></div>
+    <div class="body"><div class="srail"><div class="s">This hex<span class="ct">0</span></div><div class="s">All my units<span class="ct">38</span></div><div class="grp">Armies</div><div class="s on">Northern Host<span class="ct">12</span></div><div class="s">Coastal Watch<span class="ct">5</span></div></div><div class="tw"><table class="ut"><thead><tr><th style="width:74px">Unit</th><th>Name</th><th style="width:62px">Men</th></tr></thead><tbody><tr><td class="idown">18642</td><td>Seven of Eight</td><td>12</td></tr><tr><td class="idown">18651</td><td>Quarry Gang</td><td>24</td></tr><tr><td class="idown">18660</td><td>Harbour Watch</td><td>8</td></tr><tr><td class="idown">18691</td><td>Second Levy</td><td>31</td></tr></tbody></table></div></div>
+  </div>
+</div></div>
+    <p class="cap">The box empties for a list that did not change &mdash; and the map is exactly where a
+      player looks while reading an Army spread over five hexes.</p></div>
+</div>
+</div>
+
+<h3 class="sec">Case 3 &mdash; the Army you are looking at is deleted</h3>
+<p>The table cannot stay pointed at nothing, so it falls back to <i>This hex</i> on its own. The list
+is replaced, but the player clicked <b>Delete</b>, not a rail entry.</p>
+<div class="card"><div class="split">
+  <div><div class="step"><span class="n">1</span>On Northern Host, filtered, Delete pressed</div>
+    <div class="stage"><div class="app">
+  <div class="pane">
+    <div class="ttl">Units<span class="hint">&mdash; Northern Host, 12 units, 1 shown</span>
+      <span class="acts"><span class="filter">levy</span></span></div>
+    <div class="body"><div class="srail"><div class="s">This hex<span class="ct">92</span></div><div class="s">All my units<span class="ct">38</span></div><div class="grp">Armies</div><div class="s on">Northern Host<span class="ct">12</span></div><div class="s">Coastal Watch<span class="ct">5</span></div></div><div class="tw"><table class="ut"><thead><tr><th style="width:74px">Unit</th><th>Name</th><th style="width:62px">Men</th></tr></thead><tbody><tr><td class="idown">18691</td><td>Second Levy</td><td>31</td></tr></tbody></table></div></div>
+  </div>
+</div></div></div>
+  <div><div class="step"><span class="n">2</span>Falls back to This hex &mdash; CLEAR</div>
+    <div class="stage"><div class="app">
+  <div class="pane">
+    <div class="ttl">Units in hex<span class="hint">&mdash; plain (7,53), 92 units</span>
+      <span class="acts"><span class="filter ph">filter units&hellip;</span></span></div>
+    <div class="body"><div class="srail"><div class="s on">This hex<span class="ct">92</span></div><div class="s">All my units<span class="ct">38</span></div><div class="grp">Armies</div><div class="s">Northern Host<span class="ct">12</span></div><div class="s">Coastal Watch<span class="ct">5</span></div></div><div class="tw"><table class="ut"><thead><tr><th style="width:74px">Unit</th><th>Name</th><th style="width:62px">Men</th></tr></thead><tbody><tr><td class="idown">18642</td><td>Seven of Eight</td><td>12</td></tr><tr><td class="idown">18644</td><td>Scout North</td><td>1</td></tr><tr><td class="idown">18651</td><td>Quarry Gang</td><td>24</td></tr><tr><td class="idown">14451</td><td>Drones</td><td>230</td></tr><tr><td class="idown">18660</td><td>Harbour Watch</td><td>8</td></tr><tr><td class="idown">18677</td><td>Scout South</td><td>1</td></tr></tbody></table></div></div>
+  </div>
+</div></div>
+    <p class="cap"><span class="rec">recommended</span> The Army is gone and a different list is on
+      screen. Keeping <b>levy</b> here would hide 91 of 92 units for no reason the player could name &mdash;
+      the exact symptom this bead exists to end.</p></div>
+</div>
+</div>
+
+<h3 class="sec">The cost you accepted, and whether to soften it</h3>
+<p>With the hex click clearing, the "walk the hexes looking for one name" sweep is over: the box empties
+on every hex. Below is what softening it would look like &mdash; and why I would not.</p>
+<div class="card"><div class="split">
+  <div><div class="hexlab">As chosen &mdash; box emptied and left alone</div>
+    <div class="stage"><div class="app">
+  <div class="pane">
+    <div class="ttl">Units in hex<span class="hint">&mdash; forest (7,51), 4 units</span>
+      <span class="acts"><span class="filter ph">filter units&hellip;</span></span></div>
+    <div class="body"><div class="srail"><div class="s on">This hex<span class="ct">92</span></div><div class="s">All my units<span class="ct">38</span></div><div class="grp">Armies</div><div class="s">Northern Host<span class="ct">12</span></div><div class="s">Coastal Watch<span class="ct">5</span></div></div><div class="tw"><table class="ut"><thead><tr><th style="width:74px">Unit</th><th>Name</th><th style="width:62px">Men</th></tr></thead><tbody><tr><td class="idown">18701</td><td>Woodcutters</td><td>9</td></tr><tr><td class="idown">18712</td><td>Scout West</td><td>1</td></tr></tbody></table></div></div>
+  </div>
+</div></div>
+    <p class="cap">Focus stays on the map. Arrow keys still pan, <span class="mono">Tab</span> still goes
+      where it went. To search again you reach for the box. <span class="rec">recommended</span></p></div>
+  <div><div class="hexlab">Softened &mdash; box emptied <i>and focused</i>, ready to retype</div>
+    <div class="stage"><div class="app">
+  <div class="pane">
+    <div class="ttl">Units in hex<span class="hint">&mdash; forest (7,51), 4 units</span>
+      <span class="acts"><span class="filter hot">|</span></span></div>
+    <div class="body"><div class="srail"><div class="s on">This hex<span class="ct">92</span></div><div class="s">All my units<span class="ct">38</span></div><div class="grp">Armies</div><div class="s">Northern Host<span class="ct">12</span></div><div class="s">Coastal Watch<span class="ct">5</span></div></div><div class="tw"><table class="ut"><thead><tr><th style="width:74px">Unit</th><th>Name</th><th style="width:62px">Men</th></tr></thead><tbody><tr><td class="idown">18701</td><td>Woodcutters</td><td>9</td></tr><tr><td class="idown">18712</td><td>Scout West</td><td>1</td></tr></tbody></table></div></div>
+  </div>
+</div></div>
+    <p class="cap"><span class="bad">not recommended</span> The caret jumps out of the map on every hex
+      click, so the next arrow key types into a text box instead of panning. It would cost the map its
+      keyboard to save the sweep a mouse trip.</p></div>
+</div>
+</div>
+</main>
+<footer>ah-1t41 round 2. Round 1 was <code>ah-1t41-a-clear.html</code> (chosen) and
+<code>ah-1t41-b-remember.html</code>. Counts are illustrative; the smoke fixture's hex (7,53) really does
+hold 92 units.</footer>
+</body></html>
