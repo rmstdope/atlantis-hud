@@ -65,6 +65,20 @@ export type ArmiesState = {
     now: string
   ) => Promise<void>;
   /**
+   * Several members dropped in one write, for the standing "Remove them" line (`ah-1mpx.2`).
+   *
+   * One save and one rollback rather than n of each: calling `removeUnit` in a loop would write
+   * the Army n times and leave it half-changed if the third write failed, which is exactly the
+   * state the optimistic-with-rollback pattern exists to prevent.
+   */
+  removeUnits: (
+    client: CoreClient,
+    game: OpenedGame,
+    armyId: string,
+    unitIds: readonly string[],
+    now: string
+  ) => Promise<void>;
+  /**
    * Refreshes every Army against a loaded turn, writing only the ones that actually changed.
    *
    * Does nothing when the report names no turn: `turnNumber` is nullable, and guessing one would
@@ -149,6 +163,14 @@ export const useArmiesStore = create<ArmiesState>()((set, get) => ({
   removeUnit: async (client, game, armyId, unitId, now) => {
     await replaceAndSave(set, get, client, game, armyId, (army) =>
       withoutMember(army, unitId, now)
+    );
+  },
+
+  removeUnits: async (client, game, armyId, unitIds, now) => {
+    await replaceAndSave(set, get, client, game, armyId, (army) =>
+      // `withoutMember` answers with the identical object when the unit was not a member, so a
+      // list naming nobody folds back to the Army it started from.
+      unitIds.reduce((one, unitId) => withoutMember(one, unitId, now), army)
     );
   },
 
