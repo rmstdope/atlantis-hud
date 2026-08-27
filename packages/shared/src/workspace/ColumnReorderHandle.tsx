@@ -19,6 +19,8 @@ export type ColumnReorderHandleProps = {
   order: ColumnOrder;
   /** The stored widths, resolved to pixels once per gesture - never a measured rectangle. */
   shares: ColumnShares | null;
+  /** What one stored share is worth on screen, as a fraction of the table. See `ColumnSplitter`. */
+  scale?: number;
   /** The table element, for measuring what a share is worth in pixels right now. */
   table: RefObject<HTMLTableElement | null>;
   /** Where the drag feedback is drawn: the positioned overlay sitting over the table. */
@@ -49,6 +51,7 @@ export function ColumnReorderHandle({
   column,
   order,
   shares,
+  scale = 1,
   table,
   overlay,
   onCommit
@@ -60,7 +63,7 @@ export function ColumnReorderHandle({
     event.preventDefault();
     const tableElement = table.current;
     const overlayElement = overlay.current;
-    const tableWidth = tableElement?.getBoundingClientRect().width ?? 0;
+    const tableWidth = (tableElement?.getBoundingClientRect().width ?? 0) * scale;
     if (!tableElement || !overlayElement || tableWidth <= 0) {
       return;
     }

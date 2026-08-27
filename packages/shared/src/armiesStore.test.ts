@@ -154,6 +154,45 @@ describe("the Armies store", () => {
       expect(useArmiesStore.getState().armies[0].members).toEqual([]);
       expect(c.saveArmy).toHaveBeenCalledTimes(2);
     });
+
+    it("removeUnits drops every named member in one save", async () => {
+      const three = army({
+        members: [aMember({ unitId: "1" }), aMember({ unitId: "2" }), aMember({ unitId: "3" })]
+      });
+      useArmiesStore.setState({ gameId: "aug-2026", status: "ready", armies: [three] });
+      const c = client();
+
+      await useArmiesStore.getState().removeUnits(c, game(), "army-1", ["1", "3"], NOW);
+
+      expect(useArmiesStore.getState().armies[0].members.map((m) => m.unitId)).toEqual(["2"]);
+      // One write, not one per member: n writes would leave the Army half-changed if the third
+      // of them failed, which is the state the optimistic-with-rollback pattern exists to prevent.
+      expect(c.saveArmy).toHaveBeenCalledTimes(1);
+    });
+
+    it("removeUnits puts every member back when the save fails", async () => {
+      const three = army({
+        members: [aMember({ unitId: "1" }), aMember({ unitId: "2" }), aMember({ unitId: "3" })]
+      });
+      useArmiesStore.setState({ gameId: "aug-2026", status: "ready", armies: [three] });
+      const c = client({ saveArmy: vi.fn().mockRejectedValue(new Error("no")) });
+
+      await expect(
+        useArmiesStore.getState().removeUnits(c, game(), "army-1", ["1", "3"], NOW)
+      ).rejects.toThrow();
+
+      expect(useArmiesStore.getState().armies[0].members.map((m) => m.unitId)).toEqual(["1", "2", "3"]);
+    });
+
+    it("removeUnits naming nobody changes nothing", async () => {
+      const one = army({ members: [aMember({ unitId: "1" })] });
+      useArmiesStore.setState({ gameId: "aug-2026", status: "ready", armies: [one] });
+      const c = client();
+
+      await useArmiesStore.getState().removeUnits(c, game(), "army-1", [], NOW);
+
+      expect(useArmiesStore.getState().armies[0].members.map((m) => m.unitId)).toEqual(["1"]);
+    });
   });
 
   describe("refreshFor", () => {

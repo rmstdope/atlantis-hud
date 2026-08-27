@@ -10,6 +10,7 @@ import type {
   MoveOrderTraceResponse,
   OrdersPreviewResponse,
   RegionPreview,
+  ReportUnit,
   RoutePlanResponse,
   TradeRoute
 } from "@atlantis/core-client";
@@ -102,6 +103,7 @@ import type { BackupImportMode } from "../gameBackup";
 import { DEFAULT_LEVEL, useWorkspaceStore, workspaceGameOf } from "../workspaceStore";
 import { useHexNotesStore } from "../hexNotesStore";
 import { useArmiesStore } from "../armiesStore";
+import { unitsByIdIn } from "../armies";
 import { useSettingsStore } from "../settingsStore";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
 import { TurnPicker } from "./TurnPicker";
@@ -849,6 +851,22 @@ export function AppShell({
 
   /** Which of the units a message names can actually be gone to. */
   const knownUnitIds = useMemo(() => new Set(unitRegions.keys()), [unitRegions]);
+
+  /** Every own unit in the report, for the units dock's `All my units` source. `ah-1mpx.2`. */
+  const ownUnits = useMemo(
+    () => (parsed ? parsed.regions.flatMap((region) => region.units.filter((one) => one.own)) : []),
+    [parsed]
+  );
+  /**
+   * This turn's units by unit number, for resolving an Army's members against the report.
+   *
+   * `unitsByIdIn` is `armies.ts`' own export, already written for `refreshFor`: one index, read by
+   * both, rather than a second walk over every region saying the same thing.
+   */
+  const unitsById = useMemo(
+    () => (parsed ? unitsByIdIn(parsed) : new Map<string, ReportUnit>()),
+    [parsed]
+  );
 
   /**
    * Goes to the unit a turn message names.
@@ -3657,6 +3675,14 @@ export function AppShell({
               getSilver={getSilver}
               silverWarnings={silverWarnings}
               onSelectUnit={(unitId) => goToUnit(unitId, null)}
+              ownUnits={ownUnits}
+              unitsById={unitsById}
+              currentTurn={parsed?.header.turnNumber ?? null}
+              client={client}
+              game={game}
+              // The header status line, which never expires: it stands until the next `setStatus`,
+              // which is the existing behaviour and is right for a failure.
+              onFailure={(message) => setStatus(failedStatus(message))}
               renderFactionName={(factionId, label) => (
                 <button
                   type="button"
