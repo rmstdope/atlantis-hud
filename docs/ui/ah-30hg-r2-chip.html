@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-30hg round 2 — the chip's words and its panel</title>
+<style>
+  :root{ --page:#161b23; --panel:#222933; --raised:#2a323d; --edge:#46525f;
+         --ink:#d4dce6; --soft:#a8b4c2; --dim:#99a4b2; --brass:#e0b25a; --warn:#d9a441; --gain:#7fb069; }
+  body{ background:var(--page); color:var(--ink); font:14px/1.55 system-ui,-apple-system,sans-serif;
+        margin:0; padding:24px 32px 90px; }
+  h1{ font-size:21px; margin:0 0 6px; }
+  h2{ font-size:16px; margin:38px 0 4px; border-top:1px solid #2a3442; padding-top:20px; }
+  h3{ font-size:13px; margin:22px 0 4px; color:var(--soft); }
+  p.note{ color:var(--dim); max-width:96ch; }
+  b.kw{ color:var(--ink); font-weight:600; }
+  .bad{ color:#d9534f; } .ok{ color:var(--gain); }
+  .frame{ overflow-x:auto; border:1px solid #2a3442; border-radius:6px; margin:8px 0 2px;
+          background:#0b0e13; padding:16px 0 20px; }
+  .stage{ width:1280px; position:relative; }
+  .limit{ position:absolute; left:1268px; top:-8px; bottom:-8px; width:0;
+          border-left:1px dashed #6c7f93; }
+  .limit::after{ content:"1268 — content edge"; position:absolute; left:6px; top:-14px;
+                 font:10px/1 ui-monospace,monospace; color:#6c7f93; white-space:nowrap; }
+  .hdr{ width:1280px; box-sizing:border-box; display:flex; flex-wrap:wrap; align-items:center;
+        column-gap:14px; row-gap:0; min-height:36px; padding:0 12px;
+        border-bottom:1px solid var(--edge); background:var(--panel); color:var(--ink);
+        font:13px/19.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace; white-space:nowrap; }
+  .grp{ display:flex; flex-wrap:wrap; align-items:center; gap:14px; min-height:36px; min-width:0; }
+  .acts{ margin-left:auto; display:flex; height:36px; align-items:center; gap:14px; }
+  .ttl{ color:var(--brass); letter-spacing:.78px; }
+  .chip{ border:1px solid var(--edge); background:var(--raised); color:var(--ink);
+         border-radius:4px; padding:2px 8px; font:inherit; }
+  .chip.warn{ border-color:var(--warn); color:var(--warn); background:transparent; }
+  .chip.zero{ border-color:var(--edge); color:var(--dim); background:transparent; }
+  .chip.soft{ color:var(--soft); }
+  .plain{ border:0; background:none; padding:0; color:var(--ink); font:inherit; }
+  .lbl{ color:var(--soft); }
+  .lvl{ margin-left:6px; color:var(--dim); }
+  .cr{ font-style:normal; color:var(--dim); margin-left:4px; }
+  .btn{ border:1px solid var(--edge); background:var(--raised); color:var(--ink);
+        border-radius:4px; padding:4px 10px; font:inherit; }
+  .btn.brass{ border-color:var(--brass); color:var(--brass); background:transparent; }
+  .btn.gear{ padding:4px 8px; color:var(--soft); }
+  .cap{ color:var(--dim); font-size:12px; margin:4px 0 0; }
+  .cap b{ color:var(--ink); }
+  table.m{ border-collapse:collapse; font-size:12.5px; margin:12px 0 4px; }
+  table.m td,table.m th{ border:1px solid #2a3442; padding:4px 10px; text-align:left; }
+  table.m th{ color:var(--brass); font-weight:500; font-size:11px; letter-spacing:.08em;
+              text-transform:uppercase; }
+  td.n{ font-family:ui-monospace,monospace; text-align:right; }
+  .col{ display:flex; gap:0; margin:14px 0 0; align-items:stretch; }
+  .colbox{ width:200px; border:1px solid #2a3442; background:#0b0e13; position:relative; }
+  .colhdr{ background:var(--panel); border-bottom:1px solid var(--edge); }
+  .colrail{ background:#1a2129; margin:6px; border:1px solid #2a3442; }
+  .pop{ width:380px; background:var(--panel); border:1px solid var(--edge); border-radius:6px;
+        font:13px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:var(--ink);
+        padding:6px 0 8px; margin:10px 0 0 12px; }
+  .pop .sec{ color:var(--brass); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+             padding:7px 12px 2px; }
+  .pop .prow{ padding:2px 12px; color:var(--soft); display:flex; gap:10px; }
+  .pop .prow .w{ color:var(--warn); flex:none; }
+  .pop .prow .d{ color:var(--dim); }
+  .pop hr{ border:0; border-top:1px solid #2a3442; margin:6px 0; }
+</style>
+</head>
+<body>
+<p class="note">
+  <b class="kw">Settled in round one:</b> the header becomes <b class="kw">one row</b>, and
+  <b class="kw">ATLANTIS&nbsp;HUD comes out of the strip</b> in both builds. That is D plus the
+  title, and it leaves 229&nbsp;px spare in the ordinary case — 1026.70 of 1256.
+  Everything below is at <b class="kw">true size</b>; widen the window rather than reading a strip
+  scrolled sideways. Dashed line is x&nbsp;=&nbsp;1268.
+  Desktop shell shown (it has <i>Send</i>).
+</p>
+<h2>The shape you chose</h2>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <button class="chip">Turn 71<i class="cr">▾</i></button>
+    <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span>
+    <button class="chip warn">⚠ 11 to check<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap"><b>37&nbsp;px.</b> The words below are the only thing still undecided about it.</p>
+<h2>1 · What the folded chip is called</h2>
+<p class="note">
+  It now stands for three things that used to have a chip each: what the <b class="kw">engine</b>
+  reported went wrong, what <b class="kw">order validation</b> found across the map, and what the
+  <b class="kw">parser could not read</b>. Turn <i>events</i> — 333 of them in this fixture — are
+  not warnings and are not counted; they keep a section in the panel.
+  All four read at 13&nbsp;px, in place:
+</p>
+<div class="frame"><div style="width:1280px;padding-left:12px;display:flex;flex-direction:column;gap:12px;font:13px/19.5px ui-monospace,'SF Mono',Menlo,Consolas,monospace">
+  <div style="display:flex;align-items:center;gap:14px">
+    <span style="width:34px;color:#e0b25a;font:11px system-ui">W1</span>
+    <button class="chip warn">⚠ 11 to check<i class="cr">▾</i></button>
+    <span style="color:#99a4b2;font:12px system-ui">Says what to do with it. Does not claim they are all your fault — an unreadable line is ours.</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px">
+    <span style="width:34px;color:#e0b25a;font:11px system-ui">W2</span>
+    <button class="chip warn">⚠ 11 problems<i class="cr">▾</i></button>
+    <span style="color:#99a4b2;font:12px system-ui">Keeps today's word — but today it means order problems only, and this chip is wider than that.</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px">
+    <span style="width:34px;color:#e0b25a;font:11px system-ui">W3</span>
+    <button class="chip warn">⚠ 11 warnings<i class="cr">▾</i></button>
+    <span style="color:#99a4b2;font:12px system-ui">Accurate and neutral. Says nothing about whether you can act on them.</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px">
+    <span style="width:34px;color:#e0b25a;font:11px system-ui">W4</span>
+    <button class="chip warn">⚠ 11<i class="cr">▾</i></button>
+    <span style="color:#99a4b2;font:12px system-ui">Widest margin (67&nbsp;px saved), but a bare number beside a triangle names nothing.</span>
+  </div>
+</div></div>
+
+<h3>And when nothing is wrong</h3>
+<p class="note">
+  The chip does not vanish — it drops its amber and says what the turn contained, so it is not
+  a control that appears and disappears as counts move.
+</p>
+<div class="frame"><div style="width:1280px;padding-left:12px;display:flex;align-items:center;gap:28px;font:13px/19.5px ui-monospace,'SF Mono',Menlo,Consolas,monospace">
+  <button class="chip soft">333 events<i class="cr">▾</i></button>
+  <span style="color:#99a4b2;font:12px system-ui">N1 — the events count takes the chip over</span>
+  <button class="chip soft">Turn report<i class="cr">▾</i></button>
+  <span style="color:#99a4b2;font:12px system-ui">N2 — a fixed name, so the chip never changes width</span>
+</div></div>
+<p class="cap">
+  A turn with no events <i>and</i> nothing wrong: N1 would have to hide the chip entirely
+  (nothing to count), N2 would still be there and open a panel saying the turn was quiet.
+</p>
+
+<h2>2 · The panel it opens</h2>
+<p class="note">
+  Two orderings. Both drop a section that has nothing in it.
+</p>
+<div style="display:flex;gap:44px;align-items:flex-start;flex-wrap:wrap">
+  <div>
+    <h3 style="margin-top:8px">P1 — what you can still fix, first</h3>
+    <div class="pop" style="margin-left:0">
+      <div class="sec">Order problems — 10</div>
+      <div class="prow"><span class="w">⚠</span><span>2814 <span class="d">— MOVE into a hex it cannot reach</span></span></div>
+      <div class="prow"><span class="w">⚠</span><span>1901 <span class="d">— STUDY needs 200 silver, has 45</span></span></div>
+      <div class="prow"><span class="d">… 8 more</span></div>
+      <hr>
+      <div class="sec">The engine said — 1 error</div>
+      <div class="prow"><span class="w">⚠</span><span>1244 <span class="d">— SELL: Can't sell that.</span></span></div>
+      <hr>
+      <div class="sec">Lines not read — 6</div>
+      <div class="prow"><span class="w">⚠</span><span>line 4102 <span class="d">— unrecognised structure</span></span></div>
+      <hr>
+      <div class="sec">Turn events — 333</div>
+      <div class="prow"><span class="d">333 things happened this turn</span></div>
+    </div>
+    <p class="cap" style="width:380px">Orders you have not sent yet come first, because they are the
+      only ones still changeable. The engine's errors already happened.</p>
+  </div>
+  <div>
+    <h3 style="margin-top:8px">P2 — what happened, then what you typed</h3>
+    <div class="pop" style="margin-left:0">
+      <div class="sec">The engine said — 1 error</div>
+      <div class="prow"><span class="w">⚠</span><span>1244 <span class="d">— SELL: Can't sell that.</span></span></div>
+      <hr>
+      <div class="sec">Turn events — 333</div>
+      <div class="prow"><span class="d">333 things happened this turn</span></div>
+      <hr>
+      <div class="sec">Order problems — 10</div>
+      <div class="prow"><span class="w">⚠</span><span>2814 <span class="d">— MOVE into a hex it cannot reach</span></span></div>
+      <div class="prow"><span class="w">⚠</span><span>1901 <span class="d">— STUDY needs 200 silver, has 45</span></span></div>
+      <div class="prow"><span class="d">… 8 more</span></div>
+      <hr>
+      <div class="sec">Lines not read — 6</div>
+      <div class="prow"><span class="w">⚠</span><span>line 4102 <span class="d">— unrecognised structure</span></span></div>
+    </div>
+    <p class="cap" style="width:380px">Reads in the turn's own order: the report first, then the
+      orders you are writing against it. Matches how the two panels read today.</p>
+  </div>
+</div>
+
+</body>
+</html>

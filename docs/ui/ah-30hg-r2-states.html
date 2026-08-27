@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-30hg round 2 — every state of the strip</title>
+<style>
+  :root{ --page:#161b23; --panel:#222933; --raised:#2a323d; --edge:#46525f;
+         --ink:#d4dce6; --soft:#a8b4c2; --dim:#99a4b2; --brass:#e0b25a; --warn:#d9a441; --gain:#7fb069; }
+  body{ background:var(--page); color:var(--ink); font:14px/1.55 system-ui,-apple-system,sans-serif;
+        margin:0; padding:24px 32px 90px; }
+  h1{ font-size:21px; margin:0 0 6px; }
+  h2{ font-size:16px; margin:38px 0 4px; border-top:1px solid #2a3442; padding-top:20px; }
+  h3{ font-size:13px; margin:22px 0 4px; color:var(--soft); }
+  p.note{ color:var(--dim); max-width:96ch; }
+  b.kw{ color:var(--ink); font-weight:600; }
+  .bad{ color:#d9534f; } .ok{ color:var(--gain); }
+  .frame{ overflow-x:auto; border:1px solid #2a3442; border-radius:6px; margin:8px 0 2px;
+          background:#0b0e13; padding:16px 0 20px; }
+  .stage{ width:1280px; position:relative; }
+  .limit{ position:absolute; left:1268px; top:-8px; bottom:-8px; width:0;
+          border-left:1px dashed #6c7f93; }
+  .limit::after{ content:"1268 — content edge"; position:absolute; left:6px; top:-14px;
+                 font:10px/1 ui-monospace,monospace; color:#6c7f93; white-space:nowrap; }
+  .hdr{ width:1280px; box-sizing:border-box; display:flex; flex-wrap:wrap; align-items:center;
+        column-gap:14px; row-gap:0; min-height:36px; padding:0 12px;
+        border-bottom:1px solid var(--edge); background:var(--panel); color:var(--ink);
+        font:13px/19.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace; white-space:nowrap; }
+  .grp{ display:flex; flex-wrap:wrap; align-items:center; gap:14px; min-height:36px; min-width:0; }
+  .acts{ margin-left:auto; display:flex; height:36px; align-items:center; gap:14px; }
+  .ttl{ color:var(--brass); letter-spacing:.78px; }
+  .chip{ border:1px solid var(--edge); background:var(--raised); color:var(--ink);
+         border-radius:4px; padding:2px 8px; font:inherit; }
+  .chip.warn{ border-color:var(--warn); color:var(--warn); background:transparent; }
+  .chip.zero{ border-color:var(--edge); color:var(--dim); background:transparent; }
+  .chip.soft{ color:var(--soft); }
+  .plain{ border:0; background:none; padding:0; color:var(--ink); font:inherit; }
+  .lbl{ color:var(--soft); }
+  .lvl{ margin-left:6px; color:var(--dim); }
+  .cr{ font-style:normal; color:var(--dim); margin-left:4px; }
+  .btn{ border:1px solid var(--edge); background:var(--raised); color:var(--ink);
+        border-radius:4px; padding:4px 10px; font:inherit; }
+  .btn.brass{ border-color:var(--brass); color:var(--brass); background:transparent; }
+  .btn.gear{ padding:4px 8px; color:var(--soft); }
+  .cap{ color:var(--dim); font-size:12px; margin:4px 0 0; }
+  .cap b{ color:var(--ink); }
+  table.m{ border-collapse:collapse; font-size:12.5px; margin:12px 0 4px; }
+  table.m td,table.m th{ border:1px solid #2a3442; padding:4px 10px; text-align:left; }
+  table.m th{ color:var(--brass); font-weight:500; font-size:11px; letter-spacing:.08em;
+              text-transform:uppercase; }
+  td.n{ font-family:ui-monospace,monospace; text-align:right; }
+  .col{ display:flex; gap:0; margin:14px 0 0; align-items:stretch; }
+  .colbox{ width:200px; border:1px solid #2a3442; background:#0b0e13; position:relative; }
+  .colhdr{ background:var(--panel); border-bottom:1px solid var(--edge); }
+  .colrail{ background:#1a2129; margin:6px; border:1px solid #2a3442; }
+  .pop{ width:380px; background:var(--panel); border:1px solid var(--edge); border-radius:6px;
+        font:13px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:var(--ink);
+        padding:6px 0 8px; margin:10px 0 0 12px; }
+  .pop .sec{ color:var(--brass); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+             padding:7px 12px 2px; }
+  .pop .prow{ padding:2px 12px; color:var(--soft); display:flex; gap:10px; }
+  .pop .prow .w{ color:var(--warn); flex:none; }
+  .pop .prow .d{ color:var(--dim); }
+  .pop hr{ border:0; border-top:1px solid #2a3442; margin:6px 0; }
+</style>
+</head>
+<body>
+<p class="note">
+  <b class="kw">Settled in round one:</b> the header becomes <b class="kw">one row</b>, and
+  <b class="kw">ATLANTIS&nbsp;HUD comes out of the strip</b> in both builds. That is D plus the
+  title, and it leaves 229&nbsp;px spare in the ordinary case — 1026.70 of 1256.
+  Everything below is at <b class="kw">true size</b>; widen the window rather than reading a strip
+  scrolled sideways. Dashed line is x&nbsp;=&nbsp;1268.
+  Desktop shell shown (it has <i>Send</i>).
+</p>
+<h2>The shape you chose</h2>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <button class="chip">Turn 71<i class="cr">▾</i></button>
+    <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span>
+    <button class="chip warn">⚠ 11 to check<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap"><b>37&nbsp;px.</b> The words below are the only thing still undecided about it.</p>
+<h2>1 · A game with no report loaded yet</h2>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap">
+  With the title gone, the leftmost thing in the window is the game name. <b>Question:</b> is a
+  strip this empty still recognisably the application's own bar, or does it read as a toolbar
+  floating above nothing?
+</p>
+
+<h2>2 · A turn where nothing is wrong</h2>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <button class="chip">Turn 71<i class="cr">▾</i></button>
+    <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span>
+    <button class="chip soft">333 events<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap"><b>37&nbsp;px.</b> No amber anywhere.</p>
+
+<h2>3 · All three kinds at once</h2>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <button class="chip">Turn 71<i class="cr">▾</i></button>
+    <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span>
+    <button class="chip warn">⚠ 17 to check<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap">
+  <b>37&nbsp;px, unchanged.</b> One error + ten order problems + six unreadable lines = 17.
+  This is the state that costs 29&nbsp;px today and a whole extra chip's width.
+</p>
+
+<h2>4 · Comparing two turns</h2>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <button class="chip">Turn 71 <span style="color:#eebe63">⇄ 70</span></button><button class="plain" style="margin-left:4px;padding:0 4px;color:#99a4b2">✕</button>
+    <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span>
+    <button class="chip warn">⚠ 11 to check<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+    <button class="chip soft">Changes</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap">
+  <b>37&nbsp;px.</b> The turn chip loses its ▾ while comparing (that is today's behaviour) and
+  gains the ✕ that stops the comparison. <b>Question:</b> with the date gone, does
+  <i>Turn&nbsp;71&nbsp;⇄&nbsp;70</i> still say which way round the comparison runs?
+</p>
+
+<h2>5 · The busy case — where one row runs out</h2>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <button class="chip">Northern Marches 2026<i class="cr">▾</i></button>
+    <button class="chip">Turn 71 <span style="color:#eebe63">⇄ 70</span></button><button class="plain" style="margin-left:4px;padding:0 4px;color:#99a4b2">✕</button>
+    <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><select style="margin-left:6px;border:1px solid #46525f;background:#2a323d;color:#d4dce6;border-radius:4px;padding:2px 6px;font:inherit"><option>underworld</option></select><button class="chip" style="margin-left:6px;color:#a8b4c2">+2 merged<i class="cr">▾</i></button>
+    <button class="chip warn">⚠ 117 to check<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 12<i class="cr">▾</i></button>
+    <button class="chip soft">12 battles</button>
+    <button class="chip soft">Changes</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap">
+  <b>73&nbsp;px</b> — a long game name, a second map level, two merged factions and a comparison
+  all at once. The actions group drops to its own row, which is the behaviour the header has had
+  since ah-cp8 and is already tested. <b>This is the floor, not the 102&nbsp;px defect:</b> the
+  chips still fit on one line. One row is the usual case, not a guarantee.
+</p>
+
+<h2>6 · A narrow window (520&nbsp;px)</h2>
+<p class="note">A smoke test already requires this to wrap rather than clip.</p>
+<div class="frame"><div style="width:520px;position:relative">
+<div class="hdr" style="width:520px">
+  <div class="grp">
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <button class="chip">Turn 71<i class="cr">▾</i></button>
+    <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span>
+    <button class="chip warn">⚠ 11 to check<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn">Send</button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap">
+  Nothing clipped, Export and ⚙ both reachable. Fewer rows than today, because there are fewer
+  and shorter chips to wrap.
+</p>
+
+<h2>7 · The web build (no Send)</h2>
+<div class="frame"><div class="stage"><div class="limit"></div>
+<div class="hdr">
+  <div class="grp">
+    <button class="chip">Smoke game<i class="cr">▾</i></button>
+    <button class="chip">Turn 71<i class="cr">▾</i></button>
+    <button class="plain">Borg TNG (95)<i class="cr">▾</i></button><span class="lvl">surface</span>
+    <button class="chip warn">⚠ 11 to check<i class="cr">▾</i></button>
+    <button class="chip zero">Trade 0<i class="cr">▾</i></button>
+    <button class="chip soft">2 battles</button>
+  </div>
+  <div class="acts">
+    <button class="btn brass">Import</button>
+    <button class="btn">Export<i class="cr">▾</i></button>
+    <button class="btn gear">⚙</button>
+  </div>
+</div>
+</div></div>
+<p class="cap">
+  <b>37&nbsp;px</b>, 67&nbsp;px roomier than desktop. The web build is the one with no window
+  title bar of its own — which is what the title question was really about.
+</p>
+
+</body>
+</html>
