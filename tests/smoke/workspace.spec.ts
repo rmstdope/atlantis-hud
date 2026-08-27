@@ -499,6 +499,8 @@ async function loadTwoTurns(page: Page) {
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+  // ah-30hg: the month and year live in the turn picker (TurnPicker.tsx:53), not in the chip.
+  await expect(page.getByTestId("app-header")).not.toContainText("December");
 }
 
 test("a second turn can be compared and dismissed", async ({ page }) => {
@@ -1396,10 +1398,16 @@ test("a folded panel shrinks to its title bar", async ({ page }) => {
 /**
  * The tallest the header may be at the pinned viewport, in pixels.
  *
- * Measured, not chosen: on 2026-08-19 the header rendered at 73px in both projects, at the pinned
- * 1280x720 viewport with a 16px root font. The budget is ~125% of that - loose enough that an
- * ordinary change does not trip it, tight enough that one more chip or a step up in the type scale
- * does.
+ * Measured, not chosen: on 2026-08-28, after ah-30hg.1 took the app name, the two label words and
+ * the turn's date out of the strip, the header renders at 73px on the desktop shell and 37px on
+ * web, at the pinned 1280x720 viewport with a 16px root font. The budget is ~125% of the taller of
+ * those - loose enough that an ordinary change does not trip it, tight enough that one more chip or
+ * a step up in the type scale does.
+ *
+ * It stays at 91 rather than dropping to ~46 because the actions group still has a row of its own
+ * on the desktop shell, 4.75px over what one line would take. ah-30hg.2 folds the three amber chips
+ * into one, which closes that gap and makes the header 37px in both projects; lowering this number
+ * belongs in that bead, with the change that earns it.
  *
  * Raising it is allowed and deliberate - a bead that genuinely needs a taller header changes this
  * number in the same commit as the header change, which is the whole point of ah-csni: the cost
@@ -1412,6 +1420,7 @@ test("the header fits its budget, so a taller one fails here and not somewhere e
 }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
+  await waitForSettledHeader(page);
 
   const header = (await page.getByTestId("app-header").boundingBox())!;
   const rootFontPx = await page.evaluate(() =>
@@ -1426,6 +1435,11 @@ test("the header fits its budget, so a taller one fails here and not somewhere e
   // the orders editor's pin is already at its ceiling. Without this, that shows up as a *drag* test
   // failing somewhere else entirely - four incidents in five days.
   expect(railHasRoomToDrag(railRemFor(viewportPx, header.height, rootFontPx))).toBe(true);
+
+  const group = (await page.getByTestId("header-game-state").boundingBox())!;
+  // One line of chips. The group is `min-h-9`, so 36 is the unwrapped height and anything above it
+  // is the row that wrapped - the whole of ah-30hg, and what silently costs every panel column 29px.
+  expect(group.height).toBeLessThanOrEqual(36);
 });
 
 /**
