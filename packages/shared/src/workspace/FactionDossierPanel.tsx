@@ -23,9 +23,6 @@ function sameBox(a: KeepClear | null, b: KeepClear | null): boolean {
 /** Said under *Seen in*, so an empty list reads as "we cannot see" rather than "they have none". */
 export const SEEN_IN_LIMIT = "Where their units are this turn. Earlier turns are not remembered.";
 
-/** Said under *Known units*, for the same reason: `factionId` is null for a concealed unit. */
-export const KNOWN_UNITS_LIMIT = "A unit hiding its faction is not counted here.";
-
 /**
  * Everything this turn's report knows about one foreign faction, opened by clicking its name in the
  * attitudes list or in the units-in-hex table.
@@ -42,7 +39,8 @@ export function FactionDossierPanel({
   onFocusHex,
   frameRef,
   onSelectHex,
-  onSelectUnit,
+  onShowUnits,
+  unitCount,
   onBack,
   onDismiss
 }: {
@@ -72,7 +70,15 @@ export function FactionDossierPanel({
    */
   frameRef?: RefObject<HTMLDivElement | null>;
   onSelectHex: (regionId: string) => void;
-  onSelectUnit: (unitId: string) => void;
+  /**
+   * Sends the reader to this faction's units in the units dock. Absent, the line is not drawn.
+   *
+   * The popover no longer lists the units itself: the dock's `Other factions` source does it
+   * better, with the table's sorting, filtering, columns and drag (`ah-1mpx.5`, R2).
+   */
+  onShowUnits?: () => void;
+  /** How many units this faction has in the report; the line names it, and hides at zero. */
+  unitCount: number;
   /**
    * Set only where the dossier took the place of another popover's contents - the attitudes list,
    * which cannot hold a nested popover: its body scrolls, so a panel hung inside it is clipped.
@@ -155,37 +161,16 @@ export function FactionDossierPanel({
           </ul>
         )}
 
-        <div className="mt-2 text-brass">Known units</div>
-        <p className="text-ink-dim">{KNOWN_UNITS_LIMIT}</p>
-        {dossier.units.length === 0 ? (
-          <p className="text-ink-dim italic">no unit of theirs is in this report</p>
-        ) : (
-          <ul className="mt-1 list-none">
-            {dossier.units.map((unit) => (
-              <li key={`${unit.regionId}-${unit.unitId}`}>
-                <button
-                  type="button"
-                  data-testid={`dossier-unit-${unit.unitId}`}
-                  aria-label={`go to ${unit.name} (${unit.unitId}) in ${labelFor(unit.regionId)}`}
-                  onPointerEnter={() => onHoverHex(unit.regionId)}
-                  onPointerLeave={() => onHoverHex(null)}
-                  onFocus={() => onFocusHex(unit.regionId)}
-                  onBlur={() => onFocusHex(null)}
-                  onClick={() => {
-                    onSelectUnit(unit.unitId);
-                    onDismiss();
-                  }}
-                  className="flex w-full items-baseline gap-2 rounded px-1 text-left hover:bg-panel"
-                >
-                  <span className="text-ink">{unit.name}</span>
-                  <span className="text-ink-dim">({unit.unitId})</span>
-                  <span className="flex-1" />
-                  <span className="text-ink-soft">{labelFor(unit.regionId)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        {onShowUnits && unitCount > 0 ? (
+          <button
+            type="button"
+            data-testid="dossier-show-units"
+            onClick={onShowUnits}
+            className="mt-2 rounded px-1 text-left text-brass-bright hover:bg-panel focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
+          >
+            Show their {unitCount} unit{unitCount === 1 ? "" : "s"} in the list
+          </button>
+        ) : null}
       </div>
     </PopoverFrame>
   );
