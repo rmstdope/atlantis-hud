@@ -364,6 +364,18 @@ export type BuildSpend = {
 /** One item a CAST order creates this month. `fewest` and `most` are equal when it is certain. */
 export type CreatedItem = { fewest: number; most: number; tag: string; summoned: boolean };
 
+/** One line of what a unit's TRANSPORT/DISTRIBUTE orders send this month, in document order. */
+export type TransportSent = {
+  amount: number;
+  tag: string;
+  to: string;
+  toUnshown: boolean;
+  refused: boolean;
+};
+
+/** One item arriving by another unit's TRANSPORT/DISTRIBUTE this month. */
+export type TransportReceived = { amount: number; tag: string; from: string };
+
 /** One unit as the orders leave it: the full predicted state, so the row renders like any other. */
 export type UnitPreview = {
   unit: ReportUnit;
@@ -391,6 +403,10 @@ export type UnitPreview = {
   built: BuildSpend[];
   /** What this unit's CAST orders create this month (`ah-ofpb.5`). */
   created: CreatedItem[];
+  /** What this unit's TRANSPORT/DISTRIBUTE orders send this month, in document order (`ah-bxgs`). */
+  transportSent: TransportSent[];
+  /** What arrives at this unit by another unit's TRANSPORT/DISTRIBUTE this month (`ah-bxgs`). */
+  transportReceived: TransportReceived[];
 };
 
 /** Every previewed unit standing in (or bound for) one region. */

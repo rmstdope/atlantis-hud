@@ -115,7 +115,9 @@ describe("a unit carried away by a sailing fleet", () => {
         takenUnshown: [],
         produced: [],
         built: [],
-        created: []
+        created: [],
+        transportSent: [],
+        transportReceived: []
       }
     ]
   });
@@ -194,7 +196,9 @@ describe("the structure column", () => {
             takenUnshown: [],
             produced: [],
             built: [],
-            created: []
+            created: [],
+            transportSent: [],
+            transportReceived: []
           }
         ]
       }
@@ -727,6 +731,8 @@ describe("the items column", () => {
         produced: [],
         built: [],
         created: [],
+        transportSent: [],
+        transportReceived: [],
         ...previewOverrides
       }
     ]
@@ -873,6 +879,8 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
         produced: [],
         built: [],
         created: [],
+        transportSent: [],
+        transportReceived: [],
         ...previewOverrides
       }
     ]

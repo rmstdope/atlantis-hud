@@ -4163,6 +4163,26 @@ test("a bought item marks the ITEMS cell as a projection", async ({ page }) => {
 });
 
 /**
+ * ah-bxgs: TRANSPORT now marks the sending row too, exactly as BUY, SELL and the rest already do.
+ * Unit 14451 is another own unit, in a different hex ("1:20,40"), which is what makes this a
+ * transport rather than a same-hex GIVE. `BUY 2 PERF` buys more than the `TRANSPORT` sends, so the
+ * unit's own holding still changes (buying and sending the very same amount nets to nothing, which
+ * is the navigator's N1 state deliberately shown upright, not predicted - not this case).
+ */
+test("a transported item marks the ITEMS cell as a projection", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await fillOrders(page, "BUY 2 PERF\nTRANSPORT 14451 1 PERF");
+
+  const itemsCell = row.locator('[data-predicted="true"]').first();
+  await expect(itemsCell).toHaveAttribute("title", /^was: /);
+  await expect(itemsCell).toHaveAttribute("title", /Sends 1 PERF to unit 14451/);
+});
+
+/**
  * ah-jown: a `BUY ALL` now settles like a stated `BUY` instead of leaving the ITEMS cell marked
  * `+ ?`. Hex 1:7,53 carries a "For Sale: 63 perfume [PERF] at $204 ..." line; `CLAIM 1000` gives
  * the unit silver to spend without depending on this hex's own tax or wage figures, so the case

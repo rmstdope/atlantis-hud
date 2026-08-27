@@ -28,7 +28,9 @@ describe("mergePreview", () => {
           takenUnshown: [],
           produced: [],
           built: [],
-          created: []
+          created: [],
+          transportSent: [],
+          transportReceived: []
         }
       ])
     );
@@ -61,7 +63,9 @@ describe("mergePreview", () => {
           takenUnshown: [],
           produced: [],
           built: [],
-          created: []
+          created: [],
+          transportSent: [],
+          transportReceived: []
         },
         {
           unit: unit({ unitId: "new-1", name: "Recruits" }),
@@ -74,7 +78,9 @@ describe("mergePreview", () => {
           takenUnshown: [],
           produced: [],
           built: [],
-          created: []
+          created: [],
+          transportSent: [],
+          transportReceived: []
         }
       ])
     );
@@ -100,7 +106,9 @@ describe("mergePreview", () => {
           takenUnshown: [],
           produced: [],
           built: [],
-          created: []
+          created: [],
+          transportSent: [],
+          transportReceived: []
         },
         {
           unit: unit({ unitId: "901", name: "Passengers" }),
@@ -113,7 +121,9 @@ describe("mergePreview", () => {
           takenUnshown: [],
           produced: [],
           built: [],
-          created: []
+          created: [],
+          transportSent: [],
+          transportReceived: []
         }
       ])
     );
@@ -137,7 +147,9 @@ describe("mergePreview", () => {
           takenUnshown: [],
           produced: [],
           built: [],
-          created: []
+          created: [],
+          transportSent: [],
+          transportReceived: []
         }
       ])
     );
@@ -166,7 +178,9 @@ describe("changeFor and originalTooltip", () => {
           takenUnshown: [],
           produced: [],
           built: [],
-          created: []
+          created: [],
+          transportSent: [],
+          transportReceived: []
         }
       ])
     );
@@ -603,6 +617,76 @@ describe("formatItems and itemsTooltip", () => {
 
     expect(itemsTooltip(row, silver)).toBe(
       "was: 30 WOLF\nThis unit has room for 6 wolves, not the 12 its level could summon."
+    );
+  });
+
+  // `ah-bxgs`. Every string below is quoted verbatim in the plan and is the navigator's own
+  // wording - nothing here is left for the test to word differently.
+  it("words the hover for a unit that sends, is refused, and receives", () => {
+    const row = previewedUnit({
+      items: [
+        { amount: 88, name: "silver", tag: "SILV" },
+        { amount: 15, name: "stone", tag: "STON" },
+        { amount: 2, name: "horses", tag: "HORS" },
+        { amount: 5, name: "fur", tag: "FUR" }
+      ],
+      previewChanges: [{ field: "items", original: "88 SILV, 15 STON, 2 HORS, 5 FUR" }],
+      transportReceived: [{ amount: 12, tag: "SPEA", from: "5530" }],
+      transportSent: [
+        { amount: 30, tag: "STON", to: "16340", toUnshown: false, refused: false },
+        { amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true },
+        { amount: 5, tag: "FUR", to: "4670", toUnshown: true, refused: false }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 88 SILV, 15 STON, 2 HORS, 5 FUR\n" +
+        "Includes 12 SPEA transported from unit 5530. Transport resolves last, so they cannot be spent this month.\n" +
+        "Sends 30 STON to unit 16340.\n" +
+        "The game will not transport HORS, so they stay with this unit.\n" +
+        "Sends 5 FUR to unit 4670, which your report does not show."
+    );
+  });
+
+  it("puts an arrival with the other Includes lines and a departure after them", () => {
+    const row = previewedUnit({
+      items: [
+        { amount: 5, name: "iron", tag: "IRON" },
+        { amount: 15, name: "wood", tag: "WOOD" },
+        { amount: 30, name: "stone", tag: "STON" }
+      ],
+      previewChanges: [{ field: "items", original: "5 IRON, 30 WOOD" }],
+      produced: [{ amount: 5, tag: "SWOR" }],
+      built: [
+        {
+          amount: 15,
+          tag: "WOOD",
+          name: "wood",
+          place: "Building 4",
+          founding: false,
+          helping: null,
+          couldDo: 30,
+          cappedBy: "materials"
+        }
+      ],
+      transportReceived: [{ amount: 30, tag: "STON", from: "6857" }],
+      transportSent: [{ amount: 5, tag: "IRON", to: "6857", toUnshown: false, refused: false }]
+    });
+    const silver = aUnitSilver({
+      produced: 5,
+      producedName: "sword",
+      productionWanted: 8,
+      productionCappedBy: "materials"
+    });
+
+    expect(itemsTooltip(row, silver)).toBe(
+      "was: 5 IRON, 30 WOOD\n" +
+        "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "Includes 30 STON transported from unit 6857. Transport resolves last, so they cannot be spent this month.\n" +
+        "This unit has materials for 5 swords, not the 8 its men could make.\n" +
+        "Spends 15 WOOD on Building 4 this month.\n" +
+        "This unit has wood for 15 units of work, not the 30 its men could do.\n" +
+        "Sends 5 IRON to unit 6857."
     );
   });
 });

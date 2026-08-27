@@ -1067,6 +1067,63 @@ impl Ruleset {
         !self.ungiveable_items.iter().any(|item| item == tag)
     }
 
+    /// Whether the game will carry this item by `TRANSPORT`, as far as the catalogue knows.
+    ///
+    /// `rules/economy_transport` refuses five kinds: men (leaders included), summoned creatures
+    /// (illusionary ones included), ships, mounts, war machines, and items created using artifact
+    /// lore. Four of those are classes the data page states, so `item_classes` answers them.
+    ///
+    /// The fifth it never states, and the navigator's rule settles it: **anything a `create ...`
+    /// spell can make is an artefact.** Twenty-one skills are named that way; eighteen name an
+    /// item that exists and every one of those eighteen requires artifact lore, and the three
+    /// that name no item make an aura and two kinds of phantasm - and phantasms are already
+    /// refused as summoned creatures. Five items are reached by no rule at all (`PORT`, `MWAG`,
+    /// `GLID`, `HPOT`, `IENT`) and stay transportable: a hand-written list of them would not be
+    /// supported by the game's own data and would rot silently if the game changed.
+    ///
+    /// True for a tag the catalogue cannot place, in the same spirit as [`Ruleset::can_be_given`]:
+    /// the pages state a restriction and are silent otherwise, so silence and ignorance look the
+    /// same and the permissive reading is the one that matches them.
+    #[must_use]
+    pub fn can_be_transported(&self, tag: &str) -> bool {
+        if self.is_man(tag) {
+            return false;
+        }
+        if self.items.get(tag).is_some_and(|item| {
+            matches!(
+                item.kind,
+                ItemKind::Mount | ItemKind::Monster | ItemKind::Ship
+            )
+        }) {
+            return false;
+        }
+        for class in ["MAN", "MONSTER", "MOUNT", "SHIP"] {
+            if self
+                .class_members(class)
+                .is_some_and(|tags| tags.iter().any(|t| t.eq_ignore_ascii_case(tag)))
+            {
+                return false;
+            }
+        }
+        if self.made_by_a_create_spell(tag) {
+            return false;
+        }
+        true
+    }
+
+    /// Whether some skill's name reads `create ...` and the remainder resolves, through
+    /// [`Ruleset::find_item`], to this tag - the navigator's rule for what counts as an artefact.
+    fn made_by_a_create_spell(&self, tag: &str) -> bool {
+        self.skills.values().any(|skill| {
+            skill
+                .name
+                .to_ascii_lowercase()
+                .strip_prefix("create ")
+                .and_then(|remainder| self.find_item(remainder))
+                .is_some_and(|entry| entry.tag.eq_ignore_ascii_case(tag))
+        })
+    }
+
     /// Whether a skill tag names one of the magic skills.
     ///
     /// The catalogue settles it when it was scraped with this known; a skill it does not carry, or
@@ -1250,6 +1307,57 @@ mod tests {
         assert_eq!(ItemClass::parse("ARMORS"), None);
 
         assert_eq!(ItemClass::parse("FRUIT"), None);
+    }
+
+    #[test]
+    fn the_catalogue_refuses_to_transport_men_mounts_ships_and_war_machines() {
+        let ruleset = ruleset();
+
+        assert!(!ruleset.can_be_transported("LEAD"), "a man");
+        assert!(!ruleset.can_be_transported("HORS"), "a mount");
+        assert!(!ruleset.can_be_transported("COG"), "a ship");
+        // A war machine: `kind` is `equipment`, only the MONSTER class catches it.
+        assert!(!ruleset.can_be_transported("CATP"), "a war machine");
+    }
+
+    #[test]
+    fn an_item_a_create_spell_makes_is_an_artefact_and_stays_put() {
+        let ruleset = ruleset();
+
+        // The navigator's rule: anything a `create ...` spell can make is an artefact.
+        assert!(!ruleset.can_be_transported("RING"), "ring of invisibility");
+        assert!(!ruleset.can_be_transported("CARP"), "magic carpet");
+        assert!(!ruleset.can_be_transported("RUNE"), "runesword");
+        assert!(!ruleset.can_be_transported("AEGS"), "aegis");
+    }
+
+    #[test]
+    fn ordinary_goods_and_the_items_no_rule_reaches_may_be_transported() {
+        let ruleset = ruleset();
+
+        assert!(ruleset.can_be_transported("STON"));
+        assert!(ruleset.can_be_transported("FUR"));
+        assert!(ruleset.can_be_transported("SILV"));
+
+        // No rule reaches these five; the navigator's decision leaves them transportable.
+        assert!(ruleset.can_be_transported("PORT"), "portal");
+        assert!(ruleset.can_be_transported("MWAG"), "magic wagon");
+        assert!(ruleset.can_be_transported("GLID"), "glider");
+        assert!(ruleset.can_be_transported("HPOT"), "healing potion");
+        assert!(ruleset.can_be_transported("IENT"), "imprisoned entity");
+    }
+
+    #[test]
+    fn the_transport_refusal_covers_exactly_a_hundred_and_five_of_the_catalogue() {
+        let ruleset = ruleset();
+
+        let refused = ruleset
+            .items
+            .keys()
+            .filter(|tag| !ruleset.can_be_transported(tag))
+            .count();
+
+        assert_eq!(refused, 105);
     }
 
     #[test]
