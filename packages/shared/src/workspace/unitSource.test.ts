@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SORT, type SortState } from "../unitTable";
+import { DEFAULT_SORT, UNIT_COLUMNS, type SortState } from "../unitTable";
 import {
+  drawnColumnsFor,
   extraColumnsFor,
   headerFor,
   HEX_SOURCE,
@@ -100,5 +101,37 @@ describe("a sort must not survive the column it sorts on", () => {
     expect(sortSurvives(seenSort, OWN_SOURCE)).toBe(false);
     expect(sortSurvives(DEFAULT_SORT, HEX_SOURCE)).toBe(true);
     expect(sortSurvives(DEFAULT_SORT, army("a"))).toBe(true);
+  });
+});
+
+describe("where the extra columns are drawn", () => {
+  const order = [...UNIT_COLUMNS];
+
+  it("draws only the table's own columns when a source warrants no extras", () => {
+    expect(drawnColumnsFor(order, [])).toEqual(order.map((column) => ({ kind: "unit", column })));
+  });
+
+  it("puts hex and seen straight after name, and remove last", () => {
+    const drawn = drawnColumnsFor(order, ["hex", "seen", "remove"]);
+    const names = drawn.map((entry) => entry.column);
+
+    expect(names.indexOf("hex")).toBe(names.indexOf("name") + 1);
+    expect(names.indexOf("seen")).toBe(names.indexOf("hex") + 1);
+    expect(names[names.length - 1]).toBe("remove");
+    expect(drawn).toHaveLength(order.length + 3);
+  });
+
+  it("follows name wherever it has been dragged to", () => {
+    const dragged = ["own", "unitId", "faction", "men", "name", "skills", "items", "structure", "longOrder", "silver"] as const;
+
+    const names = drawnColumnsFor([...dragged], ["hex"]).map((entry) => entry.column);
+
+    expect(names.indexOf("hex")).toBe(names.indexOf("name") + 1);
+  });
+
+  it("keeps hex before seen when both are drawn", () => {
+    const names = drawnColumnsFor(order, ["seen", "hex"]).map((entry) => entry.column);
+
+    expect(names.indexOf("hex")).toBeLessThan(names.indexOf("seen"));
   });
 });

@@ -8,7 +8,7 @@
  * component is a rule nothing here can pin (see `testing/README.md`).
  */
 
-import type { ExtraColumn, SortState } from "../unitTable";
+import type { ColumnOrder, ExtraColumn, SortState, UnitColumn } from "../unitTable";
 
 /** Which list of units the dock is showing. */
 export type UnitSource =
@@ -90,4 +90,42 @@ export function headerFor(args: {
  */
 export function sortSurvives(sort: SortState, source: UnitSource): boolean {
   return sort.column !== "seen" || extraColumnsFor(source).includes("seen");
+}
+
+/** One column as the table draws it: one of its own, or one this source added. */
+export type DrawnColumn =
+  | { kind: "unit"; column: UnitColumn }
+  | { kind: "extra"; column: ExtraColumn };
+
+/**
+ * The columns in the order they are drawn, the table's own and the source's together.
+ *
+ * `hex` and `seen` go immediately after `name` **wherever `name` has been dragged to**, so the
+ * where-it-is and the when-it-was-seen sit beside the unit they are about; `remove` is always last,
+ * after every `UNIT_COLUMNS` entry, because a trailing action column is where an action goes and
+ * nothing may reflow as the selection moves it between rows.
+ *
+ * `extras` is `extraColumnsFor`'s answer, and its own order is not trusted: `hex` before `seen` is
+ * a fact about the drawing, not about the caller.
+ */
+export function drawnColumnsFor(
+  order: ColumnOrder,
+  extras: readonly ExtraColumn[]
+): DrawnColumn[] {
+  const has = (column: ExtraColumn) => extras.includes(column);
+  const afterName = (["hex", "seen"] as const).filter(has);
+
+  const drawn: DrawnColumn[] = [];
+  for (const column of order) {
+    drawn.push({ kind: "unit", column });
+    if (column === "name") {
+      for (const extra of afterName) {
+        drawn.push({ kind: "extra", column: extra });
+      }
+    }
+  }
+  if (has("remove")) {
+    drawn.push({ kind: "extra", column: "remove" });
+  }
+  return drawn;
 }

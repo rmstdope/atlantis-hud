@@ -1,9 +1,16 @@
-import type { RegionPreview, ReportUnit, UnitSilver } from "@atlantis/core-client";
+import type {
+  CoreClient,
+  OpenedGame,
+  RegionPreview,
+  ReportUnit,
+  UnitSilver
+} from "@atlantis/core-client";
 import {
   Fragment,
   useEffect,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   type KeyboardEvent,
@@ -16,17 +23,19 @@ import { unitStructureLabel } from "../structureLabel";
 import { describeMenBriefly, whyEstimated } from "../unitComposition";
 import {
   DEFAULT_SORT,
+  EXTRA_COLUMN_SHARES,
   filterUnits,
   rowHeightAt,
+  sharesFor,
   sortUnits,
   windowRange,
-  UNIT_COLUMNS,
   COLUMN_LABELS,
   columnWidthStyle,
   orderOf,
   silverKey,
   silverShown,
-  type ColumnOrder,
+  type ColumnShares,
+  type ExtraColumn,
   type SortColumn,
   type SortState,
   type UnitColumn
@@ -42,6 +51,23 @@ import {
 import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
 import { useSettingsStore } from "../settingsStore";
 import { useWorkspaceStore } from "../workspaceStore";
+import { useArmiesStore } from "../armiesStore";
+import { AddToArmyMenu } from "./AddToArmyMenu";
+import { armyRows, seenLabel, staleLine, type ArmyRows } from "./armyRows";
+import { ChipPopover } from "./popover";
+import { reduce as reduceRail, type RailMode } from "./railEditState";
+import { UnitSourceRail } from "./UnitSourceRail";
+import { useArmyActions } from "./useArmyActions";
+import {
+  drawnColumnsFor,
+  extraColumnsFor,
+  headerFor,
+  HEX_SOURCE,
+  sortSurvives,
+  sourceStillThere,
+  type DrawnColumn,
+  type UnitSource
+} from "./unitSource";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { ColumnReorderHandle } from "./ColumnReorderHandle";
 import { ColumnSplitter } from "./ColumnSplitter";
@@ -51,11 +77,14 @@ import { UnitTooltip } from "./UnitTooltip";
 /** Rows built beyond each edge of the viewport, so a flick of the wheel does not show a gap. */
 const OVERSCAN = 6;
 
-/**
- * Spacer rows span every column. Kept as its own constant derived from the column list so a
- * colSpan literal never has to be counted and updated by hand.
- */
-const COLUMNS = UNIT_COLUMNS.length;
+/** What each extra column's header says; the trailing action column deliberately has none. */
+const EXTRA_COLUMN_LABELS: Record<ExtraColumn, string> = { hex: "Hex", seen: "Seen", remove: "" };
+
+/** Nothing to show for the two sources that are not an Army. */
+const NO_ARMY_ROWS: ArmyRows = { rows: [], seen: new Map(), missing: 0 };
+
+/** Stands in for an absent `onFailure`, so the actions need no null check of their own. */
+const noop = () => {};
 
 /** The columns whose header carries a sort control. */
 const SORTABLE_COLUMNS: ReadonlySet<UnitColumn> = new Set<UnitColumn>([
@@ -99,7 +128,14 @@ export function UnitTableDock({
   getSilver,
   silverWarnings,
   onSelectUnit,
-  renderFactionName
+  renderFactionName,
+  ownUnits,
+  unitsById,
+  currentTurn = null,
+  client,
+  game = null,
+  onFailure,
+  initialSource = HEX_SOURCE
 }: {
   hex: HexNode | null;
   /** The hex's slice of the orders preview, so rows show the coming month. */
@@ -117,6 +153,25 @@ export function UnitTableDock({
    * (ah-bu2c). Left off, the name prints as it always did.
    */
   renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
+  /** Every own unit in this turn's report, for the `All my units` source (`ah-1mpx.2`). */
+  ownUnits?: ReportUnit[];
+  /** This turn's units by unit number, for resolving an Army's members. `armies.ts`' `unitsByIdIn`. */
+  unitsById?: ReadonlyMap<string, ReportUnit>;
+  /** `parsed.header.turnNumber`. Null when no report is loaded, or it names no turn. */
+  currentTurn?: number | null;
+  client?: CoreClient;
+  game?: OpenedGame | null;
+  /** A save that failed and was rolled back. Wired to the header status line. */
+  onFailure?: (message: string) => void;
+  /**
+   * The source the pane starts on, `This hex` unless told otherwise.
+   *
+   * The shell never passes it: the source is local, not persisted (T2), and reopening the
+   * application lands on `This hex`. It exists so a component test can render the pane on a source
+   * a static render cannot click its way to - `packages/shared` has no jsdom, so there is no other
+   * way in (`testing/README.md`).
+   */
+  initialSource?: UnitSource;
 }) {
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
@@ -139,6 +194,21 @@ export function UnitTableDock({
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
 
+  // The Armies are read here rather than passed in, exactly as the two stores above are; `client`
+  // and `game` arrive as props, as `RegionNotes` takes them. `status` is deliberately not read:
+  // the rail is complete from its first paint (`ah-1mpx.2` S1).
+  const armies = useArmiesStore((state) => state.armies);
+  const [source, setSource] = useState<UnitSource>(initialSource);
+  const [mode, dispatch] = useReducer(reduceRail, { kind: "idle" } as RailMode);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const canEditArmies = Boolean(client && game);
+  const actions = useArmyActions({
+    client,
+    game,
+    currentTurn,
+    onFailure: onFailure ?? noop
+  });
+
   // The scroller and header are held as state rather than refs so the effects below re-run when
   // the table is folded away and unfolded, which unmounts and remounts them.
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
@@ -149,11 +219,49 @@ export function UnitTableDock({
 
   const regionId = hex?.regionId ?? null;
 
-  // unitsForHex rather than hex.region.units: sorting it again is a no-op because Array.sort is
-  // stable, and it guarantees the table cannot drift from the order AppShell picks defaults from.
-  // The orders preview folds in on top, so everything below it - filter and sort - already
-  // works over the coming month's rows, arrivals and formed units included.
-  const units = useMemo(() => mergePreview(unitsForHex(hex), preview), [hex, preview]);
+  const armyIds = useMemo(() => armies.map((army) => army.id), [armies]);
+  const army = useMemo(
+    () => (source.kind === "army" ? (armies.find((one) => one.id === source.armyId) ?? null) : null),
+    [armies, source]
+  );
+
+  // An Army that was deleted, or a game that closed, must not leave the table pointed at nothing.
+  useEffect(() => {
+    setSource((current) => sourceStillThere(current, armyIds));
+  }, [armyIds]);
+
+  // A sort on a column the new source does not draw is a table in an order nothing explains.
+  useEffect(() => {
+    setSort((current) => (sortSurvives(current, source) ? current : DEFAULT_SORT));
+  }, [source]);
+
+  /**
+   * The rows for the current source, and everything the extra columns need alongside them.
+   *
+   * `unitsForHex` rather than `hex.region.units`: sorting it again is a no-op because `Array.sort`
+   * is stable, and it guarantees the table cannot drift from the order `AppShell` picks defaults
+   * from. The orders preview folds in on top, so everything below it - filter and sort - already
+   * works over the coming month's rows, arrivals and formed units included.
+   *
+   * **The preview is folded in for `This hex` only, and that is deliberate**: `preview` is the
+   * selected hex's slice, and there is no whole-report equivalent to merge into a list spanning
+   * hexes. Rows from other hexes show the report's own figures.
+   */
+  const sourced = useMemo((): ArmyRows => {
+    if (source.kind === "hex") {
+      return { ...NO_ARMY_ROWS, rows: mergePreview(unitsForHex(hex), preview) };
+    }
+    if (source.kind === "own") {
+      return { ...NO_ARMY_ROWS, rows: ownUnits ?? [] };
+    }
+    return army ? armyRows(army, unitsById ?? new Map(), currentTurn) : NO_ARMY_ROWS;
+  }, [source, hex, preview, ownUnits, army, unitsById, currentTurn]);
+
+  const units = sourced.rows;
+  const extras = useMemo(() => extraColumnsFor(source), [source]);
+  // The selected hex's structures. A source spanning hexes has no single such list, and a rebuilt
+  // Army member has no `structureId` at all, so the Structure column simply reads empty there -
+  // which is honest: nobody can see what a remembered unit is standing in.
   const structures = useMemo(() => hex?.region?.structures ?? [], [hex]);
   // Built once per hex, not scanned per row: a hex can hold three hundred units across two dozen
   // structures, and the table re-renders on every scroll frame.
@@ -177,15 +285,25 @@ export function UnitTableDock({
     return new Map(
       units
         .filter((entry) => entry.own)
+        // The row's own hex, not the selected one: `silverKey` keys the forecast by region, so a
+        // source spanning hexes must look each row up where it actually stands.
         .map((entry) => [
           entry.unitId,
-          silverShown(getSilver(entry.unitId, regionId ?? ""), countUpkeep)
+          silverShown(getSilver(entry.unitId, entry.regionId), countUpkeep)
         ])
     );
   }, [units, sort.column, getSilver, countUpkeep]);
   const visible = useMemo(
-    () => sortUnits(filterUnits(units, filter, structures), sort, structures, longOrders, silverByUnit),
-    [units, filter, sort, structures, longOrders, silverByUnit]
+    () =>
+      sortUnits(
+        filterUnits(units, filter, structures),
+        sort,
+        structures,
+        longOrders,
+        silverByUnit,
+        sourced.seen
+      ),
+    [units, filter, sort, structures, longOrders, silverByUnit, sourced.seen]
   );
   const selectedIndex = useMemo(
     () => visible.findIndex((unit) => unit.unitId === selectedUnitId),
@@ -323,6 +441,21 @@ export function UnitTableDock({
     [visible]
   );
 
+  /**
+   * What `Enter` in the rail's name field means, in the one place that knows which mode it is in.
+   *
+   * The reducer has already been driven to `idle` by the same event, so the mode is read here
+   * before dispatching - which is why the rail's `onEvent` dispatches and then calls this rather
+   * than the other way round.
+   */
+  const commitName = () => {
+    if (mode.kind === "creating") {
+      void actions.create(mode.draft, mode.withUnit);
+    } else if (mode.kind === "renaming") {
+      void actions.rename(mode.armyId, mode.draft);
+    }
+  };
+
   const sortByColumn = (column: SortColumn) =>
     setSort((current) =>
       current.column === column
@@ -362,22 +495,54 @@ export function UnitTableDock({
     }
   };
 
+  /** The columns actually drawn, the table's own and the source's, in render order. */
+  const drawn = useMemo(() => drawnColumnsFor(order, extras), [order, extras]);
+  /** What the extra columns take, which is what the rest has to be scaled back to leave. */
+  const extraShare = extras.reduce((total, column) => total + EXTRA_COLUMN_SHARES[column], 0);
+  const drawnShares: ColumnShares = useMemo(
+    () => sharesFor(order, columnShares, extraShare),
+    [order, columnShares, extraShare]
+  );
+  // What one stored share is worth on screen, so a resize or a reorder measures against the table
+  // the columns are actually laid out in rather than the whole of it.
+  const shareScale = 1 - extraShare;
+
   const stale = hex?.knowledge === "stale";
   // A stale hex's count would be a lie the moment it left the model: a hex nobody sees carries no
   // units at all now, so the header names the ground and stops there rather than claiming "0 units"
   // (ah-o86). The amber "as of turn N" chip already says the account is dated.
-  const hint = hex
+  const hexHint = hex
     ? stale
       ? `— ${hex.terrain} (${hex.coordinate.x},${hex.coordinate.y})`
       : `— ${hex.terrain} (${hex.coordinate.x},${hex.coordinate.y}), ${units.length} unit${units.length === 1 ? "" : "s"}${visible.length === units.length ? "" : `, ${visible.length} shown`}`
     : undefined;
+  const header = headerFor({
+    source,
+    armyName: army?.name ?? null,
+    unitCount: units.length,
+    shownCount: visible.length,
+    hexHint
+  });
+
+  const selectedUnit = useMemo(
+    () => visible.find((entry) => entry.unitId === selectedUnitId) ?? null,
+    [visible, selectedUnitId]
+  );
+  const missing = staleLine(sourced.missing);
+  const nothingToSay = emptyLine({ source, hex, stale, armyName: army?.name ?? null, hasReport: currentTurn !== null });
 
   return (
     <CollapsiblePanel
       panel="units"
-      title="Units in hex"
-      hint={hint}
-      asOf={stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null}
+      title={header.title}
+      hint={header.hint}
+      // The amber "as of turn N" chip is about a stale *hex*. An Army spanning five hexes has no
+      // single such turn, and the Seen column carries that per unit instead.
+      asOf={
+        source.kind === "hex" && stale && hex.lastSeenTurn !== null
+          ? `as of turn ${hex.lastSeenTurn}`
+          : null
+      }
       actions={
         <div className="flex items-center gap-1.5">
           <input
@@ -388,17 +553,101 @@ export function UnitTableDock({
             aria-label="Filter units"
             className="w-44 rounded border border-edge bg-ground px-2 py-0.5 text-pane text-ink placeholder:text-ink-dim focus:border-select focus:outline-none"
           />
+          {canEditArmies ? (
+            <ChipPopover
+              open={menuOpen && selectedUnit !== null}
+              onDismiss={() => setMenuOpen(false)}
+              panel={
+                selectedUnit ? (
+                  <AddToArmyMenu
+                    unit={selectedUnit}
+                    armies={armies}
+                    onAdd={(armyId) => void actions.addUnit(armyId, selectedUnit)}
+                    // U2: this drops into the rail's own inline editor, carrying the unit, rather
+                    // than opening a second name field of its own.
+                    onNewArmy={() => dispatch({ type: "new-clicked", withUnit: selectedUnit })}
+                    onDismiss={() => setMenuOpen(false)}
+                  />
+                ) : null
+              }
+            >
+              <button
+                type="button"
+                data-testid="add-to-army"
+                // Never hidden, only disabled: an unavailable item that is simply absent reads as
+                // a feature the application does not have (`ExportMenu.tsx:20-22`). A report
+                // naming no turn has no `seenTurn` to stamp a snapshot with, so there is nothing
+                // to add a unit as.
+                disabled={selectedUnit === null || currentTurn === null}
+                onClick={() => setMenuOpen((open) => !open)}
+                className="rounded border border-edge px-2 py-0.5 text-pane text-brass hover:bg-panel disabled:opacity-40 disabled:hover:bg-transparent"
+              >
+                Add to army ▾
+              </button>
+            </ChipPopover>
+          ) : null}
         </div>
       }
     >
+      <div className="flex h-full min-h-0">
+        <UnitSourceRail
+          source={source}
+          onSource={setSource}
+          armies={armies}
+          hexCount={hex ? unitsForHex(hex).length : null}
+          ownCount={ownUnits?.length ?? 0}
+          mode={mode}
+          onEvent={(event) => {
+            dispatch(event);
+            if (event.type === "committed") {
+              commitName();
+            }
+          }}
+          canEdit={canEditArmies}
+        />
+        <div className="flex min-w-0 flex-1 flex-col">
+          {army ? (
+            <ArmyStrip
+              name={army.name}
+              memberCount={army.members.length}
+              confirming={mode.kind === "deleting" && mode.armyId === army.id}
+              onRename={() => dispatch({ type: "rename-clicked", armyId: army.id, name: army.name })}
+              onDelete={() => dispatch({ type: "delete-clicked", armyId: army.id })}
+              onCancelDelete={() => dispatch({ type: "delete-cancelled" })}
+              onConfirmDelete={() => {
+                void actions.remove(army.id);
+                dispatch({ type: "deleted" });
+              }}
+            />
+          ) : null}
+          {army && missing ? (
+            <p
+              data-testid="army-stale-line"
+              className="flex items-center border-y border-edge-soft px-2 py-1.5 text-pane text-warn"
+            >
+              {missing.text}
+              {/* No confirmation: the rows are on screen and named, and removing a unit from an
+                  Army destroys nothing - the unit is untouched and can be added back from any
+                  list (`ah-1mpx.2` S5). */}
+              <button
+                type="button"
+                data-testid="army-remove-stale"
+                onClick={() =>
+                  void actions.removeUnits(
+                    army.id,
+                    army.members
+                      .filter((member) => !(unitsById ?? new Map()).has(member.unitId))
+                      .map((member) => member.unitId)
+                  )
+                }
+                className="ml-2 rounded border border-edge px-2 py-0.5 text-pane text-ink hover:bg-panel focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
+              >
+                {missing.button}
+              </button>
+            </p>
+          ) : null}
       {units.length === 0 ? (
-        <Absent>
-          {hex
-            ? stale
-              ? `Not seen since turn ${hex.lastSeenTurn} — no current unit information.`
-              : "No units reported in this hex."
-            : "No hex selected."}
-        </Absent>
+        <Absent>{nothingToSay}</Absent>
       ) : visible.length === 0 ? (
         <Absent>No unit matches that filter.</Absent>
       ) : (
@@ -451,75 +700,105 @@ export function UnitTableDock({
               columns out past the right edge with nothing to scroll them back (ah-1owr.2).
             */}
             <colgroup>
-              {order.map((column) => (
-                <col
-                  key={column}
-                  ref={(element) => {
-                    colRefs.current[column] = element;
-                  }}
-                  style={columnWidthStyle(column, columnShares)}
-                />
-              ))}
+              {drawn.map((entry) =>
+                entry.kind === "unit" ? (
+                  <col
+                    key={entry.column}
+                    ref={(element) => {
+                      colRefs.current[entry.column as UnitColumn] = element;
+                    }}
+                    style={columnWidthStyle(entry.column, drawnShares)}
+                  />
+                ) : (
+                  // Fixed: these columns are neither dragged nor reordered nor stored, so a stored
+                  // width for one that is absent in most views would mean nothing.
+                  <col
+                    key={`extra-${entry.column}`}
+                    style={{ width: `${EXTRA_COLUMN_SHARES[entry.column] * 100}%` }}
+                  />
+                )
+              )}
             </colgroup>
             <thead ref={setHead}>
               {/* Indexed like the rows below it: if some rows carry a position, all of them must. */}
               <tr aria-rowindex={1} className="text-pane-sm uppercase tracking-[0.06em] text-ink-soft">
-                {order.map((column, index) => (
-                  <ColumnHeaderCell
-                    key={column}
-                    column={column}
-                    sort={sort}
-                    onSort={sortByColumn}
-                    onToggleGroupOwn={() =>
-                      setSort((current) => ({ ...current, groupOwnFirst: !current.groupOwnFirst }))
-                    }
-                    // The last column has no boundary to its right, so it carries no handle - and
-                    // neither does `own`, whose 24px is narrower than the grip's own hit area:
-                    // a handle there would sit on top of the group-own-units toggle and swallow
-                    // its clicks. It is a fixed marker column, not one anybody resizes.
-                    splitter={
-                      column !== "own" && index < order.length - 1 ? (
-                        <ColumnSplitter
-                          left={column}
-                          right={order[index + 1]}
-                          columns={colRefs}
-                          table={tableRef}
-                          shares={columnShares}
-                          onCommit={setColumnShares}
-                        />
-                      ) : null
-                    }
-                    // The marker column never moves, so it carries no grip: 24px has no room for
-                    // one, and the leftmost spot is where a marker belongs anyway.
-                    reorder={
-                      column !== "own" ? (
-                        <ColumnReorderHandle
-                          column={column}
-                          order={order}
-                          shares={columnShares}
-                          table={tableRef}
-                          overlay={overlayRef}
-                          onCommit={setColumnOrder}
-                        />
-                      ) : null
-                    }
-                  />
-                ))}
+                {drawn.map((entry) => {
+                  if (entry.kind === "extra") {
+                    return (
+                      <ExtraTh
+                        key={`extra-${entry.column}`}
+                        column={entry.column}
+                        sort={sort}
+                        onSort={sortByColumn}
+                      />
+                    );
+                  }
+                  const column = entry.column;
+                  const index = order.indexOf(column);
+                  return (
+                    <ColumnHeaderCell
+                      key={column}
+                      column={column}
+                      sort={sort}
+                      onSort={sortByColumn}
+                      onToggleGroupOwn={() =>
+                        setSort((current) => ({ ...current, groupOwnFirst: !current.groupOwnFirst }))
+                      }
+                      // The last column has no boundary to its right, so it carries no handle - and
+                      // neither does `own`, whose 24px is narrower than the grip's own hit area:
+                      // a handle there would sit on top of the group-own-units toggle and swallow
+                      // its clicks. It is a fixed marker column, not one anybody resizes.
+                      splitter={
+                        column !== "own" && index < order.length - 1 ? (
+                          <ColumnSplitter
+                            left={column}
+                            right={order[index + 1]}
+                            columns={colRefs}
+                            table={tableRef}
+                            shares={columnShares}
+                            scale={shareScale}
+                            onCommit={setColumnShares}
+                          />
+                        ) : null
+                      }
+                      // The marker column never moves, so it carries no grip: 24px has no room for
+                      // one, and the leftmost spot is where a marker belongs anyway.
+                      reorder={
+                        column !== "own" ? (
+                          <ColumnReorderHandle
+                            column={column}
+                            order={order}
+                            shares={columnShares}
+                            scale={shareScale}
+                            table={tableRef}
+                            overlay={overlayRef}
+                            onCommit={setColumnOrder}
+                          />
+                        ) : null
+                      }
+                    />
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
-              <Spacer rows={start} rowHeight={rowHeight} />
+              <Spacer rows={start} rowHeight={rowHeight} columns={drawn.length} />
               {visible.slice(start, end).map((unit, offset) => (
                 <UnitRow
                   key={unit.unitId}
                   unit={unit}
                   structureLabel={unitStructureLabel(unit.structureId, structuresById)}
-                  order={order}
+                  drawn={drawn}
                   index={start + offset}
                   rowHeight={rowHeight}
                   selected={unit.unitId === selectedUnitId}
                   onSelect={selectUnit}
-                  regionId={regionId ?? ""}
+                  // The row's own hex, not the selected one: `silverKey` keys the forecast by
+                  // region, so a source spanning hexes must look each row up where it stands.
+                  regionId={unit.regionId}
+                  seen={seenLabel(sourced.seen.get(unit.unitId), currentTurn)}
+                  fromReport={source.kind !== "army" || (unitsById?.has(unit.unitId) ?? false)}
+                  onRemove={army ? () => void actions.removeUnit(army.id, unit.unitId) : undefined}
                   getLongOrder={getLongOrder}
                   getSilver={getSilver}
                   silverWarnings={silverWarnings}
@@ -534,7 +813,7 @@ export function UnitTableDock({
                   onPointerGone={forgetHover}
                 />
               ))}
-              <Spacer rows={visible.length - end} rowHeight={rowHeight} />
+              <Spacer rows={visible.length - end} rowHeight={rowHeight} columns={drawn.length} />
             </tbody>
           </table>
           </div>
@@ -550,15 +829,37 @@ export function UnitTableDock({
           ) : null}
         </div>
       )}
+        </div>
+      </div>
     </CollapsiblePanel>
   );
+}
+
+/**
+ * What the Hex column shows: the hex's coordinates, out of the `z:x,y` a region id is.
+ *
+ * The level is left off - the column is 79px, and a source spanning hexes almost always spans one
+ * level. A region id in an unexpected shape is printed as it stands rather than guessed at.
+ */
+function hexLabel(regionId: string): string {
+  const [, coordinate] = regionId.split(":");
+  return coordinate === undefined ? regionId : `(${coordinate})`;
 }
 
 /** Whether an event came from a mouse, as opposed to a finger or a pen held against the screen. */
 const byMouse = (event: PointerEvent<HTMLElement>) => event.pointerType === "mouse";
 
 /** Stands in for the rows above or below the window, so the scrollbar reflects the whole list. */
-function Spacer({ rows, rowHeight }: { rows: number; rowHeight: number }) {
+function Spacer({
+  rows,
+  rowHeight,
+  columns
+}: {
+  rows: number;
+  rowHeight: number;
+  /** Every drawn column, the source's included: a short spacer would leave a gap on the right. */
+  columns: number;
+}) {
   if (rows <= 0) {
     return null;
   }
@@ -566,8 +867,131 @@ function Spacer({ rows, rowHeight }: { rows: number; rowHeight: number }) {
   // A row with no cell in it is not reliably given a height, so the height goes on both.
   return (
     <tr aria-hidden style={{ height }}>
-      <td colSpan={COLUMNS} className="border-0 p-0" style={{ height }} />
+      <td colSpan={columns} className="border-0 p-0" style={{ height }} />
     </tr>
+  );
+}
+
+/**
+ * A header cell for a column the source added.
+ *
+ * `Seen` sorts; `Hex` does not - a hex is where a unit stands, and ordering a list of five hexes
+ * by their coordinates puts nothing useful together (round 3). The trailing action column has no
+ * label at all: it is a place for a button, not a heading.
+ */
+function ExtraTh({
+  column,
+  sort,
+  onSort
+}: {
+  column: ExtraColumn;
+  sort: SortState;
+  onSort: (column: SortColumn) => void;
+}) {
+  if (column === "seen") {
+    return (
+      <SortableTh label={EXTRA_COLUMN_LABELS.seen} column="seen" sort={sort} onSort={onSort} />
+    );
+  }
+  return <Th>{EXTRA_COLUMN_LABELS[column]}</Th>;
+}
+
+/**
+ * The strip above the table while an Army is the source: its name, `Rename` and `Delete`.
+ *
+ * Two buttons, not three. `Export…` is not drawn at all until `ah-1mpx.3` builds it (S2): a dead
+ * control has no honest tooltip that is not an apology for the backlog.
+ */
+function ArmyStrip({
+  name,
+  memberCount,
+  confirming,
+  onRename,
+  onDelete,
+  onCancelDelete,
+  onConfirmDelete
+}: {
+  name: string;
+  memberCount: number;
+  confirming: boolean;
+  onRename: () => void;
+  onDelete: () => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
+}) {
+  const button =
+    "rounded border border-edge px-2 py-0.5 text-pane text-ink hover:bg-panel focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass";
+  const danger =
+    "rounded border border-danger/60 px-2 py-0.5 text-pane text-danger hover:bg-panel focus-visible:outline focus-visible:outline-1 focus-visible:outline-danger";
+
+  return (
+    <div
+      data-testid="army-strip"
+      className="flex items-center gap-2 border-b border-edge px-2 py-1.5 text-pane text-ink"
+    >
+      {confirming ? (
+        <>
+          <span data-testid="army-delete-confirm">
+            Delete {name}? The {memberCount} units in it are not affected.
+          </span>
+          <span className="ml-auto" />
+          <button type="button" data-testid="army-delete-yes" onClick={onConfirmDelete} className={danger}>
+            Delete
+          </button>
+          <button type="button" data-testid="army-delete-no" onClick={onCancelDelete} className={button}>
+            Cancel
+          </button>
+        </>
+      ) : (
+        <>
+          <b className="font-medium text-brass-bright">{name}</b>
+          <span className="ml-auto" />
+          <button type="button" data-testid="army-rename" onClick={onRename} className={button}>
+            Rename
+          </button>
+          <button type="button" data-testid="army-delete" onClick={onDelete} className={danger}>
+            Delete
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What the pane says when there is nothing to list.
+ *
+ * The two degenerate lines for the new sources are written to the pattern the dock already ships
+ * for a hex; the empty-Army pair is worded so it stays true once `ah-1mpx.4` adds dragging (S3).
+ */
+function emptyLine(args: {
+  source: UnitSource;
+  hex: HexNode | null;
+  stale: boolean;
+  armyName: string | null;
+  hasReport: boolean;
+}): ReactNode {
+  if (args.source.kind === "hex") {
+    return args.hex
+      ? args.stale
+        ? `Not seen since turn ${args.hex.lastSeenTurn} — no current unit information.`
+        : "No units reported in this hex."
+      : "No hex selected.";
+  }
+  if (!args.hasReport) {
+    return "No report loaded.";
+  }
+  if (args.source.kind === "own") {
+    return "No units of your own in this turn's report.";
+  }
+  return (
+    <>
+      <b className="mb-1 block text-ink-soft">{args.armyName} has no units yet.</b>
+      <span className="text-pane-sm">
+        Add units to it with <span className="text-brass-bright">Add to army</span>, on any unit in
+        any list.
+      </span>
+    </>
   );
 }
 
@@ -709,7 +1133,7 @@ const PREDICTED = "italic text-brass";
 function UnitRow({
   unit,
   structureLabel,
-  order,
+  drawn,
   index,
   rowHeight,
   selected,
@@ -724,11 +1148,14 @@ function UnitRow({
   silverWarnings,
   countUpkeep,
   onSelectUnit,
-  renderFactionName
+  renderFactionName,
+  seen,
+  fromReport,
+  onRemove
 }: {
   unit: PreviewedUnit;
-  /** The order the header is drawing in, so a row's cells can never fall out of step with it. */
-  order: ColumnOrder;
+  /** The columns the header is drawing, so a row's cells can never fall out of step with it. */
+  drawn: readonly DrawnColumn[];
   /**
    * The structure this unit stands in — its full label, or a bare `[id]` when the region never
    * described it — and null when the unit stands in the open.
@@ -760,6 +1187,12 @@ function UnitRow({
   onSelectUnit?: (unitId: string) => void;
   /** Wraps a foreign faction's name so it can open that faction's dossier (ah-bu2c). */
   renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
+  /** What the Seen column reads: `now`, or `turn 68` for a remembered member. */
+  seen: string;
+  /** False for an Army member this turn's report does not mention - its Hex reads dimmed. */
+  fromReport: boolean;
+  /** Drops this unit from the Army on screen. Absent for every source that is not an Army. */
+  onRemove?: () => void;
 }) {
   const skills = unit.skills.map((skill) => `${skill.tag} ${skill.level} (${skill.points})`).join(", ");
   const items = formatItems(unit.items, unit.created);
@@ -953,6 +1386,40 @@ function UnitRow({
     )
   };
 
+  /**
+   * The cells for the columns this source added.
+   *
+   * `Hex` reads dimmed for a remembered member, being where the unit *was*; `Seen` amber for the
+   * same reason. `Remove` is empty on every row but the selected one, so nothing reflows as the
+   * selection moves - and it is `tabIndex={-1}` like the unit-id button beside it, because the
+   * table is one tab stop per row and a control inside a cell would put a second stop in every
+   * one of three hundred rows (`AppShell.tsx:3570-3575`). Its keyboard route is the standing bulk
+   * line and the rail.
+   */
+  const extraCells: Record<ExtraColumn, ReactNode> = {
+    hex: <Td className={`truncate${fromReport ? "" : " text-ink-dim"}`}>{hexLabel(unit.regionId)}</Td>,
+    seen: <Td className={fromReport ? "text-ink-dim" : "text-warn"}>{seen}</Td>,
+    remove: (
+      <Td>
+        {selected && onRemove ? (
+          <button
+            type="button"
+            data-testid={`army-remove-${unit.unitId}`}
+            tabIndex={-1}
+            onClick={(event) => {
+              // The row is itself a click target that selects the unit; removing is not selecting.
+              event.stopPropagation();
+              onRemove();
+            }}
+            className="rounded border border-edge px-1.5 text-pane-sm text-danger hover:bg-panel"
+          >
+            Remove
+          </button>
+        ) : null}
+      </Td>
+    )
+  };
+
   return (
     <tr
       data-testid={`unit-row-${unit.unitId}`}
@@ -987,9 +1454,13 @@ function UnitRow({
         selected ? "bg-select/25 text-ink" : unit.own ? "text-ink" : "text-ink-soft"
       }${departing ? " opacity-60" : ""}`}
     >
-      {order.map((column) => (
-        <Fragment key={column}>{cellsByColumn[column]}</Fragment>
-      ))}
+      {drawn.map((entry) =>
+        entry.kind === "unit" ? (
+          <Fragment key={entry.column}>{cellsByColumn[entry.column]}</Fragment>
+        ) : (
+          <Fragment key={`extra-${entry.column}`}>{extraCells[entry.column]}</Fragment>
+        )
+      )}
     </tr>
   );
 }

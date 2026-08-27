@@ -25,6 +25,16 @@ export type ColumnSplitterProps = {
   table: RefObject<HTMLTableElement | null>;
   /** The stored shares, which every gesture starts from - never a measured rectangle. */
   shares: ColumnShares | null;
+  /**
+   * What one stored share is worth on screen, as a fraction of the table (`ah-1mpx.2`).
+   *
+   * 1 whenever the table draws its own columns and nothing else. A source that adds columns of its
+   * own (`sharesFor`) scales the stored shares down to leave room for them, so a gesture measured
+   * against the raw table width would move a column further than the pointer did and the mid-drag
+   * widths written here would disagree with the ones the next render computes. Folding the scale
+   * into the width the arithmetic measures against is the whole correction.
+   */
+  scale?: number;
   /** Called once per finished gesture: pointerup, one arrow press, or a reset. */
   onCommit: (shares: ColumnShares) => void;
 };
@@ -64,11 +74,12 @@ export function ColumnSplitter({
   columns,
   table,
   shares,
+  scale = 1,
   onCommit
 }: ColumnSplitterProps) {
   /** The table's width right now, or 0 when it has not been laid out (or is being rendered
    *  without a DOM at all, as the unit tests do). */
-  const measuredWidth = () => table.current?.getBoundingClientRect().width ?? 0;
+  const measuredWidth = () => (table.current?.getBoundingClientRect().width ?? 0) * scale;
 
   /** What `COLUMN_MIN_PX` is worth as a share of the table as it stands right now, or 0. */
   const measuredMinShare = () => {
@@ -86,7 +97,7 @@ export function ColumnSplitter({
     event.preventDefault();
     const leftCol = columns.current?.[left];
     const rightCol = columns.current?.[right];
-    const tableWidth = table.current?.getBoundingClientRect().width ?? 0;
+    const tableWidth = (table.current?.getBoundingClientRect().width ?? 0) * scale;
     if (!leftCol || !rightCol || tableWidth <= 0) {
       return;
     }
@@ -114,8 +125,8 @@ export function ColumnSplitter({
         minShare
       );
       committed = result;
-      leftCol.style.width = `${result.left * 100}%`;
-      rightCol.style.width = `${result.right * 100}%`;
+      leftCol.style.width = `${result.left * scale * 100}%`;
+      rightCol.style.width = `${result.right * scale * 100}%`;
       if (grip) {
         grip.className = gripClassName(true, result.atLimit);
       }

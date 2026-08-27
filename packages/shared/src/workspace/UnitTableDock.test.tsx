@@ -1,11 +1,19 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
-import type { RegionPreview, ReportRegion, ReportUnit, UnitSilver } from "@atlantis/core-client";
+import type {
+  ArmyMemberRecord,
+  ArmyRecord,
+  RegionPreview,
+  ReportRegion,
+  ReportUnit,
+  UnitSilver
+} from "@atlantis/core-client";
 import { aReportRegion, aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { DEFAULT_COLUMN_SHARES, silverKey, UNIT_COLUMNS, type UnitColumn } from "../unitTable";
 import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
 import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
+import { useArmiesStore } from "../armiesStore";
 import { UnitTableDock } from "./UnitTableDock";
 
 /**
@@ -924,5 +932,189 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
     expect(skillsCell).toBeTruthy();
     expect(skillsCell).not.toContain("italic");
     expect(skillsCell).not.toContain("data-predicted");
+  });
+});
+
+describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
+  afterEach(restoreStoresForTest);
+
+  const armyRecord = (overrides: Partial<ArmyRecord> = {}): ArmyRecord => ({
+    id: "army-1",
+    gameId: "aug-2026",
+    name: "Northern Host",
+    members: [],
+    createdAt: "2026-08-01T09:00:00Z",
+    updatedAt: "2026-08-01T09:00:00Z",
+    ...overrides
+  });
+
+  const aMember = (unitId: string, overrides: Partial<ArmyMemberRecord> = {}): ArmyMemberRecord => ({
+    unitId,
+    name: `Unit ${unitId}`,
+    factionId: "1",
+    factionName: "My Faction",
+    own: true,
+    regionId: "1:6,52",
+    flags: [],
+    items: [],
+    skills: [],
+    men: 3,
+    seenTurn: 71,
+    seenAt: "2026-08-01T09:00:00Z",
+    ...overrides
+  });
+
+  const withUnits = () =>
+    hex({ region: region({ units: [unit({ unitId: "1", own: true })] }), ownUnitCount: 1 });
+
+  it("draws the rail beside the table", () => {
+    const markup = draw(withUnits());
+
+    expect(markup).toContain('data-testid="unit-source-rail"');
+    expect(markup).toContain("This hex");
+    expect(markup).toContain("All my units");
+  });
+
+  it("draws no Hex, Seen or Remove column for This hex", () => {
+    const markup = draw(withUnits());
+
+    expect((markup.match(/<th\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
+    expect((markup.match(/<col\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
+    expect(markup).not.toContain(">Seen<");
+    expect(markup).not.toContain(">Hex<");
+  });
+
+  it("shows no Armies group until a game is open", () => {
+    const markup = renderWithStoreState(
+      <UnitTableDock hex={withUnits()} />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [armyRecord()] }
+    );
+
+    // `client` and `game` are absent, so there is nothing to save into and nothing to offer.
+    expect(markup).not.toContain("+ New Army");
+    expect(markup).not.toContain("Northern Host");
+  });
+
+  it("gives every row one cell per drawn column, extra columns included", () => {
+    const members = [aMember("1"), aMember("7", { name: "Outriders", regionId: "1:9,55", seenTurn: 68 })];
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={withUnits()}
+        ownUnits={[unit({ unitId: "1", own: true })]}
+        unitsById={new Map([["1", unit({ unitId: "1", own: true })]])}
+        currentTurn={71}
+        client={{} as never}
+        game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+        initialSource={{ kind: "army", armyId: "army-1" }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [armyRecord({ members })] }
+    );
+
+    const extras = 3;
+    expect((markup.match(/<th\b/g) ?? []).length).toBe(UNIT_COLUMNS.length + extras);
+    expect((markup.match(/<col\b/g) ?? []).length).toBe(UNIT_COLUMNS.length + extras);
+
+    const row = /<tr[^>]*data-testid="unit-row-7"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length + extras);
+  });
+
+  it("says what an Army is showing, and names its stale members", () => {
+    const members = [aMember("1"), aMember("7", { seenTurn: 68 })];
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={withUnits()}
+        unitsById={new Map([["1", unit({ unitId: "1", own: true })]])}
+        currentTurn={71}
+        client={{} as never}
+        game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+        initialSource={{ kind: "army", armyId: "army-1" }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [armyRecord({ members })] }
+    );
+
+    expect(markup).toContain("— Northern Host, 2 units");
+    expect(markup).toContain("1 unit was not in this turn&#x27;s report.");
+    expect(markup).toContain("Remove it");
+    // The Seen column, per member.
+    expect(markup).toContain("turn 68");
+    expect(markup).toContain(">Rename<");
+    expect(markup).toContain(">Delete<");
+  });
+
+  it("an empty Army says how to fill it", () => {
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={withUnits()}
+        currentTurn={71}
+        client={{} as never}
+        game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+        initialSource={{ kind: "army", armyId: "army-1" }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [armyRecord()] }
+    );
+
+    expect(markup).toContain("Northern Host has no units yet.");
+    // `Add to army` is a brass span inside the sentence, so the tags come out before comparing.
+    expect(markup.replace(/<[^>]*>/g, "")).toContain(
+      "Add units to it with Add to army, on any unit in any list."
+    );
+  });
+
+  it("All my units spans hexes and says so", () => {
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={withUnits()}
+        ownUnits={[unit({ unitId: "1" }), unit({ unitId: "2", regionId: "1:9,55" })]}
+        currentTurn={71}
+        client={{} as never}
+        game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+        initialSource={{ kind: "own" }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [] }
+    );
+
+    expect(markup).toContain("— all my units, 2 units");
+    // One extra column, `hex`, and neither Seen nor Remove.
+    expect((markup.match(/<th\b/g) ?? []).length).toBe(UNIT_COLUMNS.length + 1);
+    expect(markup).not.toContain(">Seen<");
+  });
+
+  it("says so when a source spanning hexes has no report behind it", () => {
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={null}
+        ownUnits={[]}
+        currentTurn={null}
+        client={{} as never}
+        game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+        initialSource={{ kind: "own" }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [] }
+    );
+
+    expect(markup).toContain("No report loaded.");
+  });
+
+  it("says so when the report holds no units of the player's own", () => {
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={withUnits()}
+        ownUnits={[]}
+        currentTurn={71}
+        client={{} as never}
+        game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+        initialSource={{ kind: "own" }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [] }
+    );
+
+    expect(markup).toContain("No units of your own in this turn&#x27;s report.");
   });
 });
