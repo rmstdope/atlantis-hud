@@ -4291,8 +4291,17 @@ test("a narrow window wraps the header instead of clipping it", async ({ page })
 /**
  * ah-cp8: the faction view's body was capped at 40vh regardless of how much room the window had,
  * so a faction with many declared attitudes always scrolled even with space to spare below it.
- * The clamp now follows the viewport, so at the default 720px-tall window the last attitude row
- * is on screen without scrolling.
+ * The clamp is `POPOVER_BODY_MAX_H` - `calc(100vh - 6rem)` - so the room follows the window.
+ *
+ * ah-zh5i.1: this used to ask its question at the fixed 1280x720 window, where this fixture's 32
+ * declared factions need 671px of a 624px body and the answer is "no" - on a machine whose
+ * `-apple-system` font wraps them that way. CI's Linux face wraps them shorter, the same
+ * assertion answered "yes", and the spec failed locally and passed in CI for nine beads running.
+ *
+ * The window is now sized from what the browser actually laid out, so the question is the same one
+ * in any font: given room for the whole list, does the body stop scrolling? The slack is
+ * unconditional - the clamp reserves a constant 6rem and the window is given the content plus
+ * 200px - so no font can make this test disagree with itself.
  */
 test("the faction view uses the window before it scrolls", async ({ page }) => {
   await loadReport(page);
@@ -4300,13 +4309,38 @@ test("the faction view uses the window before it scrolls", async ({ page }) => {
 
   const panel = page.getByTestId("faction-panel");
   await expect(panel).toBeVisible();
+  const body = panel.getByTestId("faction-panel-body");
 
+  // The prefix addresses the attitude rows and nothing else. `faction-attitude-name-` used to sit
+  // under it too, so `.last()` resolved to a faction name nested in the last row instead - which
+  // is how this spec spent its life asserting something other than what it says (ah-zh5i.1).
   const rows = panel.locator('[data-testid^="faction-attitude-"]');
   await expect(rows.last()).toHaveAttribute("data-testid", "faction-attitude-Ally");
+
+  // Whatever the window, the popover stays inside it: that is what the clamp is for. At the
+  // pinned 1280x720 this is the assertion that catches the clamp being removed altogether.
+  const pinnedWindow = page.viewportSize()!;
+  const atPinned = (await panel.boundingBox())!;
+  expect(atPinned.y + atPinned.height).toBeLessThanOrEqual(pinnedWindow.height);
+
+  // What the list needs, as this browser laid it out. `scrollHeight` is the full content height
+  // whether or not the clamp is currently cutting it off.
+  const contentHeight = await body.evaluate((el) => el.scrollHeight);
+
+  // Room for that content plus the 6rem the clamp reserves, and 100px over. A cap that grows with
+  // the window clears this at any font; the 40vh cap this test exists to keep out never does,
+  // because it grows slower than the content it has to hold.
+  await page.setViewportSize({ width: 1280, height: contentHeight + 200 });
+  await expect(panel).toBeVisible();
+
+  await expect
+    .poll(async () => body.evaluate((el) => el.scrollHeight - el.clientHeight))
+    .toBeLessThanOrEqual(0);
   await expect(rows.last()).toBeInViewport();
 
-  const panelBox = (await panel.boundingBox())!;
-  expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(720);
+  const grownWindow = page.viewportSize()!;
+  const atGrown = (await panel.boundingBox())!;
+  expect(atGrown.y + atGrown.height).toBeLessThanOrEqual(grownWindow.height);
 });
 
 /**
