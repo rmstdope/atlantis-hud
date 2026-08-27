@@ -568,12 +568,15 @@ export function AppShell({
   const [helpOpen, setHelpOpen] = useState(
     () => useSettingsStore.getState().showShortcutsAtStartup
   );
-  // The map export: whether its dialog is open, the rectangle a Shift+drag left behind, and how
-  // the last attempt went. The rectangle outlives the dialog so re-opening it offers the same
-  // area, and a drag while the dialog is closed is remembered rather than wasted.
+  // The Army export: which Army's strip opened the dialog (null while it is shut), and how the
+  // last attempt went. The two sides are the dialog's own state, not the shell's, so reopening
+  // starts from the strip's Army again - `ah-1mpx.3`, Where state lives.
   const [armyExportId, setArmyExportId] = useState<string | null>(null);
   const [armyExportBusy, setArmyExportBusy] = useState(false);
   const [armyExportError, setArmyExportError] = useState<string | null>(null);
+  // The map export: whether its dialog is open, the rectangle a Shift+drag left behind, and how
+  // the last attempt went. The rectangle outlives the dialog so re-opening it offers the same
+  // area, and a drag while the dialog is closed is remembered rather than wasted.
   const [exportOpen, setExportOpen] = useState(false);
   const [exportRect, setExportRect] = useState<MapRect | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
