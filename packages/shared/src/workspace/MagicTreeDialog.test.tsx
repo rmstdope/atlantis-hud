@@ -122,7 +122,7 @@ describe("the two views", () => {
     }
 
     // Clicking the toggle is not assertable here: `MagicTreeDialog` uses hooks, so `findByTestId`
-    // cannot enter it and this package has no jsdom (ah-nass). `tests/smoke/magicGraph.spec.ts`
+    // cannot enter it and this package has no jsdom (ah-nass). `tests/smoke/magic-graph.spec.ts`
     // clicks it for real.
   });
 
