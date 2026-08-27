@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-zh5i.2 — the right-hand column when the movement planner is on</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --map:#0d222b; --brass:#c9a24b; --danger:#d9534f; --ok:#5aa469; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 90px; }
+  h1 { font-size: 21px; margin: 0 0 6px; }
+  h2 { font-size: 17px; margin: 44px 0 6px; border-top: 1px solid var(--edge); padding-top: 22px; }
+  h3 { font-size: 13.5px; margin: 0 0 8px; }
+  p.note { color: var(--dim); max-width: 92ch; }
+  .row { display: flex; gap: 30px; flex-wrap: wrap; margin: 16px 0 8px; align-items: flex-start; }
+  .cost { color: var(--dim); font-size: 12.5px; margin: 10px 0 0; width: 382px; }
+  .bad { color: var(--danger); } .good { color: var(--ok); } b.k { color: var(--ink); }
+
+  /* True-scale crop of a real 1280x720 window: x 900..1280, y 60..720. 1px here = 1px there. */
+  .crop { position: relative; width: 380px; height: 660px; overflow: hidden;
+          border: 1px solid var(--edge); border-radius: 8px;
+          background: repeating-linear-gradient(60deg, var(--map) 0 22px, #0f2833 22px 44px); }
+  .hdr { position:absolute; left:0; right:0; top:0; height:13px; background:#0c1119;
+         border-bottom:1px solid var(--edge); }
+  .hdr span { position:absolute; right:6px; top:-3px; font-size:9px; color:var(--dim); }
+  .railbox { position:absolute; left:34px; width:336px; top:61px; height:249px;
+             border:1px dashed #3d4a5c; border-radius:6px; pointer-events:none; z-index:5; }
+  .railbox b { position:absolute; right:2px; bottom:-14px; font:400 10px/1 system-ui;
+               color:#4c5b70; letter-spacing:.06em; }
+  .dock { position:absolute; left:-890px; width:1260px; top:320px; height:330px;
+          background:var(--panel); border:1px solid var(--edge); border-radius:8px; z-index:4; }
+  .dockhdr { position:absolute; left:0; right:0; top:0; height:28px; border-bottom:1px solid var(--edge);
+             display:flex; align-items:center; gap:8px; padding:0 10px; box-sizing:border-box;
+             font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--brass); }
+  .dockhdr .spacer { flex:1; }
+  .filter { border:1px solid var(--edge); background:var(--page); color:var(--dim);
+            border-radius:4px; padding:1px 6px; font-size:11px; text-transform:none;
+            letter-spacing:0; width:176px; }
+  .filter.hot { border-color:var(--danger); color:var(--danger); }
+  .dockbody { position:absolute; left:0; right:0; top:28px; bottom:0; padding:8px 10px;
+              box-sizing:border-box; font-size:11px; color:var(--dim); }
+
+  .pane { position:absolute; left:34px; width:336px; box-sizing:border-box;
+          background:var(--panel); border:1px solid var(--edge); border-radius:8px;
+          overflow:hidden; z-index:2; }
+  .pane > header { height:28px; display:flex; align-items:center; gap:6px; padding:0 10px;
+                   border-bottom:1px solid var(--edge); font-size:10px; letter-spacing:.12em;
+                   text-transform:uppercase; color:var(--brass); box-sizing:border-box; }
+  .pane > header .hint { color:var(--dim); text-transform:none; letter-spacing:0; font-size:11px; }
+  .pane > header .spacer { flex:1; }
+  .pane > header button { background:var(--page); color:var(--ink); border:1px solid var(--edge);
+                          border-radius:4px; padding:1px 6px; font-size:10px; text-transform:none;
+                          letter-spacing:0; }
+  .pbody { position:absolute; left:0; right:0; top:28px; bottom:0; padding:7px 10px;
+           box-sizing:border-box; font-size:11.5px; overflow:hidden; }
+  .pbody.scrolls { overflow-y:scroll; }
+  .kv { display:flex; justify-content:space-between; }
+  .kv span:first-child { color:var(--dim); }
+  .sect { color:var(--brass); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+          margin:5px 0 2px; }
+  ol.steps { margin:0; padding:0; list-style:none; color:var(--dim); }
+  ol.steps li { display:flex; justify-content:space-between; }
+  .applyrow { display:flex; align-items:center; gap:8px; margin-top:7px; }
+  .btn { border:1px solid var(--edge); background:var(--page); color:var(--brass);
+         border-radius:4px; padding:2px 8px; font-size:11px; }
+  .btn.buried { border-color:var(--danger); color:var(--danger); }
+  code, .editor { font-family: ui-monospace, monospace; color:var(--dim); font-size:11px; }
+  .buried { position:absolute; right:8px; font-size:10px; color:var(--danger); z-index:6; }
+  .scrollcol { position:absolute; left:34px; width:336px; top:61px; height:249px;
+               overflow-y:scroll; z-index:2; }
+  .scrollcol .stack > div { position:relative !important; left:0 !important; width:334px; }
+  .stack { display:flex; flex-direction:column; gap:10px; }
+</style>
+</head>
+<body>
+
+<h1>ah-zh5i.2 — the right-hand column when the movement planner is on</h1>
+<p class="note">
+  Every box below is drawn <b class="k">at true size</b>, cropped from a real 1280&times;720
+  window (x&nbsp;900–1280, y&nbsp;60–720) and measured from the running application — not sketched.
+  The dashed outline is the room the right-hand panels are given between the header and the
+  “Units in hex” pane: <b class="k">249&nbsp;px</b>.
+</p>
+
+<h2>1 · What happens today</h2>
+<div class="row">
+
+  <div>
+    <h3>Planner off — <span class="good">fits exactly</span></h3>
+    <div class="crop">
+      <div class="hdr"><span>header ends y=73</span></div>
+      <div class="railbox"><b>249px of room</b></div>
+      <div class="dock">
+        <div class="dockhdr">Units in hex<span class="spacer"></span><span class="filter">filter units…</span></div>
+        <div class="dockbody">18642 · leader · 128 silver<br>18644 · 12 vikings<br>…</div>
+      </div>
+      <div class="pane" style="top:61px;height:95px">
+        <header>Unit<span class="hint">— 18642</span></header>
+        <div class="pbody">
+          <div class="kv"><span>Faction</span><span>Wandering Knights (7)</span></div>
+          <div class="kv"><span>Men</span><span>1 leader</span></div>
+          <div class="kv"><span>Silver</span><span>128</span></div>
+        </div>
+      </div>
+      <div class="pane" style="top:166px;height:144px">
+        <header>Orders<span class="hint">— 18642</span></header>
+        <div class="pbody"><div class="editor">work<br>@move n</div></div>
+      </div>
+    </div>
+    <p class="cost">Unit panel 95px, orders editor 144px, one 10px gap. Exactly 249.</p>
+  </div>
+
+  <div>
+    <h3>Planner on, route planned — <span class="bad">the orders editor is buried</span></h3>
+    <div class="crop">
+      <div class="hdr"><span>header ends y=73</span></div>
+      <div class="railbox"><b>249px of room</b></div>
+      <div class="pane" style="top:61px;height:2px"></div>
+      <div class="pane" style="top:71px;height:245px">
+        <header>Movement<span class="spacer"></span><button>Plan move</button><button>Clear</button></header>
+        <div class="pbody">
+          <div class="kv"><span>Travel</span><span>walk</span></div>
+          <div class="kv"><span>Cost</span><span>2 movement points</span></div>
+          <div class="kv"><span>Arrives</span><span>this month</span></div>
+          <p style="margin:5px 0 0"><b class="good">low risk</b></p>
+          <div class="sect">Route · 1</div>
+          <ol class="steps"><li><span>1. N</span><span>plain (7,51) · 2</span></li></ol>
+          <div class="applyrow"><span class="btn buried">Apply to orders</span><code>MOVE N</code></div>
+        </div>
+      </div>
+      <div class="pane" style="top:326px;height:144px;opacity:.4">
+        <header>Orders<span class="hint">— 18642</span></header>
+        <div class="pbody"><div class="editor">work<br>@move n</div></div>
+      </div>
+      <div class="dock">
+        <div class="dockhdr">Units in hex<span class="spacer"></span><span class="filter hot">filter units…</span></div>
+        <div class="dockbody">18642 · leader · 128 silver<br>18644 · 12 vikings<br>…</div>
+      </div>
+      <div class="buried" style="top:334px">the orders editor is under here</div>
+    </div>
+    <p class="cost">
+      The unit panel is crushed to <b class="k">2&nbsp;px</b>, the Movement panel grows to
+      <b class="k">245&nbsp;px</b>, and the orders editor is pushed to y&nbsp;386–530 —
+      <b class="bad">entirely behind the units pane</b>. “Apply to orders” writes into an editor
+      the player cannot see. The button itself stops <b class="k">13&nbsp;px</b> above the units
+      pane; the smoke suite’s intermittent failure is that 13px running out.
+    </p>
+  </div>
+
+</div>
+
+<h2>2 · Three ways out</h2>
+<p class="note">
+  All three keep the orders editor on screen and stop anything sliding under the units pane. They
+  differ in what gets sacrificed for it, and the difference does not survive being described —
+  please look.
+</p>
+<div class="row">
+
+  <div>
+    <h3>Option A — all three share the column, each scrolls</h3>
+    <div class="crop">
+      <div class="hdr"><span>header ends y=73</span></div>
+      <div class="railbox"><b>249px of room</b></div>
+      <div class="dock">
+        <div class="dockhdr">Units in hex<span class="spacer"></span><span class="filter">filter units…</span></div>
+        <div class="dockbody">18642 · leader · 128 silver<br>18644 · 12 vikings<br>…</div>
+      </div>
+      <div class="pane" style="top:61px;height:60px">
+        <header>Unit<span class="hint">— 18642</span></header>
+        <div class="pbody scrolls">
+          <div class="kv"><span>Faction</span><span>Wandering Knights (7)</span></div>
+          <div class="kv"><span>Men</span><span>1 leader</span></div>
+          <div class="kv"><span>Silver</span><span>128</span></div>
+        </div>
+      </div>
+      <div class="pane" style="top:131px;height:85px">
+        <header>Movement<span class="spacer"></span><button>Plan move</button><button>Clear</button></header>
+        <div class="pbody scrolls">
+          <div class="kv"><span>Travel</span><span>walk</span></div>
+          <div class="kv"><span>Cost</span><span>2 movement points</span></div>
+          <div class="kv"><span>Arrives</span><span>this month</span></div>
+          <p style="margin:5px 0 0"><b class="good">low risk</b></p>
+          <div class="sect">Route · 1</div>
+          <ol class="steps"><li><span>1. N</span><span>plain (7,51) · 2</span></li></ol>
+          <div class="applyrow"><span class="btn">Apply to orders</span><code>MOVE N</code></div>
+        </div>
+      </div>
+      <div class="pane" style="top:226px;height:84px">
+        <header>Orders<span class="hint">— 18642</span></header>
+        <div class="pbody scrolls"><div class="editor">work<br>@move n</div></div>
+      </div>
+    </div>
+    <p class="cost">
+      Everything is on screen at once and nothing is ever hidden. The price is that all three are
+      small: the orders editor drops to about five lines, and “Apply to orders” is below its own
+      panel’s fold until you scroll to it.
+    </p>
+  </div>
+
+  <div>
+    <h3>Option B — the column itself scrolls</h3>
+    <div class="crop">
+      <div class="hdr"><span>header ends y=73</span></div>
+      <div class="railbox"><b>249px of room</b></div>
+      <div class="dock">
+        <div class="dockhdr">Units in hex<span class="spacer"></span><span class="filter">filter units…</span></div>
+        <div class="dockbody">18642 · leader · 128 silver<br>18644 · 12 vikings<br>…</div>
+      </div>
+      <div class="scrollcol">
+        <div class="stack">
+          <div class="pane" style="height:95px">
+            <header>Unit<span class="hint">— 18642</span></header>
+            <div class="pbody">
+              <div class="kv"><span>Faction</span><span>Wandering Knights (7)</span></div>
+              <div class="kv"><span>Men</span><span>1 leader</span></div>
+              <div class="kv"><span>Silver</span><span>128</span></div>
+            </div>
+          </div>
+          <div class="pane" style="height:245px">
+            <header>Movement<span class="spacer"></span><button>Plan move</button><button>Clear</button></header>
+            <div class="pbody">
+              <div class="kv"><span>Travel</span><span>walk</span></div>
+              <div class="kv"><span>Cost</span><span>2 movement points</span></div>
+              <div class="kv"><span>Arrives</span><span>this month</span></div>
+              <p style="margin:5px 0 0"><b class="good">low risk</b></p>
+              <div class="sect">Route · 1</div>
+              <ol class="steps"><li><span>1. N</span><span>plain (7,51) · 2</span></li></ol>
+              <div class="applyrow"><span class="btn">Apply to orders</span><code>MOVE N</code></div>
+            </div>
+          </div>
+          <div class="pane" style="height:144px">
+            <header>Orders<span class="hint">— 18642</span></header>
+            <div class="pbody"><div class="editor">work<br>@move n</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="cost">
+      Each panel keeps the height it wants; the column scrolls behind them, so the orders editor is
+      one scroll away rather than crushed. The price is a scrollbar down the right-hand side and an
+      editor that is off-screen until you go to it — and the map behind the scrolled-away part is
+      covered whether or not a panel is there.
+    </p>
+  </div>
+
+  <div>
+    <h3>Option C — Movement replaces Unit while a route is on screen</h3>
+    <div class="crop">
+      <div class="hdr"><span>header ends y=73</span></div>
+      <div class="railbox"><b>249px of room</b></div>
+      <div class="dock">
+        <div class="dockhdr">Units in hex<span class="spacer"></span><span class="filter">filter units…</span></div>
+        <div class="dockbody">18642 · leader · 128 silver<br>18644 · 12 vikings<br>…</div>
+      </div>
+      <div class="pane" style="top:61px;height:95px">
+        <header>Movement<span class="hint">— 18642</span><span class="spacer"></span><button>Plan move</button><button>Clear</button></header>
+        <div class="pbody scrolls">
+          <div class="kv"><span>Travel</span><span>walk</span></div>
+          <div class="kv"><span>Cost</span><span>2 movement points</span></div>
+          <div class="kv"><span>Arrives</span><span>this month</span></div>
+          <p style="margin:5px 0 0"><b class="good">low risk</b></p>
+          <div class="sect">Route · 1</div>
+          <ol class="steps"><li><span>1. N</span><span>plain (7,51) · 2</span></li></ol>
+          <div class="applyrow"><span class="btn">Apply to orders</span><code>MOVE N</code></div>
+        </div>
+      </div>
+      <div class="pane" style="top:166px;height:144px">
+        <header>Orders<span class="hint">— 18642</span></header>
+        <div class="pbody"><div class="editor">work<br>@move n</div></div>
+      </div>
+    </div>
+    <p class="cost">
+      Exactly the layout the planner-off window has: two panels, the same 95&nbsp;px and
+      144&nbsp;px. The Movement panel stands where the Unit panel does, and the Unit panel comes
+      back when the route is cleared. The price is that the unit’s men, silver and skills are not
+      visible while you are planning its move.
+    </p>
+  </div>
+
+</div>
+
+<h2>3 · The states this has to survive</h2>
+<p class="note">
+  Whichever option is chosen, these are the cases the mockups above do not show, and they are the
+  next thing to settle: a <b class="k">long route</b> (eight steps over three months, roughly twice
+  the height drawn here); the planner <b class="k">armed but with no route yet</b> (64&nbsp;px, which
+  fits today); a <b class="k">refusal</b> (“The sea is in the way at (8,52)”); a
+  <b class="k">foreign unit selected</b>, where the panel only says the unit cannot be planned for;
+  and a <b class="k">taller window</b>, where there is room for all three and none of this bites.
+</p>
+
+</body>
+</html>

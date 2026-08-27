@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-zh5i.2 — round 3: the tab strip, folded, and the words</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --brass:#c9a24b; --danger:#d9534f; --ok:#5aa469; --warn:#d9a441; --focus:#c9a24b; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 90px; }
+  h1 { font-size: 21px; margin: 0 0 6px; }
+  h2 { font-size: 17px; margin: 42px 0 6px; border-top: 1px solid var(--edge); padding-top: 22px; }
+  h3 { font-size: 13.5px; margin: 0 0 8px; }
+  p.note { color: var(--dim); max-width: 92ch; }
+  .row { display:flex; gap:26px; flex-wrap:wrap; margin:16px 0 8px; align-items:flex-start; }
+  .cost { color: var(--dim); font-size:12.5px; margin:9px 0 0; width:336px; }
+  b.k { color: var(--ink); } .bad{color:var(--danger)} .good{color:var(--ok)}
+  .pane { width:336px; box-sizing:border-box; background:var(--panel);
+          border:1px solid var(--edge); border-radius:8px; overflow:hidden; position:relative; }
+  .tabs { display:flex; height:28px; border-bottom:1px solid var(--edge); align-items:stretch; }
+  .tabs.nobord { border-bottom:none; }
+  .tab { padding:0 11px; display:flex; align-items:center; gap:5px;
+         font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim);
+         border-right:1px solid var(--edge); box-sizing:border-box; }
+  .tab.on { color:var(--brass); background:#1c2531; box-shadow: inset 0 -2px 0 var(--brass); }
+  .tab.focus { outline:2px solid var(--focus); outline-offset:-2px; }
+  .tab.dis { opacity:.35; }
+  .dot { width:5px; height:5px; border-radius:50%; background:var(--brass); display:block; }
+  .tabs .spacer { flex:1; border-right:none; }
+  .acts { display:flex; align-items:center; gap:5px; padding:0 8px; }
+  .btnh { background:var(--page); color:var(--ink); border:1px solid var(--edge);
+          border-radius:4px; padding:1px 6px; font-size:10px; }
+  .btnh.dis { opacity:.4; }
+  .caret { color:var(--dim); font-size:11px; padding:0 8px; }
+  .pbody { padding:7px 10px; box-sizing:border-box; font-size:11.5px; }
+  .kv { display:flex; justify-content:space-between; }
+  .kv span:first-child { color:var(--dim); }
+  .sect { color:var(--brass); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; margin:5px 0 2px; }
+  ol.steps { margin:0; padding:0; list-style:none; color:var(--dim); }
+  ol.steps li { display:flex; justify-content:space-between; }
+  .applyrow { display:flex; align-items:center; gap:8px; padding:5px 10px 7px;
+              border-top:1px solid var(--edge); background:#141b25; }
+  .btn { border:1px solid var(--edge); background:var(--page); color:var(--brass);
+         border-radius:4px; padding:2px 8px; font-size:11px; }
+  .btn.focus { outline:2px solid var(--focus); outline-offset:1px; }
+  code { font-family: ui-monospace, monospace; color:var(--dim); font-size:11px; }
+  .absent { font-style:italic; color:var(--dim); }
+  .hdrplain { height:28px; display:flex; align-items:center; gap:6px; padding:0 10px;
+              border-bottom:1px solid var(--edge); font-size:10px; letter-spacing:.12em;
+              text-transform:uppercase; color:var(--brass); box-sizing:border-box; }
+  .hdrplain .hint { color:var(--dim); text-transform:none; letter-spacing:0; font-size:11px; }
+  .hdrplain .spacer { flex:1; }
+  .gap { height:12px; }
+  table.words { border-collapse:collapse; font-size:12.5px; margin-top:8px; }
+  table.words td, table.words th { border:1px solid var(--edge); padding:4px 10px; text-align:left; }
+  table.words th { color:var(--brass); font-weight:500; font-size:11px; letter-spacing:.08em;
+                   text-transform:uppercase; }
+  table.words td.s { font-family: ui-monospace, monospace; color:var(--ink); }
+</style>
+</head>
+<body>
+
+<h1>ah-zh5i.2 — round 3: the tab strip folded, the keyboard, and the words</h1>
+<p class="note">
+  Settled so far: the Unit and Movement panels share one 95&nbsp;px slot as
+  <b class="k">two tabs</b>; the Movement tab is selected automatically as soon as the planner is
+  armed, working, routed or refused; only the <b class="k">Apply to orders</b> row is pinned while
+  the rest of the body scrolls; and the slot has <b class="k">one fold control</b> rather than the
+  two it has today. Everything below is at true width.
+</p>
+
+<h2>1 · What the folded slot shows</h2>
+<div class="row">
+  <div>
+    <h3>F1 — the tab strip stays, and a tab click unfolds</h3>
+    <div class="pane">
+      <div class="tabs nobord">
+        <div class="tab">Unit</div>
+        <div class="tab on">Movement <span class="dot"></span></div>
+        <div class="spacer"></div>
+        <div class="acts"><span class="btnh">Plan move</span><span class="btnh">Clear</span><span class="caret">▾</span></div>
+      </div>
+    </div>
+    <p class="cost">
+      Folded, the slot is still 28&nbsp;px of tab strip. The dot still says a route is standing.
+      Clicking either tab unfolds the slot on that tab.
+      <b class="k">Cost:</b> a folded panel is now two controls wide, and “fold” and “switch tab”
+      sit a few pixels apart.
+    </p>
+  </div>
+
+  <div>
+    <h3>F2 — folded is one name, the way every other panel folds</h3>
+    <div class="pane">
+      <div class="tabs nobord">
+        <div class="tab on" style="box-shadow:none;background:transparent">Movement <span class="dot"></span></div>
+        <div class="spacer"></div>
+        <div class="acts"><span class="btnh">Plan move</span><span class="btnh">Clear</span><span class="caret">▾</span></div>
+      </div>
+    </div>
+    <div class="gap"></div>
+    <div class="pane">
+      <div class="tabs nobord">
+        <div class="tab on" style="box-shadow:none;background:transparent">Unit <span class="absent" style="font-size:11px;text-transform:none;letter-spacing:0">— 18642</span></div>
+        <div class="spacer"></div>
+        <div class="acts"><span class="btnh">Plan move</span><span class="caret">▾</span></div>
+      </div>
+    </div>
+    <p class="cost">
+      Folded shows only the tab that was open, exactly like the Region, Orders and Units panes fold
+      today. Unfolding brings the strip back.
+      <b class="k">Cost:</b> you cannot switch tab without unfolding first.
+    </p>
+  </div>
+</div>
+
+<h2>2 · Focus, when the app switches the tab for you</h2>
+<p class="note">
+  The player presses <b class="k">Plan move</b> (focus is on that button, in the strip), then clicks
+  a hex on the map. The route arrives and the Movement tab is selected without anyone asking for it.
+</p>
+<div class="row">
+  <div>
+    <h3>K1 — focus stays on “Plan move”</h3>
+    <div class="pane" style="height:95px">
+      <div class="tabs">
+        <div class="tab">Unit</div>
+        <div class="tab on">Movement <span class="dot"></span></div>
+        <div class="spacer"></div>
+        <div class="acts"><span class="btnh focus" style="outline:2px solid var(--focus);outline-offset:1px">Plan move</span><span class="btnh">Clear</span></div>
+      </div>
+      <div class="pbody" style="height:39px;overflow-y:scroll">
+        <div class="kv"><span>Travel</span><span>walk</span></div>
+        <div class="kv"><span>Cost</span><span>2 movement points</span></div>
+        <div class="sect">Route · 1</div>
+      </div>
+      <div class="applyrow"><span class="btn">Apply to orders</span><code>MOVE N</code></div>
+    </div>
+    <p class="cost">Nothing moves under the hand. Tab to reach Apply. Screen readers hear nothing about the switch unless the panel announces it.</p>
+  </div>
+  <div>
+    <h3>K2 — focus moves to the Movement tab</h3>
+    <div class="pane" style="height:95px">
+      <div class="tabs">
+        <div class="tab">Unit</div>
+        <div class="tab on focus">Movement <span class="dot"></span></div>
+        <div class="spacer"></div>
+        <div class="acts"><span class="btnh">Plan move</span><span class="btnh">Clear</span></div>
+      </div>
+      <div class="pbody" style="height:39px;overflow-y:scroll">
+        <div class="kv"><span>Travel</span><span>walk</span></div>
+        <div class="kv"><span>Cost</span><span>2 movement points</span></div>
+        <div class="sect">Route · 1</div>
+      </div>
+      <div class="applyrow"><span class="btn">Apply to orders</span><code>MOVE N</code></div>
+    </div>
+    <p class="cost">The switch is announced by focus landing on the newly selected tab; ← → then move between tabs and Tab reaches Apply next.</p>
+  </div>
+  <div>
+    <h3>K3 — focus moves to “Apply to orders”</h3>
+    <div class="pane" style="height:95px">
+      <div class="tabs">
+        <div class="tab">Unit</div>
+        <div class="tab on">Movement <span class="dot"></span></div>
+        <div class="spacer"></div>
+        <div class="acts"><span class="btnh">Plan move</span><span class="btnh">Clear</span></div>
+      </div>
+      <div class="pbody" style="height:39px;overflow-y:scroll">
+        <div class="kv"><span>Travel</span><span>walk</span></div>
+        <div class="kv"><span>Cost</span><span>2 movement points</span></div>
+        <div class="sect">Route · 1</div>
+      </div>
+      <div class="applyrow"><span class="btn focus">Apply to orders</span><code>MOVE N</code></div>
+    </div>
+    <p class="cost">The next thing you are likely to do is under the hand already — Enter applies. But focus jumps across the panel each time a route lands, including while you are still picking hexes.</p>
+  </div>
+</div>
+
+<h2>3 · The words, exactly as they would ship</h2>
+<table class="words">
+  <tr><th>Where</th><th>Proposed</th></tr>
+  <tr><td>Left tab</td><td class="s">Unit</td></tr>
+  <tr><td>Right tab</td><td class="s">Movement</td></tr>
+  <tr><td>Right tab, accessible name, with a route standing</td><td class="s">Movement, a route is planned</td></tr>
+  <tr><td>Right tab, accessible name, no route</td><td class="s">Movement</td></tr>
+  <tr><td>Fold control</td><td class="s">Collapse unit and movement panel</td></tr>
+  <tr><td>Arm button</td><td class="s">Plan move</td>  </tr>
+  <tr><td>Arm button, while armed</td><td class="s">Pick a hex…</td></tr>
+  <tr><td>Clear button</td><td class="s">Clear</td></tr>
+  <tr><td>Movement body, armed, nothing picked</td><td class="s">Pick a destination on the map.</td></tr>
+  <tr><td>Movement body, working</td><td class="s">Working out a route…</td></tr>
+  <tr><td>Movement body, foreign unit</td><td class="s">Only your own units can be given orders, so only they can be planned for.</td></tr>
+  <tr><td>Movement body, no unit</td><td class="s">No unit selected.</td></tr>
+  <tr><td>Apply button</td><td class="s">Apply to orders</td></tr>
+</table>
+<p class="note">
+  All of these except the three new ones (the two tab labels, the tab’s accessible name and the
+  fold control’s label) are what the application says today, unchanged.
+</p>
+
+<h2>4 · With the movement planner switched off</h2>
+<div class="row">
+  <div>
+    <h3>No tabs at all — exactly today’s window</h3>
+    <div class="pane" style="height:95px">
+      <div class="hdrplain">Unit<span class="hint">— 18642</span><span class="spacer"></span><span class="caret">▾</span></div>
+      <div class="pbody">
+        <div class="kv"><span>Faction</span><span>Wandering Knights (7)</span></div>
+        <div class="kv"><span>Men</span><span>1 leader</span></div>
+        <div class="kv"><span>Silver</span><span>128</span></div>
+      </div>
+    </div>
+    <p class="cost">
+      The planner is off by default, so this is what almost every player sees: a plain Unit panel
+      with no tab strip and no “Plan move”. A one-tab tab strip would be furniture for nothing.
+    </p>
+  </div>
+</div>
+
+</body>
+</html>
