@@ -899,7 +899,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    * The right-click menu, at the pointer (D4).
    *
    * A row outside the pick is picked alone first, by the same rule the press follows, so what the
-   * menu says and what is washed always agree.
+   * menu says and what is washed always agree - and a row already inside a pick of two or more
+   * leaves it standing, which is what the menu is for. Both fall out of applying `now` and only
+   * `now`, exactly as `pressRow` does: `onRelease` is the collapse a *press* defers until it knows
+   * it was not a drag, and a right-click never becomes one (Copilot, #764).
    */
   const contextRow = (
     event: ReactMouseEvent<HTMLTableRowElement>,
@@ -908,9 +911,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   ) => {
     event.preventDefault();
     const outcome = onPress(pick, unit.unitId, { shift: false, mod: false }, rowIds);
-    const next = outcome.now ?? outcome.onRelease;
-    if (next) {
-      settleOn(next, rowTarget);
+    if (outcome.now) {
+      settleOn(outcome.now, rowTarget);
     }
     setMenu({ at: "pointer", point: { x: event.clientX, y: event.clientY } });
   };

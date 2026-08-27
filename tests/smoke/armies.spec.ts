@@ -451,3 +451,25 @@ test("right-clicking a row outside the pick picks it alone and opens the menu at
   await page.getByTestId("unit-context-menu").getByText("Northern Host").click();
   await expect(armyEntry(page)).toContainText("1");
 });
+
+test("right-clicking a row inside the pick leaves the pick standing and acts on all of it", async ({
+  page
+}) => {
+  await workspace(page);
+  await newArmy(page, "Northern Host");
+  const row = rows(page);
+
+  await row.nth(0).click();
+  await row.nth(2).click({ modifiers: ["Shift"] });
+  await expect(page.getByTestId("unit-bulk-line")).toContainText("3 units picked.");
+
+  await row.nth(1).click({ button: "right" });
+
+  // The collapse `onPress` defers belongs to a press that turned out not to be a drag; a
+  // right-click is never one, so the pick stands and the menu is about all of it (Copilot, #764).
+  await expect(page.getByTestId("unit-bulk-line")).toContainText("3 units picked.");
+  await expect(page.getByTestId("unit-context-menu")).toContainText("3 units into…");
+
+  await page.getByTestId("unit-context-menu").getByText("Northern Host").click();
+  await expect(armyEntry(page)).toContainText("3");
+});
