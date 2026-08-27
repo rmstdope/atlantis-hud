@@ -368,7 +368,7 @@ test("a merged ally is marked in the attitude list", async ({ page }) => {
   await page.getByTestId("faction-chip").click();
   const panel = page.getByTestId("faction-panel");
   await expect(panel).toBeVisible();
-  await expect(panel.getByTestId("faction-attitude-name-73")).toContainText("⌂");
+  await expect(panel.getByTestId("attitude-faction-73")).toContainText("⌂");
 });
 
 test("the faction view survives a reload", async ({ page }) => {
@@ -4301,8 +4301,9 @@ test("the faction view uses the window before it scrolls", async ({ page }) => {
   const panel = page.getByTestId("faction-panel");
   await expect(panel).toBeVisible();
 
-  const lastAttitudeRow = panel.locator('[data-testid^="faction-attitude-"]').last();
-  await expect(lastAttitudeRow).toBeInViewport();
+  const rows = panel.locator('[data-testid^="faction-attitude-"]');
+  await expect(rows.last()).toHaveAttribute("data-testid", "faction-attitude-Ally");
+  await expect(rows.last()).toBeInViewport();
 
   const panelBox = (await panel.boundingBox())!;
   expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(720);

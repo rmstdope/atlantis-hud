@@ -114,7 +114,7 @@ export function FactionPanel({
                           {(() => {
                             const label = (
                               <span
-                                data-testid={`faction-attitude-name-${faction.id}`}
+                                data-testid={`attitude-faction-${faction.id}`}
                                 className={faction.merged ? "text-brass-bright" : undefined}
                               >
                                 {faction.name} ({faction.id})
