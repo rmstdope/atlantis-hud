@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-1mpx.4 &mdash; round 1: the drag, the bulk actions and the right-click</title><style>
+/* ---- Explanatory chrome (docs/ui house style) ---- */
+:root {
+  --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+  --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+  --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  /* ---- the application's own tokens, from packages/shared/src/theme.css ---- */
+  --a-ground:#1b212a; --a-panel:#222933; --a-raised:#2a323d; --a-edge:#46525f; --a-edge-soft:#333d49;
+  --a-ink:#d4dce6; --a-ink-soft:#a8b4c2; --a-ink-dim:#99a4b2;
+  --a-brass:#e0b25a; --a-brass-bright:#eebe63; --a-select:#5aa9de; --a-ok:#4fb783;
+  --a-warn:#d9a441; --a-danger:#e89494; --a-gain:#7fb069;
+  --a-unit-own:#5ec8f0; --a-unit-foreign:#f07070; --a-ring:#f5f8fc;
+  --a-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+header, main, footer { max-width:1420px; margin:0 auto; }
+h1 { font-size:26px; letter-spacing:0.4px; }
+h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+p.lede { color:var(--brass-bright); font-size:15.5px; font-style:italic; max-width:96ch; margin-top:12px; }
+code, .mono { font-family:var(--a-mono); }
+header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+.stage { background:#0b0f15; border:1px solid var(--edge-soft); border-radius:8px; padding:12px; overflow-x:auto; }
+.hexlab { font:10.5px/1 var(--a-mono); letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
+.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+.notes li.con::before { content:"\2212 "; color:var(--danger); }
+.notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+.split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+.split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+footer { margin-top:42px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+.rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+.new { outline:1px dashed var(--brass); outline-offset:2px; }
+.newtag { font:9.5px/1 var(--a-mono); letter-spacing:.1em; text-transform:uppercase; color:#1b212a;
+          background:var(--brass); border-radius:3px; padding:3px 5px; }
+
+/* ================= the application, reproduced ================= */
+.app { width:1280px; height:720px; position:relative; overflow:hidden; border-radius:6px;
+       border:1px solid #000; background:var(--a-ground); color:var(--a-ink);
+       font:13px/1.35 var(--a-mono); display:flex; flex-direction:column; }
+.app.short { height:470px; }
+.app *, .app *::before { box-sizing:border-box; }
+
+/* header: min-h-9, border-b border-edge, bg-panel, px-3, gap-x-3.5 */
+.ahead { flex:none; min-height:36px; display:flex; align-items:center; gap:14px; padding:0 12px;
+         border-bottom:1px solid var(--a-edge); background:var(--a-panel); white-space:nowrap; }
+.ahead .wordmark { letter-spacing:.06em; color:var(--a-brass); }
+.ahead .lbl { color:var(--a-ink-soft); }
+.ahead .chip { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink);
+               border-radius:4px; padding:1px 8px; }
+.ahead .chip.plain { border-color:transparent; background:transparent; }
+.ahead .chip.warn { border-color:var(--a-warn); color:var(--a-warn); background:transparent; }
+.ahead .chip.gain { border-color:var(--a-gain); color:var(--a-gain); background:transparent; }
+.ahead .chip.dim { color:var(--a-ink-dim); }
+.ahead .right { margin-left:auto; display:flex; align-items:center; gap:14px; }
+.ahead .btn-imp { border:1px solid var(--a-brass); color:var(--a-brass); border-radius:4px; padding:3px 10px; }
+.ahead .btn-o { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink); border-radius:4px; padding:3px 10px; }
+.dotstat { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--a-ink-dim); }
+
+/* map stage + floating overlay: p-2.5 pt-12, gap-2.5 */
+.stagewrap { position:relative; flex:1; min-height:0; }
+.mapsvg { position:absolute; inset:0; width:100%; height:100%; }
+.mapctl { position:absolute; right:10px; top:10px; z-index:20; display:flex; align-items:center; gap:6px;
+          border:1px solid var(--a-edge); background:#222933f2; border-radius:6px; padding:4px 8px;
+          box-shadow:0 10px 15px -3px #0007; }
+.mapctl .sq { width:26px; height:26px; border:1px solid var(--a-edge); background:#222933f2;
+              border-radius:4px; color:var(--a-ink-soft); display:flex; align-items:center; justify-content:center; }
+.overlay { position:absolute; inset:0; padding:10px; padding-top:48px; display:flex; flex-direction:column; gap:10px; }
+.orow { display:flex; flex:1; min-height:0; justify-content:space-between; gap:10px; }
+.railL { width:304px; display:flex; flex-direction:column; }
+.railR { width:336px; display:flex; flex-direction:column; gap:10px; }
+
+/* CollapsiblePanel: rounded-md border-edge bg-pane shadow-lg backdrop-blur; header h-7 */
+.pane { display:flex; flex-direction:column; min-height:0; overflow:hidden; border-radius:6px;
+        border:1px solid var(--a-edge); background:#222933cc; backdrop-filter:blur(7px);
+        box-shadow:0 10px 15px -3px #0007,0 4px 6px -4px #0007; }
+.pane > .ttl { height:28px; flex:none; display:flex; align-items:center; gap:8px; padding:0 10px;
+               border-bottom:1px solid var(--a-edge); font-size:12px; letter-spacing:.12em;
+               text-transform:uppercase; color:var(--a-brass); }
+.pane > .ttl .hint { text-transform:none; letter-spacing:normal; color:var(--a-ink-dim); }
+.pane > .ttl .caret { margin-left:auto; color:var(--a-ink-dim); }
+.pane > .bd { min-height:0; flex:1; overflow:auto; padding:8px 10px; line-height:1.3; }
+.pane.grow { flex:1; min-height:0; }
+
+/* units dock, full width along the bottom: h-20.625rem = 330px */
+.dockU { height:330px; flex:none; }
+
+/* units table */
+table.ut { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0; font-variant-numeric:tabular-nums; }
+table.ut th { position:sticky; top:0; z-index:10; background:var(--a-panel); border-bottom:1px solid var(--a-edge);
+              padding:4px 8px; text-align:left; font-size:12px; font-weight:500; letter-spacing:.06em;
+              text-transform:uppercase; color:var(--a-ink-soft); }
+table.ut th .g { color:var(--a-ink-dim); }
+table.ut th.act { color:var(--a-brass); }
+table.ut td { height:24px; padding:2px 8px; border-bottom:1px solid var(--a-edge-soft);
+              white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+table.ut tr { color:var(--a-ink); }
+table.ut tr.foreign { color:var(--a-ink-soft); }
+table.ut tr.sel td { background:#5aa9de40; color:var(--a-ink); }
+table.ut tr.pick td { background:#5aa9de26; }
+.o { color:var(--a-ok); } .f { color:var(--a-danger); }
+.idown { color:var(--a-select); } .idfor { color:#f07070b3; }
+.dim { color:var(--a-ink-dim); } .warnc { color:var(--a-warn); } .okc { color:var(--a-ok); }
+.gone { color:var(--a-ink-dim); text-decoration:line-through; }
+.filter { width:176px; border:1px solid var(--a-edge); background:var(--a-ground); color:var(--a-ink-dim);
+          border-radius:4px; padding:1px 8px; font-size:13px; }
+
+/* small controls inside panes */
+.b { display:inline-block; border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink);
+     border-radius:4px; padding:3px 9px; font-size:12px; }
+.b.pri { border-color:var(--a-brass); color:var(--a-brass); background:transparent; }
+.b.gh { border-color:transparent; background:transparent; color:var(--a-ink-dim); padding:3px 6px; }
+.b.dg { border-color:#6b4444; color:var(--a-danger); background:transparent; }
+.kbd { display:inline-block; font-size:11px; padding:2px 6px; border:1px solid var(--a-edge);
+       border-bottom-width:2px; border-radius:4px; background:var(--a-ground); color:var(--a-brass-bright); }
+dl.kv { display:grid; grid-template-columns:74px 1fr; gap:4px 10px; font-size:13px; }
+dl.kv dt { color:var(--a-ink-dim); font-size:12px; }
+dl.kv dt.sep, dl.kv dd.sep { border-top:1px solid var(--a-edge-soft); padding-top:7px; margin-top:4px; }
+.chip2 { display:inline-block; background:#5aa9de26; border:1px solid #5aa9de66; color:var(--a-ink);
+         border-radius:10px; padding:1px 8px; font-size:12px; margin:0 4px 4px 0; }
+.chip2 .x { color:var(--a-ink-dim); margin-left:5px; }
+.arow { display:flex; align-items:center; gap:8px; padding:4px 7px; border-radius:4px; font-size:13px; }
+.arow.on { background:#5aa9de26; box-shadow:inset 2px 0 0 var(--a-select); }
+.arow .ct { margin-left:auto; color:var(--a-ink-dim); font-size:12px; }
+.sw { width:10px; height:10px; border-radius:2px; flex:none; }
+.sw.off { background:transparent; border:1px solid var(--a-edge); }
+.tagw { font-size:11px; border:1px solid #6b5a2a; color:var(--a-warn); border-radius:3px; padding:1px 5px; }
+.empty { color:var(--a-ink-dim); font-size:12px; line-height:1.6; text-align:center; padding:18px 12px; }
+.empty b { color:var(--a-ink-soft); display:block; font-weight:500; margin-bottom:4px; font-size:13px; }
+.st { font-size:12px; color:var(--a-ink-dim); margin-top:7px; line-height:1.5; }
+.st b { color:var(--a-brass-bright); font-weight:500; }
+
+/* the source rail (P3) */
+.srail { width:172px; flex:none; border-right:1px solid var(--a-edge); background:#2a323db3; overflow:auto; padding:6px; }
+.srail .grp { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--a-ink-dim); margin:10px 0 4px 6px; }
+.srail .s { display:flex; align-items:center; gap:6px; padding:3px 7px; border-radius:4px; color:var(--a-ink-soft); font-size:13px; }
+.srail .s.on { background:#5aa9de26; color:var(--a-ink); box-shadow:inset 2px 0 0 var(--a-select); }
+.srail .s.drop { border:1px dashed var(--a-brass); background:#e0b25a1f; color:var(--a-brass-bright); }
+.srail .s .ct { margin-left:auto; color:var(--a-ink-dim); font-size:12px; }
+.ghostdrag { position:absolute; border:1px dashed var(--a-brass); border-radius:4px; background:#2a323dee;
+             color:var(--a-brass-bright); font-size:12px; padding:4px 9px; box-shadow:0 8px 20px #000a; }
+
+/* dialog */
+.backdrop { position:absolute; inset:0; background:#00000080; display:flex; align-items:center; justify-content:center; z-index:40; }
+.dlg { border:1px solid var(--a-edge); background:var(--a-raised); border-radius:6px;
+       box-shadow:0 10px 15px -3px #0009; overflow:hidden; }
+.dlg > .h { display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid var(--a-edge); color:var(--a-ink-soft); }
+.dlg > .b2 { padding:12px; }
+pre.json { font:12px/1.5 var(--a-mono); color:var(--a-ink-soft); background:var(--a-ground);
+           border:1px solid var(--a-edge-soft); border-radius:5px; padding:10px; overflow-x:auto; }
+pre.json .k { color:var(--a-select); } pre.json .s { color:var(--a-ok); } pre.json .n { color:var(--a-brass-bright); }
+
+</style></head><body>
+<header>
+<h1>ah-1mpx.4 &mdash; round 1: <span>the drag, the bulk line and the right-click</span></h1>
+<p>Round&nbsp;3 of the epic already settled the <b>gestures</b> &mdash; click picks one, Shift+click extends,
+Ctrl/Cmd+click toggles, Shift+&uarr;/&darr; extends from the keyboard, Ctrl/Cmd+A picks everything the filter is
+showing, Esc narrows back to the cursor row, changing the source clears the pick. Picked rows take a
+15%&nbsp;wash; the cursor row keeps today's 25% and is the one that fills the Unit panel.
+<b>None of that is reopened here.</b></p>
+<p class="lede">What round&nbsp;3 drew but never specified: what a drag actually shows and what it may be dropped on,
+how you take several units back <i>out</i> of an Army, where the pick's count lives, and whether the right-click
+menu is a real nested menu or the popover that already exists.</p>
+</header>
+
+<main>
+
+<h3 class="sec">D1 &mdash; what a drag may be dropped on</h3>
+<p>You are on <b>All my units</b>, three rows picked, dragging left over the rail. The chip under the pointer and
+the brass dashed outline on the Army under it are the same in all three; what differs is what the
+<i>other</i> rail entries do.</p>
+<div class="split3">
+
+  <div class="card">
+    <div class="hexlab">Option A &mdash; Armies only, everything else inert</div>
+    <div class="stage" style="position:relative;min-height:250px">
+      <div class="app short" style="width:420px;height:230px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; all my units, 38 units</span></div>
+          <div style="display:flex;flex:1;min-height:0;position:relative">
+            <div class="srail">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s">Northern Host <span class="ct">12</span></div>
+              <div class="s drop">Coastal Watch <span class="ct">5</span></div>
+              <div class="s" style="color:var(--a-brass-bright)">+ New Army</div>
+            </div>
+            <div style="flex:1;min-width:0;overflow:hidden">
+              <table class="ut">
+                <tr><th style="width:24px">*</th><th style="width:56px">Id</th><th>Unit</th><th style="width:48px">Men</th></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>146</td></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>10</td></tr>
+                <tr class="sel pick"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td>8</td></tr>
+                <tr><td class="o">*</td><td class="idown">3192</td><td>Vanguard</td><td>1</td></tr>
+              </table>
+            </div>
+            <div class="ghostdrag" style="left:96px;top:96px">3 units</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Nothing on screen changes except the one entry under the pointer. Quietest of the three.</li>
+      <li>Releasing over <b>This hex</b>, <b>All my units</b>, <b>+ New Army</b> or the table does nothing at
+        all &mdash; and does it silently.</li>
+      <li class="con">Nothing tells you <i>before</i> you release that a target will refuse. You find out by
+        the count not moving.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="hexlab">Option B &mdash; Armies, and <b>+ New Army</b> too <span class="rec">recommended</span></div>
+    <div class="stage" style="position:relative;min-height:250px">
+      <div class="app short" style="width:420px;height:230px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; all my units, 38 units</span></div>
+          <div style="display:flex;flex:1;min-height:0;position:relative">
+            <div class="srail">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s">Northern Host <span class="ct">12</span></div>
+              <div class="s">Coastal Watch <span class="ct">5</span></div>
+              <div class="s drop" style="color:var(--a-brass-bright)">+ New Army</div>
+            </div>
+            <div style="flex:1;min-width:0;overflow:hidden">
+              <table class="ut">
+                <tr><th style="width:24px">*</th><th style="width:56px">Id</th><th>Unit</th><th style="width:48px">Men</th></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>146</td></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>10</td></tr>
+                <tr class="sel pick"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td>8</td></tr>
+                <tr><td class="o">*</td><td class="idown">3192</td><td>Vanguard</td><td>1</td></tr>
+              </table>
+            </div>
+            <div class="ghostdrag" style="left:96px;top:130px">3 units</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Dropping on <b>+ New Army</b> opens the rail's inline name field with the three units held, and they
+        join on Enter &mdash; exactly what <code>New Army&hellip;</code> in the popover already does (U2).</li>
+      <li>Assembling a force from scratch is then one gesture instead of two.</li>
+      <li>Escape in the field abandons both the name and the units, as it already does.</li>
+      <li class="con">One more drop target to get right, and it behaves differently from the others
+        (it opens an editor rather than saving).</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="hexlab">Option C &mdash; Armies only, and the rest visibly refuse</div>
+    <div class="stage" style="position:relative;min-height:250px">
+      <div class="app short" style="width:420px;height:230px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; all my units, 38 units</span></div>
+          <div style="display:flex;flex:1;min-height:0;position:relative">
+            <div class="srail">
+              <div class="s" style="opacity:.35">This hex <span class="ct">6</span></div>
+              <div class="s" style="opacity:.35">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s">Northern Host <span class="ct">12</span></div>
+              <div class="s drop">Coastal Watch <span class="ct">5</span></div>
+              <div class="s" style="opacity:.35;color:var(--a-brass-bright)">+ New Army</div>
+            </div>
+            <div style="flex:1;min-width:0;overflow:hidden">
+              <table class="ut">
+                <tr><th style="width:24px">*</th><th style="width:56px">Id</th><th>Unit</th><th style="width:48px">Men</th></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>146</td></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>10</td></tr>
+                <tr class="sel pick"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td>8</td></tr>
+                <tr><td class="o">*</td><td class="idown">3192</td><td>Vanguard</td><td>1</td></tr>
+              </table>
+            </div>
+            <div class="ghostdrag" style="left:96px;top:96px">3 units</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>The whole rail answers the question &ldquo;where can this go&rdquo; the moment the drag starts.</li>
+      <li class="con">Half the rail dims every time you drag &mdash; a lot of movement for a rail with two
+        fixed entries you already know are not Armies.</li>
+      <li class="con">Dimming <b>This hex</b> collides with U4, where dim/brass already means something else.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">D2 &mdash; taking several units back out of an Army</h3>
+<p><code>ah-1mpx.2</code> ships one way out: a <b>Remove</b> button in a trailing column, drawn only on the
+cursor row, one unit at a time. With three rows picked inside <b>Northern Host</b>, what removes them?</p>
+<div class="split3">
+
+  <div class="card">
+    <div class="hexlab">Option A &mdash; a bulk line above the table <span class="rec">recommended</span></div>
+    <div class="stage">
+      <div class="app short" style="width:520px;height:212px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; Northern Host, 12 units</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail" style="width:132px">
+              <div class="s" style="color:var(--a-brass-bright)">This hex <span class="ct">6 &#9679;</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s on">Northern Host <span class="ct">12</span></div>
+            </div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+              <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--a-edge);font-size:13px">
+                <b style="color:var(--a-brass-bright);font-weight:500">Northern Host</b>
+                <span style="margin-left:auto"></span>
+                <span class="b">Rename</span><span class="b dg">Delete</span>
+              </div>
+              <div class="new" style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--a-edge-soft);font-size:13px;background:#5aa9de14">
+                <span>3 units picked.</span>
+                <span style="margin-left:auto"></span>
+                <span class="b">Add to army&hellip;</span>
+                <span class="b" style="color:var(--a-danger)">Remove from Northern Host</span>
+              </div>
+              <table class="ut">
+                <tr><th style="width:24px">*</th><th style="width:56px">Id</th><th>Unit</th><th style="width:62px">Seen</th><th style="width:74px"></th></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>now</td><td></td></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>now</td><td></td></tr>
+                <tr class="sel pick"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td>now</td><td><span class="b gh" style="color:var(--a-danger)">Remove</span></td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>The same shape as the stale line <code>ah-1mpx.2</code> already ships, one row below the strip &mdash;
+        a standing line that appears when there is a pick and goes when there is not.</li>
+      <li>It is where <i>every</i> bulk action lives, so <b>Add to army</b> and <b>Remove</b> sit together
+        rather than in two different places.</li>
+      <li>The per-row <b>Remove</b> is untouched: with one row picked the line does not appear at all.</li>
+      <li class="con">A third bar above the table, on top of the strip and (when it applies) the stale line.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="hexlab">Option B &mdash; the per-row button counts the pick</div>
+    <div class="stage">
+      <div class="app short" style="width:520px;height:212px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; Northern Host, 12 units</span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail" style="width:132px">
+              <div class="s" style="color:var(--a-brass-bright)">This hex <span class="ct">6 &#9679;</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s on">Northern Host <span class="ct">12</span></div>
+            </div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+              <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--a-edge);font-size:13px">
+                <b style="color:var(--a-brass-bright);font-weight:500">Northern Host</b>
+                <span style="margin-left:auto"></span>
+                <span class="b">Rename</span><span class="b dg">Delete</span>
+              </div>
+              <table class="ut">
+                <tr><th style="width:24px">*</th><th style="width:56px">Id</th><th>Unit</th><th style="width:62px">Seen</th><th style="width:86px"></th></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>now</td><td></td></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>now</td><td></td></tr>
+                <tr class="sel pick"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td>now</td><td><span class="b gh new" style="color:var(--a-danger)">Remove 3</span></td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>No new bar. The control that already exists simply says how many it will take.</li>
+      <li class="con">The button is on <i>one</i> row and removes three &mdash; the two rows above it are also
+        going, and nothing on that row says so except a number.</li>
+      <li class="con">Leaves <b>Add to army</b> for a pick with nowhere to be but the pane header, so the
+        two bulk actions live in two different places.</li>
+      <li class="con">The button is <code>tabIndex=-1</code> by <code>ah-1mpx.2</code>'s rule, so the bulk
+        removal has no keyboard route at all.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="hexlab">Option C &mdash; drag them out of the rail entry</div>
+    <div class="stage">
+      <div class="app short" style="width:520px;height:212px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; Northern Host, 12 units</span></div>
+          <div style="display:flex;flex:1;min-height:0;position:relative">
+            <div class="srail" style="width:132px">
+              <div class="s" style="color:var(--a-brass-bright)">This hex <span class="ct">6 &#9679;</span></div>
+              <div class="s">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s on">Northern Host <span class="ct">12</span></div>
+            </div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+              <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--a-edge);font-size:13px">
+                <b style="color:var(--a-brass-bright);font-weight:500">Northern Host</b>
+                <span style="margin-left:auto"></span>
+                <span class="b">Rename</span><span class="b dg">Delete</span>
+              </div>
+              <table class="ut">
+                <tr><th style="width:24px">*</th><th style="width:56px">Id</th><th>Unit</th><th style="width:62px">Seen</th><th style="width:74px"></th></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>now</td><td></td></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>now</td><td></td></tr>
+                <tr class="sel pick"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td>now</td><td><span class="b gh" style="color:var(--a-danger)">Remove</span></td></tr>
+              </table>
+            </div>
+            <div class="ghostdrag" style="left:210px;top:130px">3 units &mdash; drop to remove?</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Nothing new on screen at all in the resting state.</li>
+      <li class="con">There is nowhere obvious to drop &mdash; &ldquo;out&rdquo; is not a place, and dropping on
+        the table you are already in means nothing.</li>
+      <li class="con">A destructive action with no keyboard route and no label.</li>
+      <li class="con">Still leaves bulk <b>Add to army</b> unanswered.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">D3 &mdash; where the pick's count lives, and what the header button says</h3>
+<p>Three rows are picked on <b>All my units</b>. Somewhere the application has to say &ldquo;three&rdquo;, and the
+<b>Add to army&nbsp;&#9662;</b> button in the pane header has to act on all three rather than on the cursor row.</p>
+<div class="split3">
+
+  <div class="card">
+    <div class="hexlab">Option A &mdash; the header button carries the count</div>
+    <div class="stage">
+      <div class="app short" style="width:520px;height:190px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; all my units, 38 units</span>
+            <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+              <span class="filter">filter units&hellip;</span>
+              <span class="b pri new">Add 3 units to army &#9662;</span></span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail" style="width:132px">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s on">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s">Northern Host <span class="ct">12</span></div>
+            </div>
+            <div style="flex:1;min-width:0">
+              <table class="ut">
+                <tr><th style="width:24px">*</th><th style="width:56px">Id</th><th>Unit</th><th style="width:70px">Hex</th><th style="width:48px">Men</th></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>(7,53)</td><td>146</td></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>(7,53)</td><td>10</td></tr>
+                <tr class="sel pick"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td>(9,53)</td><td>8</td></tr>
+                <tr><td class="o">*</td><td class="idown">3192</td><td>Vanguard</td><td>(7,53)</td><td>1</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>No new furniture; the button that already exists says what it will do.</li>
+      <li>Reads <code>Add to army &#9662;</code> with one row picked, exactly as today.</li>
+      <li class="con">The button's width changes as the pick changes, and the pane header is where the
+        filter box lives &mdash; on a narrow window that row is already tight.</li>
+      <li class="con">Says nothing about removing, so <b>D2</b> has to answer that somewhere else.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="hexlab">Option B &mdash; a bulk line above the table <span class="rec">recommended</span></div>
+    <div class="stage">
+      <div class="app short" style="width:520px;height:190px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; all my units, 38 units</span>
+            <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+              <span class="filter">filter units&hellip;</span>
+              <span class="b pri" style="opacity:.4">Add to army &#9662;</span></span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail" style="width:132px">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s on">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s">Northern Host <span class="ct">12</span></div>
+            </div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+              <div class="new" style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--a-edge-soft);font-size:13px;background:#5aa9de14">
+                <span>3 units picked.</span>
+                <span style="margin-left:auto"></span>
+                <span class="b">Add to army&hellip;</span>
+                <span class="b gh">Clear</span>
+              </div>
+              <table class="ut">
+                <tr><th style="width:24px">*</th><th style="width:56px">Id</th><th>Unit</th><th style="width:70px">Hex</th><th style="width:48px">Men</th></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>(7,53)</td><td>146</td></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>(7,53)</td><td>10</td></tr>
+                <tr class="sel pick"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td>(9,53)</td><td>8</td></tr>
+                <tr><td class="o">*</td><td class="idown">3192</td><td>Vanguard</td><td>(7,53)</td><td>1</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>One place for everything a pick can do, and it is the same line inside an Army (D2&nbsp;A) with
+        <b>Remove from&hellip;</b> added.</li>
+      <li>Nothing in the pane header moves or resizes, so the narrow window is unaffected.</li>
+      <li>Gives the keyboard a real target: the bulk line's buttons are ordinary tab stops, where the
+        per-row controls are deliberately not.</li>
+      <li class="con">The header's <b>Add to army &#9662;</b> then has two jobs &mdash; or is disabled while
+        the bulk line is up, which is what is drawn here.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="hexlab">Option C &mdash; the count goes in the pane's hint</div>
+    <div class="stage">
+      <div class="app short" style="width:520px;height:190px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint new">&mdash; all my units, 38 units, 3 picked</span>
+            <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+              <span class="filter">filter units&hellip;</span>
+              <span class="b pri">Add to army &#9662;</span></span></div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div class="srail" style="width:132px">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s on">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s">Northern Host <span class="ct">12</span></div>
+            </div>
+            <div style="flex:1;min-width:0">
+              <table class="ut">
+                <tr><th style="width:24px">*</th><th style="width:56px">Id</th><th>Unit</th><th style="width:70px">Hex</th><th style="width:48px">Men</th></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>(7,53)</td><td>146</td></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>(7,53)</td><td>10</td></tr>
+                <tr class="sel pick"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td>(9,53)</td><td>8</td></tr>
+                <tr><td class="o">*</td><td class="idown">3192</td><td>Vanguard</td><td>(7,53)</td><td>1</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Costs no vertical space at all, and the hint already counts things
+        (<code>6 units, 3 shown</code>).</li>
+      <li class="con">The hint is now three clauses long and the pick is the one that changes constantly.</li>
+      <li class="con">Still no home for the bulk actions themselves, so D2 and the button's label are
+        both left open.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">D4 &mdash; the right-click</h3>
+<p>Round&nbsp;3 drew <code>Add to army &#9656;</code> with a submenu. <b>This application has no context menu
+anywhere</b> &mdash; the only right-click in it recentres the map &mdash; so whatever is chosen here is the
+first one, and it is the shape every later one will copy.</p>
+<div class="split3">
+
+  <div class="card">
+    <div class="hexlab">Option A &mdash; the popover that already exists, at the pointer <span class="rec">recommended</span></div>
+    <div class="stage" style="position:relative;min-height:220px">
+      <div class="app short" style="width:430px;height:200px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; all my units, 38 units</span></div>
+          <div style="display:flex;flex:1;min-height:0;position:relative">
+            <div class="srail" style="width:120px">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s on">All my units <span class="ct">38</span></div>
+            </div>
+            <div style="flex:1;min-width:0">
+              <table class="ut">
+                <tr><th style="width:24px">*</th><th style="width:56px">Id</th><th>Unit</th><th style="width:48px">Men</th></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>146</td></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>10</td></tr>
+                <tr class="sel pick"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td>8</td></tr>
+              </table>
+            </div>
+            <div style="position:absolute;left:170px;top:52px;width:196px;border:1px solid var(--a-edge);background:var(--a-raised);border-radius:5px;box-shadow:0 10px 15px -3px #0009;padding:4px 0;font-size:13px">
+              <div style="padding:3px 10px;color:var(--a-ink-dim);border-bottom:1px solid var(--a-edge-soft);margin-bottom:3px">3 units into&hellip;</div>
+              <div style="padding:3px 10px;color:var(--a-ink)">Northern Host</div>
+              <div style="padding:3px 10px;color:var(--a-ink)">Coastal Watch</div>
+              <div style="border-top:1px solid var(--a-edge-soft);margin-top:3px;padding:6px 10px 3px;color:var(--a-brass)">New Army&hellip;</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>It <i>is</i> <code>AddToArmyMenu</code>, the component <code>ah-1mpx.2</code> already shipped &mdash;
+        one list, one first line, one <b>New Army&hellip;</b>, anchored at the pointer instead of under a button.</li>
+      <li>Right-clicking a row that is <i>not</i> in the pick picks that row alone first, so what the menu
+        says and what is highlighted always agree.</li>
+      <li>Nothing new to build, nothing new to learn, and Escape closes it through the dismiss stack
+        like every other popover.</li>
+      <li class="con">One level, so a later action (Remove, Export) becomes another flat entry rather than
+        living under a heading.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="hexlab">Option B &mdash; a real nested menu, as round 3 drew it</div>
+    <div class="stage" style="position:relative;min-height:220px">
+      <div class="app short" style="width:430px;height:200px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; all my units, 38 units</span></div>
+          <div style="display:flex;flex:1;min-height:0;position:relative">
+            <div class="srail" style="width:120px">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s on">All my units <span class="ct">38</span></div>
+            </div>
+            <div style="flex:1;min-width:0">
+              <table class="ut">
+                <tr><th style="width:24px">*</th><th style="width:56px">Id</th><th>Unit</th><th style="width:48px">Men</th></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>146</td></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>10</td></tr>
+                <tr class="sel pick"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td>8</td></tr>
+              </table>
+            </div>
+            <div style="position:absolute;left:160px;top:52px;width:150px;border:1px solid var(--a-edge);background:var(--a-raised);border-radius:5px;box-shadow:0 10px 15px -3px #0009;padding:4px 0;font-size:13px">
+              <div style="padding:3px 10px;background:#5aa9de26;color:var(--a-ink);display:flex">Add to army <span style="margin-left:auto">&#9656;</span></div>
+              <div style="padding:3px 10px;color:var(--a-ink-dim)">Remove from army</div>
+            </div>
+            <div style="position:absolute;left:308px;top:52px;width:150px;border:1px solid var(--a-edge);background:var(--a-raised);border-radius:5px;box-shadow:0 10px 15px -3px #0009;padding:4px 0;font-size:13px">
+              <div style="padding:3px 10px;color:var(--a-ink)">Northern Host</div>
+              <div style="padding:3px 10px;color:var(--a-ink)">Coastal Watch</div>
+              <div style="border-top:1px solid var(--a-edge-soft);margin-top:3px;padding:6px 10px 3px;color:var(--a-brass)">New Army&hellip;</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Room to grow: later actions get their own top-level entries.</li>
+      <li class="con">A submenu is a genuinely large component &mdash; hover intent, open/close delays,
+        arrow-key traversal in two dimensions, edge flipping when it would open off the pane. None of it
+        exists in this codebase.</li>
+      <li class="con">Two menus on screen for what is one choice, and it is two hops from right-click to
+        the Army every single time.</li>
+      <li class="con">It would be the first thing in a fully keyboard-navigable dock that a keyboard
+        cannot reach without inventing the whole traversal contract.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="hexlab">Option C &mdash; no right-click in this bead</div>
+    <div class="stage" style="position:relative;min-height:220px">
+      <div class="app short" style="width:430px;height:200px">
+        <div class="pane" style="flex:1">
+          <div class="ttl">Units <span class="hint">&mdash; all my units, 38 units</span>
+            <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+              <span class="b pri">Add to army &#9662;</span></span></div>
+          <div style="display:flex;flex:1;min-height:0;position:relative">
+            <div class="srail" style="width:120px">
+              <div class="s">This hex <span class="ct">6</span></div>
+              <div class="s on">All my units <span class="ct">38</span></div>
+              <div class="grp">Armies</div>
+              <div class="s drop">Northern Host <span class="ct">12</span></div>
+            </div>
+            <div style="flex:1;min-width:0">
+              <table class="ut">
+                <tr><th style="width:24px">*</th><th style="width:56px">Id</th><th>Unit</th><th style="width:48px">Men</th></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">7954</td><td>Shieldwall</td><td>146</td></tr>
+                <tr class="pick"><td class="o">*</td><td class="idown">9977</td><td>Outriders</td><td>10</td></tr>
+                <tr class="sel pick"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td>8</td></tr>
+              </table>
+            </div>
+            <div class="ghostdrag" style="left:130px;top:60px">3 units</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Two ways in &mdash; the drag for the mouse, the bulk line and the header button for the
+        keyboard &mdash; and both are already being built.</li>
+      <li>Smallest bead, and nothing is foreclosed: the popover it would use is the one that exists.</li>
+      <li class="con">Right-click is what a table like this makes you reach for, and round 3 promised it.</li>
+      <li class="con">It comes back as a separate bead anyway, and it will be cheaper now than then.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+<p>The gestures themselves are settled (epic <code>ah-1mpx</code>, <code>docs/ui/ah-1mpx-r3.html</code>, W3) and
+are not reopened here. Once these four are answered I will come back with a second round covering the
+states this page does not show: what a pick does when the filter narrows underneath it, what the drag
+does when it starts on a row that is not picked, what happens on a failed save of several units at once,
+and the exact wording of every new line.</p>
+</footer>
+
+</main>
+</body></html>
