@@ -2339,6 +2339,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
                 flags: vec!["behind".to_string()],
                 items: vec![],
                 skills: vec![],
+                combat_spell: None,
                 men: 12,
                 seen_turn: 68,
                 seen_at: "2026-08-07T12:00:00Z".to_string(),

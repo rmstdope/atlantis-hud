@@ -371,6 +371,7 @@ function anArmy(id: string, gameId = "p"): ArmyRecord {
         flags: [],
         items: [],
         skills: [],
+        combatSpell: null,
         men: 1,
         seenTurn: 71,
         seenAt: "2026-08-01T09:00:00Z"
@@ -968,6 +969,7 @@ describe("web core adapter", () => {
           flags: ["behind"],
           items: [{ amount: 57, name: "grain", tag: "GRAI" }],
           skills: [{ name: "combat", tag: "COMB", level: 2, points: 90 }],
+          combatSpell: { name: "fire", tag: "FIRE" },
           men: 12,
           seenTurn: 68,
           seenAt: "2026-08-01T09:00:00Z"

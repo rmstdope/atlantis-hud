@@ -149,6 +149,19 @@ pub struct Skill {
     pub points: u32,
 }
 
+/// A unit's combat spell, as `Combat spell: fire [FIRE].` gives it.
+///
+/// No level and no study points, because the report does not print them here: the section names
+/// the spell the mage is set to cast, not the mage's standing in it. That standing is already in
+/// `skills` under the same tag whenever the mage has studied it.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct CombatSpell {
+    pub name: String,
+    pub tag: String,
+}
+
 /// The level `points` study points a man buys, as the rules count them: level 1 costs one month,
 /// level 2 two more, level 3 three more, so level `n` stands at `30 * n(n+1)/2` days - the figure
 /// a report prints in brackets, which is per man and not a unit total.
@@ -182,6 +195,15 @@ pub struct ReportUnit {
     pub flags: Vec<String>,
     pub items: Vec<ItemAmount>,
     pub skills: Vec<Skill>,
+    /// The spell this unit casts in a battle, when it is a mage that has set one.
+    ///
+    /// Your own units only: a foreign unit's line never carries the section - 65 of 1392 own unit
+    /// blocks across `tests/fixtures/reports` carry `Combat spell:`, and 0 of 6886 foreign ones.
+    ///
+    /// `serde(default)` because payloads persisted before this field existed carry none, exactly as
+    /// `men_by_race` does below.
+    #[serde(default)]
+    pub combat_spell: Option<CombatSpell>,
     /// How many people the unit contains.
     ///
     /// Exact once the unit has been classified against the scraped item catalogue; until then it
@@ -229,6 +251,7 @@ impl Default for ReportUnit {
             flags: Vec::new(),
             items: Vec::new(),
             skills: Vec::new(),
+            combat_spell: None,
             men: 0,
             men_estimated: true,
             men_by_race: Vec::new(),

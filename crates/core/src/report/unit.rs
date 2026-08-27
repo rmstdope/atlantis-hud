@@ -12,7 +12,8 @@
 
 use super::model::{ItemAmount, ReportUnit, Skill};
 use super::scan::{
-    next_top_level_field, parse_item_amount, parse_skill, split_leading_id, split_top_level,
+    next_top_level_field, parse_combat_spell, parse_item_amount, parse_skill, split_leading_id,
+    split_top_level,
 };
 
 /// Flags the game prints for a unit. Anything else in that position is treated as an item.
@@ -137,6 +138,7 @@ pub fn parse_unit(
         flags: Vec::new(),
         items: Vec::new(),
         skills: Vec::new(),
+        combat_spell: None,
         men: 0,
         men_estimated: true,
         men_by_race: Vec::new(),
@@ -183,7 +185,9 @@ pub fn parse_unit(
             "Weight" => unit.weight = value.parse::<i64>().ok(),
             "Capacity" => unit.capacity = Some(value),
             "Skills" => unit.skills = parse_skills(&value),
-            // The remaining labels are recognised only so their contents are not mistaken for the
+            "Combat spell" => unit.combat_spell = parse_combat_spell(&value),
+            // The four remaining labels - `Can Study`, `Ready item`, `Ready weapon` and
+            // `Ready armor` - are recognised only so their contents are not mistaken for the
             // unit's items; nothing in the model needs them yet.
             _ => {}
         }
@@ -224,6 +228,7 @@ fn count_men(items: &[ItemAmount]) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::report::model::CombatSpell;
 
     #[test]
     fn reads_an_own_unit_with_skills_and_weight() {
@@ -247,6 +252,42 @@ mod tests {
         assert_eq!(unit.skills.len(), 2);
         assert_eq!(unit.skills[1].tag, "COMB");
         assert_eq!(unit.men, 1);
+        assert_eq!(unit.combat_spell, None);
+    }
+
+    #[test]
+    fn reads_an_own_unit_with_a_combat_spell() {
+        let with_skills = parse_unit(
+            "* Pyromancer (7954), Borg (73), mage [MAGE]. \
+             Skills: fire [FIRE] 3 (180). Combat spell: fire [FIRE].",
+            true,
+            "1:7,53",
+            None,
+        )
+        .expect("unit should parse");
+        assert_eq!(
+            with_skills.combat_spell,
+            Some(CombatSpell {
+                name: "fire".to_string(),
+                tag: "FIRE".to_string()
+            })
+        );
+
+        let without_skills = parse_unit(
+            "* Pyromancer (7955), Borg (73), mage [MAGE]. Combat spell: summon tornado [STOR].",
+            true,
+            "1:7,53",
+            None,
+        )
+        .expect("unit should parse");
+        assert_eq!(
+            without_skills.combat_spell,
+            Some(CombatSpell {
+                name: "summon tornado".to_string(),
+                tag: "STOR".to_string()
+            })
+        );
+        assert!(without_skills.skills.is_empty());
     }
 
     #[test]

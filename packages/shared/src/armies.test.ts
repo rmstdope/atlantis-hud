@@ -56,6 +56,7 @@ describe("snapshotOf", () => {
       flags: ["behind"],
       items: [{ amount: 57, name: "grain", tag: "GRAI" }],
       skills: [{ name: "combat", tag: "COMB", level: 2, points: 90 }],
+      combatSpell: null,
       men: 12,
       seenTurn: 71,
       seenAt: NOW
@@ -69,6 +70,19 @@ describe("snapshotOf", () => {
 
     expect(snapshot.factionId).toBeNull();
     expect(snapshot.factionName).toBeNull();
+  });
+
+  it("copies the combat spell rather than sharing the report's object", () => {
+    const unit = aReportUnit({ combatSpell: { name: "fire", tag: "FIRE" } });
+
+    const snapshot = snapshotOf(unit, 71, NOW);
+
+    expect(snapshot.combatSpell).toEqual({ name: "fire", tag: "FIRE" });
+    expect(snapshot.combatSpell).not.toBe(unit.combatSpell);
+  });
+
+  it("keeps a unit with no combat spell at null", () => {
+    expect(snapshotOf(aReportUnit(), 71, NOW).combatSpell).toBeNull();
   });
 
   it("does not carry menEstimated - the export never consults it", () => {
@@ -188,6 +202,25 @@ describe("refreshedAgainst", () => {
     const sameUnit = aReportUnit({ unitId: "1", men: 1 });
 
     expect(refreshedAgainst(army, seen([sameUnit]), 71, LATER)).toBe(army);
+  });
+
+  it("refreshes a member whose combat spell changed", () => {
+    const army = withMember(
+      anArmyWith([]),
+      aReportUnit({ unitId: "1", combatSpell: { name: "force shield", tag: "FSHI" } }),
+      71,
+      NOW
+    );
+
+    const refreshed = refreshedAgainst(
+      army,
+      seen([aReportUnit({ unitId: "1", combatSpell: { name: "fire", tag: "FIRE" } })]),
+      72,
+      LATER
+    );
+
+    expect(refreshed).not.toBe(army);
+    expect(refreshed.members[0].combatSpell).toEqual({ name: "fire", tag: "FIRE" });
   });
 
   it("refreshes a member seen in the same turn whose details moved", () => {

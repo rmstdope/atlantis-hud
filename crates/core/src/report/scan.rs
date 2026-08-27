@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use super::level;
-use super::model::{Coordinate, ItemAmount, MarketItem, Settlement, Skill};
+use super::model::{CombatSpell, Coordinate, ItemAmount, MarketItem, Settlement, Skill};
 
 /// One character of the input, with the bracket depth on either side of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -367,6 +367,30 @@ pub fn parse_skill(input: &str) -> Option<Skill> {
     })
 }
 
+/// Splits `fire [FIRE]` into a combat spell's name and tag.
+///
+/// `rfind` rather than `find`, as `parse_item_amount` does: a spell's printed name is plain words,
+/// but reading from the right costs nothing and matches its neighbours.
+#[must_use]
+pub fn parse_combat_spell(input: &str) -> Option<CombatSpell> {
+    let text = input.trim().trim_end_matches('.');
+    let open = text.rfind('[')?;
+    let close = text.rfind(']')?;
+    if close < open {
+        return None;
+    }
+
+    let name = text[..open].trim().to_string();
+    if name.is_empty() {
+        return None;
+    }
+
+    Some(CombatSpell {
+        name,
+        tag: text[open + 1..close].to_string(),
+    })
+}
+
 /// Reads a money figure such as `$14826` or `$24.1`, keeping only the whole part.
 #[must_use]
 pub fn parse_money(input: &str) -> Option<i64> {
@@ -509,6 +533,27 @@ mod tests {
             parse_coordinate("(7,53)"),
             Some(Coordinate { x: 7, y: 53, z: 1 })
         );
+    }
+
+    #[test]
+    fn reads_a_combat_spell_name_and_tag() {
+        assert_eq!(
+            parse_combat_spell("fire [FIRE]"),
+            Some(CombatSpell {
+                name: "fire".to_string(),
+                tag: "FIRE".to_string()
+            })
+        );
+        assert_eq!(
+            parse_combat_spell("summon tornado [STOR]"),
+            Some(CombatSpell {
+                name: "summon tornado".to_string(),
+                tag: "STOR".to_string()
+            })
+        );
+        assert_eq!(parse_combat_spell("fire"), None);
+        assert_eq!(parse_combat_spell("fire ]FIRE["), None);
+        assert_eq!(parse_combat_spell("[FIRE]"), None);
     }
 
     #[test]

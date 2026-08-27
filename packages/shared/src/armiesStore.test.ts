@@ -57,6 +57,7 @@ function aMember(overrides: Partial<ArmyRecord["members"][number]> = {}): ArmyRe
     flags: [],
     items: [],
     skills: [],
+    combatSpell: null,
     men: 1,
     seenTurn: 71,
     seenAt: "2026-08-01T09:00:00Z",

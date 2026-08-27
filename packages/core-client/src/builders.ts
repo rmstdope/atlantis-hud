@@ -46,6 +46,7 @@ export function aReportUnit(overrides: Partial<ReportUnit> = {}): ReportUnit {
     flags: [],
     items: [],
     skills: [],
+    combatSpell: null,
     men: 1,
     menEstimated: false,
     menByRace: [],

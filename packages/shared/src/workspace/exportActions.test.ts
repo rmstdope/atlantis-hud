@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { deliverGameBackupExport, deliverMapExport, deliverOrdersExport } from "./exportActions";
+import {
+  deliverArmyExport,
+  deliverGameBackupExport,
+  deliverMapExport,
+  deliverOrdersExport
+} from "./exportActions";
+import { battleFileOf, battleFileText } from "../armyExport";
+import type { ArmyMemberRecord, ArmyRecord } from "@atlantis/core-client";
 import { exportFileName } from "../mapExport";
 
 describe("deliverOrdersExport", () => {
@@ -98,5 +105,55 @@ describe("deliverMapExport", () => {
       deliverMapExport(client, saveTextFile, "raw report", "[]", 1, 71, rect, content)
     ).rejects.toThrow("core is unavailable");
     expect(saveTextFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("deliverArmyExport", () => {
+  const NOW = "2026-08-27T09:00:00Z";
+
+  const member = (overrides: Partial<ArmyMemberRecord> = {}): ArmyMemberRecord => ({
+    unitId: "18642",
+    name: "Shieldwall",
+    factionId: "95",
+    factionName: "Borg TNG",
+    own: true,
+    regionId: "1:7,53",
+    flags: [],
+    items: [],
+    skills: [],
+    combatSpell: null,
+    men: 1,
+    seenTurn: 71,
+    seenAt: NOW,
+    ...overrides
+  });
+
+  const army = (name: string): ArmyRecord => ({
+    id: name,
+    gameId: "game-1",
+    name,
+    members: [member()],
+    createdAt: NOW,
+    updatedAt: NOW
+  });
+
+  it("writes an army battle file", async () => {
+    const saveTextFile = vi.fn().mockResolvedValue("/chosen/northern-host.json");
+    const northern = army("Northern Host");
+
+    const path = await deliverArmyExport(saveTextFile, northern, null);
+
+    expect(saveTextFile).toHaveBeenCalledWith(
+      "northern-host.json",
+      battleFileText(battleFileOf(northern, null)),
+      "application/json"
+    );
+    expect(path).toBe("/chosen/northern-host.json");
+  });
+
+  it("reports a cancelled save as null so the dialog may stay open", async () => {
+    const saveTextFile = vi.fn().mockResolvedValue(null);
+
+    await expect(deliverArmyExport(saveTextFile, army("Northern Host"), null)).resolves.toBeNull();
   });
 });

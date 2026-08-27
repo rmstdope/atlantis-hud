@@ -4,6 +4,7 @@ export * from "./factionDossier";
 export * from "./featureFlags";
 export * from "./logging";
 export * from "./hexMapModel";
+export * from "./armyExport";
 export * from "./mapExport";
 export * from "./settingsStore";
 export * from "./workspaceStore";

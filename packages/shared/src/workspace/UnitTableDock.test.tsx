@@ -958,6 +958,7 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
     flags: [],
     items: [],
     skills: [],
+    combatSpell: null,
     men: 3,
     seenTurn: 71,
     seenAt: "2026-08-01T09:00:00Z",
@@ -1042,6 +1043,37 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
     expect(markup).toContain("turn 68");
     expect(markup).toContain(">Rename<");
     expect(markup).toContain(">Delete<");
+  });
+
+  it("the army strip offers an export", () => {
+    const strip = (currentTurn: number | null, onExportArmy?: (armyId: string) => void) =>
+      renderWithStoreState(
+        <UnitTableDock
+          hex={withUnits()}
+          currentTurn={currentTurn}
+          client={{} as never}
+          game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+          initialSource={{ kind: "army", armyId: "army-1" }}
+          onExportArmy={onExportArmy}
+        />,
+        useArmiesStore,
+        { gameId: "aug-2026", status: "ready", armies: [armyRecord({ members: [aMember("1")] })] }
+      );
+
+    const offered = strip(71, () => {});
+    const tag = (markup: string) =>
+      /<[^>]*data-testid="army-export"[^>]*>/.exec(markup)?.[0] ?? "";
+
+    expect(offered).toContain(">Export…<");
+    expect(offered).toContain(">Rename<");
+    expect(offered).toContain(">Delete<");
+    expect(tag(offered).includes(' disabled=""')).toBe(false);
+
+    // No turn on screen means no way to tell a fresh member from a remembered one, so the button
+    // is drawn and disabled rather than hidden - the dock's own policy for a control it has.
+    expect(tag(strip(null, () => {})).includes(' disabled=""')).toBe(true);
+    // And with no shell to open the dialog - a component test - it is inert the same way.
+    expect(tag(strip(71)).includes(' disabled=""')).toBe(true);
   });
 
   it("an empty Army says how to fill it", () => {

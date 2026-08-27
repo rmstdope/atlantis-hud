@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::movement::graph::MapGeometry;
 
-use crate::report::model::{ItemAmount, Skill};
+use crate::report::model::{CombatSpell, ItemAmount, Skill};
 use crate::report::sighting::{sighting_from_payload, RegionSighting};
 
 pub const GAME_BACKUP_FORMAT: &str = "atlantis-hud-game-backup";
@@ -234,6 +234,10 @@ pub struct ArmyMember {
     pub flags: Vec<String>,
     pub items: Vec<ItemAmount>,
     pub skills: Vec<Skill>,
+    /// The combat spell it was set to when last seen; `None` for a unit that has none, and for
+    /// every member persisted before this field existed.
+    #[serde(default)]
+    pub combat_spell: Option<CombatSpell>,
     pub men: i64,
     /// The turn of the report this snapshot came from.
     pub seen_turn: u32,
@@ -964,6 +968,32 @@ mod tests {
     }
 
     #[test]
+    fn a_member_persisted_before_combat_spells_reads_back_without_one() {
+        // The whole no-migration argument: `members_json` is one serde blob, so a blob written
+        // before this field existed must still deserialise, with `None` for the spell.
+        let json = serde_json::json!({
+            "unitId": "204",
+            "name": "Pikes",
+            "factionId": null,
+            "factionName": null,
+            "own": false,
+            "regionId": "1:7,53",
+            "flags": [],
+            "items": [],
+            "skills": [],
+            "men": 12,
+            "seenTurn": 68,
+            "seenAt": "2026-01-05T00:00:00Z"
+        })
+        .to_string();
+
+        let member: ArmyMember = serde_json::from_str(&json).expect("decodes");
+
+        assert_eq!(member.combat_spell, None);
+        assert_eq!(member.unit_id, "204");
+    }
+
+    #[test]
     fn armies_survive_encode_and_decode() {
         let army = GameBackupArmy {
             id: "army-1".to_string(),
@@ -987,6 +1017,10 @@ mod tests {
                     level: 2,
                     points: 90,
                 }],
+                combat_spell: Some(CombatSpell {
+                    name: "fire".to_string(),
+                    tag: "FIRE".to_string(),
+                }),
                 men: 12,
                 seen_turn: 68,
                 seen_at: "2026-01-05T00:00:00Z".to_string(),

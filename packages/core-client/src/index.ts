@@ -3,6 +3,7 @@ import type { AdvisoryCheckCode } from "./coreVocabulary.generated";
 // bring into this file's scope.
 import type { ItemAmount } from "./generated/ItemAmount";
 import type { SkillInfo } from "./generated/SkillInfo";
+import type { CombatSpell } from "./generated/CombatSpell";
 
 // The report model and the parse family are generated from the Rust core by ts-rs
 // (crates/core, `cargo test`); see docs/implementation-plan.md §Generated bindings.
@@ -25,6 +26,7 @@ export type { RegionExit } from "./generated/RegionExit";
 export type { StructureInfo } from "./generated/StructureInfo";
 export type { VesselEntry } from "./generated/VesselEntry";
 export type { SkillInfo } from "./generated/SkillInfo";
+export type { CombatSpell } from "./generated/CombatSpell";
 export type { ReportUnit } from "./generated/ReportUnit";
 export type { ReportRegion } from "./generated/ReportRegion";
 export type { ReportHeaderInfo } from "./generated/ReportHeaderInfo";
@@ -549,6 +551,8 @@ export type ArmyMemberRecord = {
   flags: string[];
   items: ItemAmount[];
   skills: SkillInfo[];
+  /** The spell it was set to cast when last seen; null for a unit that has none. */
+  combatSpell: CombatSpell | null;
   men: number;
   /** The turn of the report this snapshot came from. */
   seenTurn: number;

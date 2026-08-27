@@ -86,6 +86,7 @@ function rebuilt(member: ArmyMemberRecord): ReportUnit {
     flags: [...member.flags],
     items: member.items.map((item) => ({ ...item })),
     skills: member.skills.map((skill) => ({ ...skill })),
+    combatSpell: member.combatSpell === null ? null : { ...member.combatSpell },
     men: member.men,
     // A count from turns ago is an estimate whatever it was when it was taken.
     menEstimated: true,
