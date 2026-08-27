@@ -4,19 +4,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use atlantis_hud_core::backup::{
-    apply_manifest_edit, encode_game_backup, GameBackupContent, GameBackupHexNote,
+    apply_manifest_edit, encode_game_backup, GameBackupArmy, GameBackupContent, GameBackupHexNote,
     GameBackupImportedTurn, GameBackupMergedReport, GameBackupOrderDraft, GameBackupRegionSighting,
     ManifestEdit,
 };
+/// The snapshot a membership carries. The core owns it because the backup carries it too.
+pub use atlantis_hud_core::backup::ArmyMember;
 use atlantis_hud_core::movement::graph::MapGeometry;
 // The row and the order it is listed in are the core's, so both platforms answer alike
 // (`ah-8z4y.3.2`). Re-exported here because this is where every caller already reaches for it.
 use atlantis_hud_core::reopen::{latest_turn, TurnRef};
 pub use atlantis_hud_core::report::merge::MergedReportRecord;
-use atlantis_hud_core::report::model::{ItemAmount, Skill};
 use atlantis_hud_core::{diff_imported_turn_fields, ImportedTurnSnapshotRef};
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
@@ -174,33 +175,6 @@ pub struct HexNote {
     pub turn: u32,
     pub created_at: String,
     pub updated_at: String,
-}
-
-/// One unit as an Army remembers it: the last report that showed it, whichever turn that was.
-///
-/// A member the current report does not mention is kept and still exported - it may be another
-/// faction's unit that is simply not visible this turn - so a membership carries a whole snapshot
-/// rather than a unit number.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ArmyMember {
-    /// The report's unit number. The key: stable across turns, and never withheld.
-    pub unit_id: String,
-    pub name: String,
-    /// `None` when the unit was concealing its faction when last seen.
-    pub faction_id: Option<String>,
-    pub faction_name: Option<String>,
-    pub own: bool,
-    /// Where it was when last seen; `Coordinate::id`'s `"z:x,y"`.
-    pub region_id: String,
-    pub flags: Vec<String>,
-    pub items: Vec<ItemAmount>,
-    pub skills: Vec<Skill>,
-    pub men: i64,
-    /// The turn of the report this snapshot came from.
-    pub seen_turn: u32,
-    /// When the snapshot was taken, ISO 8601, from the caller's clock.
-    pub seen_at: String,
 }
 
 /// A named group of units, scoped to the game and outliving any one turn.
@@ -721,6 +695,34 @@ pub fn export_game(
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
+    let mut army_rows = connection.prepare(
+        "SELECT id, name, members_json, created_at, updated_at
+           FROM armies
+          WHERE game_id = ?1",
+    )?;
+    let armies = army_rows
+        .query_map(params![game_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(|(id, name, members_json, created_at, updated_at)| {
+            Ok(GameBackupArmy {
+                id,
+                name,
+                members: serde_json::from_str(&members_json)?,
+                created_at,
+                updated_at,
+            })
+        })
+        .collect::<Result<Vec<_>, serde_json::Error>>()?;
+
     encode_game_backup(
         GameBackupContent {
             manifest,
@@ -729,6 +731,7 @@ pub fn export_game(
             region_sightings,
             merged_reports,
             hex_notes,
+            armies,
         },
         exported_at,
     )
@@ -869,6 +872,27 @@ pub fn import_game(
                     note.turn,
                     note.created_at.as_str(),
                     note.updated_at.as_str(),
+                ],
+            )?;
+        }
+
+        for army in &decoded.armies {
+            transaction.execute(
+                "INSERT INTO armies (
+                    id,
+                    game_id,
+                    name,
+                    members_json,
+                    created_at,
+                    updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    army.id.as_str(),
+                    game_id.as_str(),
+                    army.name.as_str(),
+                    serde_json::to_string(&army.members)?.as_str(),
+                    army.created_at.as_str(),
+                    army.updated_at.as_str(),
                 ],
             )?;
         }
@@ -1873,6 +1897,7 @@ pub fn delete_army(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use atlantis_hud_core::report::model::{ItemAmount, Skill};
     use rusqlite::Connection;
     use tempfile::tempdir;
 
@@ -2942,6 +2967,36 @@ mod tests {
         );
     }
 
+    #[test]
+    fn export_and_import_carry_armies() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let army = Army {
+            id: "army-1".to_string(),
+            game_id: GAME_ID.to_string(),
+            name: "Northern escort".to_string(),
+            members: vec![a_member("1", "Scouts", 71), a_member("204", "Pikes", 68)],
+            created_at: CREATED_AT.to_string(),
+            updated_at: CREATED_AT.to_string(),
+        };
+        upsert_army(&created.database_path, &army).expect("army should persist");
+
+        let exported = export_game(dir.path(), GAME_ID, "2026-08-05T09:00:00Z")
+            .expect("export should succeed");
+        let restored_root = tempdir().expect("tempdir");
+        let restored = import_game(restored_root.path(), &exported, "2026-08-06T09:00:00Z")
+            .expect("import should succeed");
+
+        let listed = list_armies(&restored.database_path, GAME_ID).expect("list should succeed");
+
+        assert_eq!(
+            listed,
+            vec![army],
+            "an Army and its members survive the round trip"
+        );
+    }
+
     /// The store writes whatever two stamps it is given, on both the first import and a
     /// re-import - it keeps nothing back. Keeping `imported_at` across a re-import is the core's
     /// rule (`import_writes`), not this store's.
@@ -3754,6 +3809,7 @@ mod region_sighting_tests {
             region_sightings: Vec::new(),
             merged_reports: Vec::new(),
             hex_notes: Vec::new(),
+            armies: Vec::new(),
         })
         .expect("serialize backup");
         backup_json
@@ -3796,6 +3852,7 @@ mod region_sighting_tests {
             region_sightings: Vec::new(),
             merged_reports: Vec::new(),
             hex_notes: Vec::new(),
+            armies: Vec::new(),
         })
         .expect("serialize backup");
 

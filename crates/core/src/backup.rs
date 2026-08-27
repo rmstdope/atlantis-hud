@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::movement::graph::MapGeometry;
 
+use crate::report::model::{ItemAmount, Skill};
 use crate::report::sighting::{sighting_from_payload, RegionSighting};
 
 pub const GAME_BACKUP_FORMAT: &str = "atlantis-hud-game-backup";
@@ -210,6 +211,47 @@ pub struct GameBackupHexNote {
     pub updated_at: String,
 }
 
+/// One unit as an Army remembers it: the last report that showed it, whichever turn that was.
+///
+/// A member the current report does not mention is kept and still exported - it may be another
+/// faction's unit that is simply not visible this turn - so a membership carries a whole snapshot
+/// rather than a unit number, and carries everything an export needs.
+///
+/// It lives here, rather than in `core-persistence`, because the backup carries it too and both
+/// stores read it; `core-persistence` re-exports it, as it already does `GameManifest`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArmyMember {
+    /// The report's unit number. The key: stable across turns, and never withheld.
+    pub unit_id: String,
+    pub name: String,
+    /// `None` when the unit was concealing its faction when last seen.
+    pub faction_id: Option<String>,
+    pub faction_name: Option<String>,
+    pub own: bool,
+    /// Where it was when last seen; `Coordinate::id`'s `"z:x,y"`.
+    pub region_id: String,
+    pub flags: Vec<String>,
+    pub items: Vec<ItemAmount>,
+    pub skills: Vec<Skill>,
+    pub men: i64,
+    /// The turn of the report this snapshot came from.
+    pub seen_turn: u32,
+    /// When the snapshot was taken, ISO 8601, from the caller's clock.
+    pub seen_at: String,
+}
+
+/// One Army in a backup. The game is the document's, so it is not repeated per row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameBackupArmy {
+    pub id: String,
+    pub name: String,
+    pub members: Vec<ArmyMember>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// The rows of one game, without the envelope: what a store hands over to be encoded.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -221,11 +263,14 @@ pub struct GameBackupContent {
     pub merged_reports: Vec<GameBackupMergedReport>,
     #[serde(default)]
     pub hex_notes: Vec<GameBackupHexNote>,
+    #[serde(default)]
+    pub armies: Vec<GameBackupArmy>,
 }
 
 /// The document as written: the envelope around the content. `#[serde(default)]` on
-/// `exported_at` (a file written by hand may omit it; nothing reads it back) and on `hex_notes`
-/// (absent in a backup written before ah-o1t.1; such a backup still imports).
+/// `exported_at` (a file written by hand may omit it; nothing reads it back), on `hex_notes`
+/// (absent in a backup written before ah-o1t.1) and on `armies` (absent in one written before
+/// ah-1mpx.1); such a backup still imports.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameBackup {
@@ -240,6 +285,8 @@ pub struct GameBackup {
     pub merged_reports: Vec<GameBackupMergedReport>,
     #[serde(default)]
     pub hex_notes: Vec<GameBackupHexNote>,
+    #[serde(default)]
+    pub armies: Vec<GameBackupArmy>,
 }
 
 /// One imported turn as a store writes it after a decode: both stamps resolved, never optional.
@@ -278,6 +325,7 @@ pub struct DecodedGameBackup {
     pub region_sightings: Vec<DecodedRegionSighting>,
     pub merged_reports: Vec<GameBackupMergedReport>,
     pub hex_notes: Vec<GameBackupHexNote>,
+    pub armies: Vec<GameBackupArmy>,
 }
 
 #[derive(Debug)]
@@ -366,11 +414,16 @@ fn sort_key_note(note: &GameBackupHexNote) -> (String, String) {
     (note.created_at.clone(), note.id.clone())
 }
 
+fn sort_key_army(army: &GameBackupArmy) -> (String, String) {
+    (army.name.clone(), army.id.clone())
+}
+
 /// One game -> one document. Sorts every table so two exports of the same game are byte-identical
 /// whichever platform wrote them: turns by (faction_id, turn_number); drafts by (faction_id,
 /// turn_number); sightings by (faction_id, region_id); merged reports by (faction_id,
 /// turn_number, merged_at, merged_faction_id); hex notes by (created_at, id) - the same keys the
-/// desktop's five ORDER BYs used. Pretty-printed with two-space indent.
+/// desktop's five ORDER BYs used - and Armies by (name, id), which is `sortArmies`' order.
+/// Pretty-printed with two-space indent.
 pub fn encode_game_backup(
     content: GameBackupContent,
     exported_at: &str,
@@ -382,6 +435,7 @@ pub fn encode_game_backup(
         mut region_sightings,
         mut merged_reports,
         mut hex_notes,
+        mut armies,
     } = content;
 
     imported_turns.sort_by_key(sort_key_turn);
@@ -389,6 +443,7 @@ pub fn encode_game_backup(
     region_sightings.sort_by_key(sort_key_sighting);
     merged_reports.sort_by_key(sort_key_merge);
     hex_notes.sort_by_key(sort_key_note);
+    armies.sort_by_key(sort_key_army);
 
     let backup = GameBackup {
         format: GAME_BACKUP_FORMAT.to_string(),
@@ -400,6 +455,7 @@ pub fn encode_game_backup(
         region_sightings,
         merged_reports,
         hex_notes,
+        armies,
     };
 
     serde_json::to_string_pretty(&backup)
@@ -516,6 +572,7 @@ pub fn decode_game_backup(
         region_sightings,
         merged_reports: backup.merged_reports,
         hex_notes: backup.hex_notes,
+        armies: backup.armies,
     })
 }
 
@@ -728,6 +785,7 @@ mod tests {
             region_sightings: sightings,
             merged_reports: merges,
             hex_notes: notes,
+            armies: vec![],
         }
     }
 
@@ -886,6 +944,72 @@ mod tests {
     }
 
     #[test]
+    fn a_backup_written_before_armies_still_decodes() {
+        let json = serde_json::json!({
+            "format": GAME_BACKUP_FORMAT,
+            "version": 1,
+            "exportedAt": "2026-01-01T00:00:00Z",
+            "manifest": manifest(),
+            "importedTurns": [],
+            "orderDrafts": [],
+            "regionSightings": [],
+            "mergedReports": [],
+            "hexNotes": []
+        })
+        .to_string();
+
+        let decoded = decode_game_backup(&json, "2026-01-01T00:00:00Z").expect("decodes");
+
+        assert!(decoded.armies.is_empty());
+    }
+
+    #[test]
+    fn armies_survive_encode_and_decode() {
+        let army = GameBackupArmy {
+            id: "army-1".to_string(),
+            name: "Northern escort".to_string(),
+            members: vec![ArmyMember {
+                unit_id: "204".to_string(),
+                name: "Pikes".to_string(),
+                faction_id: None,
+                faction_name: None,
+                own: false,
+                region_id: "1:7,53".to_string(),
+                flags: vec!["behind".to_string()],
+                items: vec![ItemAmount {
+                    amount: 57,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                }],
+                skills: vec![Skill {
+                    name: "combat".to_string(),
+                    tag: "COMB".to_string(),
+                    level: 2,
+                    points: 90,
+                }],
+                men: 12,
+                seen_turn: 68,
+                seen_at: "2026-01-05T00:00:00Z".to_string(),
+            }],
+            created_at: "2026-01-05T00:00:00Z".to_string(),
+            updated_at: "2026-01-05T00:00:00Z".to_string(),
+        };
+        let content = GameBackupContent {
+            armies: vec![army.clone()],
+            ..content_with(vec![], vec![], vec![], vec![], vec![])
+        };
+        let encoded = encode_game_backup(content, "2026-01-06T00:00:00Z").expect("encodes");
+
+        let decoded = decode_game_backup(&encoded, "2026-02-01T00:00:00Z").expect("decodes");
+
+        assert_eq!(
+            decoded.armies,
+            vec![army],
+            "a concealed faction stays None, and items and skills come back whole"
+        );
+    }
+
+    #[test]
     fn decode_stamps_the_manifest_with_the_opening_time() {
         let content = content_with(vec![], vec![], vec![], vec![], vec![]);
         let encoded = encode_game_backup(content, "2026-01-03T00:00:00Z").expect("encodes");
@@ -1028,6 +1152,7 @@ mod tests {
             region_sightings: vec![],
             merged_reports: vec![],
             hex_notes: vec![],
+            armies: vec![],
         };
         let encoded = encode_game_backup(content, "2026-01-03T00:00:00Z").expect("encodes");
 
