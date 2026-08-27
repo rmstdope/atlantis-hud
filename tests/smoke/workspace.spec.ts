@@ -16,6 +16,7 @@ import {
   selectHex,
   selectUnit,
   visibleStrip,
+  waitForSettledHeader,
   waitForStableBox,
   waitForStableHeight
 } from "./gameSetup";
@@ -1454,6 +1455,10 @@ test("the unit/orders split drags at the grip and survives a reload", async ({ p
   // mechanism, not about how little of it fits in the header's own default height.
   await withRoomToDrag(page);
   await selectHex(page, "1:7,53");
+  // Before any geometry is read: the problems chip wraps the header onto a second row shortly
+  // after the hex is selected, and every panel column below it loses that row's height.
+  await waitForSettledHeader(page);
+  const headerBefore = (await page.getByTestId("app-header").boundingBox())!.height;
   // Selecting a hex opens the panels; measuring "before" while that settles - slower or busier on
   // CI than locally - would pin a mid-animation size rather than the resting one.
   await waitForStableHeight(page, "orders");
@@ -1475,9 +1480,18 @@ test("the unit/orders split drags at the grip and survives a reload", async ({ p
   await page.reload();
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
   await selectHex(page, "1:7,53");
+  // The reload rebuilds the page, so the validation round trip runs again and the chip arrives
+  // again: the header is back to one row until it does.
+  await waitForSettledHeader(page);
   await expect.poll(async () => (await boxOf(page, "orders")).height).toBeGreaterThan(
     before.height + 20
   );
+
+  // The header is what this test's geometry is measured against, on both sides of the reload. It
+  // grows a row when the problems chip lands and takes 29px off every panel column; `before` is
+  // `min(19rem, 0.55 x rail)` here, so a row landing after it would move this comparison by 15.9px.
+  // If it moves, say so here rather than in the height comparison below.
+  expect((await page.getByTestId("app-header").boundingBox())!.height).toBeCloseTo(headerBefore, 0);
 
   await resetSplit(page);
   await expect.poll(async () => (await boxOf(page, "orders")).height).toBeCloseTo(
@@ -1599,6 +1613,10 @@ test("folding the unit panel hides the grip and hands the column to the editor",
   // this test drags it taller twice over.
   await withRoomToDrag(page);
   await selectHex(page, "1:7,53");
+  // Before any geometry is read: the problems chip wraps the header onto a second row shortly
+  // after the hex is selected, and every panel column below it loses that row's height.
+  await waitForSettledHeader(page);
+  const headerBefore = (await page.getByTestId("app-header").boundingBox())!.height;
   // Selecting a hex opens the panels; measuring "before" while that settles - slower or busier on
   // CI than locally - would pin a mid-animation size rather than the resting one.
   await waitForStableHeight(page, "orders");
@@ -1631,6 +1649,11 @@ test("folding the unit panel hides the grip and hands the column to the editor",
     dragged.height,
     0
   );
+
+  // The header is what this test's geometry is measured against. It grows a row when the problems
+  // chip lands, ~310ms in, and takes 29px off every panel column - which is the whole of the
+  // 1.9375px this test used to fail by. If it moves here, say so here.
+  expect((await page.getByTestId("app-header").boundingBox())!.height).toBeCloseTo(headerBefore, 0);
 
   await resetSplit(page);
 });
