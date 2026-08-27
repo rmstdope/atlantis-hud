@@ -20,16 +20,6 @@ function lineWord(count: number): string {
   return count === 1 ? "line" : "lines";
 }
 
-/** The chip's visible text, or null when there is nothing to say and the chip is not rendered. */
-export function unreadableChipLabel(count: number): string | null {
-  return count > 0 ? `${count} unreadable` : null;
-}
-
-/** The chip's accessible name. Singular at one. */
-export function unreadableChipName(count: number): string {
-  return `${count} ${lineWord(count)} could not be read`;
-}
-
 /** One capitalised word per kind. */
 export function unreadableKindLabel(kind: UnreadableKind): string {
   return KIND_LABELS[kind];

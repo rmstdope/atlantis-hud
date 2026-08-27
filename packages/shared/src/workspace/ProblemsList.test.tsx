@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { HexFindings } from "../orderEditor";
-import { ProblemsPanel } from "./ProblemsPanel";
+import { ProblemsList } from "./ProblemsList";
 
 const HEXES: HexFindings[] = [
   {
@@ -54,7 +54,7 @@ const HEXES: HexFindings[] = [
 
 const drawHexes = () =>
   renderToStaticMarkup(
-    <ProblemsPanel
+    <ProblemsList
       hexes={HEXES}
       labelFor={(regionId) => regionId}
       onSelectHex={() => {}}
@@ -62,24 +62,24 @@ const drawHexes = () =>
     />
   );
 
-describe("ProblemsPanel", () => {
-  // ah-cp8: the list body used to be capped at a fixed 50vh regardless of how much window there
-  // was to use.
-  it("the body is clamped to the window, not to 50vh", () => {
+describe("ProblemsList", () => {
+  // ah-cp8 clamped this body to the window rather than to a fixed 50vh; ah-30hg.2 moved that clamp
+  // up to the panel, which now holds four such bodies and must scroll once rather than four times.
+  it("the list does not scroll on its own - the report panel is the one scroller", () => {
     const markup = renderToStaticMarkup(
-      <ProblemsPanel
+      <ProblemsList
         hexes={[]}
         labelFor={(regionId) => regionId}
         onSelectHex={() => {}}
         onDismiss={() => {}}
       />
     );
-    expect(markup).toContain("max-h-[calc(100vh-6rem)]");
-    expect(markup).not.toContain("max-h-[50vh]");
+    expect(markup).not.toContain("overflow-y-auto");
+    expect(markup).not.toContain("max-h-[calc(100vh-6rem)]");
   });
 });
 
-describe("ProblemsPanel, one card per hex (ah-uia)", () => {
+describe("ProblemsList, one card per hex (ah-uia)", () => {
   it("puts each hex in a bordered card with a brass header strip", () => {
     const markup = drawHexes();
 
@@ -100,10 +100,10 @@ describe("ProblemsPanel, one card per hex (ah-uia)", () => {
   });
 });
 
-describe("ProblemsPanel, a unit number is a way to go there (ah-87he)", () => {
+describe("ProblemsList, a unit number is a way to go there (ah-87he)", () => {
   it("the unit id is a button when a handler is given", () => {
     const markup = renderToStaticMarkup(
-      <ProblemsPanel
+      <ProblemsList
         hexes={HEXES}
         labelFor={(regionId) => regionId}
         onSelectHex={() => {}}
@@ -125,7 +125,7 @@ describe("ProblemsPanel, a unit number is a way to go there (ah-87he)", () => {
 // Decisions N2 and C1 (`ah-jw85`): a formed unit has no number in the report, so the panel names it
 // by its alias rather than its synthetic id, and a click on it goes to the unit whose block wrote
 // the FORM.
-describe("ProblemsPanel, a formed unit's entry (ah-jw85)", () => {
+describe("ProblemsList, a formed unit's entry (ah-jw85)", () => {
   const FORMED_HEXES: HexFindings[] = [
     {
       regionId: "1:7,53",
@@ -148,7 +148,7 @@ describe("ProblemsPanel, a formed unit's entry (ah-jw85)", () => {
 
   it("a_formed_unit_is_named_by_its_alias", () => {
     const markup = renderToStaticMarkup(
-      <ProblemsPanel
+      <ProblemsList
         hexes={FORMED_HEXES}
         labelFor={(regionId) => regionId}
         onSelectHex={() => {}}
@@ -162,7 +162,7 @@ describe("ProblemsPanel, a formed unit's entry (ah-jw85)", () => {
 
   it("clicking_a_formed_unit_selects_the_unit_that_forms_it", () => {
     const markup = renderToStaticMarkup(
-      <ProblemsPanel
+      <ProblemsList
         hexes={FORMED_HEXES}
         labelFor={(regionId) => regionId}
         onSelectHex={() => {}}
