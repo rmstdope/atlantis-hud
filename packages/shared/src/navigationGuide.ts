@@ -65,6 +65,13 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
     keys: chord("gameData")
   },
   {
+    id: "magicTree",
+    group: EVERYWHERE,
+    description: "Read what each magic skill needs before it can be studied",
+    mouse: null,
+    keys: chord("magicTree")
+  },
+  {
     id: "dismiss",
     group: EVERYWHERE,
     description: "Close whatever is open on top",

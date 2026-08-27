@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { aReportUnit } from "@atlantis/core-client";
-import type { GameDataEntry, GameDataIndex } from "../gameData";
+import { readRuleset } from "@atlantis/fixtures";
+import { parseGameData, type GameDataEntry, type GameDataIndex } from "../gameData";
+import { buildMagicTree } from "../magicTree";
+import { findByTestId } from "../testing/elementTree";
 import { SURFACE, type HexNode } from "../hexMapModel";
 import { UnitPanel } from "./UnitPanel";
 
@@ -90,5 +93,50 @@ describe("a skill's study points in the unit pane (ah-ded4)", () => {
     );
 
     expect(html).toContain("0 (0)");
+  });
+});
+
+describe("the study tree door in the unit pane (ah-gjbs.1)", () => {
+  const tree = buildMagicTree(parseGameData(readRuleset()) as GameDataIndex);
+
+  const mage = aReportUnit({
+    skills: [
+      { name: "pattern", tag: "PATT", level: 1, points: 30 },
+      { name: "force", tag: "FORC", level: 3, points: 450 }
+    ],
+    items: []
+  });
+
+  it("offers the study tree once for a mage, on their highest magic skill", () => {
+    const opened: string[] = [];
+    const panel = (
+      <UnitPanel
+        unit={mage}
+        hex={HEX}
+        magicTree={tree}
+        onOpenMagicTree={(tag) => opened.push(tag)}
+      />
+    );
+
+    const html = renderToStaticMarkup(panel);
+    expect(html.split('data-testid="unit-magic-tree"').length - 1).toBe(1);
+    expect(html).toContain("Show in study tree");
+    expect(html).toContain("Mage");
+
+    (findByTestId(panel, "unit-magic-tree").props.onClick as () => void)();
+    expect(opened).toEqual(["FORC"]);
+  });
+
+  it("offers nothing for a unit holding no magic skill", () => {
+    const html = renderToStaticMarkup(
+      <UnitPanel unit={UNIT} hex={HEX} magicTree={tree} onOpenMagicTree={() => {}} />
+    );
+    expect(html).not.toContain('data-testid="unit-magic-tree"');
+  });
+
+  it("offers nothing while the ruleset has not loaded", () => {
+    const html = renderToStaticMarkup(<UnitPanel unit={mage} hex={HEX} />);
+    expect(html).not.toContain('data-testid="unit-magic-tree"');
+    expect(html).not.toContain("Show in study tree");
   });
 });
