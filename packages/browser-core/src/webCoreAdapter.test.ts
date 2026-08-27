@@ -4,6 +4,7 @@ import {
   aReportHeaderInfo,
   type GameManifest,
   type ManifestEdit,
+  type ArmyRecord,
   type HexNoteRecord,
   type ImportedTurnSummary,
   type MergedReportRecord,
@@ -345,10 +346,38 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         mergedReports: b.mergedReports ?? [],
         ...b,
         manifest: { ...(b.manifest as Record<string, unknown>), lastOpenedAt: openedAt },
-        hexNotes: b.hexNotes ?? []
+        hexNotes: b.hexNotes ?? [],
+        armies: b.armies ?? []
       } as unknown as ReturnType<CoreWasmModule["decode_game_backup_state"]>;
     },
     ...overrides
+  };
+}
+
+/** An Army with one member, for the tests that are about routing rather than about a snapshot. */
+function anArmy(id: string, gameId = "p"): ArmyRecord {
+  return {
+    id,
+    gameId,
+    name: "Escort",
+    members: [
+      {
+        unitId: "1",
+        name: "Scouts",
+        factionId: "95",
+        factionName: "Borg TNG",
+        own: true,
+        regionId: "1:7,53",
+        flags: [],
+        items: [],
+        skills: [],
+        men: 1,
+        seenTurn: 71,
+        seenAt: "2026-08-01T09:00:00Z"
+      }
+    ],
+    createdAt: "2026-08-01T09:00:00Z",
+    updatedAt: "2026-08-01T09:00:00Z"
   };
 }
 
@@ -922,6 +951,61 @@ describe("web core adapter", () => {
     expect(listed.map((note) => note.id).sort()).toEqual(["note-newer", "note-older"]);
   });
 
+  it("saves an Army through the adapter and lists it back with its members", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const army: ArmyRecord = {
+      id: "army-1",
+      gameId: "p",
+      name: "Northern escort",
+      members: [
+        {
+          unitId: "204",
+          name: "Pikes",
+          factionId: null,
+          factionName: null,
+          own: false,
+          regionId: "1:7,53",
+          flags: ["behind"],
+          items: [{ amount: 57, name: "grain", tag: "GRAI" }],
+          skills: [{ name: "combat", tag: "COMB", level: 2, points: 90 }],
+          men: 12,
+          seenTurn: 68,
+          seenAt: "2026-08-01T09:00:00Z"
+        }
+      ],
+      createdAt: "2026-08-01T09:00:00Z",
+      updatedAt: "2026-08-01T09:00:00Z"
+    };
+
+    await adapter.saveArmy(DB, army);
+
+    expect(await adapter.listArmies(DB, "p")).toEqual([army]);
+  });
+
+  it("deletes an Army, and tolerates deleting it again", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await adapter.saveArmy(DB, anArmy("army-1"));
+
+    await adapter.deleteArmy(DB, "p", "army-1");
+    await adapter.deleteArmy(DB, "p", "army-1");
+
+    expect(await adapter.listArmies(DB, "p")).toEqual([]);
+  });
+
+  it("keeps Armies apart per database", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await adapter.saveArmy("idb://campaign-a", anArmy("army-a"));
+    await adapter.saveArmy("idb://campaign-b", anArmy("army-b"));
+
+    expect(((await adapter.listArmies("idb://campaign-a", "p")) as ArmyRecord[])[0]).toMatchObject({
+      id: "army-a"
+    });
+    expect(((await adapter.listArmies("idb://campaign-b", "p")) as ArmyRecord[])[0]).toMatchObject({
+      id: "army-b"
+    });
+  });
+
   // The adapter's contract is void (ah-wxk.2, matching the desktop side, which discards the same
   // bool Tauri answers with) - deleting twice must not throw either time, and the note is gone.
   it("deletes a hex note, and tolerates deleting it again", async () => {
@@ -1173,6 +1257,8 @@ describe("exporting and importing games", () => {
       updatedAt: "2026-08-08T00:00:00Z"
     });
 
+    await adapter.saveArmy(opened.databasePath, anArmy("army-1", "alpha"));
+
     const backupJson = (await adapter.exportGame("alpha", NOW)) as string;
     expect(JSON.parse(backupJson)).toMatchObject({
       format: "atlantis-hud-game-backup",
@@ -1191,7 +1277,8 @@ describe("exporting and importing games", () => {
       orderDrafts: [{ factionId: "17", turnNumber: 12, orderText: "@work\n@study combat" }],
       regionSightings: [{ factionId: "17", regionId: "1:7,53", lastSeenTurn: 12 }],
       mergedReports: [{ factionId: "17", turnNumber: 12, mergedFactionId: "73" }],
-      hexNotes: [{ id: "note-1", regionId: "1:7,53", text: "Mustn't forget the mountain pass" }]
+      hexNotes: [{ id: "note-1", regionId: "1:7,53", text: "Mustn't forget the mountain pass" }],
+      armies: [{ id: "army-1", name: "Escort", members: [{ unitId: "1", seenTurn: 71 }] }]
     });
 
     const imported = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
@@ -1238,6 +1325,9 @@ describe("exporting and importing games", () => {
         createdAt: "2026-08-08T00:00:00Z",
         updatedAt: "2026-08-08T00:00:00Z"
       }
+    ]);
+    expect(await imported.listArmies(restored.databasePath, "alpha")).toEqual([
+      anArmy("army-1", "alpha")
     ]);
   });
 

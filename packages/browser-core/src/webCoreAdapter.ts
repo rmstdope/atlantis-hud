@@ -14,6 +14,7 @@ import type {
   ManifestEdit,
   MapShape,
   MergedReportRecord,
+  ArmyRecord,
   HexNoteRecord,
   KnownMap,
   MoveOrderTraceResponse,
@@ -219,6 +220,8 @@ type DecodedGameBackup = {
   }>;
   // A decoded note carries no gameId - the file never carries one, the store adds it.
   hexNotes: Array<Omit<HexNoteRecord, "gameId">>;
+  // Same for an Army: the game is the document's, not the row's.
+  armies: Array<Omit<ArmyRecord, "gameId">>;
 };
 
 /**
@@ -608,13 +611,14 @@ export function createWebCoreAdapter(
         throw new Error(`no game with id ${gameId}`);
       }
 
-      const [importedTurns, orderDrafts, regionSightings, mergedReports, hexNotes] =
+      const [importedTurns, orderDrafts, regionSightings, mergedReports, hexNotes, armies] =
         await Promise.all([
           store.getImportedTurns(game.databasePath, gameId),
           store.getOrderDrafts(game.databasePath, gameId),
           store.getAllRegionSightings(game.databasePath, gameId),
           store.getAllMergedReports(game.databasePath, gameId),
-          store.getHexNotes(game.databasePath, gameId)
+          store.getHexNotes(game.databasePath, gameId),
+          store.getArmies(game.databasePath, gameId)
         ]);
 
       try {
@@ -629,7 +633,8 @@ export function createWebCoreAdapter(
             orderDrafts,
             regionSightings,
             mergedReports,
-            hexNotes
+            hexNotes,
+            armies
           }),
           exportedAt
         );
@@ -803,6 +808,19 @@ export function createWebCoreAdapter(
               turn: note.turn,
               createdAt: note.createdAt,
               updatedAt: note.updatedAt
+            })
+          )
+        );
+        await Promise.all(
+          decoded.armies.map((army) =>
+            store.putArmy({
+              databasePath,
+              gameId,
+              id: army.id,
+              name: army.name,
+              members: army.members,
+              createdAt: army.createdAt,
+              updatedAt: army.updatedAt
             })
           )
         );
@@ -1056,6 +1074,20 @@ export function createWebCoreAdapter(
 
     async deleteHexNote(databasePath: string, gameId: string, noteId: string) {
       await store.deleteHexNote(databasePath, gameId, noteId);
+    },
+
+    async listArmies(databasePath: string, gameId: string) {
+      const armies = await store.getArmies(databasePath, gameId);
+      return armies.map(({ databasePath: _databasePath, ...army }) => army);
+    },
+
+    async saveArmy(databasePath: string, army: ArmyRecord) {
+      await store.putArmy({ databasePath, ...army });
+      return army;
+    },
+
+    async deleteArmy(databasePath: string, gameId: string, armyId: string) {
+      await store.deleteArmy(databasePath, gameId, armyId);
     }
   };
 }

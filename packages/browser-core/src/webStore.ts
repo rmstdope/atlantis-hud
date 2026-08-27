@@ -13,12 +13,12 @@
  * something to list without opening any game.
  */
 
-import type { HexNoteRecord } from "@atlantis/core-client";
+import type { ArmyRecord, HexNoteRecord } from "@atlantis/core-client";
 
 const REGISTRY_DATABASE_NAME = "atlantis-hud";
 const REGISTRY_DATABASE_VERSION = 4;
-/** 3 since ah-o1t.1 added the hex-note store. See `openGameDatabase` for what a bump costs. */
-const GAME_DATABASE_VERSION = 3;
+/** 4 since ah-1mpx.1 added the Armies store. See `openGameDatabase` for what a bump costs. */
+const GAME_DATABASE_VERSION = 4;
 
 const GAME_STORE = "games";
 const IMPORTED_TURN_STORE = "importedTurns";
@@ -26,6 +26,7 @@ const ORDER_DRAFT_STORE = "orderDrafts";
 const REGION_SIGHTING_STORE = "regionSightings";
 const MERGED_REPORT_STORE = "mergedReports";
 const HEX_NOTE_STORE = "hexNotes";
+const ARMY_STORE = "armies";
 
 /** Opaque payload of one stored turn import. Mirrors `ImportedTurnSnapshot` in the Rust core. */
 export type StoredTurnSnapshot = {
@@ -98,6 +99,8 @@ export type StoredOrderDraft = {
 
 export type StoredHexNote = { databasePath: string } & HexNoteRecord;
 
+export type StoredArmy = { databasePath: string } & ArmyRecord;
+
 export type StoredGame = {
   gameId: string;
   databasePath: string;
@@ -155,6 +158,11 @@ export interface WebStore {
   putHexNote(note: StoredHexNote): Promise<void>;
   /** Resolves to whether a row existed. */
   deleteHexNote(databasePath: string, gameId: string, noteId: string): Promise<boolean>;
+  /** A game's Armies, in no particular order; the client orders them. */
+  getArmies(databasePath: string, gameId: string): Promise<StoredArmy[]>;
+  putArmy(army: StoredArmy): Promise<void>;
+  /** Resolves to whether a row existed. */
+  deleteArmy(databasePath: string, gameId: string, armyId: string): Promise<boolean>;
 }
 
 /**
@@ -237,6 +245,7 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
       create(REGION_SIGHTING_STORE, ["factionId", "regionId"]);
       create(MERGED_REPORT_STORE, ["factionId", "turnNumber", "mergedFactionId"]);
       create(HEX_NOTE_STORE, ["id"]);
+      create(ARMY_STORE, ["id"]);
     };
 
     // An upgrade waits for every other connection to the database to close, and a second tab
@@ -419,7 +428,10 @@ export function createIndexedDbWebStore(): WebStore {
       read<StoredOrderDraft>(databasePath, ORDER_DRAFT_STORE, [factionId, turnNumber]),
     getHexNotes: (databasePath, _gameId) => readStore<StoredHexNote>(databasePath, HEX_NOTE_STORE),
     putHexNote: (note) => write(note.databasePath, HEX_NOTE_STORE, note),
-    deleteHexNote: (databasePath, _gameId, noteId) => remove(databasePath, HEX_NOTE_STORE, noteId)
+    deleteHexNote: (databasePath, _gameId, noteId) => remove(databasePath, HEX_NOTE_STORE, noteId),
+    getArmies: (databasePath, _gameId) => readStore<StoredArmy>(databasePath, ARMY_STORE),
+    putArmy: (army) => write(army.databasePath, ARMY_STORE, army),
+    deleteArmy: (databasePath, _gameId, armyId) => remove(databasePath, ARMY_STORE, armyId)
   };
 }
 
@@ -436,6 +448,7 @@ export function createMemoryWebStore(): WebStore {
   const sightings = new Map<string, StoredRegionSighting>();
   const merges = new Map<string, StoredMergedReport>();
   const hexNotes = new Map<string, StoredHexNote>();
+  const armies = new Map<string, StoredArmy>();
 
   // The database handle leads the key here for the same reason it selects the database in the
   // IndexedDB store: it is what keeps one game's records out of another's.
@@ -475,6 +488,7 @@ export function createMemoryWebStore(): WebStore {
       dropDatabase(sightings, databasePath);
       dropDatabase(merges, databasePath);
       dropDatabase(hexNotes, databasePath);
+      dropDatabase(armies, databasePath);
     },
     async putImportedTurn(turn) {
       turns.set(composite(turn.databasePath, turn.factionId, turn.turnNumber), turn);
@@ -545,6 +559,18 @@ export function createMemoryWebStore(): WebStore {
       const key = notesComposite(databasePath, noteId);
       const existed = hexNotes.has(key);
       hexNotes.delete(key);
+      return existed;
+    },
+    async getArmies(databasePath, _gameId) {
+      return [...armies.values()].filter((army) => army.databasePath === databasePath);
+    },
+    async putArmy(army) {
+      armies.set(notesComposite(army.databasePath, army.id), army);
+    },
+    async deleteArmy(databasePath, _gameId, armyId) {
+      const key = notesComposite(databasePath, armyId);
+      const existed = armies.has(key);
+      armies.delete(key);
       return existed;
     }
   };
