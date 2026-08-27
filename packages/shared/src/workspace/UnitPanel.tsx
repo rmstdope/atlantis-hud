@@ -4,6 +4,7 @@ import { originalTooltip } from "../unitPreview";
 import { describeMen } from "../unitComposition";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { skillEntryId, type GameDataIndex } from "../gameData";
+import { highestMagicSkill, type MagicTree } from "../magicTree";
 import {
   Absent,
   Field,
@@ -30,7 +31,9 @@ export function UnitPanel({
   hex,
   preview = null,
   gameData = null,
-  onOpenGameData
+  onOpenGameData,
+  magicTree = null,
+  onOpenMagicTree
 }: {
   unit: ReportUnit | null;
   hex: HexNode | null;
@@ -43,9 +46,16 @@ export function UnitPanel({
   gameData?: GameDataIndex | null;
   /** Absent while the ruleset has not loaded; nothing is then linked. */
   onOpenGameData?: (entryId: string) => void;
+  /** The magic study tree, for deciding whether this unit is a mage and where the tree opens. */
+  magicTree?: MagicTree | null;
+  /** Absent while the ruleset has not loaded; the study-tree row is then not offered. */
+  onOpenMagicTree?: (tag: string) => void;
 }) {
   /** Both must be present: a link with nothing to open is worse than plain text. */
   const linkable = gameData !== null && onOpenGameData !== undefined ? onOpenGameData : null;
+  /** The same guard as `linkable`, for the same reason: a door with nothing behind it. */
+  const magicLinkable =
+    magicTree !== null && onOpenMagicTree !== undefined ? onOpenMagicTree : null;
   const stale = hex?.knowledge === "stale";
   const asOf = stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null;
 
@@ -58,6 +68,7 @@ export function UnitPanel({
   }
 
   const items = [...unit.items].sort((left, right) => right.amount - left.amount);
+  const mage = magicTree === null ? null : highestMagicSkill(unit.skills, magicTree);
 
   // What the orders make of the unit, where they touch what this panel shows.
   const nameChange = preview?.changes.find((change) => change.field === "name");
@@ -113,6 +124,25 @@ export function UnitPanel({
           <p className="m-0 text-ink-soft">{unit.flags.join(" · ")}</p>
         )}
       </Section>
+
+      {/*
+        One row per unit rather than one per magic skill: it is a marker as much as a door, and a
+        mage's several magic skills all lead to the same picture. It opens on the skill they are
+        furthest along in.
+      */}
+      {mage === null || magicLinkable === null ? null : (
+        <p className="m-0 mt-2 text-ink-soft">
+          Mage{" "}
+          <button
+            type="button"
+            data-testid="unit-magic-tree"
+            onClick={() => magicLinkable(mage.tag)}
+            className="bg-transparent p-0 text-left text-accent underline-offset-2 hover:underline"
+          >
+            Show in study tree
+          </button>
+        </p>
+      )}
 
       <Section title="Skills" count={unit.skills.length || undefined}>
         {unit.skills.length === 0 ? (

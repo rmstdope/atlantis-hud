@@ -152,7 +152,9 @@ import { OrdersPanel } from "./OrdersPanel";
 import type { OrdersEditorHandle } from "./OrdersEditor";
 import { CommandPalette } from "./CommandPalette";
 import { GameDataDialog } from "./GameDataDialog";
+import { MagicTreeDialog } from "./MagicTreeDialog";
 import { parseGameData } from "../gameData";
+import { buildMagicTree } from "../magicTree";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { buildPaletteEntries } from "../commandPalette";
 import { structurePaletteLabel } from "../structureLabel";
@@ -461,6 +463,10 @@ export function AppShell({
   );
   /** Null while the dictionary is closed; `entryId` is where it should land, or null for the top. */
   const [gameDataOpen, setGameDataOpen] = useState<{ entryId: string | null } | null>(null);
+  // The magic study tree, derived from the same index and gated the same way: no ruleset, no tree.
+  const magicTree = useMemo(() => (gameData === null ? null : buildMagicTree(gameData)), [gameData]);
+  /** Null while the tree is closed; `tag` is the skill to open on, or null for the top. */
+  const [magicTreeOpen, setMagicTreeOpen] = useState<{ tag: string | null } | null>(null);
   const [route, setRoute] = useState<RoutePlanResponse | null>(null);
   const [planning, setPlanning] = useState(false);
   // The selected unit's written MOVE order, traced so the map can draw it. Follows the editor
@@ -952,6 +958,12 @@ export function AppShell({
             setGameDataOpen((open) => (open === null ? { entryId: null } : null));
           }
           break;
+        // The same toggle-and-gate shape, for the same reasons.
+        case "magicTree":
+          if (magicTree !== null) {
+            setMagicTreeOpen((open) => (open === null ? { tag: null } : null));
+          }
+          break;
         case "nextUnit":
         case "prevUnit": {
           const target = nextOwnUnit(
@@ -1012,6 +1024,7 @@ export function AppShell({
     const mac = isMacPlatform();
     const helpSpec = SHORTCUTS.find((entry) => entry.id === "help");
     const gameDataSpec = SHORTCUTS.find((entry) => entry.id === "gameData");
+    const magicTreeSpec = SHORTCUTS.find((entry) => entry.id === "magicTree");
     return buildPaletteEntries({
       ownUnits: orderedOwnUnitIds.map((unitId) => {
         const owner = parsed?.regions
@@ -1065,6 +1078,18 @@ export function AppShell({
                 label: "Browse game data",
                 binding: gameDataSpec ? (mac ? gameDataSpec.mac : gameDataSpec.other) : undefined,
                 run: () => setGameDataOpen({ entryId: null })
+              }
+            ]
+          : []),
+        // Gated on the ruleset exactly as the dictionary is: the tree is nothing but the ruleset
+        // read a second way, so with no ruleset there is no door and F3 does nothing.
+        ...(magicTree
+          ? [
+              {
+                id: "magic-study-tree",
+                label: "Magic study tree",
+                binding: magicTreeSpec ? (mac ? magicTreeSpec.mac : magicTreeSpec.other) : undefined,
+                run: () => setMagicTreeOpen({ tag: null })
               }
             ]
           : []),
@@ -3108,6 +3133,18 @@ export function AppShell({
           onDismiss={() => setGameDataOpen(null)}
         />
       ) : null}
+      {magicTreeOpen !== null && magicTree !== null ? (
+        <MagicTreeDialog
+          tree={magicTree}
+          initialTag={magicTreeOpen.tag}
+          // The tree closes as the dictionary opens, so the two reference views never stack.
+          onOpenGameData={(entryId) => {
+            setMagicTreeOpen(null);
+            setGameDataOpen({ entryId });
+          }}
+          onDismiss={() => setMagicTreeOpen(null)}
+        />
+      ) : null}
     </>
   );
 
@@ -3503,6 +3540,10 @@ export function AppShell({
                   gameData={gameData}
                   onOpenGameData={
                     gameData === null ? undefined : (entryId) => setGameDataOpen({ entryId })
+                  }
+                  magicTree={magicTree}
+                  onOpenMagicTree={
+                    magicTree === null ? undefined : (tag) => setMagicTreeOpen({ tag })
                   }
                 />
               </div>
