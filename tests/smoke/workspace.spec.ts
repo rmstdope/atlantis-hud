@@ -2293,6 +2293,27 @@ test("planning again takes the tab back from the unit", async ({ page }) => {
   await expect(page.getByTestId("slot-tab-movement")).toHaveAttribute("aria-selected", "true");
 });
 
+/**
+ * The keyboard half of the tab strip, which no test in `packages/shared` can reach: a roving
+ * `tabIndex` re-renders but moves nothing, so a strip that only selected would leave the caret on
+ * the tab it started from and every later arrow would ask for the same neighbour again.
+ */
+test("the arrow keys walk the tab strip and take the keyboard with them", async ({ page }) => {
+  await planOneStep(page);
+
+  await page.getByTestId("slot-tab-movement").focus();
+  await page.keyboard.press("ArrowLeft");
+
+  await expect(page.getByTestId("slot-tab-unit")).toBeFocused();
+  await expect(page.getByTestId("slot-tab-unit")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
+
+  await page.keyboard.press("ArrowRight");
+
+  await expect(page.getByTestId("slot-tab-movement")).toBeFocused();
+  await expect(page.getByTestId("planner-order")).toHaveText("MOVE N");
+});
+
 test("a tab click opens the folded slot on that tab", async ({ page }) => {
   await planOneStep(page);
 

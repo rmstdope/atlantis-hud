@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import type { KeyboardEvent } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { SlotTabs } from "./SlotTabs";
+import { nextSlotTab, SlotTabs } from "./SlotTabs";
 import { findByTestId } from "../testing/elementTree";
 import type { SlotTab } from "../workspaceStore";
 
@@ -68,36 +68,64 @@ describe("the shared slot's tab strip", () => {
   });
 
   it("moves between the two tabs with the arrow keys", () => {
-    const onSelect = vi.fn();
-    const preventDefault = vi.fn();
-    const press = (key: string) =>
-      (
-        findByTestId(tabs("unit", false, onSelect), "slot-tab-unit").props
-          .onKeyDown as (event: KeyboardEvent<HTMLButtonElement>) => void
-      )({ key, preventDefault } as unknown as KeyboardEvent<HTMLButtonElement>);
-
-    press("ArrowRight");
-    expect(onSelect).toHaveBeenLastCalledWith("movement");
-    press("ArrowLeft");
-    expect(onSelect).toHaveBeenLastCalledWith("movement");
-    press("End");
-    expect(onSelect).toHaveBeenLastCalledWith("movement");
-    press("Home");
-    expect(onSelect).toHaveBeenLastCalledWith("unit");
-    expect(preventDefault).toHaveBeenCalledTimes(4);
+    expect(nextSlotTab("unit", "ArrowRight")).toBe("movement");
+    expect(nextSlotTab("unit", "ArrowLeft")).toBe("movement");
+    expect(nextSlotTab("movement", "ArrowRight")).toBe("unit");
+    expect(nextSlotTab("movement", "ArrowLeft")).toBe("unit");
+    expect(nextSlotTab("movement", "Home")).toBe("unit");
+    expect(nextSlotTab("unit", "End")).toBe("movement");
   });
 
-  it("leaves every other key to the browser", () => {
+  it("leaves every other key alone", () => {
+    for (const key of ["a", "Enter", " ", "ArrowUp", "Tab"]) {
+      expect(nextSlotTab("unit", key), key).toBeNull();
+    }
+  });
+
+  /**
+   * The roving `tabIndex` re-renders but moves nothing, so a strip that only selected would leave
+   * the keyboard on the tab it started from and every later arrow would ask for the same
+   * neighbour again. `SettingsDialog` and `ChangesDialog` both call `.focus()` for this reason.
+   */
+  it("moves the keyboard to the tab it selects, not only the highlight", () => {
     const onSelect = vi.fn();
+    const focus = vi.fn();
+    const asked: string[] = [];
+    const currentTarget = {
+      querySelector: (selector: string) => {
+        asked.push(selector);
+        return { focus };
+      }
+    };
     const preventDefault = vi.fn();
 
     (
-      findByTestId(tabs("unit", false, onSelect), "slot-tab-unit").props.onKeyDown as (
-        event: KeyboardEvent<HTMLButtonElement>
+      findByTestId(tabs("unit", false, onSelect), "slot-tabs").props.onKeyDown as (
+        event: KeyboardEvent<HTMLDivElement>
       ) => void
-    )({ key: "a", preventDefault } as unknown as KeyboardEvent<HTMLButtonElement>);
+    )({ key: "ArrowRight", preventDefault, currentTarget } as unknown as KeyboardEvent<HTMLDivElement>);
+
+    expect(onSelect).toHaveBeenCalledWith("movement");
+    expect(asked).toEqual(['[data-testid="slot-tab-movement"]']);
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a key it does not own to the browser, focus and all", () => {
+    const onSelect = vi.fn();
+    const preventDefault = vi.fn();
+    const querySelector = vi.fn();
+
+    (
+      findByTestId(tabs("unit", false, onSelect), "slot-tabs").props.onKeyDown as (
+        event: KeyboardEvent<HTMLDivElement>
+      ) => void
+    )({ key: "a", preventDefault, currentTarget: { querySelector } } as unknown as KeyboardEvent<
+      HTMLDivElement
+    >);
 
     expect(onSelect).not.toHaveBeenCalled();
     expect(preventDefault).not.toHaveBeenCalled();
+    expect(querySelector).not.toHaveBeenCalled();
   });
 });
