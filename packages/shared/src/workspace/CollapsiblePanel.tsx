@@ -10,6 +10,15 @@ type CollapsiblePanelProps = {
   /** Marks data carried over from an earlier turn, as in "as of turn 71". */
   asOf?: string | null;
   actions?: ReactNode;
+  /**
+   * A tab strip that stands where the title would.
+   *
+   * Given one, the header renders it, then `actions`, then a fold control carrying only the caret;
+   * `title` is then used for that control's accessible name and nothing else. The body also stops
+   * scrolling and stops padding - each tab panel supplies its own, because a scroller here plus a
+   * scroller inside a tab panel scrolls that panel's pinned row away (ah-zh5i.2).
+   */
+  tabs?: ReactNode;
   children: ReactNode;
   className?: string;
 };
@@ -26,6 +35,7 @@ export function CollapsiblePanel({
   hint,
   asOf,
   actions,
+  tabs,
   children,
   className = ""
 }: CollapsiblePanelProps) {
@@ -68,25 +78,46 @@ export function CollapsiblePanel({
       className={`pointer-events-auto flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-edge bg-pane shadow-lg backdrop-blur ${collapsed ? "" : "h-full"} ${className}`}
     >
       <header className="flex h-7 flex-none items-center gap-2 border-b border-edge px-2.5">
-        <button
-          type="button"
-          onClick={() => togglePanel(panel)}
-          aria-expanded={!collapsed}
-          className="flex flex-1 items-center gap-2 text-left text-pane-sm uppercase tracking-[0.12em] text-brass focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
-        >
-          <span>{title}</span>
-          {hint ? (
-            <span className="normal-case tracking-normal text-ink-dim">{hint}</span>
-          ) : null}
-          <span className="flex-1" />
-          {asOf ? <span className="normal-case tracking-normal text-warn">{asOf}</span> : null}
-          <span aria-hidden className="text-ink-dim">
-            {collapsed ? "▸" : "▾"}
-          </span>
-        </button>
-        {actions}
+        {tabs ? (
+          <>
+            {tabs}
+            <span className="flex-1" />
+            {actions}
+            <button
+              type="button"
+              onClick={() => togglePanel(panel)}
+              aria-expanded={!collapsed}
+              aria-label={`Collapse ${title}`}
+              className="text-pane-sm text-ink-dim focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
+            >
+              <span aria-hidden>{collapsed ? "▸" : "▾"}</span>
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => togglePanel(panel)}
+              aria-expanded={!collapsed}
+              className="flex flex-1 items-center gap-2 text-left text-pane-sm uppercase tracking-[0.12em] text-brass focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
+            >
+              <span>{title}</span>
+              {hint ? (
+                <span className="normal-case tracking-normal text-ink-dim">{hint}</span>
+              ) : null}
+              <span className="flex-1" />
+              {asOf ? <span className="normal-case tracking-normal text-warn">{asOf}</span> : null}
+              <span aria-hidden className="text-ink-dim">
+                {collapsed ? "▸" : "▾"}
+              </span>
+            </button>
+            {actions}
+          </>
+        )}
       </header>
-      {collapsed ? null : (
+      {collapsed ? null : tabs ? (
+        <div className="flex min-h-0 flex-1 flex-col text-pane leading-snug">{children}</div>
+      ) : (
         <div className="min-h-0 flex-1 overflow-auto px-2.5 py-2 text-pane leading-snug">
           {children}
         </div>

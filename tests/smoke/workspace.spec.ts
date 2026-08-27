@@ -1679,11 +1679,11 @@ test("the map under a folded panel can be clicked", async ({ page }) => {
   await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
 
-  // The whole right-hand column, so what is freed is a rectangle rather than a sliver: with all
-  // three folded the column is three title bars and live map below them.
+  // The whole right-hand column, so what is freed is a rectangle rather than a sliver: with both
+  // folded the column is two title bars and live map below them. Two, not three: the unit panel
+  // and the movement planner share one slot and one fold since ah-zh5i.2.
   const covered = await boxOf(page, "orders");
   await foldPanel(page, "unit");
-  await foldPanel(page, "planner");
   await foldPanel(page, "orders");
   const strip = await boxOf(page, "orders");
 
@@ -2008,14 +2008,16 @@ test("the movement pane stays hidden until its flag is turned on", async ({ page
   await loadReport(page);
   await selectHex(page, "1:7,53");
   await expect(page.getByTestId("panel-unit")).toBeVisible();
-  await expect(page.getByTestId("panel-planner")).toHaveCount(0);
+  // The planner shares the unit's slot as a tab, so what the flag adds is the tab strip: with the
+  // flag off there is no Movement tab, and the slot is the unit panel it has always been.
+  await expect(page.getByTestId("slot-tab-movement")).toHaveCount(0);
 
   await enableMovementPlanner(page);
-  await expect(page.getByTestId("panel-planner")).toBeVisible();
+  await expect(page.getByTestId("slot-tab-movement")).toBeVisible();
 
   await page.reload();
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
-  await expect(page.getByTestId("panel-planner")).toBeVisible();
+  await expect(page.getByTestId("slot-tab-movement")).toBeVisible();
 });
 
 /**
@@ -2210,6 +2212,99 @@ test("a planned route can be written into the unit's orders", async ({ page }) =
 
   await page.getByTestId("planner-apply").click();
   await expectOrders(page, /MOVE N/);
+});
+
+/** Walks to a one-step route north, which is where every geometric assertion below starts. */
+async function planOneStep(page: Page) {
+  await loadReport(page);
+  await enableMovementPlanner(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  await page.getByTestId("planner-arm").click();
+  await selectHex(page, "1:7,51");
+  await expect(page.getByTestId("planner-order")).toHaveText("MOVE N");
+}
+
+/**
+ * The regression test for ah-zh5i.2.
+ *
+ * The right-hand column has 249px at this suite's pinned 1280x720 window, and the movement planner
+ * used to stand as a third panel in it. One step of route was enough: the unit panel was crushed to
+ * two pixels, the Movement panel took 245px, and the orders editor was laid out 156px inside the
+ * units pane's band and painted underneath it. A player could press "Apply to orders" and watch the
+ * text go into an editor they could not see - and the click itself was sitting on the 13px of
+ * Apply that still cleared the pane.
+ */
+test("planning a move leaves the orders editor on screen", async ({ page }) => {
+  await planOneStep(page);
+
+  const orders = await boxOf(page, "orders");
+  const unitsPane = await page.locator('[data-map-overlay="bottom"]').boundingBox();
+  expect(unitsPane).not.toBeNull();
+
+  expect(orders.y + orders.height).toBeLessThanOrEqual(unitsPane!.y);
+});
+
+/**
+ * Focus follows the route, chosen with the navigator: the next likely action is under the hand and
+ * Enter applies it. A refusal has no Apply button, so nothing moves there.
+ */
+test("a planned route puts the cursor on Apply to orders", async ({ page }) => {
+  await planOneStep(page);
+
+  await expect(page.getByTestId("planner-apply")).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  await expectOrders(page, /MOVE N/);
+});
+
+test("Apply to orders stays put while the route scrolls", async ({ page }) => {
+  await planOneStep(page);
+
+  const scroller = await page.getByTestId("planner-scroll").boundingBox();
+  const apply = await page.getByTestId("planner-apply").boundingBox();
+  expect(scroller).not.toBeNull();
+  expect(apply).not.toBeNull();
+
+  // The button is below the scrolling part rather than inside it, which is what keeps it on screen
+  // for a route of any length.
+  expect(apply!.y).toBeGreaterThanOrEqual(scroller!.y + scroller!.height);
+});
+
+test("the unit's own panel is a tab away while a route stands", async ({ page }) => {
+  await planOneStep(page);
+
+  await page.getByTestId("slot-tab-unit").click();
+  await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
+  await expect(page.getByTestId("planner-apply")).toHaveCount(0);
+
+  await page.getByTestId("slot-tab-movement").click();
+  await expect(page.getByTestId("planner-order")).toHaveText("MOVE N");
+});
+
+test("planning again takes the tab back from the unit", async ({ page }) => {
+  await planOneStep(page);
+
+  await page.getByTestId("slot-tab-unit").click();
+  await page.getByTestId("planner-arm").click();
+
+  await expect(page.getByTestId("planner-arm")).toHaveText("Pick a hex…");
+  await expect(page.getByTestId("slot-tab-movement")).toHaveAttribute("aria-selected", "true");
+});
+
+test("a tab click opens the folded slot on that tab", async ({ page }) => {
+  await planOneStep(page);
+
+  await foldPanel(page, "unit");
+  await expect(page.getByTestId("slot-tab-unit")).toBeVisible();
+  await expect(page.getByTestId("slot-tab-movement")).toBeVisible();
+  await expect(page.getByTestId("planner-apply")).toHaveCount(0);
+
+  await page.getByTestId("slot-tab-movement").click();
+
+  await expect(page.getByTestId("panel-unit")).toHaveAttribute("data-collapsed", "false");
+  await expect(page.getByTestId("planner-order")).toHaveText("MOVE N");
 });
 
 /**
