@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-30hg.2 round 6 — the header line on each of the four tabs</title>
+<style>
+  :root{ --page:#161b23; --panel:#222933; --raised:#2a323d; --edge:#46525f;
+         --ink:#d4dce6; --soft:#a8b4c2; --dim:#99a4b2; --brass:#e0b25a; --warn:#d9a441; }
+  body{ background:var(--page); color:var(--ink); font:14px/1.55 system-ui,-apple-system,sans-serif;
+        margin:0; padding:24px 32px 90px; }
+  h1{ font-size:21px; margin:0 0 6px; }
+  h2{ font-size:16px; margin:34px 0 4px; border-top:1px solid #2a3442; padding-top:18px; }
+  p.note{ color:var(--dim); max-width:98ch; }
+  b.kw{ color:var(--ink); font-weight:600; }
+  .cap{ color:var(--dim); font-size:12px; margin:6px 0 0; max-width:56ch; }
+  .cap b{ color:var(--ink); }
+  .row{ display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start; margin-top:12px; }
+  .tag{ color:var(--brass); font:11px/1 ui-monospace,monospace; letter-spacing:.1em;
+        text-transform:uppercase; margin:0 0 6px; }
+  .pop{ width:512px; box-sizing:border-box; background:var(--raised);
+        border:1px solid var(--edge); border-radius:4px;
+        font:13px/19.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:var(--ink); }
+  .pop .top{ display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--edge);
+             padding:6px 8px; color:var(--soft); }
+  .pop .top .sp{ flex:1; }
+  .pop .x{ color:var(--dim); padding:0 6px; }
+  .copy{ border:1px solid var(--edge); border-radius:4px; color:var(--dim);
+         padding:0 6px; font:inherit; background:none; }
+  .tabs{ display:flex; gap:4px; padding:6px 8px 0; flex-wrap:wrap; }
+  .tab{ border:1px solid var(--edge); border-radius:4px; padding:1px 8px; color:var(--soft);
+        font:inherit; background:none; }
+  .tab.on{ border-color:var(--brass); color:var(--brass); }
+  .tab.off{ opacity:.4; }
+  .body{ padding:8px; }
+  .foot{ border-top:1px solid var(--edge); padding:6px 8px; color:var(--dim); font-size:12px;
+         white-space:normal; line-height:1.45; }
+  .ghost{ display:flex; align-items:center; justify-content:center; color:#5c6875;
+          height:44px; font-size:12px; }
+  .settled{ color:var(--dim); border-left:2px solid var(--brass); padding-left:10px;
+            max-width:88ch; margin:10px 0 0; }
+  .settled b{ color:var(--ink); }
+</style>
+</head>
+<body>
+
+<h1>ah-30hg.2 round 6 — the header line on each of the four tabs</h1>
+<p class="note">
+  You chose <b class="kw">H2</b>: the panel’s header line names the open tab, and each section keeps
+  the heading it has today. Two of the four have a heading today and two do not — <b class="kw">Engine</b>
+  and <b class="kw">Events</b> were one panel until now, sharing the single line <b class="kw">“Turn 71”</b>.
+  So those two need words, and they are the last thing undecided.
+</p>
+<p class="settled">
+  <b>Already settled and drawn here unchanged:</b> the “Problems” line is today’s
+  <b>“10 problems in 4 hexes”</b> and its footer today’s <b>“These never block an export…”</b>; the
+  “Not read” line is today’s <b>“Lines that could not be read”</b>, with <b>Copy all</b> beside it and
+  today’s footer <b>“None of this reached the map.”</b>
+</p>
+
+<h2>The two that exist today — for comparison, nothing to decide</h2>
+<div class="row">
+  <div>
+    <p class="tag">Problems</p>
+    <div class="pop">
+      <div class="top"><span>10 problems in 4 hexes</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="tabs"><button class="tab on">Problems 10</button><button class="tab">Engine 1</button>
+        <button class="tab">Not read 6</button><button class="tab">Events 333</button></div>
+      <div class="body"><div class="ghost">…the hex cards…</div></div>
+      <div class="foot">These never block an export. They are what the report says will go wrong,
+        not what the server will refuse.</div>
+    </div>
+  </div>
+  <div>
+    <p class="tag">Not read</p>
+    <div class="pop">
+      <div class="top"><span>Lines that could not be read</span><span class="sp"></span>
+        <button class="copy">Copy all</button><span class="x">✕</span></div>
+      <div class="tabs"><button class="tab">Problems 10</button><button class="tab">Engine 1</button>
+        <button class="tab on">Not read 6</button><button class="tab">Events 333</button></div>
+      <div class="body"><div class="ghost">…the unread lines…</div></div>
+      <div class="foot">None of this reached the map.</div>
+    </div>
+  </div>
+</div>
+
+<h2>The Engine tab’s line</h2>
+<div class="row">
+  <div>
+    <p class="tag">G1</p>
+    <div class="pop">
+      <div class="top"><span>What the engine said about turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="tabs"><button class="tab">Problems 10</button><button class="tab on">Engine 1</button>
+        <button class="tab">Not read 6</button><button class="tab">Events 333</button></div>
+      <div class="body"><div class="ghost">…the errors…</div></div>
+    </div>
+    <p class="cap">Says whose voice this is — these are the server’s words about orders you already
+      sent, not this application’s opinion of orders you are writing. Names the turn.</p>
+  </div>
+  <div>
+    <p class="tag">G2</p>
+    <div class="pop">
+      <div class="top"><span>1 error the engine reported</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="tabs"><button class="tab">Problems 10</button><button class="tab on">Engine 1</button>
+        <button class="tab">Not read 6</button><button class="tab">Events 333</button></div>
+      <div class="body"><div class="ghost">…the errors…</div></div>
+    </div>
+    <p class="cap">Counts, the way the Problems line counts. Repeats the number already on the tab.</p>
+  </div>
+  <div>
+    <p class="tag">G3</p>
+    <div class="pop">
+      <div class="top"><span>Errors during turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="tabs"><button class="tab">Problems 10</button><button class="tab on">Engine 1</button>
+        <button class="tab">Not read 6</button><button class="tab">Events 333</button></div>
+      <div class="body"><div class="ghost">…the errors…</div></div>
+    </div>
+    <p class="cap">The report’s own section heading, verbatim — a player who reads their .rep file
+      finds the same words there.</p>
+  </div>
+</div>
+
+<h2>The Events tab’s line</h2>
+<div class="row">
+  <div>
+    <p class="tag">V1</p>
+    <div class="pop">
+      <div class="top"><span>What happened in turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="tabs"><button class="tab">Problems 10</button><button class="tab">Engine 1</button>
+        <button class="tab">Not read 6</button><button class="tab on">Events 333</button></div>
+      <div class="body"><div class="ghost">…the events, grouped by unit…</div></div>
+    </div>
+    <p class="cap">Plain, and marks this tab as the one thing here that is not a warning.</p>
+  </div>
+  <div>
+    <p class="tag">V2</p>
+    <div class="pop">
+      <div class="top"><span>333 events in turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="tabs"><button class="tab">Problems 10</button><button class="tab">Engine 1</button>
+        <button class="tab">Not read 6</button><button class="tab on">Events 333</button></div>
+      <div class="body"><div class="ghost">…the events, grouped by unit…</div></div>
+    </div>
+    <p class="cap">Counts, matching the Problems line’s shape. Repeats the tab’s number.</p>
+  </div>
+  <div>
+    <p class="tag">V3</p>
+    <div class="pop">
+      <div class="top"><span>Events during turn 71</span><span class="sp"></span><span class="x">✕</span></div>
+      <div class="tabs"><button class="tab">Problems 10</button><button class="tab">Engine 1</button>
+        <button class="tab">Not read 6</button><button class="tab on">Events 333</button></div>
+      <div class="body"><div class="ghost">…the events, grouped by unit…</div></div>
+    </div>
+    <p class="cap">The report’s own heading, verbatim — pairs with <b>G3</b> if you take that one.</p>
+  </div>
+</div>
+
+<h2>What a screen reader is told</h2>
+<p class="note">
+  The chip announces itself, then the panel announces itself as it takes focus. Today the three chips
+  say <b class="kw">“6 lines could not be read”</b>, <b class="kw">“⚠ 10 problems”</b> and
+  <b class="kw">“⚠ 1 error · 333 events”</b>, and the three panels are named
+  <b class="kw">“Order problems”</b>, <b class="kw">“Turn messages”</b> and
+  <b class="kw">“Lines that could not be read”</b>. One chip and one panel now need one name each.
+</p>
+<div class="row">
+  <div>
+    <p class="tag">A1</p>
+    <div class="pop" style="width:auto;display:inline-block;padding:10px 14px">
+      chip: <b class="kw">“17 things to check in turn 71”</b><br>
+      panel: <b class="kw">“Turn report”</b>
+    </div>
+    <p class="cap">The panel takes the chip’s quiet-turn name, so it is called the same thing whether
+      or not anything is wrong.</p>
+  </div>
+  <div>
+    <p class="tag">A2</p>
+    <div class="pop" style="width:auto;display:inline-block;padding:10px 14px">
+      chip: <b class="kw">“17 things to check in turn 71”</b><br>
+      panel: <b class="kw">“What this turn wants checked”</b>
+    </div>
+    <p class="cap">Describes the panel rather than borrowing the chip’s word.</p>
+  </div>
+  <div>
+    <p class="tag">A3</p>
+    <div class="pop" style="width:auto;display:inline-block;padding:10px 14px">
+      chip: visible text only, no extra label<br>
+      panel: <b class="kw">“Turn report”</b>
+    </div>
+    <p class="cap"><b>“⚠ 17 to check”</b> reads aloud perfectly well on its own; the ⚠ is already
+      hidden from the reader. One fewer string to keep in step with the visible one.</p>
+  </div>
+</div>
+
+</body>
+</html>
