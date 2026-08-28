@@ -75,6 +75,19 @@ describe("MagicGraphDrawing", () => {
     expect(html).toContain("create ring of invisibility");
   });
 
+  it("draws a spine down every tier, and keeps it lit when a lineage is", () => {
+    const html = renderToStaticMarkup(drawing());
+    expect(occurrences(html, 'data-testid="magic-graph-spine-')).toBe(5);
+
+    // Chrome, like the tier heading beside it: a lit lineage does not fade it.
+    const litHtml = renderToStaticMarkup(drawing("CRRI"));
+    const spine = litHtml.slice(
+      litHtml.indexOf('data-testid="magic-graph-spine-0"'),
+      litHtml.indexOf(">", litHtml.indexOf('data-testid="magic-graph-spine-0"')) + 1
+    );
+    expect(spine).not.toContain("opacity-");
+  });
+
   it("dims everything outside the lit lineage", () => {
     const html = renderToStaticMarkup(drawing("CRRI"));
 

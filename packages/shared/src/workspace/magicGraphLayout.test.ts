@@ -98,6 +98,17 @@ describe("buildMagicGraph", () => {
     expect(last.y - spirit.y).toBe(2 * ROW_PITCH);
   });
 
+  it("runs a spine from each tier's heading to the foot of its column", () => {
+    for (const tier of graph.tiers) {
+      const column = graph.nodes.filter((node) => node.depth === tier.depth);
+      expect(tier.spine.x).toBe(tier.x - 8);
+      expect(tier.spine.top).toBe(46);
+      expect(tier.spine.bottom).toBe(Math.max(...column.map((node) => node.y + NODE_HEIGHT)));
+      // It starts above the column and never runs past it.
+      expect(tier.spine.top).toBeLessThan(Math.min(...column.map((node) => node.y)));
+    }
+  });
+
   it("draws the same graph twice", () => {
     expect(buildMagicGraph(tree)).toEqual(buildMagicGraph(tree));
   });

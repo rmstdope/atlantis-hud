@@ -44,6 +44,11 @@ const PAD_BOTTOM = 24;
  */
 export const ROW_PITCH = NODE_HEIGHT + NODE_GAP;
 
+/** How far left of a column's left edge the tier's spine runs, in world units. */
+const SPINE_GUTTER = 8;
+/** Where a spine starts: just under the tier's `N skills` line, which sits at y = 41. */
+const SPINE_TOP = 46;
+
 /** Passes that pull from one side at a time, prerequisites then dependents, alternating. */
 const ALTERNATING_SWEEPS = 4;
 /** Passes that pull from both sides at once, run after the alternating ones. */
@@ -87,6 +92,13 @@ export type GraphTier = {
   count: number;
   /** Left edge of the column, in world units. */
   x: number;
+  /**
+   * The hairline from under the tier's heading down to the foot of its last box, in world units.
+   * A column may now start hundreds of units below its heading, and without this a reader at the
+   * top of the drawing sees `FOUNDATIONS` with nothing under it. It runs in the gutter left of the
+   * column, so it never passes behind a box or a line.
+   */
+  spine: { x: number; top: number; bottom: number };
 };
 
 export type MagicGraph = {
@@ -361,7 +373,17 @@ export function buildMagicGraph(tree: MagicTree): MagicGraph {
       node.y = PAD_TOP + node.y;
       nodes.push(node);
     }
-    tiers.push({ depth, title: tierTitle(depth), count: column.length, x });
+    tiers.push({
+      depth,
+      title: tierTitle(depth),
+      count: column.length,
+      x,
+      spine: {
+        x: x - SPINE_GUTTER,
+        top: SPINE_TOP,
+        bottom: Math.max(...column.map((node) => node.y + NODE_HEIGHT))
+      }
+    });
   });
 
   const at = new Map(nodes.map((node) => [node.tag, node]));
