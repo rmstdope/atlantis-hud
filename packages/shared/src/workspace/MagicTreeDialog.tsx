@@ -310,7 +310,7 @@ export function MagicTreeDialog({
             />
           </div>
         ) : (
-          <div ref={cards} className="min-h-0 columns-[19rem] gap-3 overflow-y-auto p-3">
+          <div ref={cards} className="min-h-0 columns-[21rem] gap-3 overflow-y-auto p-3">
             {tree.branches.map((branch) => (
               <Card
                 key={branch.key}
@@ -451,7 +451,7 @@ function Skill({
       }${
         style === null
           ? `border-l-4 border-transparent ${highlighted ? "text-ink" : "text-ink-soft"}`
-          : `${style.edge} ${style.text}`
+          : `${style.edge} ${style.row}`
       }`}
     >
       <button
@@ -459,12 +459,16 @@ function Skill({
         onClick={() => onOpenGameData(skill.id)}
         // `min-w-0` so the name is the flex item that gives: it is the only part of the row that
         // loses nothing by taking a second line, and every chip beside it is `nowrap`.
-        className="min-w-0 bg-transparent p-0 text-left text-accent underline-offset-2 hover:underline"
+        className="min-w-0 bg-transparent p-0 text-left text-select underline-offset-2 hover:underline"
       >
         {skill.name}
       </button>
-      <span className="text-pane-xs whitespace-nowrap text-ink-dim">{skill.tag}</span>
-      <Gate prerequisites={skill.within} />
+      <span
+        className={`text-pane-xs whitespace-nowrap ${style === null ? "text-ink-dim" : style.meta}`}
+      >
+        {skill.tag}
+      </span>
+      <Gate prerequisites={skill.within} meta={style === null ? "text-ink-dim" : style.meta} />
       {standing === null || standing.kind === "locked" ? null : (
         // Locked takes no chip and keeps its gate text: what is missing is the reason for showing
         // a locked row at all.
@@ -486,7 +490,7 @@ function Skill({
           onClick={() => onFollow(need.tag)}
           // `ml-auto` on the first one only, so the crossing pills sit at the right edge of the row
           // and line up down the card. A second one follows it on the normal gap.
-          className={`text-pane-xs whitespace-nowrap rounded border border-edge px-1 text-ink-dim hover:text-ink ${
+          className={`text-pane-xs whitespace-nowrap rounded border border-crossing-edge bg-crossing-fill px-1 text-crossing-ink hover:text-ink ${
             at === 0 ? "ml-auto" : ""
           }`}
         >
@@ -501,31 +505,46 @@ function Skill({
  * The five states, each separated from the other four by shape as well as by colour, so they read
  * for somebody who cannot tell green from amber and in a monochrome print.
  *
+ * `meta` is the tag and the gate: dim on every row except a locked one, which fades as a whole and
+ * so needs full-strength ink underneath to stay readable through the fade (ah-yqzq).
+ *
  * Locked takes no edge rather than a fifth border style: four patterns, and the fifth state is the
- * absence of one.
+ * absence of one. It takes no chip either - what is missing is the reason for showing the row.
+ *
+ * Every class name here is a whole literal string, which is load-bearing: Tailwind's scanner reads
+ * source text, so a name built by interpolation is one it never sees and never emits.
  */
-const ROW_STYLE: Record<StandingKind, { edge: string; text: string; chip: string }> = {
+const ROW_STYLE: Record<StandingKind, { edge: string; row: string; meta: string; chip: string }> = {
   known: {
     edge: "border-l-4 border-solid border-ok",
-    text: "text-ink",
-    chip: "border-ok text-ok"
+    row: "text-ink",
+    meta: "text-ink-dim",
+    chip: "border-standing-known-edge bg-standing-known-fill text-standing-known-ink"
   },
   ceiling: {
     edge: "border-l-4 border-double border-warn",
-    text: "text-ink",
-    chip: "border-warn text-warn"
+    row: "text-ink",
+    meta: "text-ink-dim",
+    chip: "border-standing-ceiling-edge bg-standing-ceiling-fill text-standing-ceiling-ink"
   },
   maxed: {
     edge: "border-l-4 border-dotted border-ink-soft",
-    text: "text-ink",
-    chip: "border-ink-soft text-ink-soft"
+    row: "text-ink",
+    meta: "text-ink-dim",
+    chip: "border-standing-maxed-edge bg-standing-maxed-fill text-standing-maxed-ink"
   },
   open: {
     edge: "border-l-4 border-dashed border-select",
-    text: "text-ink-soft",
-    chip: "border-select text-select"
+    row: "text-ink-soft",
+    meta: "text-ink-dim",
+    chip: "border-standing-open-edge bg-standing-open-fill text-standing-open-ink"
   },
-  locked: { edge: "border-l-4 border-transparent", text: "text-ink-dim", chip: "" }
+  locked: {
+    edge: "border-l-4 border-transparent",
+    row: "text-ink-dim opacity-55",
+    meta: "text-ink",
+    chip: ""
+  }
 };
 
 /**
@@ -582,12 +601,19 @@ function missingLine(picked: MageStanding): string {
  * The within-branch prerequisites, as plain text rather than links: they name skills already
  * visible in the same card, a line or two above.
  */
-function Gate({ prerequisites }: { prerequisites: readonly MagicPrerequisite[] }) {
+function Gate({
+  prerequisites,
+  meta
+}: {
+  prerequisites: readonly MagicPrerequisite[];
+  /** The row's own colour for its small print - dim, or full ink under a locked row's fade. */
+  meta: string;
+}) {
   if (prerequisites.length === 0) {
     return null;
   }
   return (
-    <span className="text-pane-xs whitespace-nowrap text-ink-dim">
+    <span className={`text-pane-xs whitespace-nowrap ${meta}`}>
       {prerequisites.map((need) => `${need.tag} ${need.level}`).join(", ")}
     </span>
   );
