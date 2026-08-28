@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-1mpx.6.2 &mdash; Round 4: the scan, and the export while it runs</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:34px 0 6px; font-size:15px; color:var(--ink); }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .dlg { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px 16px;
+         font:13px/1.6 'Helvetica Neue',Arial,sans-serif; max-width:620px; }
+  .dlg h4 { font-size:14px; margin-bottom:10px; color:var(--ink); font-weight:600; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:10px; color:var(--ink-soft); font-size:12.5px; padding:2px 0; }
+  .sel { background:var(--raised); border:1px solid var(--edge); border-radius:4px; padding:2px 8px; color:var(--ink); font-size:12px; }
+  .hr { border-top:1px solid var(--edge); margin:9px 0 7px; }
+  .notice { font-size:12px; color:var(--ink-soft); display:flex; gap:8px; margin-top:6px; }
+  .dot { flex:0 0 auto; width:7px; height:7px; border-radius:50%; margin-top:6px; }
+  .dot.rem { background:var(--brass); } .dot.for { background:var(--select); } .dot.wait { background:var(--ink-dim); }
+  .btns { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+  .btn { border:1px solid var(--edge); border-radius:4px; padding:3px 10px; font-size:12px; color:var(--ink-soft); }
+  .btn.go { border-color:var(--brass); color:var(--brass); }
+  .btn.off { border-color:var(--edge); color:var(--ink-dim); }
+  .case { display:grid; grid-template-columns:190px 1fr; gap:10px 14px; align-items:start; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .case .lab { color:var(--ink-dim); font-size:11.5px; letter-spacing:.04em; text-transform:uppercase; padding-top:2px; }
+  .case .txt { color:var(--ink); }
+  .case .txt.bad { color:var(--danger); }
+  .case .txt.same { color:var(--ink-soft); }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+  .settled { background:var(--raised); border-left:3px solid var(--ok); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:110ch; }
+</style></head><body>
+<header><h1>Round 4 &mdash; <span>the scan, and the export while it runs</span></h1>
+<p>This is the child that pays the family off: <code>ah-1mpx.6.2</code>. A background scan reads every stored turn's battle rosters when a game opens, and the export sends what it recovered.</p>
+<div class="settled"><b>Already settled</b>, rounds 1&ndash;3, and nothing here reopens any of it: the scan reads <b>every stored turn of the game</b>, whoever's report it is; <b>the newest observation wins</b>; a derived skill <b>never displaces a real one</b>; and the export notice for the mixed case reads <span class="mono" style="color:var(--brass-bright)">&ldquo;6 units belong to another faction. 4 of them go out with combat skills read from battle reports; the other 2 go out with none.&rdquo;</span></div>
+<p>Three things that sentence and those rules do not yet answer. Each is user-visible and each is yours.</p></header>
+<main>
+
+<h4 class="q"><em>S</em> Exporting while the scan is still running</h4>
+<p>The scan starts when the game opens and takes a moment &mdash; it loads and re-parses every stored turn. A player can open this dialog and press <b>Export&hellip;</b> before it finishes. The file is written once and never corrected, so whatever is true at that instant is what the simulator gets. Example throughout: 14 units exported, 6 foreign, 4 of them recoverable &mdash; but the scan has not landed yet, so right now the app knows about none of them.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">S1 &mdash; say nothing, write what we have</div>
+  <div class="dlg">
+    <div class="row"><span>Attackers</span><span class="sel">Northern Host &mdash; 9 units</span></div>
+    <div class="row"><span>Defenders</span><span class="sel">Coastal Watch &mdash; 5 units</span></div>
+    <div class="hr"></div>
+    <div>14 units will be exported.</div>
+    <div class="notice"><span class="dot for"></span><span>6 units belong to another faction. They go out with no skills &mdash; no battle we have seen involved any of them.</span></div>
+    <div class="btns"><span class="btn">Cancel</span><span class="btn go">Export&hellip;</span></div>
+  </div>
+  <ul class="notes">
+    <li>Nothing new on screen, and the dialog never makes the player wait.</li>
+    <li class="con">The sentence is <b>false</b>, and confidently so &mdash; four of those six <i>were</i> in battles we have read. Two seconds later it would have said the opposite.</li>
+    <li class="con">The file goes out missing four units' skills, and nothing ever tells the player.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">S2 &mdash; a notice line, and Export waits <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="dlg">
+    <div class="row"><span>Attackers</span><span class="sel">Northern Host &mdash; 9 units</span></div>
+    <div class="row"><span>Defenders</span><span class="sel">Coastal Watch &mdash; 5 units</span></div>
+    <div class="hr"></div>
+    <div>14 units will be exported.</div>
+    <div class="notice"><span class="dot wait"></span><span>Still reading this game's battle reports. The foreign units' skills are not counted yet.</span></div>
+    <div class="btns"><span class="btn">Cancel</span><span class="btn off">Export&hellip;</span></div>
+  </div>
+  <ul class="notes">
+    <li>Never writes a file that is missing something the app was about to know.</li>
+    <li>Says plainly why the button is off, so a disabled button is never a mystery.</li>
+    <li>The line and the disabling both disappear on their own the moment the scan lands, and the real notice replaces it.</li>
+    <li class="con">A player who wants the file <i>now</i> is made to wait &mdash; a second or two on a long game.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">S3 &mdash; no line; the button says it instead</div>
+  <div class="dlg">
+    <div class="row"><span>Attackers</span><span class="sel">Northern Host &mdash; 9 units</span></div>
+    <div class="row"><span>Defenders</span><span class="sel">Coastal Watch &mdash; 5 units</span></div>
+    <div class="hr"></div>
+    <div>14 units will be exported.</div>
+    <div class="btns"><span class="btn">Cancel</span><span class="btn off">Reading battle reports&hellip;</span></div>
+  </div>
+  <ul class="notes">
+    <li>Quietest of the three &mdash; the dialog does not grow a line it will throw away a second later.</li>
+    <li>Also never writes an incomplete file.</li>
+    <li class="con">The foreign-units notice is <b>absent</b> until the scan lands, so the caveat list visibly jumps when it arrives.</li>
+    <li class="con">Overloads the button, which already says <i>Exporting&hellip;</i> while a file is being written &mdash; two different waits, one word.</li>
+  </ul>
+</div>
+</div>
+
+<h4 class="q"><em>W4</em> The same notice when it is not the mixed case</h4>
+<p>Round 3 chose the sentence for <b>4 of 6 recovered</b>. Three other cases exist, and one of them &mdash; <b>none recovered</b> &mdash; is the commonest of all: 14 of the 26 committed reports contain no battle at all. Pick a shape and every case follows from it.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">W4-A &mdash; one sentence shape, always</div>
+  <div class="case">
+    <div class="lab">6 foreign, 4 recovered</div><div class="txt same">6 units belong to another faction. 4 of them go out with combat skills read from battle reports; the other 2 go out with none.</div>
+    <div class="lab">4 foreign, all 4</div><div class="txt">4 units belong to another faction. 4 of them go out with combat skills read from battle reports; the other 0 go out with none.</div>
+    <div class="lab">6 foreign, none</div><div class="txt">6 units belong to another faction. 0 of them go out with combat skills read from battle reports; the other 6 go out with none.</div>
+    <div class="lab">1 foreign, recovered</div><div class="txt">1 unit belongs to another faction. 1 of them goes out with combat skills read from battle reports; the other 0 go out with none.</div>
+  </div>
+  <ul class="notes">
+    <li>One sentence in the code, one to keep true.</li>
+    <li class="con"><b>&ldquo;the other 0 go out with none&rdquo;</b> is not English, and it is on screen in two of the four cases.</li>
+    <li class="con">Spends the reader's attention on arithmetic that resolves to &ldquo;all&rdquo; or &ldquo;none&rdquo;.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">W4-B &mdash; three shapes: all, some, none <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="case">
+    <div class="lab">6 foreign, 4 recovered</div><div class="txt same">6 units belong to another faction. 4 of them go out with combat skills read from battle reports; the other 2 go out with none.</div>
+    <div class="lab">4 foreign, all 4</div><div class="txt">4 units belong to another faction. All of them go out with combat skills read from battle reports.</div>
+    <div class="lab">6 foreign, none</div><div class="txt">6 units belong to another faction. They go out with no skills &mdash; no battle we have seen involved any of them.</div>
+    <div class="lab">1 foreign, recovered</div><div class="txt">1 unit belongs to another faction. It goes out with combat skills read from battle reports.</div>
+    <div class="lab">1 foreign, not recovered</div><div class="txt">1 unit belongs to another faction. It goes out with no skills &mdash; no battle we have seen involved it.</div>
+  </div>
+  <ul class="notes">
+    <li>Every case reads as a sentence somebody wrote on purpose.</li>
+    <li>The <i>none</i> case borrows the wording already agreed for the Unit panel&rsquo;s empty state &mdash; <span class="mono">&ldquo;No battle we have seen involved this unit.&rdquo;</span> &mdash; so the two surfaces say the same thing.</li>
+    <li class="con">Five strings rather than two, and five to keep in step.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">W4-C &mdash; three shapes, but <i>none</i> keeps today's sentence unchanged</div>
+  <div class="case">
+    <div class="lab">6 foreign, 4 recovered</div><div class="txt same">6 units belong to another faction. 4 of them go out with combat skills read from battle reports; the other 2 go out with none.</div>
+    <div class="lab">4 foreign, all 4</div><div class="txt">4 units belong to another faction. All of them go out with combat skills read from battle reports.</div>
+    <div class="lab">6 foreign, none</div><div class="txt">6 units belong to another faction. They go out with their men and equipment but no skills &mdash; a report never shows you those.</div>
+    <div class="lab">1 foreign, not recovered</div><div class="txt">1 unit belongs to another faction. It goes out with its men and equipment but no skills &mdash; a report never shows you those.</div>
+  </div>
+  <ul class="notes">
+    <li>The commonest case is <b>exactly today's text</b>, so most players see no change at all.</li>
+    <li>Two fewer strings to write than B: the <i>none</i> branch is the code that is already there.</li>
+    <li class="con">&ldquo;a report never shows you those&rdquo; sits one dialog away from a units table that is now showing exactly those &mdash; the sentence the whole family exists to stop asserting.</li>
+  </ul>
+</div>
+</div>
+
+<h4 class="q"><em>N</em> A turn imported while the game is already open</h4>
+<p>The scan runs when a game opens. A player then imports this month's report, which contains a battle. Does that battle&rsquo;s roster count straight away?</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">N1 &mdash; yes: the new turn folds in as it is imported <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="case">
+    <div class="lab">Import turn 72</div><div class="txt">Its rosters are read as part of the import and merged in. Turn 72 is newer than everything scanned, so where it disagrees it wins.</div>
+    <div class="lab">Units table, immediately</div><div class="txt">A unit that fought in turn 72 shows <span class="mono">COMB 5 (turn 72)</span>.</div>
+    <div class="lab">Export, immediately</div><div class="txt">Counts it.</div>
+  </div>
+  <ul class="notes">
+    <li>The turn you just imported is the one you are about to plan against; it is the worst one to be missing.</li>
+    <li>Costs nothing extra &mdash; the report is already parsed and in hand at that moment, so no turn is re-read from storage.</li>
+    <li class="con">One more place the store is written, so two paths have to agree on the merge rule.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">N2 &mdash; no: the scan is a game-open thing only</div>
+  <div class="case">
+    <div class="lab">Import turn 72</div><div class="txt">Nothing happens to the recovered skills.</div>
+    <div class="lab">Units table, immediately</div><div class="txt bad">The unit that fought in turn 72 still shows <span class="mono">COMB 4 (turn 68)</span>, or <i>not disclosed</i>.</div>
+    <div class="lab">Export, immediately</div><div class="txt bad">Sends the older reading, or none.</div>
+    <div class="lab">After closing and reopening the game</div><div class="txt">Correct.</div>
+  </div>
+  <ul class="notes">
+    <li>One write path, one rule, nothing to keep in step.</li>
+    <li class="con">Stale in exactly the moment the player cares most, and with no sign that it is: the cell shows a turn number, confidently, and it is the wrong one.</li>
+    <li class="con">&ldquo;Close the game and open it again&rdquo; is not something the application ever asks of the player anywhere else.</li>
+  </ul>
+</div>
+</div>
+
+</main>
+<footer>Every sentence quoted on this page is quoted, not paraphrased: whatever is chosen is written into the code verbatim and into the bead&rsquo;s plan.</footer>
+</body></html>
