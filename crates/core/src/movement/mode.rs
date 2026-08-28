@@ -159,7 +159,7 @@ fn aboard_structure<'a>(
 
 /// The structure `unit.structure_id` names, when its kind names a hull or a fleet.
 ///
-/// Whether a kind actually names a hull is a question for [`parse_fleet_kind`] to answer
+/// Whether a kind actually names a hull is a question for [`hulls_named_in`] to answer
 /// syntactically; whether that hull is one the ruleset (or the server's own words) can price is a
 /// separate question for [`sailing_requirement`] and [`fleet_speed`], answered afterwards. A
 /// structure whose kind neither form recognises - an ordinary building - is not a fleet at all.
@@ -173,7 +173,7 @@ pub fn fleet_of<'a>(
     hex.structures
         .iter()
         .find(|structure| structure.structure_id == structure_id)
-        .filter(|structure| parse_fleet_kind(&structure.kind).is_some())
+        .filter(|structure| hulls_named_in(&structure.kind).is_some())
 }
 
 /// Reads a structure's `kind` as one or more ship hulls and how many of each.
@@ -188,7 +188,7 @@ pub fn fleet_of<'a>(
 /// is what resolves them against the catalogue, so there is no second plural rule to keep in step
 /// with the first.
 #[must_use]
-pub fn parse_fleet_kind(kind: &str) -> Option<Vec<(String, u32)>> {
+pub fn hulls_named_in(kind: &str) -> Option<Vec<(String, u32)>> {
     let trimmed = kind.trim().trim_end_matches('.');
     if trimmed.is_empty() {
         return None;
@@ -282,7 +282,7 @@ pub fn sailing_requirement(fleet: &Structure, ruleset: Option<&Ruleset>) -> Opti
     }
 
     let ruleset = ruleset?;
-    let hulls = parse_fleet_kind(&fleet.kind)?;
+    let hulls = hulls_named_in(&fleet.kind)?;
     let mut total = 0_i64;
     for (name, count) in &hulls {
         let item = ruleset.find_item(name)?;
@@ -301,7 +301,7 @@ pub fn cargo_capacity(fleet: &Structure, ruleset: Option<&Ruleset>) -> Option<i6
     }
 
     let ruleset = ruleset?;
-    let hulls = parse_fleet_kind(&fleet.kind)?;
+    let hulls = hulls_named_in(&fleet.kind)?;
     let mut total = 0_i64;
     for (name, count) in &hulls {
         let item = ruleset.find_item(name)?;
@@ -336,7 +336,7 @@ pub fn fleet_speed(fleet: &Structure, ruleset: &Ruleset) -> Option<u32> {
         return Some(speed);
     }
 
-    let hulls = parse_fleet_kind(&fleet.kind)?;
+    let hulls = hulls_named_in(&fleet.kind)?;
     hulls
         .iter()
         .map(|(name, _)| ruleset.find_item(name).map(|item| item.moves))
@@ -492,7 +492,7 @@ mod tests {
     #[test]
     fn a_bare_hull_is_one_pair_at_count_one() {
         assert_eq!(
-            parse_fleet_kind("Longship"),
+            hulls_named_in("Longship"),
             Some(vec![("Longship".to_string(), 1)])
         );
     }
@@ -501,7 +501,7 @@ mod tests {
     #[test]
     fn a_fleet_of_one_hull_names_it_and_its_count() {
         assert_eq!(
-            parse_fleet_kind("Fleet, 2 Galleons"),
+            hulls_named_in("Fleet, 2 Galleons"),
             Some(vec![("Galleons".to_string(), 2)])
         );
     }
@@ -510,11 +510,11 @@ mod tests {
     #[test]
     fn a_mixed_fleet_names_every_hull() {
         assert_eq!(
-            parse_fleet_kind("Fleet, 8 Corsairs"),
+            hulls_named_in("Fleet, 8 Corsairs"),
             Some(vec![("Corsairs".to_string(), 8)])
         );
         assert_eq!(
-            parse_fleet_kind("Fleet, 4 Galleons, 1 Balloon"),
+            hulls_named_in("Fleet, 4 Galleons, 1 Balloon"),
             Some(vec![
                 ("Galleons".to_string(), 4),
                 ("Balloon".to_string(), 1)
@@ -529,7 +529,7 @@ mod tests {
     #[test]
     fn a_fleet_that_names_its_class_instead_of_the_word_fleet_names_every_hull() {
         assert_eq!(
-            parse_fleet_kind("Galley, 40 Galleons, 11 Galleys, 10 Balloons"),
+            hulls_named_in("Galley, 40 Galleons, 11 Galleys, 10 Balloons"),
             Some(vec![
                 ("Galleons".to_string(), 40),
                 ("Galleys".to_string(), 11),
@@ -544,14 +544,14 @@ mod tests {
     #[test]
     fn the_class_word_a_fleet_leads_with_is_not_a_hull_of_its_own() {
         assert_eq!(
-            parse_fleet_kind("Cloudship, 1 Balloon, 1 Cloudship"),
+            hulls_named_in("Cloudship, 1 Balloon, 1 Cloudship"),
             Some(vec![
                 ("Balloon".to_string(), 1),
                 ("Cloudship".to_string(), 1)
             ])
         );
         assert_eq!(
-            parse_fleet_kind("Galley, 2 Galleys, 3 Galleons, 8 Corsairs"),
+            hulls_named_in("Galley, 2 Galleys, 3 Galleons, 8 Corsairs"),
             Some(vec![
                 ("Galleys".to_string(), 2),
                 ("Galleons".to_string(), 3),
@@ -565,7 +565,7 @@ mod tests {
     #[test]
     fn a_manifest_with_no_class_word_is_read_from_its_lead() {
         assert_eq!(
-            parse_fleet_kind("4 Balloons"),
+            hulls_named_in("4 Balloons"),
             Some(vec![("Balloons".to_string(), 4)])
         );
     }
@@ -576,15 +576,15 @@ mod tests {
     #[test]
     fn a_lower_case_state_clause_is_not_a_hull() {
         assert_eq!(
-            parse_fleet_kind("Lair, closed to player units"),
+            hulls_named_in("Lair, closed to player units"),
             Some(vec![("Lair".to_string(), 1)])
         );
     }
 
     #[test]
     fn a_building_kind_is_not_a_fleet_shape_the_parser_refuses() {
-        assert_eq!(parse_fleet_kind(""), None);
-        assert_eq!(parse_fleet_kind("Fleet,"), None);
+        assert_eq!(hulls_named_in(""), None);
+        assert_eq!(hulls_named_in("Fleet,"), None);
     }
 
     /// "Sailors: 4/4; MaxSpeed: 4." states its own numbers, which win over ruleset arithmetic.

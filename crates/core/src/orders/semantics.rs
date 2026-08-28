@@ -28,7 +28,7 @@ use super::intents::{
 use super::standing::{self, standing_after, Boarding};
 use crate::movement::graph::Direction;
 use crate::movement::mode::{
-    best_allowance, capacities_from_items, cargo_capacity, fleet_label, parse_fleet_kind,
+    best_allowance, capacities_from_items, cargo_capacity, fleet_label, hulls_named_in,
     sailing_requirement, Capacities,
 };
 use crate::movement::orders::MoveStep;
@@ -6301,7 +6301,7 @@ fn check_pillage_men(
 /// act on.
 ///
 /// A vessel is one `sailing_requirement` can price - the server's own `Sailors: H/N`, or a hull the
-/// ruleset knows. `parse_fleet_kind` is not that test: it reads any non-empty kind as a one-hull
+/// ruleset knows. `hulls_named_in` is not that test: it reads any non-empty kind as a one-hull
 /// fleet, so a fort would pass it and every unit inside a fort would stop being checked.
 fn carried_away<'a>(
     hex: &Hex<'a>,
@@ -7221,7 +7221,7 @@ fn check_sailing(
     findings: &mut Vec<Finding>,
 ) {
     for fleet in &hex.region.structures {
-        if parse_fleet_kind(&fleet.kind).is_none() {
+        if hulls_named_in(&fleet.kind).is_none() {
             continue;
         }
 
@@ -23631,7 +23631,7 @@ mod tests {
 
     /// `sailing_requirement` is what makes a structure a vessel; a unit inside an ordinary
     /// building is going nowhere, and without that filter every unit in a fort would stop being
-    /// checked. This is the test that caught `parse_fleet_kind` - which reads any non-empty kind
+    /// checked. This is the test that caught `hulls_named_in` - which reads any non-empty kind
     /// as a one-hull fleet - being the wrong question.
     #[test]
     fn a_unit_aboard_an_ordinary_building_is_still_told() {
@@ -23667,7 +23667,7 @@ mod tests {
     /// Galleons, 11 Galleys, 10 Balloons.` states no `Sailors:` line, so whether it is a vessel
     /// falls to ruleset arithmetic over its hulls - and read as one hull name the whole clause
     /// matched no item, so `carried_away` found no vessel and the fisherman aboard was judged in
-    /// the barren hex the boat was leaving. The fix is in `parse_fleet_kind`; this pins the
+    /// the barren hex the boat was leaving. The fix is in `hulls_named_in`; this pins the
     /// symptom the navigator saw, in the check that showed it.
     #[test]
     fn a_passenger_on_a_fleet_that_names_its_class_is_judged_where_it_is_sailing_to() {
