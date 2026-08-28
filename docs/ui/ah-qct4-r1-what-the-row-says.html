@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-qct4 &mdash; Round 1: production after the men have gone</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:34px 0 6px; font-size:15px; }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .ed { background:#0c1016; border:1px solid var(--edge); border-radius:6px; padding:10px 12px;
+        font:12.5px/1.7 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); }
+  .ed .ord { color:var(--ink); }
+  .ed .warn { color:var(--brass-bright); display:block; padding-left:2ch; }
+  .ed .warn::before { content:"\26A0 "; }
+  .ed .none { color:var(--ink-dim); font-style:italic; display:block; padding-left:2ch; }
+  table.g { width:100%; border-collapse:separate; border-spacing:0; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.g th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-dim); font-weight:400; padding:3px 12px 6px 0; border-bottom:1px solid var(--edge); }
+  table.g td { padding:5px 12px 5px 0; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  td.bad { color:var(--danger); } td.good { color:var(--ok); } td.k { color:var(--ink-dim); white-space:nowrap; font-size:11.5px; }
+  .pred { font-style:italic; color:var(--select); }
+  .hover { margin-top:9px; background:#0c1016; border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+           font:12px/1.65 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); max-width:78ch; }
+  .hover b { color:var(--ink-dim); font-weight:400; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; display:block; margin-bottom:5px; }
+  .hover .new { color:var(--brass-bright); }
+  .settled { background:var(--raised); border-left:3px solid var(--ok); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:110ch; }
+  .found { background:var(--raised); border-left:3px solid var(--danger); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:110ch; }
+  .aside { background:var(--raised); border-left:3px solid var(--select); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:110ch; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+</style></head><body>
+<header><h1>PRODUCE after a GIVE &mdash; <span>what the row says when the men have gone</span></h1>
+
+<div class="found"><b>What the code actually does &mdash; read, not guessed.</b>
+The ITEMS cell&rsquo;s production comes from <code>semantics::produce</code> (<code>semantics.rs:4060</code>), which prices the order as
+<code>price_production(recipe, actor.unit.men, &amp;actor.unit.items)</code> &mdash; <b>the report&rsquo;s headcount, before this month&rsquo;s
+orders</b>. The SILVER cell on the same row prices the same order from <code>facts.late().men</code>
+(<code>silver.rs:1140</code>), which <i>does</i> follow this month&rsquo;s GIVE and BUY &mdash; that was <code>ah-dxfd.2</code>&rsquo;s work.
+So the two cells of one row already disagree about one order, and the ITEMS one is the stale half.</div>
+
+<div class="settled"><b>The sequencing itself is not a design question.</b>
+<code>rules/sequenceofevents</code> puts <i>&ldquo;Give orders. GIVE and TAKE orders are processed&rdquo;</i> nine phases before
+<i>&ldquo;Primary PRODUCE orders&hellip; are processed&rdquo;</i>, and <code>rules/tableiteminfo</code> pays production in man-months, so a unit with no
+men makes nothing. Your symptom 2 is simply a defect: <b>MinersA gives away all eight orcs and is still credited +8 iron.</b>
+The seam to read it correctly already exists &mdash; <code>Ordered::early_men()</code> (<code>semantics.rs:2299</code>), which TAX
+already uses for exactly this reason. <b>What is yours to decide is what the interface says once the number becomes nothing.</b></div>
+
+<div class="aside"><b>Your symptom 3, and why it is not the same bug.</b>
+<code>rules/give</code> defines the <code>ITEMS</code> class as <i>&ldquo;the combination of all of the previous categories&rdquo;</i> &mdash; and
+<code>MAN</code>/<code>MEN</code> is one of those categories. So <code>GIVE 14723 ALL ITEMS</code> hands over the orcs as well as the iron, and
+the unit that is left has nobody to mine with. Under the rules it produces <b>nothing</b>, and the month&rsquo;s iron does <i>not</i> stay
+behind. The app already reads the class that way (<code>class_tags</code>, <code>semantics.rs:3682</code>; <code>tags_moved</code>,
+<code>effects.rs:1263</code>). <b>If you meant &ldquo;give the iron and keep the men&rdquo;, that is <code>GIVE 14723 ALL IRON</code></b> &mdash; and Q3 below is
+about exactly that case, which is the one where the month&rsquo;s production genuinely should stay.</div>
+</header>
+<main>
+
+<h4 class="q"><em>Q1</em> The row when the men leave and production falls to nothing</h4>
+<p>MinersA (5105): 8 orcs, mining 5, 20 iron. Orders <code>GIVE 14723 ALL MEN</code> and <code>PRODUCE IRON</code>.
+After the fix it makes nothing. Today&rsquo;s row would simply stop mentioning production &mdash; no sentence, no mark.
+Iron 20 is unchanged, MEN drops to 0, and nothing anywhere says why the iron did not grow.</p>
+
+<div class="card">
+<div class="stage">
+  <div class="hexlab">Q1&middot;A &mdash; say nothing <span class="rec">&nbsp;&nbsp;cheapest</span></div>
+  <table class="g"><tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+    <tr><td>MinersA (5105)</td><td class="pred">0</td><td>20 IRON, 4 ADMT</td><td>0</td></tr></table>
+  <div class="hover"><b>Items hover</b>was: 8 ORC, 4 ADMT, 20 IRON</div>
+  <ul class="notes">
+    <li>No new string, no new code, no new toggle. The whole bead is then one Rust argument and its tests.</li>
+    <li>The MEN cell already went to 0 in italics with a <code>was: 8</code> tooltip, so the cause is visible one cell to the left.</li>
+    <li class="con">A player who wrote both orders on purpose gets no hint that one of them silently did nothing.</li>
+  </ul>
+</div>
+
+<div class="stage">
+  <div class="hexlab">Q1&middot;B &mdash; a sentence in the ITEMS hover</div>
+  <table class="g"><tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+    <tr><td>MinersA (5105)</td><td class="pred">0</td><td>20 IRON, 4 ADMT</td><td>0</td></tr></table>
+  <div class="hover"><b>Items hover</b>was: 8 ORC, 4 ADMT, 20 IRON<br>
+    <span class="new">This unit produces no iron: its men leave before production resolves.</span></div>
+  <ul class="notes">
+    <li>Lands where every other production sentence already lands &mdash; <code>itemsTooltip</code> already says
+        &ldquo;Includes 8 IRON this unit will produce&hellip;&rdquo; and the cap sentence beside it.</li>
+    <li>No new finding code, no new setting, nothing to toggle. Pure TS, one string.</li>
+    <li class="con">A hover is only seen by someone who hovers. A player scanning forty rows will not.</li>
+  </ul>
+</div>
+
+<div class="stage">
+  <div class="hexlab">Q1&middot;C &mdash; a warning on the PRODUCE line</div>
+  <div class="ed"><span class="ord">unit 5105<br>&nbsp;&nbsp;GIVE 14723 ALL MEN<br>&nbsp;&nbsp;PRODUCE IRON</span>
+    <span class="warn">produces nothing: this unit gives away all its men before production resolves</span></div>
+  <ul class="notes">
+    <li>Sits in the orders pane, where the player is actually looking while writing the orders.</li>
+    <li>Joins the two shipped PRODUCE warnings (<code>produce-without-skill</code>, <code>produce-not-here</code>) and reads like them.</li>
+    <li class="con">A new finding code, a new entry in <code>codes::ALL</code>, a new warning toggle and its generated TS
+        &mdash; roughly doubles the bead.</li>
+  </ul>
+</div>
+
+<div class="stage">
+  <div class="hexlab">Q1&middot;D &mdash; both B and C</div>
+  <ul class="notes">
+    <li>Belt and braces: seen while writing, and explained when hovered.</li>
+    <li class="con">Two surfaces saying one thing, which this codebase has twice had to pull back apart.</li>
+  </ul>
+</div>
+</div>
+
+<h4 class="q"><em>Q2</em> The partial case &mdash; some of the men leave</h4>
+<p>MinersA gives 5 of its 8 orcs away and still orders <code>PRODUCE IRON</code>. It makes 3, not 8.
+The existing cap sentence <span class="mono">&ldquo;This unit has materials for 5 swords, not the 8 its men could make.&rdquo;</span>
+does <b>not</b> fire here: nothing capped the run &mdash; the men themselves are simply fewer.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">Q2&middot;A &mdash; say nothing beyond the number</div>
+  <div class="hover"><b>Items hover</b>was: 8 ORC, 4 ADMT, 20 IRON<br>
+    Includes 3 IRON this unit will produce. Production resolves last, so they cannot be spent this month.</div>
+  <ul class="notes">
+    <li>The MEN cell says 3 in italics with <code>was: 8</code>; the arithmetic is then obvious.</li>
+    <li class="con">Silent about the one thing that surprised you: that a GIVE written above changed a PRODUCE below.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">Q2&middot;B &mdash; name the men as the limit <span class="rec">&nbsp;&nbsp;symmetrical with the cap sentence</span></div>
+  <div class="hover"><b>Items hover</b>was: 8 ORC, 4 ADMT, 20 IRON<br>
+    Includes 3 IRON this unit will produce. Production resolves last, so they cannot be spent this month.<br>
+    <span class="new">This unit has men for 3 iron, not the 8 the report&rsquo;s men could make.</span></div>
+  <ul class="notes">
+    <li>Exactly the shipped <code>capSentence</code> shape with one more <code>ProductionCap</code> variant &mdash;
+        <span class="mono">&ldquo;This unit has {men} for {N}, not the {W} its men could make.&rdquo;</span></li>
+    <li class="con">&ldquo;has men for &hellip; not the &hellip; its men could make&rdquo; says <i>men</i> twice and reads oddly.
+        Needs its own wording rather than the template&rsquo;s.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">Q2&middot;C &mdash; one sentence, its own words</div>
+  <div class="hover"><b>Items hover</b>was: 8 ORC, 4 ADMT, 20 IRON<br>
+    Includes 3 IRON this unit will produce. Production resolves last, so they cannot be spent this month.<br>
+    <span class="new">Its men leave before production resolves: 3 iron rather than the 8 the report&rsquo;s men would have made.</span></div>
+  <ul class="notes">
+    <li>Says the cause and the sequencing in one line, and covers Q1 too when the number is nought.</li>
+    <li class="con">A fourth sentence shape in a hover that already has eight.</li>
+  </ul>
+</div>
+</div>
+
+<h4 class="q"><em>Q3</em> The other direction &mdash; the goods go, the men stay</h4>
+<p>Your symptom 3, written the way that keeps the men: <code>GIVE 14723 ALL IRON</code> and <code>PRODUCE IRON</code>.
+The 20 iron leaves in the Give phase; the 8 the men mine arrive in the last phase and <b>stay</b>. This is the case you expected,
+and it should read as a gain from nothing.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">Q3&middot;A &mdash; as it stands, with the shipped sentence</div>
+  <table class="g"><tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+    <tr><td>MinersA (5105)</td><td>8</td><td class="pred">8 IRON, 8 ORC, 4 ADMT</td><td>0</td></tr></table>
+  <div class="hover"><b>Items hover</b>was: 8 ORC, 4 ADMT, 20 IRON<br>
+    Includes 8 IRON this unit will produce. Production resolves last, so they cannot be spent this month.</div>
+  <ul class="notes">
+    <li>Nothing new is needed: the sentence already explains why the 8 cannot be given away again.</li>
+    <li class="n">This is what the app should already do today. Part of what this bead has to establish is whether it does.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">Q3&middot;B &mdash; spell the sequencing out</div>
+  <div class="hover"><b>Items hover</b>was: 8 ORC, 4 ADMT, 20 IRON<br>
+    <span class="new">Its 20 IRON leave in the Give phase; the 8 below are mined after.</span><br>
+    Includes 8 IRON this unit will produce. Production resolves last, so they cannot be spent this month.</div>
+  <ul class="notes">
+    <li>Answers the &ldquo;where did my iron go&rdquo; question outright for a row whose count barely moved.</li>
+    <li class="con">Two sentences about one tag in one hover.</li>
+  </ul>
+</div>
+</div>
+
+<h4 class="q"><em>Q4</em> The state neither of us has looked at: a gift this app cannot follow</h4>
+<p>A gift of a class the catalogue cannot classify (<code>ADVANCED</code>, <code>MAGIC</code>, <code>SPECIAL</code>) leaves the app
+unable to say what the unit still holds &mdash; <code>Ordered::holdings_unknown()</code>. Its production has to read <i>something</i>.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">Q4&middot;A &mdash; fall back to the report&rsquo;s headcount <span class="rec">&nbsp;&nbsp;what every other term already does</span></div>
+  <table class="g"><tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+    <tr><td>MinersA (5105)</td><td>8</td><td class="pred">28 IRON, 8 ORC, 4 ADMT &nbsp;+ ?</td><td>0</td></tr></table>
+  <div class="hover"><b>Items hover</b>was: 8 ORC, 4 ADMT, 20 IRON<br>
+    Includes 8 IRON this unit will produce. Production resolves last, so they cannot be spent this month.<br>
+    Line 3 could not be counted.</div>
+  <ul class="notes">
+    <li>Identical to today, and to how TAX, STUDY and maintenance already treat the same unit.</li>
+    <li>The row already carries <code>+ ?</code> and the &ldquo;could not be counted&rdquo; line, so the doubt is stated once.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">Q4&middot;B &mdash; show no production at all for that unit</div>
+  <table class="g"><tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+    <tr><td>MinersA (5105)</td><td>8</td><td class="pred">20 IRON, 8 ORC, 4 ADMT &nbsp;+ ?</td><td>0</td></tr></table>
+  <ul class="notes">
+    <li>Never shows a number built on a headcount it knows may be wrong.</li>
+    <li class="con">Diverges from the SILVER cell beside it, which <i>does</i> price production for such a unit &mdash;
+        the exact class of disagreement this bead exists to remove.</li>
+  </ul>
+</div>
+</div>
+
+</main>
+<footer>Round 1 of the ah-qct4 interview. Every table above is a mockup, not a screenshot.
+The <span class="pred">italic blue</span> cells are what the app renders as &ldquo;predicted&rdquo;.</footer>
+</body></html>

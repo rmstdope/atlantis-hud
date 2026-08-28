@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-qct4 &mdash; Round 3: the TAKE, the order of the sentences</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:34px 0 6px; font-size:15px; }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .ed { background:#0c1016; border:1px solid var(--edge); border-radius:6px; padding:10px 12px;
+        font:12.5px/1.7 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); }
+  .ed .ord { color:var(--ink); }
+  table.g { width:100%; border-collapse:separate; border-spacing:0; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.g th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-dim); font-weight:400; padding:3px 12px 6px 0; border-bottom:1px solid var(--edge); }
+  table.g td { padding:5px 12px 5px 0; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  td.bad { color:var(--danger); } td.good { color:var(--ok); } td.k { color:var(--ink-dim); white-space:nowrap; font-size:11.5px; }
+  .pred { font-style:italic; color:var(--select); }
+  .hover { margin-top:9px; background:#0c1016; border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+           font:12px/1.65 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); max-width:86ch; }
+  .hover b { color:var(--ink-dim); font-weight:400; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; display:block; margin-bottom:5px; }
+  .hover .new { color:var(--brass-bright); }
+  .hover .bad { color:var(--danger); }
+  .settled { background:var(--raised); border-left:3px solid var(--ok); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:112ch; }
+  .found { background:var(--raised); border-left:3px solid var(--danger); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:112ch; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+</style></head><body>
+<header><h1>PRODUCE after a GIVE &mdash; <span>round 3: the TAKE, and the order of the sentences</span></h1>
+
+<div class="settled"><b>Settled.</b> <b>Q1/Q5&nbsp;A</b> &mdash; silence when production falls all the way to nothing.
+<b>Q2/Q6&nbsp;B</b> &mdash; <span class="mono">&ldquo;This unit has men for 3 swords: GIVE resolves before production, so the men it
+gives away this month do not work for it.&rdquo;</span> <b>Q3&nbsp;A</b> &mdash; nothing new when the goods go and the men stay.
+<b>Q4&nbsp;A</b> &mdash; a gift this app cannot follow falls back to the report&rsquo;s headcount.
+<b>Q7&nbsp;A</b> &mdash; the materials are fixed too, and the false <code>not-enough-items</code> warning goes with them.
+<b>Q8&nbsp;A</b> &mdash; both the ITEMS and the SILVER hover say it, one string, two callers.</div>
+
+<div class="found"><b>A one-line defect found while proving all this, and it decides whether you would see the fix work at all.</b>
+<code>item_spellings</code> (<code>crates/core/src/movement/rules.rs:374</code>) strips its plural suffixes with lowercase literals:
+<code>written.strip_suffix("es")</code> and <code>written.strip_suffix('s')</code>. So <span class="mono">&ldquo;ORCS&rdquo;</span> strips to
+nothing, resolves to no catalogue item, and the whole transfer is marked unfollowable. Measured, verbatim:
+<span class="mono">[probe moves] Item text=&quot;ORCS&quot; spellings=[Some(&quot;ORCS&quot;), None, None] find_item=None</span>, against
+<span class="mono">text=&quot;orcs&quot; spellings=[Some(&quot;orcs&quot;), None, Some(&quot;orc&quot;)] find_item=Some((&quot;ORC&quot;, &quot;orc&quot;))</span>.
+<b>Consequence:</b> <code>GIVE 14723 ALL ORCS</code> &mdash; the spelling your own report invites, since it prints
+<span class="mono">8 orcs [ORC]</span> &mdash; keeps the phantom production even after this bead&rsquo;s fix. <code>ALL orcs</code>, <code>ALL ORC</code> and
+<code>ALL MEN</code> all work. The plan folds that one line in, because without it the fix visibly fails on the first thing anyone would type.</div>
+</header>
+<main>
+
+<h4 class="q"><em>Q9</em> The same sentence when the men are TAKEN, or discarded</h4>
+<p>Men leave a unit three ways this app follows: the unit <code>GIVE</code>s them, a faction-mate <code>TAKE</code>s them
+(<code>rules/take</code>: &ldquo;works just like the GIVE order, except that the direction of transfer is reversed&rdquo;), or they are discarded
+with <code>GIVE 0</code>. The agreed wording says <i>&ldquo;the men it gives away&rdquo;</i>, which is false for the second and awkward for the third.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">Q9&middot;A &mdash; one sentence, neutral verb <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="ed"><span class="ord">unit 901<br>&nbsp;&nbsp;TAKE FROM 900 5 ORC<br><br>unit 900<br>&nbsp;&nbsp;PRODUCE sword</span></div>
+  <div class="hover"><b>900 &mdash; items hover</b>was: 8 ORC, 20 IRON, 100 SILV<br>
+    Includes 3 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.<br>
+    <span class="new">This unit has men for 3 swords: GIVE and TAKE resolve before production, so the men that leave it this month do not work for it.</span></div>
+  <ul class="notes">
+    <li>True for all three routes, and names both orders the player might have written.</li>
+    <li>One string to write, one to test, one to keep in step with the rules.</li>
+    <li class="con">Very slightly longer, and names TAKE even to a player who wrote a GIVE.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">Q9&middot;B &mdash; two sentences, one per route</div>
+  <div class="hover"><b>after a GIVE</b>&hellip; <span class="new">This unit has men for 3 swords: GIVE resolves before production, so the men it gives away this month do not work for it.</span></div>
+  <div class="hover"><b>after a TAKE</b>&hellip; <span class="new">This unit has men for 3 swords: TAKE resolves before production, so the men taken from it this month do not work for it.</span></div>
+  <ul class="notes">
+    <li>Each reads exactly right for the order that caused it.</li>
+    <li class="con">The core must carry <i>which</i> route emptied the unit &mdash; a new field on the wire, for a wording difference.</li>
+    <li class="con">A unit that both gives and is taken from in one month has no sentence to show.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">Q9&middot;C &mdash; keep the agreed wording and say nothing after a TAKE</div>
+  <div class="hover"><b>after a TAKE &mdash; items hover</b>was: 8 ORC, 20 IRON, 100 SILV<br>
+    Includes 3 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.</div>
+  <ul class="notes">
+    <li>Nothing to decide; the string you already chose ships unchanged.</li>
+    <li class="con">The unit whose men were taken by somebody <i>else</i> is the one whose owner is most likely to be surprised,
+        and it is the one told nothing.</li>
+  </ul>
+</div>
+</div>
+
+<h4 class="q"><em>Q10</em> Where the new sentence sits when the materials also bite</h4>
+<p>Give 5 of 8 men away <i>and</i> 15 of 20 iron away. The men allow 3 swords, the iron allows 5, so it makes 3 &mdash; and both
+sentences have something to say. The shipped materials sentence is the one that refers to &ldquo;the 3 its men could make&rdquo;.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">Q10&middot;A &mdash; the men sentence first, explaining the number the other one quotes <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="hover"><b>Items hover</b>was: 8 ORC, 20 IRON, 100 SILV<br>
+    Includes 3 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.<br>
+    <span class="new">This unit has men for 3 swords: GIVE and TAKE resolve before production, so the men that leave it this month do not work for it.</span><br>
+    This unit has materials for 5 swords, not the 3 its men could make.</div>
+  <ul class="notes">
+    <li>Reads in causal order: why there are three men&rsquo;s worth, then what the iron would have allowed.</li>
+    <li class="con">The materials line then says &ldquo;5 &hellip; not the 3&rdquo;, which is the larger number first and looks wrong at a glance.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">Q10&middot;B &mdash; keep the shipped sentence where it is, men sentence after</div>
+  <div class="hover"><b>Items hover</b>was: 8 ORC, 20 IRON, 100 SILV<br>
+    Includes 3 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.<br>
+    This unit has materials for 5 swords, not the 3 its men could make.<br>
+    <span class="new">This unit has men for 3 swords: GIVE and TAKE resolve before production, so the men that leave it this month do not work for it.</span></div>
+  <ul class="notes">
+    <li>Nothing already shipped moves; the new line is simply appended to the production block.</li>
+    <li class="con">The reader meets &ldquo;the 3 its men could make&rdquo; before anything has explained why it is 3.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">Q10&middot;C &mdash; only ever one of them, men taking precedence</div>
+  <div class="hover"><b>Items hover</b>was: 8 ORC, 20 IRON, 100 SILV<br>
+    Includes 3 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.<br>
+    <span class="new">This unit has men for 3 swords: GIVE and TAKE resolve before production, so the men that leave it this month do not work for it.</span></div>
+  <ul class="notes">
+    <li>Shortest hover, and names the limit that actually bound the run.</li>
+    <li class="con">Hides the fact that the iron would have run out at 5 anyway &mdash; which matters if the player puts the men back.</li>
+  </ul>
+</div>
+</div>
+
+</main>
+<footer>Round 3 of the ah-qct4 interview. Rounds 1 and 2 are
+<span class="mono">ah-qct4-r1-what-the-row-says.html</span> and <span class="mono">ah-qct4-r2-words-and-materials.html</span>
+in the same folder. Every quoted &ldquo;today&rdquo; string in rounds 2 and 3 is real output from a throwaway probe over the real code.</footer>
+</body></html>
