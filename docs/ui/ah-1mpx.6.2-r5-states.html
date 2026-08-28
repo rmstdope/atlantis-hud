@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-1mpx.6.2 &mdash; Round 5: the states behind S2</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:34px 0 6px; font-size:15px; color:var(--ink); }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .dlg { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px 16px;
+         font:13px/1.6 'Helvetica Neue',Arial,sans-serif; max-width:620px; }
+  .hr { border-top:1px solid var(--edge); margin:9px 0 7px; }
+  .notice { font-size:12px; color:var(--ink-soft); display:flex; gap:8px; margin-top:6px; }
+  .dot { flex:0 0 auto; width:7px; height:7px; border-radius:50%; margin-top:6px; }
+  .dot.rem { background:var(--brass); } .dot.for { background:var(--select); }
+  .dot.dim { background:var(--ink-dim); } .dot.warn { background:var(--brass); } .dot.bad { background:var(--danger); }
+  .btns { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+  .btn { border:1px solid var(--edge); border-radius:4px; padding:3px 10px; font-size:12px; color:var(--ink-soft); }
+  .btn.go { border-color:var(--brass); color:var(--brass); }
+  .btn.off { border-color:var(--edge); color:var(--ink-dim); }
+  table.g { width:100%; border-collapse:separate; border-spacing:0; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  table.g th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-dim); font-weight:400; padding:3px 10px 6px 0; border-bottom:1px solid var(--edge); }
+  table.g td { padding:5px 10px 5px 0; border-bottom:1px solid var(--edge-soft); vertical-align:top; color:var(--ink); }
+  table.g td.k { color:var(--ink-dim); white-space:nowrap; font-size:11.5px; }
+  table.g td.bad { color:var(--danger); }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+  .settled { background:var(--raised); border-left:3px solid var(--ok); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:110ch; }
+</style></head><body>
+<header><h1>Round 5 &mdash; <span>the states behind S2</span></h1>
+<div class="settled"><b>Chosen in round 4:</b> <b>S2</b> &mdash; a grey notice while the scan runs and <i>Export&hellip;</i> disabled until it lands. <b>W4-B</b> &mdash; three sentence shapes, all / some / none. <b>N1</b> &mdash; a turn imported now folds in now.</div>
+<p>S2 raises three things the happy path hides, and W4-B leaves one plural to pin down. Nothing here reopens a round-4 choice.</p></header>
+<main>
+
+<h4 class="q"><em>V</em> When the waiting line is shown at all</h4>
+<p>The scan is often over before the dialog can be opened, and on a game with one stored turn it is instant. A line that appears for 80&nbsp;ms and vanishes is a flicker, not information. And a file with <b>no foreign units in it</b> does not depend on the scan at all.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">V1 &mdash; only when it would change something <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <table class="g">
+    <tr><th>Situation</th><th>What the dialog does</th></tr>
+    <tr><td class="k">Scan running, foreign units in the file</td><td>Waiting line shown, <i>Export&hellip;</i> off.</td></tr>
+    <tr><td class="k">Scan running, <b>no</b> foreign units</td><td>Nothing shown, <i>Export&hellip;</i> on. The scan cannot change this file.</td></tr>
+    <tr><td class="k">Scan already finished</td><td>Nothing shown, <i>Export&hellip;</i> on, the real foreign notice in place.</td></tr>
+    <tr><td class="k">Game has no stored turns</td><td>Scan finishes with nothing at once; nothing shown.</td></tr>
+  </table>
+  <ul class="notes">
+    <li>The player is only ever made to wait for something that would actually change their file.</li>
+    <li>An all-own-units export &mdash; the common case &mdash; is untouched by this bead entirely.</li>
+    <li class="con">Two conditions rather than one, so the rule has to be stated rather than assumed.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">V2 &mdash; whenever the scan is running, always</div>
+  <table class="g">
+    <tr><th>Situation</th><th>What the dialog does</th></tr>
+    <tr><td class="k">Scan running, foreign units in the file</td><td>Waiting line shown, <i>Export&hellip;</i> off.</td></tr>
+    <tr><td class="k">Scan running, <b>no</b> foreign units</td><td class="bad">Waiting line shown, <i>Export&hellip;</i> off &mdash; for a file the scan can have no effect on.</td></tr>
+    <tr><td class="k">Scan already finished</td><td>Nothing shown.</td></tr>
+  </table>
+  <ul class="notes">
+    <li>One condition. Trivially explainable: &ldquo;we are still reading, so wait&rdquo;.</li>
+    <li class="con">Blocks an export of your own units for a reason that has nothing to do with them.</li>
+  </ul>
+</div>
+</div>
+
+<h4 class="q"><em>F</em> A stored turn that will not load or will not parse</h4>
+<p>The scan walks every stored turn. One of them may fail &mdash; a truncated row, a storage read that rejects. The other turns are fine and their skills are perfectly good.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">F1 &mdash; carry on with what was read, and say so in the dialog <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="dlg">
+    <div>14 units will be exported.</div>
+    <div class="notice"><span class="dot for"></span><span>6 units belong to another faction. 4 of them go out with combat skills read from battle reports; the other 2 go out with none.</span></div>
+    <div class="notice"><span class="dot warn"></span><span>2 stored turns could not be read. Any battle in them was not counted.</span></div>
+    <div class="btns"><span class="btn">Cancel</span><span class="btn go">Export&hellip;</span></div>
+  </div>
+  <ul class="notes">
+    <li>The export still happens, and still carries everything that <i>was</i> recovered.</li>
+    <li>Says that the answer is incomplete in the one place where being incomplete costs something.</li>
+    <li>Singular: <span class="mono">&ldquo;1 stored turn could not be read. Any battle in it was not counted.&rdquo;</span></li>
+    <li class="con">A fourth possible notice line.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">F2 &mdash; carry on silently; log it and nothing more</div>
+  <div class="dlg">
+    <div>14 units will be exported.</div>
+    <div class="notice"><span class="dot for"></span><span>6 units belong to another faction. 4 of them go out with combat skills read from battle reports; the other 2 go out with none.</span></div>
+    <div class="btns"><span class="btn">Cancel</span><span class="btn go">Export&hellip;</span></div>
+  </div>
+  <ul class="notes">
+    <li>Matches how the Armies store already treats a failed cache write: log, swallow, never roll the turn back.</li>
+    <li>No fourth line for a case most players will never hit.</li>
+    <li class="con">The dialog states a count &mdash; &ldquo;4 of them&rdquo; &mdash; that is quietly a floor rather than the answer.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">F3 &mdash; treat it as a failure of the whole scan</div>
+  <div class="dlg">
+    <div>14 units will be exported.</div>
+    <div class="notice"><span class="dot bad"></span><span>This game's battle reports could not be read. No foreign unit's skills were recovered.</span></div>
+    <div class="btns"><span class="btn">Cancel</span><span class="btn go">Export&hellip;</span></div>
+  </div>
+  <ul class="notes">
+    <li>Never states a number that is secretly partial.</li>
+    <li class="con">Throws away 30 good turns because of one bad one, which is the opposite of what the player wants.</li>
+  </ul>
+</div>
+</div>
+
+<h4 class="q"><em>P</em> W4-B's plurals, written out</h4>
+<p>The mixed sentence names three numbers, and any of them can be 1. These are the exact strings; there is nothing left for the implementer to decide.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">P1 &mdash; every number agrees with its own noun <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <table class="g">
+    <tr><th>Foreign / recovered</th><th>The sentence</th></tr>
+    <tr><td class="k">6 / 4</td><td>6 units belong to another faction. 4 of them go out with combat skills read from battle reports; the other 2 go out with none.</td></tr>
+    <tr><td class="k">2 / 1</td><td>2 units belong to another faction. 1 of them goes out with combat skills read from battle reports; the other goes out with none.</td></tr>
+    <tr><td class="k">3 / 2</td><td>3 units belong to another faction. 2 of them go out with combat skills read from battle reports; the other goes out with none.</td></tr>
+    <tr><td class="k">3 / 1</td><td>3 units belong to another faction. 1 of them goes out with combat skills read from battle reports; the other 2 go out with none.</td></tr>
+    <tr><td class="k">4 / 4</td><td>4 units belong to another faction. All of them go out with combat skills read from battle reports.</td></tr>
+    <tr><td class="k">1 / 1</td><td>1 unit belongs to another faction. It goes out with combat skills read from battle reports.</td></tr>
+    <tr><td class="k">6 / 0</td><td>6 units belong to another faction. They go out with no skills &mdash; no battle we have seen involved any of them.</td></tr>
+    <tr><td class="k">1 / 0</td><td>1 unit belongs to another faction. It goes out with no skills &mdash; no battle we have seen involved it.</td></tr>
+  </table>
+  <ul class="notes">
+    <li>&ldquo;the other&rdquo; when one remains, &ldquo;the other N&rdquo; when more do &mdash; so no sentence ever reads &ldquo;the other 1&rdquo;.</li>
+    <li class="n">Four templates in the code: mixed, all, none, and their singular openings.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">P2 &mdash; keep the count in every slot</div>
+  <table class="g">
+    <tr><th>Foreign / recovered</th><th>The sentence</th></tr>
+    <tr><td class="k">2 / 1</td><td class="bad">2 units belong to another faction. 1 of them goes out with combat skills read from battle reports; the other 1 goes out with none.</td></tr>
+    <tr><td class="k">3 / 2</td><td class="bad">3 units belong to another faction. 2 of them go out with combat skills read from battle reports; the other 1 goes out with none.</td></tr>
+  </table>
+  <ul class="notes">
+    <li>One rule, mechanically applied.</li>
+    <li class="con">&ldquo;the other 1&rdquo; reads as a typo, and a two-unit Army is not a rare case.</li>
+  </ul>
+</div>
+</div>
+
+</main>
+<footer>Every sentence on this page is quoted, not paraphrased: whatever is chosen is written into the code verbatim and into the bead&rsquo;s plan.</footer>
+</body></html>

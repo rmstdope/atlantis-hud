@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-1mpx.6.2 &mdash; Round 6: who gets filled, and how the lines stack</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:34px 0 6px; font-size:15px; color:var(--ink); }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .dlg { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px 16px;
+         font:13px/1.6 'Helvetica Neue',Arial,sans-serif; max-width:620px; }
+  .notice { font-size:12px; color:var(--ink-soft); display:flex; gap:8px; margin-top:6px; }
+  .dot { flex:0 0 auto; width:7px; height:7px; border-radius:50%; margin-top:6px; }
+  .dot.warn { background:var(--brass); } .dot.dim { background:var(--ink-dim); }
+  table.g { width:100%; border-collapse:separate; border-spacing:0; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  table.g th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-dim); font-weight:400; padding:3px 10px 6px 0; border-bottom:1px solid var(--edge); }
+  table.g td { padding:5px 10px 5px 0; border-bottom:1px solid var(--edge-soft); vertical-align:top; color:var(--ink); }
+  table.g td.k { color:var(--ink-dim); white-space:nowrap; font-size:11.5px; }
+  table.g td.bad { color:var(--danger); } table.g td.good { color:var(--ok); }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+  .settled { background:var(--raised); border-left:3px solid var(--ok); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:110ch; }
+</style></head><body>
+<header><h1>Round 6 &mdash; <span>who gets filled, and how the lines stack</span></h1>
+<div class="settled"><b>Settled so far:</b> S2 + V1 (wait only when it matters), W4-B + P1 (three sentence shapes, agreeing plurals), F1 (carry on and name the turns that failed), N1 (a turn imported now folds in now).</div>
+<p>Two last things. The first is a behaviour fork the notice's own wording raises; the second is the stack, which now has four possible lines in it.</p></header>
+<main>
+
+<h4 class="q"><em>O</em> An <b>own</b> unit that has no skills of its own</h4>
+<p>The rule agreed in round 1 is <i>a derived skill never displaces a real one</i>. That settles a unit that <b>has</b> skills. It does not settle a unit of your own that has <b>none</b> &mdash; a newly recruited unit that has studied nothing, or one remembered from an old turn where none were listed &mdash; and which turns up in a battle roster.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">O1 &mdash; foreign units only <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <table class="g">
+    <tr><th>Member</th><th>What it exports</th></tr>
+    <tr><td class="k">Foreign, no skills, was in a battle</td><td class="good">Filled from the roster.</td></tr>
+    <tr><td class="k">Foreign, no skills, no battle</td><td>Empty, as today.</td></tr>
+    <tr><td class="k"><b>Own</b>, no skills, was in a battle</td><td>Empty. Its own report is the authority on it.</td></tr>
+    <tr><td class="k">Own, has skills</td><td>Its own, as today.</td></tr>
+  </table>
+  <ul class="notes">
+    <li>Your own report lists your own units' skills in full and every turn. A roster is at best as good and usually older &mdash; so for your own units it is a worse source, not a fallback.</li>
+    <li>An empty skill list on an own unit is the truth: it really has studied nothing.</li>
+    <li>Keeps the dialog honest &mdash; every sentence it says is about units that <i>belong to another faction</i>, and the count matches exactly what was filled.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">O2 &mdash; anyone with an empty skill list</div>
+  <table class="g">
+    <tr><th>Member</th><th>What it exports</th></tr>
+    <tr><td class="k">Foreign, no skills, was in a battle</td><td class="good">Filled from the roster.</td></tr>
+    <tr><td class="k"><b>Own</b>, no skills, was in a battle</td><td class="bad">Filled from the roster &mdash; possibly from a turn older than the report on screen.</td></tr>
+  </table>
+  <ul class="notes">
+    <li>One rule &mdash; &ldquo;fill any empty list&rdquo; &mdash; with no notion of ownership in it.</li>
+    <li class="con">Can put <i>stale</i> skills on a unit whose current, complete truth is in the report on screen.</li>
+    <li class="con">The notice counts only foreign units, so a filled own unit is invisible in every sentence the dialog says.</li>
+  </ul>
+</div>
+</div>
+
+<h4 class="q"><em>L</em> The order of the notice lines</h4>
+<p>There were three kinds; there are now up to four at once. Today's order is <i>remembered</i>, <i>foreign</i>, <i>empty side</i>, and the marker is brass for a caveat and grey for the empty side.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">L1 &mdash; the new lines sit with what they qualify <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="dlg">
+    <div>14 units will be exported.</div>
+    <div class="notice"><span class="dot warn"></span><span>2 units were not in this turn's report. They go out as they were when last seen.</span></div>
+    <div class="notice"><span class="dot warn"></span><span>6 units belong to another faction. 4 of them go out with combat skills read from battle reports; the other 2 go out with none.</span></div>
+    <div class="notice"><span class="dot warn"></span><span>2 stored turns could not be read. Any battle in them was not counted.</span></div>
+    <div class="notice"><span class="dot dim"></span><span>The defending side will be empty.</span></div>
+  </div>
+  <ul class="notes">
+    <li>The &ldquo;turns could not be read&rdquo; line sits <b>directly under</b> the sentence whose count it qualifies, where it is read as qualifying it.</li>
+    <li>While the scan runs, the grey <span class="mono">Still reading this game's battle reports&hellip;</span> line takes the foreign line's place &mdash; same slot, so nothing below it moves when it is swapped out.</li>
+    <li class="n">Markers: brass for both new caveats except the transient waiting line, which is grey like <i>empty side</i> &mdash; it is not a caveat about the file, it is a state that is about to end.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">L2 &mdash; the scan's own lines go last, before the empty side</div>
+  <div class="dlg">
+    <div>14 units will be exported.</div>
+    <div class="notice"><span class="dot warn"></span><span>2 units were not in this turn's report. They go out as they were when last seen.</span></div>
+    <div class="notice"><span class="dot warn"></span><span>6 units belong to another faction. 4 of them go out with combat skills read from battle reports; the other 2 go out with none.</span></div>
+    <div class="notice"><span class="dot dim"></span><span>Still reading this game's battle reports. The foreign units' skills are not counted yet.</span></div>
+    <div class="notice"><span class="dot dim"></span><span>The defending side will be empty.</span></div>
+  </div>
+  <ul class="notes">
+    <li>Everything about the scan is in one place, at the bottom.</li>
+    <li class="con">The waiting line and the foreign line are then <b>both</b> on screen saying contradictory things &mdash; a count, and then that the count is not ready.</li>
+  </ul>
+</div>
+</div>
+
+</main>
+<footer>Every sentence on this page is quoted, not paraphrased.</footer>
+</body></html>
