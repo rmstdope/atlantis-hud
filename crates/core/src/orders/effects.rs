@@ -3560,6 +3560,37 @@ mod tests {
             assert_eq!(giver.unit.men, 0, "every orc left this unit");
             assert_eq!(held(giver, "ORC"), 0, "no orcs remain in the item list");
         }
+
+        /// `rules/tableiteminfo` pays production in man-months - "The higher the skill of the unit,
+        /// the more productive each man-month of work will be" - so a unit with no men left at
+        /// PRODUCE time makes nothing, and its materials stay where they are.
+        #[test]
+        fn a_unit_that_gives_its_men_away_produces_nothing() {
+            let response = preview_gift("GIVE 901 ALL MEN\nPRODUCE sword");
+            let giver = giver(&response);
+
+            assert!(
+                giver.produced.is_empty(),
+                "no men, no production: {:?}",
+                giver.produced
+            );
+            assert_eq!(held(giver, "SWOR"), 0, "no phantom swords in the item list");
+            assert_eq!(held(giver, "IRON"), 20, "the iron was never spent");
+        }
+
+        /// Half the men leave, so half the month's work does.
+        #[test]
+        fn a_unit_that_gives_half_its_men_away_produces_half() {
+            let response = preview_gift("GIVE 901 4 ORC\nPRODUCE sword");
+
+            assert_eq!(
+                giver(&response).produced,
+                vec![ProducedItem {
+                    amount: 4,
+                    tag: "SWOR".to_string(),
+                }]
+            );
+        }
     }
 
     /// `ah-bxgs`. `TRANSPORT`/`DISTRIBUTE` moves goods between units that need not share a hex,
