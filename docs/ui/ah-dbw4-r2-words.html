@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-dbw4 &mdash; round 2: the words, and what gives way in a narrow window</title><style>
+:root {
+  --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+  --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+  --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  --a-ground:#1b212a; --a-panel:#222933; --a-raised:#2a323d; --a-edge:#46525f; --a-edge-soft:#333d49;
+  --a-ink:#d4dce6; --a-ink-soft:#a8b4c2; --a-ink-dim:#99a4b2;
+  --a-brass:#e0b25a; --a-brass-bright:#eebe63; --a-select:#5aa9de; --a-ok:#4fb783;
+  --a-warn:#d9a441; --a-danger:#e89494; --a-ring:#f5f8fc;
+  --a-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+header, main, footer { max-width:1420px; margin:0 auto; }
+h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+p.lede { color:var(--brass-bright); font-size:15.5px; font-style:italic; max-width:96ch; margin-top:12px; }
+code, .mono { font-family:var(--a-mono); }
+header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+.stage { background:#0b0f15; border:1px solid var(--edge-soft); border-radius:8px; padding:12px; overflow-x:auto; }
+.hexlab { font:10.5px/1 var(--a-mono); letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
+.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+.notes li.con::before { content:"\2212 "; color:var(--danger); }
+.notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+.split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+.split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+footer { margin-top:42px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+.rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+.settled { background:#4fb7831a; border:1px solid #4fb78355; border-radius:8px; padding:12px 16px; margin:14px 0 4px;
+           font-size:13px; color:var(--ink-soft); }
+.settled b { color:var(--ok); }
+
+.app { position:relative; overflow:hidden; border-radius:6px; border:1px solid #000;
+       background:var(--a-ground); color:var(--a-ink); font:13px/1.35 var(--a-mono);
+       display:flex; flex-direction:column; }
+.app *, .app *::before { box-sizing:border-box; }
+.pane { display:flex; flex-direction:column; min-height:0; flex:1; background:var(--a-panel); }
+.strip { flex:none; display:flex; align-items:center; gap:8px; padding:6px 8px; font-size:12px;
+         border-bottom:1px solid var(--a-edge); color:var(--a-ink); overflow:hidden; }
+.strip .att { color:var(--a-brass); }
+.strip .att-dim { color:var(--a-ink-dim); }
+.fx { flex:none; }
+.shr { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chip { display:inline-flex; align-items:center; min-width:0; white-space:nowrap; gap:6px;
+        border:1px solid var(--a-brass); border-radius:4px; padding:0 3px 0 7px; color:var(--a-brass-bright); }
+.chip .nm { overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.chip .x { color:var(--a-ink-dim); flex:none; padding:0 3px; }
+.ut { width:100%; border-collapse:collapse; font-size:12px; }
+.ut td { padding:3px 6px; border-bottom:1px solid var(--a-edge-soft); color:var(--a-ink-soft); }
+.ut td.idfor { color:#f07070; }
+.ruler { font:10px/1 var(--a-mono); color:var(--ink-dim); letter-spacing:.1em; margin-bottom:5px; }
+</style></head><body>
+
+<header>
+<h1>ah-dbw4 &mdash; <span>round 2: the words, and the narrow window</span></h1>
+<p>Round 1 is settled. This page is the three things those answers left open, each of which the
+implementer would otherwise have to invent.</p>
+<div class="settled">
+  <b>Settled in round 1:</b> the chip is a <b>brass outline with square corners</b> holding the name and
+  the <b>&#10005;</b> (A) &middot; the attitude follows it after a <b>dim <code>you have declared</code>
+  lead-in</b> (2) &middot; the <b>Army strip is left exactly as it is</b> (X) &middot; the concealed-owner
+  sentence keeps its <b>current wording</b> (P). Nothing below reopens any of that.
+</div>
+</header>
+
+<main>
+
+<h3 class="sec">Q5 &mdash; what the strip says when no attitude has been declared</h3>
+<p>A faction with no declaration of its own falls back to your default attitude, and if there is none
+either, <code>attitudeToward</code> returns null and the strip prints <code>not declared</code> today.
+With the lead-in in front of it that becomes <b>&ldquo;you have declared not declared&rdquo;</b>, which
+does not read.</p>
+<div class="split3">
+  <div class="card"><div class="hexlab">Option 5a &mdash; drop the lead-in in this one case <span class="rec">recommended</span></div>
+    <div class="stage"><div class="app" style="width:400px"><div class="pane">
+      <div class="strip">
+        <span class="chip"><span class="nm">Grey Company (17)</span><span class="x">&#10005;</span></span>
+        <span class="att fx">not declared</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">4010</td><td>Woodsmen</td><td>(8,30)</td></tr></table>
+    </div></div></div>
+    <div class="stage" style="margin-top:10px"><div class="app" style="width:400px"><div class="pane">
+      <div class="strip">
+        <span class="chip"><span class="nm">Thane's Ring (10)</span><span class="x">&#10005;</span></span>
+        <span class="att-dim fx">you have declared</span><span class="att fx">hostile</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>No new words at all &mdash; both strings already ship and are already verified.</li>
+      <li><code>not declared</code> stands alone perfectly well; it is a statement, not an attitude.</li>
+      <li class="con">The strip has two shapes: sometimes a lead-in, sometimes not.</li>
+    </ul>
+  </div>
+  <div class="card"><div class="hexlab">Option 5b &mdash; one lead-in, reworded so both cases fit</div>
+    <div class="stage"><div class="app" style="width:400px"><div class="pane">
+      <div class="strip">
+        <span class="chip"><span class="nm">Grey Company (17)</span><span class="x">&#10005;</span></span>
+        <span class="att-dim fx">your attitude</span><span class="att fx">not declared</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">4010</td><td>Woodsmen</td><td>(8,30)</td></tr></table>
+    </div></div></div>
+    <div class="stage" style="margin-top:10px"><div class="app" style="width:400px"><div class="pane">
+      <div class="strip">
+        <span class="chip"><span class="nm">Thane's Ring (10)</span><span class="x">&#10005;</span></span>
+        <span class="att-dim fx">your attitude</span><span class="att fx">hostile</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>One shape, always. The lead-in never has to be conditional.</li>
+      <li>Two words rather than three, so less of the strip is spent on it.</li>
+      <li class="con">Changes the lead-in you chose in round 1 (<code>you have declared</code>).</li>
+      <li class="con">Slightly weaker: &ldquo;your attitude&rdquo; does not say you <i>declared</i> it.</li>
+    </ul>
+  </div>
+  <div class="card"><div class="hexlab">Option 5c &mdash; change the null word instead</div>
+    <div class="stage"><div class="app" style="width:400px"><div class="pane">
+      <div class="strip">
+        <span class="chip"><span class="nm">Grey Company (17)</span><span class="x">&#10005;</span></span>
+        <span class="att-dim fx">you have declared</span><span class="att fx">nothing</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">4010</td><td>Woodsmen</td><td>(8,30)</td></tr></table>
+    </div></div></div>
+    <div class="stage" style="margin-top:10px"><div class="app" style="width:400px"><div class="pane">
+      <div class="strip">
+        <span class="chip"><span class="nm">Thane's Ring (10)</span><span class="x">&#10005;</span></span>
+        <span class="att-dim fx">you have declared</span><span class="att fx">hostile</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>Keeps the round-1 lead-in exactly, and reads as a whole sentence.</li>
+      <li class="con">Retires <code>not declared</code>, a string that ships and is pinned by a test.</li>
+      <li class="con">&ldquo;nothing&rdquo; where every other faction shows a word like <code>ally</code>
+        is easy to skim past.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">Q6 &mdash; what gives way first when the pane is narrow</h3>
+<p>Rule already agreed in <code>ah-1mpx.5</code> W3, unchanged: <b>the attitude word never disappears</b>,
+and the strip never wraps. The new question is what the lead-in does when there is not room for
+everything. Both are drawn at a 290px pane.</p>
+<div class="split">
+  <div class="card"><div class="hexlab">Option 6a &mdash; the lead-in is dropped whole, the name keeps its room <span class="rec">recommended</span></div>
+    <div class="ruler">290px pane</div>
+    <div class="stage"><div class="app" style="width:290px"><div class="pane">
+      <div class="strip">
+        <span class="chip" style="min-width:0"><span class="nm">The Most Righteous Ord&hellip;</span><span class="x">&#10005;</span></span>
+        <span class="att fx">hostile</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr></table>
+    </div></div></div>
+    <div class="ruler" style="margin-top:12px">430px pane &mdash; the lead-in is back</div>
+    <div class="stage"><div class="app" style="width:430px"><div class="pane">
+      <div class="strip">
+        <span class="chip"><span class="nm">The Most Righteous Order (34)</span><span class="x">&#10005;</span></span>
+        <span class="att-dim fx">you have declared</span><span class="att fx">hostile</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>The lead-in is the only thing on the strip carrying no information &mdash; it is glue. So it is
+        the right thing to spend first.</li>
+      <li>Below the threshold the strip is exactly what round 1's Option&nbsp;1 would have been, which is
+        a shape you already found acceptable.</li>
+      <li>The name keeps far more of itself: <code>The Most Righteous Ord&hellip;</code> rather than
+        <code>The Most Rig&hellip;</code>.</li>
+      <li class="con">Needs a container query or a resize observer &mdash; the strip has to know its own
+        width. That is real work, and this app has no such helper today.</li>
+    </ul>
+  </div>
+  <div class="card"><div class="hexlab">Option 6b &mdash; the lead-in shrinks and ellipsises before the name does</div>
+    <div class="ruler">290px pane</div>
+    <div class="stage"><div class="app" style="width:290px"><div class="pane">
+      <div class="strip">
+        <span class="chip" style="min-width:0"><span class="nm">The Most Righ&hellip;</span><span class="x">&#10005;</span></span>
+        <span class="att-dim shr" style="max-width:52px">you have declared</span><span class="att fx">hostile</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr></table>
+    </div></div></div>
+    <div class="ruler" style="margin-top:12px">430px pane</div>
+    <div class="stage"><div class="app" style="width:430px"><div class="pane">
+      <div class="strip">
+        <span class="chip"><span class="nm">The Most Righteous Order (34)</span><span class="x">&#10005;</span></span>
+        <span class="att-dim fx">you have declared</span><span class="att fx">hostile</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>Pure CSS &mdash; two flex children with <code>min-w-0 truncate</code> and a shrink ratio. No
+        width measurement anywhere, so nothing to test with a fake observer.</li>
+      <li>Continuous: nothing pops in or out as you drag the divider.</li>
+      <li class="con">A half-eaten <code>you have de&hellip;</code> is worse than no lead-in at all &mdash;
+        it looks like a rendering fault.</li>
+      <li class="con">The name loses more of itself, and the name is the fact.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">Q7 &mdash; the concealed-owner sentence in a narrow pane</h3>
+<p>Its chip is short and fixed (<code>Faction not shown</code>); the sentence beside it is long. Something
+has to give at 290px. Round 1 settled the <i>wording</i>; this is what happens to it when it does not fit.</p>
+<div class="split3">
+  <div class="card"><div class="hexlab">Option 7a &mdash; the sentence truncates, chip untouched <span class="rec">recommended</span></div>
+    <div class="stage"><div class="app" style="width:290px"><div class="pane">
+      <div class="strip">
+        <span class="chip fx"><span class="nm">Faction not shown</span><span class="x">&#10005;</span></span>
+        <span class="att-dim shr">Their owner is concealed from you this turn.</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3199</td><td>&mdash;</td><td>(12,54)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>The chip is the way out of the pin; it must never shrink to nothing.</li>
+      <li>The sentence is explanatory, and the full text stays in its <code>title</code>.</li>
+      <li>&ldquo;Their owner is conce&hellip;&rdquo; still carries the point.</li>
+    </ul>
+  </div>
+  <div class="card"><div class="hexlab">Option 7b &mdash; the sentence is dropped below the threshold</div>
+    <div class="stage"><div class="app" style="width:290px"><div class="pane">
+      <div class="strip">
+        <span class="chip fx"><span class="nm">Faction not shown</span><span class="x">&#10005;</span></span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3199</td><td>&mdash;</td><td>(12,54)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>No half-sentence on screen.</li>
+      <li class="n">Same mechanism as 6a if 6a wins, so no extra machinery.</li>
+      <li class="con"><code>Faction not shown</code> alone leaves the reader to guess why, which is the
+        thing the sentence exists to prevent.</li>
+    </ul>
+  </div>
+  <div class="card"><div class="hexlab">Option 7c &mdash; both share the space evenly</div>
+    <div class="stage"><div class="app" style="width:290px"><div class="pane">
+      <div class="strip">
+        <span class="chip" style="min-width:0"><span class="nm">Faction not sh&hellip;</span><span class="x">&#10005;</span></span>
+        <span class="att-dim shr">Their owner is conce&hellip;</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3199</td><td>&mdash;</td><td>(12,54)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li class="n">The same rule as the ordinary case, applied without a special case.</li>
+      <li class="con">Truncating <code>Faction not shown</code> gains nothing &mdash; it is short, fixed,
+        and the reader needs all of it.</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+<footer>Mockup for bead <code>ah-dbw4</code>, round 2. Colours are the application's own tokens from
+<code>packages/shared/src/theme.css</code>. Nothing here is application code.</footer>
+</body></html>
