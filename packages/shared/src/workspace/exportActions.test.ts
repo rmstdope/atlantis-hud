@@ -6,6 +6,7 @@ import {
   deliverOrdersExport
 } from "./exportActions";
 import { battleFileOf, battleFileText } from "../armyExport";
+import { NO_DERIVED_SKILLS } from "../battleSkills";
 import type { ArmyMemberRecord, ArmyRecord } from "@atlantis/core-client";
 import { exportFileName } from "../mapExport";
 
@@ -141,11 +142,11 @@ describe("deliverArmyExport", () => {
     const saveTextFile = vi.fn().mockResolvedValue("/chosen/northern-host.json");
     const northern = army("Northern Host");
 
-    const path = await deliverArmyExport(saveTextFile, northern, null);
+    const path = await deliverArmyExport(saveTextFile, northern, null, NO_DERIVED_SKILLS);
 
     expect(saveTextFile).toHaveBeenCalledWith(
       "northern-host.json",
-      battleFileText(battleFileOf(northern, null)),
+      battleFileText(battleFileOf(northern, null, NO_DERIVED_SKILLS)),
       "application/json"
     );
     expect(path).toBe("/chosen/northern-host.json");
@@ -154,6 +155,6 @@ describe("deliverArmyExport", () => {
   it("reports a cancelled save as null so the dialog may stay open", async () => {
     const saveTextFile = vi.fn().mockResolvedValue(null);
 
-    await expect(deliverArmyExport(saveTextFile, army("Northern Host"), null)).resolves.toBeNull();
+    await expect(deliverArmyExport(saveTextFile, army("Northern Host"), null, NO_DERIVED_SKILLS)).resolves.toBeNull();
   });
 });

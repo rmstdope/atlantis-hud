@@ -19,6 +19,12 @@ const OWN_UNIT = "18642";
 /** Another of the player's units, standing in the ocean at (26,52) - somewhere else entirely. */
 const OTHER_OWN_UNIT = "13401";
 
+/**
+ * Watazka, another faction's unit, sighted at (26,52) with no skills - and in a battle roster in
+ * the same report reading `riding 5, combat 2, longbow 4`.
+ */
+const FOREIGN_UNIT = "4839";
+
 /** A game with a turn on screen and a hex selected, which is where every walk here starts. */
 async function workspace(page: Page) {
   await loadReport(page, "Smoke game", REPORT);
@@ -178,6 +184,47 @@ test("exports an Army as a battle file", async ({ page }, testInfo) => {
   expect(Array.isArray(file.attackers.units[0].skills)).toBe(true);
 
   await expect(page.getByTestId("import-status")).toContainText("exported Northern Host");
+});
+
+test("exports a foreign unit's battle-learned skills", async ({ page }, testInfo) => {
+  await workspace(page);
+  await newArmy(page, "Raiders");
+
+  // Watazka is another faction's unit, and the sighting at (26,52) shows it with no skills at all -
+  // which is all a sighting ever shows. The same unit stands in a battle roster earlier in this
+  // very report reading `riding 5, combat 2, longbow 4`, and that is what has to reach the file.
+  await selectHex(page, "1:26,52");
+  await selectUnit(page, FOREIGN_UNIT);
+  await page.getByTestId("add-to-army").click();
+  await page.getByTestId("add-to-army-panel").getByText("Raiders").click();
+  await railEntry(page, "Raiders").click();
+
+  await page.getByTestId("army-export").click();
+  await expect(page.getByTestId("army-export-panel")).toBeVisible();
+  // Waits out the background scan on its own: while it runs the dialog says so instead, so the
+  // sentence below appearing is what proves the scan landed.
+  await expect(page.getByTestId("army-export-notice").first()).toContainText(
+    "1 unit belongs to another faction. It goes out with combat skills read from battle reports."
+  );
+
+  const downloading = page.waitForEvent("download");
+  await page.getByTestId("army-export-confirm").click();
+  const download = await downloading;
+  const path = testInfo.outputPath("raiders.json");
+  await download.saveAs(path);
+
+  const file = JSON.parse(readFileSync(path, "utf8")) as {
+    attackers: { units: { name: string; skills: { abbr: string; level: number }[] }[] };
+  };
+
+  expect(file.attackers.units).toHaveLength(1);
+  expect(file.attackers.units[0].name).toContain(`(${FOREIGN_UNIT})`);
+  // The roster's own order, which is the order `withRosterSkills` keeps.
+  expect(file.attackers.units[0].skills).toEqual([
+    { abbr: "RIDI", level: 5 },
+    { abbr: "COMB", level: 2 },
+    { abbr: "LBOW", level: 4 }
+  ]);
 });
 
 test("a filter does not follow the table from one list to another", async ({ page }) => {

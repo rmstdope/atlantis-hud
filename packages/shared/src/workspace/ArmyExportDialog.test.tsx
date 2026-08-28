@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ArmyMemberRecord, ArmyRecord } from "@atlantis/core-client";
 
 import { ArmyExportDialog } from "./ArmyExportDialog";
+import { NO_DERIVED_SKILLS } from "../battleSkills";
 
 const NOW = "2026-08-27T09:00:00Z";
 
@@ -40,6 +41,9 @@ const dialog = (extra: Partial<Parameters<typeof ArmyExportDialog>[0]> = {}) => 
     armies={[NORTHERN, MIXED]}
     initialAttackerId={NORTHERN.id}
     currentTurn={71}
+    derived={NO_DERIVED_SKILLS}
+    scanning={false}
+    unreadTurns={0}
     busy={false}
     error={null}
     onExport={() => {}}

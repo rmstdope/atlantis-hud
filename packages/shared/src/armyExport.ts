@@ -22,6 +22,7 @@
 import type { ArmyMemberRecord, ArmyRecord } from "@atlantis/core-client";
 
 import { memberIsStale } from "./armies";
+import { derivedSkillsFor, type DerivedSkills } from "./battleSkills";
 
 /** One unit as the simulator's own format wants it. */
 export type BattleUnit = {
@@ -48,11 +49,24 @@ const SILVER_TAG = "SILV";
 /** The one flag the simulator reads, as the parser writes it (`crates/core/src/report/unit.rs`). */
 const BEHIND_FLAG = "behind";
 
-/** One remembered member as the simulator wants it. */
-export function battleUnitOf(member: ArmyMemberRecord): BattleUnit {
+/**
+ * One remembered member as the simulator wants it.
+ *
+ * `derived` is required rather than optional on purpose: an optional one is a way for a caller to
+ * silently export the old, empty-skilled file, which is the bug `ah-1mpx.6.2` exists to fix. A
+ * caller with nothing to pass passes `NO_DERIVED_SKILLS`.
+ */
+export function battleUnitOf(member: ArmyMemberRecord, derived: DerivedSkills): BattleUnit {
+  // A member's own skills when it has them; otherwise whatever a battle roster disclosed, which is
+  // non-empty only for a foreign unit (`derivedSkillsFor`). Still always an array - it is the key
+  // the simulator sniffs the file's format by.
+  const recovered = derivedSkillsFor(derived, member);
   const unit: BattleUnit = {
     name: `${member.name} (${member.unitId})`,
-    skills: member.skills.map((skill) => ({ abbr: skill.tag, level: skill.level })),
+    skills:
+      member.skills.length > 0
+        ? member.skills.map((skill) => ({ abbr: skill.tag, level: skill.level }))
+        : recovered.map((skill) => ({ abbr: skill.tag, level: skill.level })),
     items: member.items
       .filter((item) => item.tag !== SILVER_TAG)
       .map((item) => ({ abbr: item.tag, amount: item.amount }))
@@ -71,16 +85,22 @@ export function battleUnitOf(member: ArmyMemberRecord): BattleUnit {
 }
 
 /** An Army's members in the order it holds them; `{ units: [] }` for a side nobody is on. */
-export function battleSideOf(army: ArmyRecord | null): BattleSide {
-  return { units: army === null ? [] : army.members.map(battleUnitOf) };
+export function battleSideOf(army: ArmyRecord | null, derived: DerivedSkills): BattleSide {
+  return {
+    units: army === null ? [] : army.members.map((member) => battleUnitOf(member, derived))
+  };
 }
 
 /** Both sides. Both keys are always present - the loader refuses the file otherwise. */
 export function battleFileOf(
   attackers: ArmyRecord | null,
-  defenders: ArmyRecord | null
+  defenders: ArmyRecord | null,
+  derived: DerivedSkills
 ): BattleFile {
-  return { attackers: battleSideOf(attackers), defenders: battleSideOf(defenders) };
+  return {
+    attackers: battleSideOf(attackers, derived),
+    defenders: battleSideOf(defenders, derived)
+  };
 }
 
 /** The file's text, indented as `gameBackup.ts` writes its own. */
@@ -123,8 +143,12 @@ export function exportedStatus(
   return `exported ${names.join(" vs ")}`;
 }
 
-/** Which caveat a notice is; it chooses the marker's colour and nothing else. */
-export type NoticeKind = "remembered" | "foreign" | "empty-side";
+/**
+ * Which caveat a notice is; it chooses the marker's colour and nothing else.
+ *
+ * The order of the union is the order the notices appear (decision L1 of `ah-1mpx.6.2`).
+ */
+export type NoticeKind = "remembered" | "scanning" | "foreign" | "unread-turns" | "empty-side";
 
 /** One line under the count. */
 export type ExportNotice = { kind: NoticeKind; text: string };
@@ -136,6 +160,11 @@ export type ExportReadiness = {
   countText: string | null;
   /** The one thing standing in the way, or null. `Export…` is disabled whenever this is set. */
   refusal: string | null;
+  /**
+   * True while the file would be missing something the scan is about to recover - decision V1 of
+   * `ah-1mpx.6.2`. `Export…` is disabled whenever this is set, exactly as it is for `refusal`.
+   */
+  waiting: boolean;
   /** The caveats, in order. Empty when there is nothing to say. */
   notices: ExportNotice[];
 };
@@ -144,6 +173,7 @@ const NOTHING_TO_EXPORT: ExportReadiness = {
   count: 0,
   countText: null,
   refusal: null,
+  waiting: false,
   notices: []
 };
 
@@ -159,8 +189,14 @@ export function exportReadiness(args: {
   defenders: ArmyRecord | null;
   /** `parsed.header.turnNumber`. The dialog is not reachable while this is null - see the strip. */
   currentTurn: number;
+  /** What the scan has recovered so far. */
+  derived: DerivedSkills;
+  /** `useBattleSkillsStore`'s status is `"scanning"`. */
+  scanning: boolean;
+  /** `useBattleSkillsStore`'s `unreadTurns`. */
+  unreadTurns: number;
 }): ExportReadiness {
-  const { armies, attackers, defenders, currentTurn } = args;
+  const { armies, attackers, defenders, currentTurn, derived, scanning, unreadTurns } = args;
 
   const refusal = refusalFor(armies, attackers, defenders);
   if (refusal !== null) {
@@ -179,9 +215,27 @@ export function exportReadiness(args: {
   if (remembered > 0) {
     notices.push({ kind: "remembered", text: rememberedText(remembered, count) });
   }
+
+  // Everything about the scan is inside `foreign > 0`, which is decision V1: an export with no
+  // foreign units in it cannot be changed by the scan, so it is never made to wait for it and never
+  // told about it. The recovered count is computed over `members` - the same list the foreign count
+  // is - so an Army chosen on both sides counts twice in both, and the two can never disagree.
+  const recovered = members.filter((member) => derivedSkillsFor(derived, member).length > 0).length;
+  const waiting = foreign > 0 && scanning;
   if (foreign > 0) {
-    notices.push({ kind: "foreign", text: foreignText(foreign) });
+    if (scanning) {
+      // Takes the foreign line's slot rather than sitting beside it (L1): the two would otherwise
+      // be on screen together, one giving a count and the next saying the count is not ready.
+      notices.push({ kind: "scanning", text: SCANNING_TEXT });
+    } else {
+      notices.push({ kind: "foreign", text: foreignText(foreign, recovered) });
+      if (unreadTurns > 0) {
+        // Directly under the sentence whose count it qualifies (L1).
+        notices.push({ kind: "unread-turns", text: unreadTurnsText(unreadTurns) });
+      }
+    }
   }
+
   if (attackers === null) {
     notices.push({ kind: "empty-side", text: "The attacking side will be empty." });
   } else if (defenders === null) {
@@ -192,6 +246,7 @@ export function exportReadiness(args: {
     count,
     countText: `${count} unit${count === 1 ? "" : "s"} will be exported.`,
     refusal: null,
+    waiting,
     notices
   };
 }
@@ -226,8 +281,40 @@ function rememberedText(remembered: number, count: number): string {
   return `${all}${remembered} units were not in this turn's report. They go out as they were when last seen.`;
 }
 
-function foreignText(foreign: number): string {
-  return foreign === 1
-    ? "1 unit belongs to another faction. It goes out with its men and equipment but no skills — a report never shows you those."
-    : `${foreign} units belong to another faction. They go out with their men and equipment but no skills — a report never shows you those.`;
+const SCANNING_TEXT =
+  "Still reading this game's battle reports. The foreign units' skills are not counted yet.";
+
+function unreadTurnsText(unread: number): string {
+  return unread === 1
+    ? "1 stored turn could not be read. Any battle in it was not counted."
+    : `${unread} stored turns could not be read. Any battle in them was not counted.`;
+}
+
+/**
+ * Three shapes - all, some, none - rather than one template with the numbers dropped in
+ * (decision W4-B). The plurals agree with their own nouns (P1), which is why the mixed branch says
+ * "the other" and not "the other 1".
+ */
+function foreignText(foreign: number, recovered: number): string {
+  const opening =
+    foreign === 1
+      ? "1 unit belongs to another faction."
+      : `${foreign} units belong to another faction.`;
+
+  if (recovered === 0) {
+    return foreign === 1
+      ? `${opening} It goes out with no skills — no battle we have seen involved it.`
+      : `${opening} They go out with no skills — no battle we have seen involved any of them.`;
+  }
+  if (recovered === foreign) {
+    return foreign === 1
+      ? `${opening} It goes out with combat skills read from battle reports.`
+      : `${opening} All of them go out with combat skills read from battle reports.`;
+  }
+
+  // Mixed. `foreign` is at least 2 here, so the opening is always the plural one.
+  const rest = foreign - recovered;
+  const others = rest === 1 ? "the other goes" : `the other ${rest} go`;
+  const theirs = recovered === 1 ? "1 of them goes" : `${recovered} of them go`;
+  return `${opening} ${theirs} out with combat skills read from battle reports; ${others} out with none.`;
 }
