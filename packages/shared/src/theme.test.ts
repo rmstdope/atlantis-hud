@@ -261,6 +261,37 @@ describe("theme palette", () => {
   });
 
   /**
+   * A chip's text is written on the chip's own fill, not on any of the three surfaces, so the
+   * assertions above never look at it: a fill and an ink chosen together by eye can both be
+   * perfectly readable tokens and still be illegible as a pair. Both themes, since the light
+   * counterparts were designed rather than derived (ah-yqzq).
+   */
+  const CHIP_PAIRS = [
+    ["--color-standing-known-ink", "--color-standing-known-fill"],
+    ["--color-standing-ceiling-ink", "--color-standing-ceiling-fill"],
+    ["--color-standing-maxed-ink", "--color-standing-maxed-fill"],
+    ["--color-standing-open-ink", "--color-standing-open-fill"],
+    ["--color-crossing-ink", "--color-crossing-fill"]
+  ];
+
+  it.each([
+    ["dark", /@theme\b/],
+    ["light", /:root\[data-theme="light"\]/]
+  ])("keeps every %s chip's text readable on its own fill", (_theme, opener) => {
+    const values = tokenValues(extractBlock(css, opener));
+
+    const unreadable: string[] = [];
+    for (const [ink, fill] of CHIP_PAIRS) {
+      const ratio = contrast(values.get(ink)!, values.get(fill)!);
+      if (ratio < AA_SMALL_TEXT) {
+        unreadable.push(`${ink} on ${fill} is ${ratio.toFixed(2)}:1`);
+      }
+    }
+
+    expect(unreadable).toEqual([]);
+  });
+
+  /**
    * The boxes have to do their own grouping. `--color-edge` sat at 1.27:1 against the panel and
    * `--color-edge-soft` at 1.12:1 - close enough to invisible that the reader's eye was grouping
    * the panes by their contents instead, which is work (ah-v09e).
