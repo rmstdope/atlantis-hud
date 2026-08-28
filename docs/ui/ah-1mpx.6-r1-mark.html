@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-1mpx.6 &mdash; Q2: how a derived skill is told apart</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); } .foreign { color:var(--ink-dim); }
+  .unk { color:var(--ink-dim); font-style:italic; }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .d-colour { color:var(--brass); }
+  .d-ital  { font-style:italic; color:var(--ink); }
+  .d-mark  { color:var(--ink); }
+  .d-mark b { color:var(--brass); font-weight:400; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+</style></head><body>
+<header><h1>Question 2 &mdash; <span>how a derived skill is told apart from a known one</span></h1>
+<p>Your own unit's skills come from the report and are certain. A foreign unit's come from a battle roster: they were true <b>on the turn of that battle</b>, which may not be this turn, and they are only the five skills a roster prints &mdash; a unit may have twenty others we will never see. A player must be able to tell the two apart at a glance.</p>
+<p><b>One difference is already free.</b> A report prints study points and a roster does not, so an own skill reads <code>COMB 1 (30)</code> and a derived one can only read <code>COMB 5</code>. That is a real signal, but a silent one &mdash; nobody learns it without being told. These options are about making it say something on its own.</p>
+<p><b>And a second fact that shapes the choice.</b> Levels really do move. Across one game's stored turns, 70 of 595 repeated observations disagreed with an earlier one, and 68 of those 70 were the level going <b>up</b> &mdash; units studying between battles. No unit ever lost a skill it had shown. So an old figure is a floor, not a lie, and the turn it came from is worth carrying.</p>
+<p style="margin-top:14px"><b>The same four rows in every option:</b> a foreign unit with one derived skill, one with three, one with nothing derived, and one of your own for contrast.</p></header>
+<main>
+
+<h3 class="sec">M1 &mdash; colour alone, with the battle in the hover</h3>
+<p>Derived skills are drawn in the brass the app already uses for a projected figure. The hover names the battle and the turn.</p>
+<div class="card"><div class="stage">
+  <table class="units"><colgroup><col style="width:30px"><col style="width:62px"><col style="width:160px"><col style="width:44px"><col style="width:250px"><col style="width:230px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th class="colhi">Skills</th><th>Items</th></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">7280</td><td>AA Tomb's Guards</td><td>78</td><td class="d-colour colhi">COMB 5</td><td>78 GNOL, 78 MSWO</td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">4839</td><td>Watazka</td><td>1</td><td class="d-colour colhi">RIDI 5, COMB 2, LBOW 4</td><td>1 LEAD, 1 MSWO</td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">8435</td><td>AB Tomb's Bombards</td><td>2</td><td class="unk colhi">not disclosed</td><td>2 WELF, 1 CATP</td></tr>
+  <tr><td class="own">*</td><td class="uid">3825</td><td>Farmers</td><td>9</td><td class="colhi">COMB 1 (30), FARM 2 (90)</td><td>9 ORC, 9 SWOR</td></tr>
+  </table>
+  <div class="tip"><b>Watazka (4839) &mdash; skills</b>riding 5, combat 2, longbow 4
+Read from the battle in ocean (25,55), turn 71.</div>
+</div>
+<ul class="notes">
+  <li>Quietest. The column stays as narrow as it is now &mdash; nothing is added to the text.</li>
+  <li>Brass already means &ldquo;a figure we worked out&rdquo; everywhere else in this table.</li>
+  <li class="con">Colour alone is the weakest signal there is, and it is the one a player is most likely to read straight past.</li>
+  <li class="con">Says nothing about <i>when</i> without a hover, and the hover is invisible until you go looking for it.</li>
+</ul></div>
+
+<h3 class="sec">M2 &mdash; the turn is in the cell <span class="rec">&nbsp;&nbsp;recommended</span></h3>
+<p>Derived skills carry the turn they were seen, in the same slot a known skill puts its study points. The hover still names the battle and the hex.</p>
+<div class="card"><div class="stage">
+  <table class="units"><colgroup><col style="width:30px"><col style="width:62px"><col style="width:160px"><col style="width:44px"><col style="width:250px"><col style="width:230px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th class="colhi">Skills</th><th>Items</th></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">7280</td><td>AA Tomb's Guards</td><td>78</td><td class="d-mark colhi">COMB 5 <b>(turn 71)</b></td><td>78 GNOL, 78 MSWO</td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">4839</td><td>Watazka</td><td>1</td><td class="d-mark colhi">RIDI 5, COMB 2, LBOW 4 <b>(turn 71)</b></td><td>1 LEAD, 1 MSWO</td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">8435</td><td>AB Tomb's Bombards</td><td>2</td><td class="unk colhi">not disclosed</td><td>2 WELF, 1 CATP</td></tr>
+  <tr><td class="own">*</td><td class="uid">3825</td><td>Farmers</td><td>9</td><td class="colhi">COMB 1 (30), FARM 2 (90)</td><td>9 ORC, 9 SWOR</td></tr>
+  </table>
+  <div class="tip"><b>Watazka (4839) &mdash; skills</b>riding 5, combat 2, longbow 4
+Read from the battle in ocean (25,55), turn 71. A report never shows another faction's skills.</div>
+</div>
+<div class="stage">
+  <div class="hexlab">two skills from two different battles &mdash; the turn is per skill, so it goes per skill</div>
+  <table class="units"><colgroup><col style="width:30px"><col style="width:62px"><col style="width:160px"><col style="width:44px"><col style="width:250px"><col style="width:230px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th class="colhi">Skills</th><th>Items</th></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">5284</td><td>Squires</td><td>115</td><td class="d-mark colhi">COMB 4 <b>(turn 68)</b>, RIDI 5 <b>(turn 71)</b></td><td>115 HUMN, 115 WING</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Says the two things that matter &mdash; the level, and how old it is &mdash; without a hover.</li>
+  <li>Sits in the slot the eye already reads as &ldquo;the parenthetical about this skill&rdquo;, so it needs no explaining.</li>
+  <li>Handles the honest case where two skills came from two different turns, which a single cell-level marker cannot.</li>
+  <li class="con">Longest of the three. A unit with four derived skills will truncate in a narrow column &mdash; drawn below in round 2.</li>
+</ul></div>
+
+<h3 class="sec">M3 &mdash; a lead-in word</h3>
+<p>The cell names its source once, in the same italic dim the <i>not disclosed</i> line already uses, and then lists the skills plainly.</p>
+<div class="card"><div class="stage">
+  <table class="units"><colgroup><col style="width:30px"><col style="width:62px"><col style="width:160px"><col style="width:44px"><col style="width:250px"><col style="width:230px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th class="colhi">Skills</th><th>Items</th></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">7280</td><td>AA Tomb's Guards</td><td>78</td><td class="colhi"><span class="unk">from battle:</span> COMB 5</td><td>78 GNOL, 78 MSWO</td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">4839</td><td>Watazka</td><td>1</td><td class="colhi"><span class="unk">from battle:</span> RIDI 5, COMB 2, LBOW 4</td><td>1 LEAD, 1 MSWO</td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">8435</td><td>AB Tomb's Bombards</td><td>2</td><td class="unk colhi">not disclosed</td><td>2 WELF, 1 CATP</td></tr>
+  <tr><td class="own">*</td><td class="uid">3825</td><td>Farmers</td><td>9</td><td class="colhi">COMB 1 (30), FARM 2 (90)</td><td>9 ORC, 9 SWOR</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Unmissable, and it says <i>why</i> rather than leaving the reader to infer it from a colour.</li>
+  <li>Reads as the natural sibling of <i>not disclosed</i> &mdash; the same voice, the same place.</li>
+  <li class="con">Spends 12 characters of a narrow column on every derived row, before a single skill is named.</li>
+  <li class="con">Still silent about the turn, so it needs the hover anyway &mdash; and then M2 is doing more for less.</li>
+  <li class="con">Sorting the column now sorts every derived unit together under &ldquo;f&rdquo;, which is either a feature or a nuisance and nobody has asked for it.</li>
+</ul></div>
+
+</main>
+<footer><p>Levels and turns on this page are real: <code>AA Tomb's Guards (7280), Greywolf (33), 78 gnolls [GNOL], &hellip;, combat 5.</code> and <code>Watazka (4839), behind, leader [LEAD], &hellip;, riding 5, combat 2, longbow 4.</code> are roster lines from turn 71 of <code>neworigins-3.0.0-g7-f95-t71.rep</code>. Unit 5284's disagreement between turns 71 and 72 is one of the 70 real ones.</p></footer>
+</body></html>

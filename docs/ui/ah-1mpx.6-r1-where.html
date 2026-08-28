@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-1mpx.6 &mdash; Q1: where a battle-derived skill shows</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:100ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); } .foreign { color:var(--ink-dim); }
+  .unk { color:var(--ink-dim); font-style:italic; }
+  .derived { color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .dlg { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px 16px;
+         font:13px/1.6 'Helvetica Neue',Arial,sans-serif; max-width:560px; }
+  .dlg h4 { font-size:14px; margin-bottom:10px; color:var(--ink); font-weight:600; }
+  .dlg .row { display:flex; gap:10px; align-items:center; margin-bottom:8px; }
+  .dlg select { background:var(--raised); color:var(--ink); border:1px solid var(--edge);
+                border-radius:5px; padding:4px 8px; font:12.5px 'Helvetica Neue',Arial,sans-serif; }
+  .notice { font-size:12px; color:var(--ink-soft); display:flex; gap:8px; margin-top:6px; }
+  .dot { flex:0 0 auto; width:7px; height:7px; border-radius:50%; margin-top:6px; }
+  .dot.rem { background:var(--brass); } .dot.for { background:var(--select); } .dot.emp { background:var(--ink-dim); }
+  .btn { background:var(--brass); color:#1a1206; border:0; border-radius:5px; padding:5px 14px;
+         font:12.5px/1 'Helvetica Neue',Arial,sans-serif; font-weight:600; margin-top:12px; }
+  pre.json { background:var(--ground); border:1px solid var(--edge-soft); border-radius:6px;
+             padding:10px 12px; font:11.5px/1.55 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft);
+             overflow-x:auto; margin-top:8px; }
+  pre.json b { color:var(--brass-bright); font-weight:400; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+  .src { color:var(--ink-dim); font-size:11.5px; font-style:italic; }
+</style></head><body>
+<header><h1>Question 1 &mdash; <span>where a battle-derived skill shows</span></h1>
+<p><b>The fact this bead rests on.</b> A region sighting never discloses another faction's skills &mdash; 0 of 2915 foreign unit blocks in the committed reports carry a <code>Skills:</code> section. A <b>battle roster</b> does, explicitly, and only these five: <code>combat</code>, <code>riding</code>, <code>tactics</code>, <code>longbow</code>, <code>crossbow</code> &mdash; for <b>both</b> sides of any battle you could see, including battles you were not in.</p>
+<p><b>How much it recovers, counted over the committed reports.</b> In a battle-heavy turn, a lot: turn 72 of g7-f95 has 252 foreign units on the map and battle rosters carrying skills for <b>143</b> of them. In a quiet turn, nothing at all &mdash; 14 of the 26 reports have no battle section. Across one game's stored turns, 522 distinct units picked up skills this way.</p>
+<p><b>And it is already retrievable.</b> Every imported turn keeps its raw report text (<code>imported_turns.raw_report</code>), and all 26 committed reports re-parse in 0.20&nbsp;s. So a scan back over the turns you already have costs a fraction of a second and needs no new storage &mdash; that part is settled and is not what this page asks.</p>
+<p style="margin-top:14px"><b>What this page asks:</b> a foreign unit's skills can now be known. <b>Where should that show?</b> The three options are cumulative &mdash; each contains the one before it.</p></header>
+<main>
+
+<h3 class="sec">A &mdash; in the export only</h3>
+<p>Nothing on screen changes. The units table still says <i>not disclosed</i> for every foreign unit. The battle file simply goes out with skills in it, and the export dialog's notice changes to say so.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">units dock &mdash; other factions &mdash; unchanged</div>
+  <table class="units"><colgroup><col style="width:30px"><col style="width:62px"><col style="width:150px"><col style="width:170px"><col style="width:44px"><col style="width:200px"><col style="width:230px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Faction</th><th>Men</th><th class="colhi">Skills</th><th>Items</th></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">7280</td><td>AA Tomb's Guards</td><td>Greywolf (33)</td><td>78</td><td class="unk colhi">not disclosed</td><td>78 GNOL, 78 MSWO, 73 MARM</td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">4839</td><td>Watazka</td><td class="unk">&mdash;</td><td>1</td><td class="unk colhi">not disclosed</td><td>1 LEAD, 1 MSWO, 1 BKEX</td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">8435</td><td>AB Tomb's Bombards</td><td>Greywolf (33)</td><td>2</td><td class="unk colhi">not disclosed</td><td>2 WELF, 1 CATP</td></tr>
+  </table>
+</div>
+<div class="stage">
+  <div class="hexlab">export dialog &mdash; the notice changes</div>
+  <div class="dlg">
+    <h4>Export to battle simulator</h4>
+    <div class="row"><span style="width:78px;color:var(--ink-soft)">Attackers</span><select><option>Northern Host</option></select></div>
+    <div class="row"><span style="width:78px;color:var(--ink-soft)">Defenders</span><select><option>Coastal Watch</option></select></div>
+    <div style="margin-top:10px">14 units will be exported.</div>
+    <div class="notice"><span class="dot for"></span><span>6 units belong to another faction. 4 of them go out with combat skills read from battle reports; 2 go out with none.</span></div>
+    <button class="btn">Export&hellip;</button>
+  </div>
+  <pre class="json">{ "name": "AA Tomb's Guards (7280)",
+  <b>"skills": [ { "abbr": "COMB", "level": 5 } ]</b>,
+  "items": [ { "abbr": "GNOL", "amount": 78 }, ... ] }</pre>
+</div>
+<ul class="notes">
+  <li>Smallest change by a distance &mdash; one pure module, one notice string, no table work at all.</li>
+  <li>The export is what the whole Armies epic exists for, so this is the payoff and nothing else.</li>
+  <li class="con">The information is invisible until you export. You cannot tell, while picking units, which foreign units you actually know something about.</li>
+  <li class="con">Leaves the units table saying <i>not disclosed</i> about a unit whose skills the app is holding &mdash; which is now false.</li>
+</ul>
+</div>
+
+<h3 class="sec">B &mdash; in the export, and in the units table's Skills column <span class="rec">&nbsp;&nbsp;recommended</span></h3>
+<p>The Skills cell fills in for any foreign unit a battle has told us about, marked so it cannot be mistaken for a skill list we were actually shown. <i>not disclosed</i> stays for the rest. Everything in A as well.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">units dock &mdash; other factions</div>
+  <table class="units"><colgroup><col style="width:30px"><col style="width:62px"><col style="width:150px"><col style="width:170px"><col style="width:44px"><col style="width:200px"><col style="width:230px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Faction</th><th>Men</th><th class="colhi">Skills</th><th>Items</th></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">7280</td><td>AA Tomb's Guards</td><td>Greywolf (33)</td><td>78</td><td class="derived colhi">COMB 5</td><td>78 GNOL, 78 MSWO, 73 MARM</td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">4839</td><td>Watazka</td><td class="unk">&mdash;</td><td>1</td><td class="derived colhi">RIDI 5, COMB 2, LBOW 4</td><td>1 LEAD, 1 MSWO, 1 BKEX</td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">8435</td><td>AB Tomb's Bombards</td><td>Greywolf (33)</td><td>2</td><td class="unk colhi">not disclosed</td><td>2 WELF, 1 CATP</td></tr>
+  <tr><td class="own">*</td><td class="uid">3825</td><td>Farmers</td><td>The Disinherited Knights (42)</td><td>9</td><td class="colhi">COMB 1 (30), FARM 2 (90)</td><td>9 ORC, 9 SWOR</td></tr>
+  </table>
+  <div class="tip"><b>AA Tomb's Guards (7280) &mdash; skills</b>combat 5
+Read from the battle in ocean (25,55), turn 71.</div>
+</div>
+<ul class="notes">
+  <li>The one place a player is already scanning when they build an Army. The information is where the decision is made.</li>
+  <li>Kills the false <i>not disclosed</i>: the cell now tells the truth in all three states &mdash; shown, derived, and genuinely unknown.</li>
+  <li>The column is sortable and filterable already, so &ldquo;which of these do I know anything about&rdquo; becomes answerable for free.</li>
+  <li class="n">Own units keep their <code>(points)</code>; a derived skill has none, because a roster never prints study points.</li>
+  <li class="con">More work: the table's cell, the tooltip, and the rebuilt-from-snapshot rows in an Army source all have to carry it.</li>
+</ul>
+</div>
+
+<h3 class="sec">C &mdash; B, and the Unit panel too</h3>
+<p>Everything in B, plus the right-hand Unit panel gains a Skills section for a foreign unit, which today has none.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">unit panel &mdash; right rail</div>
+  <div style="max-width:300px;font:12.5px/1.6 'Helvetica Neue',Arial,sans-serif">
+    <div style="color:var(--ink);font-size:14px;margin-bottom:2px">Watazka <span class="uid">(4839)</span></div>
+    <div class="src" style="margin-bottom:10px">another faction &mdash; not named in this report</div>
+    <div style="color:var(--ink-soft);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Men</div>
+    <div style="margin-bottom:10px">1 leader</div>
+    <div style="color:var(--ink-soft);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Items</div>
+    <div style="margin-bottom:10px">mithril sword, book of exorcism</div>
+    <div style="color:var(--brass);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Skills &mdash; from battle reports</div>
+    <div class="derived">riding 5 &nbsp; combat 2 &nbsp; longbow 4</div>
+    <div class="src">seen in the battle in ocean (25,55), turn 71</div>
+  </div>
+</div>
+<ul class="notes">
+  <li>The panel is where a single unit is inspected properly, and it has room to name the battle and the turn in full rather than in a tooltip.</li>
+  <li class="con">A third surface to build and test, for a fact B already delivers.</li>
+  <li class="con">The panel is 21rem and already holds Unit and Orders; a fourth section pushes on a rail the epic has fought over twice.</li>
+</ul>
+</div>
+
+</main>
+<footer><p>Every roster line, count and timing on this page was read from <code>tests/fixtures/reports/</code> and the committed rules snapshot, not recalled. The five skills are the only ones a roster ever prints &mdash; 2301 roster entries, 1618 with skills, and no sixth skill name among them.</p></footer>
+</body></html>
