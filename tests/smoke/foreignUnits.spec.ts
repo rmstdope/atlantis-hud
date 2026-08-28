@@ -143,3 +143,23 @@ test("a concealed unit's faction cell pins every unit hiding its faction", async
   // Every row left is one whose owner the report withholds - the whole window of them.
   await expect(page.getByTestId("foreign-pin-hidden")).toHaveCount(await rows(page).count());
 });
+
+test("a foreign unit's row takes the map to its hex", async ({ page }) => {
+  await workspace(page);
+  await page.getByTestId("unit-source-foreign").click();
+
+  // The Hex column's position depends on where `name` has been dragged to (`drawnColumnsFor` puts
+  // `hex` immediately after it), so it is found by its header rather than counted from the left.
+  const headers = page.getByTestId("panel-units").locator("thead th");
+  // Case-folded: the header cells are uppercased in CSS, so `allInnerTexts` answers "HEX".
+  const hexColumn =
+    (await headers.allInnerTexts()).findIndex((text) => text.trim().toLowerCase() === "hex") + 1;
+  expect(hexColumn).toBeGreaterThan(0);
+
+  const row = rows(page).first();
+  const where = (await row.locator(`td:nth-child(${hexColumn})`).innerText()).trim(); // "(26,52)"
+  expect(where).toMatch(/^\(\d+,\d+\)$/u);
+
+  await row.click();
+  await expect(page.getByTestId("panel-region")).toContainText(where);
+});

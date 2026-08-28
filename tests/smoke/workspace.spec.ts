@@ -73,6 +73,8 @@ const F21_T24 = readReport("g5f21t24");
 
 /** Inholm: a city with 24 structures and 92 units, one of them the player's. */
 const OWN_UNIT = "18642";
+/** Another of the player's units, standing in the ocean at (26,52) - somewhere else entirely. */
+const OTHER_OWN_UNIT = "13401";
 const FOREIGN_UNIT = "12538";
 
 test("loads a report and shows the turn it describes", async ({ page }) => {
@@ -4906,4 +4908,60 @@ test("the silver column forecasts our own units and sorts on the figure", async 
     .map(Number);
   expect(figures.length).toBeGreaterThan(0);
   expect([...figures].sort((left, right) => left - right)).toEqual(figures);
+});
+
+test("a row in All my units takes the map to the unit's hex", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+
+  await page.getByTestId("unit-source-own").click();
+  await page.getByLabel("Filter units").fill(OTHER_OWN_UNIT);
+  await page.getByTestId(`unit-row-${OTHER_OWN_UNIT}`).click();
+
+  await expect(page.getByTestId("panel-region")).toContainText("(26,52)");
+  await expect(page.getByTestId("panel-unit")).toContainText(OTHER_OWN_UNIT);
+  // The map moved; the list did not. Travelling changes the selected hex, and the source must not
+  // follow it - `armies.spec.ts` pins the same rule for an Army.
+  await expect(page.getByTestId("unit-source-own")).toHaveAttribute("data-selected", "true");
+});
+
+test("arrowing the units table selects without moving the map, and Enter goes", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await page.getByTestId("unit-source-own").click();
+  await page.getByLabel("Filter units").fill("Seven of Eight");
+
+  // Which way the other unit lies is read off the rows rather than forced by sorting on `Id`: that
+  // header is a truncating span, and on a narrower viewport than this machine's it is clipped out
+  // of reach, so clicking it timed out in CI while passing locally.
+  const order = await page
+    .getByTestId("panel-units")
+    .locator("tbody tr[data-testid]")
+    .evaluateAll((found) => found.map((row) => row.getAttribute("data-testid") ?? ""));
+  const above = order.indexOf(`unit-row-${OTHER_OWN_UNIT}`);
+  const here = order.indexOf(`unit-row-${OWN_UNIT}`);
+  expect(above).toBeGreaterThanOrEqual(0);
+  expect(here).toBeGreaterThanOrEqual(0);
+  const toward = above < here ? "ArrowUp" : "ArrowDown";
+
+  // 18642 stands in the hex already selected, so this press is agreed to change nothing visible.
+  await page.getByTestId(`unit-row-${OWN_UNIT}`).click();
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+
+  // Arrowing selects and nothing else - walking a long list must stay silent.
+  await page.keyboard.press(toward);
+  await expect(page.getByTestId(`unit-row-${OTHER_OWN_UNIT}`)).toHaveAttribute(
+    "data-selected",
+    "true"
+  );
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+
+  // Space is also how a reader stops a list scrolling, so it must not move the map either.
+  await page.keyboard.press(" ");
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+
+  // Enter is the keyboard's only route to the hex, and it takes it.
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("panel-region")).toContainText("(26,52)");
 });

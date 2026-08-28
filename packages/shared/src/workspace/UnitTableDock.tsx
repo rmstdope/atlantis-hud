@@ -90,6 +90,7 @@ import {
   listShown,
   sortSurvives,
   sourceStillThere,
+  travelsOnSelect,
   type DrawnColumn,
   type FactionPin,
   type UnitSource
@@ -654,6 +655,23 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     selectUnit(rowTarget);
   };
 
+  /**
+   * Takes the map to a unit's hex, for a list that spans hexes (`ah-y9hx`).
+   *
+   * Called *after* `settleOn`, never instead of it. `onSelectUnit` is the shell's `goToUnit`, which
+   * does nothing at all for a unit this turn's report does not have - a remembered Army member - so
+   * a row that cannot be travelled to must already have been selected by the time this runs
+   * (decision S1: such a row still highlights, and nothing is said).
+   *
+   * Deliberately not called from `moveSelection`, from Space, or from a press with a modifier held:
+   * walking a list and building a pick must both leave the map alone.
+   */
+  const travelTo = (unitId: string) => {
+    if (travelsOnSelect(source)) {
+      onSelectUnit?.(unitId);
+    }
+  };
+
   const onRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>, index: number) => {
     // The unit id button sits inside the row and bubbles its own key events up here.
     if (event.target !== event.currentTarget) {
@@ -668,12 +686,15 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       return;
     }
     const here = visible[index]?.unitId ?? null;
-    const chose = () => {
+    const chose = (travel: boolean) => {
       if (here === null) {
         return;
       }
       // Choosing a row from the keyboard collapses a pick exactly as a plain click does.
       settleOn(afterGesture(pick, { kind: "plain", unitId: here }, rowIds), here);
+      if (travel) {
+        travelTo(here);
+      }
     };
     const keys: Record<string, () => void> = {
       ArrowDown: () => moveSelection(index + 1, { extend: event.shiftKey }),
@@ -697,9 +718,15 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         }
         setPin(null);
       },
-      Enter: chose,
-      // Without this, Space scrolls the container out from under the row.
-      " ": chose
+      // The table is one tab stop per row with a roving tabIndex, so without this a keyboard
+      // player can find a unit in a list spanning hexes and never reach the ground it stands on
+      // (`ah-y9hx` K1). It travels whatever the pick is standing at: collapsing to the cursor row
+      // and going there is exactly what a plain click does.
+      Enter: () => chose(true),
+      // Space stays where it was. It is also how a reader stops a list scrolling, so a mis-hit
+      // must not move the map - and without this line it scrolls the container out from under the
+      // row.
+      " ": () => chose(false)
     };
     const handler = keys[event.key];
     if (handler) {
@@ -771,14 +798,17 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     if (event.button !== 0) {
       return;
     }
-    const outcome = onPress(
-      pick,
-      unit.unitId,
-      { shift: event.shiftKey, mod: isMac ? event.metaKey : event.ctrlKey },
-      rowIds
-    );
+    const modifiers = { shift: event.shiftKey, mod: isMac ? event.metaKey : event.ctrlKey };
+    // A modified press is building the pick, not choosing a row, so it leaves the map where it is
+    // (`ah-y9hx` P1): a five-unit pick across four hexes would otherwise throw the map four times,
+    // and one Shift+click adding ten rows would send it to the last of them.
+    const plain = !modifiers.shift && !modifiers.mod;
+    const outcome = onPress(pick, unit.unitId, modifiers, rowIds);
     if (outcome.now) {
       settleOn(outcome.now, rowTarget);
+      if (plain) {
+        travelTo(rowTarget);
+      }
     }
     // Mouse only. A row is a scrollable surface on a touch screen, and `touch-none` on it would
     // cost the table its scrolling; `selectionGuard.ts` records that touch is not a platform this
@@ -787,7 +817,19 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       return;
     }
     const deferred = outcome.onRelease;
-    beginDrag(event, unit, deferred ? () => settleOn(deferred, rowTarget) : undefined);
+    // A deferred settle can only follow a plain press - `onPress` returns `onRelease` only after
+    // its shift and mod branches have both returned - so it travels unconditionally, and for the
+    // same reason a plain press does: a release that never became a drag *is* a plain click.
+    beginDrag(
+      event,
+      unit,
+      deferred
+        ? () => {
+            settleOn(deferred, rowTarget);
+            travelTo(rowTarget);
+          }
+        : undefined
+    );
   };
 
   /**

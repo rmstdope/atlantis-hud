@@ -112,6 +112,19 @@ export function extraColumnsFor(source: UnitSource): ExtraColumn[] {
 }
 
 /**
+ * Whether choosing a unit in this source should take the map to the unit's hex (`ah-y9hx`).
+ *
+ * True for every source that spans hexes, which is exactly the set `extraColumnsFor` gives a `hex`
+ * column to: `All my units`, `Other factions` and an Army each list units standing in different
+ * places, and the column that says where was the only route onward there was. False for
+ * `This hex`, where every row is already in the hex on screen, so travelling there could only pull
+ * the map back from wherever the player had dragged it.
+ */
+export function travelsOnSelect(source: UnitSource): boolean {
+  return source.kind !== "hex";
+}
+
+/**
  * The pane's header for a source: the fixed title, and the grey hint beside it.
  *
  * The pane keeps one identity across sources and only the hint moves (`ah-1mpx.2` U1). `This hex`

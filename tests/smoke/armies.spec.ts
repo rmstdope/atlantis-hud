@@ -16,6 +16,9 @@ const REPORT = readReport("g7f95t71");
 /** Inholm: a city with 24 structures and 92 units, one of them the player's. */
 const OWN_UNIT = "18642";
 
+/** Another of the player's units, standing in the ocean at (26,52) - somewhere else entirely. */
+const OTHER_OWN_UNIT = "13401";
+
 /** A game with a turn on screen and a hex selected, which is where every walk here starts. */
 async function workspace(page: Page) {
   await loadReport(page, "Smoke game", REPORT);
@@ -479,4 +482,21 @@ test("right-clicking a row inside the pick leaves the pick standing and acts on 
 
   await page.getByTestId("unit-context-menu").getByText("Northern Host").click();
   await expect(armyEntry(page)).toContainText("3");
+});
+
+test("ctrl-clicking rows across hexes builds a pick and never moves the map", async ({ page }) => {
+  await workspace(page);
+  await page.getByTestId("unit-source-own").click();
+  await page.getByLabel("Filter units").fill("Seven of Eight");
+
+  // A plain press first, on the unit standing in the hex already selected.
+  await page.getByTestId(`unit-row-${OWN_UNIT}`).click();
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+
+  // The second unit is in (26,52). A modified press adds it to the pick and leaves the map alone -
+  // otherwise assembling a force across four hexes would throw the map four times (`ah-y9hx` P1).
+  await page.getByTestId(`unit-row-${OTHER_OWN_UNIT}`).click({ modifiers: ["ControlOrMeta"] });
+
+  await expect(page.getByTestId("unit-bulk-line")).toContainText("2 units picked.");
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 });
