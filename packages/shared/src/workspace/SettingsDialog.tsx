@@ -595,7 +595,7 @@ export const WARNING_GROUPS: readonly {
         code: "pillage-without-men",
         title: "Pillaging without the men",
         description:
-          "A PILLAGE order where the faction has too few combat ready men in the region to take the money."
+          "A PILLAGE order where the units ordering it have too few combat ready men between them to take the money."
       }
     ]
   },
