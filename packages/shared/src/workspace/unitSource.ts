@@ -80,6 +80,12 @@ export function listShown(source: UnitSource, regionId: string | null): string {
       return "own";
     case "army":
       return `army:${source.armyId}`;
+    case "foreign":
+      // One list, like `own`, and deliberately not narrowed by the pin: the pin filters the list
+      // rather than replacing it, so pinning a faction is not a reason to empty the filter box.
+      // (`Other factions` arrived with `ah-1mpx.5` after this function was written for `ah-1t41`,
+      // and the two merged past each other - main's typecheck was red on the missing case.)
+      return "foreign";
   }
 }
 
