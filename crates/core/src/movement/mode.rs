@@ -291,6 +291,30 @@ pub fn sailing_requirement(fleet: &Structure, ruleset: Option<&Ruleset>) -> Opti
     Some(total)
 }
 
+/// Whether this structure is a vessel at all, rather than an ordinary building.
+///
+/// A vessel is one whose sailing numbers *some* source can price: the server's own `"Sailors: H/N"`
+/// in the structure's description, or a hull the ruleset knows. That is exactly
+/// [`sailing_requirement`] answering, so this is a name for the question rather than a second way
+/// of answering it, and the two can never disagree.
+///
+/// **This is the test to reach for whenever the question is "is this a ship".**
+/// [`hulls_named_in`] is not it - it is syntactic, and reads `Fort` as a fleet of one Fort. Two
+/// beads used it as the vessel test and both shipped a bug that only a trap test caught
+/// (`ah-048`, `ah-jk9h`).
+///
+/// `false` when nothing can price it - no ruleset and nothing stated, or a hull the catalogue does
+/// not carry - which is the safe direction: callers fall back to the ordinary land movement
+/// question rather than inventing a number.
+///
+/// [`crate::movement::fleet::steps_followed_by`] deliberately asks a narrower question and keeps
+/// [`fleet_speed`] rather than this: a hull whose *speed* cannot be priced carries its occupants
+/// nowhere, whatever its crew requirement.
+#[must_use]
+pub fn is_vessel(structure: &Structure, ruleset: Option<&Ruleset>) -> bool {
+    sailing_requirement(structure, ruleset).is_some()
+}
+
 /// How much weight a fleet can carry. Stated `Load: H/N` first; else the ruleset's `cargoCapacity`
 /// per hull, times the count; `None` when neither can say - an unknown hull, no ruleset - which
 /// callers treat as "cannot be priced" rather than a guess.
@@ -585,6 +609,64 @@ mod tests {
     fn a_building_kind_is_not_a_fleet_shape_the_parser_refuses() {
         assert_eq!(hulls_named_in(""), None);
         assert_eq!(hulls_named_in("Fleet,"), None);
+    }
+
+    /// The trap `ah-048` and `ah-jk9h` both fell into: the parser reads a Fort as one hull, and the
+    /// question they were actually asking is this one.
+    #[test]
+    fn a_fort_is_not_a_vessel_though_its_kind_parses_as_one_hull() {
+        let fort = Structure {
+            structure_id: "329".to_string(),
+            name: "Fort".to_string(),
+            kind: "Fort".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(
+            hulls_named_in(&fort.kind),
+            Some(vec![("Fort".to_string(), 1)]),
+            "the parser is syntactic and always has been"
+        );
+        assert!(!is_vessel(&fort, Some(&ruleset())));
+    }
+
+    /// A hull the catalogue prices is a vessel with no stated numbers at all - `Longship` carries
+    /// `sailingSkill: 4` in `config/public/ruleset.json`.
+    #[test]
+    fn a_hull_the_ruleset_prices_is_a_vessel() {
+        let ship = Structure {
+            structure_id: "329".to_string(),
+            name: "Ship".to_string(),
+            kind: "Longship".to_string(),
+            ..Default::default()
+        };
+        assert!(is_vessel(&ship, Some(&ruleset())));
+    }
+
+    /// The server's own words answer with no ruleset in hand.
+    #[test]
+    fn a_stated_sailors_line_makes_it_a_vessel_without_a_ruleset() {
+        let ship = Structure {
+            structure_id: "329".to_string(),
+            name: "Ship".to_string(),
+            kind: "Nosuchhull".to_string(),
+            description: Some("Load: 110/150; Sailors: 4/4; MaxSpeed: 4.".to_string()),
+            ..Default::default()
+        };
+        assert!(is_vessel(&ship, None));
+    }
+
+    /// Nothing stated and no hull the catalogue carries: "not a vessel" is the safe answer, because a
+    /// caller that believed otherwise would go on to invent a speed.
+    #[test]
+    fn a_hull_nothing_can_price_is_not_a_vessel() {
+        let ship = Structure {
+            structure_id: "329".to_string(),
+            name: "Ship".to_string(),
+            kind: "Nosuchhull".to_string(),
+            ..Default::default()
+        };
+        assert!(!is_vessel(&ship, Some(&ruleset())));
+        assert!(!is_vessel(&ship, None));
     }
 
     /// "Sailors: 4/4; MaxSpeed: 4." states its own numbers, which win over ruleset arithmetic.
