@@ -2066,6 +2066,13 @@ function UnitRow({
       // Pointerdown rather than click: a press on a row already in the pick must be able to defer
       // what it means until it is known whether it became a drag (`ah-1mpx.4` E2).
       onPointerDown={(event) => onPress(event, unit, rowTarget)}
+      // The browser's own drag, refused. A Shift+click extends the document's text selection as
+      // well as the pick, so the next press lands *inside* selected text - and a press on selected
+      // text followed by a move is how a browser starts dragging that text, which cancels the
+      // pointer stream this drag is built on. `ColumnReorderHandle` refuses the same thing by
+      // calling `preventDefault` on its pointerdown; a row cannot, because it must still take
+      // focus, so it is refused here instead.
+      onDragStart={(event) => event.preventDefault()}
       onContextMenu={(event) => onContextMenu(event, unit, rowTarget)}
       onKeyDown={(event) => onKeyDown(event, index)}
       // Pointer events rather than mouse events, for the guard: a finger has no hover to leave,

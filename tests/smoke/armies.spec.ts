@@ -280,8 +280,15 @@ const armyEntry = (page: Page) => page.getByTestId(/^unit-source-army-/);
 async function dragOnto(page: Page, from: Locator, onto: Locator) {
   await from.hover();
   await page.mouse.down();
-  await onto.hover();
+  // Several moves, as a hand makes: one `mousemove` is a thing to depend on rather than a drag,
+  // and the chip is made by the first move that travels more than four pixels.
+  const box = await from.boundingBox();
+  if (!box) {
+    throw new Error("nothing to drag");
+  }
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 10, { steps: 5 });
   await expect(page.getByTestId("unit-drag-chip")).toBeVisible();
+  await onto.hover();
   await onto.hover();
 }
 
