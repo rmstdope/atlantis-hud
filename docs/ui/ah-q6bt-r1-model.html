@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-q6bt &mdash; Round 1: what PILLAGE actually requires</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:34px 0 6px; font-size:15px; }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.g { width:100%; border-collapse:separate; border-spacing:0; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.g th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-dim); font-weight:400; padding:3px 12px 6px 0; border-bottom:1px solid var(--edge); }
+  table.g td { padding:5px 12px 5px 0; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  td.bad { color:var(--danger); } td.good { color:var(--ok); } td.k { color:var(--ink-dim); white-space:nowrap; font-size:11.5px; }
+  .quote { background:var(--raised); border-left:3px solid var(--brass); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin:12px 0; max-width:110ch; }
+  .quote b { color:var(--brass-bright); }
+  .settled { background:var(--raised); border-left:3px solid var(--ok); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:110ch; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+</style></head><body>
+<header><h1>PILLAGE &mdash; <span>what it actually requires, and who gets the money</span></h1>
+<p>Your verification of <code>ah-dxfd.2</code> found no pillage warning at all, and you filed <code>ah-q6bt</code> for the overhaul, noting one tension for planning to settle with you. This page is that tension, on your own reproduction hex.</p>
+<div class="quote"><b>rules/economy_taxingpillaging</b>, verbatim: &ldquo;Martial factions may also pillage a region. To do this requires <b>the faction to have enough combat ready men in the region</b> to tax half of the available money in the region. The total amount of money that can be pillaged will then be <b>shared out between every combat ready unit that issues the PILLAGE order</b>. The amount of money collected is equal to twice the available tax money.&rdquo;</div>
+<div class="quote"><b>Your words on the bead:</b> &ldquo;Only units that actually issue the PILLAGE order will participate, so <b>those units need to have enough combat ready men between them</b> to carry it out. Units not issuing PILLAGE will not count. The pillaged silver will be <b>divided proportionally between the combat ready men participating</b>.&rdquo;</div>
+<div class="settled"><b>Looked up, not recalled &mdash; and it decides the predicate.</b> <code>data/sword</code>: &ldquo;<b>No skill is needed to wield this weapon.</b>&rdquo; (<code>weapon.needs: null</code> in <code>ruleset.json</code>). So a man holding a sword is combat ready with <i>no</i> Combat skill &mdash; which is why City Guards, printed with <span class="mono">Skills: none</span>, is legitimately flagged <span class="mono">taxing</span> and <span class="mono">on guard</span>. Requiring <span class="mono">COMB &ge; 1</span> would be wrong.</div></header>
+<main>
+
+<h4 class="q"><em>The hex</em> mountain (36,4) in Slounspifra &mdash; read from the fixture</h4>
+<div class="card"><div class="stage">
+<table class="g">
+  <tr><th>Fact</th><th>Value</th><th>Where</th></tr>
+  <tr><td class="k">Tax base</td><td>$22,654</td><td class="k">region line 1330</td></tr>
+  <tr><td class="k">Combat ready men needed</td><td>&#8968; (22,654 &divide; 2) &divide; 50 &#8969; = <b>227</b></td><td class="k">&ldquo;enough to tax half the available money&rdquo;, $50 a taxer</td></tr>
+  <tr><td class="k">City Guards (13303)</td><td class="good">445 orcs, 592 swords, Skills: none &rarr; <b>445 combat ready</b></td><td class="k">on guard, taxing</td></tr>
+  <tr><td class="k">Transporter (2418), before the GIVE</td><td class="bad">1 human, no weapon, Skills: none &rarr; <b>0 combat ready</b></td><td class="k">the unit you ordered PILLAGE on</td></tr>
+  <tr><td class="k">Transporter (2418), after the GIVE of a sword</td><td class="good">1 human, 1 sword &rarr; <b>1 combat ready</b></td><td class="k">no skill needed to wield it</td></tr>
+  <tr><td class="k">The take, if it happens</td><td>2 &times; 22,654 = <b>$45,308</b></td><td class="k">&ldquo;twice the available tax money&rdquo;</td></tr>
+</table>
+</div></div>
+
+<h4 class="q"><em>G</em> The gate: whose combat ready men have to be enough?</h4>
+<p>Only Transporter (2418) orders PILLAGE. City Guards sits in the same hex, same faction, and orders nothing.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">G1 &mdash; your reading: only the units that ordered PILLAGE count</div>
+  <table class="g">
+    <tr><th>Case</th><th>Combat ready men counted</th><th>Result</th></tr>
+    <tr><td class="k">Before the GIVE</td><td>0 &nbsp;<span class="mono" style="color:var(--ink-dim)">(2418 alone)</span></td><td class="bad">0 &lt; 227 &mdash; cannot pillage. <b>Warn.</b></td></tr>
+    <tr><td class="k">After the GIVE of a sword</td><td>1 &nbsp;<span class="mono" style="color:var(--ink-dim)">(2418 alone)</span></td><td class="bad">1 &lt; 227 &mdash; cannot pillage. <b>Warn.</b></td></tr>
+    <tr><td class="k">If City Guards ordered it too</td><td>446</td><td class="good">446 &ge; 227 &mdash; pillage succeeds.</td></tr>
+  </table>
+  <ul class="notes">
+    <li>The warning tracks what you actually ordered: adding PILLAGE to a big unit is what fixes it.</li>
+    <li>Cannot ever tell you the pillage will work and then have it fail because a bystander unit was counted.</li>
+    <li class="con">Departs from the rules text, which gates on the faction's men in the region.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">G2 &mdash; the rules text: the faction's men in the region</div>
+  <table class="g">
+    <tr><th>Case</th><th>Combat ready men counted</th><th>Result</th></tr>
+    <tr><td class="k">Before the GIVE</td><td>445 &nbsp;<span class="mono" style="color:var(--ink-dim)">(City Guards, in the hex)</span></td><td class="bad">Gate passes, but 2418 is not combat ready &mdash; it takes <b>no share</b>. <b>Warn.</b></td></tr>
+    <tr><td class="k">After the GIVE of a sword</td><td>445</td><td class="good">Gate passes and 2418 <i>is</i> combat ready &mdash; it takes the whole <b>$45,308</b>. No warning.</td></tr>
+  </table>
+  <ul class="notes">
+    <li>Matches <code>rules/economy_taxingpillaging</code> sentence for sentence.</li>
+    <li>Explains the report you were reading: the engine let City Guards guard and tax on swords alone.</li>
+    <li class="con">A one-man unit collects $45,308 because 444 men who ordered nothing were standing nearby &mdash; which is the outcome you said you did not want.</li>
+  </ul>
+</div>
+</div>
+
+<h4 class="q"><em>D</em> How the take is divided between the units that ordered it</h4>
+<p>Two units order PILLAGE: one with 300 combat ready men, one with 1. The take is $45,308.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">D1 &mdash; your reading: proportionally, by combat ready men</div>
+  <table class="g">
+    <tr><th>Unit</th><th>Combat ready men</th><th>Takes</th></tr>
+    <tr><td class="k">Big unit</td><td>300</td><td class="good">$45,157</td></tr>
+    <tr><td class="k">Small unit</td><td>1</td><td>$151</td></tr>
+  </table>
+  <ul class="notes"><li>The men who did the work get the money.</li><li class="con">The rules sentence says &ldquo;shared out between every combat ready <i>unit</i>&rdquo;, not <i>man</i>.</li></ul>
+</div>
+<div class="stage">
+  <div class="hexlab">D2 &mdash; the rules text: evenly, per unit</div>
+  <table class="g">
+    <tr><th>Unit</th><th>Combat ready men</th><th>Takes</th></tr>
+    <tr><td class="k">Big unit</td><td>300</td><td>$22,654</td></tr>
+    <tr><td class="k">Small unit</td><td>1</td><td class="bad">$22,654</td></tr>
+  </table>
+  <ul class="notes"><li>Matches the sentence literally.</li><li class="con">A one-man unit earns as much as three hundred, which makes splitting units the optimal play.</li></ul>
+</div>
+</div>
+
+</main>
+<footer>Every rule quoted here comes from <code>pnpm run atlantis rules economy_taxingpillaging</code> and <code>data/sword</code>, not from memory. The hex numbers are read from <code>tests/fixtures/reports/neworigins-3.0.0-g3-f42-t42.rep</code>.</footer>
+</body></html>
