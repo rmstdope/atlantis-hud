@@ -73,6 +73,7 @@ const LONG_LIT_EDGE_STYLE = {
   strokeDasharray: constant(3) + " " + constant(2)
 } as const;
 const BOX_STYLE = { strokeWidth: constant(1) } as const;
+const SPINE_STYLE = { strokeWidth: constant(1) } as const;
 const LIT_BOX_STYLE = { strokeWidth: constant(2) } as const;
 const APPRENTICE_BOX_STYLE = {
   strokeWidth: constant(1),
@@ -210,6 +211,15 @@ export function MagicGraphDrawing({
         <g data-testid="magic-graph-world" ref={worldRef} transform={transformString(view)}>
           {graph.tiers.map((tier) => (
             <g key={tier.depth} data-testid={`magic-graph-tier-${tier.depth}`}>
+              <line
+                data-testid={`magic-graph-spine-${tier.depth}`}
+                x1={tier.spine.x}
+                y1={tier.spine.top}
+                x2={tier.spine.x}
+                y2={tier.spine.bottom}
+                style={SPINE_STYLE}
+                className="stroke-edge-soft"
+              />
               <text
                 x={tier.x}
                 y={28}
