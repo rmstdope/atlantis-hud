@@ -570,3 +570,50 @@ fn every_committed_report_is_read_completely() {
         );
     }
 }
+
+/// The corpus pins the roster-skill parse exactly. These are measured totals, not bounds: a change
+/// in any of them is a change in the parser, and should fail here rather than pass quietly.
+#[test]
+fn every_committed_report_yields_its_roster_skills() {
+    use atlantis_hud_core::report::battle::roster_skills;
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let mut entries = 0usize;
+    let mut per_name: BTreeMap<String, usize> = BTreeMap::new();
+
+    for report in atlantis_hud_fixtures::ALL {
+        let parsed = parse_regions(report.text);
+        for entry in roster_skills(&parsed.battles) {
+            entries += 1;
+
+            let mut seen = BTreeSet::new();
+            for skill in &entry.skills {
+                assert!(
+                    ["combat", "riding", "tactics", "longbow", "crossbow"]
+                        .contains(&skill.name.as_str()),
+                    "{} disclosed an unexpected skill name {:?}",
+                    report.file,
+                    skill.name
+                );
+                assert!(
+                    seen.insert(skill.name.clone()),
+                    "{} disclosed {:?} twice for unit {}",
+                    report.file,
+                    skill.name,
+                    entry.unit_id
+                );
+                *per_name.entry(skill.name.clone()).or_default() += 1;
+            }
+        }
+    }
+
+    assert_eq!(
+        entries, 1618,
+        "roster entries disclosing at least one skill"
+    );
+    assert_eq!(per_name.get("combat").copied(), Some(901));
+    assert_eq!(per_name.get("riding").copied(), Some(891));
+    assert_eq!(per_name.get("longbow").copied(), Some(366));
+    assert_eq!(per_name.get("tactics").copied(), Some(318));
+    assert_eq!(per_name.get("crossbow").copied(), Some(116));
+}

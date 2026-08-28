@@ -151,6 +151,7 @@ export function aBattleUnit(overrides: Partial<BattleUnit> = {}): BattleUnit {
     faction: { name: "Borg TNG", id: "95" },
     flags: [],
     body: "1 man",
+    skills: [],
     ...overrides
   };
 }

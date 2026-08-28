@@ -60,6 +60,28 @@ const OTHER_PREAMBLE_HEADERS: &[&str] = &[
     "Item reports",
 ];
 
+/// The only skills a battle roster ever prints - counted over every roster entry in
+/// `tests/fixtures/reports/`, where these five appear 2592 times and no sixth name appears at all.
+///
+/// Lower case, and matched case-sensitively, which is the second guard against reading an item's
+/// stat block: a monster prints `(Combat 3/3, Attacks 15, Hits 15, Tactics 2)` with capitals.
+const ROSTER_SKILLS: &[&str] = &["combat", "riding", "tactics", "longbow", "crossbow"];
+
+/// One combat skill a battle roster disclosed, as `combat 5`.
+///
+/// Deliberately not [`super::model::Skill`]: a roster prints neither the skill's tag nor its study
+/// points, and a `Skill` carrying `points: 0` would be indistinguishable from a real skill nobody
+/// has studied.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct BattleSkill {
+    /// Exactly as the roster printed it, lower case: `combat`, `riding`, `tactics`, `longbow`,
+    /// `crossbow`. No tag, because the roster prints none.
+    pub name: String,
+    pub level: u32,
+}
+
 /// A named participant, as printed: `Pirates (14789)`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
@@ -83,6 +105,13 @@ pub struct BattleUnit {
     pub faction: Option<Combatant>,
     pub flags: Vec<String>,
     pub body: String,
+    /// The `combat 5, riding 2` pairs at the tail of the line, read out of `body`.
+    ///
+    /// `body` still carries them, verbatim, and is not narrowed: `BattlesDialog` renders it whole
+    /// and this bead does not change what it shows. `#[serde(default)]`, matching `assassination`
+    /// beside it, so a payload written before this field existed still deserializes.
+    #[serde(default)]
+    pub skills: Vec<BattleSkill>,
 }
 
 /// A casualty line, on the close of a round or of the whole battle: `Pirates (14789) loses 15.`
@@ -139,6 +168,52 @@ pub struct Battle {
     /// carries no key for it.
     #[serde(default)]
     pub assassination: bool,
+}
+
+/// What one battle roster entry disclosed about one unit's combat skills.
+///
+/// Only entries that disclosed at least one skill appear.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct RosterSkills {
+    /// The unit number, as `BattleUnit.id`.
+    pub unit_id: String,
+    /// The unit's name as the roster printed it, as `BattleUnit.name`.
+    pub unit_name: String,
+    /// The battle's hex, when its headline named one. Callers label it themselves, the way
+    /// `packages/shared/src/workspace/battles.ts` does with `battle.coordinate`.
+    pub coordinate: Option<super::model::Coordinate>,
+    /// The battle's terrain, when its headline named one: `ocean`.
+    pub terrain: Option<String>,
+    pub skills: Vec<BattleSkill>,
+}
+
+/// Every combat skill the rosters disclosed, in report order: battles in the order they were
+/// printed, and within each battle attackers before defenders, each in roster order.
+///
+/// Report order is the contract, not an accident of the loop. A unit can appear in two battles in
+/// one report, and the caller's rule for a disagreement is that the later entry wins - which it can
+/// only apply if the order is the report's.
+#[must_use]
+pub fn roster_skills(battles: &[Battle]) -> Vec<RosterSkills> {
+    battles
+        .iter()
+        .flat_map(|battle| {
+            battle
+                .attackers
+                .iter()
+                .chain(battle.defenders.iter())
+                .filter(|unit| !unit.skills.is_empty())
+                .map(move |unit| RosterSkills {
+                    unit_id: unit.id.clone(),
+                    unit_name: unit.name.clone(),
+                    coordinate: battle.coordinate,
+                    terrain: battle.terrain.clone(),
+                    skills: unit.skills.clone(),
+                })
+        })
+        .collect()
 }
 
 /// Whether `label` (a line's body with any trailing colon already stripped) opens one of the other
@@ -489,13 +564,50 @@ fn parse_battle_unit(line: &str) -> Option<BattleUnit> {
         .trim()
         .to_string();
 
+    let skills = parse_roster_skills(&body);
+
     Some(BattleUnit {
         name,
         id,
         faction,
         flags,
         body,
+        skills,
     })
+}
+
+/// The `combat 5` pairs at the tail of a roster line's body.
+///
+/// A description may follow the skills after a top-level `; ` - `..., combat 5, riding 5; Gate
+/// jumper, passing by.` - and may itself contain commas, so that is cut before anything else. What
+/// remains is walked as top-level comma fields, depth-aware because an item's stat block prints
+/// `dragon [DRAG] (Combat 6/6, Attacks 50, Hits 60, Tactics 4)`, whose commas separate nothing. A
+/// field counts as a skill only when it is exactly two whitespace-separated tokens whose first is
+/// one of [`ROSTER_SKILLS`], case-sensitively, and whose second parses as a `u32`.
+fn parse_roster_skills(body: &str) -> Vec<BattleSkill> {
+    let Some((mut rest, _)) = next_top_level_field(body, ';') else {
+        return Vec::new();
+    };
+
+    let mut skills = Vec::new();
+    while let Some((field, after)) = next_top_level_field(rest, ',') {
+        rest = after;
+        let mut tokens = field.split_whitespace();
+        let (Some(name), Some(level), None) = (tokens.next(), tokens.next(), tokens.next()) else {
+            continue;
+        };
+        if !ROSTER_SKILLS.contains(&name) {
+            continue;
+        }
+        if let Ok(level) = level.parse::<u32>() {
+            skills.push(BattleSkill {
+                name: name.to_string(),
+                level,
+            });
+        }
+    }
+
+    skills
 }
 
 #[cfg(test)]
@@ -933,5 +1045,152 @@ mod tests {
         ));
 
         assert!(!parsed[0].assassination);
+    }
+
+    #[test]
+    fn reads_the_skill_pairs_at_the_tail_of_a_roster_line() {
+        let parsed = battles(concat!(
+            "Battles during turn:\n",
+            "Borg (73) attacks Wanderers (83) in mountain (7,53) in Inhead!\n",
+            "Defenders:\n",
+            "Watazka (4839), behind, leader [LEAD], mithril sword [MSWO], ",
+            "book of exorcism [BKEX], riding 5, combat 2, longbow 4.\n",
+        ));
+
+        let defender = &parsed[0].defenders[0];
+        assert_eq!(
+            defender.skills,
+            vec![
+                BattleSkill {
+                    name: "riding".to_string(),
+                    level: 5
+                },
+                BattleSkill {
+                    name: "combat".to_string(),
+                    level: 2
+                },
+                BattleSkill {
+                    name: "longbow".to_string(),
+                    level: 4
+                },
+            ]
+        );
+        assert!(
+            defender.body.ends_with("riding 5, combat 2, longbow 4"),
+            "body is kept verbatim: {}",
+            defender.body
+        );
+    }
+
+    #[test]
+    fn does_not_read_an_items_stat_block_as_the_units_skills() {
+        let parsed = battles(concat!(
+            "Battles during turn:\n",
+            "AA Tomb's Guards (7280) attacks Pirates (14789) in ocean (25,55) in Atlantis Ocean!\n",
+            "Defenders:\n",
+            "Pirates (14789), Creatures (2), 15 pirates [PIRA] ",
+            "(Combat 3/3, Attacks 5, Hits 5, Tactics 1).\n",
+        ));
+
+        assert_eq!(parsed[0].defenders[0].skills, Vec::new());
+    }
+
+    #[test]
+    fn stops_at_the_description_that_follows_the_skills() {
+        let parsed = battles(concat!(
+            "Battles during turn:\n",
+            "Borg (73) attacks Wanderers (83) in mountain (7,53) in Inhead!\n",
+            "Attackers:\n",
+            "Xtremo (10611), behind, leader [LEAD], staff of fire [STAF], ",
+            "combat 5, riding 5; Gate jumper, passing by.\n",
+        ));
+
+        assert_eq!(
+            parsed[0].attackers[0].skills,
+            vec![
+                BattleSkill {
+                    name: "combat".to_string(),
+                    level: 5
+                },
+                BattleSkill {
+                    name: "riding".to_string(),
+                    level: 5
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn reads_skills_on_a_line_that_prints_no_faction() {
+        let parsed = battles(concat!(
+            "Battles during turn:\n",
+            "Borg (73) attacks Wanderers (83) in mountain (7,53) in Inhead!\n",
+            "Attackers:\n",
+            "Bob on assignment (659), behind, leader [LEAD], shieldstone [SHST], combat 3.\n",
+        ));
+
+        let attacker = &parsed[0].attackers[0];
+        assert_eq!(attacker.faction, None);
+        assert_eq!(
+            attacker.skills,
+            vec![BattleSkill {
+                name: "combat".to_string(),
+                level: 3
+            }]
+        );
+    }
+
+    #[test]
+    fn lists_every_rosters_skills_in_report_order() {
+        let parsed = battles(concat!(
+            "Battles during turn:\n",
+            "A (1) attacks B (2) in plain (1,2) in Prov!\n",
+            "Attackers:\n",
+            "Alpha (11), A (1), combat 3.\n",
+            "Nobody (12), A (1), 10 leaders [LEAD].\n",
+            "Defenders:\n",
+            "Beta (21), B (2), riding 1.\n",
+            "C (3) attacks D (4) in ocean (5,6) in Sea!\n",
+            "Attackers:\n",
+            "Alpha (11), C (3), combat 5.\n",
+        ));
+
+        let skills = roster_skills(&parsed);
+
+        assert_eq!(
+            skills,
+            vec![
+                RosterSkills {
+                    unit_id: "11".to_string(),
+                    unit_name: "Alpha".to_string(),
+                    coordinate: Some(super::super::model::Coordinate { x: 1, y: 2, z: 1 }),
+                    terrain: Some("plain".to_string()),
+                    skills: vec![BattleSkill {
+                        name: "combat".to_string(),
+                        level: 3
+                    }],
+                },
+                RosterSkills {
+                    unit_id: "21".to_string(),
+                    unit_name: "Beta".to_string(),
+                    coordinate: Some(super::super::model::Coordinate { x: 1, y: 2, z: 1 }),
+                    terrain: Some("plain".to_string()),
+                    skills: vec![BattleSkill {
+                        name: "riding".to_string(),
+                        level: 1
+                    }],
+                },
+                RosterSkills {
+                    unit_id: "11".to_string(),
+                    unit_name: "Alpha".to_string(),
+                    coordinate: Some(super::super::model::Coordinate { x: 5, y: 6, z: 1 }),
+                    terrain: Some("ocean".to_string()),
+                    skills: vec![BattleSkill {
+                        name: "combat".to_string(),
+                        level: 5
+                    }],
+                },
+            ]
+        );
     }
 }

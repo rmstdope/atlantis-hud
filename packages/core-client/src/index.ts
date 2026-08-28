@@ -39,6 +39,8 @@ export type { UnitOrders } from "./generated/UnitOrders";
 export type { OrdersTemplate } from "./generated/OrdersTemplate";
 export type { Combatant } from "./generated/Combatant";
 export type { BattleUnit } from "./generated/BattleUnit";
+export type { BattleSkill } from "./generated/BattleSkill";
+export type { RosterSkills } from "./generated/RosterSkills";
 export type { Casualty } from "./generated/Casualty";
 export type { BattleRound } from "./generated/BattleRound";
 export type { Battle } from "./generated/Battle";
@@ -81,6 +83,7 @@ import type { OrderValidationResult } from "./generated/OrderValidationResult";
 import type { GameManifest } from "./generated/GameManifest";
 import type { EngineInfo } from "./generated/EngineInfo";
 import type { ParsedReport } from "./generated/ParsedReport";
+import type { RosterSkills } from "./generated/RosterSkills";
 
 export type OpenedGame = {
   gameFilePath: string;
@@ -614,6 +617,8 @@ export interface CoreAdapter {
   parseReport(rawReport: string): Promise<ReportParseResult>;
   parseReportFull(rawReport: string): Promise<ParsedReport>;
   parseReportClassified(rawReport: string, rulesetJson: string): Promise<ParsedReport>;
+  /** Every combat skill the report's battle rosters disclosed, in report order. */
+  rosterSkills(rawReport: string): Promise<RosterSkills[]>;
   previewReportImport(
     databasePath: string,
     gameId: string,
