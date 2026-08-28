@@ -3,6 +3,9 @@ import type { RailEvent, RailMode } from "./railEditState";
 import { canCommit, keyToAction } from "./railEditState";
 import { FOREIGN_SOURCE, HEX_SOURCE, OWN_SOURCE, sameSource, type UnitSource } from "./unitSource";
 
+/** One frozen empty set, so a rail with no drag in flight re-renders nothing on its account. */
+const NO_DROP_FULL: ReadonlySet<string> = new Set();
+
 /**
  * The units dock's source rail: *This hex*, *All my units*, then each Army (`ah-1mpx.2`).
  *
@@ -25,7 +28,10 @@ export function UnitSourceRail({
   foreignCount,
   mode,
   onEvent,
-  canEdit
+  canEdit,
+  dropOver = null,
+  dropFull = NO_DROP_FULL,
+  dragging = false
 }: {
   source: UnitSource;
   onSource: (source: UnitSource) => void;
@@ -39,6 +45,12 @@ export function UnitSourceRail({
   onEvent: (event: RailEvent) => void;
   /** False when no game is open: the Armies group and "+ New Army" are then not rendered at all. */
   canEdit: boolean;
+  /** The entry a drag is currently over, or null. Drawn brass-dashed (`ah-1mpx.4` D1). */
+  dropOver?: { kind: "army"; armyId: string } | { kind: "new" } | null;
+  /** Army ids that would take nothing from the drag in flight: drawn dim with a ✓, and inert. */
+  dropFull?: ReadonlySet<string>;
+  /** True while a drag is in flight, which is the only time the two above mean anything. */
+  dragging?: boolean;
 }) {
   // U4: the mark means "the table is not about the hex on the map", with no history in it - so it
   // is computed from `source` rather than passed in, and there is nothing to keep in step.
@@ -89,6 +101,13 @@ export function UnitSourceRail({
                 count={army.members.length}
                 selected={sameSource(source, { kind: "army", armyId: army.id })}
                 onSelect={() => onSource({ kind: "army", armyId: army.id })}
+                // How the drag finds its target: `document.elementFromPoint` at the pointer, then
+                // `closest("[data-drop-army],[data-drop-new]")`. Nothing measures the rail, and an
+                // Army with nothing to take carries no attribute at all - which is what makes the
+                // drop refuse before the pointer is released rather than being refused after (W3).
+                dropArmyId={dragging && !dropFull.has(army.id) ? army.id : null}
+                over={dropOver?.kind === "army" && dropOver.armyId === army.id}
+                full={dragging && dropFull.has(army.id)}
                 // The same inline editor renames later, on double-click or the Rename button
                 // (round 3, W2) - one naming control in the whole feature.
                 onRename={() => onEvent({ type: "rename-clicked", armyId: army.id, name: army.name })}
@@ -99,8 +118,11 @@ export function UnitSourceRail({
           <button
             type="button"
             data-testid="rail-new-army"
-            onClick={() => onEvent({ type: "new-clicked", withUnit: null })}
-            className="flex w-full items-center rounded px-[7px] py-[3px] text-left text-pane text-brass-bright hover:bg-panel focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
+            data-drop-new={dragging ? "true" : undefined}
+            onClick={() => onEvent({ type: "new-clicked", withUnits: [] })}
+            className={`flex w-full items-center rounded px-[7px] py-[3px] text-left text-pane text-brass-bright hover:bg-panel focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass${
+              dropOver?.kind === "new" ? " border border-dashed border-brass bg-brass/10" : ""
+            }`}
           >
             + New Army
           </button>
@@ -123,7 +145,10 @@ function RailEntry({
   selected,
   highlighted = false,
   onSelect,
-  onRename
+  onRename,
+  dropArmyId = null,
+  over = false,
+  full = false
 }: {
   testId: string;
   label: string;
@@ -135,12 +160,22 @@ function RailEntry({
   onSelect: () => void;
   /** Double-click renames, where the entry is an Army. */
   onRename?: () => void;
+  /**
+   * The Army id a drag may be dropped on here, or null for an entry that is not a target - which
+   * covers `This hex` and `All my units` always, and an Army with nothing left to take.
+   */
+  dropArmyId?: string | null;
+  /** The drag is over this entry: brass-dashed. */
+  over?: boolean;
+  /** This Army would take nothing from the drag: dim, ticked, and no target at all. */
+  full?: boolean;
 }) {
   return (
     <button
       type="button"
       data-testid={testId}
       data-selected={selected}
+      data-drop-army={dropArmyId ?? undefined}
       aria-pressed={selected}
       onClick={onSelect}
       onDoubleClick={onRename}
@@ -150,9 +185,14 @@ function RailEntry({
           : highlighted
             ? "text-brass-bright"
             : "text-ink-soft hover:bg-panel"
+      }${over ? " border border-dashed border-brass bg-brass/10 text-brass-bright" : ""}${
+        full ? " opacity-40" : ""
       }`}
     >
       <span className="min-w-0 flex-1 truncate">{label}</span>
+      {/* The same ✓ the Add to army menu gives an Army with nothing to add, so the rail and the
+          menu say the same thing about the same Army in the same mark (W3). */}
+      {full ? <span className="text-ok">✓</span> : null}
       {count === null ? null : (
         <span className={`ml-auto text-pane-sm ${highlighted ? "text-brass-bright" : "text-ink-dim"}`}>
           {highlighted ? `${count} ●` : count}

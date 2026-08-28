@@ -41,10 +41,19 @@ describe("which list the dock is showing", () => {
 });
 
 describe("what the table is a list of (ah-1t41)", () => {
-  it("listShown tells the three kinds of source apart", () => {
-    expect(listShown(HEX_SOURCE, null)).not.toBe(listShown(OWN_SOURCE, null));
-    expect(listShown(OWN_SOURCE, null)).not.toBe(listShown(army("a"), null));
-    expect(listShown(HEX_SOURCE, null)).not.toBe(listShown(army("a"), null));
+  it("listShown tells every kind of source apart", () => {
+    const every = [HEX_SOURCE, OWN_SOURCE, army("a"), FOREIGN_SOURCE].map((source) =>
+      listShown(source, null)
+    );
+
+    expect(new Set(every).size).toBe(every.length);
+  });
+
+  it("listShown answers for Other factions at all", () => {
+    // It did not, for a while: `Other factions` arrived after this function was written and the
+    // two beads merged past each other, leaving the switch without the case and main's typecheck
+    // red. The pin narrows this list rather than replacing it, so it has no part in the answer.
+    expect(listShown(FOREIGN_SOURCE, null)).toBe(listShown(FOREIGN_SOURCE, "1:7,53"));
   });
 
   it("listShown tells two Armies apart, and matches one Army to itself however the object was built", () => {

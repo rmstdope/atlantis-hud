@@ -1292,3 +1292,68 @@ describe("the Other factions source (ah-1mpx.5)", () => {
     expect(inHex).not.toContain(">—</td>");
   });
 });
+
+describe("picking several rows (ah-1mpx.4)", () => {
+  const twoRows = () =>
+    hex({
+      region: region({ units: [unit({ unitId: "1" }), unit({ unitId: "2" }), unit({ unitId: "3" })] }),
+      ownUnitCount: 3
+    });
+
+  const rowFor = (markup: string, unitId: string) =>
+    new RegExp(`<tr[^>]*data-testid="unit-row-${unitId}"[\\s\\S]*?</tr>`).exec(markup)?.[0] ?? "";
+
+  it("washes every picked row and the cursor row more strongly", () => {
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={twoRows()}
+        preview={null}
+        initialPick={{ ids: new Set(["1", "2"]), anchor: "1" }}
+      />,
+      useWorkspaceStore,
+      { selectedUnitId: "1" }
+    );
+
+    // Round 3's numbers exactly: the cursor keeps 25%, a merely picked row takes 15%.
+    expect(rowFor(markup, "1")).toContain("bg-select/25");
+    expect(rowFor(markup, "2")).toContain("bg-select/15");
+    expect(rowFor(markup, "3")).not.toContain("bg-select");
+  });
+
+  it("says which rows are picked, out loud and to the smoke suite", () => {
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={twoRows()}
+        preview={null}
+        initialPick={{ ids: new Set(["1", "2"]), anchor: "1" }}
+      />,
+      useWorkspaceStore,
+      { selectedUnitId: "1" }
+    );
+
+    // In a grid `aria-selected` is the selection and focus is the cursor, so both picked rows
+    // carry it while only the cursor row is in the tab order.
+    expect(rowFor(markup, "2")).toContain('data-picked="true"');
+    expect(rowFor(markup, "2")).toContain('aria-selected="true"');
+    expect(rowFor(markup, "3")).toContain('data-picked="false"');
+    expect(rowFor(markup, "3")).toContain('aria-selected="false"');
+    expect(markup).toContain('aria-multiselectable="true"');
+  });
+
+  it("draws the bulk line only at two or more picked", () => {
+    const one = renderWithStoreState(
+      <UnitTableDock hex={twoRows()} preview={null} initialPick={{ ids: new Set(["1"]), anchor: "1" }} />,
+      useWorkspaceStore,
+      { selectedUnitId: "1" }
+    );
+    const two = renderWithStoreState(
+      <UnitTableDock hex={twoRows()} preview={null} initialPick={{ ids: new Set(["1", "2"]), anchor: "1" }} />,
+      useWorkspaceStore,
+      { selectedUnitId: "1" }
+    );
+
+    expect(one).not.toContain('data-testid="unit-bulk-line"');
+    expect(two).toContain('data-testid="unit-bulk-line"');
+    expect(two).toContain("2 units picked.");
+  });
+});

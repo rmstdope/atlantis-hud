@@ -14,13 +14,17 @@ import type { ReportUnit } from "@atlantis/core-client";
 
 export type RailMode =
   | { kind: "idle" }
-  /** A new Army being named. `withUnit` is set when the popover's "New Army…" started it. */
-  | { kind: "creating"; draft: string; withUnit: ReportUnit | null }
+  /**
+   * A new Army being named. `withUnits` are the rows that join it on Enter - the popover's
+   * "New Army…" carries the pick, and a drop on `+ New Army` carries what was dragged
+   * (`ah-1mpx.4` D1). Empty for the rail's own `+ New Army`.
+   */
+  | { kind: "creating"; draft: string; withUnits: readonly ReportUnit[] }
   | { kind: "renaming"; armyId: string; draft: string }
   | { kind: "deleting"; armyId: string };
 
 export type RailEvent =
-  | { type: "new-clicked"; withUnit: ReportUnit | null }
+  | { type: "new-clicked"; withUnits: readonly ReportUnit[] }
   | { type: "rename-clicked"; armyId: string; name: string }
   | { type: "draft-changed"; draft: string }
   | { type: "cancelled" }
@@ -33,12 +37,12 @@ export type RailEvent =
 export function reduce(mode: RailMode, event: RailEvent): RailMode {
   switch (event.type) {
     case "new-clicked":
-      return { kind: "creating", draft: "", withUnit: event.withUnit };
+      return { kind: "creating", draft: "", withUnits: event.withUnits };
     case "rename-clicked":
       return { kind: "renaming", armyId: event.armyId, draft: event.name };
     case "draft-changed":
       return mode.kind === "creating"
-        ? { kind: "creating", draft: event.draft, withUnit: mode.withUnit }
+        ? { kind: "creating", draft: event.draft, withUnits: mode.withUnits }
         : mode.kind === "renaming"
           ? { kind: "renaming", armyId: mode.armyId, draft: event.draft }
           : mode;

@@ -18,6 +18,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent,
   type ReactNode
 } from "react";
@@ -57,13 +58,28 @@ import { useSettingsStore } from "../settingsStore";
 import { useWorkspaceStore } from "../workspaceStore";
 import { useArmiesStore } from "../armiesStore";
 import { attitudeToward } from "../factionDossier";
+import { alreadyIn } from "../armies";
+import { isTopDismissLayer, pushDismissLayer } from "../dismissStack";
+import { isMacPlatform } from "../shortcuts";
 import { AddToArmyMenu } from "./AddToArmyMenu";
 import { armyRows, seenLabel, staleLine, type ArmyRows } from "./armyRows";
 import { ChipPopover } from "./popover";
 import { ForeignStrip } from "./ForeignStrip";
 import { foreignEmptyLine, pinForRow, pinnedRows, pinStillApplies } from "./foreignUnits";
 import { reduce as reduceRail, type RailMode } from "./railEditState";
+import { guardSelection } from "./selectionGuard";
+import { createUnitDragChip, type UnitDragChip } from "./unitDragChip";
+import { UnitBulkLine } from "./UnitBulkLine";
+import { UnitContextMenu } from "./UnitContextMenu";
 import { UnitSourceRail } from "./UnitSourceRail";
+import {
+  NO_PICK,
+  afterGesture,
+  narrowedTo,
+  onPress,
+  pickedIn,
+  type UnitPick
+} from "./unitPick";
 import { useArmyActions } from "./useArmyActions";
 import {
   drawnColumnsFor,
@@ -192,6 +208,15 @@ type UnitTableDockProps = {
   initialPin?: FactionPin | null;
   /** The faction attitudes this turn's report declares, for the `Other factions` strip. */
   attitudes?: DeclaredAttitudes | null;
+  /**
+   * The pick the pane starts on, empty unless told otherwise.
+   *
+   * The shell never passes it, and nothing persists it (`ah-1mpx.4`): it exists for the same
+   * reason `initialSource` does, so a component test can render a pick a static render cannot
+   * click its way to. In a live render the source effect below clears it as the pane mounts,
+   * which is why it is of no use to a real caller.
+   */
+  initialPick?: UnitPick;
 };
 
 export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>(
@@ -214,7 +239,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       initialSource = HEX_SOURCE,
       foreignUnits,
       initialPin = null,
-      attitudes = null
+      attitudes = null,
+      initialPick = NO_PICK
     },
     ref
   ) {
@@ -246,7 +272,15 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const [source, setSource] = useState<UnitSource>(initialSource);
   const [pin, setPin] = useState<FactionPin | null>(initialPin);
   const [mode, dispatch] = useReducer(reduceRail, { kind: "idle" } as RailMode);
-  const [menuOpen, setMenuOpen] = useState(false);
+  /** The rows picked for a bulk action, beside - never instead of - the cursor row. */
+  const [pick, setPick] = useState<UnitPick>(initialPick);
+  /** Where the Army menu is anchored, or null when it is closed. */
+  const [menu, setMenu] = useState<MenuAnchor | null>(null);
+  /** The rail entry under the pointer mid-drag, and the Armies that would take nothing. */
+  const [drag, setDrag] = useState<DragState | null>(null);
+  // The platform's own command modifier and only that one, resolved exactly as `matchShortcut`
+  // does it. Read once per render rather than threaded in as a prop, as `AppShell` reads it.
+  const isMac = isMacPlatform();
   const canEditArmies = Boolean(client && game);
   const actions = useArmyActions({
     client,
@@ -385,6 +419,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       ),
     [units, filter, sort, structures, longOrders, silverByUnit, sourced.seen]
   );
+  /** The unit numbers the table is drawing, in the order it is drawing them. */
+  const rowIds = useMemo(() => visible.map((unit) => unit.unitId), [visible]);
   const selectedIndex = useMemo(
     () => visible.findIndex((unit) => unit.unitId === selectedUnitId),
     [visible, selectedUnitId]
@@ -420,6 +456,21 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       unpinRef.current?.focus();
     }
   }, [visible, selectUnit]);
+
+  // E1: the filter narrows the pick, and so does a turn load - `visible` is rebuilt from the new
+  // report, so a picked unit the new turn does not mention is dropped, which needs no case of its
+  // own. `narrowedTo` answers with the identical object when nothing was dropped, so this settles
+  // in one render.
+  useEffect(() => {
+    setPick((current) => narrowedTo(current, rowIds));
+  }, [rowIds]);
+
+  // Round 3, G1: changing the source clears the pick outright. Not merely narrowed - two sources
+  // can share rows (every `This hex` row is also an `All my units` row), and a pick that survived
+  // the jump would be a pick the player did not make on the list they are now looking at.
+  useEffect(() => {
+    setPick(NO_PICK);
+  }, [source]);
 
   const { start, end } = windowRange(
     scrollTop,
@@ -561,7 +612,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    */
   const commitName = () => {
     if (mode.kind === "creating") {
-      void actions.create(mode.draft, mode.withUnit);
+      void actions.create(mode.draft, mode.withUnits);
     } else if (mode.kind === "renaming") {
       void actions.rename(mode.armyId, mode.draft);
     }
@@ -574,15 +625,33 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         : { ...current, column, direction: "asc" }
     );
 
-  const moveSelection = (to: number) => {
+  const moveSelection = (to: number, options: { extend?: boolean } = {}) => {
     const target = visible[Math.min(Math.max(to, 0), visible.length - 1)];
+    if (!target) {
+      return;
+    }
+    // Shift+Arrow extends the pick from its anchor; a plain arrow collapses it, exactly as a plain
+    // click does (`ah-1mpx.4` G1).
+    setPick((current) =>
+      afterGesture(
+        current,
+        { kind: options.extend ? "extend" : "plain", unitId: target.unitId },
+        rowIds
+      )
+    );
     // Arrowing past either end lands on the row already selected. Asking for it again re-renders
     // nothing, so the effect above would never run to spend the focus this arms — it would be left
     // owing, and go to whichever row was selected next, including one chosen with the mouse.
-    if (target && target.unitId !== selectedUnitId) {
+    if (target.unitId !== selectedUnitId) {
       refocusWanted.current = true;
       selectUnit(target.unitId);
     }
+  };
+
+  /** Picks a row alone and puts the cursor on it - what a click, Enter and Space all mean. */
+  const settleOn = (pickNext: UnitPick, rowTarget: string) => {
+    setPick(pickNext);
+    selectUnit(rowTarget);
   };
 
   const onRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>, index: number) => {
@@ -590,17 +659,47 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     if (event.target !== event.currentTarget) {
       return;
     }
+    // Only here, on the row's own handler, which is why Ctrl/Cmd+A inside the filter box still
+    // selects the filter's text: that input is a different element and this handler never sees its
+    // keys. It is deliberately not a shortcut in `shortcuts.ts` for that reason.
+    if ((isMac ? event.metaKey : event.ctrlKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      setPick((current) => afterGesture(current, { kind: "all" }, rowIds));
+      return;
+    }
+    const here = visible[index]?.unitId ?? null;
+    const chose = () => {
+      if (here === null) {
+        return;
+      }
+      // Choosing a row from the keyboard collapses a pick exactly as a plain click does.
+      settleOn(afterGesture(pick, { kind: "plain", unitId: here }, rowIds), here);
+    };
     const keys: Record<string, () => void> = {
-      ArrowDown: () => moveSelection(index + 1),
-      ArrowUp: () => moveSelection(index - 1),
+      ArrowDown: () => moveSelection(index + 1, { extend: event.shiftKey }),
+      ArrowUp: () => moveSelection(index - 1, { extend: event.shiftKey }),
       Home: () => moveSelection(0),
       End: () => moveSelection(visible.length - 1),
-      Enter: () => selectUnit(visible[index]?.unitId ?? null),
+      /**
+       * Escape, which two beads have now given a meaning on a row: `ah-1mpx.4` narrows the pick
+       * back to the cursor row (round 3), and `ah-1mpx.5` drops the faction pin. Neither plan
+       * anticipated the other, so they are composed by the rule this codebase already keeps for
+       * Escape: it means only the topmost thing (`dismissLayer.ts`), never two at once. A standing
+       * pick is the more transient of the two, so it goes first and a second press unpins.
+       *
+       * The cursor row is this row: only the selected row is in the tab order, so only it can have
+       * the focus this handler needs. Neither branch changes the source.
+       */
+      Escape: () => {
+        if (pick.ids.size >= 2 && here !== null) {
+          setPick(afterGesture(pick, { kind: "plain", unitId: here }, rowIds));
+          return;
+        }
+        setPin(null);
+      },
+      Enter: chose,
       // Without this, Space scrolls the container out from under the row.
-      " ": () => selectUnit(visible[index]?.unitId ?? null),
-      // Escape on a row means "unpin", not "close the window" - the shared tail below
-      // preventDefaults it, which is right here. It does not change the source.
-      Escape: () => setPin(null)
+      " ": chose
     };
     const handler = keys[event.key];
     if (handler) {
@@ -644,6 +743,180 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     () => visible.find((entry) => entry.unitId === selectedUnitId) ?? null,
     [visible, selectedUnitId]
   );
+  /**
+   * The rows a bulk action acts on: the pick when it is two or more, the cursor row otherwise.
+   *
+   * One list for the bulk line, the header's popover and the right-click menu alike, so what a
+   * menu says and what is washed can never disagree.
+   */
+  const acting = useMemo(
+    () => (pick.ids.size >= 2 ? pickedIn(pick, visible) : selectedUnit ? [selectedUnit] : []),
+    [pick, visible, selectedUnit]
+  );
+  /** E3: two or more picked is what draws the bulk line and stands the header trigger down. */
+  const bulk = pick.ids.size >= 2;
+
+  /**
+   * What a press on a row does, before anything is known about whether it becomes a drag.
+   *
+   * Selection moved from `click` to `pointerdown` here so that a press on a row already in the
+   * pick can defer its collapse to a release that never became a drag - otherwise a pick you had
+   * just built would fall to one row under your finger the moment you grabbed it (E2).
+   */
+  const pressRow = (
+    event: PointerEvent<HTMLTableRowElement>,
+    unit: ReportUnit,
+    rowTarget: string
+  ) => {
+    if (event.button !== 0) {
+      return;
+    }
+    const outcome = onPress(
+      pick,
+      unit.unitId,
+      { shift: event.shiftKey, mod: isMac ? event.metaKey : event.ctrlKey },
+      rowIds
+    );
+    if (outcome.now) {
+      settleOn(outcome.now, rowTarget);
+    }
+    // Mouse only. A row is a scrollable surface on a touch screen, and `touch-none` on it would
+    // cost the table its scrolling; `selectionGuard.ts` records that touch is not a platform this
+    // application serves. A tap still picks, through `outcome.now` above.
+    if (!outcome.draggable || !byMouse(event)) {
+      return;
+    }
+    const deferred = outcome.onRelease;
+    beginDrag(event, unit, deferred ? () => settleOn(deferred, rowTarget) : undefined);
+  };
+
+  /**
+   * Carrying rows to the rail, following `ColumnReorderHandle.onPointerDown` step for step - the
+   * selection guard, the dismiss layer, window-level listeners and a capture-phase Escape that
+   * answers only while it is the top layer.
+   *
+   * A local function rather than a hook: it closes over the pick, the rows, the Armies and the
+   * writes, and threading six things through a hook would buy nothing testable - `packages/shared`
+   * cannot press a pointer either way. Only the chip is extracted, because the chip is the part
+   * that writes to the DOM and can be pinned without one.
+   */
+  const beginDrag = (
+    event: PointerEvent<HTMLTableRowElement>,
+    unit: ReportUnit,
+    onSettle?: () => void
+  ) => {
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const releaseSelection = guardSelection();
+    // Escape must mean "cancel this drag" even under an open dialog's own capture-phase listener.
+    const layer = pushDismissLayer();
+    let chip: UnitDragChip | null = null;
+    let carried: readonly ReportUnit[] = [];
+    let over: DropTarget | null = null;
+
+    const move = (moveEvent: globalThis.PointerEvent) => {
+      if (!chip) {
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < DRAG_THRESHOLD_PX) {
+          return;
+        }
+        // Resolved once, as the drag begins: a press on a row outside the pick carries that row
+        // alone, and a press on one inside it carries the whole pick (E2).
+        carried =
+          pick.ids.has(unit.unitId) && pick.ids.size >= 2 ? pickedIn(pick, visible) : [unit];
+        const carriedIds = carried.map((one) => one.unitId);
+        // W2: the count for a pick, the unit's own name for one - `Vanguard`, never `1 unit`.
+        chip = createUnitDragChip(
+          carried.length > 1 ? `${carried.length} units` : (carried[0]?.name ?? unit.name)
+        );
+        setDrag({
+          units: carried,
+          over: null,
+          // W3: an Army that would take nothing is no target at all, so the drop refuses before
+          // the pointer is released rather than being refused after it.
+          full: new Set(
+            armies
+              .filter((one) => alreadyIn(one, carriedIds) === carriedIds.length)
+              .map((one) => one.id)
+          )
+        });
+      }
+      chip.moveTo(moveEvent.clientX, moveEvent.clientY);
+      const next = dropTargetAt(moveEvent.clientX, moveEvent.clientY);
+      // Only when the target actually changes, so a move within one entry re-renders nothing.
+      if (!sameTarget(next, over)) {
+        over = next;
+        setDrag((current) => (current ? { ...current, over: next } : current));
+      }
+    };
+
+    /** `commit` is false for `pointercancel` and for Escape. Safe to run twice. */
+    const end = (commit: boolean) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancelDrag);
+      document.removeEventListener("keydown", onEscape, true);
+      const dragged = chip !== null;
+      chip?.remove();
+      chip = null;
+      releaseSelection();
+      layer();
+      setDrag(null);
+      if (!dragged) {
+        // Below the threshold this was a click after all, so a deferred collapse falls due.
+        if (commit) {
+          onSettle?.();
+        }
+        return;
+      }
+      if (!commit || !over) {
+        return;
+      }
+      if (over.kind === "army") {
+        void actions.addUnits(over.armyId, carried);
+      } else {
+        // D1: the rail's own inline name field opens holding the carried units; they join on
+        // Enter and Escape abandons the name and the units together.
+        dispatch({ type: "new-clicked", withUnits: carried });
+      }
+    };
+
+    const up = () => end(true);
+    const cancelDrag = () => end(false);
+    const onEscape = (keyEvent: globalThis.KeyboardEvent) => {
+      if (keyEvent.key === "Escape" && isTopDismissLayer(layer)) {
+        keyEvent.stopPropagation();
+        end(false);
+      }
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancelDrag);
+    document.addEventListener("keydown", onEscape, true);
+  };
+
+  /**
+   * The right-click menu, at the pointer (D4).
+   *
+   * A row outside the pick is picked alone first, by the same rule the press follows, so what the
+   * menu says and what is washed always agree - and a row already inside a pick of two or more
+   * leaves it standing, which is what the menu is for. Both fall out of applying `now` and only
+   * `now`, exactly as `pressRow` does: `onRelease` is the collapse a *press* defers until it knows
+   * it was not a drag, and a right-click never becomes one (Copilot, #764).
+   */
+  const contextRow = (
+    event: ReactMouseEvent<HTMLTableRowElement>,
+    unit: ReportUnit,
+    rowTarget: string
+  ) => {
+    event.preventDefault();
+    const outcome = onPress(pick, unit.unitId, { shift: false, mod: false }, rowIds);
+    if (outcome.now) {
+      settleOn(outcome.now, rowTarget);
+    }
+    setMenu({ at: "pointer", point: { x: event.clientX, y: event.clientY } });
+  };
+
   const missing = staleLine(sourced.missing);
   const foreignEmpty =
     source.kind === "foreign"
@@ -688,18 +961,18 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
           />
           {canEditArmies ? (
             <ChipPopover
-              open={menuOpen && selectedUnit !== null}
-              onDismiss={() => setMenuOpen(false)}
+              open={menu?.at === "header" && selectedUnit !== null}
+              onDismiss={() => setMenu(null)}
               panel={
                 selectedUnit ? (
                   <AddToArmyMenu
-                    unit={selectedUnit}
+                    units={[selectedUnit]}
                     armies={armies}
                     onAdd={(armyId) => void actions.addUnit(armyId, selectedUnit)}
                     // U2: this drops into the rail's own inline editor, carrying the unit, rather
                     // than opening a second name field of its own.
-                    onNewArmy={() => dispatch({ type: "new-clicked", withUnit: selectedUnit })}
-                    onDismiss={() => setMenuOpen(false)}
+                    onNewArmy={() => dispatch({ type: "new-clicked", withUnits: [selectedUnit] })}
+                    onDismiss={() => setMenu(null)}
                   />
                 ) : null
               }
@@ -711,8 +984,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                 // a feature the application does not have (`ExportMenu.tsx:20-22`). A report
                 // naming no turn has no `seenTurn` to stamp a snapshot with, so there is nothing
                 // to add a unit as.
-                disabled={selectedUnit === null || currentTurn === null}
-                onClick={() => setMenuOpen((open) => !open)}
+                // E3: exactly one live way in at any moment - the bulk line's own trigger is the
+                // way in while two or more rows are picked.
+                disabled={selectedUnit === null || currentTurn === null || bulk}
+                onClick={() => setMenu((open) => (open?.at === "header" ? null : { at: "header" }))}
                 className="rounded border border-edge px-2 py-0.5 text-pane text-brass hover:bg-panel disabled:opacity-40 disabled:hover:bg-transparent"
               >
                 Add to army ▾
@@ -738,6 +1013,9 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
             }
           }}
           canEdit={canEditArmies}
+          dropOver={drag?.over ?? null}
+          dropFull={drag?.full}
+          dragging={drag !== null}
         />
         <div className="flex min-w-0 flex-1 flex-col">
           {army ? (
@@ -790,6 +1068,51 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
               </button>
             </p>
           ) : null}
+          {/* D2/D3: one home for every bulk action, on every source and not only inside an Army,
+              and the only place a keyboard reaches one. */}
+          {bulk ? (
+            <UnitBulkLine
+              count={pick.ids.size}
+              armyName={army?.name ?? null}
+              addTrigger={
+                canEditArmies ? (
+                  <ChipPopover
+                    open={menu?.at === "bulk"}
+                    onDismiss={() => setMenu(null)}
+                    panel={
+                      <AddToArmyMenu
+                        units={acting}
+                        armies={armies}
+                        onAdd={(armyId) => void actions.addUnits(armyId, acting)}
+                        onNewArmy={() => dispatch({ type: "new-clicked", withUnits: acting })}
+                        onDismiss={() => setMenu(null)}
+                      />
+                    }
+                  >
+                    <button
+                      type="button"
+                      data-testid="bulk-add"
+                      // A report naming no turn has no `seenTurn` to stamp a snapshot with, so
+                      // there is nothing to add these rows as - the same guard the header carries.
+                      disabled={currentTurn === null}
+                      onClick={() =>
+                        setMenu((open) => (open?.at === "bulk" ? null : { at: "bulk" }))
+                      }
+                      className="rounded border border-edge px-2 py-0.5 text-pane text-brass hover:bg-panel disabled:opacity-40 disabled:hover:bg-transparent"
+                    >
+                      Add to army…
+                    </button>
+                  </ChipPopover>
+                ) : null
+              }
+              onRemove={() => {
+                if (army) {
+                  void actions.removeUnits(army.id, [...pick.ids]);
+                }
+              }}
+              onClear={() => setPick(NO_PICK)}
+            />
+          ) : null}
       {units.length === 0 ? (
         <Absent>
           {nothingToSay}
@@ -841,6 +1164,9 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
             // A grid rather than a plain table: rows here are selectable, and a screen reader only
             // treats a row as something you can land on and choose inside a grid.
             role="grid"
+            // In a grid `aria-selected` is the selection and focus is the cursor, so several rows
+            // may carry it at once - which is exactly what a pick is.
+            aria-multiselectable={true}
             // Fixed layout, because auto layout measures only the rendered rows and the columns
             // would jump as you scrolled. It also makes the truncation on Skills and Items real.
             //
@@ -948,7 +1274,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                   index={start + offset}
                   rowHeight={rowHeight}
                   selected={unit.unitId === selectedUnitId}
+                  picked={pick.ids.has(unit.unitId)}
                   onSelect={selectUnit}
+                  onPress={pressRow}
+                  onContextMenu={contextRow}
                   // The row's own hex, not the selected one: `silverKey` keys the forecast by
                   // region, so a source spanning hexes must look each row up where it stands.
                   regionId={unit.regionId}
@@ -986,6 +1315,19 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
           ) : null}
         </div>
       )}
+          {/* D4: the same list the button opens, at the pointer. The three conditions are the ones
+              that already disable the header trigger - a right-click with no game open, or on a
+              report naming no turn, opens nothing. */}
+          {menu?.at === "pointer" && acting.length > 0 && canEditArmies && currentTurn !== null ? (
+            <UnitContextMenu
+              at={menu.point}
+              units={acting}
+              armies={armies}
+              onAdd={(armyId) => void actions.addUnits(armyId, acting)}
+              onNewArmy={() => dispatch({ type: "new-clicked", withUnits: acting })}
+              onDismiss={() => setMenu(null)}
+            />
+          ) : null}
         </div>
       </div>
     </CollapsiblePanel>
@@ -1005,6 +1347,50 @@ function hexLabel(regionId: string): string {
 
 /** Whether an event came from a mouse, as opposed to a finger or a pen held against the screen. */
 const byMouse = (event: PointerEvent<HTMLElement>) => event.pointerType === "mouse";
+
+/**
+ * Where the `Add to army` list is anchored, or null when it is closed.
+ *
+ * The dock's own bookkeeping, exported by nobody. Three anchors and one state, because E3 allows
+ * exactly one live way in at any moment.
+ */
+type MenuAnchor = { at: "header" } | { at: "bulk" } | { at: "pointer"; point: Point };
+
+/** Which rail entry a drag may be dropped on. */
+type DropTarget = { kind: "army"; armyId: string } | { kind: "new" };
+
+/** The drag in flight: what it carries, what it is over, and what would refuse it. */
+type DragState = {
+  /** The rows being carried, resolved once when the drag begins. */
+  units: readonly ReportUnit[];
+  over: DropTarget | null;
+  full: ReadonlySet<string>;
+};
+
+/**
+ * How far the pointer must travel before a press becomes a drag.
+ *
+ * `ColumnReorderHandle` needs no threshold because it lives on a dedicated grip; a row is also a
+ * click target, so without this every click would be a one-pixel drag.
+ */
+const DRAG_THRESHOLD_PX = 4;
+
+const sameTarget = (left: DropTarget | null, right: DropTarget | null) =>
+  left === right ||
+  (left?.kind === "army" && right?.kind === "army" && left.armyId === right.armyId) ||
+  (left?.kind === "new" && right?.kind === "new");
+
+/** The rail entry under the pointer, found by attribute rather than by measuring the rail. */
+function dropTargetAt(clientX: number, clientY: number): DropTarget | null {
+  const node = document
+    .elementFromPoint(clientX, clientY)
+    ?.closest<HTMLElement>("[data-drop-army],[data-drop-new]");
+  if (!node) {
+    return null;
+  }
+  const armyId = node.dataset.dropArmy;
+  return armyId ? { kind: "army", armyId } : { kind: "new" };
+}
 
 /** Stands in for the rows above or below the window, so the scrollbar reflects the whole list. */
 function Spacer({
@@ -1318,7 +1704,10 @@ function UnitRow({
   index,
   rowHeight,
   selected,
+  picked,
   onSelect,
+  onPress,
+  onContextMenu,
   regionId,
   onKeyDown,
   onPointerRest,
@@ -1346,9 +1735,27 @@ function UnitRow({
   index: number;
   rowHeight: number;
   selected: boolean;
+  /** In the pick - the wider, bulk-action selection that sits beside the cursor (`ah-1mpx.4`). */
+  picked: boolean;
   /** Highlights a unit. Called with the formed unit's own id, or, for a formed row, its parent's
    * (`ah-jw85`) - `UnitRow` decides which, since only it knows a formed row from an ordinary one. */
   onSelect: (unitId: string) => void;
+  /**
+   * A press on the row, which is where selection now happens - `onClick` would be too late for a
+   * press that may become a drag. Handed the row's own unit and the id the cursor should land on,
+   * because only `UnitRow` knows a formed row from an ordinary one.
+   */
+  onPress: (
+    event: PointerEvent<HTMLTableRowElement>,
+    unit: ReportUnit,
+    rowTarget: string
+  ) => void;
+  /** A right-click on the row: the Army menu, at the pointer. */
+  onContextMenu: (
+    event: ReactMouseEvent<HTMLTableRowElement>,
+    unit: ReportUnit,
+    rowTarget: string
+  ) => void;
   /** The hex this row stands in, so its silver forecast is looked up by the right key. */
   regionId: string;
   onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>, index: number) => void;
@@ -1490,6 +1897,10 @@ function UnitRow({
     // text, because there is no list for it to narrow.
     faction: (
       <Td className="truncate">
+        {/* Both controls in this cell stop the *pointerdown* as well as the click: with selection
+            on pointerdown (`ah-1mpx.4`), a control that stops only the click would do its own job
+            and select the row underneath it - which is what Copilot caught on #478 and
+            `workspace.spec.ts`'s dossier walk still guards. */}
         {unit.factionName === null || unit.factionId === null ? (
           onPinFaction && factionPin?.kind === "hidden" ? (
             <button
@@ -1497,6 +1908,7 @@ function UnitRow({
               data-testid="foreign-pin-hidden"
               // Every control inside a row: the table is one tab stop per row with a roving index.
               tabIndex={-1}
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={() => onPinFaction(factionPin)}
               className={UNIT_LINK_CLASS}
             >
@@ -1508,7 +1920,10 @@ function UnitRow({
         ) : unit.own ? (
           `${unit.factionName} (${unit.factionId})`
         ) : renderFactionName ? (
-          renderFactionName(unit.factionId, `${unit.factionName} (${unit.factionId})`)
+          // Built by the shell, so the row is the only place its press can be stopped.
+          <span onPointerDown={(event) => event.stopPropagation()}>
+            {renderFactionName(unit.factionId, `${unit.factionName} (${unit.factionId})`)}
+          </span>
         ) : (
           `${unit.factionName} (${unit.factionId})`
         )}
@@ -1582,6 +1997,7 @@ function UnitRow({
           <button
             type="button"
             data-testid={`unit-silver-${unit.unitId}`}
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={() => onSelectUnit?.(rowTarget)}
             className={`inline-flex items-center gap-0.5 ${UNIT_LINK_CLASS}`}
           >
@@ -1624,6 +2040,9 @@ function UnitRow({
             type="button"
             data-testid={`army-remove-${unit.unitId}`}
             tabIndex={-1}
+            // With selection on `pointerdown`, stopping the click is no longer enough: without
+            // this, pressing Remove would pick the row and arm a drag underneath it.
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               // The row is itself a click target that selects the unit; removing is not selecting.
               event.stopPropagation();
@@ -1642,8 +2061,19 @@ function UnitRow({
     <tr
       data-testid={`unit-row-${unit.unitId}`}
       data-selected={selected}
+      data-picked={picked}
       data-preview-status={unit.previewStatus}
-      onClick={() => onSelect(rowTarget)}
+      // Pointerdown rather than click: a press on a row already in the pick must be able to defer
+      // what it means until it is known whether it became a drag (`ah-1mpx.4` E2).
+      onPointerDown={(event) => onPress(event, unit, rowTarget)}
+      // The browser's own drag, refused. A Shift+click extends the document's text selection as
+      // well as the pick, so the next press lands *inside* selected text - and a press on selected
+      // text followed by a move is how a browser starts dragging that text, which cancels the
+      // pointer stream this drag is built on. `ColumnReorderHandle` refuses the same thing by
+      // calling `preventDefault` on its pointerdown; a row cannot, because it must still take
+      // focus, so it is refused here instead.
+      onDragStart={(event) => event.preventDefault()}
+      onContextMenu={(event) => onContextMenu(event, unit, rowTarget)}
       onKeyDown={(event) => onKeyDown(event, index)}
       // Pointer events rather than mouse events, for the guard: a finger has no hover to leave,
       // so a touch would open a summary that never closed. Only a mouse can rest on something.
@@ -1663,13 +2093,21 @@ function UnitRow({
       // Only the selected row is in the tab order, so Tab reaches the table once rather than
       // stopping at every unit on screen; the arrow keys move from there.
       tabIndex={selected ? 0 : -1}
-      // Which row is chosen, said out loud. The blue background says it to everyone else.
-      aria-selected={selected}
+      // Which rows are chosen, said out loud. The blue background says it to everyone else. In a
+      // grid `aria-selected` is the selection and focus is the cursor, so a picked row carries it
+      // too - and for a pick of one the two name the same row, as they always did.
+      aria-selected={picked || selected}
       // ARIA counts the header, so the first unit is row two.
       aria-rowindex={index + 2}
       style={{ height: rowHeight }}
       className={`cursor-pointer whitespace-nowrap focus-visible:outline focus-visible:outline-1 focus-visible:outline-select ${
-        selected ? "bg-select/25 text-ink" : unit.own ? "text-ink" : "text-ink-soft"
+        selected
+          ? "bg-select/25 text-ink"
+          : picked
+            ? "bg-select/15 text-ink"
+            : unit.own
+              ? "text-ink"
+              : "text-ink-soft"
       }${departing ? " opacity-60" : ""}`}
     >
       {drawn.map((entry) =>

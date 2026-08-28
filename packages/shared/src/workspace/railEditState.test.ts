@@ -6,34 +6,34 @@ const idle: RailMode = { kind: "idle" };
 
 describe("naming a new Army", () => {
   it("a new Army started from the rail carries no unit", () => {
-    expect(reduce(idle, { type: "new-clicked", withUnit: null })).toEqual({
+    expect(reduce(idle, { type: "new-clicked", withUnits: [] })).toEqual({
       kind: "creating",
       draft: "",
-      withUnit: null
+      withUnits: []
     });
   });
 
   it("a new Army started from the popover remembers the unit that started it", () => {
     const unit = aReportUnit({ unitId: "9977", name: "Outriders" });
 
-    const mode = reduce(idle, { type: "new-clicked", withUnit: unit });
+    const mode = reduce(idle, { type: "new-clicked", withUnits: [unit] });
 
-    expect(mode).toEqual({ kind: "creating", draft: "", withUnit: unit });
+    expect(mode).toEqual({ kind: "creating", draft: "", withUnits: [unit] });
   });
 
   it("typing keeps the unit that started it", () => {
     const unit = aReportUnit({ unitId: "9977" });
-    const creating = reduce(idle, { type: "new-clicked", withUnit: unit });
+    const creating = reduce(idle, { type: "new-clicked", withUnits: [unit] });
 
     expect(reduce(creating, { type: "draft-changed", draft: "North" })).toEqual({
       kind: "creating",
       draft: "North",
-      withUnit: unit
+      withUnits: [unit]
     });
   });
 
   it("committing and cancelling both leave the rail idle", () => {
-    const creating = reduce(idle, { type: "new-clicked", withUnit: null });
+    const creating = reduce(idle, { type: "new-clicked", withUnits: [] });
 
     expect(reduce(creating, { type: "committed" })).toEqual(idle);
     expect(reduce(creating, { type: "cancelled" })).toEqual(idle);

@@ -156,6 +156,53 @@ describe("the Armies store", () => {
       expect(c.saveArmy).toHaveBeenCalledTimes(2);
     });
 
+    it("addUnits adds every named unit in one save", async () => {
+      useArmiesStore.setState({ gameId: "aug-2026", status: "ready", armies: [army()] });
+      const c = client();
+
+      await useArmiesStore
+        .getState()
+        .addUnits(c, game(), "army-1", [aReportUnit({ unitId: "1" }), aReportUnit({ unitId: "2" })], 71, NOW);
+
+      expect(useArmiesStore.getState().armies[0].members.map((m) => m.unitId)).toEqual(["1", "2"]);
+      // One write for the whole list, exactly as `removeUnits` makes one.
+      expect(c.saveArmy).toHaveBeenCalledTimes(1);
+    });
+
+    it("addUnits refreshes a unit the Army already holds rather than adding it twice", async () => {
+      useArmiesStore.setState({
+        gameId: "aug-2026",
+        status: "ready",
+        armies: [army({ members: [aMember({ unitId: "1", men: 1 })] })]
+      });
+      const c = client();
+
+      await useArmiesStore
+        .getState()
+        .addUnits(c, game(), "army-1", [aReportUnit({ unitId: "1", men: 9 }), aReportUnit({ unitId: "2" })], 72, NOW);
+
+      const members = useArmiesStore.getState().armies[0].members;
+      expect(members.map((m) => m.unitId)).toEqual(["1", "2"]);
+      expect(members[0]).toMatchObject({ men: 9, seenTurn: 72 });
+    });
+
+    it("addUnits puts the Army back as it was when the save fails", async () => {
+      useArmiesStore.setState({
+        gameId: "aug-2026",
+        status: "ready",
+        armies: [army({ members: [aMember({ unitId: "1" })] })]
+      });
+      const c = client({ saveArmy: vi.fn().mockRejectedValue(new Error("no")) });
+
+      await expect(
+        useArmiesStore
+          .getState()
+          .addUnits(c, game(), "army-1", [aReportUnit({ unitId: "2" })], 71, NOW)
+      ).rejects.toThrow();
+
+      expect(useArmiesStore.getState().armies[0].members.map((m) => m.unitId)).toEqual(["1"]);
+    });
+
     it("removeUnits drops every named member in one save", async () => {
       const three = army({
         members: [aMember({ unitId: "1" }), aMember({ unitId: "2" }), aMember({ unitId: "3" })]
