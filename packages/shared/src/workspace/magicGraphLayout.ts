@@ -105,7 +105,7 @@ export type MagicGraph = {
   nodes: readonly GraphNode[];
   edges: readonly GraphEdge[];
   tiers: readonly GraphTier[];
-  /** World size of the whole drawing. 1366 x 1100 for the shipped ruleset. */
+  /** World size of the whole drawing. 1366 x 1095 for the shipped ruleset. */
   width: number;
   height: number;
 };
