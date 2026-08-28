@@ -106,7 +106,7 @@ fn pillagers_men_add_up_across_units() {
 
     assert!(
         told.is_empty(),
-        "446 combat ready men over a threshold of 227: {told:?}"
+        "445 combat ready men over a threshold of 227: {told:?}"
     );
 }
 
