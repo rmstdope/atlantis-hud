@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-q6bt &mdash; Round 2: the warning, the silence and the column</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:34px 0 6px; font-size:15px; }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .ed { background:#0c1016; border:1px solid var(--edge); border-radius:6px; padding:10px 12px;
+        font:12.5px/1.7 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); }
+  .ed .ord { color:var(--ink); }
+  .ed .warn { color:var(--brass-bright); display:block; padding-left:2ch; }
+  .ed .warn::before { content:"\26A0 "; }
+  .ed .none { color:var(--ink-dim); font-style:italic; display:block; padding-left:2ch; }
+  table.g { width:100%; border-collapse:separate; border-spacing:0; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.g th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-dim); font-weight:400; padding:3px 12px 6px 0; border-bottom:1px solid var(--edge); }
+  table.g td { padding:5px 12px 5px 0; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  td.bad { color:var(--danger); } td.good { color:var(--ok); } td.k { color:var(--ink-dim); white-space:nowrap; font-size:11.5px; }
+  .settled { background:var(--raised); border-left:3px solid var(--ok); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:110ch; }
+  .found { background:var(--raised); border-left:3px solid var(--danger); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:110ch; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+</style></head><body>
+<header><h1>PILLAGE &mdash; <span>the warning, the silence and the column</span></h1>
+<div class="settled"><b>Settled in round 1:</b> <b>G1</b> &mdash; only the units that issue PILLAGE count towards the threshold. <b>D1</b> &mdash; the take is divided proportionally between the combat ready men that participate. Both are your reading over the rules text, recorded as such.</div>
+<div class="found"><b>Why no warning fired at all &mdash; found in the code, not guessed.</b> <code>combat_ready_in</code> (<code>semantics.rs:824</code>) sums the hex with <code>combat_ready(&amp;facts, ruleset)?</code> &mdash; the <code>?</code> is inside the loop, so <b>one uncountable unit anywhere in the hex makes the whole total <code>None</code></b>, and <code>check_pillage_men</code> returns at its <code>let Some(ready) = &hellip; else { return }</code> with no warning for <i>any</i> unit. A unit is uncountable when its headcount is estimated or when a transfer this month cannot be followed &mdash; and City Guards gave 2418 a sword. Your hex has ninety-odd units; it takes one.</div>
+<p>G1 shrinks that blast radius on its own, because only PILLAGE-issuing units get counted. Three things it leaves open, and all three are yours.</p></header>
+<main>
+
+<h4 class="q"><em>P</em> The warning's sentence, now that the count is not the region's</h4>
+<p>It reads today: <span class="mono" style="color:var(--brass-bright)">&ldquo;cannot pillage here: needs 227 combat ready men, this region has 0&rdquo;</span>. Under G1 &ldquo;this region has&rdquo; is simply false &mdash; the region has 445; the units that ordered it have 0.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">P1 &mdash; name who was counted <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="ed"><span class="ord">unit 2418<br>&nbsp;&nbsp;PILLAGE</span>
+    <span class="warn">cannot pillage here: needs 227 combat ready men, the units ordering PILLAGE have 1 &mdash; this unit has 1 man with no weapon it can use</span></div>
+  <ul class="notes">
+    <li>Says the number <i>and</i> whose it is, so the fix is obvious: order PILLAGE on a unit that has men.</li>
+    <li>Keeps the existing &ldquo;this unit has&hellip;&rdquo; tail, which is already built and already tested.</li>
+    <li class="con">Longer than today's line.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">P2 &mdash; keep it short, drop the whose</div>
+  <div class="ed"><span class="ord">unit 2418<br>&nbsp;&nbsp;PILLAGE</span>
+    <span class="warn">cannot pillage here: needs 227 combat ready men, has 1 &mdash; this unit has 1 man with no weapon it can use</span></div>
+  <ul class="notes">
+    <li>Shortest of the three.</li>
+    <li class="con">&ldquo;has 1&rdquo; with no subject reads as <i>this unit</i> has 1, which is right by accident here and wrong the moment two units order PILLAGE together.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">P3 &mdash; spell the rule out</div>
+  <div class="ed"><span class="ord">unit 2418<br>&nbsp;&nbsp;PILLAGE</span>
+    <span class="warn">cannot pillage here: the units ordering PILLAGE have 1 combat ready man between them and this region needs 227 &mdash; this unit has 1 man with no weapon it can use</span></div>
+  <ul class="notes">
+    <li>Closest to how you described the rule.</li>
+    <li class="con">Two clauses before the number that matters; the existing warnings all lead with the shortfall.</li>
+  </ul>
+</div>
+</div>
+
+<h4 class="q"><em>U</em> When the pillaging unit's men cannot be counted</h4>
+<p>Exactly your case: a unit receives a sword this month through a GIVE the checker cannot follow, so whether it is combat ready is genuinely unknown. Today that produces <b>silence</b>, which is the bug you filed.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">U1 &mdash; say that it cannot be told <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="ed"><span class="ord">unit 2418<br>&nbsp;&nbsp;PILLAGE</span>
+    <span class="warn">may not be able to pillage here: needs 227 combat ready men, and a transfer this month means this unit's cannot be counted</span></div>
+  <ul class="notes">
+    <li>Never silent, which is the whole complaint &mdash; and never wrong, because it claims nothing about the outcome.</li>
+    <li>&ldquo;may not&rdquo; matches the hedge the existing <code>taxed-a-pillaged-hex</code> finding already uses.</li>
+    <li class="n">Disappears once <code>ah-dxfd.2</code> lands and the transfer becomes followable: it is the honest answer while it is not.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">U2 &mdash; count from the report as printed and warn normally</div>
+  <div class="ed"><span class="ord">unit 2418<br>&nbsp;&nbsp;PILLAGE</span>
+    <span class="warn">cannot pillage here: needs 227 combat ready men, the units ordering PILLAGE have 0 &mdash; this unit has 1 man with no weapon it can use</span></div>
+  <ul class="notes">
+    <li>One sentence fewer to write, and in your case the answer happens to be right.</li>
+    <li class="con">States a flat &ldquo;cannot&rdquo; about a unit that a gift this month may well have armed &mdash; a confident wrong warning, which is worse than none.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">U3 &mdash; stay silent, as today</div>
+  <div class="ed"><span class="ord">unit 2418<br>&nbsp;&nbsp;PILLAGE</span><span class="none">no finding</span></div>
+  <ul class="notes"><li>No new string.</li><li class="con">This is the behaviour you filed the bead about.</li></ul>
+</div>
+</div>
+
+<h4 class="q"><em>S</em> The SILVER column, now that the take is shared</h4>
+<p>Two of your units order PILLAGE in the hex: one with 300 combat ready men, one with 1. The take is $45,308. Today <code>price_pillage</code> credits <b>the whole $45,308 to each of them</b>, because it never divided anything.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">S1 &mdash; each unit's own share <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <table class="g">
+    <tr><th>Unit</th><th>Combat ready</th><th>SILVER shows</th></tr>
+    <tr><td class="k">Big unit</td><td>300</td><td class="good">+$45,157</td></tr>
+    <tr><td class="k">Small unit</td><td>1</td><td class="good">+$151</td></tr>
+    <tr><td class="k">Faction total</td><td>&mdash;</td><td>$45,308 &mdash; correct</td></tr>
+  </table>
+  <ul class="notes">
+    <li>The column adds up to what the faction actually receives, which is the one thing it is for.</li>
+    <li>Follows D1 exactly.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">S2 &mdash; the whole take on each, as today</div>
+  <table class="g">
+    <tr><th>Unit</th><th>Combat ready</th><th>SILVER shows</th></tr>
+    <tr><td class="k">Big unit</td><td>300</td><td class="bad">+$45,308</td></tr>
+    <tr><td class="k">Small unit</td><td>1</td><td class="bad">+$45,308</td></tr>
+    <tr><td class="k">Faction total</td><td>&mdash;</td><td class="bad">$90,616 &mdash; double the truth</td></tr>
+  </table>
+  <ul class="notes"><li>No change to <code>price_pillage</code>.</li><li class="con">The faction total is wrong by a factor of the number of pillaging units.</li></ul>
+</div>
+</div>
+
+</main>
+<footer>Rules quoted from <code>pnpm run atlantis rules economy_taxingpillaging</code>; the sword's &ldquo;no skill is needed&rdquo; from <code>data/sword</code>. Code line numbers read from the tree at <code>ca1688a</code>.</footer>
+</body></html>
