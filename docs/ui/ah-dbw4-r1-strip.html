@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-dbw4 &mdash; round 1: the faction chip and where the attitude sits</title><style>
+:root {
+  --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+  --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+  --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  --a-ground:#1b212a; --a-panel:#222933; --a-raised:#2a323d; --a-edge:#46525f; --a-edge-soft:#333d49;
+  --a-ink:#d4dce6; --a-ink-soft:#a8b4c2; --a-ink-dim:#99a4b2;
+  --a-brass:#e0b25a; --a-brass-bright:#eebe63; --a-select:#5aa9de; --a-ok:#4fb783;
+  --a-warn:#d9a441; --a-danger:#e89494; --a-ring:#f5f8fc;
+  --a-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+header, main, footer { max-width:1420px; margin:0 auto; }
+h1 { font-size:26px; letter-spacing:0.4px; }
+h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+p.lede { color:var(--brass-bright); font-size:15.5px; font-style:italic; max-width:96ch; margin-top:12px; }
+code, .mono { font-family:var(--a-mono); }
+header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+.stage { background:#0b0f15; border:1px solid var(--edge-soft); border-radius:8px; padding:12px; overflow-x:auto; }
+.hexlab { font:10.5px/1 var(--a-mono); letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
+.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+.notes li.con::before { content:"\2212 "; color:var(--danger); }
+.notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+.split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+.split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+footer { margin-top:42px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+.rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+
+/* ================= the application, reproduced ================= */
+.app { position:relative; overflow:hidden; border-radius:6px; border:1px solid #000;
+       background:var(--a-ground); color:var(--a-ink); font:13px/1.35 var(--a-mono);
+       display:flex; flex-direction:column; }
+.app *, .app *::before { box-sizing:border-box; }
+.pane { display:flex; flex-direction:column; min-height:0; flex:1; background:var(--a-panel); }
+.ttl { flex:none; height:28px; display:flex; align-items:center; padding:0 10px; font-size:12px;
+       color:var(--a-ink); border-bottom:1px solid var(--a-edge); background:var(--a-raised); }
+.ttl .hint { color:var(--a-ink-dim); }
+
+/* the strip itself: flex items-center gap-2 border-b border-edge px-2 py-1.5 text-pane */
+.strip { flex:none; display:flex; align-items:center; gap:8px; padding:6px 8px; font-size:12px;
+         border-bottom:1px solid var(--a-edge); color:var(--a-ink); }
+.strip .att { color:var(--a-brass); flex:none; }
+.strip .att-dim { color:var(--a-ink-dim); flex:none; }
+.strip .spacer { margin-left:auto; }
+.strip b { color:var(--a-brass-bright); font-weight:500; }
+
+/* chip variants */
+.chip { display:inline-flex; align-items:center; min-width:0; max-width:100%; white-space:nowrap; }
+.chip .nm { overflow:hidden; text-overflow:ellipsis; }
+.chip .x { color:var(--a-ink-dim); flex:none; }
+.chip.A { border:1px solid var(--a-brass); border-radius:4px; padding:0 3px 0 7px; gap:6px;
+          color:var(--a-brass-bright); }
+.chip.A .x { padding:0 3px; }
+.chip.B { border:1px solid #e0b25a99; background:#e0b25a1a; border-radius:999px; padding:1px 4px 1px 9px;
+          gap:6px; color:var(--a-brass-bright); }
+.chip.B .x { padding:0 4px; border-radius:999px; }
+.chip.C { border:1px solid var(--a-edge); background:var(--a-raised); border-radius:4px;
+          padding:0 3px 0 7px; gap:6px; color:var(--a-brass-bright); }
+.chip.C .x { padding:0 3px; }
+
+.ut { width:100%; border-collapse:collapse; font-size:12px; }
+.ut th { text-align:left; font-weight:normal; color:var(--a-ink-dim); border-bottom:1px solid var(--a-edge-soft);
+         padding:3px 6px; font-size:11px; }
+.ut td { padding:3px 6px; border-bottom:1px solid var(--a-edge-soft); color:var(--a-ink-soft); }
+.ut td.idfor { color:#f07070; }
+.ring { outline:2px solid var(--a-ring); outline-offset:1px; border-radius:3px; }
+.btn-o { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink); border-radius:4px; padding:1px 8px; font-size:11.5px; }
+.btn-p { border:1px solid var(--a-brass); color:var(--a-brass); border-radius:4px; padding:1px 8px; font-size:11.5px; }
+.btn-d { border:1px solid #e8949499; color:var(--a-danger); border-radius:4px; padding:1px 8px; font-size:11.5px; }
+.today { border-left:3px solid var(--danger); padding-left:10px; }
+</style></head><body>
+
+<header>
+<h1>ah-dbw4 &mdash; <span>the pinned-faction strip</span></h1>
+<p>The strip above <b>Other factions</b> when the list is narrowed to one faction. Today it pushes the
+attitude to the far right with a spacer, and leaves the <b>&#10005;</b> floating loose beside the
+faction name. Four questions: what the chip looks like, how the attitude is set off from the name once
+they sit together, whether the Army strip gets the same treatment, and what the concealed-owner case says.</p>
+<p class="lede">Note: the mockup you approved for <code>ah-1mpx.5</code> (round 3) already drew a chip with
+the &#10005; inside it and the attitude right beside it. What shipped drifted from it. So part of this
+is simply putting back what was agreed &mdash; but the chip's exact look was never pinned down, and the
+questions below are the ones that were left open.</p>
+</header>
+
+<main>
+
+<h3 class="sec">Today &mdash; what is on screen now</h3>
+<p>The two facts that belong together &mdash; <i>who</i> you are looking at and <i>what you have declared
+toward them</i> &mdash; are at opposite ends of a wide strip, and the &#10005; is attached to nothing.</p>
+<div class="card today"><div class="hexlab">as shipped</div>
+  <div class="stage"><div class="app" style="width:640px">
+    <div class="pane">
+      <div class="ttl">Units <span class="hint">&nbsp;&mdash; Thane's Ring (10), 52 of 254 units</span></div>
+      <div class="strip">
+        <b>Thane's Ring (10)</b>
+        <span class="btn-o" style="padding:1px 5px">&#10005;</span>
+        <span class="spacer"></span>
+        <span class="att">hostile</span>
+      </div>
+      <table class="ut">
+        <tr><th style="width:22px">*</th><th style="width:46px">Id</th><th>Unit</th><th style="width:70px">Hex</th></tr>
+        <tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr>
+        <tr><td>&minus;</td><td class="idfor">3044</td><td>Ring Guard</td><td>(11,55)</td></tr>
+      </table>
+    </div></div></div>
+  <ul class="notes">
+    <li class="con">To read &ldquo;Thane's Ring is hostile&rdquo; your eye crosses the whole strip.</li>
+    <li class="con">The &#10005; reads as a loose control, not as &ldquo;drop this faction&rdquo;.</li>
+  </ul>
+</div>
+
+<h3 class="sec">Q1 &mdash; what the chip looks like</h3>
+<p>All three enclose the name and the &#10005; as one object, and put the attitude immediately after it.
+They differ only in weight: how much the chip shouts. The &#10005; stays its own focusable button inside
+the chip in every one &mdash; same <code>aria-label</code>, same tab stop, same focus ring.</p>
+<div class="split3">
+
+  <div class="card"><div class="hexlab">Option A &mdash; brass outline, square corners <span class="rec">recommended</span></div>
+    <div class="stage"><div class="app" style="width:400px">
+      <div class="pane">
+        <div class="ttl">Units <span class="hint">&nbsp;&mdash; Thane's Ring (10), 52 of 254</span></div>
+        <div class="strip">
+          <span class="chip A"><span class="nm">Thane's Ring (10)</span><span class="x">&#10005;</span></span>
+          <span class="att">hostile</span>
+        </div>
+        <table class="ut">
+          <tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr>
+          <tr><td>&minus;</td><td class="idfor">3044</td><td>Ring Guard</td><td>(11,55)</td></tr>
+        </table>
+      </div></div></div>
+    <ul class="notes">
+      <li>Exactly the chip drawn in the <code>ah-1mpx.5</code> round-3 mockup you approved.</li>
+      <li>Square corners and a 1px border are what every other bordered control in this app uses.</li>
+      <li class="n">Brass border + brass text: the chip is the emphasis, the attitude is quieter.</li>
+    </ul>
+  </div>
+
+  <div class="card"><div class="hexlab">Option B &mdash; filled pill, rounded</div>
+    <div class="stage"><div class="app" style="width:400px">
+      <div class="pane">
+        <div class="ttl">Units <span class="hint">&nbsp;&mdash; Thane's Ring (10), 52 of 254</span></div>
+        <div class="strip">
+          <span class="chip B"><span class="nm">Thane's Ring (10)</span><span class="x">&#10005;</span></span>
+          <span class="att">hostile</span>
+        </div>
+        <table class="ut">
+          <tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr>
+          <tr><td>&minus;</td><td class="idfor">3044</td><td>Ring Guard</td><td>(11,55)</td></tr>
+        </table>
+      </div></div></div>
+    <ul class="notes">
+      <li>Reads most obviously as one removable token &mdash; the shape says &ldquo;tag&rdquo;.</li>
+      <li>The tint separates it from the attitude without needing anything between them.</li>
+      <li class="con">Nothing else in the app is a rounded pill; it would be the only one.</li>
+    </ul>
+  </div>
+
+  <div class="card"><div class="hexlab">Option C &mdash; neutral chip, brass text</div>
+    <div class="stage"><div class="app" style="width:400px">
+      <div class="pane">
+        <div class="ttl">Units <span class="hint">&nbsp;&mdash; Thane's Ring (10), 52 of 254</span></div>
+        <div class="strip">
+          <span class="chip C"><span class="nm">Thane's Ring (10)</span><span class="x">&#10005;</span></span>
+          <span class="att">hostile</span>
+        </div>
+        <table class="ut">
+          <tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr>
+          <tr><td>&minus;</td><td class="idfor">3044</td><td>Ring Guard</td><td>(11,55)</td></tr>
+        </table>
+      </div></div></div>
+    <ul class="notes">
+      <li>Matches the header's chips exactly &mdash; <code>border-edge</code> on <code>bg-panel-raised</code>.</li>
+      <li>The quietest of the three; the attitude is then the brightest thing on the strip.</li>
+      <li class="con">Reads a little like a button you could press anywhere on.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">Q2 &mdash; how the attitude is set off, now that it sits next to the name</h3>
+<p>The spacer used to do this work: nothing could be confused about which end was which. With the two
+adjacent, <code>Thane's Ring (10) hostile</code> can read as one run of words. All three use Option A's
+chip so only this difference is in play.</p>
+<div class="split3">
+
+  <div class="card"><div class="hexlab">Option 1 &mdash; bare word, brass</div>
+    <div class="stage"><div class="app" style="width:400px"><div class="pane">
+      <div class="strip">
+        <span class="chip A"><span class="nm">Thane's Ring (10)</span><span class="x">&#10005;</span></span>
+        <span class="att">hostile</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>What ships today, just moved. No new words to agree.</li>
+      <li>The chip's border is itself the separator &mdash; the attitude is visibly outside it.</li>
+      <li class="con">Bare <code>ally</code> or <code>hostile</code> beside a name is a word without a subject.</li>
+    </ul>
+  </div>
+
+  <div class="card"><div class="hexlab">Option 2 &mdash; a dim lead-in <span class="rec">recommended</span></div>
+    <div class="stage"><div class="app" style="width:400px"><div class="pane">
+      <div class="strip">
+        <span class="chip A"><span class="nm">Thane's Ring (10)</span><span class="x">&#10005;</span></span>
+        <span class="att-dim">you have declared</span><span class="att">hostile</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>Says whose declaration it is &mdash; yours toward them, not theirs toward you.</li>
+      <li>The dim lead-in is a visual gap as well as a sentence.</li>
+      <li class="n">The lead-in truncates before the attitude does, if it ever comes to that.</li>
+      <li class="con">Four more words on a strip that is meant to be terse.</li>
+    </ul>
+  </div>
+
+  <div class="card"><div class="hexlab">Option 3 &mdash; the attitude as its own chip</div>
+    <div class="stage"><div class="app" style="width:400px"><div class="pane">
+      <div class="strip">
+        <span class="chip A"><span class="nm">Thane's Ring (10)</span><span class="x">&#10005;</span></span>
+        <span class="chip C" style="padding:0 7px"><span class="nm" style="color:var(--a-brass)">hostile</span></span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>Two boxed facts, unmistakably separate, no extra words.</li>
+      <li class="con">A box implies a control; there is nothing to press here.</li>
+      <li class="con">Two chips in a row is visually busy for two short facts.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">Q3 &mdash; does the Army strip get the same treatment?</h3>
+<p>The bead asks this and it is yours: the Army strip sits in the same place and also uses an
+<code>ml-auto</code> spacer &mdash; but its spacer separates a <i>name</i> from three <i>actions</i>
+(Export&hellip;, Rename, Delete), which is a different job from separating two facts. It has no dismiss
+control, so nothing would go inside its chip.</p>
+<div class="split">
+  <div class="card"><div class="hexlab">Option X &mdash; leave the Army strip alone <span class="rec">recommended</span></div>
+    <div class="stage"><div class="app" style="width:520px"><div class="pane">
+      <div class="strip">
+        <b>Northern Column</b>
+        <span class="spacer"></span>
+        <span class="btn-p">Export&hellip;</span><span class="btn-o">Rename</span><span class="btn-d">Delete</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td>2104</td><td>Scouts</td><td>(9,41)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>Right-aligned <i>actions</i> is a normal pattern; right-aligned <i>facts</i> was the bug.</li>
+      <li>Nothing to enclose &mdash; an Army name has no &#10005; beside it.</li>
+      <li class="con">The two strips stop looking like siblings: one has a chip, one has bare text.</li>
+    </ul>
+  </div>
+  <div class="card"><div class="hexlab">Option Y &mdash; the Army name becomes a chip too</div>
+    <div class="stage"><div class="app" style="width:520px"><div class="pane">
+      <div class="strip">
+        <span class="chip A" style="padding:0 7px"><span class="nm">Northern Column</span></span>
+        <span class="spacer"></span>
+        <span class="btn-p">Export&hellip;</span><span class="btn-o">Rename</span><span class="btn-d">Delete</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td>2104</td><td>Scouts</td><td>(9,41)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>The two strips keep matching, which the source comment says is deliberate.</li>
+      <li class="con">A chip with nothing in it but a name is decoration; the chip earns its border by
+        enclosing the &#10005;.</li>
+      <li class="con">Widens this bead into a file it otherwise never has to touch.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">Q4 &mdash; the concealed-owner case, and the words</h3>
+<p><code>rules/stealthobs</code>: when your Observation only equals their Stealth you see the unit and not
+its owner. There is then no faction to hold an attitude toward, so the strip says a sentence instead.
+The chip still exists &mdash; you still need a way out of the pin &mdash; but it holds
+<code>Faction not shown</code>. Both options use Option A's chip.</p>
+<div class="split">
+  <div class="card"><div class="hexlab">Option P &mdash; keep the sentence as it ships <span class="rec">recommended</span></div>
+    <div class="stage"><div class="app" style="width:520px"><div class="pane">
+      <div class="strip">
+        <span class="chip A"><span class="nm">Faction not shown</span><span class="x">&#10005;</span></span>
+        <span class="att-dim">Their owner is concealed from you this turn.</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3199</td><td>&mdash;</td><td>(12,54)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>Unchanged wording, just moved next to the chip like the attitude is.</li>
+      <li>Explains <i>why</i> there is no attitude, which a reader will otherwise wonder about.</li>
+      <li class="con">Long, and it sits where a single word sits in the ordinary case.</li>
+    </ul>
+  </div>
+  <div class="card"><div class="hexlab">Option Q &mdash; shorten it to fit the attitude's slot</div>
+    <div class="stage"><div class="app" style="width:520px"><div class="pane">
+      <div class="strip">
+        <span class="chip A"><span class="nm">Faction not shown</span><span class="x">&#10005;</span></span>
+        <span class="att-dim">owner concealed</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3199</td><td>&mdash;</td><td>(12,54)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li>Same length as an attitude word, so the strip keeps one shape in both cases.</li>
+      <li class="con">Drops &ldquo;this turn&rdquo; &mdash; the reader loses that it may resolve next turn.</li>
+      <li class="con">Rewrites a sentence that was agreed and verified as correct.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">The states this has to survive &mdash; drawn, not asked</h3>
+<p>These follow from the answers above rather than being choices of their own; they are here so you can
+see them and object. All drawn with Option A + Option 2 + Option P.</p>
+<div class="split3">
+  <div class="card"><div class="hexlab">a narrow window &mdash; the name truncates, the attitude never does</div>
+    <div class="stage"><div class="app" style="width:290px"><div class="pane">
+      <div class="strip">
+        <span class="chip A" style="max-width:118px"><span class="nm">The Most Righteou&hellip;</span><span class="x">&#10005;</span></span>
+        <span class="att-dim" style="display:none"></span><span class="att">hostile</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li class="n">The rule agreed in <code>ah-1mpx.5</code> W3 is kept: the attitude is
+        <code>flex-none</code> and survives at any width; the chip is <code>min-w-0 truncate</code>.</li>
+      <li class="n">The dim lead-in goes first, before the name starts truncating &mdash; it is the least
+        load-bearing thing on the strip.</li>
+      <li class="n">The full name stays in the chip's <code>title</code>, so hovering recovers it.</li>
+      <li class="n">The strip still never wraps, so the table below never jumps as you drag.</li>
+    </ul>
+  </div>
+  <div class="card"><div class="hexlab">no attitude declared</div>
+    <div class="stage"><div class="app" style="width:400px"><div class="pane">
+      <div class="strip">
+        <span class="chip A"><span class="nm">Grey Company (17)</span><span class="x">&#10005;</span></span>
+        <span class="att-dim">you have declared</span><span class="att">not declared</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">4010</td><td>Woodsmen</td><td>(8,30)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li class="n"><code>not declared</code> is what ships today for a null attitude and is unchanged.</li>
+      <li class="con">&ldquo;you have declared not declared&rdquo; reads badly &mdash; if Option 2 wins, this
+        pair needs a word. Suggested: the lead-in is dropped in this one case, leaving
+        <code>not declared</code> bare.</li>
+    </ul>
+  </div>
+  <div class="card"><div class="hexlab">focus on the &#10005;</div>
+    <div class="stage"><div class="app" style="width:400px"><div class="pane">
+      <div class="strip">
+        <span class="chip A"><span class="nm">Thane's Ring (10)</span><span class="x ring">&#10005;</span></span>
+        <span class="att-dim">you have declared</span><span class="att">hostile</span>
+      </div>
+      <table class="ut"><tr><td>&minus;</td><td class="idfor">3021</td><td>Ring Guard</td><td>(11,55)</td></tr></table>
+    </div></div></div>
+    <ul class="notes">
+      <li class="n">The ring is on the &#10005; alone, not the whole chip &mdash; the button is what is
+        focusable, and that is unchanged from today.</li>
+      <li class="n">The dock still focuses this button when a pin leaves the table with no rows
+        (<code>buttonRef</code>), so the existing keyboard behaviour is untouched.</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+<footer>Mockup for bead <code>ah-dbw4</code>, round 1. Colours are the application's own tokens from
+<code>packages/shared/src/theme.css</code>. Nothing here is application code.</footer>
+</body></html>
