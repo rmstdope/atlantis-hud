@@ -6,6 +6,7 @@ import {
   FOREIGN_SOURCE,
   headerFor,
   HEX_SOURCE,
+  listShown,
   OWN_SOURCE,
   sameSource,
   sortSurvives,
@@ -36,6 +37,39 @@ describe("which list the dock is showing", () => {
     expect(sourceStillThere(army("a"), [])).toEqual(HEX_SOURCE);
     // Other factions is a slice of the report, so it is always available too.
     expect(sourceStillThere(FOREIGN_SOURCE, [])).toEqual(FOREIGN_SOURCE);
+  });
+});
+
+describe("what the table is a list of (ah-1t41)", () => {
+  it("listShown tells the three kinds of source apart", () => {
+    expect(listShown(HEX_SOURCE, null)).not.toBe(listShown(OWN_SOURCE, null));
+    expect(listShown(OWN_SOURCE, null)).not.toBe(listShown(army("a"), null));
+    expect(listShown(HEX_SOURCE, null)).not.toBe(listShown(army("a"), null));
+  });
+
+  it("listShown tells two Armies apart, and matches one Army to itself however the object was built", () => {
+    expect(listShown(army("a"), null)).not.toBe(listShown(army("b"), null));
+    // The re-click case: the rail builds a fresh object for the same Army on every click, and a
+    // fresh object for the same Army is the same list.
+    expect(listShown(army("a"), null)).toBe(listShown({ kind: "army", armyId: "a" }, null));
+  });
+
+  it("listShown follows the hex for This hex", () => {
+    expect(listShown(HEX_SOURCE, "1:7,53")).not.toBe(listShown(HEX_SOURCE, "1:7,51"));
+    expect(listShown(HEX_SOURCE, null)).not.toBe(listShown(HEX_SOURCE, "1:7,53"));
+  });
+
+  it("listShown ignores the hex for every source that is not This hex", () => {
+    // Walking the map while All my units or an Army is on screen replaces no list.
+    expect(listShown(OWN_SOURCE, "1:7,53")).toBe(listShown(OWN_SOURCE, "1:7,51"));
+    expect(listShown(army("a"), "1:7,53")).toBe(listShown(army("a"), "1:7,51"));
+  });
+
+  it("listShown cannot see the report, so a new turn is not a new list", () => {
+    // Asserted on the signature: the same source and the same hex answer the same string, and
+    // there is no third argument a turn could arrive through. Adding one reopens the question
+    // the navigator answered - a new turn's report keeps the filter (ah-1t41 Q5).
+    expect(listShown(HEX_SOURCE, "1:7,53")).toBe(listShown(HEX_SOURCE, "1:7,53"));
   });
 });
 

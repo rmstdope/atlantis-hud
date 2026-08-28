@@ -71,6 +71,7 @@ import {
   FOREIGN_SOURCE,
   headerFor,
   HEX_SOURCE,
+  listShown,
   sortSurvives,
   sourceStillThere,
   type DrawnColumn,
@@ -267,6 +268,26 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const focusFirstWanted = useRef(false);
 
   const regionId = hex?.regionId ?? null;
+
+  // A filter typed against one list must not survive into another (ah-1t41). The text was typed
+  // to find something in a list that has just been replaced, so left standing it narrows a list
+  // nobody aimed it at - an Army that reads as empty while the rail beside it says twelve.
+  //
+  // Adjusted during render rather than in an effect, and that is the point: an effect runs after
+  // the commit, so the new list would be painted once through the old filter before being
+  // corrected. React re-runs this component before committing instead, so the wrong picture is
+  // never drawn. The guard is what makes that legal and what makes it terminate.
+  //
+  // `listShown` rather than `source` identity: the rail hands back a fresh object every time an
+  // Army entry is clicked (`UnitSourceRail.tsx:81`), so identity would clear the box on a
+  // re-click of an Army and not on a re-click of This hex. It is also what folds the hex in for
+  // This hex alone.
+  const shown = listShown(source, regionId);
+  const [wasShowing, setWasShowing] = useState(shown);
+  if (wasShowing !== shown) {
+    setWasShowing(shown);
+    setFilter("");
+  }
 
   const armyIds = useMemo(() => armies.map((army) => army.id), [armies]);
   const army = useMemo(
