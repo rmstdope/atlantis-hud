@@ -122,6 +122,34 @@
   /* The colour of silver to be gained. The header's Trade chip is its only user today. */
   --color-gain: #7fb069;
 
+  /*
+   * The standing chips (ah-yqzq). Each state is a fill, an ink and an edge rather than the bare
+   * border-and-text of the first cut: on the dark ground an unfilled chip reads as an outline, not
+   * as a tinted pill, and the row's own left-edge pattern was left carrying the whole signal.
+   *
+   * The left-edge patterns themselves stay on --color-ok / --color-warn / --color-ink-soft /
+   * --color-select: the five states separate by shape as well as by colour, and that is what makes
+   * them readable in monochrome.
+   */
+  --color-standing-known-fill: #14261d;
+  --color-standing-known-ink: #8fd6ae;
+  --color-standing-known-edge: #2f6b4c;
+  --color-standing-ceiling-fill: #241d10;
+  --color-standing-ceiling-ink: #f0cf8a;
+  --color-standing-ceiling-edge: #6b5424;
+  --color-standing-maxed-fill: #1a212a;
+  --color-standing-maxed-ink: #c9d3df;
+  --color-standing-maxed-edge: #3c4a5a;
+  --color-standing-open-fill: #111e28;
+  --color-standing-open-ink: #8dc4e8;
+  --color-standing-open-edge: #2c5570;
+
+  /* The crossing prerequisite's pill. Violet is used nowhere else, so it never reads as one of the
+     four standing states. */
+  --color-crossing-fill: #1d1728;
+  --color-crossing-ink: #a98cc4;
+  --color-crossing-edge: #4a3a63;
+
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   /* The panes' type scale. Three steps, in rem so both the reader's own font-size preference and
@@ -129,6 +157,7 @@
      rem in the application, type and boxes alike (ah-ziv), so a token that multiplied by
      `--ui-scale` here would scale twice. The map sets its own sizes in SVG user units and is on
      neither scale. */
+  --text-pane-xs: 0.59375rem;  /* 9.5px at a 16px root, at 100%; the magic tree's chips only */
   --text-pane-sm: 0.75rem;     /* 12px at a 16px root, at 100% */
   --text-pane: 0.8125rem;      /* 13px */
   --text-pane-lg: 0.875rem;    /* 14px */
@@ -224,6 +253,25 @@
 
   /* Dark enough to read on parchment. */
   --color-gain: #3f7233;
+
+  /* The standing chips and the crossing pill, designed for parchment rather than derived from the
+     dark values (ah-yqzq). */
+  --color-standing-known-fill: #dceee3;
+  --color-standing-known-ink: #1d5637;
+  --color-standing-known-edge: #8dc3a7;
+  --color-standing-ceiling-fill: #f4e8cd;
+  --color-standing-ceiling-ink: #6b4e10;
+  --color-standing-ceiling-edge: #c9ab6a;
+  --color-standing-maxed-fill: #e6e9ee;
+  --color-standing-maxed-ink: #3b4552;
+  --color-standing-maxed-edge: #b3bcc8;
+  --color-standing-open-fill: #dceaf4;
+  --color-standing-open-ink: #12506f;
+  --color-standing-open-edge: #8ab4cf;
+
+  --color-crossing-fill: #ece4f4;
+  --color-crossing-ink: #5f3f86;
+  --color-crossing-edge: #b49ccb;
 }
 
 /*

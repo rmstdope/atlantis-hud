@@ -41,7 +41,16 @@ test("the tree opens tinted for the selected mage and says where he stands", asy
   await expect(page.getByTestId("magic-tree-standing-INVI")).toContainText("can study");
   // A skill he cannot begin takes no chip at all: what is missing is the reason to show the row.
   await expect(page.getByTestId("magic-tree-standing-CRRI")).toHaveCount(0);
-  await expect(page.getByTestId("magic-tree-skill-CRRI")).toHaveClass(/text-ink-dim/);
+  // The fade is what says "locked" now, not the dim ink it fades from (ah-yqzq).
+  await expect(page.getByTestId("magic-tree-skill-CRRI")).toHaveClass(/opacity-55/);
+
+  // The whole point of ah-yqzq: a skill is one line, and a chip is never broken across two.
+  const row = page.getByTestId("magic-tree-skill-ILLU");
+  const chip = page.getByTestId("magic-tree-standing-ILLU");
+  const rowBox = await row.boundingBox();
+  const chipBox = await chip.boundingBox();
+  expect(rowBox!.height).toBeLessThan(30);
+  expect(chipBox!.height).toBeLessThan(20);
 });
 
 test("the picker folds the apprentices away, and Escape closes it before the dialog", async ({

@@ -236,7 +236,43 @@ describe("tinting the tree for one mage", () => {
     // A locked skill keeps its gate text and takes no chip: what is missing is the reason to show
     // the row at all.
     expect(html).not.toContain('data-testid="magic-tree-standing-CRRI"');
-    expect(html).toMatch(/data-testid="magic-tree-skill-CRRI"[^>]*class="[^"]*text-ink-dim/);
+    // The fade is what says "locked" now, not the dim ink it fades from (ah-yqzq).
+    expect(html).toMatch(/data-testid="magic-tree-skill-CRRI"[^>]*class="[^"]*opacity-55/);
+  });
+
+  it("draws a skill as one flex line whose chips cannot break", () => {
+    const html = tinted(SIX_OF_SEVEN);
+
+    expect(html).toMatch(/data-testid="magic-tree-skill-ILLU"[^>]*class="[^"]*flex items-baseline/);
+    // The standing chip and the tag never wrap, whatever the column does to the name.
+    expect(html).toMatch(
+      /data-testid="magic-tree-standing-ILLU"[^>]*class="[^"]*whitespace-nowrap/
+    );
+  });
+
+  it("fills each standing chip and fades a locked row from full ink", () => {
+    const html = tinted(SIX_OF_SEVEN);
+
+    expect(html).toMatch(
+      /data-testid="magic-tree-standing-ILLU"[^>]*class="[^"]*bg-standing-ceiling-fill/
+    );
+    expect(html).toMatch(
+      /data-testid="magic-tree-standing-INVI"[^>]*class="[^"]*bg-standing-open-fill/
+    );
+    // A locked row fades as a whole, over full-strength ink rather than an already-dim grey.
+    expect(html).toMatch(/data-testid="magic-tree-skill-CRRI"[^>]*class="[^"]*opacity-55/);
+    // The name opens the dictionary, and says so: `text-accent` was never a token and drew nothing.
+    expect(html).toContain("text-select");
+    expect(html).not.toContain("text-accent");
+  });
+
+  it("draws a crossing prerequisite as a violet pill at the right end of the row", () => {
+    const html = tinted(SIX_OF_SEVEN);
+
+    expect(html).toMatch(
+      /data-testid="magic-tree-chip-CRRI-INVI"[^>]*class="[^"]*bg-crossing-fill/
+    );
+    expect(html).toMatch(/data-testid="magic-tree-chip-CRRI-INVI"[^>]*class="[^"]*ml-auto/);
   });
 
   it("names all of the prerequisites holding a skill down", () => {
