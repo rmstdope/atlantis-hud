@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ArmyRecord } from "@atlantis/core-client";
 
 import { exportReadiness } from "../armyExport";
+import type { DerivedSkills } from "../battleSkills";
 import { useEscapeToDismiss } from "./dismissLayer";
 
 /**
@@ -24,6 +25,9 @@ export function ArmyExportDialog({
   armies,
   initialAttackerId,
   currentTurn,
+  derived,
+  scanning,
+  unreadTurns,
   busy,
   error,
   onExport,
@@ -33,6 +37,12 @@ export function ArmyExportDialog({
   /** The Army whose strip opened the dialog. It starts as the attackers. */
   initialAttackerId: string;
   currentTurn: number;
+  /** The combat skills recovered from battle rosters (`useBattleSkillsStore`). */
+  derived: DerivedSkills;
+  /** The recovery scan is still running, so a foreign unit's skills are not counted yet. */
+  scanning: boolean;
+  /** Stored turns the scan could not read; the dialog says how many. */
+  unreadTurns: number;
   busy: boolean;
   error: string | null;
   onExport: (attackers: ArmyRecord | null, defenders: ArmyRecord | null) => void;
@@ -50,7 +60,15 @@ export function ArmyExportDialog({
   const attackers = armyOf(attackerId);
   const defenders = armyOf(defenderId);
 
-  const readiness = exportReadiness({ armies, attackers, defenders, currentTurn });
+  const readiness = exportReadiness({
+    armies,
+    attackers,
+    defenders,
+    currentTurn,
+    derived,
+    scanning,
+    unreadTurns
+  });
 
   // Not re-sorted: `armies` arrives in the store's order, which is `sortArmies`'.
   const picker = (
@@ -140,7 +158,13 @@ export function ArmyExportDialog({
             */}
             <span
               aria-hidden="true"
-              className={notice.kind === "empty-side" ? "text-ink-dim" : "text-warn"}
+              className={
+                // Grey for the transient waiting line as well as the empty side (L1): neither is a
+                // caveat about the file, and the waiting one is a state about to end.
+                notice.kind === "empty-side" || notice.kind === "scanning"
+                  ? "text-ink-dim"
+                  : "text-warn"
+              }
             >
               ●
             </span>
@@ -164,7 +188,7 @@ export function ArmyExportDialog({
           <button
             type="button"
             data-testid="army-export-confirm"
-            disabled={busy || readiness.refusal !== null}
+            disabled={busy || readiness.refusal !== null || readiness.waiting}
             onClick={() => onExport(attackers, defenders)}
             className="rounded border border-brass px-2 py-0.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim"
           >

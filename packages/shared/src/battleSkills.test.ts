@@ -9,7 +9,7 @@ import {
   withRosterSkills
 } from "./battleSkills";
 
-const OCEAN = { level: 1, x: 25, y: 55 };
+const OCEAN = { x: 25, y: 55, z: 1 };
 
 function anEntry(overrides: Partial<RosterSkills> = {}): RosterSkills {
   return {

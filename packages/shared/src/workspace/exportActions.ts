@@ -9,6 +9,7 @@
 
 import type { ArmyRecord, CoreClient, MapExportContent } from "@atlantis/core-client";
 import { battleFileName, battleFileOf, battleFileText } from "../armyExport";
+import type { DerivedSkills } from "../battleSkills";
 import type { TextFileSaver } from "../downloadFile";
 import { backupFileName } from "../gameBackup";
 import { exportFileName, exportRequestOf } from "../mapExport";
@@ -93,11 +94,12 @@ export async function deliverMapExport(
 export async function deliverArmyExport(
   saveTextFile: TextFileSaver,
   attackers: ArmyRecord | null,
-  defenders: ArmyRecord | null
+  defenders: ArmyRecord | null,
+  derived: DerivedSkills
 ): Promise<string | null> {
   return saveTextFile(
     battleFileName(attackers, defenders),
-    battleFileText(battleFileOf(attackers, defenders)),
+    battleFileText(battleFileOf(attackers, defenders, derived)),
     "application/json"
   );
 }

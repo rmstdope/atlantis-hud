@@ -111,6 +111,7 @@ import type { BackupImportMode } from "../gameBackup";
 import { DEFAULT_LEVEL, useWorkspaceStore, workspaceGameOf } from "../workspaceStore";
 import { useHexNotesStore } from "../hexNotesStore";
 import { useArmiesStore } from "../armiesStore";
+import { useBattleSkillsStore } from "../battleSkillsStore";
 import { unitsByIdIn } from "../armies";
 import { useSettingsStore } from "../settingsStore";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
@@ -551,6 +552,10 @@ export function AppShell({
   const armiesStatus = useArmiesStore((state) => state.status);
   /** The same list `UnitTableDock` reads, for the export dialog's two pickers (`ah-1mpx.3`). */
   const armies = useArmiesStore((state) => state.armies);
+  /** The combat skills recovered from this game's battle rosters (`ah-1mpx.6.2`). */
+  const derivedSkills = useBattleSkillsStore((state) => state.skills);
+  const derivedStatus = useBattleSkillsStore((state) => state.status);
+  const unreadTurns = useBattleSkillsStore((state) => state.unreadTurns);
   /** Which header popover is open - one at a time, by construction. Dialogs keep their own flags. */
   const [openPopover, setOpenPopover] = useState<HeaderPopoverId | null>(null);
   /** Closes the named popover if it is the open one, and touches nothing otherwise. */
@@ -1819,6 +1824,60 @@ export function AppShell({
   }, [client, openGameId, gameEpoch]);
 
   /**
+   * The same for the recovered battle skills (ah-1mpx.6.2), keyed the same way: they are scoped to
+   * the game and do not change because the game was renamed.
+   */
+  useEffect(() => {
+    if (game) {
+      void useBattleSkillsStore.getState().scan(client, game);
+    } else {
+      useBattleSkillsStore.getState().clear();
+    }
+  }, [client, openGameId, gameEpoch]);
+
+  /**
+   * Folds the turn on screen into the recovered skills (ah-1mpx.6.2, N1), so a report imported this
+   * minute counts without waiting for the game to be reopened.
+   *
+   * Driven off `rawReport` rather than hooked into `applyLoadedTurn`, for exactly the reason the
+   * Armies refresh below gives: `applyLoadedTurn` is not the only way a turn arrives - the restore
+   * effect sets `parsed` and `rawReport` directly, and that is how a turn appears every time the
+   * application is reopened.
+   *
+   * Goes through `client.rosterSkills` rather than reading `parsed.battles[].skills` here. The core
+   * already owns the projection - report order, attackers before defenders, entries with no skills
+   * omitted - and writing it a second time in TypeScript is how the two come to disagree. The cost
+   * is one extra parse of a report that was just parsed, which is milliseconds on a path that has
+   * already done far more.
+   *
+   * Racing the scan is safe in both directions: `withRosterSkills` keeps whichever observation has
+   * the greater turn, so a scan finishing later cannot undo this, and this cannot undo a scan.
+   */
+  useEffect(() => {
+    const turn = parsed?.header.turnNumber;
+    if (openGameId === null || rawReport === "" || turn === null || turn === undefined) {
+      return;
+    }
+    const gameId = openGameId;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const entries = await client.rosterSkills(rawReport);
+        if (!cancelled) {
+          useBattleSkillsStore.getState().foldIn(gameId, entries, turn);
+        }
+      } catch (error) {
+        // Fire and forget, as the Armies refresh is: a turn that loaded correctly must not be
+        // rolled back because its rosters could not be re-read.
+        console.warn("could not read the turn's battle rosters", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, openGameId, rawReport, parsed?.header.turnNumber]);
+
+  /**
    * Refreshes every Army's remembered units against the turn on screen (ah-1mpx.1).
    *
    * Driven off `parsed` rather than hooked into `applyLoadedTurn`, which is not in fact the only
@@ -2986,7 +3045,14 @@ export function AppShell({
       setArmyExportError(null);
       await runReported(
         async () => {
-          const path = await deliverArmyExport(saveTextFile, attackers, defenders);
+          // Read through `getState()` rather than the subscribed value, so this callback's
+          // dependency list does not churn as the scan lands.
+          const path = await deliverArmyExport(
+            saveTextFile,
+            attackers,
+            defenders,
+            useBattleSkillsStore.getState().skills
+          );
           if (path === null) {
             return;
           }
@@ -3913,6 +3979,9 @@ export function AppShell({
           armies={armies}
           initialAttackerId={armyExportId}
           currentTurn={parsed.header.turnNumber}
+          derived={derivedSkills}
+          scanning={derivedStatus === "scanning"}
+          unreadTurns={unreadTurns}
           busy={armyExportBusy}
           error={armyExportError}
           onExport={(attackers, defenders) => void exportArmies(attackers, defenders)}

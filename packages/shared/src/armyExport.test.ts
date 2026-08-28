@@ -21,7 +21,7 @@ const WATAZKA_ROSTER = withRosterSkills(
     {
       unitId: "4839",
       unitName: "Watazka",
-      coordinate: { level: 1, x: 25, y: 55 },
+      coordinate: { x: 25, y: 55, z: 1 },
       terrain: "ocean",
       skills: [
         { name: "riding", level: 5 },
