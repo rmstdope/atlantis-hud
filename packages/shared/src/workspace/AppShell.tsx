@@ -214,7 +214,8 @@ import {
   turnReportOpeningTab
 } from "../turnReport";
 import { UnitMovementSlot } from "./UnitMovementSlot";
-import { UnitTableDock } from "./UnitTableDock";
+import { UnitTableDock, type UnitTableDockHandle } from "./UnitTableDock";
+import { foreignUnitsIn } from "./foreignUnits";
 import { dossierFor } from "../factionDossier";
 import { FloatingFactionDossier, MeasuredFactionDossier } from "./FactionDossierPanel";
 import type { KeepClear, PeekMode } from "./dossierPeek";
@@ -604,6 +605,9 @@ export function AppShell({
   // The map's two view actions, driven from the overlay strip's zoom buttons (ah-ljil). They close
   // over the map's own view state, so the actions cross the boundary rather than the state.
   const mapCanvas = useRef<MapCanvasHandle | null>(null);
+  // The dossier's "show their units" line reaches the dock through this. The source and the pin
+  // stay in the dock; only the action crosses the boundary.
+  const unitDock = useRef<UnitTableDockHandle | null>(null);
   const ordersSlotRef = useRef<HTMLDivElement | null>(null);
   const unitsSlotRef = useRef<HTMLDivElement | null>(null);
   const leftRailRef = useRef<HTMLDivElement | null>(null);
@@ -912,6 +916,8 @@ export function AppShell({
     () => (parsed ? parsed.regions.flatMap((region) => region.units.filter((one) => one.own)) : []),
     [parsed]
   );
+  /** Its exact complement, for the dock's `Other factions` source (`ah-1mpx.5`). */
+  const foreignUnits = useMemo(() => (parsed ? foreignUnitsIn(parsed) : []), [parsed]);
   /**
    * This turn's units by unit number, for resolving an Army's members against the report.
    *
@@ -2575,13 +2581,28 @@ export function AppShell({
         selectRegion(regionId, unitsForHex(found)[0]?.unitId ?? null);
         setDossier(null);
       },
-      onSelectUnit: (unitId: string) => {
-        goToUnit(unitId, null);
-        setDossier(null);
-      },
+      // The popover no longer lists their units; this sends the reader to the dock's own list of
+      // them, which sorts, filters and can be dragged from (`ah-1mpx.5`, R2).
+      onShowUnits: openDossier
+        ? () => {
+            setDossier(null);
+            // The action is meaningless against a collapsed pane, and the handle's focus effect
+            // needs the rows rendered. `togglePanel` is a toggle, not a setter
+            // (`workspaceStore.ts:494`), so the current state is read before flipping it.
+            if (useWorkspaceStore.getState().collapsed.units) {
+              useWorkspaceStore.getState().togglePanel("units");
+            }
+            unitDock.current?.showForeignFaction({
+              kind: "faction",
+              factionId: openDossier.id,
+              factionName: openDossier.name
+            });
+          }
+        : undefined,
+      unitCount: openDossier?.units.length ?? 0,
       onDismiss: () => setDossier(null)
     }),
-    [hexLabel, goToUnit, level, setLevel, model, selectRegion]
+    [hexLabel, level, setLevel, model, selectRegion, openDossier]
   );
 
   useEffect(() => {
@@ -3817,6 +3838,7 @@ export function AppShell({
             data-map-overlay="bottom"
           >
             <UnitTableDock
+              ref={unitDock}
               hex={hex}
               preview={hexPreview}
               getLongOrder={getLongOrder}
@@ -3824,6 +3846,8 @@ export function AppShell({
               silverWarnings={silverWarnings}
               onSelectUnit={(unitId) => goToUnit(unitId, null)}
               ownUnits={ownUnits}
+              foreignUnits={foreignUnits}
+              attitudes={parsed?.header.attitudes ?? null}
               unitsById={unitsById}
               currentTurn={parsed?.header.turnNumber ?? null}
               client={client}

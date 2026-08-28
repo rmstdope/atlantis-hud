@@ -15,6 +15,7 @@ import { renderWithStoreState, restoreStoresForTest } from "../testing/storeStat
 import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
 import { useArmiesStore } from "../armiesStore";
 import { UnitTableDock } from "./UnitTableDock";
+import { FOREIGN_SOURCE } from "./unitSource";
 
 /**
  * A hex's units pane, as markup.
@@ -1148,5 +1149,146 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
     );
 
     expect(markup).toContain("No units of your own in this turn&#x27;s report.");
+  });
+});
+
+describe("the Other factions source (ah-1mpx.5)", () => {
+  afterEach(restoreStoresForTest);
+
+  const theirs = (unitId: string, over: Partial<ReportUnit> = {}) =>
+    unit({ unitId, own: false, factionId: "10", factionName: "Thane's Ring", ...over });
+  const concealed = (unitId: string) =>
+    unit({ unitId, own: false, factionId: null, factionName: null });
+
+  const FOREIGN = [theirs("2"), theirs("4", { factionId: "11", factionName: "Fresh Meat" }), concealed("3")];
+
+  const withUnits = () =>
+    hex({ region: region({ units: [unit({ unitId: "1", own: true })] }), ownUnitCount: 1 });
+
+  const drawForeign = (
+    props: Partial<Parameters<typeof UnitTableDock>[0]> = {},
+    foreignUnits: ReportUnit[] = FOREIGN
+  ) =>
+    renderWithStoreState(
+      <UnitTableDock
+        hex={withUnits()}
+        ownUnits={[unit({ unitId: "1", own: true })]}
+        foreignUnits={foreignUnits}
+        currentTurn={71}
+        initialSource={FOREIGN_SOURCE}
+        {...props}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [] }
+    );
+
+  it("the Other factions source draws every foreign unit and no own one", () => {
+    const markup = drawForeign();
+
+    expect(markup).toContain('data-testid="unit-row-2"');
+    expect(markup).toContain('data-testid="unit-row-3"');
+    expect(markup).toContain('data-testid="unit-row-4"');
+    expect(markup).not.toContain('data-testid="unit-row-1"');
+    expect(markup).toContain("— other factions, 3 units");
+    // One extra column, `hex`, exactly as All my units gets - and no Seen, no Remove.
+    expect((markup.match(/<th\b/g) ?? []).length).toBe(UNIT_COLUMNS.length + 1);
+    expect(markup).not.toContain(">Seen<");
+  });
+
+  it("an initialPin narrows the table to that faction and says so in the hint", () => {
+    const markup = drawForeign({
+      initialPin: { kind: "faction", factionId: "10", factionName: "Thane's Ring" }
+    });
+
+    expect(markup).toContain('data-testid="unit-row-2"');
+    expect(markup).not.toContain('data-testid="unit-row-4"');
+    expect(markup).not.toContain('data-testid="unit-row-3"');
+    expect(markup).toContain("— Thane&#x27;s Ring (10), 1 of 3 units");
+  });
+
+  it("a hidden pin narrows the table to the units whose owner is concealed", () => {
+    const markup = drawForeign({ initialPin: { kind: "hidden" } });
+
+    expect(markup).toContain('data-testid="unit-row-3"');
+    expect(markup).not.toContain('data-testid="unit-row-2"');
+    expect(markup).toContain("— faction not shown, 1 of 3 units");
+  });
+
+  it("draws the strip naming the pinned faction, and none when nothing is pinned", () => {
+    const pinned = drawForeign({
+      initialPin: { kind: "faction", factionId: "10", factionName: "Thane's Ring" }
+    });
+
+    expect(pinned).toContain('data-testid="foreign-strip"');
+    expect(pinned).toContain("Thane&#x27;s Ring (10)");
+    expect(pinned).toContain('data-testid="foreign-unpin"');
+    expect(drawForeign()).not.toContain('data-testid="foreign-strip"');
+  });
+
+  it("a pin that matches nothing offers a way back to every faction", () => {
+    const markup = drawForeign({
+      initialPin: { kind: "faction", factionId: "77", factionName: "Gone" }
+    });
+
+    expect(markup).toContain("Gone (77) has no units in this turn&#x27;s report.");
+    expect(markup).toContain('data-testid="foreign-show-all"');
+    expect(markup).toContain("Show all 3");
+  });
+
+  it("says so when the report holds no other faction's units at all", () => {
+    expect(drawForeign({}, [])).toContain("No other faction&#x27;s units in this turn&#x27;s report.");
+  });
+
+  it("says so when no report is loaded", () => {
+    expect(drawForeign({ hex: null, currentTurn: null }, [])).toContain("No report loaded.");
+  });
+
+  it("a foreign unit's Skills cell says its skills are not disclosed", () => {
+    // `rules/reportformat`: a report discloses a foreign unit's large items and never its skills,
+    // so a blank cell would be indistinguishable from a unit that genuinely has none.
+    const markup = drawForeign();
+
+    expect(markup).toContain("not disclosed");
+  });
+
+  it("an own unit with no skills keeps an empty Skills cell", () => {
+    // For your own units the report prints `Skills: none.`, so blank there really does mean none.
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={withUnits()}
+        ownUnits={[unit({ unitId: "1", own: true })]}
+        currentTurn={71}
+        initialSource={{ kind: "own" }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [] }
+    );
+
+    expect(markup).not.toContain("not disclosed");
+  });
+
+  it("a foreign unit that discloses a skill prints it rather than the notice", () => {
+    const markup = drawForeign({}, [
+      theirs("2", { skills: [{ name: "combat", tag: "COMB", level: 3, points: 180 }] })
+    ]);
+
+    expect(markup).toContain("COMB 3 (180)");
+    expect(markup).not.toContain("not disclosed");
+  });
+
+  it("the faction cell of a concealed unit is a button only in the Other factions source", () => {
+    const inForeign = drawForeign();
+    const inHex = draw(
+      hex({ region: region({ units: [concealed("3")] }), ownUnitCount: 0, foreignUnitCount: 1 })
+    );
+
+    expect(inForeign).toContain('data-testid="foreign-pin-hidden"');
+    expect(inForeign).toContain("not shown");
+    // Elsewhere the same truth is stated, and there is no list for it to narrow.
+    expect(inHex).toContain("not shown");
+    expect(inHex).not.toContain('data-testid="foreign-pin-hidden"');
+    // The em dash it used to read is gone: it said "nothing here" where the truth is that
+    // somebody owns this unit and the rules do not let you know who.
+    expect(inHex).not.toContain(">—</td>");
   });
 });

@@ -14,10 +14,26 @@ import type { ColumnOrder, ExtraColumn, SortState, UnitColumn } from "../unitTab
 export type UnitSource =
   | { kind: "hex" }
   | { kind: "own" }
-  | { kind: "army"; armyId: string };
+  | { kind: "army"; armyId: string }
+  | { kind: "foreign" };
 
 export const HEX_SOURCE: UnitSource = { kind: "hex" };
 export const OWN_SOURCE: UnitSource = { kind: "own" };
+export const FOREIGN_SOURCE: UnitSource = { kind: "foreign" };
+
+/**
+ * What the `Other factions` list is narrowed to, when it is narrowed at all.
+ *
+ * `factionName` is carried rather than looked up because the faction may have no units in the
+ * report the pin is applied to - a pin survives a turn load - and the empty line names it.
+ *
+ * It is declared here rather than in `foreignUnits.ts` for the reason `ExtraColumn` is declared in
+ * `unitTable.ts`: `foreignUnits.ts` imports `UnitSource`, so importing back would be a cycle, and
+ * `headerFor` below needs the pin.
+ */
+export type FactionPin =
+  | { kind: "faction"; factionId: string; factionName: string }
+  | { kind: "hidden" };
 
 export function sameSource(left: UnitSource, right: UnitSource): boolean {
   if (left.kind !== right.kind) {
@@ -53,6 +69,10 @@ export function extraColumnsFor(source: UnitSource): ExtraColumn[] {
       return [];
     case "own":
       return ["hex"];
+    case "foreign":
+      // The same as `own`, and for the same reason: both span hexes. No `seen`, because everything
+      // here is this turn's report, and no `remove`, because there is nothing to be removed from.
+      return ["hex"];
     case "army":
       return ["hex", "seen", "remove"];
   }
@@ -72,16 +92,33 @@ export function headerFor(args: {
   shownCount: number;
   /** Today's `— plain (7,53), 6 units`, already built by the dock. */
   hexHint: string | undefined;
+  /** The `Other factions` pin, and the count before it narrowed anything. */
+  pin?: FactionPin | null;
+  foreignTotal?: number;
 }): { title: string; hint: string | undefined } {
   if (args.source.kind === "hex") {
     return { title: "Units in hex", hint: args.hexHint };
   }
-  const what = args.source.kind === "own" ? "all my units" : (args.armyName ?? "");
-  const units = `${args.unitCount} unit${args.unitCount === 1 ? "" : "s"}`;
+  const pin = args.source.kind === "foreign" ? (args.pin ?? null) : null;
+  const what =
+    args.source.kind === "own"
+      ? "all my units"
+      : args.source.kind === "foreign"
+        ? (pin === null ? "other factions" : pinHintLabel(pin))
+        : (args.armyName ?? "");
+  // `unitCount` is what the pin left; `foreignTotal` what there was before it. The `X of Y` form
+  // appears only when a pin is set - unpinned reads exactly like `All my units` does.
+  const of = pin === null ? "" : ` of ${args.foreignTotal ?? args.unitCount}`;
+  const units = `${args.unitCount}${of} unit${args.unitCount === 1 && of === "" ? "" : "s"}`;
   // The same `, N shown` suffix the hex hint appends when a filter is narrowing the list, in the
   // same words and the same place.
   const shown = args.shownCount === args.unitCount ? "" : `, ${args.shownCount} shown`;
   return { title: "Units", hint: `— ${what}, ${units}${shown}` };
+}
+
+/** How a pin reads in the pane hint: `Thane's Ring (10)`, or `faction not shown`. */
+export function pinHintLabel(pin: FactionPin): string {
+  return pin.kind === "hidden" ? "faction not shown" : `${pin.factionName} (${pin.factionId})`;
 }
 
 /**

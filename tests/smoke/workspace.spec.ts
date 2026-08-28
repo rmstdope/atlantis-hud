@@ -4719,7 +4719,8 @@ test("a faction name in the units table opens its dossier", async ({ page }) => 
   await expect(dossier).toContainText(
     "Where their units are this turn. Earlier turns are not remembered."
   );
-  await expect(dossier).toContainText("A unit hiding its faction is not counted here.");
+  // Their units are reached through the dock's own list now, not listed here (`ah-1mpx.5`).
+  await expect(dossier).toContainText("Show their 79 units in the list");
   // The map is still there to draw a highlight on, which is the whole reason this is a popover
   // rather than a dialog: a modal would dim the very hex the ring goes on.
   await expect(page.getByTestId("panel-region")).toContainText("(10,50)");
@@ -4835,23 +4836,29 @@ test("reopening after dismissal draws no ring", async ({ page }) => {
   await expect(page.getByTestId("map-highlight-ring")).toHaveCount(0);
 });
 
-test("clicking a hex row selects that hex, and a unit row selects that unit", async ({ page }) => {
+test("clicking a hex row selects that hex", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, DOSSIER_HEX);
   await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
 
-  // A unit of theirs standing in a DIFFERENT hex, so the assertion cannot pass by the selection
-  // simply staying where it already was.
-  const unitRow = page.getByTestId("dossier-unit-1962");
-  await expect(unitRow).toBeVisible();
-  await unitRow.click();
-  await expect(page.getByTestId("faction-dossier")).toHaveCount(0);
-  await expect(page.getByTestId("panel-region")).toContainText("(26,52)");
-
-  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
   await page.getByTestId(`dossier-hex-${DOSSIER_HEX}`).click();
   await expect(page.getByTestId("faction-dossier")).toHaveCount(0);
   await expect(page.getByTestId("panel-region")).toContainText("(10,50)");
+});
+
+/**
+ * The dossier stopped listing the faction's units in `ah-1mpx.5`: the units dock's `Other factions`
+ * source does it better, with the table's sorting, filtering, columns and drag. What is left here
+ * is the line into that list; where it lands is `foreignUnits.spec.ts`.
+ */
+test("the dossier sends the reader to their units rather than listing them", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, DOSSIER_HEX);
+  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+
+  await expect(page.getByTestId("faction-dossier")).not.toContainText("Known units");
+  await expect(page.getByTestId("dossier-unit-1962")).toHaveCount(0);
+  await expect(page.getByTestId("dossier-show-units")).toBeVisible();
 });
 
 /**

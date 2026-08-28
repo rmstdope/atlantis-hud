@@ -3,12 +3,14 @@ import { DEFAULT_SORT, UNIT_COLUMNS, type SortState } from "../unitTable";
 import {
   drawnColumnsFor,
   extraColumnsFor,
+  FOREIGN_SOURCE,
   headerFor,
   HEX_SOURCE,
   OWN_SOURCE,
   sameSource,
   sortSurvives,
   sourceStillThere,
+  type FactionPin,
   type UnitSource
 } from "./unitSource";
 
@@ -19,6 +21,8 @@ describe("which list the dock is showing", () => {
     expect(sameSource(HEX_SOURCE, { kind: "hex" })).toBe(true);
     expect(sameSource(OWN_SOURCE, { kind: "own" })).toBe(true);
     expect(sameSource(HEX_SOURCE, OWN_SOURCE)).toBe(false);
+    expect(sameSource(FOREIGN_SOURCE, { kind: "foreign" })).toBe(true);
+    expect(sameSource(FOREIGN_SOURCE, OWN_SOURCE)).toBe(false);
     expect(sameSource(army("a"), army("a"))).toBe(true);
     expect(sameSource(army("a"), army("b"))).toBe(false);
   });
@@ -30,6 +34,8 @@ describe("which list the dock is showing", () => {
     expect(sourceStillThere(OWN_SOURCE, ["a"])).toEqual(OWN_SOURCE);
     // ...and an Army source with no Armies at all - a closed game - falls back too.
     expect(sourceStillThere(army("a"), [])).toEqual(HEX_SOURCE);
+    // Other factions is a slice of the report, so it is always available too.
+    expect(sourceStillThere(FOREIGN_SOURCE, [])).toEqual(FOREIGN_SOURCE);
   });
 });
 
@@ -38,6 +44,11 @@ describe("which extra columns a source warrants", () => {
     expect(extraColumnsFor(HEX_SOURCE)).toEqual([]);
     expect(extraColumnsFor(OWN_SOURCE)).toEqual(["hex"]);
     expect(extraColumnsFor(army("a"))).toEqual(["hex", "seen", "remove"]);
+  });
+
+  it("extraColumnsFor gives Other factions hex alone, as it gives All my units", () => {
+    // Both span hexes; neither has a `seen` to record or anything to be removed from.
+    expect(extraColumnsFor(FOREIGN_SOURCE)).toEqual(["hex"]);
   });
 });
 
@@ -85,6 +96,72 @@ describe("the pane's header", () => {
     ).toBe("— all my units, 1 unit");
   });
 
+  it("headerFor omits the of-total when nothing is pinned", () => {
+    expect(
+      headerFor({
+        source: FOREIGN_SOURCE,
+        armyName: null,
+        unitCount: 254,
+        shownCount: 254,
+        hexHint,
+        pin: null,
+        foreignTotal: 254
+      }).hint
+    ).toBe("— other factions, 254 units");
+    expect(
+      headerFor({
+        source: FOREIGN_SOURCE,
+        armyName: null,
+        unitCount: 254,
+        shownCount: 7,
+        hexHint,
+        pin: null,
+        foreignTotal: 254
+      }).hint
+    ).toBe("— other factions, 254 units, 7 shown");
+  });
+
+  it("headerFor names the pinned faction and the count it narrowed from", () => {
+    const pin: FactionPin = { kind: "faction", factionId: "10", factionName: "Thane's Ring" };
+
+    expect(
+      headerFor({
+        source: FOREIGN_SOURCE,
+        armyName: null,
+        unitCount: 52,
+        shownCount: 52,
+        hexHint,
+        pin,
+        foreignTotal: 254
+      }).hint
+    ).toBe("— Thane's Ring (10), 52 of 254 units");
+    expect(
+      headerFor({
+        source: FOREIGN_SOURCE,
+        armyName: null,
+        unitCount: 52,
+        shownCount: 7,
+        hexHint,
+        pin,
+        foreignTotal: 254
+      }).hint
+    ).toBe("— Thane's Ring (10), 52 of 254 units, 7 shown");
+  });
+
+  it("headerFor says the faction is not shown for a hidden pin", () => {
+    expect(
+      headerFor({
+        source: FOREIGN_SOURCE,
+        armyName: null,
+        unitCount: 61,
+        shownCount: 61,
+        hexHint,
+        pin: { kind: "hidden" },
+        foreignTotal: 254
+      }).hint
+    ).toBe("— faction not shown, 61 of 254 units");
+  });
+
   it("headerFor leaves the This hex hint alone even when it is absent", () => {
     expect(
       headerFor({ source: HEX_SOURCE, armyName: null, unitCount: 0, shownCount: 0, hexHint: undefined })
@@ -99,6 +176,7 @@ describe("a sort must not survive the column it sorts on", () => {
     expect(sortSurvives(seenSort, army("a"))).toBe(true);
     expect(sortSurvives(seenSort, HEX_SOURCE)).toBe(false);
     expect(sortSurvives(seenSort, OWN_SOURCE)).toBe(false);
+    expect(sortSurvives(seenSort, FOREIGN_SOURCE)).toBe(false);
     expect(sortSurvives(DEFAULT_SORT, HEX_SOURCE)).toBe(true);
     expect(sortSurvives(DEFAULT_SORT, army("a"))).toBe(true);
   });

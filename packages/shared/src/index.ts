@@ -60,5 +60,6 @@ export * from "./workspace/TurnReportPanel";
 export * from "./turnReport";
 export * from "./workspace/UnitPanel";
 export * from "./workspace/unitSource";
+export * from "./workspace/foreignUnits";
 export * from "./workspace/armyRows";
 export * from "./workspace/UnitTableDock";

@@ -28,7 +28,7 @@ const panel = (overrides: Partial<Parameters<typeof FactionDossierPanel>[0]> = {
     onHoverHex={() => {}}
     onFocusHex={() => {}}
     onSelectHex={() => {}}
-    onSelectUnit={() => {}}
+    unitCount={DOSSIER.units.length}
     onDismiss={() => {}}
     {...overrides}
   />
@@ -49,33 +49,62 @@ describe("FactionDossierPanel", () => {
     expect(draw({ dossier: { ...DOSSIER, attitude: null } })).toContain("not declared");
   });
 
-  it("lists the hexes with a unit count each, and the known units", () => {
+  it("lists the hexes with a unit count each", () => {
     const markup = draw();
     expect(markup).toContain("hex 1:7,53");
     expect(markup).toContain("hex 1:8,54");
-    expect(markup).toContain("Scout");
-    expect(markup).toContain("Trader");
-    expect(markup).toContain("101");
   });
 
-  it("states both limits, so an empty faction reads as unseen rather than as absent", () => {
+  it("the dossier no longer lists the faction's units", () => {
+    // The units dock's `Other factions` source replaces it and does it better - sorting, filtering,
+    // columns, and rows that can be dragged into an Army (`ah-1mpx.5`, R2).
     const markup = draw();
-    expect(markup).toContain("Where their units are this turn. Earlier turns are not remembered.");
-    expect(markup).toContain("A unit hiding its faction is not counted here.");
+
+    expect(markup).not.toContain("Known units");
+    expect(markup).not.toContain("A unit hiding its faction is not counted here.");
+    expect(markup).not.toContain("dossier-unit-101");
+    expect(markup).not.toContain("Scout");
+    expect(markup).not.toContain("Trader");
   });
 
-  it("states the limits even when nothing was seen", () => {
-    const markup = draw({ dossier: { ...DOSSIER, hexes: [], units: [] } });
+  it("the dossier offers to show the faction's units in the list", () => {
+    const onShowUnits = vi.fn();
+    const row = findByTestId(panel({ onShowUnits }), "dossier-show-units");
+
+    expect(row?.props.type).toBe("button");
+    expect(draw({ onShowUnits })).toContain("Show their 3 units in the list");
+    (row?.props.onClick as () => void)();
+    expect(onShowUnits).toHaveBeenCalled();
+  });
+
+  it("says one unit in the singular", () => {
+    expect(draw({ onShowUnits: () => {}, unitCount: 1 })).toContain(
+      "Show their 1 unit in the list"
+    );
+  });
+
+  it("a faction with no units this turn is offered no line", () => {
+    // A line that leads to an empty table is worse than no line at all.
+    expect(queryByTestId(panel({ onShowUnits: () => {}, unitCount: 0 }), "dossier-show-units")).toBeNull();
+    // And with no shell to act on it - a component test - it is not drawn either.
+    expect(queryByTestId(panel(), "dossier-show-units")).toBeNull();
+  });
+
+  it("states the Seen in limit, so an empty faction reads as unseen rather than as absent", () => {
+    expect(draw()).toContain("Where their units are this turn. Earlier turns are not remembered.");
+  });
+
+  it("states the limit even when nothing was seen", () => {
+    const markup = draw({ dossier: { ...DOSSIER, hexes: [], units: [] }, unitCount: 0 });
     expect(markup).toContain("Where their units are this turn. Earlier turns are not remembered.");
-    expect(markup).toContain("A unit hiding its faction is not counted here.");
   });
 
   it("makes every hex and unit row a button with an accessible name", () => {
     const markup = draw();
     const buttons = markup.match(/<button[^>]*>/g) ?? [];
-    // three hex/unit rows plus the close button, at least
-    expect(buttons.length).toBeGreaterThanOrEqual(6);
-    for (const row of ["dossier-hex-1:7,53", "dossier-unit-101"]) {
+    // two hex rows plus the close button, at least
+    expect(buttons.length).toBeGreaterThanOrEqual(3);
+    for (const row of ["dossier-hex-1:7,53", "dossier-hex-1:8,54"]) {
       const found = findByTestId(panel(), row);
       expect(found?.props.type).toBe("button");
       expect(found?.props["aria-label"]).toMatch(/\S/);
@@ -99,16 +128,6 @@ describe("FactionDossierPanel", () => {
     expect(onFocusHex).toHaveBeenLastCalledWith(null);
   });
 
-  it("reports the hex a unit stands in when its row is hovered or focused", () => {
-    const onHoverHex = vi.fn();
-    const onFocusHex = vi.fn();
-    const row = findByTestId(panel({ onHoverHex, onFocusHex }), "dossier-unit-104");
-    (row?.props.onPointerEnter as () => void)();
-    expect(onHoverHex).toHaveBeenLastCalledWith("1:8,54");
-    (row?.props.onFocus as () => void)();
-    expect(onFocusHex).toHaveBeenLastCalledWith("1:8,54");
-  });
-
   it("selects the hex and closes when a hex row is clicked", () => {
     const onSelectHex = vi.fn();
     const onDismiss = vi.fn();
@@ -118,14 +137,6 @@ describe("FactionDossierPanel", () => {
     expect(onDismiss).toHaveBeenCalled();
   });
 
-  it("selects the unit and closes when a unit row is clicked", () => {
-    const onSelectUnit = vi.fn();
-    const onDismiss = vi.fn();
-    const row = findByTestId(panel({ onSelectUnit, onDismiss }), "dossier-unit-102");
-    (row?.props.onClick as () => void)();
-    expect(onSelectUnit).toHaveBeenCalledWith("102");
-    expect(onDismiss).toHaveBeenCalled();
-  });
 });
 
 describe("the way back, when the dossier replaced the faction popover's contents", () => {
@@ -157,14 +168,5 @@ describe("a hovered row peeks; a focused row settles", () => {
     expect(onFocusHex.mock.calls).toEqual([["1:7,53"], [null]]);
   });
 
-  it("tells the two apart on a unit row", () => {
-    const onHoverHex = vi.fn();
-    const onFocusHex = vi.fn();
-    const row = findByTestId(panel({ onHoverHex, onFocusHex }), "dossier-unit-101");
-    (row?.props.onPointerEnter as () => void)();
-    (row?.props.onFocus as () => void)();
-    expect(onHoverHex.mock.calls).toEqual([["1:7,53"]]);
-    expect(onFocusHex.mock.calls).toEqual([["1:7,53"]]);
-  });
 });
 

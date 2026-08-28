@@ -77,8 +77,13 @@ function declaredName(attitudes: DeclaredAttitudes | null, factionId: string): s
   return null;
 }
 
-/** The level the faction is named at, or the declared default, or nothing at all. */
-function attitudeToward(attitudes: DeclaredAttitudes | null, factionId: string): string | null {
+/**
+ * The level the faction is named at, or the declared default, or nothing at all.
+ *
+ * Exported because the units dock's `Other factions` strip names the attitude too (`ah-1mpx.5`).
+ * Do not write a second copy: this one already falls back to the declared default.
+ */
+export function attitudeToward(attitudes: DeclaredAttitudes | null, factionId: string): string | null {
   for (const level of attitudes?.levels ?? []) {
     if (level.factions.some((faction) => faction.id === factionId)) {
       return level.attitude;
