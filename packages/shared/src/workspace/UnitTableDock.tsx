@@ -150,6 +150,8 @@ const SORTABLE_COLUMNS: ReadonlySet<UnitColumn> = new Set<UnitColumn>([
  */
 const NO_LONG_ORDERS: ReadonlyMap<string, string | null> = new Map();
 const NO_SILVER: ReadonlyMap<string, number | null> = new Map();
+/** For the same reason: an empty row list nobody rebuilds. */
+const NO_UNITS: ReportUnit[] = [];
 
 /**
  * What the shell may ask of the dock. The state stays here; only the action crosses the boundary.
@@ -353,6 +355,26 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   }, [source]);
 
   /**
+   * `All my units` with the whole report's preview folded in - and **only** when that is the source
+   * on screen (`ah-tguk`).
+   *
+   * The gate is not an optimisation. `ordersPreview` is a fresh object on every one of the shell's
+   * 300ms debounce ticks, whether or not the orders changed anything, so folding it unconditionally
+   * would put a changing dependency into `sourced` below - and `sourced` rebuilds `This hex`'s rows
+   * with `unitsForHex`, a fresh array every call. `visible` is memoised over those rows and the
+   * hover that opens a unit's tooltip is cancelled whenever that array's identity changes, so
+   * `This hex`'s tooltip stopped appearing at all (`ah-1wcw.1`, and again here). Gated, this
+   * answers the very same `ownUnits` array for every other source, and `sourced` does not re-run.
+   */
+  const ownRows = useMemo(
+    () =>
+      source.kind === "own"
+        ? mergePreviewAcross(ownUnits ?? NO_UNITS, ordersPreview)
+        : (ownUnits ?? NO_UNITS),
+    [source, ownUnits, ordersPreview]
+  );
+
+  /**
    * The rows for the current source, and everything the extra columns need alongside them.
    *
    * `unitsForHex` rather than `hex.region.units`: sorting it again is a no-op because `Array.sort`
@@ -371,14 +393,14 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       return { ...NO_ARMY_ROWS, rows: mergePreview(unitsForHex(hex), preview) };
     }
     if (source.kind === "own") {
-      return { ...NO_ARMY_ROWS, rows: mergePreviewAcross(ownUnits ?? [], ordersPreview) };
+      return { ...NO_ARMY_ROWS, rows: ownRows };
     }
     if (source.kind === "foreign") {
       // The spread is `ArmyRows.rows` being `ReportUnit[]` where `pinnedRows` answers readonly.
       return { ...NO_ARMY_ROWS, rows: [...pinnedRows(foreignUnits ?? [], pin)] };
     }
     return army ? armyRows(army, unitsById ?? new Map(), currentTurn) : NO_ARMY_ROWS;
-  }, [source, hex, preview, ordersPreview, ownUnits, foreignUnits, pin, army, unitsById, currentTurn]);
+  }, [source, hex, preview, ownRows, foreignUnits, pin, army, unitsById, currentTurn]);
 
   const units = sourced.rows;
   const extras = useMemo(() => extraColumnsFor(source), [source]);
