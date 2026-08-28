@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-tguk - the orders preview in All my units</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  p.lead { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .banner { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--brass);
+    padding:10px 14px; margin:16px 0 4px; max-width:104ch; }
+  .banner strong, .banner b { color:var(--ink); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 8px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:104ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .pane { background:var(--panel); border:1px solid var(--edge); border-radius:6px; margin:10px 0 4px; overflow:hidden; }
+  .pane .cap { display:flex; align-items:baseline; gap:8px; padding:7px 12px; border-bottom:1px solid var(--edge);
+    font-family:system-ui,sans-serif; font-size:12.5px; }
+  .pane .cap .title { color:var(--ink); }
+  .pane .cap .hint { color:var(--ink-dim); font-size:11.5px; }
+  .body { display:flex; }
+  .rail { width:132px; flex:0 0 132px; border-right:1px solid var(--edge); padding:6px 0; font-family:system-ui,sans-serif; font-size:11.5px; }
+  .rail div { padding:4px 10px; color:var(--ink-soft); display:flex; justify-content:space-between; }
+  .rail div.on { background:var(--raised); color:var(--ink); border-left:2px solid var(--brass); padding-left:8px; }
+  .rail div span { color:var(--ink-dim); }
+  .scroll { flex:1; overflow-x:auto; }
+  table.units { width:100%; border-collapse:collapse; font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; min-width:760px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:10.5px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); white-space:nowrap; }
+  table.units td { padding:6px 10px; border-bottom:1px solid rgba(38,48,61,.5); white-space:nowrap; }
+  table.units td.pred { color:var(--brass); font-style:italic; }
+  table.units td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  table.units tr.leaving { opacity:.6; }
+  table.units tr.sel { background:rgba(74,159,216,.25); }
+  .id { color:var(--select); font-family:'SF Mono',Menlo,monospace; }
+  .mark { color:var(--ink-dim); font-size:11px; margin-left:6px; }
+  .mark.pred { color:var(--brass); font-style:italic; }
+  .mark.brass { color:var(--brass); }
+  .dim { color:var(--ink-dim); }
+  .ok { color:var(--ok); } .no { color:var(--danger); }
+  pre.ord { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 12px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); max-width:64ch; margin:10px 0; white-space:pre; }
+  pre.ord b { color:var(--ink); font-weight:normal; }
+  .two { display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:16px; align-items:start; }
+  .lbl { font-family:system-ui,sans-serif; font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim); margin:14px 0 2px; }
+  table.units tr.new td { }
+</style>
+</head>
+<body>
+<header>
+<h1>ah-tguk &mdash; <span>the orders preview in All my units</span></h1>
+<p class="lead"><b>All my units</b> shows the coming month, exactly as <b>This hex</b> does. Round 2:
+the chosen shape, drawn correctly, and the three details still open.</p>
+<div class="banner" style="border-left-color:#7fb069"><b>Chosen in round 1.</b> A unit whose orders
+take it elsewhere <b>keeps the hex the report put it in</b>, with <code>&rarr; 1:35,3</code> beside
+its name &mdash; the arriving half of the preview is dropped, so no unit is ever listed twice. The
+row is <b>not dimmed</b>: nothing is leaving a list of everything you own. A unit <b>FORMed</b> this
+month <b>is</b> listed, marked <em>new</em>. The marker keeps the <b>region id</b> it prints today.</div>
+<div class="banner" style="border-left-color:#d97070"><b>Correction to the round-1 mockups.</b> They
+drew the list grouped by hex. It is not: the Hex column <em>cannot be sorted</em>
+(<code>SortColumn</code> has no <code>hex</code>), and the table's default order is
+<b>by name, ascending, own units first</b>. Every table below is in that real order.</div>
+</header>
+<main>
+
+<h3 class="sec">The month being written</h3>
+<p>Fixture <code>neworigins-3.0.0-g3-f42-t42.rep</code>, faction 42.</p>
+<pre class="ord">unit <b>2418</b>          <span style="color:#8a97a8">; Transporter, mountain (36,4)</span>
+  <b>SELL ALL LIVE</b>
+
+unit <b>5105</b>          <span style="color:#8a97a8">; MinersA, mountain (36,4)</span>
+  <b>MOVE NW</b>          <span style="color:#8a97a8">; ends the month in mountain (35,3)</span>
+
+unit <b>8452</b>          <span style="color:#8a97a8">; Second Coming, mountain (36,4)</span>
+  <b>FORM 1</b>
+    <b>BUY 5 ORC</b>
+  <b>END</b></pre>
+
+<h3 class="sec">All my units, as it will draw</h3>
+<p>Sorted by name ascending, which is the table&rsquo;s default. Italic brass is a figure the orders
+changed; the hover on such a cell reads <code>was: &hellip;</code>, as it already does in
+<b>This hex</b>.</p>
+<div class="pane"><div class="cap"><span class="title">Units</span><span class="hint">&mdash; all my units, 6 units</span></div>
+<div class="body"><div class="rail"><div>This hex<span>12</span></div><div class="on">All my units<span>5</span></div><div>Other factions<span>31</span></div></div>
+<div class="scroll"><table class="units">
+<tr><th>Hex</th><th>Id</th><th>Name</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+<tr><td>(36,4)</td><td class="id">5105</td><td>MinersA<span class="mark">&rarr; 1:35,3</span></td><td>8</td><td>8 orcs [ORC], 4 admantium [ADMT], 20 iron [IRON]</td><td class="num">236</td></tr>
+<tr><td>(36,4)</td><td class="id">8452</td><td>Second Coming</td><td>20</td><td>20 mithril swords [MSWO], 20 horses [HORS]</td><td class="num">1104</td></tr>
+<tr><td>(49,3)</td><td class="id">1168</td><td>Transporter</td><td>1</td><td>55 mithril armor [MARM], 4 wagons [WAGO]</td><td class="num">318</td></tr>
+<tr><td>(49,3)</td><td class="id">2417</td><td>Transporter</td><td>1</td><td>orc [ORC]</td><td class="num">11</td></tr>
+<tr><td>(36,4)</td><td class="id">2418</td><td>Transporter</td><td>1</td><td class="pred">human [HUMN]</td><td class="num">1554</td></tr>
+<tr><td>(36,4)</td><td class="id">new-1</td><td>Unit (new 1)<span class="mark pred">new</span></td><td class="pred">5</td><td class="pred">5 orcs [ORC]</td><td class="num">0</td></tr>
+</table></div></div></div>
+<ul class="notes">
+<li>Row <b>5105</b> is upright, not dimmed, and says where it is bound.</li>
+<li>Row <b>new-1</b> is the FORMed unit, sorting under its name <em>Unit</em> like any other row.</li>
+<li>Row <b>2418</b> sold its livestock: ITEMS is italic brass, and Silver already showed the takings
+before this bead &mdash; that column comes from the order checks, not from the preview.</li>
+<li class="con">The Hex column prints bare coordinates &mdash; <code>(36,4)</code>, not <code>mountain (36,4)</code> &mdash; because the column is 79px wide. The marker keeps the region id <code>1:35,3</code>. Both are today&rsquo;s behaviour and neither is touched here.</li>
+</ul>
+
+<h3 class="sec">Q5 &mdash; does an Army list preview too?</h3>
+<p>An Army is a saved list of units, some remembered from turns ago. The preview only knows units
+this turn&rsquo;s report describes.</p>
+<div class="two">
+<div><div class="banner" style="border-left-color:#4fb783;margin-top:0"><b>Yes, for members this turn&rsquo;s report names</b></div>
+<div class="pane"><div class="cap"><span class="title">Units</span><span class="hint">&mdash; Northern push, 3 units</span></div>
+<div class="scroll"><table class="units">
+<tr><th>Hex</th><th>Seen</th><th>Id</th><th>Name</th><th>Items</th></tr>
+<tr><td>(36,4)</td><td class="dim">now</td><td class="id">2418</td><td>Transporter</td><td class="pred">human [HUMN]</td></tr>
+<tr><td>(36,4)</td><td class="dim">now</td><td class="id">5105</td><td>MinersA<span class="mark">&rarr; 1:35,3</span></td><td>8 orcs [ORC], 4 admantium [ADMT]</td></tr>
+<tr class="leaving"><td>(40,4)</td><td style="color:#d9a441">turn 38</td><td class="id">9431</td><td>Woodsmen</td><td>12 wood [WOOD]</td></tr>
+</table></div></div>
+<ul class="notes"><li>Every list in the pane tells the same story about the same month.</li>
+<li class="con">Two kinds of row in one table: some previewed, some remembered and never can be.</li>
+<li class="con">Wider than the bead was filed for.</li></ul></div>
+
+<div><div class="banner" style="border-left-color:#4fb783;margin-top:0"><b>No &mdash; leave Armies as they are</b></div>
+<div class="pane"><div class="cap"><span class="title">Units</span><span class="hint">&mdash; Northern push, 3 units</span></div>
+<div class="scroll"><table class="units">
+<tr><th>Hex</th><th>Seen</th><th>Id</th><th>Name</th><th>Items</th></tr>
+<tr><td>(36,4)</td><td class="dim">now</td><td class="id">2418</td><td>Transporter</td><td>human [HUMN], 36 livestock [LIVE]</td></tr>
+<tr><td>(36,4)</td><td class="dim">now</td><td class="id">5105</td><td>MinersA</td><td>8 orcs [ORC], 4 admantium [ADMT]</td></tr>
+<tr class="leaving"><td>(40,4)</td><td style="color:#d9a441">turn 38</td><td class="id">9431</td><td>Woodsmen</td><td>12 wood [WOOD]</td></tr>
+</table></div></div>
+<ul class="notes"><li>An Army stays what it is: a snapshot, with the Seen column saying how old each row is.</li>
+<li>Smaller change, and the bead ships for what it was filed about.</li>
+<li class="con"><b>This hex</b> and <b>All my units</b> show the month; an Army does not. A third rule.</li></ul></div>
+</div>
+
+<h3 class="sec">Q6 &mdash; the count in the rail, beside &ldquo;All my units&rdquo;</h3>
+<p>The FORMed unit makes the header say <b>6 units</b> while the rail badge says <b>5</b>. (<b>This
+hex</b> has exactly this mismatch today: its header counts previewed arrivals, its badge does not.)</p>
+<div class="two">
+<div><div class="banner" style="border-left-color:#4fb783;margin-top:0"><b>Leave the badge on the report&rsquo;s count</b></div>
+<div class="pane"><div class="cap"><span class="title">Units</span><span class="hint">&mdash; all my units, 6 units</span></div>
+<div class="body"><div class="rail"><div>This hex<span>12</span></div><div class="on">All my units<span>5</span></div><div>Other factions<span>31</span></div></div>
+<div class="scroll"><table class="units"><tr><th>Hex</th><th>Id</th><th>Name</th></tr>
+<tr><td>(36,4)</td><td class="id">2418</td><td>Transporter</td></tr>
+<tr><td>(36,4)</td><td class="id">new-1</td><td>Unit (new 1)<span class="mark pred">new</span></td></tr>
+</table></div></div></div>
+<ul class="notes"><li>The badge counts what the report says you have, which never moves as you type.</li>
+<li>Identical to how <b>This hex</b> already behaves; nothing new to explain.</li>
+<li class="con">Two numbers about one list, a centimetre apart, disagreeing.</li></ul></div>
+
+<div><div class="banner" style="border-left-color:#4fb783;margin-top:0"><b>Make the badge count the rows</b></div>
+<div class="pane"><div class="cap"><span class="title">Units</span><span class="hint">&mdash; all my units, 6 units</span></div>
+<div class="body"><div class="rail"><div>This hex<span>12</span></div><div class="on">All my units<span>6</span></div><div>Other factions<span>31</span></div></div>
+<div class="scroll"><table class="units"><tr><th>Hex</th><th>Id</th><th>Name</th></tr>
+<tr><td>(36,4)</td><td class="id">2418</td><td>Transporter</td></tr>
+<tr><td>(36,4)</td><td class="id">new-1</td><td>Unit (new 1)<span class="mark pred">new</span></td></tr>
+</table></div></div></div>
+<ul class="notes"><li>The badge and the header agree, always.</li>
+<li class="con">The badge ticks up and down as you type orders, which is a lot of motion in a rail
+you are not looking at.</li>
+<li class="con">Either <b>This hex</b>&rsquo;s badge changes with it, or the two rails now disagree
+about what a badge counts.</li></ul></div>
+</div>
+
+<h3 class="sec">States that do not change</h3>
+<ul class="notes" style="margin-top:4px">
+<li><b>No orders written.</b> No preview, so the list is byte-identical to today&rsquo;s.</li>
+<li><b>No report loaded.</b> &ldquo;No report loaded.&rdquo; &mdash; unchanged.</li>
+<li><b>A report with no own units.</b> &ldquo;No units of your own in this turn&rsquo;s report.&rdquo; &mdash; unchanged.</li>
+<li><b>No hex selected.</b> <b>All my units</b> still previews: it never needed a hex, and now it
+does not need one to show the month either.</li>
+<li><b>The filter box.</b> Unchanged, and it now narrows previewed rows too &mdash; typing
+<code>new</code> finds the FORMed unit.</li>
+<li><b>Keyboard, focus, Escape, the row cursor.</b> Untouched; a previewed row is an ordinary row.</li>
+<li><b>A narrow pane.</b> The Name cell truncates as it always has, marker included.</li>
+</ul>
+</main>
+</body>
+</html>
