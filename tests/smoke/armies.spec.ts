@@ -32,6 +32,11 @@ async function newArmy(page: Page, name: string) {
   await field.press("Enter");
 }
 
+/** A rail entry by the name on it. `RailEntry` renders a <button> carrying the label and count. */
+function railEntry(page: Page, name: string) {
+  return page.getByTestId("unit-source-rail").locator("button", { hasText: name });
+}
+
 test("a new Army is named in the rail and appears among the others", async ({ page }) => {
   await workspace(page);
 
@@ -170,4 +175,78 @@ test("exports an Army as a battle file", async ({ page }, testInfo) => {
   expect(Array.isArray(file.attackers.units[0].skills)).toBe(true);
 
   await expect(page.getByTestId("import-status")).toContainText("exported Northern Host");
+});
+
+test("a filter does not follow the table from one list to another", async ({ page }) => {
+  await workspace(page);
+  await newArmy(page, "Northern Host");
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("add-to-army").click();
+  await page.getByTestId("add-to-army-panel").getByText("Northern Host").click();
+
+  const pane = page.getByTestId("panel-units");
+  const filter = pane.getByLabel("Filter units");
+
+  // All my units, narrowed to nothing at all - the state the bug leaves standing.
+  await page.getByTestId("unit-source-own").click();
+  await filter.fill("no such unit");
+  await expect(pane).toContainText("No unit matches that filter.");
+
+  // The Army arrives whole.
+  await railEntry(page, "Northern Host").click();
+  await expect(filter).toHaveValue("");
+  await expect(pane).not.toContainText("No unit matches that filter.");
+  await expect(page.getByTestId(`unit-row-${OWN_UNIT}`)).toBeVisible();
+
+  // Clicking the entry already selected changes no list, so it takes nothing away. This is the
+  // assertion that fails if the rule is ever keyed on `source` identity: the rail builds a fresh
+  // object for an Army on every click.
+  await filter.fill("no such unit");
+  await expect(pane).toContainText("No unit matches that filter.");
+  await railEntry(page, "Northern Host").click();
+  await expect(filter).toHaveValue("no such unit");
+});
+
+test("selecting another hex clears the units filter, and an Army on screen is untouched", async ({
+  page
+}) => {
+  await workspace(page);
+  const pane = page.getByTestId("panel-units");
+  const filter = pane.getByLabel("Filter units");
+
+  // This hex: the next hex is a different list.
+  await filter.fill("no such unit");
+  await expect(pane).toContainText("No unit matches that filter.");
+  await selectHex(page, "1:7,51");
+  await expect(filter).toHaveValue("");
+
+  // An Army is not about the hex, so walking the map leaves both the list and its filter alone.
+  await selectHex(page, "1:7,53");
+  await newArmy(page, "Northern Host");
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("add-to-army").click();
+  await page.getByTestId("add-to-army-panel").getByText("Northern Host").click();
+  await railEntry(page, "Northern Host").click();
+
+  await filter.fill("no such unit");
+  await selectHex(page, "1:7,51");
+  await expect(filter).toHaveValue("no such unit");
+  await expect(pane).toContainText("— Northern Host, 1 unit");
+});
+
+test("deleting the Army on screen clears the filter with it", async ({ page }) => {
+  await workspace(page);
+  await newArmy(page, "Northern Host");
+  await railEntry(page, "Northern Host").click();
+
+  const pane = page.getByTestId("panel-units");
+  const filter = pane.getByLabel("Filter units");
+  await filter.fill("no such unit");
+
+  await page.getByTestId("army-delete").click();
+  await page.getByTestId("army-delete-yes").click();
+
+  // The source falls back to This hex, which is a different list, so the box goes with it.
+  await expect(pane).toContainText("Units in hex");
+  await expect(filter).toHaveValue("");
 });
