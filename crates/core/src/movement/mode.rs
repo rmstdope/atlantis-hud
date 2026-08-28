@@ -159,7 +159,7 @@ fn aboard_structure<'a>(
 
 /// The structure `unit.structure_id` names, when its kind names a hull or a fleet.
 ///
-/// Whether a kind actually names a hull is a question for [`parse_fleet_kind`] to answer
+/// Whether a kind actually names a hull is a question for [`hulls_named_in`] to answer
 /// syntactically; whether that hull is one the ruleset (or the server's own words) can price is a
 /// separate question for [`sailing_requirement`] and [`fleet_speed`], answered afterwards. A
 /// structure whose kind neither form recognises - an ordinary building - is not a fleet at all.
@@ -173,10 +173,17 @@ pub fn fleet_of<'a>(
     hex.structures
         .iter()
         .find(|structure| structure.structure_id == structure_id)
-        .filter(|structure| parse_fleet_kind(&structure.kind).is_some())
+        .filter(|structure| hulls_named_in(&structure.kind).is_some())
 }
 
 /// Reads a structure's `kind` as one or more ship hulls and how many of each.
+///
+/// **This is a parser, not a classifier.** It reads a string and has no idea what a ship is. Any
+/// non-empty capitalised word with nothing after it comes back as one hull of that name, so
+/// `hulls_named_in("Fort")` is `Some([("Fort", 1)])`, and `"Lair"` and `"Tower"` answer the same
+/// way. The question "is this structure a vessel at all" is [`is_vessel`]; reaching for this one
+/// instead is a mistake `ah-048` and `ah-jk9h` have each already paid a RED cycle for, and each
+/// was caught only by a trap test.
 ///
 /// A report writes a fleet's kind two ways: a single ship states its own hull bare - `"Longship"` -
 /// and a fleet of more than one states `"Fleet, <count> <hull>[, <count> <hull>...]"` - `"Fleet, 8
@@ -188,7 +195,7 @@ pub fn fleet_of<'a>(
 /// is what resolves them against the catalogue, so there is no second plural rule to keep in step
 /// with the first.
 #[must_use]
-pub fn parse_fleet_kind(kind: &str) -> Option<Vec<(String, u32)>> {
+pub fn hulls_named_in(kind: &str) -> Option<Vec<(String, u32)>> {
     let trimmed = kind.trim().trim_end_matches('.');
     if trimmed.is_empty() {
         return None;
@@ -282,13 +289,37 @@ pub fn sailing_requirement(fleet: &Structure, ruleset: Option<&Ruleset>) -> Opti
     }
 
     let ruleset = ruleset?;
-    let hulls = parse_fleet_kind(&fleet.kind)?;
+    let hulls = hulls_named_in(&fleet.kind)?;
     let mut total = 0_i64;
     for (name, count) in &hulls {
         let item = ruleset.find_item(name)?;
         total += item.sailing_skill? * i64::from(*count);
     }
     Some(total)
+}
+
+/// Whether this structure is a vessel at all, rather than an ordinary building.
+///
+/// A vessel is one whose sailing numbers *some* source can price: the server's own `"Sailors: H/N"`
+/// in the structure's description, or a hull the ruleset knows. That is exactly
+/// [`sailing_requirement`] answering, so this is a name for the question rather than a second way
+/// of answering it, and the two can never disagree.
+///
+/// **This is the test to reach for whenever the question is "is this a ship".**
+/// [`hulls_named_in`] is not it - it is syntactic, and reads `Fort` as a fleet of one Fort. Two
+/// beads used it as the vessel test and both shipped a bug that only a trap test caught
+/// (`ah-048`, `ah-jk9h`).
+///
+/// `false` when nothing can price it - no ruleset and nothing stated, or a hull the catalogue does
+/// not carry - which is the safe direction: callers fall back to the ordinary land movement
+/// question rather than inventing a number.
+///
+/// [`crate::movement::fleet::steps_followed_by`] deliberately asks a narrower question and keeps
+/// [`fleet_speed`] rather than this: a hull whose *speed* cannot be priced carries its occupants
+/// nowhere, whatever its crew requirement.
+#[must_use]
+pub fn is_vessel(structure: &Structure, ruleset: Option<&Ruleset>) -> bool {
+    sailing_requirement(structure, ruleset).is_some()
 }
 
 /// How much weight a fleet can carry. Stated `Load: H/N` first; else the ruleset's `cargoCapacity`
@@ -301,7 +332,7 @@ pub fn cargo_capacity(fleet: &Structure, ruleset: Option<&Ruleset>) -> Option<i6
     }
 
     let ruleset = ruleset?;
-    let hulls = parse_fleet_kind(&fleet.kind)?;
+    let hulls = hulls_named_in(&fleet.kind)?;
     let mut total = 0_i64;
     for (name, count) in &hulls {
         let item = ruleset.find_item(name)?;
@@ -336,7 +367,7 @@ pub fn fleet_speed(fleet: &Structure, ruleset: &Ruleset) -> Option<u32> {
         return Some(speed);
     }
 
-    let hulls = parse_fleet_kind(&fleet.kind)?;
+    let hulls = hulls_named_in(&fleet.kind)?;
     hulls
         .iter()
         .map(|(name, _)| ruleset.find_item(name).map(|item| item.moves))
@@ -492,7 +523,7 @@ mod tests {
     #[test]
     fn a_bare_hull_is_one_pair_at_count_one() {
         assert_eq!(
-            parse_fleet_kind("Longship"),
+            hulls_named_in("Longship"),
             Some(vec![("Longship".to_string(), 1)])
         );
     }
@@ -501,7 +532,7 @@ mod tests {
     #[test]
     fn a_fleet_of_one_hull_names_it_and_its_count() {
         assert_eq!(
-            parse_fleet_kind("Fleet, 2 Galleons"),
+            hulls_named_in("Fleet, 2 Galleons"),
             Some(vec![("Galleons".to_string(), 2)])
         );
     }
@@ -510,11 +541,11 @@ mod tests {
     #[test]
     fn a_mixed_fleet_names_every_hull() {
         assert_eq!(
-            parse_fleet_kind("Fleet, 8 Corsairs"),
+            hulls_named_in("Fleet, 8 Corsairs"),
             Some(vec![("Corsairs".to_string(), 8)])
         );
         assert_eq!(
-            parse_fleet_kind("Fleet, 4 Galleons, 1 Balloon"),
+            hulls_named_in("Fleet, 4 Galleons, 1 Balloon"),
             Some(vec![
                 ("Galleons".to_string(), 4),
                 ("Balloon".to_string(), 1)
@@ -529,7 +560,7 @@ mod tests {
     #[test]
     fn a_fleet_that_names_its_class_instead_of_the_word_fleet_names_every_hull() {
         assert_eq!(
-            parse_fleet_kind("Galley, 40 Galleons, 11 Galleys, 10 Balloons"),
+            hulls_named_in("Galley, 40 Galleons, 11 Galleys, 10 Balloons"),
             Some(vec![
                 ("Galleons".to_string(), 40),
                 ("Galleys".to_string(), 11),
@@ -544,14 +575,14 @@ mod tests {
     #[test]
     fn the_class_word_a_fleet_leads_with_is_not_a_hull_of_its_own() {
         assert_eq!(
-            parse_fleet_kind("Cloudship, 1 Balloon, 1 Cloudship"),
+            hulls_named_in("Cloudship, 1 Balloon, 1 Cloudship"),
             Some(vec![
                 ("Balloon".to_string(), 1),
                 ("Cloudship".to_string(), 1)
             ])
         );
         assert_eq!(
-            parse_fleet_kind("Galley, 2 Galleys, 3 Galleons, 8 Corsairs"),
+            hulls_named_in("Galley, 2 Galleys, 3 Galleons, 8 Corsairs"),
             Some(vec![
                 ("Galleys".to_string(), 2),
                 ("Galleons".to_string(), 3),
@@ -565,7 +596,7 @@ mod tests {
     #[test]
     fn a_manifest_with_no_class_word_is_read_from_its_lead() {
         assert_eq!(
-            parse_fleet_kind("4 Balloons"),
+            hulls_named_in("4 Balloons"),
             Some(vec![("Balloons".to_string(), 4)])
         );
     }
@@ -576,15 +607,73 @@ mod tests {
     #[test]
     fn a_lower_case_state_clause_is_not_a_hull() {
         assert_eq!(
-            parse_fleet_kind("Lair, closed to player units"),
+            hulls_named_in("Lair, closed to player units"),
             Some(vec![("Lair".to_string(), 1)])
         );
     }
 
     #[test]
     fn a_building_kind_is_not_a_fleet_shape_the_parser_refuses() {
-        assert_eq!(parse_fleet_kind(""), None);
-        assert_eq!(parse_fleet_kind("Fleet,"), None);
+        assert_eq!(hulls_named_in(""), None);
+        assert_eq!(hulls_named_in("Fleet,"), None);
+    }
+
+    /// The trap `ah-048` and `ah-jk9h` both fell into: the parser reads a Fort as one hull, and the
+    /// question they were actually asking is this one.
+    #[test]
+    fn a_fort_is_not_a_vessel_though_its_kind_parses_as_one_hull() {
+        let fort = Structure {
+            structure_id: "329".to_string(),
+            name: "Fort".to_string(),
+            kind: "Fort".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(
+            hulls_named_in(&fort.kind),
+            Some(vec![("Fort".to_string(), 1)]),
+            "the parser is syntactic and always has been"
+        );
+        assert!(!is_vessel(&fort, Some(&ruleset())));
+    }
+
+    /// A hull the catalogue prices is a vessel with no stated numbers at all - `Longship` carries
+    /// `sailingSkill: 4` in `config/public/ruleset.json`.
+    #[test]
+    fn a_hull_the_ruleset_prices_is_a_vessel() {
+        let ship = Structure {
+            structure_id: "329".to_string(),
+            name: "Ship".to_string(),
+            kind: "Longship".to_string(),
+            ..Default::default()
+        };
+        assert!(is_vessel(&ship, Some(&ruleset())));
+    }
+
+    /// The server's own words answer with no ruleset in hand.
+    #[test]
+    fn a_stated_sailors_line_makes_it_a_vessel_without_a_ruleset() {
+        let ship = Structure {
+            structure_id: "329".to_string(),
+            name: "Ship".to_string(),
+            kind: "Nosuchhull".to_string(),
+            description: Some("Load: 110/150; Sailors: 4/4; MaxSpeed: 4.".to_string()),
+            ..Default::default()
+        };
+        assert!(is_vessel(&ship, None));
+    }
+
+    /// Nothing stated and no hull the catalogue carries: "not a vessel" is the safe answer, because a
+    /// caller that believed otherwise would go on to invent a speed.
+    #[test]
+    fn a_hull_nothing_can_price_is_not_a_vessel() {
+        let ship = Structure {
+            structure_id: "329".to_string(),
+            name: "Ship".to_string(),
+            kind: "Nosuchhull".to_string(),
+            ..Default::default()
+        };
+        assert!(!is_vessel(&ship, Some(&ruleset())));
+        assert!(!is_vessel(&ship, None));
     }
 
     /// "Sailors: 4/4; MaxSpeed: 4." states its own numbers, which win over ruleset arithmetic.

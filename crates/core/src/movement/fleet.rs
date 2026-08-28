@@ -147,7 +147,7 @@ impl OrderedUnits {
 ///
 /// "Is a fleet" is the same test [`crate::movement::trace::trace_move`] applies before it draws a
 /// unit sailing: a hull whose speed can be *priced*, from the server's own stated numbers or from
-/// the ruleset. [`crate::movement::mode::parse_fleet_kind`] is not that test - it is syntactic and
+/// the ruleset. [`crate::movement::mode::hulls_named_in`] is not that test - it is syntactic and
 /// reads any single-word kind, `Fort` included, as a hull - and using it here would have every
 /// garrison follow whoever in the building wrote a MOVE.
 #[must_use]
