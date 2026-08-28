@@ -11,6 +11,7 @@ import {
   sameSource,
   sortSurvives,
   sourceStillThere,
+  travelsOnSelect,
   type FactionPin,
   type UnitSource
 } from "./unitSource";
@@ -92,6 +93,23 @@ describe("which extra columns a source warrants", () => {
   it("extraColumnsFor gives Other factions hex alone, as it gives All my units", () => {
     // Both span hexes; neither has a `seen` to record or anything to be removed from.
     expect(extraColumnsFor(FOREIGN_SOURCE)).toEqual(["hex"]);
+  });
+});
+
+describe("which sources take the map to the unit's hex (ah-y9hx)", () => {
+  const ARMY = army("a1");
+
+  it("travels from every source that spans hexes, and never from This hex", () => {
+    expect(travelsOnSelect(HEX_SOURCE)).toBe(false);
+    expect(travelsOnSelect(OWN_SOURCE)).toBe(true);
+    expect(travelsOnSelect(FOREIGN_SOURCE)).toBe(true);
+    expect(travelsOnSelect(ARMY)).toBe(true);
+  });
+
+  it("travels from exactly the sources that draw a Hex column", () => {
+    for (const source of [HEX_SOURCE, OWN_SOURCE, FOREIGN_SOURCE, ARMY]) {
+      expect(travelsOnSelect(source)).toBe(extraColumnsFor(source).includes("hex"));
+    }
   });
 });
 
