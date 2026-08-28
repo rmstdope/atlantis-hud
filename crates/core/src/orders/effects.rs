@@ -3591,6 +3591,62 @@ mod tests {
                 }]
             );
         }
+
+        /// `rules/tableiteminfo`: "Producing items will always produce as many items as during a
+        /// month up to the limit of the supplies carried by the producing unit" - and a unit that
+        /// gave its supplies away in the Give phase carries none.
+        #[test]
+        fn a_unit_that_gives_its_materials_away_produces_nothing() {
+            let response = preview_gift("GIVE 901 ALL IRON\nPRODUCE sword");
+            let giver = giver(&response);
+
+            assert!(
+                giver.produced.is_empty(),
+                "no iron, no swords: {:?}",
+                giver.produced
+            );
+            assert_eq!(giver.unit.men, 8, "the men are all still here");
+        }
+
+        /// Fifteen of the twenty iron leave, so five swords are all the month can make.
+        #[test]
+        fn a_unit_that_gives_some_materials_away_produces_what_is_left() {
+            let response = preview_gift("GIVE 901 15 IRON\nPRODUCE sword");
+
+            assert_eq!(
+                giver(&response).produced,
+                vec![ProducedItem {
+                    amount: 5,
+                    tag: "SWOR".to_string(),
+                }]
+            );
+        }
+
+        /// The regression that must not move: giving away the *goods* changes nothing about the
+        /// month's run, because the swords leave in the Give phase and the new ones are made in
+        /// the last one.
+        #[test]
+        fn a_gift_of_the_goods_it_makes_leaves_this_months_production_behind() {
+            let report = report_with_a_smith_and_a_neighbour().replace(
+                "8 orcs [ORC], 20 iron [IRON]",
+                "8 orcs [ORC], 20 iron [IRON], 5 swords [SWOR]",
+            );
+            let response = preview_over(&report, "unit 900\nGIVE 901 ALL SWOR\nPRODUCE sword\n");
+
+            assert_eq!(
+                held(giver(&response), "SWOR"),
+                8,
+                "the month's eight swords stay with the giver"
+            );
+            assert_eq!(
+                held(
+                    row(&response, "1:1,1", "901").expect("the receiver's row is previewed"),
+                    "SWOR"
+                ),
+                5,
+                "the five it already had are what the receiver gets"
+            );
+        }
     }
 
     /// `ah-bxgs`. `TRANSPORT`/`DISTRIBUTE` moves goods between units that need not share a hex,
