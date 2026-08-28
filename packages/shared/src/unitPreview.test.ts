@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { RegionPreview, ReportUnit } from "@atlantis/core-client";
+import type { OrdersPreviewResponse, RegionPreview, ReportUnit } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
-import { changeFor, formatItems, itemsTooltip, mergePreview, originalTooltip } from "./unitPreview";
+import {
+  changeFor,
+  formatItems,
+  itemsTooltip,
+  mergePreview,
+  mergePreviewAcross,
+  originalTooltip
+} from "./unitPreview";
 import type { PreviewedUnit } from "./unitPreview";
 
 const unit = (overrides: Partial<ReportUnit>): ReportUnit =>
@@ -156,6 +163,168 @@ describe("mergePreview", () => {
 
     expect(rows[0].previewStatus).toBe("departing");
     expect(rows[0].departingTo).toBe("1:2,2");
+  });
+});
+
+describe("mergePreviewAcross", () => {
+  /** One previewed unit, with every field the wire carries defaulted. */
+  const previewed = (
+    unitOverrides: Partial<ReportUnit>,
+    overrides: Partial<RegionPreview["units"][number]> = {}
+  ): RegionPreview["units"][number] => ({
+    unit: unit(unitOverrides),
+    status: "present",
+    changes: [],
+    arrivingFrom: null,
+    departingTo: null,
+    aboard: null,
+    uncounted: [],
+    takenUnshown: [],
+    produced: [],
+    built: [],
+    created: [],
+    transportSent: [],
+    transportReceived: [],
+    ...overrides
+  });
+
+  const across = (regions: RegionPreview[]): OrdersPreviewResponse => ({ regions });
+
+  it("lists a unit that moves once, on the row the report gave it", () => {
+    const mover = unit({ unitId: "5105", name: "MinersA", regionId: "1:36,4" });
+    const rows = mergePreviewAcross(
+      [mover, unit({ unitId: "8452", name: "Stayer", regionId: "1:36,4" })],
+      across([
+        {
+          regionId: "1:36,4",
+          units: [
+            previewed(
+              { unitId: "5105", name: "MinersA", regionId: "1:36,4" },
+              { status: "departing", departingTo: "1:35,3" }
+            )
+          ]
+        },
+        {
+          regionId: "1:35,3",
+          units: [
+            previewed(
+              { unitId: "5105", name: "MinersA", regionId: "1:35,3" },
+              { status: "arriving", arrivingFrom: "1:36,4" }
+            )
+          ]
+        }
+      ])
+    );
+
+    const mine = rows.filter((row) => row.unitId === "5105");
+    expect(mine).toHaveLength(1);
+    expect(mine[0].regionId).toBe("1:36,4");
+    expect(mine[0].previewStatus).toBe("departing");
+    expect(mine[0].departingTo).toBe("1:35,3");
+  });
+
+  it("keeps a departure whose destination the trace could not name", () => {
+    const rows = mergePreviewAcross(
+      [unit({ unitId: "5105", regionId: "1:36,4" })],
+      across([
+        {
+          regionId: "1:36,4",
+          units: [
+            previewed({ unitId: "5105", regionId: "1:36,4" }, { status: "departing", departingTo: null })
+          ]
+        }
+      ])
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].previewStatus).toBe("departing");
+    expect(rows[0].departingTo).toBeNull();
+  });
+
+  it("appends a unit the report has no row for", () => {
+    const rows = mergePreviewAcross(
+      [unit({ unitId: "8452", regionId: "1:36,4" })],
+      across([
+        {
+          regionId: "1:36,4",
+          units: [
+            previewed({ unitId: "new-1", name: "Unit (new 1)", regionId: "1:36,4" }, { status: "formed" })
+          ]
+        }
+      ])
+    );
+
+    const formed = rows.find((row) => row.unitId === "new-1");
+    expect(formed?.previewStatus).toBe("formed");
+  });
+
+  it("folds changes into units in more than one hex", () => {
+    const rows = mergePreviewAcross(
+      [unit({ unitId: "5105", regionId: "1:36,4" }), unit({ unitId: "2418", regionId: "1:7,53" })],
+      across([
+        {
+          regionId: "1:36,4",
+          units: [
+            previewed(
+              { unitId: "5105", regionId: "1:36,4", items: [{ amount: 2, tag: "SILV", name: "silver" }] },
+              { changes: [{ field: "items", original: "" }] }
+            )
+          ]
+        },
+        {
+          regionId: "1:7,53",
+          units: [
+            previewed(
+              { unitId: "2418", regionId: "1:7,53", items: [{ amount: 1, tag: "PERF", name: "perfume" }] },
+              { changes: [{ field: "items", original: "" }] }
+            )
+          ]
+        }
+      ])
+    );
+
+    expect(rows.find((row) => row.unitId === "5105")?.previewChanges).toHaveLength(1);
+    expect(rows.find((row) => row.unitId === "2418")?.previewChanges).toHaveLength(1);
+  });
+
+  it("hands back the very same list when the orders change nothing", () => {
+    const units = [unit({}), unit({ unitId: "901" })];
+
+    expect(mergePreviewAcross(units, null)).toBe(units);
+    expect(mergePreviewAcross(units, { regions: [] })).toBe(units);
+    expect(mergePreviewAcross(units, { regions: [{ regionId: "1:1,1", units: [] }] })).toBe(units);
+  });
+
+  it("hands back the very same list when every previewed row is an arrival", () => {
+    const units = [unit({ unitId: "5105", regionId: "1:36,4" })];
+    const rows = mergePreviewAcross(
+      units,
+      across([
+        {
+          regionId: "1:35,3",
+          units: [
+            previewed({ unitId: "7000", regionId: "1:35,3" }, { status: "arriving", arrivingFrom: "1:34,2" })
+          ]
+        }
+      ])
+    );
+
+    expect(rows).toBe(units);
+  });
+
+  it("leaves an untouched unit as the very same object", () => {
+    const bystander = unit({ unitId: "901", name: "Bystander" });
+    const rows = mergePreviewAcross(
+      [unit({}), bystander],
+      across([
+        {
+          regionId: "1:1,1",
+          units: [previewed({ name: "Renamed" }, { changes: [{ field: "name", original: "Walker" }] })]
+        }
+      ])
+    );
+
+    expect(rows[1]).toBe(bystander);
   });
 });
 

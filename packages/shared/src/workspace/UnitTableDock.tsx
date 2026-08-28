@@ -2,6 +2,7 @@ import type {
   CoreClient,
   DeclaredAttitudes,
   OpenedGame,
+  OrdersPreviewResponse,
   RegionPreview,
   ReportUnit,
   UnitSilver
@@ -50,6 +51,7 @@ import {
   formatItems,
   itemsTooltip,
   mergePreview,
+  mergePreviewAcross,
   originalTooltip,
   type PreviewedUnit
 } from "../unitPreview";
@@ -82,6 +84,7 @@ import {
 } from "./unitPick";
 import { useArmyActions } from "./useArmyActions";
 import {
+  dimsDeparting,
   drawnColumnsFor,
   extraColumnsFor,
   FOREIGN_SOURCE,
@@ -161,6 +164,8 @@ type UnitTableDockProps = {
   hex: HexNode | null;
   /** The hex's slice of the orders preview, so rows show the coming month. */
   preview?: RegionPreview | null;
+  /** The whole report's orders preview, so a list spanning hexes shows the coming month too. */
+  ordersPreview?: OrdersPreviewResponse | null;
   /** The month-long order a unit's live orders carry, for the Long order column. */
   getLongOrder?: (unitId: string) => string | null;
   /** Each own unit's silver forecast, or null where there is none. `ah-1wcw.1`. */
@@ -225,6 +230,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     {
       hex,
       preview = null,
+      ordersPreview = null,
       getLongOrder,
       getSilver,
       silverWarnings,
@@ -354,23 +360,25 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    * from. The orders preview folds in on top, so everything below it - filter and sort - already
    * works over the coming month's rows, arrivals and formed units included.
    *
-   * **The preview is folded in for `This hex` only, and that is deliberate**: `preview` is the
-   * selected hex's slice, and there is no whole-report equivalent to merge into a list spanning
-   * hexes. Rows from other hexes show the report's own figures.
+   * **The preview folds in for both sources that list your own units** (`ah-tguk`): `This hex`
+   * merges the selected hex's slice, `All my units` the whole report's - one row per unit, on the
+   * hex the report gave it, because `mergePreviewAcross` drops the paired `arriving` row. Neither
+   * `Other factions` nor an Army takes any: you write no orders for another faction's units, and an
+   * Army is a snapshot whose members may be several turns old.
    */
   const sourced = useMemo((): ArmyRows => {
     if (source.kind === "hex") {
       return { ...NO_ARMY_ROWS, rows: mergePreview(unitsForHex(hex), preview) };
     }
     if (source.kind === "own") {
-      return { ...NO_ARMY_ROWS, rows: ownUnits ?? [] };
+      return { ...NO_ARMY_ROWS, rows: mergePreviewAcross(ownUnits ?? [], ordersPreview) };
     }
     if (source.kind === "foreign") {
       // The spread is `ArmyRows.rows` being `ReportUnit[]` where `pinnedRows` answers readonly.
       return { ...NO_ARMY_ROWS, rows: [...pinnedRows(foreignUnits ?? [], pin)] };
     }
     return army ? armyRows(army, unitsById ?? new Map(), currentTurn) : NO_ARMY_ROWS;
-  }, [source, hex, preview, ownUnits, foreignUnits, pin, army, unitsById, currentTurn]);
+  }, [source, hex, preview, ordersPreview, ownUnits, foreignUnits, pin, army, unitsById, currentTurn]);
 
   const units = sourced.rows;
   const extras = useMemo(() => extraColumnsFor(source), [source]);
@@ -1325,6 +1333,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                   regionId={unit.regionId}
                   seen={seenLabel(sourced.seen.get(unit.unitId), currentTurn)}
                   fromReport={source.kind !== "army" || (unitsById?.has(unit.unitId) ?? false)}
+                  dimDeparting={dimsDeparting(source)}
                   onRemove={army ? () => void actions.removeUnit(army.id, unit.unitId) : undefined}
                   getLongOrder={getLongOrder}
                   getSilver={getSilver}
@@ -1764,6 +1773,7 @@ function UnitRow({
   onPinFaction,
   seen,
   fromReport,
+  dimDeparting,
   onRemove
 }: {
   unit: PreviewedUnit;
@@ -1827,6 +1837,8 @@ function UnitRow({
   seen: string;
   /** False for an Army member this turn's report does not mention - its Hex reads dimmed. */
   fromReport: boolean;
+  /** Whether a row that leaves this month reads dimmed - `dimsDeparting(source)` (`ah-tguk`). */
+  dimDeparting: boolean;
   /** Drops this unit from the Army on screen. Absent for every source that is not an Army. */
   onRemove?: () => void;
 }) {
@@ -2150,7 +2162,7 @@ function UnitRow({
             : unit.own
               ? "text-ink"
               : "text-ink-soft"
-      }${departing ? " opacity-60" : ""}`}
+      }${departing && dimDeparting ? " opacity-60" : ""}`}
     >
       {drawn.map((entry) =>
         entry.kind === "unit" ? (
