@@ -4932,16 +4932,25 @@ test("arrowing the units table selects without moving the map, and Enter goes", 
   await page.getByTestId("unit-source-own").click();
   await page.getByLabel("Filter units").fill("Seven of Eight");
 
-  // Sorted by Id so the two rows are in a known order whatever the report's own order is:
-  // 13401 above 18642. Without this the walk depends on which region the fixture lists first.
-  await page.getByTestId("panel-units").locator("thead").getByText("Id", { exact: true }).click();
+  // Which way the other unit lies is read off the rows rather than forced by sorting on `Id`: that
+  // header is a truncating span, and on a narrower viewport than this machine's it is clipped out
+  // of reach, so clicking it timed out in CI while passing locally.
+  const order = await page
+    .getByTestId("panel-units")
+    .locator("tbody tr[data-testid]")
+    .evaluateAll((found) => found.map((row) => row.getAttribute("data-testid") ?? ""));
+  const above = order.indexOf(`unit-row-${OTHER_OWN_UNIT}`);
+  const here = order.indexOf(`unit-row-${OWN_UNIT}`);
+  expect(above).toBeGreaterThanOrEqual(0);
+  expect(here).toBeGreaterThanOrEqual(0);
+  const toward = above < here ? "ArrowUp" : "ArrowDown";
 
   // 18642 stands in the hex already selected, so this press is agreed to change nothing visible.
   await page.getByTestId(`unit-row-${OWN_UNIT}`).click();
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 
   // Arrowing selects and nothing else - walking a long list must stay silent.
-  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press(toward);
   await expect(page.getByTestId(`unit-row-${OTHER_OWN_UNIT}`)).toHaveAttribute(
     "data-selected",
     "true"
