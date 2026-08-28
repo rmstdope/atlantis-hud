@@ -711,7 +711,7 @@ pub struct UnitFacts<'a> {
     /// `rules/sequenceofevents` settles STUDY, PRODUCE, ENTERTAIN, WORK and maintenance after the
     /// market and PILLAGE, TAX and `Spells are CAST` before it, so the two pictures are genuinely
     /// different and every term below says which it takes. `None` for a caller with no ledger to
-    /// read one from - `semantics::combat_ready_in` is the only one, and it consults nothing late.
+    /// read one from - `semantics::pillagers_in` is the only one, and it consults nothing late.
     /// Read it through [`UnitFacts::late`], never directly.
     pub late: Option<LateFacts<'a>>,
 }
@@ -759,13 +759,18 @@ pub struct RegionWages {
     /// because it is exactly what the `TAX` arm needs and nothing else in this module has a view
     /// of the hex.
     pub pillaged: bool,
-    /// Combat ready men this faction has in the hex, summed over its own units - or `None` when a
-    /// headcount in the hex is a guess, or there is no ruleset to read weapons from.
+    /// The combat ready men of the units in this hex that *ordered* `PILLAGE`, and whether any of
+    /// them could not be counted - decision G1 (`ah-q6bt`). A unit standing by having ordered
+    /// nothing is not counted, and so cannot silence the answer either, which is what the
+    /// hex-wide count this replaced did before `ah-q6bt`.
+    ///
+    /// `None` for a caller with no hex to walk - the defaulted `RegionWages` of a test, and
+    /// nothing in the shipped path, where `semantics::pillagers_in` always answers.
     ///
     /// Like `pillaged` above, this is not a property of the region as the report prints it. It
     /// belongs here for the same reason that field does: it is exactly what the `PILLAGE` arm
     /// needs, and nothing else in this module has a view of the hex (`ah-1ad6.2`).
-    pub combat_ready: Option<i64>,
+    pub pillagers: Option<Pillagers>,
 }
 
 /// What the faction holds that any of its units may draw on.
@@ -923,6 +928,10 @@ pub fn forecast_unit(
     let formed = facts.formed.cloned();
     let upkeep = own_food.as_ref().map(|pass| pass.owed_after_own_food);
     let own_food_covered = own_food.as_ref().map_or(0, |pass| pass.own_food_covered);
+    // This unit's own combat ready men, which is its weight in the pillage share (`ah-q6bt`, D1).
+    // `None` where they cannot be counted at all, which `price_pillage` doubts rather than reading
+    // as a zero. Taken before the destructure below, which does not name every field.
+    let mine = readiness(&facts, ruleset).map(|read| read.ready);
     let UnitFacts {
         unit_id,
         region_id,
@@ -1066,11 +1075,12 @@ pub fn forecast_unit(
             // not price it two ways is enforced by the code rather than by a comment asking
             // somebody to remember it (`ah-lu0f`).
             //
-            // "This requires the faction to have enough combat ready men in the region to tax half
-            // of the available money in the region" - so a faction short of the threshold earns
-            // nothing at all from the order (`ah-1ad6.2`).
+            // The gate is the combat ready men of the units that *ordered* PILLAGE, and the take
+            // is divided between them in proportion to those men - decisions G1 and D1 of
+            // `ah-q6bt`, both deliberate departures from `rules/economy_taxingpillaging`, which
+            // gates on the faction's men in the region and shares the take out per unit.
             Intent::Pillage => {
-                let priced = price_pillage(region.tax_base, region.combat_ready);
+                let priced = price_pillage(region.tax_base, region.pillagers, mine);
                 income = income.saturating_add(priced.earns);
                 income_doubt = income_doubt.or(priced.doubt);
             }
@@ -1768,6 +1778,76 @@ pub fn split_pool(wants: &[i64], pool: i64) -> Vec<i64> {
         .collect()
 }
 
+/// Divides `total` between claimants in proportion to `weights`, truncating.
+///
+/// **Deliberately not [`split_pool`]**, which returns the claims unchanged whenever they sum to no
+/// more than the pool - correct there, where a claim and the pool are both silver, and wrong here,
+/// where the weights are *men* and the pool is *silver*. Handed `[300, 1]` and `45308`,
+/// `split_pool` answers `[300, 1]`.
+///
+/// Truncating, so the shares never sum above `total` - the same invariant [`split_pool`] states and
+/// tests. The remainder, at most one silver per claimant, is not distributed.
+///
+/// `weights` summing to zero answers all zeros: nobody combat ready means nobody takes a share, and
+/// the threshold will have refused the pillage anyway.
+#[must_use]
+pub fn split_in_proportion(weights: &[i64], total: i64) -> Vec<i64> {
+    let clamped: Vec<i64> = weights.iter().map(|weight| (*weight).max(0)).collect();
+    let total = total.max(0);
+    let sum: i128 = clamped.iter().map(|weight| i128::from(*weight)).sum();
+    if sum <= 0 {
+        return vec![0; clamped.len()];
+    }
+    clamped
+        .iter()
+        .map(|weight| {
+            i64::try_from(i128::from(total) * i128::from(*weight) / sum).unwrap_or(i64::MAX)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod split_in_proportion_tests {
+    use super::*;
+
+    /// The navigator's own hex: City Guards' 445 men and Transporter's one, against $45,308.
+    /// Written with the plan's 300 and 1 so the arithmetic is checkable by hand.
+    #[test]
+    fn divides_in_proportion_to_the_men() {
+        assert_eq!(split_in_proportion(&[300, 1], 45308), vec![45157, 150]);
+    }
+
+    #[test]
+    fn never_promises_more_than_the_total() {
+        let shares = split_in_proportion(&[300, 1], 45308);
+        assert!(
+            shares.iter().sum::<i64>() <= 45308,
+            "the take is never promised twice: {shares:?}"
+        );
+    }
+
+    #[test]
+    fn answers_zeros_when_no_one_is_ready() {
+        assert_eq!(split_in_proportion(&[0, 0], 45308), vec![0, 0]);
+        assert_eq!(split_in_proportion(&[], 45308), Vec::<i64>::new());
+        assert_eq!(split_in_proportion(&[300, 1], 0), vec![0, 0]);
+        assert_eq!(split_in_proportion(&[300, 1], -10), vec![0, 0]);
+        assert_eq!(split_in_proportion(&[-5, 1], 100), vec![0, 100]);
+    }
+
+    /// The trap, pinned as a test on purpose: the two functions must never be "simplified" into
+    /// one. `split_pool` divides nothing at all here, because the *men* happen to sum to less than
+    /// the *silver*.
+    #[test]
+    fn is_not_split_pool() {
+        assert_eq!(split_pool(&[300, 1], 45308), vec![300, 1]);
+        assert_ne!(
+            split_in_proportion(&[300, 1], 45308),
+            split_pool(&[300, 1], 45308)
+        );
+    }
+}
+
 #[cfg(test)]
 mod split_pool_tests {
     use super::*;
@@ -2147,6 +2227,28 @@ fn required_riding(description: &str) -> Option<(&str, i64)> {
     Some((skill, level.parse().ok()?))
 }
 
+/// The combat ready men of the units that ordered `PILLAGE`, and whether any of them could not be
+/// counted.
+///
+/// **Only the units that issued the order** - decision G1 (`docs/ui/ah-q6bt-r1-model.html`). The
+/// rules gate on the faction's combat ready men in the region; the navigator's rule is that a unit
+/// standing by having ordered nothing does not help, so a bystander is not counted here and cannot
+/// silence anything either.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Pillagers {
+    /// The combat ready men of every unit that ordered `PILLAGE` and could be counted.
+    pub ready: i64,
+    /// True when at least one unit that ordered `PILLAGE` could not be counted at all - an
+    /// estimated headcount, or a transfer this month that cannot be followed ([`readiness`]
+    /// returned `None`).
+    ///
+    /// **Not an `Option<i64>` over the whole total, which is what the count this replaced was.** The
+    /// old shape let one uncountable unit erase the answer for the hex; this one keeps the number that
+    /// *is* known and records that it is a floor, which is what decision U1 needs to say
+    /// (`ah-q6bt`).
+    pub incomplete: bool,
+}
+
 /// How many of a unit's men are combat ready, alongside its headcount.
 ///
 /// [`combat_ready`] answers the number and nothing else, which is all `PILLAGE`'s threshold needs -
@@ -2408,39 +2510,70 @@ pub fn price_tax(men: i64, tax_base: Option<i64>, pillaged: bool, share: PoolSha
     }
 }
 
-/// What a `PILLAGE` earns: twice the region's available tax money, and nothing at all where the
-/// faction is short of the combat-ready threshold.
+/// What a `PILLAGE` earns: this unit's share of twice the region's available tax money.
 ///
-/// "The amount of money collected is equal to twice the available tax money", and "this requires
-/// the faction to have enough combat ready men in the region to tax half of the available money"
-/// (`ah-1ad6.2`). Short of that the order earns a *certain* zero, so the unit is not doubted.
+/// The take is `2 * tax_base` - *"the amount of money collected is equal to twice the available tax
+/// money"* (`rules/economy_taxingpillaging`) - and it is divided between the pillaging units **in
+/// proportion to their combat ready men** (decision D1, `ah-q6bt`). `mine` is this unit's combat
+/// ready men and `pillagers` the total across every unit that ordered `PILLAGE`; the threshold is
+/// tested against `pillagers`, and the share taken from `mine / pillagers.ready`.
+///
+/// `mine` is `None` when *this* unit's own men cannot be counted - an estimated headcount, or a
+/// transfer this month that cannot be followed. The plan did not say what to price such a unit at,
+/// and a certain zero is the one answer it must not be: the share is genuinely unknown, so it is
+/// doubted. This is the column's half of decision U1, whose other half is the warning's
+/// *"may not be able to pillage here"*.
 ///
 /// Both surfaces call this - [`forecast_unit`] and `semantics::apply` - because two surfaces
 /// reading one order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj` exists).
 #[must_use]
-pub fn price_pillage(tax_base: Option<i64>, combat_ready: Option<i64>) -> Priced {
-    match (tax_base, combat_ready) {
-        // No tax base: what the region holds is unknown before the question of who may take it
-        // arises, so the older doubt wins.
-        (None, _) => Priced {
+pub fn price_pillage(
+    tax_base: Option<i64>,
+    pillagers: Option<Pillagers>,
+    mine: Option<i64>,
+) -> Priced {
+    // No tax base: what the region holds is unknown before the question of who may take it arises,
+    // so the older doubt wins.
+    let Some(base) = tax_base else {
+        return Priced {
             doubt: Some(SilverDoubt::UnknownTaxBase),
             ..Priced::default()
-        },
-        // The hex's combat-ready sum could not be added up - a guessed headcount somewhere in the
-        // hex, or a transfer this month that could not be followed - so the threshold cannot be
-        // tested at all.
-        (Some(_), None) => Priced {
-            doubt: Some(SilverDoubt::UnknownCombatReady),
+        };
+    };
+    let doubted = Priced {
+        doubt: Some(SilverDoubt::UnknownCombatReady),
+        ..Priced::default()
+    };
+    // No hex was walked at all, so the threshold cannot be tested.
+    let Some(pillagers) = pillagers else {
+        return doubted;
+    };
+    // This unit's own men are unknown, so its share is unknown even where the gate is settled.
+    let Some(mine) = mine else {
+        return doubted;
+    };
+    let needed = pillage_threshold(base);
+    if pillagers.ready >= needed {
+        // A floor already at or over the threshold settles the gate - more countable men cannot
+        // un-pass it - so this arm fires even when `incomplete` is set.
+        let take = base.saturating_mul(2);
+        // Through [`split_in_proportion`] rather than `take * mine / ready` written out here, so
+        // the truncation and the never-promise-more-than-the-take invariant live in one place and
+        // are tested once. The second weight is everybody else's men.
+        let mine_and_the_rest = [mine, pillagers.ready.saturating_sub(mine)];
+        return Priced {
+            earns: split_in_proportion(&mine_and_the_rest, take)[0],
             ..Priced::default()
-        },
-        (Some(base), Some(ready)) if ready >= pillage_threshold(base) => Priced {
-            earns: base.saturating_mul(2),
-            ..Priced::default()
-        },
-        // Short of the threshold: the order earns nothing, exactly - a certain zero, so the unit
-        // is not doubted.
-        (Some(_), Some(_)) => Priced::default(),
+        };
     }
+    if pillagers.incomplete {
+        // Short only as far as the countable men go, and more may yet be countable: the threshold
+        // cannot be settled either way.
+        return doubted;
+    }
+    // Short of the threshold, and every pillager was counted: the order earns nothing, exactly - a
+    // certain zero, so the unit is not doubted.
+    Priced::default()
 }
 
 /// How many of the goods a `BUY` actually takes: what was asked, capped by what the settlement
@@ -3861,34 +3994,108 @@ mod tests {
         );
     }
 
+    /// The pillagers of a hex, all of them counted.
+    fn counted(ready: i64) -> Option<Pillagers> {
+        Some(Pillagers {
+            ready,
+            incomplete: false,
+        })
+    }
+
+    /// The pillagers of a hex where at least one of them could not be counted at all - so `ready`
+    /// is a floor rather than the answer (`ah-q6bt`, U1).
+    fn a_floor_of(ready: i64) -> Option<Pillagers> {
+        Some(Pillagers {
+            ready,
+            incomplete: true,
+        })
+    }
+
     #[test]
     fn prices_a_pillage_from_the_base_and_the_threshold() {
         assert_eq!(
-            price_pillage(None, Some(100)),
+            price_pillage(None, counted(100), Some(100)),
             Priced {
                 doubt: Some(SilverDoubt::UnknownTaxBase),
                 ..Priced::default()
             }
         );
         assert_eq!(
-            price_pillage(Some(8963), None),
+            price_pillage(Some(8963), None, Some(90)),
             Priced {
                 doubt: Some(SilverDoubt::UnknownCombatReady),
                 ..Priced::default()
             }
         );
         assert_eq!(
-            price_pillage(Some(100), Some(0)),
+            price_pillage(Some(100), counted(0), Some(0)),
             Priced {
                 earns: 0,
                 ..Priced::default()
             }
         );
         let base = 100;
+        let needed = pillage_threshold(base);
         assert_eq!(
-            price_pillage(Some(base), Some(pillage_threshold(base))),
+            price_pillage(Some(base), counted(needed), Some(needed)),
             Priced {
                 earns: 200,
+                ..Priced::default()
+            }
+        );
+    }
+
+    /// Decision **D1** (`ah-q6bt`): the take is divided between the pillaging units in proportion
+    /// to their combat ready men, so the faction total is the take and not a multiple of it. The
+    /// navigator's own hex, rounded to 300 and 1 men so the arithmetic is checkable by hand.
+    #[test]
+    fn prices_a_pillage_as_this_units_share_of_the_take() {
+        let base = 22654;
+        let pillagers = counted(301);
+        assert_eq!(price_pillage(Some(base), pillagers, Some(300)).earns, 45157);
+        assert_eq!(price_pillage(Some(base), pillagers, Some(1)).earns, 150);
+        assert!(
+            price_pillage(Some(base), pillagers, Some(300)).earns
+                + price_pillage(Some(base), pillagers, Some(1)).earns
+                <= base * 2,
+            "the take is never promised twice"
+        );
+    }
+
+    /// The gate cannot be settled: more men may yet be countable, so the threshold is unanswerable
+    /// in the direction that matters.
+    #[test]
+    fn doubts_a_pillage_whose_pillagers_cannot_all_be_counted() {
+        assert_eq!(
+            price_pillage(Some(8963), a_floor_of(89), Some(89)),
+            Priced {
+                doubt: Some(SilverDoubt::UnknownCombatReady),
+                ..Priced::default()
+            }
+        );
+    }
+
+    /// A floor already at the threshold settles it: more countable men cannot un-pass a gate, so
+    /// this earns a real share rather than a doubt.
+    #[test]
+    fn settles_a_pillage_whose_known_men_already_pass() {
+        assert_eq!(
+            price_pillage(Some(8963), a_floor_of(90), Some(90)),
+            Priced {
+                earns: 17_926,
+                ..Priced::default()
+            }
+        );
+    }
+
+    /// This unit's own men are the unknown ones, and its share is unknown with them - even where
+    /// the gate is settled by everybody else's. A certain zero is the one answer it must not be.
+    #[test]
+    fn doubts_a_pillager_whose_own_men_cannot_be_counted() {
+        assert_eq!(
+            price_pillage(Some(8963), a_floor_of(90), None),
+            Priced {
+                doubt: Some(SilverDoubt::UnknownCombatReady),
                 ..Priced::default()
             }
         );
@@ -4040,14 +4247,51 @@ mod tests {
         }
     }
 
-    /// A region whose tax base is stated and whose faction has men enough to pillage it, which is
-    /// what the `PILLAGE` arm needs before it credits anything (`ah-1ad6.2`).
+    /// A region whose tax base is stated and whose *pillaging* units have men enough to take it -
+    /// the threshold exactly, and all of them this unit's own, so its share of the take is the
+    /// whole of it (decision G1, `ah-q6bt`). What the `PILLAGE` arm needs before it credits
+    /// anything (`ah-1ad6.2`).
     fn pillageable(tax_base: i64) -> RegionWages {
         RegionWages {
             tax_base: Some(tax_base),
-            combat_ready: Some(pillage_threshold(tax_base)),
+            pillagers: Some(Pillagers {
+                ready: pillage_threshold(tax_base),
+                incomplete: false,
+            }),
             ..RegionWages::default()
         }
+    }
+
+    /// Combat 1, which makes every man of a unit a taxer whatever it wields
+    /// (`rules/economy_taxingpillaging`) - so a test unit's combat ready men are simply its men.
+    fn combat_one() -> Skill {
+        Skill {
+            name: "combat".to_string(),
+            tag: "COMB".to_string(),
+            level: 1,
+            points: 30,
+        }
+    }
+
+    /// [`forecast`] for a unit that can actually pillage: `men` men, every one of them combat
+    /// ready, priced against the committed ruleset. `forecast` itself passes no ruleset, and
+    /// without one [`readiness`] answers `None` for every unit - which is a doubt, not a share
+    /// (`ah-q6bt`).
+    fn forecast_pillaging(men: i64, region: RegionWages, intents: &[PlacedIntent]) -> UnitSilver {
+        let receipts = Receipts::default();
+        let skills = [combat_one()];
+        forecast_unit(
+            UnitFacts {
+                skills: &skills,
+                ..facts(men, intents, &receipts)
+            },
+            region,
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            Some(&ruleset()),
+        )
     }
 
     fn paying(wage: &str, max_wages: Option<i64>) -> RegionWages {
@@ -4609,7 +4853,11 @@ mod tests {
     /// nothing at all, so the two surfaces priced one order two ways (`ah-abwx`).
     #[test]
     fn a_pillaging_unit_earns_twice_the_tax_base() {
-        let unit = forecast(1, pillageable(2500), &[placed(Intent::Pillage)]);
+        let unit = forecast_pillaging(
+            pillage_threshold(2500),
+            pillageable(2500),
+            &[placed(Intent::Pillage)],
+        );
         assert_eq!(unit.income, Some(5000));
         assert_eq!(unit.at_month_end, Some(5000));
         assert_eq!(unit.doubt, None);
@@ -4619,7 +4867,7 @@ mod tests {
     /// the doubt: a column that showed nothing would pass a test that only read the doubt.
     #[test]
     fn a_pillaging_unit_with_no_stated_tax_base_is_doubted() {
-        let unit = forecast(1, taxable(None), &[placed(Intent::Pillage)]);
+        let unit = forecast_pillaging(1, taxable(None), &[placed(Intent::Pillage)]);
         assert_eq!(unit.doubt, Some(SilverDoubt::UnknownTaxBase));
         assert_eq!(unit.income, None);
         assert_eq!(unit.at_month_end, None);
@@ -4637,67 +4885,86 @@ mod tests {
                 item: "grain".to_string(),
             }),
         ];
-        let unit = spending(0, &intents, pillageable(2500), &sells(12, 40), None);
+        let receipts = Receipts::default();
+        let skills = [combat_one()];
+        let ruleset = ruleset();
+        let unit = forecast_unit(
+            UnitFacts {
+                skills: &skills,
+                ..facts(pillage_threshold(2500), &intents, &receipts)
+            },
+            pillageable(2500),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            Lookups {
+                purchase: &sells(12, 40),
+                ..no_market()
+            },
+            Some(&ruleset),
+        );
         assert_eq!(unit.income, Some(5000));
         assert_eq!(unit.expense, Some(480));
         assert_eq!(unit.at_month_end, Some(4520));
     }
 
     /// The reported defect (`ah-1ad6.2`): *The Lost One (683)*, one leader in a hex whose tax base
-    /// is 8,963, was credited the full 17,926. The hex needs 90 combat ready men.
+    /// is 8,963, was credited the full 17,926. The pillagers need 90 combat ready men between them.
     #[test]
-    fn a_faction_without_the_men_earns_nothing_from_pillage() {
+    fn pillagers_without_the_men_earn_nothing() {
         let region = RegionWages {
             tax_base: Some(8963),
-            combat_ready: Some(1),
+            pillagers: counted(1),
             ..RegionWages::default()
         };
-        let unit = forecast(1, region, &[placed(Intent::Pillage)]);
+        let unit = forecast_pillaging(1, region, &[placed(Intent::Pillage)]);
         assert_eq!(unit.income, Some(0));
         assert_eq!(unit.at_month_end, Some(0));
         assert_eq!(unit.doubt, None);
     }
 
-    /// No regression on `ah-abwx`: a faction that does have the men is credited in full.
+    /// No regression on `ah-abwx`: the sole pillager, having the men, is credited the whole take.
     #[test]
-    fn a_faction_with_the_men_is_credited_in_full() {
+    fn the_only_pillager_with_the_men_is_credited_in_full() {
         let region = RegionWages {
             tax_base: Some(8963),
-            combat_ready: Some(90),
+            pillagers: counted(90),
             ..RegionWages::default()
         };
-        let unit = forecast(90, region, &[placed(Intent::Pillage)]);
+        let unit = forecast_pillaging(90, region, &[placed(Intent::Pillage)]);
         assert_eq!(unit.income, Some(17_926));
         assert_eq!(unit.doubt, None);
     }
 
-    /// One guessed headcount anywhere in the hex makes the threshold unanswerable, and it is
-    /// unanswerable in the direction that matters: the estimate might be what carries the faction
-    /// over.
+    /// A guessed headcount among the *pillagers* leaves the threshold unanswerable in the
+    /// direction that matters: the estimate might be what carries them over it. A guess anywhere
+    /// else in the hex no longer says anything at all, which is decision G1 (`ah-q6bt`).
     #[test]
-    fn a_guessed_headcount_in_the_hex_doubts_the_pillage() {
+    fn a_guessed_headcount_among_the_pillagers_doubts_the_pillage() {
         let region = RegionWages {
             tax_base: Some(8963),
-            combat_ready: None,
+            pillagers: a_floor_of(1),
             ..RegionWages::default()
         };
-        let unit = forecast(1, region, &[placed(Intent::Pillage)]);
+        let unit = forecast_pillaging(1, region, &[placed(Intent::Pillage)]);
         assert_eq!(unit.doubt, Some(SilverDoubt::UnknownCombatReady));
         assert_eq!(unit.income, None);
     }
 
-    /// The navigator's decision: "the faction to have enough combat ready men in the region", so a
-    /// lone leader ordering `PILLAGE` beside a faction-mate of 90 armed men qualifies, and the
-    /// army need issue no order. The count is the hex's, never the pillaging unit's own.
+    /// Decision **G1** and **D1** together (`ah-q6bt`), and the reversal of what shipped before:
+    /// a lone leader ordering `PILLAGE` beside eighty-nine armed faction-mates who also ordered it
+    /// takes its *share*, one ninetieth, and not the whole take. Before this bead the column
+    /// credited it all 17,926 - and credited the army the same 17,926 again, so the faction total
+    /// was a multiple of a take the region only holds once.
     #[test]
-    fn the_men_are_counted_across_the_hex_not_the_unit() {
+    fn the_men_are_counted_across_the_pillagers_and_the_take_divided_between_them() {
         let region = RegionWages {
             tax_base: Some(8963),
-            combat_ready: Some(90),
+            pillagers: counted(90),
             ..RegionWages::default()
         };
-        let unit = forecast(1, region, &[placed(Intent::Pillage)]);
-        assert_eq!(unit.income, Some(17_926));
+        let unit = forecast_pillaging(1, region, &[placed(Intent::Pillage)]);
+        assert_eq!(unit.income, Some(199), "17_926 / 90, truncated");
         assert_eq!(unit.doubt, None);
     }
 
@@ -4707,10 +4974,10 @@ mod tests {
     fn an_unknown_tax_base_outranks_an_unknown_headcount() {
         let region = RegionWages {
             tax_base: None,
-            combat_ready: None,
+            pillagers: None,
             ..RegionWages::default()
         };
-        let unit = forecast(1, region, &[placed(Intent::Pillage)]);
+        let unit = forecast_pillaging(1, region, &[placed(Intent::Pillage)]);
         assert_eq!(unit.doubt, Some(SilverDoubt::UnknownTaxBase));
     }
 
@@ -4718,7 +4985,11 @@ mod tests {
     /// pillaging unit earns twice the base and nothing per man.
     #[test]
     fn pillaging_does_not_also_tax() {
-        let unit = forecast(8, pillageable(1000), &[placed(Intent::Pillage)]);
+        let unit = forecast_pillaging(
+            pillage_threshold(1000),
+            pillageable(1000),
+            &[placed(Intent::Pillage)],
+        );
         assert_eq!(unit.income, Some(2000));
     }
 

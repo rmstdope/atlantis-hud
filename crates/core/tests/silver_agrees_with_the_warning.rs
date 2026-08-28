@@ -791,3 +791,105 @@ fn the_preview_and_the_review_form_the_same_units() {
         );
     }
 }
+
+// --- PILLAGE: the two surfaces, on the hex `ah-q6bt` was filed from -------------------------
+
+/// The take of mountain (36,4) in `G3_F42_T42`: twice a tax base of $22,654.
+const THE_TAKE: i64 = 45_308;
+
+/// The column and the pillage warning, on one hex, for one set of orders: what each pillaging unit
+/// earns, and what it is told.
+fn pillage_case(extra: &str) -> (BTreeMap<String, UnitSilver>, Vec<String>) {
+    let ruleset = ruleset();
+    let text = atlantis_hud_fixtures::G3_F42_T42.text;
+    let mut parsed = parse_report_full(text);
+    classify_units(&mut parsed, &ruleset);
+    let orders = extract_orders_template(text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let review = review_turn(
+        &parsed,
+        &format!("{orders}{extra}"),
+        Some(&ruleset),
+        CheckOptions::default(),
+    );
+
+    let priced = review
+        .silver
+        .iter()
+        .map(|row| (row.unit_id.clone(), row.clone()))
+        .collect();
+    let told = review
+        .findings
+        .iter()
+        .filter(|finding| finding.code.as_str() == "pillage-without-men")
+        .map(|finding| finding.message.clone())
+        .collect();
+    (priced, told)
+}
+
+/// `ah-q6bt`, decisions G1 and D1 together, held across both surfaces: with City Guards (13303) and
+/// Transporter (2418) both ordering `PILLAGE`, the warning is silent - 445 combat ready men against
+/// a threshold of 227 - and the column divides the take between them in proportion to those men.
+///
+/// The property that matters more than either figure is the last assertion: the two shares add up
+/// to no more than the region holds. Crediting each pillager the whole take, which is what shipped
+/// before this bead, overstated the faction's month by a factor of the number of pillaging units.
+#[test]
+fn the_column_divides_one_take_between_the_pillagers_the_warning_allows() {
+    let (priced, told) = pillage_case("\nunit 2418\nPILLAGE\nunit 13303\nPILLAGE\n");
+    assert!(told.is_empty(), "the pillage goes ahead: {told:?}");
+
+    let guards = priced.get("13303").expect("City Guards is priced");
+    let transporter = priced.get("2418").expect("Transporter is priced");
+    assert_eq!(guards.doubt, None);
+    assert_eq!(transporter.doubt, None);
+    assert_eq!(
+        guards.income,
+        Some(THE_TAKE),
+        "445 of the 445 combat ready men"
+    );
+    assert_eq!(
+        transporter.income,
+        Some(0),
+        "one man with no weapon takes no share of what its men did not take"
+    );
+    assert!(
+        guards.income.unwrap_or(0) + transporter.income.unwrap_or(0) <= THE_TAKE,
+        "the region holds the take once"
+    );
+}
+
+/// The other direction, and `ah-abwx`'s rule: where the warning fires the column must not promise
+/// the money. Transporter alone cannot reach the threshold, so it is told so *and* earns nothing.
+#[test]
+fn a_warned_pillager_is_promised_nothing_by_the_column() {
+    let (priced, told) = pillage_case("\nunit 2418\nPILLAGE\n");
+    assert_eq!(told.len(), 1, "one warning: {told:?}");
+
+    let transporter = priced.get("2418").expect("Transporter is priced");
+    assert_eq!(transporter.income, Some(0));
+    assert_eq!(transporter.doubt, None, "a certain zero, not a doubt");
+}
+
+/// And where the warning hedges, so does the column: a pillager whose own men cannot be counted is
+/// doubted rather than shown a confident zero (decision U1). A column showing `$0` beside a warning
+/// saying *"may not be able to"* would be the two surfaces contradicting each other about one
+/// order, which is what this file exists to catch.
+#[test]
+fn a_hedged_pillager_is_doubted_by_the_column_too() {
+    let (priced, told) = pillage_case("\nunit 13303\nGIVE 2418 ALL MAGIC\nunit 2418\nPILLAGE\n");
+    assert_eq!(
+        told,
+        vec![
+            "may not be able to pillage here: needs 227 combat ready men, and a transfer this month means this unit's cannot be counted"
+        ]
+    );
+
+    let transporter = priced.get("2418").expect("Transporter is priced");
+    assert_eq!(
+        transporter.doubt,
+        Some(atlantis_hud_core::orders::silver::SilverDoubt::UnknownCombatReady)
+    );
+    assert_eq!(transporter.income, None);
+}

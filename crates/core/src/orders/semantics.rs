@@ -34,13 +34,13 @@ use crate::movement::mode::{
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, ItemKind, Production, Ruleset, SkillEntry};
 use crate::orders::silver::{
-    because_clause, combat_ready, feed_after_silver, feed_from_faction_food, food_claim,
-    forecast_unit, late_income, parse_wage_centis, pillage_threshold, pool_wants, price_buy_all,
-    price_cast, price_claim, price_pillage, price_production, price_purchase, price_sale_line,
-    price_study, price_tax, quantity_bought, readiness, recipe_for, settle_unclaimed, split_pool,
-    taxes, transfer_shape, transmute_argument, unit_upkeep, BuyAllCap, Caster, ContendedPool,
+    because_clause, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
+    late_income, parse_wage_centis, pillage_threshold, pool_wants, price_buy_all, price_cast,
+    price_claim, price_pillage, price_production, price_purchase, price_sale_line, price_study,
+    price_tax, quantity_bought, readiness, recipe_for, settle_unclaimed, split_pool, taxes,
+    transfer_shape, transmute_argument, unit_upkeep, BuyAllCap, Caster, ContendedPool,
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
-    MarketSide, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts,
+    MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts,
     RegionWages, SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver,
     UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
 };
@@ -806,28 +806,49 @@ fn region_wages(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> RegionWages {
         max_wages: hex.region.max_wages,
         entertainment: hex.region.entertainment,
         pillaged: own_unit_pillages(hex),
-        combat_ready: combat_ready_in(hex, ruleset),
+        pillagers: Some(pillagers_in(hex, ruleset)),
     }
 }
 
-/// Combat ready men this faction has in one hex, summed over its own units - foreign units are not
-/// in `hex.units` to begin with, since `Hex::read` has already filtered them out.
+/// The combat ready men of the units in this hex that ordered `PILLAGE` - foreign units are not in
+/// `hex.units` to begin with, since `Hex::read` has already filtered them out.
 ///
-/// `None` when any own unit's headcount is a guess, or there is no ruleset: one guess is enough to
-/// make the threshold unanswerable, and it is unanswerable in the direction that matters - the
-/// estimate might be what carries the faction over it (`ah-1ad6.2`).
+/// Replaces the hex-wide count that shipped before `ah-q6bt`, which summed **every** own unit in
+/// the hex and answered `None` if any one of them could not be counted - so a single unfollowable
+/// gift to a bystander silenced the warning for the whole hex, which is the defect that bead was
+/// filed for. Two things changed and both matter: only the units that issued the order are counted
+/// (decision G1), and a unit that cannot be counted sets [`Pillagers::incomplete`] instead of
+/// erasing the total.
 ///
 /// **Never hands `hex_facts` a `LateHoldings`.** This is reached from `region_wages`, which
 /// `ledger_for` calls before the intent loop that fills the balance, so a late picture does not
-/// exist yet here - see *Known traps*. `readiness`, which `combat_ready` delegates to, is an early
-/// term and never reads one anyway.
-fn combat_ready_in(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Option<i64> {
+/// exist yet here - see *Known traps*. `readiness` is an early term and never reads one anyway.
+fn pillagers_in(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Pillagers {
     let nothing = Receipts::default();
-    let mut total = 0i64;
-    for facts in hex_facts(hex, &nothing, None) {
-        total = total.saturating_add(combat_ready(&facts, ruleset)?);
+    let facts = hex_facts(hex, &nothing, None);
+    let mut pillagers = Pillagers::default();
+    for (ordered, facts) in hex.units.iter().zip(&facts) {
+        if !orders_a_pillage(ordered) {
+            continue;
+        }
+        match readiness(facts, ruleset) {
+            Some(read) => pillagers.ready = pillagers.ready.saturating_add(read.ready),
+            None => pillagers.incomplete = true,
+        }
     }
-    Some(total)
+    pillagers
+}
+
+/// Whether this unit's block carries a `PILLAGE` order.
+///
+/// One place rather than three: `pillagers_in` counts by it, `check_pillage_men` marks by it, and
+/// `own_unit_pillages` answers the hex-level question with it. The three must agree about which
+/// units are pillaging or the count, the warning and the emptied tax base describe different sets.
+fn orders_a_pillage(ordered: &Ordered<'_>) -> bool {
+    ordered
+        .intents
+        .iter()
+        .any(|placed| matches!(placed.intent, Intent::Pillage))
 }
 
 /// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
@@ -2615,12 +2636,7 @@ fn foreign_unit_guards(hex: &Hex<'_>) -> bool {
 /// placed intent of every unit, so calling this there would walk the hex quadratically on a path
 /// that runs on every keystroke.
 fn own_unit_pillages(hex: &Hex<'_>) -> bool {
-    hex.units.iter().any(|ordered| {
-        ordered
-            .intents
-            .iter()
-            .any(|placed| matches!(placed.intent, Intent::Pillage))
-    })
+    hex.units.iter().any(orders_a_pillage)
 }
 
 /// Everything the hex's units hold, with this month's orders applied.
@@ -2880,7 +2896,7 @@ fn same_men(a: &[ItemAmount], b: &[ItemAmount], ruleset: &Ruleset) -> bool {
 /// Every own unit in one hex as maintenance sees it. Shared by `charge_upkeep` and by steps 5 and
 /// 6, which must read exactly the same facts or the column and the warning will disagree.
 ///
-/// `late` is `None` for a caller with no ledger to read one from - `combat_ready_in` is the only
+/// `late` is `None` for a caller with no ledger to read one from - [`pillagers_in`] is the only
 /// one, and it must never be given one: it is reached from `region_wages`, which `ledger_for`
 /// calls before the intent loop that fills the balance, so a late picture does not exist there yet
 /// (see *Known traps*).
@@ -2892,23 +2908,37 @@ fn hex_facts<'a>(
     hex.units
         .iter()
         .enumerate()
-        .map(|(index, ordered)| UnitFacts {
-            unit_id: &ordered.unit.unit_id,
-            region_id: &hex.region.region_id,
-            held: ordered.holding(SILVER),
-            men: ordered.early_men(),
-            men_estimated: ordered.unit.men_estimated,
-            men_by_race: ordered.early_men_by_race(),
-            items: ordered.early_items(),
-            flags: &ordered.unit.flags,
-            skills: &ordered.unit.skills,
-            intents: ordered.intents,
-            receipts: nothing,
-            formed: ordered.formed.as_ref(),
-            after_gifts_unknown: ordered.holdings_unknown(),
-            late: late.map(|late| late.of(index)),
-        })
+        .map(|(index, ordered)| unit_facts(hex, ordered, nothing, late.map(|late| late.of(index))))
         .collect()
+}
+
+/// One own unit as maintenance sees it - the row [`hex_facts`] builds for each of them, lifted out
+/// so a caller holding one `Ordered` and no index can read the same facts. `apply` is that caller:
+/// it prices one unit's `PILLAGE` and needs that unit's own combat ready men (`ah-q6bt`), and
+/// building the whole hex's rows per intent would walk the hex quadratically on a path that runs
+/// on every keystroke.
+fn unit_facts<'a>(
+    hex: &'a Hex<'_>,
+    ordered: &'a Ordered<'_>,
+    nothing: &'a Receipts,
+    late: Option<LateFacts<'a>>,
+) -> UnitFacts<'a> {
+    UnitFacts {
+        unit_id: &ordered.unit.unit_id,
+        region_id: &hex.region.region_id,
+        held: ordered.holding(SILVER),
+        men: ordered.early_men(),
+        men_estimated: ordered.unit.men_estimated,
+        men_by_race: ordered.early_men_by_race(),
+        items: ordered.early_items(),
+        flags: &ordered.unit.flags,
+        skills: &ordered.unit.skills,
+        intents: ordered.intents,
+        receipts: nothing,
+        formed: ordered.formed.as_ref(),
+        after_gifts_unknown: ordered.holdings_unknown(),
+        late,
+    }
 }
 
 /// Charges every unit its monthly maintenance, after the orders have run.
@@ -3549,7 +3579,13 @@ fn apply(
         // exists). The two differ only in how they express the doubt - a typed variant there, the
         // unit's sums no longer trusted here.
         Intent::Pillage => {
-            let priced = price_pillage(hex.region.tax_base, region.combat_ready);
+            // This unit's own combat ready men, which is its weight in the share (`ah-q6bt`, D1).
+            // `readiness` is an early term and reads no late picture, so `None` here is the same
+            // `None` `pillagers_in` counted with.
+            let nothing = Receipts::default();
+            let mine =
+                readiness(&unit_facts(hex, actor, &nothing, None), ruleset).map(|read| read.ready);
+            let priced = price_pillage(hex.region.tax_base, region.pillagers, mine);
             if priced.doubt.is_some() {
                 ledger.doubted.insert(who.clone());
             } else {
@@ -6222,13 +6258,15 @@ fn check_build_skill(
     }
 }
 
-/// A `PILLAGE` by a faction without the combat ready men the region needs (`ah-1ad6.2`).
+/// A `PILLAGE` the units ordering it have not the combat ready men for (`ah-1ad6.2`, `ah-q6bt`).
 ///
 /// One finding per pillaging unit, on that unit's `PILLAGE` line, rather than one per hex: the
 /// finding hangs on an order, and each pillaging unit wrote its own.
 ///
-/// Silent where the tax base or the headcount is unknown. The Silver column already shows `?`
-/// there, and a mark would be a second and louder claim about something nobody knows.
+/// Silent where the tax base is unknown - the Silver column already shows `?` there, and a mark
+/// would be a second and louder claim about something nobody knows. **Not silent where a
+/// pillager's men cannot be counted**, which is what it did before `ah-q6bt` and is the defect
+/// that bead was filed for: such a unit is told so instead (decision U1).
 fn check_pillage_men(
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
@@ -6242,17 +6280,18 @@ fn check_pillage_men(
     let Some(tax_base) = hex.region.tax_base else {
         return;
     };
-    let Some(ready) = combat_ready_in(hex, ruleset) else {
-        return;
-    };
+    let pillagers = pillagers_in(hex, ruleset);
     let needed = pillage_threshold(tax_base);
-    if ready >= needed {
+    // A floor already at or over the threshold settles it: more countable men cannot un-pass the
+    // gate, so an uncounted pillager beside them is nothing to warn about.
+    if pillagers.ready >= needed {
         return;
     }
+    let ready = pillagers.ready;
 
-    // The same facts `combat_ready_in` counted from, so the reason and the number are one reading
-    // of one unit rather than two descriptions of it (`ah-cw75`). `readiness` is an early term and
-    // never reads a late picture, so this needs no `LateHoldings` any more than `combat_ready_in`
+    // The same facts `pillagers_in` counted from, so the reason and the number are one reading of
+    // one unit rather than two descriptions of it (`ah-cw75`). `readiness` is an early term and
+    // never reads a late picture, so this needs no `LateHoldings` any more than `pillagers_in`
     // does.
     let nothing = Receipts::default();
     let facts = hex_facts(hex, &nothing, None);
@@ -6265,18 +6304,27 @@ fn check_pillage_men(
         else {
             continue;
         };
-        // Why *this* unit's men do not count - the unit whose order is marked, and the one the
-        // player can act on. Empty where it is armed and willing: the region is simply short.
-        let because = readiness(facts, ruleset)
-            .map_or_else(String::new, |read| because_clause(&read, ruleset, plurals));
-        findings.push(ordered.finding(
-            hex,
-            codes::PILLAGE_WITHOUT_MEN,
-            format!(
-                "cannot pillage here: needs {needed} combat ready men, this region has {ready}{because}"
+        // The branch is chosen from *this* unit's own readiness, never from `pillagers.incomplete`:
+        // a unit that was counted, in a hex where some other pillager was not, has men that are
+        // known and a shortfall that is real as far as anything can be known. The hedge belongs on
+        // the unit the doubt is actually about (decision U1, `ah-q6bt`).
+        let message = match readiness(facts, ruleset) {
+            // Why *this* unit's men do not count - the unit whose order is marked, and the one the
+            // player can act on. Empty where it is armed and willing: the pillagers are simply
+            // short between them.
+            Some(read) => {
+                let because = because_clause(&read, ruleset, plurals);
+                format!(
+                    "cannot pillage here: needs {needed} combat ready men, the units ordering PILLAGE have {ready}{because}"
+                )
+            }
+            // No `because` tail: there is no `Readiness` to build one from, which is precisely the
+            // state being reported.
+            None => format!(
+                "may not be able to pillage here: needs {needed} combat ready men, and a transfer this month means this unit's cannot be counted"
             ),
-            Some(placed),
-        ));
+        };
+        findings.push(ordered.finding(hex, codes::PILLAGE_WITHOUT_MEN, message, Some(placed)));
     }
 }
 
@@ -10740,14 +10788,15 @@ mod tests {
         assert_eq!(told[0].line, Some(2), "on the PILLAGE line");
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this region has 0 — it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
+            "cannot pillage here: needs 90 combat ready men, the units ordering PILLAGE have 0 — it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
         );
     }
 
-    /// The count is a sum over own units **in this hex**, so `this faction` could send a player
-    /// looking at units in another region entirely (`ah-cw75`).
+    /// The subject the sentence names. `this faction` could send a player looking at units in
+    /// another region entirely (`ah-cw75`); `this region` counted men that no longer help, since
+    /// only the units ordering `PILLAGE` are counted at all (decision P1, `ah-q6bt`).
     #[test]
-    fn the_pillage_warning_names_the_region_not_the_faction() {
+    fn the_pillage_warning_names_the_units_ordering_pillage() {
         let pillager = with_item(
             with_men(with_silver(unit("683"), 0), 12),
             12,
@@ -10772,7 +10821,7 @@ mod tests {
         assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this region has 12"
+            "cannot pillage here: needs 90 combat ready men, the units ordering PILLAGE have 12"
         );
     }
 
@@ -10800,7 +10849,7 @@ mod tests {
         assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this region has 0 — it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
+            "cannot pillage here: needs 90 combat ready men, the units ordering PILLAGE have 0 — it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
         );
     }
 
@@ -10833,7 +10882,7 @@ mod tests {
         assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this region has 0 — its 3 horses need riding 1, and it has no riding"
+            "cannot pillage here: needs 90 combat ready men, the units ordering PILLAGE have 0 — its 3 horses need riding 1, and it has no riding"
         );
     }
 
@@ -10868,7 +10917,7 @@ mod tests {
         assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this region has 19"
+            "cannot pillage here: needs 90 combat ready men, the units ordering PILLAGE have 19"
         );
     }
 
@@ -10895,7 +10944,7 @@ mod tests {
         assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this region has 12"
+            "cannot pillage here: needs 90 combat ready men, the units ordering PILLAGE have 12"
         );
     }
 
@@ -10922,7 +10971,7 @@ mod tests {
         assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 90 combat ready men, this region has 5"
+            "cannot pillage here: needs 90 combat ready men, the units ordering PILLAGE have 5"
         );
     }
 
@@ -10996,11 +11045,12 @@ mod tests {
         assert_eq!(row.doubt, None);
     }
 
-    /// The navigator's decision: "the faction to have enough combat ready men in the region", so a
-    /// lone leader ordering `PILLAGE` beside a faction-mate of 90 armed men qualifies, and the
-    /// army need issue no order at all. The count is the hex's, never the pillaging unit's own.
+    /// Decision **G1** (`ah-q6bt`), and the reversal of what shipped before: an army of 90 armed
+    /// men standing in the hex having ordered nothing does **not** carry a lone leader over the
+    /// threshold. Before this bead the leader was credited the whole 17,926 on their strength,
+    /// which is the outcome the navigator said they did not want.
     #[test]
-    fn the_men_are_counted_across_the_hex_not_the_unit() {
+    fn a_bystanders_men_do_not_carry_the_pillage() {
         let hex_region = ReportRegion {
             tax_base: Some(8963),
             ..region(vec![
@@ -11020,14 +11070,46 @@ mod tests {
             .iter()
             .find(|row| row.unit_id == "683")
             .expect("priced");
-        assert_eq!(row.income, Some(17_926));
+        assert_eq!(row.income, Some(0));
         assert_eq!(row.doubt, None);
     }
 
-    /// One guessed headcount anywhere in the hex makes the threshold unanswerable - the estimate
-    /// might be what carries the faction over it.
+    /// Decisions **G1** and **D1** together: the army that *does* order `PILLAGE` carries the hex,
+    /// and the take is divided between the two in proportion to their combat ready men - so the
+    /// leader takes nothing at all, having none, and the army takes the lot.
     #[test]
-    fn a_guessed_headcount_in_the_hex_doubts_the_pillage() {
+    fn the_men_are_counted_across_the_pillagers_and_the_take_divided_between_them() {
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![
+                with_silver(unit("683"), 0),
+                armed_to_pillage(with_silver(unit("684"), 0), 8963),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\nunit 684\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let earned = |unit_id: &str| {
+            review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == unit_id)
+                .expect("priced")
+                .income
+        };
+        assert_eq!(earned("683"), Some(0), "no combat ready men, no share");
+        assert_eq!(earned("684"), Some(17_926), "all 90 of the ready men");
+    }
+
+    /// A guessed headcount among the *pillagers* leaves the threshold unanswerable - the estimate
+    /// might be what carries them over it. A guess anywhere else in the hex no longer says
+    /// anything at all, which is decision G1 (`ah-q6bt`).
+    #[test]
+    fn a_guessed_headcount_among_the_pillagers_doubts_the_pillage() {
         let mut guessed = armed_to_pillage(with_silver(unit("684"), 0), 8963);
         guessed.men_estimated = true;
         let hex_region = ReportRegion {
@@ -11036,7 +11118,7 @@ mod tests {
         };
         let review = review_turn(
             &report(vec![hex_region]),
-            "unit 683\nPILLAGE\n",
+            "unit 683\nPILLAGE\nunit 684\nPILLAGE\n",
             Some(&ruleset()),
             CheckOptions::default(),
         );
@@ -22384,10 +22466,12 @@ mod tests {
     }
 
     /// The parent bead's own regression case, and the reason `ah-dxfd.2` exists rather than a
-    /// men-only fix: men given away without their weapons must lower the region's combat-ready
-    /// count, and men given away *with* weapons the receiver cannot wield must not raise it.
+    /// men-only fix: this month's `GIVE` is followed, so the FORMed unit that orders `PILLAGE` is
+    /// counted on the ten men and ten crossbows it was handed - and crossbows it cannot wield
+    /// leave it with none combat ready. The giver keeps nine armed men and, having ordered no
+    /// `PILLAGE`, no longer counts towards anything (decision G1, `ah-q6bt`).
     #[test]
-    fn men_given_without_weapons_lower_the_regions_combat_ready_count() {
+    fn men_given_without_weapons_lower_the_pillagers_combat_ready_count() {
         let home_guard = with_item(
             with_item(men_holder("1234", 19), 25, "swords", "SWOR"),
             10,
@@ -22414,14 +22498,19 @@ mod tests {
         assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
         assert_eq!(
             told[0].message,
-            "cannot pillage here: needs 24 combat ready men, this region has 9 — its 10 crossbows need crossbow 1, and it has no crossbow"
+            "cannot pillage here: needs 24 combat ready men, the units ordering PILLAGE have 0 — its 10 crossbows need crossbow 1, and it has no crossbow"
         );
     }
 
     /// The durable case: no catalogue can ever say what a unit the report does not show holds, so
-    /// a bounded `TAKE ... ALL` from one goes unanswerable rather than silently ignored.
+    /// a bounded `TAKE ... ALL` from one leaves *that* unit's holdings unanswerable.
+    ///
+    /// **It is a bystander here, and that is now the whole point** (`ah-q6bt`): 1234 takes and
+    /// 2200 pillages, and under decision G1 only 2200 is counted - so an unfollowable transfer to
+    /// a unit that ordered nothing no longer silences the warning for the hex, which is the defect
+    /// `ah-q6bt` was filed for. The pillager's own twenty unarmed men are known, and it is told so.
     #[test]
-    fn a_take_from_a_unit_this_hex_does_not_show_leaves_the_count_unanswerable() {
+    fn a_take_by_a_bystander_no_longer_silences_the_warning() {
         let home_guard = with_item(men_holder("1234", 9), 30, "swords", "SWOR");
         let raiders = men_holder("2200", 20);
         let hex_region = ReportRegion {
@@ -22435,20 +22524,23 @@ mod tests {
             CheckOptions::default(),
         );
 
-        assert!(
-            !review
-                .findings
-                .iter()
-                .any(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN),
-            "an unfollowable transfer silences the warning rather than guessing at it: {:?}",
-            codes(&review.findings)
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            told[0].message,
+            "cannot pillage here: needs 10 combat ready men, the units ordering PILLAGE have 0 — it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
         );
         let pillager = review
             .silver
             .iter()
             .find(|row| row.unit_id == "2200")
             .expect("the pillager is priced");
-        assert_eq!(pillager.doubt, Some(SilverDoubt::UnknownCombatReady));
+        assert_eq!(pillager.doubt, None, "the pillager's own men are known");
+        assert_eq!(pillager.income, Some(0));
     }
 
     /// The check that the narrowing is narrow: `ah-3sp7` will make `MAGIC` classifiable, and when
@@ -22469,13 +22561,17 @@ mod tests {
             CheckOptions::default(),
         );
 
-        assert!(
-            !review
-                .findings
-                .iter()
-                .any(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN),
-            "{:?}",
-            codes(&review.findings)
+        // The gift reaches the *pillager*, so it is 2200's own men that cannot be counted - which
+        // decision U1 says out loud rather than swallowing (`ah-q6bt`).
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            told[0].message,
+            "may not be able to pillage here: needs 10 combat ready men, and a transfer this month means this unit's cannot be counted"
         );
         let pillager = review
             .silver
