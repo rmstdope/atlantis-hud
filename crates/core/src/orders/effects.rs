@@ -1575,6 +1575,28 @@ mod tests {
         .join("\n")
     }
 
+    /// [`report_with_a_smith`], with a neighbour to give to - for the cases where a transfer and a
+    /// `PRODUCE` are written in the same month (`ah-qct4`).
+    ///
+    /// A second helper rather than a second unit on the shipped one, because `only_unit` asserts
+    /// exactly one unit changed for three tests that already read it. The men stay the *first*
+    /// item on each own unit's line, as `count_men` (`report/unit.rs:221`) requires.
+    fn report_with_a_smith_and_a_neighbour() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON]. Weight: 180. Capacity: 0/0/120/0.",
+            "* Hands (901), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
     /// Two regions joined by an exit, own units in both, and one foreign unit - for the
     /// `TRANSPORT`/`DISTRIBUTE` cases (`ah-bxgs`). `5530` sends; `6857` is a quartermaster that can
     /// receive. `7001` is a foreign unit visible in `6857`'s hex, present so a transport aimed at a
@@ -3499,6 +3521,44 @@ mod tests {
                 }]
             );
             change(unit, "items");
+        }
+    }
+
+    /// `ah-qct4`. `rules/sequenceofevents` settles "Give orders. GIVE and TAKE orders are
+    /// processed." nine phases before "Primary PRODUCE orders ... are processed", so the men who
+    /// work this month and the materials they work with are the ones the month's gifts leave
+    /// behind - not the ones the report printed.
+    mod production_after_a_gift {
+        use super::*;
+
+        fn preview_gift(orders: &str) -> OrdersPreviewResponse {
+            preview_over(
+                &report_with_a_smith_and_a_neighbour(),
+                &format!("unit 900\n{orders}\n"),
+            )
+        }
+
+        fn giver(response: &OrdersPreviewResponse) -> &UnitPreview {
+            row(response, "1:1,1", "900").expect("the giver's row is previewed")
+        }
+
+        fn held(unit: &UnitPreview, tag: &str) -> i64 {
+            unit.unit
+                .items
+                .iter()
+                .find(|item| item.tag == tag)
+                .map_or(0, |item| item.amount)
+        }
+
+        /// The report prints `8 orcs [ORC]`, so `ALL ORCS` is the first thing anyone would type -
+        /// and until `item_spellings` folded case it resolved to nothing at all.
+        #[test]
+        fn an_upper_case_plural_gift_of_men_empties_the_unit() {
+            let response = preview_gift("GIVE 901 ALL ORCS");
+            let giver = giver(&response);
+
+            assert_eq!(giver.unit.men, 0, "every orc left this unit");
+            assert_eq!(held(giver, "ORC"), 0, "no orcs remain in the item list");
         }
     }
 
