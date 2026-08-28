@@ -44,6 +44,11 @@ const PAD_BOTTOM = 24;
  */
 export const ROW_PITCH = NODE_HEIGHT + NODE_GAP;
 
+/** Passes that pull from one side at a time, prerequisites then dependents, alternating. */
+const ALTERNATING_SWEEPS = 4;
+/** Passes that pull from both sides at once, run after the alternating ones. */
+const SETTLING_SWEEPS = 4;
+
 /** How a node's box is drawn. `MANI` is set apart because it is not a Foundation. */
 export type NodeKind = "foundation" | "apprenticeship" | "skill";
 
@@ -181,6 +186,121 @@ export function settle(wanted: readonly number[]): number[] {
 }
 
 /**
+ * Where every skill sits inside its own tier.
+ *
+ * Sets `node.y` on every node of `columns` and returns each column re-ordered top to bottom. The
+ * topmost box in the whole drawing ends at y = 0; `buildMagicGraph` adds `PAD_TOP`.
+ *
+ * The ordinary barycentre sweep a layered drawing does, with the coordinates carried through it
+ * rather than thrown away between passes: a skill wants to sit at the mean height of its
+ * neighbours, and `settle` is what turns a column of wants into a column of seats.
+ *
+ * The sweep counts were chosen by measurement: the layout has converged by then, and it is the
+ * setting with the least total vertical line-length of any tried.
+ */
+function seatColumns(
+  columns: readonly (readonly GraphNode[])[],
+  standsOn: ReadonlyMap<string, readonly string[]>,
+  carries: ReadonlyMap<string, readonly string[]>
+): GraphNode[][] {
+  // Nothing pulls a skill with neither a prerequisite nor a dependent, so it would simply keep
+  // whatever seed it started from - which is arbitrary and visible. It is set aside and pinned at
+  // the foot of its own column instead. In the shipped ruleset that is `MANI` alone.
+  const isLoose = (node: GraphNode) =>
+    (standsOn.get(node.tag) ?? []).length === 0 && (carries.get(node.tag) ?? []).length === 0;
+  const byName = (left: GraphNode, right: GraphNode) => left.name.localeCompare(right.name);
+
+  const connected = columns.map((column) => [...column].filter((node) => !isLoose(node)).sort(byName));
+  const loose = columns.map((column) => [...column].filter(isLoose).sort(byName));
+
+  connected.forEach((column) => {
+    column.forEach((node, index) => {
+      node.y = index * ROW_PITCH;
+    });
+  });
+
+  const at = new Map<string, GraphNode>();
+  for (const column of connected) {
+    for (const node of column) {
+      at.set(node.tag, node);
+    }
+  }
+
+  // One pass over one column. `y` is read live rather than from a snapshot taken at the start of
+  // the sweep: a column must see what the column before it in this sweep just did. That is what a
+  // Sugiyama sweep is.
+  const sweepColumn = (column: GraphNode[], referencesOf: (tag: string) => readonly string[]) => {
+    const wantedOf = new Map<string, number>();
+    for (const node of column) {
+      const heights = referencesOf(node.tag)
+        .map((tag) => at.get(tag)?.y)
+        .filter((y): y is number => y !== undefined);
+      wantedOf.set(
+        node.tag,
+        heights.length === 0 ? node.y : heights.reduce((sum, y) => sum + y, 0) / heights.length
+      );
+    }
+    column.sort((left, right) => {
+      const difference = wantedOf.get(left.tag)! - wantedOf.get(right.tag)!;
+      return difference !== 0 ? difference : byName(left, right);
+    });
+    const placed = settle(column.map((node) => wantedOf.get(node.tag)!));
+    column.forEach((node, index) => {
+      node.y = placed[index];
+    });
+  };
+
+  for (let sweep = 0; sweep < ALTERNATING_SWEEPS; sweep += 1) {
+    const fromPrerequisites = sweep % 2 === 0;
+    const order = fromPrerequisites ? connected : [...connected].reverse();
+    for (const column of order) {
+      sweepColumn(column, (tag) => (fromPrerequisites ? standsOn.get(tag) : carries.get(tag)) ?? []);
+    }
+  }
+  for (let sweep = 0; sweep < SETTLING_SWEEPS; sweep += 1) {
+    for (const column of connected) {
+      sweepColumn(column, (tag) => [...(standsOn.get(tag) ?? []), ...(carries.get(tag) ?? [])]);
+    }
+  }
+
+  const normalise = (all: readonly GraphNode[]) => {
+    if (all.length === 0) {
+      return;
+    }
+    const top = Math.min(...all.map((node) => node.y));
+    for (const node of all) {
+      node.y -= top;
+    }
+  };
+  normalise(connected.flat());
+
+  const seated = connected.map((column, index) => {
+    const tail = loose[index];
+    const lowest = column.length === 0 ? undefined : Math.max(...column.map((node) => node.y));
+    tail.forEach((node, rank) => {
+      // One blank row of clear air under the column, then a row each.
+      node.y = lowest === undefined ? rank * ROW_PITCH : lowest + (rank + 2) * ROW_PITCH;
+    });
+    return [...column, ...tail];
+  });
+
+  // Whole world units, so the markup never carries a `470.40000000000003`. Rounding two boxes that
+  // were exactly `ROW_PITCH` apart can bring them a unit closer, so the separation is re-enforced
+  // afterwards rather than trusted.
+  for (const column of seated) {
+    let previous: number | undefined;
+    for (const node of column) {
+      const y = previous === undefined ? Math.round(node.y) : Math.max(Math.round(node.y), previous + ROW_PITCH);
+      node.y = y;
+      previous = y;
+    }
+  }
+  normalise(seated.flat());
+
+  return seated;
+}
+
+/**
  * The layered drawing of `tree`.
  *
  * Returns an empty graph - no nodes, no tiers, zero size - for a tree with no branches, which is
@@ -196,7 +316,8 @@ export function buildMagicGraph(tree: MagicTree): MagicGraph {
       id: skill.id,
       depth: skill.depth,
       kind: kindOf(skill.tag, skill.depth),
-      // Placed below, once the column is sorted: a seat is an index within its own tier.
+      // Placed below, by `seatColumns`: a box slides freely down its column towards what it
+      // stands on and what stands on it, so `y` is no longer a whole number of rows from the top.
       x: 0,
       y: 0
     });
@@ -204,24 +325,43 @@ export function buildMagicGraph(tree: MagicTree): MagicGraph {
   }
 
   const depths = [...byDepth.keys()].sort((left, right) => left - right);
+
+  // Which skill stands on which, built from `tree` and from tags alone, **before** anything is
+  // seated. The edge loop below reads coordinates off `at` and so has to run after the seating;
+  // this has to run before it, or the seating would be pulling boxes towards where they used to
+  // be. `within` concatenated with `crossing` for the reason the edge loop gives.
+  const standsOn = new Map<string, string[]>();
+  const carries = new Map<string, string[]>();
+  for (const skill of tree.byTag.values()) {
+    const needs = [...skill.within, ...skill.crossing]
+      .map((need) => need.tag)
+      .filter((tag) => tree.byTag.has(tag));
+    standsOn.set(skill.tag, needs);
+    for (const tag of needs) {
+      carries.set(tag, [...(carries.get(tag) ?? []), skill.tag]);
+    }
+  }
+
+  const seated = seatColumns(
+    depths.map((depth) => byDepth.get(depth) ?? []),
+    standsOn,
+    carries
+  );
+
   const nodes: GraphNode[] = [];
   const tiers: GraphTier[] = [];
-  let tallest = 0;
 
   depths.forEach((depth, tier) => {
-    const column = (byDepth.get(depth) ?? []).sort((left, right) =>
-      left.name.localeCompare(right.name)
-    );
+    const column = seated[tier];
     // The tier's own index rather than its depth, so a ruleset with a gap in its depths - one
     // nothing in the shipped data produces, but a scrape could - draws no empty column.
     const x = PAD_LEFT + tier * TIER_PITCH;
-    column.forEach((node, rank) => {
+    for (const node of column) {
       node.x = x;
-      node.y = PAD_TOP + rank * (NODE_HEIGHT + NODE_GAP);
+      node.y = PAD_TOP + node.y;
       nodes.push(node);
-    });
+    }
     tiers.push({ depth, title: tierTitle(depth), count: column.length, x });
-    tallest = Math.max(tallest, column.length);
   });
 
   const at = new Map(nodes.map((node) => [node.tag, node]));
@@ -261,7 +401,12 @@ export function buildMagicGraph(tree: MagicTree): MagicGraph {
     edges,
     tiers,
     width: tiers.length === 0 ? 0 : PAD_LEFT + tiers.length * TIER_PITCH,
-    height: tiers.length === 0 ? 0 : PAD_TOP + tallest * (NODE_HEIGHT + NODE_GAP) + PAD_BOTTOM
+    // The real extent rather than a count of rows: a column no longer packs from the top, and the
+    // old formula counted a trailing gap that is not there.
+    height:
+      nodes.length === 0
+        ? 0
+        : Math.max(...nodes.map((node) => node.y + NODE_HEIGHT)) + PAD_BOTTOM
   };
 }
 

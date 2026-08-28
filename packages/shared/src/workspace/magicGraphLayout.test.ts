@@ -11,9 +11,11 @@ import {
   lineageOf,
   NODE_HEIGHT,
   NODE_WIDTH,
+  PAD_TOP,
+  ROW_PITCH,
   settle
 } from "./magicGraphLayout";
-import { scaleOf } from "./mapViewport";
+import { scaleOf, STEPS_PER_DOUBLING } from "./mapViewport";
 
 /**
  * Built over the **real shipped ruleset**, because every number worth pinning here - 70 skills, 102
@@ -46,7 +48,58 @@ describe("buildMagicGraph", () => {
     }
 
     expect(graph.width).toBe(1366);
-    expect(graph.height).toBe(1100);
+    expect(graph.height).toBe(1095);
+  });
+
+  // The graph dialog's real box, the same one the fit test above uses.
+  const BOX_WIDTH = 1464;
+  const BOX_HEIGHT = 743;
+
+  it("shows a whole lineage at a zoom where the names can be read", () => {
+    const at = new Map(graph.nodes.map((node) => [node.tag, node]));
+
+    const unreadable = graph.nodes.filter((node) => {
+      const lit = [...lineageOf(graph, node.tag).skills].map((tag) => at.get(tag)!);
+      const width =
+        Math.max(...lit.map((n) => n.x + NODE_WIDTH)) - Math.min(...lit.map((n) => n.x));
+      const height =
+        Math.max(...lit.map((n) => n.y + NODE_HEIGHT)) - Math.min(...lit.map((n) => n.y));
+      const step = Math.floor(
+        Math.log2(Math.min(BOX_WIDTH / width, BOX_HEIGHT / height)) * STEPS_PER_DOUBLING
+      );
+      return labelBand(step) !== "names";
+    });
+
+    expect(unreadable.map((node) => node.tag)).toEqual([]);
+  });
+
+  it("gives every skill a seat, in order down its tier and never crowded", () => {
+    for (const tier of graph.tiers) {
+      const column = graph.nodes.filter((node) => node.depth === tier.depth);
+      expect(column.length).toBe(tier.count);
+      // The nodes come back in column order, top to bottom.
+      expect(column.map((node) => node.y)).toEqual(
+        [...column.map((node) => node.y)].sort((a, b) => a - b)
+      );
+      for (let i = 1; i < column.length; i += 1) {
+        expect(column[i].y - column[i - 1].y).toBeGreaterThanOrEqual(ROW_PITCH);
+      }
+      expect(column.every((node) => Number.isInteger(node.y))).toBe(true);
+    }
+    // The topmost box in the drawing sits at PAD_TOP, and the drawing ends a pad below the lowest.
+    expect(Math.min(...graph.nodes.map((node) => node.y))).toBe(PAD_TOP);
+  });
+
+  it("puts manipulation at the foot of the foundations, a clear row below spirit", () => {
+    const foundations = graph.nodes.filter((node) => node.depth === 0);
+    const last = foundations[foundations.length - 1];
+    expect(last.tag).toBe("MANI");
+    const spirit = graph.nodes.find((node) => node.tag === "SPIR")!;
+    expect(last.y - spirit.y).toBe(2 * ROW_PITCH);
+  });
+
+  it("draws the same graph twice", () => {
+    expect(buildMagicGraph(tree)).toEqual(buildMagicGraph(tree));
   });
 
   it("names the tiers and sets MANI apart", () => {
