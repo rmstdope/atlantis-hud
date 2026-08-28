@@ -22,6 +22,7 @@
 import type { ArmyMemberRecord, ArmyRecord } from "@atlantis/core-client";
 
 import { memberIsStale } from "./armies";
+import { derivedSkillsFor, type DerivedSkills } from "./battleSkills";
 
 /** One unit as the simulator's own format wants it. */
 export type BattleUnit = {
@@ -48,11 +49,24 @@ const SILVER_TAG = "SILV";
 /** The one flag the simulator reads, as the parser writes it (`crates/core/src/report/unit.rs`). */
 const BEHIND_FLAG = "behind";
 
-/** One remembered member as the simulator wants it. */
-export function battleUnitOf(member: ArmyMemberRecord): BattleUnit {
+/**
+ * One remembered member as the simulator wants it.
+ *
+ * `derived` is required rather than optional on purpose: an optional one is a way for a caller to
+ * silently export the old, empty-skilled file, which is the bug `ah-1mpx.6.2` exists to fix. A
+ * caller with nothing to pass passes `NO_DERIVED_SKILLS`.
+ */
+export function battleUnitOf(member: ArmyMemberRecord, derived: DerivedSkills): BattleUnit {
+  // A member's own skills when it has them; otherwise whatever a battle roster disclosed, which is
+  // non-empty only for a foreign unit (`derivedSkillsFor`). Still always an array - it is the key
+  // the simulator sniffs the file's format by.
+  const recovered = derivedSkillsFor(derived, member);
   const unit: BattleUnit = {
     name: `${member.name} (${member.unitId})`,
-    skills: member.skills.map((skill) => ({ abbr: skill.tag, level: skill.level })),
+    skills:
+      member.skills.length > 0
+        ? member.skills.map((skill) => ({ abbr: skill.tag, level: skill.level }))
+        : recovered.map((skill) => ({ abbr: skill.tag, level: skill.level })),
     items: member.items
       .filter((item) => item.tag !== SILVER_TAG)
       .map((item) => ({ abbr: item.tag, amount: item.amount }))
@@ -71,16 +85,22 @@ export function battleUnitOf(member: ArmyMemberRecord): BattleUnit {
 }
 
 /** An Army's members in the order it holds them; `{ units: [] }` for a side nobody is on. */
-export function battleSideOf(army: ArmyRecord | null): BattleSide {
-  return { units: army === null ? [] : army.members.map(battleUnitOf) };
+export function battleSideOf(army: ArmyRecord | null, derived: DerivedSkills): BattleSide {
+  return {
+    units: army === null ? [] : army.members.map((member) => battleUnitOf(member, derived))
+  };
 }
 
 /** Both sides. Both keys are always present - the loader refuses the file otherwise. */
 export function battleFileOf(
   attackers: ArmyRecord | null,
-  defenders: ArmyRecord | null
+  defenders: ArmyRecord | null,
+  derived: DerivedSkills
 ): BattleFile {
-  return { attackers: battleSideOf(attackers), defenders: battleSideOf(defenders) };
+  return {
+    attackers: battleSideOf(attackers, derived),
+    defenders: battleSideOf(defenders, derived)
+  };
 }
 
 /** The file's text, indented as `gameBackup.ts` writes its own. */

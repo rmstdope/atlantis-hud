@@ -10,8 +10,28 @@ import {
   exportReadiness,
   exportedStatus
 } from "./armyExport";
+import { NO_DERIVED_SKILLS, withRosterSkills } from "./battleSkills";
 
 const NOW = "2026-08-27T09:00:00Z";
+
+/** Unit 4839 "Watazka" as the fixture's turn-71 roster prints it: `riding 5, combat 2, longbow 4`. */
+const WATAZKA_ROSTER = withRosterSkills(
+  NO_DERIVED_SKILLS,
+  [
+    {
+      unitId: "4839",
+      unitName: "Watazka",
+      coordinate: { level: 1, x: 25, y: 55 },
+      terrain: "ocean",
+      skills: [
+        { name: "riding", level: 5 },
+        { name: "combat", level: 2 },
+        { name: "longbow", level: 4 }
+      ]
+    }
+  ],
+  71
+);
 
 function aMember(overrides: Partial<ArmyMemberRecord> = {}): ArmyMemberRecord {
   return {
@@ -61,7 +81,7 @@ describe("battleUnitOf", () => {
       combatSpell: { name: "fire", tag: "FIRE" }
     });
 
-    expect(battleUnitOf(member)).toEqual({
+    expect(battleUnitOf(member, NO_DERIVED_SKILLS)).toEqual({
       name: "Shieldwall (7954)",
       skills: [
         { abbr: "COMB", level: 3 },
@@ -77,12 +97,32 @@ describe("battleUnitOf", () => {
   });
 
   it("omits flags and combatSpell entirely rather than writing empty ones", () => {
-    const unit = battleUnitOf(aMember({ flags: ["avoiding"], skills: [], combatSpell: null }));
+    const unit = battleUnitOf(aMember({ flags: ["avoiding"], skills: [], combatSpell: null }), NO_DERIVED_SKILLS);
 
     expect(unit).not.toHaveProperty("flags");
     expect(unit).not.toHaveProperty("combatSpell");
     expect(unit.skills).toEqual([]);
     expect(unit.items).toEqual([]);
+  });
+
+  it("a foreign member goes out with the skills a roster disclosed", () => {
+    const member = aMember({ unitId: "4839", name: "Watazka", own: false, skills: [] });
+
+    expect(battleUnitOf(member, WATAZKA_ROSTER).skills).toEqual([
+      { abbr: "RIDI", level: 5 },
+      { abbr: "COMB", level: 2 },
+      { abbr: "LBOW", level: 4 }
+    ]);
+  });
+
+  it("an own member's own skills are untouched", () => {
+    const member = aMember({
+      unitId: "4839",
+      own: true,
+      skills: [{ name: "combat", tag: "COMB", level: 3, points: 180 }]
+    });
+
+    expect(battleUnitOf(member, WATAZKA_ROSTER).skills).toEqual([{ abbr: "COMB", level: 3 }]);
   });
 });
 
@@ -90,12 +130,12 @@ describe("battleSideOf and battleFileOf", () => {
   it("both keys are present however few Armies were chosen", () => {
     const army = anArmy("Northern Host", [aMember()]);
 
-    const file = battleFileOf(army, null);
+    const file = battleFileOf(army, null, NO_DERIVED_SKILLS);
 
     expect(Object.keys(file)).toEqual(["attackers", "defenders"]);
     expect(file.attackers.units).toHaveLength(1);
     expect(file.defenders.units).toEqual([]);
-    expect(battleSideOf(null)).toEqual({ units: [] });
+    expect(battleSideOf(null, NO_DERIVED_SKILLS)).toEqual({ units: [] });
   });
 
   it("keeps the Army's own member order", () => {
@@ -104,14 +144,14 @@ describe("battleSideOf and battleFileOf", () => {
       aMember({ unitId: "1", name: "First" })
     ]);
 
-    expect(battleSideOf(army).units.map((unit) => unit.name)).toEqual([
+    expect(battleSideOf(army, NO_DERIVED_SKILLS).units.map((unit) => unit.name)).toEqual([
       "Second (2)",
       "First (1)"
     ]);
   });
 
   it("writes the file as indented JSON", () => {
-    const text = battleFileText(battleFileOf(null, null));
+    const text = battleFileText(battleFileOf(null, null, NO_DERIVED_SKILLS));
 
     expect(text).toBe(JSON.stringify({ attackers: { units: [] }, defenders: { units: [] } }, null, 2));
   });
