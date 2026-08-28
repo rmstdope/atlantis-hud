@@ -239,6 +239,16 @@ describe("tinting the tree for one mage", () => {
     expect(html).toMatch(/data-testid="magic-tree-skill-CRRI"[^>]*class="[^"]*text-ink-dim/);
   });
 
+  it("draws a skill as one flex line whose chips cannot break", () => {
+    const html = tinted(SIX_OF_SEVEN);
+
+    expect(html).toMatch(/data-testid="magic-tree-skill-ILLU"[^>]*class="[^"]*flex items-baseline/);
+    // The standing chip and the tag never wrap, whatever the column does to the name.
+    expect(html).toMatch(
+      /data-testid="magic-tree-standing-ILLU"[^>]*class="[^"]*whitespace-nowrap/
+    );
+  });
+
   it("names all of the prerequisites holding a skill down", () => {
     expect(tinted(SIX_OF_SEVEN)).toContain("at 3, held by bird lore and wolf lore");
   });

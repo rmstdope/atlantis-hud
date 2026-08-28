@@ -442,43 +442,57 @@ function Skill({
     <div
       data-testid={`magic-tree-skill-${skill.tag}`}
       // An inline indent rather than a Tailwind class: the depth is a number, and a class name
-      // built from one is a class Tailwind's scanner never sees and so never emits.
-      style={{ paddingLeft: `${(skill.depth - floor) * 0.75}rem` }}
-      className={`rounded px-1 ${highlighted ? "bg-panel " : ""}${
-        style === null ? (highlighted ? "text-ink" : "text-ink-soft") : `${style.edge} ${style.text}`
+      // built from one is a class Tailwind's scanner never sees and so never emits. The 5px is the
+      // gap between the left edge and the text, and it is added here rather than as a `pl-`
+      // utility because an inline `paddingLeft` would win over one anyway.
+      style={{ paddingLeft: `calc(${(skill.depth - floor) * 0.75}rem + 5px)` }}
+      className={`flex items-baseline gap-1.5 rounded py-0.5 ${
+        highlighted ? "bg-panel " : ""
+      }${
+        style === null
+          ? `border-l-4 border-transparent ${highlighted ? "text-ink" : "text-ink-soft"}`
+          : `${style.edge} ${style.text}`
       }`}
     >
       <button
         type="button"
         onClick={() => onOpenGameData(skill.id)}
-        className="bg-transparent p-0 text-left text-accent underline-offset-2 hover:underline"
+        // `min-w-0` so the name is the flex item that gives: it is the only part of the row that
+        // loses nothing by taking a second line, and every chip beside it is `nowrap`.
+        className="min-w-0 bg-transparent p-0 text-left text-accent underline-offset-2 hover:underline"
       >
         {skill.name}
-      </button>{" "}
-      <span className="text-ink-dim">{skill.tag}</span>
+      </button>
+      <span className="text-pane-xs whitespace-nowrap text-ink-dim">{skill.tag}</span>
       <Gate prerequisites={skill.within} />
-      {skill.crossing.map((need) => (
+      {standing === null || standing.kind === "locked" ? null : (
+        // Locked takes no chip and keeps its gate text: what is missing is the reason for showing
+        // a locked row at all.
+        <span
+          data-testid={`magic-tree-standing-${skill.tag}`}
+          className={`text-pane-xs whitespace-nowrap rounded border px-1 ${
+            ROW_STYLE[standing.kind].chip
+          }`}
+        >
+          {standingWords(standing)}
+        </span>
+      )}
+      {skill.crossing.map((need, at) => (
         <button
           key={need.tag}
           type="button"
           data-testid={`magic-tree-chip-${skill.tag}-${need.tag}`}
           title={`also needs ${need.name} at level ${need.level}`}
           onClick={() => onFollow(need.tag)}
-          className="ml-1 rounded border border-edge px-1 text-ink-dim hover:text-ink"
+          // `ml-auto` on the first one only, so the crossing pills sit at the right edge of the row
+          // and line up down the card. A second one follows it on the normal gap.
+          className={`text-pane-xs whitespace-nowrap rounded border border-edge px-1 text-ink-dim hover:text-ink ${
+            at === 0 ? "ml-auto" : ""
+          }`}
         >
           +{need.tag} {need.level}
         </button>
       ))}
-      {standing === null || standing.kind === "locked" ? null : (
-        // Locked takes no chip and keeps its gate text: what is missing is the reason for showing
-        // a locked row at all.
-        <span
-          data-testid={`magic-tree-standing-${skill.tag}`}
-          className={`ml-1 rounded border px-1 ${ROW_STYLE[standing.kind].chip}`}
-        >
-          {standingWords(standing)}
-        </span>
-      )}
     </div>
   );
 }
@@ -573,7 +587,7 @@ function Gate({ prerequisites }: { prerequisites: readonly MagicPrerequisite[] }
     return null;
   }
   return (
-    <span className="ml-1 text-ink-dim">
+    <span className="text-pane-xs whitespace-nowrap text-ink-dim">
       {prerequisites.map((need) => `${need.tag} ${need.level}`).join(", ")}
     </span>
   );
