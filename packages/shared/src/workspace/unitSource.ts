@@ -41,6 +41,33 @@ export function sourceStillThere(source: UnitSource, armyIds: readonly string[])
 }
 
 /**
+ * What the table is a list *of* right now. Two calls that answer the same string are showing the
+ * same list; any other pair means the list underneath has been replaced.
+ *
+ * The hex enters the answer for `This hex` **and only for `This hex`**, which is the whole of the
+ * asymmetry the caller needs: clicking (7,51) while `This hex` is the source replaces every row,
+ * and clicking it while an Army is the source replaces nothing at all - an Army is not about the
+ * hex, which `ah-1mpx.2` settled deliberately.
+ *
+ * Deliberately a function of the source and the hex alone. It cannot see the report, so a new
+ * turn's report arriving cannot change it - which is exactly the answer the navigator chose for
+ * that case, held in place by the signature rather than by a test.
+ *
+ * `regionId` is null when no hex is selected, and that is a list of its own: `hex:` and
+ * `hex:1:7,53` differ, so selecting the first hex of a session replaces "nothing" with a list.
+ */
+export function listShown(source: UnitSource, regionId: string | null): string {
+  switch (source.kind) {
+    case "hex":
+      return `hex:${regionId ?? ""}`;
+    case "own":
+      return "own";
+    case "army":
+      return `army:${source.armyId}`;
+  }
+}
+
+/**
  * Which extra columns this source warrants, in render order.
  *
  * `hex` for any source that spans hexes, because for `This hex` it would repeat itself on every
