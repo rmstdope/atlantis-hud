@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-y9hx &mdash; travelling to a unit's hex from the units table</title><style>
+/* ---- Explanatory chrome (docs/ui house style) ---- */
+:root {
+  --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+  --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+  --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  /* ---- the application's own tokens, from packages/shared/src/theme.css ---- */
+  --a-ground:#1b212a; --a-panel:#222933; --a-raised:#2a323d; --a-edge:#46525f; --a-edge-soft:#333d49;
+  --a-ink:#d4dce6; --a-ink-soft:#a8b4c2; --a-ink-dim:#99a4b2;
+  --a-brass:#e0b25a; --a-brass-bright:#eebe63; --a-select:#5aa9de; --a-ok:#4fb783;
+  --a-warn:#d9a441; --a-danger:#e89494; --a-gain:#7fb069;
+  --a-unit-own:#5ec8f0; --a-unit-foreign:#f07070; --a-ring:#f5f8fc;
+  --a-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+header, main, footer { max-width:1420px; margin:0 auto; }
+h1 { font-size:26px; letter-spacing:0.4px; }
+h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+p.lede { color:var(--brass-bright); font-size:15.5px; font-style:italic; max-width:96ch; margin-top:12px; }
+code, .mono { font-family:var(--a-mono); }
+header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+.stage { background:#0b0f15; border:1px solid var(--edge-soft); border-radius:8px; padding:12px; overflow-x:auto; }
+.hexlab { font:10.5px/1 var(--a-mono); letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
+.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+.notes li.con::before { content:"\2212 "; color:var(--danger); }
+.notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+.split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+.split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+footer { margin-top:42px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+.rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+.new { outline:1px dashed var(--brass); outline-offset:2px; }
+.newtag { font:9.5px/1 var(--a-mono); letter-spacing:.1em; text-transform:uppercase; color:#1b212a;
+          background:var(--brass); border-radius:3px; padding:3px 5px; }
+
+/* ================= the application, reproduced ================= */
+.app { width:1280px; height:720px; position:relative; overflow:hidden; border-radius:6px;
+       border:1px solid #000; background:var(--a-ground); color:var(--a-ink);
+       font:13px/1.35 var(--a-mono); display:flex; flex-direction:column; }
+.app.short { height:470px; }
+.app *, .app *::before { box-sizing:border-box; }
+
+/* header: min-h-9, border-b border-edge, bg-panel, px-3, gap-x-3.5 */
+.ahead { flex:none; min-height:36px; display:flex; align-items:center; gap:14px; padding:0 12px;
+         border-bottom:1px solid var(--a-edge); background:var(--a-panel); white-space:nowrap; }
+.ahead .wordmark { letter-spacing:.06em; color:var(--a-brass); }
+.ahead .lbl { color:var(--a-ink-soft); }
+.ahead .chip { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink);
+               border-radius:4px; padding:1px 8px; }
+.ahead .chip.plain { border-color:transparent; background:transparent; }
+.ahead .chip.warn { border-color:var(--a-warn); color:var(--a-warn); background:transparent; }
+.ahead .chip.gain { border-color:var(--a-gain); color:var(--a-gain); background:transparent; }
+.ahead .chip.dim { color:var(--a-ink-dim); }
+.ahead .right { margin-left:auto; display:flex; align-items:center; gap:14px; }
+.ahead .btn-imp { border:1px solid var(--a-brass); color:var(--a-brass); border-radius:4px; padding:3px 10px; }
+.ahead .btn-o { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink); border-radius:4px; padding:3px 10px; }
+.dotstat { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--a-ink-dim); }
+
+/* map stage + floating overlay: p-2.5 pt-12, gap-2.5 */
+.stagewrap { position:relative; flex:1; min-height:0; }
+.mapsvg { position:absolute; inset:0; width:100%; height:100%; }
+.mapctl { position:absolute; right:10px; top:10px; z-index:20; display:flex; align-items:center; gap:6px;
+          border:1px solid var(--a-edge); background:#222933f2; border-radius:6px; padding:4px 8px;
+          box-shadow:0 10px 15px -3px #0007; }
+.mapctl .sq { width:26px; height:26px; border:1px solid var(--a-edge); background:#222933f2;
+              border-radius:4px; color:var(--a-ink-soft); display:flex; align-items:center; justify-content:center; }
+.overlay { position:absolute; inset:0; padding:10px; padding-top:48px; display:flex; flex-direction:column; gap:10px; }
+.orow { display:flex; flex:1; min-height:0; justify-content:space-between; gap:10px; }
+.railL { width:304px; display:flex; flex-direction:column; }
+.railR { width:336px; display:flex; flex-direction:column; gap:10px; }
+
+/* CollapsiblePanel: rounded-md border-edge bg-pane shadow-lg backdrop-blur; header h-7 */
+.pane { display:flex; flex-direction:column; min-height:0; overflow:hidden; border-radius:6px;
+        border:1px solid var(--a-edge); background:#222933cc; backdrop-filter:blur(7px);
+        box-shadow:0 10px 15px -3px #0007,0 4px 6px -4px #0007; }
+.pane > .ttl { height:28px; flex:none; display:flex; align-items:center; gap:8px; padding:0 10px;
+               border-bottom:1px solid var(--a-edge); font-size:12px; letter-spacing:.12em;
+               text-transform:uppercase; color:var(--a-brass); }
+.pane > .ttl .hint { text-transform:none; letter-spacing:normal; color:var(--a-ink-dim); }
+.pane > .ttl .caret { margin-left:auto; color:var(--a-ink-dim); }
+.pane > .bd { min-height:0; flex:1; overflow:auto; padding:8px 10px; line-height:1.3; }
+.pane.grow { flex:1; min-height:0; }
+
+/* units dock, full width along the bottom: h-20.625rem = 330px */
+.dockU { height:330px; flex:none; }
+
+/* units table */
+table.ut { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0; font-variant-numeric:tabular-nums; }
+table.ut th { position:sticky; top:0; z-index:10; background:var(--a-panel); border-bottom:1px solid var(--a-edge);
+              padding:4px 8px; text-align:left; font-size:12px; font-weight:500; letter-spacing:.06em;
+              text-transform:uppercase; color:var(--a-ink-soft); }
+table.ut th .g { color:var(--a-ink-dim); }
+table.ut th.act { color:var(--a-brass); }
+table.ut td { height:24px; padding:2px 8px; border-bottom:1px solid var(--a-edge-soft);
+              white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+table.ut tr { color:var(--a-ink); }
+table.ut tr.foreign { color:var(--a-ink-soft); }
+table.ut tr.sel td { background:#5aa9de40; color:var(--a-ink); }
+table.ut tr.pick td { background:#5aa9de26; }
+.o { color:var(--a-ok); } .f { color:var(--a-danger); }
+.idown { color:var(--a-select); } .idfor { color:#f07070b3; }
+.dim { color:var(--a-ink-dim); } .warnc { color:var(--a-warn); } .okc { color:var(--a-ok); }
+.gone { color:var(--a-ink-dim); text-decoration:line-through; }
+.filter { width:176px; border:1px solid var(--a-edge); background:var(--a-ground); color:var(--a-ink-dim);
+          border-radius:4px; padding:1px 8px; font-size:13px; }
+
+/* small controls inside panes */
+.b { display:inline-block; border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink);
+     border-radius:4px; padding:3px 9px; font-size:12px; }
+.b.pri { border-color:var(--a-brass); color:var(--a-brass); background:transparent; }
+.b.gh { border-color:transparent; background:transparent; color:var(--a-ink-dim); padding:3px 6px; }
+.b.dg { border-color:#6b4444; color:var(--a-danger); background:transparent; }
+.kbd { display:inline-block; font-size:11px; padding:2px 6px; border:1px solid var(--a-edge);
+       border-bottom-width:2px; border-radius:4px; background:var(--a-ground); color:var(--a-brass-bright); }
+dl.kv { display:grid; grid-template-columns:74px 1fr; gap:4px 10px; font-size:13px; }
+dl.kv dt { color:var(--a-ink-dim); font-size:12px; }
+dl.kv dt.sep, dl.kv dd.sep { border-top:1px solid var(--a-edge-soft); padding-top:7px; margin-top:4px; }
+.chip2 { display:inline-block; background:#5aa9de26; border:1px solid #5aa9de66; color:var(--a-ink);
+         border-radius:10px; padding:1px 8px; font-size:12px; margin:0 4px 4px 0; }
+.chip2 .x { color:var(--a-ink-dim); margin-left:5px; }
+.arow { display:flex; align-items:center; gap:8px; padding:4px 7px; border-radius:4px; font-size:13px; }
+.arow.on { background:#5aa9de26; box-shadow:inset 2px 0 0 var(--a-select); }
+.arow .ct { margin-left:auto; color:var(--a-ink-dim); font-size:12px; }
+.sw { width:10px; height:10px; border-radius:2px; flex:none; }
+.sw.off { background:transparent; border:1px solid var(--a-edge); }
+.tagw { font-size:11px; border:1px solid #6b5a2a; color:var(--a-warn); border-radius:3px; padding:1px 5px; }
+.empty { color:var(--a-ink-dim); font-size:12px; line-height:1.6; text-align:center; padding:18px 12px; }
+.empty b { color:var(--a-ink-soft); display:block; font-weight:500; margin-bottom:4px; font-size:13px; }
+.st { font-size:12px; color:var(--a-ink-dim); margin-top:7px; line-height:1.5; }
+.st b { color:var(--a-brass-bright); font-weight:500; }
+
+/* the source rail (P3) */
+.srail { width:172px; flex:none; border-right:1px solid var(--a-edge); background:#2a323db3; overflow:auto; padding:6px; }
+.srail .grp { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--a-ink-dim); margin:10px 0 4px 6px; }
+.srail .s { display:flex; align-items:center; gap:6px; padding:3px 7px; border-radius:4px; color:var(--a-ink-soft); font-size:13px; }
+.srail .s.on { background:#5aa9de26; color:var(--a-ink); box-shadow:inset 2px 0 0 var(--a-select); }
+.srail .s.drop { border:1px dashed var(--a-brass); background:#e0b25a1f; color:var(--a-brass-bright); }
+.srail .s .ct { margin-left:auto; color:var(--a-ink-dim); font-size:12px; }
+.ghostdrag { position:absolute; border:1px dashed var(--a-brass); border-radius:4px; background:#2a323dee;
+             color:var(--a-brass-bright); font-size:12px; padding:4px 9px; box-shadow:0 8px 20px #000a; }
+
+/* dialog */
+.backdrop { position:absolute; inset:0; background:#00000080; display:flex; align-items:center; justify-content:center; z-index:40; }
+.dlg { border:1px solid var(--a-edge); background:var(--a-raised); border-radius:6px;
+       box-shadow:0 10px 15px -3px #0009; overflow:hidden; }
+.dlg > .h { display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid var(--a-edge); color:var(--a-ink-soft); }
+.dlg > .b2 { padding:12px; }
+pre.json { font:12px/1.5 var(--a-mono); color:var(--a-ink-soft); background:var(--a-ground);
+           border:1px solid var(--a-edge-soft); border-radius:5px; padding:10px; overflow-x:auto; }
+pre.json .k { color:var(--a-select); } pre.json .s { color:var(--a-ok); } pre.json .n { color:var(--a-brass-bright); }
+
+
+
+/* ---- this round's own additions ---- */
+.appS { width:940px; height:520px; }
+.mapwrap { position:relative; flex:1; min-height:0; }
+.mapsvg { position:absolute; inset:0; width:100%; height:100%; }
+.dock2 { height:196px; flex:none; border-top:1px solid var(--a-edge); background:var(--a-panel);
+         display:flex; min-height:0; }
+.dock2 .head { height:26px; flex:none; display:flex; align-items:center; gap:8px; padding:0 10px;
+               border-bottom:1px solid var(--a-edge); font-size:12px; letter-spacing:.12em;
+               text-transform:uppercase; color:var(--a-brass); }
+.dock2 .head .hint { text-transform:none; letter-spacing:normal; color:var(--a-ink-dim); }
+.cursor { position:absolute; width:16px; height:22px; pointer-events:none; z-index:30; }
+.callout { position:absolute; z-index:31; font:11.5px/1.35 var(--a-mono); color:var(--a-brass-bright);
+           background:#1b212af2; border:1px solid var(--a-brass); border-radius:4px; padding:3px 7px;
+           box-shadow:0 6px 14px #000a; white-space:nowrap; }
+.hexlink { color:var(--a-select); text-decoration:underline; text-decoration-style:dotted;
+           text-underline-offset:2px; }
+.hexlink.foc { outline:1px solid var(--a-select); outline-offset:1px; border-radius:2px; }
+.legend { display:flex; gap:16px; font-size:12px; color:var(--ink-soft); margin:6px 0 12px; }
+.legend b { color:var(--brass-bright); font-weight:normal; }
+.stepnum { display:inline-flex; align-items:center; justify-content:center; width:19px; height:19px;
+           border-radius:50%; background:var(--brass); color:#10151c; font:12px/1 var(--a-mono);
+           margin-right:7px; }
+h4.step { font-size:13.5px; margin:20px 0 8px; color:var(--ink); font-family:var(--a-mono);
+          letter-spacing:.02em; font-weight:normal; }
+table.ut td.hexcell { color:var(--a-ink-soft); }
+table.ut tr.sel td.hexcell { color:var(--a-ink); }
+.ghosthex { fill:none; stroke:var(--a-brass); stroke-width:2; stroke-dasharray:5 4; }
+
+
+.lvlchip { border:1px solid var(--a-edge); background:var(--a-raised); color:var(--a-ink);
+           border-radius:4px; padding:1px 8px; }
+.pan { position:absolute; right:12px; bottom:10px; z-index:20; font:11px/1 var(--a-mono);
+       color:var(--a-ink-dim); background:#1b212ae6; border:1px solid var(--a-edge-soft);
+       border-radius:4px; padding:4px 7px; }
+table.ut tr.stale td { color:var(--a-ink-dim); }
+table.ut tr.foc td { box-shadow:inset 0 1px 0 var(--a-select), inset 0 -1px 0 var(--a-select); }
+.keys { display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:13px; margin-top:12px;
+        max-width:70ch; }
+.keys .k { text-align:right; white-space:nowrap; }
+.keys .v { color:var(--ink-soft); }
+.rules { list-style:none; font-size:13.5px; display:grid; gap:7px; margin:10px 0 4px; max-width:96ch; }
+.rules li::before { content:"\2192 "; color:var(--brass); }
+.rules b { color:var(--brass-bright); font-weight:normal; }
+
+</style></head><body>
+
+<header>
+  <h1>ah-y9hx &mdash; <span>a row in a hex-spanning list travels to its hex</span></h1>
+  <p>The units pane stopped meaning &ldquo;the units in the selected hex&rdquo; in
+  <code>ah-1mpx.2</code>: <b>All my units</b> and each Army list units standing in different hexes,
+  and each such list carries a <b>Hex</b> column saying where. Clicking a row selected the unit but
+  left the map where it was, so having found a unit among hundreds there was no way onward to the
+  ground it stands on. The command palette, the turn-messages panel, the problems panel and
+  <span class="kbd">Alt</span>+<span class="kbd">&darr;</span> all already travel; the units table
+  was the one list that did not.</p>
+  <p class="lede">Chosen behaviour, agreed with the navigator over three rounds. Every scene below
+  is the decision, not an option.</p>
+  <ul class="rules">
+    <li>A row click in a list that <b>spans hexes</b> &mdash; All my units, or any Army &mdash;
+      selects the unit <b>and</b> takes the map to its hex.</li>
+    <li><b>This hex</b> is untouched, mouse and keyboard alike: nothing there ever moves the map.</li>
+    <li><span class="kbd">&uarr;</span> <span class="kbd">&darr;</span> still only move the
+      selection. <span class="kbd">Enter</span> travels; <span class="kbd">Space</span> does not.</li>
+    <li>Travel follows the unit to <b>another level</b>, and comes back to the unit's hex even when
+      that hex was <b>already selected</b> and the map had been dragged off it.</li>
+    <li>A row whose unit <b>this turn's report does not have</b> still highlights, and the map stays
+      put. Nothing is said about it.</li>
+  </ul>
+</header>
+<main>
+
+<h3 class="sec">1 &mdash; the ordinary case</h3>
+<p>The map is on <code>plain (9,57)</code>. <b>6120 Bowmen</b> stands in <code>(15,63)</code>,
+off the right of the view.</p>
+<div class="card">
+  <div class="hexlab">Before &mdash; nothing selected in the list</div>
+  <div class="stage">
+<div class="app appS">
+  <div class="ahead">
+    <span class="wordmark">ATLANTIS HUD</span>
+    <span class="lbl">Turn</span><span class="chip">71</span>
+    <span class="lbl">Level</span><span class="lvlchip">Surface</span>
+    <span class="lbl">Hex</span><span class="chip">plain (9,57)</span>
+    <span class="right"><span class="btn-o">Orders</span><span class="btn-imp">Import report</span></span>
+  </div>
+  <div class="mapwrap"><svg class="mapsvg" viewBox="313 2717 940 294" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><rect x="313" y="2717" width="940" height="294" fill="#1b212a"/><g fill-opacity=".92" stroke="#0a0e13" stroke-width="1.2"><polygon points="319,2663 290,2714 232,2714 203,2663 232,2613 290,2613" fill="#2f5d3a"/><polygon points="319,2764 290,2814 232,2814 203,2764 232,2714 290,2714" fill="#7a7440"/><polygon points="319,2864 290,2914 232,2914 203,2864 232,2814 290,2814" fill="#7a7440"/><polygon points="319,2965 290,3015 232,3015 203,2965 232,2914 290,2914" fill="#41553f"/><polygon points="319,3065 290,3116 232,3116 203,3065 232,3015 290,3015" fill="#7a7440"/><polygon points="406,2714 377,2764 319,2764 290,2714 319,2663 377,2663" fill="#5c5c66"/><polygon points="406,2814 377,2864 319,2864 290,2814 319,2764 377,2764" fill="#2f5d3a"/><polygon points="406,2914 377,2965 319,2965 290,2914 319,2864 377,2864" fill="#2f5d3a"/><polygon points="406,3015 377,3065 319,3065 290,3015 319,2965 377,2965" fill="#7a7440"/><polygon points="493,2663 464,2714 406,2714 377,2663 406,2613 464,2613" fill="#7a7440"/><polygon points="493,2764 464,2814 406,2814 377,2764 406,2714 464,2714" fill="#41553f"/><polygon points="493,2864 464,2914 406,2914 377,2864 406,2814 464,2814" fill="#7a7440"/><polygon points="493,2965 464,3015 406,3015 377,2965 406,2914 464,2914" fill="#5c5c66"/><polygon points="493,3065 464,3116 406,3116 377,3065 406,3015 464,3015" fill="#2f5d3a"/><polygon points="580,2714 551,2764 493,2764 464,2714 493,2663 551,2663" fill="#2f5d3a"/><polygon points="580,2814 551,2864 493,2864 464,2814 493,2764 551,2764" fill="#7a7440"/><polygon points="580,2914 551,2965 493,2965 464,2914 493,2864 551,2864" fill="#7a7440"/><polygon points="580,3015 551,3065 493,3065 464,3015 493,2965 551,2965" fill="#41553f"/><polygon points="667,2663 638,2714 580,2714 551,2663 580,2613 638,2613" fill="#7a7440"/><polygon points="667,2764 638,2814 580,2814 551,2764 580,2714 638,2714" fill="#5c5c66"/><polygon points="667,2864 638,2914 580,2914 551,2864 580,2814 638,2814" fill="#2f5d3a"/><polygon points="667,2965 638,3015 580,3015 551,2965 580,2914 638,2914" fill="#2f5d3a"/><polygon points="667,3065 638,3116 580,3116 551,3065 580,3015 638,3015" fill="#7a7440"/><polygon points="754,2714 725,2764 667,2764 638,2714 667,2663 725,2663" fill="#7a7440"/><polygon points="754,2814 725,2864 667,2864 638,2814 667,2764 725,2764" fill="#41553f"/><polygon points="754,2914 725,2965 667,2965 638,2914 667,2864 725,2864" fill="#7a7440"/><polygon points="754,3015 725,3065 667,3065 638,3015 667,2965 725,2965" fill="#5c5c66"/><polygon points="841,2663 812,2714 754,2714 725,2663 754,2613 812,2613" fill="#2f5d3a"/><polygon points="841,2764 812,2814 754,2814 725,2764 754,2714 812,2714" fill="#2f5d3a"/><polygon points="841,2864 812,2914 754,2914 725,2864 754,2814 812,2814" fill="#7a7440"/><polygon points="841,2965 812,3015 754,3015 725,2965 754,2914 812,2914" fill="#7a7440"/><polygon points="841,3065 812,3116 754,3116 725,3065 754,3015 812,3015" fill="#41553f"/><polygon points="928,2714 899,2764 841,2764 812,2714 841,2663 899,2663" fill="#7a7440"/><polygon points="928,2814 899,2864 841,2864 812,2814 841,2764 899,2764" fill="#5c5c66"/><polygon points="928,2914 899,2965 841,2965 812,2914 841,2864 899,2864" fill="#2f5d3a"/><polygon points="928,3015 899,3065 841,3065 812,3015 841,2965 899,2965" fill="#2f5d3a"/><polygon points="1015,2663 986,2714 928,2714 899,2663 928,2613 986,2613" fill="#7a7440"/><polygon points="1015,2764 986,2814 928,2814 899,2764 928,2714 986,2714" fill="#7a7440"/><polygon points="1015,2864 986,2914 928,2914 899,2864 928,2814 986,2814" fill="#41553f"/><polygon points="1015,2965 986,3015 928,3015 899,2965 928,2914 986,2914" fill="#7a7440"/><polygon points="1015,3065 986,3116 928,3116 899,3065 928,3015 986,3015" fill="#5c5c66"/><polygon points="1102,2714 1073,2764 1015,2764 986,2714 1015,2663 1073,2663" fill="#2f5d3a"/><polygon points="1102,2814 1073,2864 1015,2864 986,2814 1015,2764 1073,2764" fill="#2f5d3a"/><polygon points="1102,2914 1073,2965 1015,2965 986,2914 1015,2864 1073,2864" fill="#7a7440"/><polygon points="1102,3015 1073,3065 1015,3065 986,3015 1015,2965 1073,2965" fill="#7a7440"/><polygon points="1189,2663 1160,2714 1102,2714 1073,2663 1102,2613 1160,2613" fill="#41553f"/><polygon points="1189,2764 1160,2814 1102,2814 1073,2764 1102,2714 1160,2714" fill="#7a7440"/><polygon points="1189,2864 1160,2914 1102,2914 1073,2864 1102,2814 1160,2814" fill="#5c5c66"/><polygon points="1189,2965 1160,3015 1102,3015 1073,2965 1102,2914 1160,2914" fill="#2f5d3a"/><polygon points="1189,3065 1160,3116 1102,3116 1073,3065 1102,3015 1160,3015" fill="#2f5d3a"/><polygon points="1276,2714 1247,2764 1189,2764 1160,2714 1189,2663 1247,2663" fill="#7a7440"/><polygon points="1276,2814 1247,2864 1189,2864 1160,2814 1189,2764 1247,2764" fill="#7a7440"/><polygon points="1276,2914 1247,2965 1189,2965 1160,2914 1189,2864 1247,2864" fill="#41553f"/><polygon points="1276,3015 1247,3065 1189,3065 1160,3015 1189,2965 1247,2965" fill="#7a7440"/><polygon points="1363,2663 1334,2714 1276,2714 1247,2663 1276,2613 1334,2613" fill="#5c5c66"/><polygon points="1363,2764 1334,2814 1276,2814 1247,2764 1276,2714 1334,2714" fill="#2f5d3a"/><polygon points="1363,2864 1334,2914 1276,2914 1247,2864 1276,2814 1334,2814" fill="#2f5d3a"/><polygon points="1363,2965 1334,3015 1276,3015 1247,2965 1276,2914 1334,2914" fill="#7a7440"/><polygon points="1363,3065 1334,3116 1276,3116 1247,3065 1276,3015 1334,3015" fill="#7a7440"/></g><g fill="#5ec8f0"><circle cx="783" cy="2856" r="7"/><circle cx="957" cy="2957" r="7"/></g><g font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#a3b0c0" fill-opacity=".7" text-anchor="middle"><text x="261" y="2706">3,53</text><text x="261" y="2807">3,55</text><text x="261" y="2907">3,57</text><text x="261" y="3008">3,59</text><text x="261" y="3108">3,61</text><text x="348" y="2756">4,54</text><text x="348" y="2857">4,56</text><text x="348" y="2958">4,58</text><text x="348" y="3058">4,60</text><text x="435" y="2706">5,53</text><text x="435" y="2807">5,55</text><text x="435" y="2907">5,57</text><text x="435" y="3008">5,59</text><text x="435" y="3108">5,61</text><text x="522" y="2756">6,54</text><text x="522" y="2857">6,56</text><text x="522" y="2958">6,58</text><text x="522" y="3058">6,60</text><text x="609" y="2706">7,53</text><text x="609" y="2807">7,55</text><text x="609" y="2907">7,57</text><text x="609" y="3008">7,59</text><text x="609" y="3108">7,61</text><text x="696" y="2756">8,54</text><text x="696" y="2857">8,56</text><text x="696" y="2958">8,58</text><text x="696" y="3058">8,60</text><text x="783" y="2706">9,53</text><text x="783" y="2807">9,55</text><text x="783" y="2907">9,57</text><text x="783" y="3008">9,59</text><text x="783" y="3108">9,61</text><text x="870" y="2756">10,54</text><text x="870" y="2857">10,56</text><text x="870" y="2958">10,58</text><text x="870" y="3058">10,60</text><text x="957" y="2706">11,53</text><text x="957" y="2807">11,55</text><text x="957" y="2907">11,57</text><text x="957" y="3008">11,59</text><text x="957" y="3108">11,61</text><text x="1044" y="2756">12,54</text><text x="1044" y="2857">12,56</text><text x="1044" y="2958">12,58</text><text x="1044" y="3058">12,60</text><text x="1131" y="2706">13,53</text><text x="1131" y="2807">13,55</text><text x="1131" y="2907">13,57</text><text x="1131" y="3008">13,59</text><text x="1131" y="3108">13,61</text><text x="1218" y="2756">14,54</text><text x="1218" y="2857">14,56</text><text x="1218" y="2958">14,58</text><text x="1218" y="3058">14,60</text><text x="1305" y="2706">15,53</text><text x="1305" y="2807">15,55</text><text x="1305" y="2907">15,57</text><text x="1305" y="3008">15,59</text><text x="1305" y="3108">15,61</text></g><g font-family="ui-monospace,Menlo,monospace" font-size="9" fill="#10151c" text-anchor="middle"><text x="783" y="2860">2</text><text x="957" y="2961">1</text></g><polygon points="841,2864 812,2914 754,2914 725,2864 754,2814 812,2814" fill="#5aa9de" fill-opacity=".18" stroke="#f5f8fc" stroke-width="2.5"/></svg><div class="callout" style="left:620px;top:205px">6120 stands out here, off the view</div></div>
+  <div class="dock2">
+    <div class="srail" style="width:150px">
+      <div class="s">This hex <span class="ct">3</span></div>
+      <div class="s on">All my units <span class="ct">38</span></div>
+      <div class="grp">Armies</div>
+      <div class="s">North force <span class="ct">3</span></div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div class="head">Units <span class="hint">&mdash; all my units, 38 units</span>
+        <span style="margin-left:auto"><span class="filter">Filter&hellip;</span></span></div>
+      <div style="flex:1;min-height:0;overflow:hidden"><table class="ut">
+<colgroup><col style="width:22px"><col style="width:52px"><col style="width:150px"><col style="width:79px"><col style="width:46px"><col></colgroup>
+<tr><th>*</th><th>Id</th><th>Unit</th><th>Hex</th><th>Men</th><th>Long order</th></tr>
+<tr class=""><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td class="hexcell">(15,63)</td><td>8</td><td>study lbow</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">6121</td><td>Bowmen II</td><td class="hexcell">(15,63)</td><td>6</td><td>study lbow</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">4410</td><td>Longbows</td><td class="hexcell">(9,57)</td><td>14</td><td>work</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">7710</td><td>Miners</td><td class="hexcell">(11,59)</td><td>22</td><td>produce IRON</td></tr>
+</table></div>
+    </div>
+  </div>
+</div></div>
+</div>
+<div class="card">
+  <div class="hexlab">After clicking the 6120 row &mdash; the map has travelled to (15,63)</div>
+  <div class="stage">
+<div class="app appS">
+  <div class="ahead">
+    <span class="wordmark">ATLANTIS HUD</span>
+    <span class="lbl">Turn</span><span class="chip">71</span>
+    <span class="lbl">Level</span><span class="lvlchip">Surface</span>
+    <span class="lbl">Hex</span><span class="chip">forest (15,63)</span>
+    <span class="right"><span class="btn-o">Orders</span><span class="btn-imp">Import report</span></span>
+  </div>
+  <div class="mapwrap"><svg class="mapsvg" viewBox="835 3019 940 294" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><rect x="835" y="3019" width="940" height="294" fill="#1b212a"/><g fill-opacity=".92" stroke="#0a0e13" stroke-width="1.2"><polygon points="841,2965 812,3015 754,3015 725,2965 754,2914 812,2914" fill="#7a7440"/><polygon points="841,3065 812,3116 754,3116 725,3065 754,3015 812,3015" fill="#41553f"/><polygon points="841,3166 812,3216 754,3216 725,3166 754,3116 812,3116" fill="#7a7440"/><polygon points="841,3266 812,3316 754,3316 725,3266 754,3216 812,3216" fill="#5c5c66"/><polygon points="841,3367 812,3417 754,3417 725,3367 754,3316 812,3316" fill="#2f5d3a"/><polygon points="928,3015 899,3065 841,3065 812,3015 841,2965 899,2965" fill="#2f5d3a"/><polygon points="928,3116 899,3166 841,3166 812,3116 841,3065 899,3065" fill="#7a7440"/><polygon points="928,3216 899,3266 841,3266 812,3216 841,3166 899,3166" fill="#7a7440"/><polygon points="928,3316 899,3367 841,3367 812,3316 841,3266 899,3266" fill="#41553f"/><polygon points="1015,2965 986,3015 928,3015 899,2965 928,2914 986,2914" fill="#7a7440"/><polygon points="1015,3065 986,3116 928,3116 899,3065 928,3015 986,3015" fill="#5c5c66"/><polygon points="1015,3166 986,3216 928,3216 899,3166 928,3116 986,3116" fill="#2f5d3a"/><polygon points="1015,3266 986,3316 928,3316 899,3266 928,3216 986,3216" fill="#2f5d3a"/><polygon points="1015,3367 986,3417 928,3417 899,3367 928,3316 986,3316" fill="#7a7440"/><polygon points="1102,3015 1073,3065 1015,3065 986,3015 1015,2965 1073,2965" fill="#7a7440"/><polygon points="1102,3116 1073,3166 1015,3166 986,3116 1015,3065 1073,3065" fill="#41553f"/><polygon points="1102,3216 1073,3266 1015,3266 986,3216 1015,3166 1073,3166" fill="#7a7440"/><polygon points="1102,3316 1073,3367 1015,3367 986,3316 1015,3266 1073,3266" fill="#5c5c66"/><polygon points="1189,2965 1160,3015 1102,3015 1073,2965 1102,2914 1160,2914" fill="#2f5d3a"/><polygon points="1189,3065 1160,3116 1102,3116 1073,3065 1102,3015 1160,3015" fill="#2f5d3a"/><polygon points="1189,3166 1160,3216 1102,3216 1073,3166 1102,3116 1160,3116" fill="#7a7440"/><polygon points="1189,3266 1160,3316 1102,3316 1073,3266 1102,3216 1160,3216" fill="#7a7440"/><polygon points="1189,3367 1160,3417 1102,3417 1073,3367 1102,3316 1160,3316" fill="#41553f"/><polygon points="1276,3015 1247,3065 1189,3065 1160,3015 1189,2965 1247,2965" fill="#7a7440"/><polygon points="1276,3116 1247,3166 1189,3166 1160,3116 1189,3065 1247,3065" fill="#5c5c66"/><polygon points="1276,3216 1247,3266 1189,3266 1160,3216 1189,3166 1247,3166" fill="#2f5d3a"/><polygon points="1276,3316 1247,3367 1189,3367 1160,3316 1189,3266 1247,3266" fill="#2f5d3a"/><polygon points="1363,2965 1334,3015 1276,3015 1247,2965 1276,2914 1334,2914" fill="#7a7440"/><polygon points="1363,3065 1334,3116 1276,3116 1247,3065 1276,3015 1334,3015" fill="#7a7440"/><polygon points="1363,3166 1334,3216 1276,3216 1247,3166 1276,3116 1334,3116" fill="#41553f"/><polygon points="1363,3266 1334,3316 1276,3316 1247,3266 1276,3216 1334,3216" fill="#7a7440"/><polygon points="1363,3367 1334,3417 1276,3417 1247,3367 1276,3316 1334,3316" fill="#5c5c66"/><polygon points="1450,3015 1421,3065 1363,3065 1334,3015 1363,2965 1421,2965" fill="#2f5d3a"/><polygon points="1450,3116 1421,3166 1363,3166 1334,3116 1363,3065 1421,3065" fill="#2f5d3a"/><polygon points="1450,3216 1421,3266 1363,3266 1334,3216 1363,3166 1421,3166" fill="#7a7440"/><polygon points="1450,3316 1421,3367 1363,3367 1334,3316 1363,3266 1421,3266" fill="#7a7440"/><polygon points="1537,2965 1508,3015 1450,3015 1421,2965 1450,2914 1508,2914" fill="#41553f"/><polygon points="1537,3065 1508,3116 1450,3116 1421,3065 1450,3015 1508,3015" fill="#7a7440"/><polygon points="1537,3166 1508,3216 1450,3216 1421,3166 1450,3116 1508,3116" fill="#5c5c66"/><polygon points="1537,3266 1508,3316 1450,3316 1421,3266 1450,3216 1508,3216" fill="#2f5d3a"/><polygon points="1537,3367 1508,3417 1450,3417 1421,3367 1450,3316 1508,3316" fill="#2f5d3a"/><polygon points="1624,3015 1595,3065 1537,3065 1508,3015 1537,2965 1595,2965" fill="#7a7440"/><polygon points="1624,3116 1595,3166 1537,3166 1508,3116 1537,3065 1595,3065" fill="#7a7440"/><polygon points="1624,3216 1595,3266 1537,3266 1508,3216 1537,3166 1595,3166" fill="#41553f"/><polygon points="1624,3316 1595,3367 1537,3367 1508,3316 1537,3266 1595,3266" fill="#7a7440"/><polygon points="1711,2965 1682,3015 1624,3015 1595,2965 1624,2914 1682,2914" fill="#5c5c66"/><polygon points="1711,3065 1682,3116 1624,3116 1595,3065 1624,3015 1682,3015" fill="#2f5d3a"/><polygon points="1711,3166 1682,3216 1624,3216 1595,3166 1624,3116 1682,3116" fill="#2f5d3a"/><polygon points="1711,3266 1682,3316 1624,3316 1595,3266 1624,3216 1682,3216" fill="#7a7440"/><polygon points="1711,3367 1682,3417 1624,3417 1595,3367 1624,3316 1682,3316" fill="#7a7440"/><polygon points="1798,3015 1769,3065 1711,3065 1682,3015 1711,2965 1769,2965" fill="#41553f"/><polygon points="1798,3116 1769,3166 1711,3166 1682,3116 1711,3065 1769,3065" fill="#7a7440"/><polygon points="1798,3216 1769,3266 1711,3266 1682,3216 1711,3166 1769,3166" fill="#5c5c66"/><polygon points="1798,3316 1769,3367 1711,3367 1682,3316 1711,3266 1769,3266" fill="#2f5d3a"/><polygon points="1885,2965 1856,3015 1798,3015 1769,2965 1798,2914 1856,2914" fill="#2f5d3a"/><polygon points="1885,3065 1856,3116 1798,3116 1769,3065 1798,3015 1856,3015" fill="#7a7440"/><polygon points="1885,3166 1856,3216 1798,3216 1769,3166 1798,3116 1856,3116" fill="#7a7440"/><polygon points="1885,3266 1856,3316 1798,3316 1769,3266 1798,3216 1856,3216" fill="#41553f"/><polygon points="1885,3367 1856,3417 1798,3417 1769,3367 1798,3316 1856,3316" fill="#7a7440"/></g><g fill="#5ec8f0"><circle cx="957" cy="2957" r="7"/><circle cx="1305" cy="3158" r="7"/></g><g font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#a3b0c0" fill-opacity=".7" text-anchor="middle"><text x="783" y="3008">9,59</text><text x="783" y="3108">9,61</text><text x="783" y="3209">9,63</text><text x="783" y="3309">9,65</text><text x="783" y="3410">9,67</text><text x="870" y="3058">10,60</text><text x="870" y="3158">10,62</text><text x="870" y="3259">10,64</text><text x="870" y="3360">10,66</text><text x="957" y="3008">11,59</text><text x="957" y="3108">11,61</text><text x="957" y="3209">11,63</text><text x="957" y="3309">11,65</text><text x="957" y="3410">11,67</text><text x="1044" y="3058">12,60</text><text x="1044" y="3158">12,62</text><text x="1044" y="3259">12,64</text><text x="1044" y="3360">12,66</text><text x="1131" y="3008">13,59</text><text x="1131" y="3108">13,61</text><text x="1131" y="3209">13,63</text><text x="1131" y="3309">13,65</text><text x="1131" y="3410">13,67</text><text x="1218" y="3058">14,60</text><text x="1218" y="3158">14,62</text><text x="1218" y="3259">14,64</text><text x="1218" y="3360">14,66</text><text x="1305" y="3008">15,59</text><text x="1305" y="3108">15,61</text><text x="1305" y="3209">15,63</text><text x="1305" y="3309">15,65</text><text x="1305" y="3410">15,67</text><text x="1392" y="3058">16,60</text><text x="1392" y="3158">16,62</text><text x="1392" y="3259">16,64</text><text x="1392" y="3360">16,66</text><text x="1479" y="3008">17,59</text><text x="1479" y="3108">17,61</text><text x="1479" y="3209">17,63</text><text x="1479" y="3309">17,65</text><text x="1479" y="3410">17,67</text><text x="1566" y="3058">18,60</text><text x="1566" y="3158">18,62</text><text x="1566" y="3259">18,64</text><text x="1566" y="3360">18,66</text><text x="1653" y="3008">19,59</text><text x="1653" y="3108">19,61</text><text x="1653" y="3209">19,63</text><text x="1653" y="3309">19,65</text><text x="1653" y="3410">19,67</text><text x="1740" y="3058">20,60</text><text x="1740" y="3158">20,62</text><text x="1740" y="3259">20,64</text><text x="1740" y="3360">20,66</text><text x="1827" y="3008">21,59</text><text x="1827" y="3108">21,61</text><text x="1827" y="3209">21,63</text><text x="1827" y="3309">21,65</text><text x="1827" y="3410">21,67</text></g><g font-family="ui-monospace,Menlo,monospace" font-size="9" fill="#10151c" text-anchor="middle"><text x="957" y="2961">1</text><text x="1305" y="3162">2</text></g><polygon points="1363,3166 1334,3216 1276,3216 1247,3166 1276,3116 1334,3116" fill="#5aa9de" fill-opacity=".18" stroke="#f5f8fc" stroke-width="2.5"/></svg></div>
+  <div class="dock2">
+    <div class="srail" style="width:150px">
+      <div class="s">This hex <span class="ct">3</span></div>
+      <div class="s on">All my units <span class="ct">38</span></div>
+      <div class="grp">Armies</div>
+      <div class="s">North force <span class="ct">3</span></div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div class="head">Units <span class="hint">&mdash; all my units, 38 units</span>
+        <span style="margin-left:auto"><span class="filter">Filter&hellip;</span></span></div>
+      <div style="flex:1;min-height:0;overflow:hidden"><table class="ut">
+<colgroup><col style="width:22px"><col style="width:52px"><col style="width:150px"><col style="width:79px"><col style="width:46px"><col></colgroup>
+<tr><th>*</th><th>Id</th><th>Unit</th><th>Hex</th><th>Men</th><th>Long order</th></tr>
+<tr class="sel"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td class="hexcell">(15,63)</td><td>8</td><td>study lbow</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">6121</td><td>Bowmen II</td><td class="hexcell">(15,63)</td><td>6</td><td>study lbow</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">4410</td><td>Longbows</td><td class="hexcell">(9,57)</td><td>14</td><td>work</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">7710</td><td>Miners</td><td class="hexcell">(11,59)</td><td>22</td><td>produce IRON</td></tr>
+</table></div>
+    </div>
+  </div>
+</div></div>
+  <ul class="notes">
+    <li>One rule for the whole application: choosing a unit puts you where it stands.</li>
+    <li>Nothing new to discover &mdash; the thing you already do simply works.</li>
+  </ul>
+</div>
+
+<h3 class="sec">2 &mdash; the unit is on another level</h3>
+<p><b>7710 Miners</b> is in the underworld. The Hex column leaves the level off on purpose, so the
+row does not say so.</p>
+<div class="card">
+  <div class="hexlab">After clicking the 7710 row &mdash; the level chip and the whole map change with it</div>
+  <div class="stage">
+<div class="app appS">
+  <div class="ahead">
+    <span class="wordmark">ATLANTIS HUD</span>
+    <span class="lbl">Turn</span><span class="chip">71</span>
+    <span class="lbl">Level</span><span class="lvlchip">Underworld</span>
+    <span class="lbl">Hex</span><span class="chip">cavern (11,59)</span>
+    <span class="right"><span class="btn-o">Orders</span><span class="btn-imp">Import report</span></span>
+  </div>
+  <div class="mapwrap"><svg class="mapsvg" viewBox="487 2818 940 294" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><rect x="487" y="2818" width="940" height="294" fill="#1b212a"/><g fill-opacity=".92" stroke="#0a0e13" stroke-width="1.2"><polygon points="493,2764 464,2814 406,2814 377,2764 406,2714 464,2714" fill="#41553f"/><polygon points="493,2864 464,2914 406,2914 377,2864 406,2814 464,2814" fill="#7a7440"/><polygon points="493,2965 464,3015 406,3015 377,2965 406,2914 464,2914" fill="#5c5c66"/><polygon points="493,3065 464,3116 406,3116 377,3065 406,3015 464,3015" fill="#2f5d3a"/><polygon points="493,3166 464,3216 406,3216 377,3166 406,3116 464,3116" fill="#2f5d3a"/><polygon points="580,2814 551,2864 493,2864 464,2814 493,2764 551,2764" fill="#7a7440"/><polygon points="580,2914 551,2965 493,2965 464,2914 493,2864 551,2864" fill="#7a7440"/><polygon points="580,3015 551,3065 493,3065 464,3015 493,2965 551,2965" fill="#41553f"/><polygon points="580,3116 551,3166 493,3166 464,3116 493,3065 551,3065" fill="#7a7440"/><polygon points="667,2764 638,2814 580,2814 551,2764 580,2714 638,2714" fill="#5c5c66"/><polygon points="667,2864 638,2914 580,2914 551,2864 580,2814 638,2814" fill="#2f5d3a"/><polygon points="667,2965 638,3015 580,3015 551,2965 580,2914 638,2914" fill="#2f5d3a"/><polygon points="667,3065 638,3116 580,3116 551,3065 580,3015 638,3015" fill="#7a7440"/><polygon points="667,3166 638,3216 580,3216 551,3166 580,3116 638,3116" fill="#7a7440"/><polygon points="754,2814 725,2864 667,2864 638,2814 667,2764 725,2764" fill="#41553f"/><polygon points="754,2914 725,2965 667,2965 638,2914 667,2864 725,2864" fill="#7a7440"/><polygon points="754,3015 725,3065 667,3065 638,3015 667,2965 725,2965" fill="#5c5c66"/><polygon points="754,3116 725,3166 667,3166 638,3116 667,3065 725,3065" fill="#2f5d3a"/><polygon points="841,2764 812,2814 754,2814 725,2764 754,2714 812,2714" fill="#2f5d3a"/><polygon points="841,2864 812,2914 754,2914 725,2864 754,2814 812,2814" fill="#7a7440"/><polygon points="841,2965 812,3015 754,3015 725,2965 754,2914 812,2914" fill="#7a7440"/><polygon points="841,3065 812,3116 754,3116 725,3065 754,3015 812,3015" fill="#41553f"/><polygon points="841,3166 812,3216 754,3216 725,3166 754,3116 812,3116" fill="#7a7440"/><polygon points="928,2814 899,2864 841,2864 812,2814 841,2764 899,2764" fill="#5c5c66"/><polygon points="928,2914 899,2965 841,2965 812,2914 841,2864 899,2864" fill="#2f5d3a"/><polygon points="928,3015 899,3065 841,3065 812,3015 841,2965 899,2965" fill="#2f5d3a"/><polygon points="928,3116 899,3166 841,3166 812,3116 841,3065 899,3065" fill="#7a7440"/><polygon points="1015,2764 986,2814 928,2814 899,2764 928,2714 986,2714" fill="#7a7440"/><polygon points="1015,2864 986,2914 928,2914 899,2864 928,2814 986,2814" fill="#41553f"/><polygon points="1015,2965 986,3015 928,3015 899,2965 928,2914 986,2914" fill="#7a7440"/><polygon points="1015,3065 986,3116 928,3116 899,3065 928,3015 986,3015" fill="#5c5c66"/><polygon points="1015,3166 986,3216 928,3216 899,3166 928,3116 986,3116" fill="#2f5d3a"/><polygon points="1102,2814 1073,2864 1015,2864 986,2814 1015,2764 1073,2764" fill="#2f5d3a"/><polygon points="1102,2914 1073,2965 1015,2965 986,2914 1015,2864 1073,2864" fill="#7a7440"/><polygon points="1102,3015 1073,3065 1015,3065 986,3015 1015,2965 1073,2965" fill="#7a7440"/><polygon points="1102,3116 1073,3166 1015,3166 986,3116 1015,3065 1073,3065" fill="#41553f"/><polygon points="1189,2764 1160,2814 1102,2814 1073,2764 1102,2714 1160,2714" fill="#7a7440"/><polygon points="1189,2864 1160,2914 1102,2914 1073,2864 1102,2814 1160,2814" fill="#5c5c66"/><polygon points="1189,2965 1160,3015 1102,3015 1073,2965 1102,2914 1160,2914" fill="#2f5d3a"/><polygon points="1189,3065 1160,3116 1102,3116 1073,3065 1102,3015 1160,3015" fill="#2f5d3a"/><polygon points="1189,3166 1160,3216 1102,3216 1073,3166 1102,3116 1160,3116" fill="#7a7440"/><polygon points="1276,2814 1247,2864 1189,2864 1160,2814 1189,2764 1247,2764" fill="#7a7440"/><polygon points="1276,2914 1247,2965 1189,2965 1160,2914 1189,2864 1247,2864" fill="#41553f"/><polygon points="1276,3015 1247,3065 1189,3065 1160,3015 1189,2965 1247,2965" fill="#7a7440"/><polygon points="1276,3116 1247,3166 1189,3166 1160,3116 1189,3065 1247,3065" fill="#5c5c66"/><polygon points="1363,2764 1334,2814 1276,2814 1247,2764 1276,2714 1334,2714" fill="#2f5d3a"/><polygon points="1363,2864 1334,2914 1276,2914 1247,2864 1276,2814 1334,2814" fill="#2f5d3a"/><polygon points="1363,2965 1334,3015 1276,3015 1247,2965 1276,2914 1334,2914" fill="#7a7440"/><polygon points="1363,3065 1334,3116 1276,3116 1247,3065 1276,3015 1334,3015" fill="#7a7440"/><polygon points="1363,3166 1334,3216 1276,3216 1247,3166 1276,3116 1334,3116" fill="#41553f"/><polygon points="1450,2814 1421,2864 1363,2864 1334,2814 1363,2764 1421,2764" fill="#7a7440"/><polygon points="1450,2914 1421,2965 1363,2965 1334,2914 1363,2864 1421,2864" fill="#5c5c66"/><polygon points="1450,3015 1421,3065 1363,3065 1334,3015 1363,2965 1421,2965" fill="#2f5d3a"/><polygon points="1450,3116 1421,3166 1363,3166 1334,3116 1363,3065 1421,3065" fill="#2f5d3a"/><polygon points="1537,2764 1508,2814 1450,2814 1421,2764 1450,2714 1508,2714" fill="#7a7440"/><polygon points="1537,2864 1508,2914 1450,2914 1421,2864 1450,2814 1508,2814" fill="#7a7440"/><polygon points="1537,2965 1508,3015 1450,3015 1421,2965 1450,2914 1508,2914" fill="#41553f"/><polygon points="1537,3065 1508,3116 1450,3116 1421,3065 1450,3015 1508,3015" fill="#7a7440"/><polygon points="1537,3166 1508,3216 1450,3216 1421,3166 1450,3116 1508,3116" fill="#5c5c66"/></g><g fill="#5ec8f0"><circle cx="783" cy="2856" r="7"/><circle cx="957" cy="2957" r="7"/><circle cx="1305" cy="3158" r="7"/></g><g font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#a3b0c0" fill-opacity=".7" text-anchor="middle"><text x="435" y="2807">5,55</text><text x="435" y="2907">5,57</text><text x="435" y="3008">5,59</text><text x="435" y="3108">5,61</text><text x="435" y="3209">5,63</text><text x="522" y="2857">6,56</text><text x="522" y="2958">6,58</text><text x="522" y="3058">6,60</text><text x="522" y="3158">6,62</text><text x="609" y="2807">7,55</text><text x="609" y="2907">7,57</text><text x="609" y="3008">7,59</text><text x="609" y="3108">7,61</text><text x="609" y="3209">7,63</text><text x="696" y="2857">8,56</text><text x="696" y="2958">8,58</text><text x="696" y="3058">8,60</text><text x="696" y="3158">8,62</text><text x="783" y="2807">9,55</text><text x="783" y="2907">9,57</text><text x="783" y="3008">9,59</text><text x="783" y="3108">9,61</text><text x="783" y="3209">9,63</text><text x="870" y="2857">10,56</text><text x="870" y="2958">10,58</text><text x="870" y="3058">10,60</text><text x="870" y="3158">10,62</text><text x="957" y="2807">11,55</text><text x="957" y="2907">11,57</text><text x="957" y="3008">11,59</text><text x="957" y="3108">11,61</text><text x="957" y="3209">11,63</text><text x="1044" y="2857">12,56</text><text x="1044" y="2958">12,58</text><text x="1044" y="3058">12,60</text><text x="1044" y="3158">12,62</text><text x="1131" y="2807">13,55</text><text x="1131" y="2907">13,57</text><text x="1131" y="3008">13,59</text><text x="1131" y="3108">13,61</text><text x="1131" y="3209">13,63</text><text x="1218" y="2857">14,56</text><text x="1218" y="2958">14,58</text><text x="1218" y="3058">14,60</text><text x="1218" y="3158">14,62</text><text x="1305" y="2807">15,55</text><text x="1305" y="2907">15,57</text><text x="1305" y="3008">15,59</text><text x="1305" y="3108">15,61</text><text x="1305" y="3209">15,63</text><text x="1392" y="2857">16,56</text><text x="1392" y="2958">16,58</text><text x="1392" y="3058">16,60</text><text x="1392" y="3158">16,62</text><text x="1479" y="2807">17,55</text><text x="1479" y="2907">17,57</text><text x="1479" y="3008">17,59</text><text x="1479" y="3108">17,61</text><text x="1479" y="3209">17,63</text></g><g font-family="ui-monospace,Menlo,monospace" font-size="9" fill="#10151c" text-anchor="middle"><text x="783" y="2860">2</text><text x="957" y="2961">1</text><text x="1305" y="3162">2</text></g><polygon points="1015,2965 986,3015 928,3015 899,2965 928,2914 986,2914" fill="#5aa9de" fill-opacity=".18" stroke="#f5f8fc" stroke-width="2.5"/></svg><div class="callout" style="left:20px;top:12px">a different level of the map entirely</div></div>
+  <div class="dock2">
+    <div class="srail" style="width:150px">
+      <div class="s">This hex <span class="ct">3</span></div>
+      <div class="s on">All my units <span class="ct">38</span></div>
+      <div class="grp">Armies</div>
+      <div class="s">North force <span class="ct">3</span></div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div class="head">Units <span class="hint">&mdash; all my units, 38 units</span>
+        <span style="margin-left:auto"><span class="filter">Filter&hellip;</span></span></div>
+      <div style="flex:1;min-height:0;overflow:hidden"><table class="ut">
+<colgroup><col style="width:22px"><col style="width:52px"><col style="width:150px"><col style="width:79px"><col style="width:46px"><col></colgroup>
+<tr><th>*</th><th>Id</th><th>Unit</th><th>Hex</th><th>Men</th><th>Long order</th></tr>
+<tr class=""><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td class="hexcell">(15,63)</td><td>8</td><td>study lbow</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">6121</td><td>Bowmen II</td><td class="hexcell">(15,63)</td><td>6</td><td>study lbow</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">4410</td><td>Longbows</td><td class="hexcell">(9,57)</td><td>14</td><td>work</td></tr>
+<tr class="sel"><td class="o">*</td><td class="idown">7710</td><td>Miners</td><td class="hexcell">(11,59)</td><td>22</td><td>produce IRON</td></tr>
+</table></div>
+    </div>
+  </div>
+</div></div>
+  <ul class="notes">
+    <li>Exactly what <span class="kbd">Alt</span>+<span class="kbd">&darr;</span>, the palette and
+      the problems panel already do &mdash; the level is switched first, then the hex selected.</li>
+    <li class="n">It is the largest thing one click on a row does, and it is deliberate: &ldquo;where
+      it stands&rdquo; has to be honest or the rule is not one.</li>
+  </ul>
+</div>
+
+<h3 class="sec">3 &mdash; the unit is already in the selected hex, and the map was dragged away</h3>
+<div class="card">
+  <div class="hexlab">Before &mdash; (9,57) is selected, but the map has been dragged north-east</div>
+  <div class="stage">
+<div class="app appS">
+  <div class="ahead">
+    <span class="wordmark">ATLANTIS HUD</span>
+    <span class="lbl">Turn</span><span class="chip">71</span>
+    <span class="lbl">Level</span><span class="lvlchip">Surface</span>
+    <span class="lbl">Hex</span><span class="chip">plain (9,57)</span>
+    <span class="right"><span class="btn-o">Orders</span><span class="btn-imp">Import report</span></span>
+  </div>
+  <div class="mapwrap"><svg class="mapsvg" viewBox="835 2315 940 294" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><rect x="835" y="2315" width="940" height="294" fill="#1b212a"/><g fill-opacity=".92" stroke="#0a0e13" stroke-width="1.2"><polygon points="841,2362 812,2412 754,2412 725,2362 754,2312 812,2312" fill="#41553f"/><polygon points="841,2462 812,2512 754,2512 725,2462 754,2412 812,2412" fill="#7a7440"/><polygon points="841,2563 812,2613 754,2613 725,2563 754,2512 812,2512" fill="#5c5c66"/><polygon points="841,2663 812,2714 754,2714 725,2663 754,2613 812,2613" fill="#2f5d3a"/><polygon points="928,2312 899,2362 841,2362 812,2312 841,2261 899,2261" fill="#2f5d3a"/><polygon points="928,2412 899,2462 841,2462 812,2412 841,2362 899,2362" fill="#7a7440"/><polygon points="928,2512 899,2563 841,2563 812,2512 841,2462 899,2462" fill="#7a7440"/><polygon points="928,2613 899,2663 841,2663 812,2613 841,2563 899,2563" fill="#41553f"/><polygon points="1015,2362 986,2412 928,2412 899,2362 928,2312 986,2312" fill="#5c5c66"/><polygon points="1015,2462 986,2512 928,2512 899,2462 928,2412 986,2412" fill="#2f5d3a"/><polygon points="1015,2563 986,2613 928,2613 899,2563 928,2512 986,2512" fill="#2f5d3a"/><polygon points="1015,2663 986,2714 928,2714 899,2663 928,2613 986,2613" fill="#7a7440"/><polygon points="1102,2312 1073,2362 1015,2362 986,2312 1015,2261 1073,2261" fill="#7a7440"/><polygon points="1102,2412 1073,2462 1015,2462 986,2412 1015,2362 1073,2362" fill="#41553f"/><polygon points="1102,2512 1073,2563 1015,2563 986,2512 1015,2462 1073,2462" fill="#7a7440"/><polygon points="1102,2613 1073,2663 1015,2663 986,2613 1015,2563 1073,2563" fill="#5c5c66"/><polygon points="1189,2362 1160,2412 1102,2412 1073,2362 1102,2312 1160,2312" fill="#2f5d3a"/><polygon points="1189,2462 1160,2512 1102,2512 1073,2462 1102,2412 1160,2412" fill="#7a7440"/><polygon points="1189,2563 1160,2613 1102,2613 1073,2563 1102,2512 1160,2512" fill="#7a7440"/><polygon points="1189,2663 1160,2714 1102,2714 1073,2663 1102,2613 1160,2613" fill="#41553f"/><polygon points="1276,2312 1247,2362 1189,2362 1160,2312 1189,2261 1247,2261" fill="#7a7440"/><polygon points="1276,2412 1247,2462 1189,2462 1160,2412 1189,2362 1247,2362" fill="#5c5c66"/><polygon points="1276,2512 1247,2563 1189,2563 1160,2512 1189,2462 1247,2462" fill="#2f5d3a"/><polygon points="1276,2613 1247,2663 1189,2663 1160,2613 1189,2563 1247,2563" fill="#2f5d3a"/><polygon points="1363,2362 1334,2412 1276,2412 1247,2362 1276,2312 1334,2312" fill="#7a7440"/><polygon points="1363,2462 1334,2512 1276,2512 1247,2462 1276,2412 1334,2412" fill="#41553f"/><polygon points="1363,2563 1334,2613 1276,2613 1247,2563 1276,2512 1334,2512" fill="#7a7440"/><polygon points="1363,2663 1334,2714 1276,2714 1247,2663 1276,2613 1334,2613" fill="#5c5c66"/><polygon points="1450,2312 1421,2362 1363,2362 1334,2312 1363,2261 1421,2261" fill="#2f5d3a"/><polygon points="1450,2412 1421,2462 1363,2462 1334,2412 1363,2362 1421,2362" fill="#2f5d3a"/><polygon points="1450,2512 1421,2563 1363,2563 1334,2512 1363,2462 1421,2462" fill="#7a7440"/><polygon points="1450,2613 1421,2663 1363,2663 1334,2613 1363,2563 1421,2563" fill="#7a7440"/><polygon points="1537,2362 1508,2412 1450,2412 1421,2362 1450,2312 1508,2312" fill="#7a7440"/><polygon points="1537,2462 1508,2512 1450,2512 1421,2462 1450,2412 1508,2412" fill="#5c5c66"/><polygon points="1537,2563 1508,2613 1450,2613 1421,2563 1450,2512 1508,2512" fill="#2f5d3a"/><polygon points="1537,2663 1508,2714 1450,2714 1421,2663 1450,2613 1508,2613" fill="#2f5d3a"/><polygon points="1624,2312 1595,2362 1537,2362 1508,2312 1537,2261 1595,2261" fill="#7a7440"/><polygon points="1624,2412 1595,2462 1537,2462 1508,2412 1537,2362 1595,2362" fill="#7a7440"/><polygon points="1624,2512 1595,2563 1537,2563 1508,2512 1537,2462 1595,2462" fill="#41553f"/><polygon points="1624,2613 1595,2663 1537,2663 1508,2613 1537,2563 1595,2563" fill="#7a7440"/><polygon points="1711,2362 1682,2412 1624,2412 1595,2362 1624,2312 1682,2312" fill="#2f5d3a"/><polygon points="1711,2462 1682,2512 1624,2512 1595,2462 1624,2412 1682,2412" fill="#2f5d3a"/><polygon points="1711,2563 1682,2613 1624,2613 1595,2563 1624,2512 1682,2512" fill="#7a7440"/><polygon points="1711,2663 1682,2714 1624,2714 1595,2663 1624,2613 1682,2613" fill="#7a7440"/><polygon points="1798,2312 1769,2362 1711,2362 1682,2312 1711,2261 1769,2261" fill="#41553f"/><polygon points="1798,2412 1769,2462 1711,2462 1682,2412 1711,2362 1769,2362" fill="#7a7440"/><polygon points="1798,2512 1769,2563 1711,2563 1682,2512 1711,2462 1769,2462" fill="#5c5c66"/><polygon points="1798,2613 1769,2663 1711,2663 1682,2613 1711,2563 1769,2563" fill="#2f5d3a"/><polygon points="1885,2362 1856,2412 1798,2412 1769,2362 1798,2312 1856,2312" fill="#7a7440"/><polygon points="1885,2462 1856,2512 1798,2512 1769,2462 1798,2412 1856,2412" fill="#7a7440"/><polygon points="1885,2563 1856,2613 1798,2613 1769,2563 1798,2512 1856,2512" fill="#41553f"/><polygon points="1885,2663 1856,2714 1798,2714 1769,2663 1798,2613 1856,2613" fill="#7a7440"/></g><g fill="#5ec8f0"><circle cx="1131" cy="2555" r="7"/></g><g font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#a3b0c0" fill-opacity=".7" text-anchor="middle"><text x="783" y="2405">9,47</text><text x="783" y="2505">9,49</text><text x="783" y="2606">9,51</text><text x="783" y="2706">9,53</text><text x="870" y="2354">10,46</text><text x="870" y="2455">10,48</text><text x="870" y="2556">10,50</text><text x="870" y="2656">10,52</text><text x="957" y="2405">11,47</text><text x="957" y="2505">11,49</text><text x="957" y="2606">11,51</text><text x="957" y="2706">11,53</text><text x="1044" y="2354">12,46</text><text x="1044" y="2455">12,48</text><text x="1044" y="2556">12,50</text><text x="1044" y="2656">12,52</text><text x="1131" y="2405">13,47</text><text x="1131" y="2505">13,49</text><text x="1131" y="2606">13,51</text><text x="1131" y="2706">13,53</text><text x="1218" y="2354">14,46</text><text x="1218" y="2455">14,48</text><text x="1218" y="2556">14,50</text><text x="1218" y="2656">14,52</text><text x="1305" y="2405">15,47</text><text x="1305" y="2505">15,49</text><text x="1305" y="2606">15,51</text><text x="1305" y="2706">15,53</text><text x="1392" y="2354">16,46</text><text x="1392" y="2455">16,48</text><text x="1392" y="2556">16,50</text><text x="1392" y="2656">16,52</text><text x="1479" y="2405">17,47</text><text x="1479" y="2505">17,49</text><text x="1479" y="2606">17,51</text><text x="1479" y="2706">17,53</text><text x="1566" y="2354">18,46</text><text x="1566" y="2455">18,48</text><text x="1566" y="2556">18,50</text><text x="1566" y="2656">18,52</text><text x="1653" y="2405">19,47</text><text x="1653" y="2505">19,49</text><text x="1653" y="2606">19,51</text><text x="1653" y="2706">19,53</text><text x="1740" y="2354">20,46</text><text x="1740" y="2455">20,48</text><text x="1740" y="2556">20,50</text><text x="1740" y="2656">20,52</text><text x="1827" y="2405">21,47</text><text x="1827" y="2505">21,49</text><text x="1827" y="2606">21,51</text><text x="1827" y="2706">21,53</text></g><g font-family="ui-monospace,Menlo,monospace" font-size="9" fill="#10151c" text-anchor="middle"><text x="1131" y="2559">1</text></g><polygon points="841,2864 812,2914 754,2914 725,2864 754,2814 812,2814" fill="#5aa9de" fill-opacity=".18" stroke="#f5f8fc" stroke-width="2.5"/></svg><div class="pan">the selection ring is off the view, down and to the left</div></div>
+  <div class="dock2">
+    <div class="srail" style="width:150px">
+      <div class="s">This hex <span class="ct">3</span></div>
+      <div class="s on">All my units <span class="ct">38</span></div>
+      <div class="grp">Armies</div>
+      <div class="s">North force <span class="ct">3</span></div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div class="head">Units <span class="hint">&mdash; all my units, 38 units</span>
+        <span style="margin-left:auto"><span class="filter">Filter&hellip;</span></span></div>
+      <div style="flex:1;min-height:0;overflow:hidden"><table class="ut">
+<colgroup><col style="width:22px"><col style="width:52px"><col style="width:150px"><col style="width:79px"><col style="width:46px"><col></colgroup>
+<tr><th>*</th><th>Id</th><th>Unit</th><th>Hex</th><th>Men</th><th>Long order</th></tr>
+<tr class=""><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td class="hexcell">(15,63)</td><td>8</td><td>study lbow</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">6121</td><td>Bowmen II</td><td class="hexcell">(15,63)</td><td>6</td><td>study lbow</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">4410</td><td>Longbows</td><td class="hexcell">(9,57)</td><td>14</td><td>work</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">7710</td><td>Miners</td><td class="hexcell">(11,59)</td><td>22</td><td>produce IRON</td></tr>
+</table></div>
+    </div>
+  </div>
+</div></div>
+</div>
+<div class="card">
+  <div class="hexlab">After clicking the 4410 row, whose unit stands in (9,57) &mdash; the map comes back</div>
+  <div class="stage">
+<div class="app appS">
+  <div class="ahead">
+    <span class="wordmark">ATLANTIS HUD</span>
+    <span class="lbl">Turn</span><span class="chip">71</span>
+    <span class="lbl">Level</span><span class="lvlchip">Surface</span>
+    <span class="lbl">Hex</span><span class="chip">plain (9,57)</span>
+    <span class="right"><span class="btn-o">Orders</span><span class="btn-imp">Import report</span></span>
+  </div>
+  <div class="mapwrap"><svg class="mapsvg" viewBox="313 2717 940 294" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><rect x="313" y="2717" width="940" height="294" fill="#1b212a"/><g fill-opacity=".92" stroke="#0a0e13" stroke-width="1.2"><polygon points="319,2663 290,2714 232,2714 203,2663 232,2613 290,2613" fill="#2f5d3a"/><polygon points="319,2764 290,2814 232,2814 203,2764 232,2714 290,2714" fill="#7a7440"/><polygon points="319,2864 290,2914 232,2914 203,2864 232,2814 290,2814" fill="#7a7440"/><polygon points="319,2965 290,3015 232,3015 203,2965 232,2914 290,2914" fill="#41553f"/><polygon points="319,3065 290,3116 232,3116 203,3065 232,3015 290,3015" fill="#7a7440"/><polygon points="406,2714 377,2764 319,2764 290,2714 319,2663 377,2663" fill="#5c5c66"/><polygon points="406,2814 377,2864 319,2864 290,2814 319,2764 377,2764" fill="#2f5d3a"/><polygon points="406,2914 377,2965 319,2965 290,2914 319,2864 377,2864" fill="#2f5d3a"/><polygon points="406,3015 377,3065 319,3065 290,3015 319,2965 377,2965" fill="#7a7440"/><polygon points="493,2663 464,2714 406,2714 377,2663 406,2613 464,2613" fill="#7a7440"/><polygon points="493,2764 464,2814 406,2814 377,2764 406,2714 464,2714" fill="#41553f"/><polygon points="493,2864 464,2914 406,2914 377,2864 406,2814 464,2814" fill="#7a7440"/><polygon points="493,2965 464,3015 406,3015 377,2965 406,2914 464,2914" fill="#5c5c66"/><polygon points="493,3065 464,3116 406,3116 377,3065 406,3015 464,3015" fill="#2f5d3a"/><polygon points="580,2714 551,2764 493,2764 464,2714 493,2663 551,2663" fill="#2f5d3a"/><polygon points="580,2814 551,2864 493,2864 464,2814 493,2764 551,2764" fill="#7a7440"/><polygon points="580,2914 551,2965 493,2965 464,2914 493,2864 551,2864" fill="#7a7440"/><polygon points="580,3015 551,3065 493,3065 464,3015 493,2965 551,2965" fill="#41553f"/><polygon points="667,2663 638,2714 580,2714 551,2663 580,2613 638,2613" fill="#7a7440"/><polygon points="667,2764 638,2814 580,2814 551,2764 580,2714 638,2714" fill="#5c5c66"/><polygon points="667,2864 638,2914 580,2914 551,2864 580,2814 638,2814" fill="#2f5d3a"/><polygon points="667,2965 638,3015 580,3015 551,2965 580,2914 638,2914" fill="#2f5d3a"/><polygon points="667,3065 638,3116 580,3116 551,3065 580,3015 638,3015" fill="#7a7440"/><polygon points="754,2714 725,2764 667,2764 638,2714 667,2663 725,2663" fill="#7a7440"/><polygon points="754,2814 725,2864 667,2864 638,2814 667,2764 725,2764" fill="#41553f"/><polygon points="754,2914 725,2965 667,2965 638,2914 667,2864 725,2864" fill="#7a7440"/><polygon points="754,3015 725,3065 667,3065 638,3015 667,2965 725,2965" fill="#5c5c66"/><polygon points="841,2663 812,2714 754,2714 725,2663 754,2613 812,2613" fill="#2f5d3a"/><polygon points="841,2764 812,2814 754,2814 725,2764 754,2714 812,2714" fill="#2f5d3a"/><polygon points="841,2864 812,2914 754,2914 725,2864 754,2814 812,2814" fill="#7a7440"/><polygon points="841,2965 812,3015 754,3015 725,2965 754,2914 812,2914" fill="#7a7440"/><polygon points="841,3065 812,3116 754,3116 725,3065 754,3015 812,3015" fill="#41553f"/><polygon points="928,2714 899,2764 841,2764 812,2714 841,2663 899,2663" fill="#7a7440"/><polygon points="928,2814 899,2864 841,2864 812,2814 841,2764 899,2764" fill="#5c5c66"/><polygon points="928,2914 899,2965 841,2965 812,2914 841,2864 899,2864" fill="#2f5d3a"/><polygon points="928,3015 899,3065 841,3065 812,3015 841,2965 899,2965" fill="#2f5d3a"/><polygon points="1015,2663 986,2714 928,2714 899,2663 928,2613 986,2613" fill="#7a7440"/><polygon points="1015,2764 986,2814 928,2814 899,2764 928,2714 986,2714" fill="#7a7440"/><polygon points="1015,2864 986,2914 928,2914 899,2864 928,2814 986,2814" fill="#41553f"/><polygon points="1015,2965 986,3015 928,3015 899,2965 928,2914 986,2914" fill="#7a7440"/><polygon points="1015,3065 986,3116 928,3116 899,3065 928,3015 986,3015" fill="#5c5c66"/><polygon points="1102,2714 1073,2764 1015,2764 986,2714 1015,2663 1073,2663" fill="#2f5d3a"/><polygon points="1102,2814 1073,2864 1015,2864 986,2814 1015,2764 1073,2764" fill="#2f5d3a"/><polygon points="1102,2914 1073,2965 1015,2965 986,2914 1015,2864 1073,2864" fill="#7a7440"/><polygon points="1102,3015 1073,3065 1015,3065 986,3015 1015,2965 1073,2965" fill="#7a7440"/><polygon points="1189,2663 1160,2714 1102,2714 1073,2663 1102,2613 1160,2613" fill="#41553f"/><polygon points="1189,2764 1160,2814 1102,2814 1073,2764 1102,2714 1160,2714" fill="#7a7440"/><polygon points="1189,2864 1160,2914 1102,2914 1073,2864 1102,2814 1160,2814" fill="#5c5c66"/><polygon points="1189,2965 1160,3015 1102,3015 1073,2965 1102,2914 1160,2914" fill="#2f5d3a"/><polygon points="1189,3065 1160,3116 1102,3116 1073,3065 1102,3015 1160,3015" fill="#2f5d3a"/><polygon points="1276,2714 1247,2764 1189,2764 1160,2714 1189,2663 1247,2663" fill="#7a7440"/><polygon points="1276,2814 1247,2864 1189,2864 1160,2814 1189,2764 1247,2764" fill="#7a7440"/><polygon points="1276,2914 1247,2965 1189,2965 1160,2914 1189,2864 1247,2864" fill="#41553f"/><polygon points="1276,3015 1247,3065 1189,3065 1160,3015 1189,2965 1247,2965" fill="#7a7440"/><polygon points="1363,2663 1334,2714 1276,2714 1247,2663 1276,2613 1334,2613" fill="#5c5c66"/><polygon points="1363,2764 1334,2814 1276,2814 1247,2764 1276,2714 1334,2714" fill="#2f5d3a"/><polygon points="1363,2864 1334,2914 1276,2914 1247,2864 1276,2814 1334,2814" fill="#2f5d3a"/><polygon points="1363,2965 1334,3015 1276,3015 1247,2965 1276,2914 1334,2914" fill="#7a7440"/><polygon points="1363,3065 1334,3116 1276,3116 1247,3065 1276,3015 1334,3015" fill="#7a7440"/></g><g fill="#5ec8f0"><circle cx="783" cy="2856" r="7"/><circle cx="957" cy="2957" r="7"/></g><g font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#a3b0c0" fill-opacity=".7" text-anchor="middle"><text x="261" y="2706">3,53</text><text x="261" y="2807">3,55</text><text x="261" y="2907">3,57</text><text x="261" y="3008">3,59</text><text x="261" y="3108">3,61</text><text x="348" y="2756">4,54</text><text x="348" y="2857">4,56</text><text x="348" y="2958">4,58</text><text x="348" y="3058">4,60</text><text x="435" y="2706">5,53</text><text x="435" y="2807">5,55</text><text x="435" y="2907">5,57</text><text x="435" y="3008">5,59</text><text x="435" y="3108">5,61</text><text x="522" y="2756">6,54</text><text x="522" y="2857">6,56</text><text x="522" y="2958">6,58</text><text x="522" y="3058">6,60</text><text x="609" y="2706">7,53</text><text x="609" y="2807">7,55</text><text x="609" y="2907">7,57</text><text x="609" y="3008">7,59</text><text x="609" y="3108">7,61</text><text x="696" y="2756">8,54</text><text x="696" y="2857">8,56</text><text x="696" y="2958">8,58</text><text x="696" y="3058">8,60</text><text x="783" y="2706">9,53</text><text x="783" y="2807">9,55</text><text x="783" y="2907">9,57</text><text x="783" y="3008">9,59</text><text x="783" y="3108">9,61</text><text x="870" y="2756">10,54</text><text x="870" y="2857">10,56</text><text x="870" y="2958">10,58</text><text x="870" y="3058">10,60</text><text x="957" y="2706">11,53</text><text x="957" y="2807">11,55</text><text x="957" y="2907">11,57</text><text x="957" y="3008">11,59</text><text x="957" y="3108">11,61</text><text x="1044" y="2756">12,54</text><text x="1044" y="2857">12,56</text><text x="1044" y="2958">12,58</text><text x="1044" y="3058">12,60</text><text x="1131" y="2706">13,53</text><text x="1131" y="2807">13,55</text><text x="1131" y="2907">13,57</text><text x="1131" y="3008">13,59</text><text x="1131" y="3108">13,61</text><text x="1218" y="2756">14,54</text><text x="1218" y="2857">14,56</text><text x="1218" y="2958">14,58</text><text x="1218" y="3058">14,60</text><text x="1305" y="2706">15,53</text><text x="1305" y="2807">15,55</text><text x="1305" y="2907">15,57</text><text x="1305" y="3008">15,59</text><text x="1305" y="3108">15,61</text></g><g font-family="ui-monospace,Menlo,monospace" font-size="9" fill="#10151c" text-anchor="middle"><text x="783" y="2860">2</text><text x="957" y="2961">1</text></g><polygon points="841,2864 812,2914 754,2914 725,2864 754,2814 812,2814" fill="#5aa9de" fill-opacity=".18" stroke="#f5f8fc" stroke-width="2.5"/></svg><div class="callout" style="left:300px;top:118px">4410 stands in the hex that was already selected</div></div>
+  <div class="dock2">
+    <div class="srail" style="width:150px">
+      <div class="s">This hex <span class="ct">3</span></div>
+      <div class="s on">All my units <span class="ct">38</span></div>
+      <div class="grp">Armies</div>
+      <div class="s">North force <span class="ct">3</span></div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div class="head">Units <span class="hint">&mdash; all my units, 38 units</span>
+        <span style="margin-left:auto"><span class="filter">Filter&hellip;</span></span></div>
+      <div style="flex:1;min-height:0;overflow:hidden"><table class="ut">
+<colgroup><col style="width:22px"><col style="width:52px"><col style="width:150px"><col style="width:79px"><col style="width:46px"><col></colgroup>
+<tr><th>*</th><th>Id</th><th>Unit</th><th>Hex</th><th>Men</th><th>Long order</th></tr>
+<tr class=""><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td class="hexcell">(15,63)</td><td>8</td><td>study lbow</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">6121</td><td>Bowmen II</td><td class="hexcell">(15,63)</td><td>6</td><td>study lbow</td></tr>
+<tr class="sel"><td class="o">*</td><td class="idown">4410</td><td>Longbows</td><td class="hexcell">(9,57)</td><td>14</td><td>work</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">7710</td><td>Miners</td><td class="hexcell">(11,59)</td><td>22</td><td>produce IRON</td></tr>
+</table></div>
+    </div>
+  </div>
+</div></div>
+  <ul class="notes">
+    <li>No exception: a row click always ends with the unit's hex on screen. The map's
+      <code>pickEpoch</code> exists precisely so asking for the hex you are already on still moves
+      the map (<code>ah-lqct</code>).</li>
+    <li class="n">A pan made on purpose is undone by it. Accepted: the alternative is two rows in
+      one list behaving differently for a reason nothing on screen shows.</li>
+  </ul>
+</div>
+
+<h3 class="sec">4 &mdash; an Army member this turn's report does not have</h3>
+<div class="card">
+  <div class="hexlab">After clicking the 3080 row &mdash; it highlights; the map does not move; nothing is said</div>
+  <div class="stage">
+<div class="app appS">
+  <div class="ahead">
+    <span class="wordmark">ATLANTIS HUD</span>
+    <span class="lbl">Turn</span><span class="chip">71</span>
+    <span class="lbl">Level</span><span class="lvlchip">Surface</span>
+    <span class="lbl">Hex</span><span class="chip">plain (9,57)</span>
+    <span class="right"><span class="btn-o">Orders</span><span class="btn-imp">Import report</span></span>
+  </div>
+  <div class="mapwrap"><svg class="mapsvg" viewBox="313 2717 940 294" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><rect x="313" y="2717" width="940" height="294" fill="#1b212a"/><g fill-opacity=".92" stroke="#0a0e13" stroke-width="1.2"><polygon points="319,2663 290,2714 232,2714 203,2663 232,2613 290,2613" fill="#2f5d3a"/><polygon points="319,2764 290,2814 232,2814 203,2764 232,2714 290,2714" fill="#7a7440"/><polygon points="319,2864 290,2914 232,2914 203,2864 232,2814 290,2814" fill="#7a7440"/><polygon points="319,2965 290,3015 232,3015 203,2965 232,2914 290,2914" fill="#41553f"/><polygon points="319,3065 290,3116 232,3116 203,3065 232,3015 290,3015" fill="#7a7440"/><polygon points="406,2714 377,2764 319,2764 290,2714 319,2663 377,2663" fill="#5c5c66"/><polygon points="406,2814 377,2864 319,2864 290,2814 319,2764 377,2764" fill="#2f5d3a"/><polygon points="406,2914 377,2965 319,2965 290,2914 319,2864 377,2864" fill="#2f5d3a"/><polygon points="406,3015 377,3065 319,3065 290,3015 319,2965 377,2965" fill="#7a7440"/><polygon points="493,2663 464,2714 406,2714 377,2663 406,2613 464,2613" fill="#7a7440"/><polygon points="493,2764 464,2814 406,2814 377,2764 406,2714 464,2714" fill="#41553f"/><polygon points="493,2864 464,2914 406,2914 377,2864 406,2814 464,2814" fill="#7a7440"/><polygon points="493,2965 464,3015 406,3015 377,2965 406,2914 464,2914" fill="#5c5c66"/><polygon points="493,3065 464,3116 406,3116 377,3065 406,3015 464,3015" fill="#2f5d3a"/><polygon points="580,2714 551,2764 493,2764 464,2714 493,2663 551,2663" fill="#2f5d3a"/><polygon points="580,2814 551,2864 493,2864 464,2814 493,2764 551,2764" fill="#7a7440"/><polygon points="580,2914 551,2965 493,2965 464,2914 493,2864 551,2864" fill="#7a7440"/><polygon points="580,3015 551,3065 493,3065 464,3015 493,2965 551,2965" fill="#41553f"/><polygon points="667,2663 638,2714 580,2714 551,2663 580,2613 638,2613" fill="#7a7440"/><polygon points="667,2764 638,2814 580,2814 551,2764 580,2714 638,2714" fill="#5c5c66"/><polygon points="667,2864 638,2914 580,2914 551,2864 580,2814 638,2814" fill="#2f5d3a"/><polygon points="667,2965 638,3015 580,3015 551,2965 580,2914 638,2914" fill="#2f5d3a"/><polygon points="667,3065 638,3116 580,3116 551,3065 580,3015 638,3015" fill="#7a7440"/><polygon points="754,2714 725,2764 667,2764 638,2714 667,2663 725,2663" fill="#7a7440"/><polygon points="754,2814 725,2864 667,2864 638,2814 667,2764 725,2764" fill="#41553f"/><polygon points="754,2914 725,2965 667,2965 638,2914 667,2864 725,2864" fill="#7a7440"/><polygon points="754,3015 725,3065 667,3065 638,3015 667,2965 725,2965" fill="#5c5c66"/><polygon points="841,2663 812,2714 754,2714 725,2663 754,2613 812,2613" fill="#2f5d3a"/><polygon points="841,2764 812,2814 754,2814 725,2764 754,2714 812,2714" fill="#2f5d3a"/><polygon points="841,2864 812,2914 754,2914 725,2864 754,2814 812,2814" fill="#7a7440"/><polygon points="841,2965 812,3015 754,3015 725,2965 754,2914 812,2914" fill="#7a7440"/><polygon points="841,3065 812,3116 754,3116 725,3065 754,3015 812,3015" fill="#41553f"/><polygon points="928,2714 899,2764 841,2764 812,2714 841,2663 899,2663" fill="#7a7440"/><polygon points="928,2814 899,2864 841,2864 812,2814 841,2764 899,2764" fill="#5c5c66"/><polygon points="928,2914 899,2965 841,2965 812,2914 841,2864 899,2864" fill="#2f5d3a"/><polygon points="928,3015 899,3065 841,3065 812,3015 841,2965 899,2965" fill="#2f5d3a"/><polygon points="1015,2663 986,2714 928,2714 899,2663 928,2613 986,2613" fill="#7a7440"/><polygon points="1015,2764 986,2814 928,2814 899,2764 928,2714 986,2714" fill="#7a7440"/><polygon points="1015,2864 986,2914 928,2914 899,2864 928,2814 986,2814" fill="#41553f"/><polygon points="1015,2965 986,3015 928,3015 899,2965 928,2914 986,2914" fill="#7a7440"/><polygon points="1015,3065 986,3116 928,3116 899,3065 928,3015 986,3015" fill="#5c5c66"/><polygon points="1102,2714 1073,2764 1015,2764 986,2714 1015,2663 1073,2663" fill="#2f5d3a"/><polygon points="1102,2814 1073,2864 1015,2864 986,2814 1015,2764 1073,2764" fill="#2f5d3a"/><polygon points="1102,2914 1073,2965 1015,2965 986,2914 1015,2864 1073,2864" fill="#7a7440"/><polygon points="1102,3015 1073,3065 1015,3065 986,3015 1015,2965 1073,2965" fill="#7a7440"/><polygon points="1189,2663 1160,2714 1102,2714 1073,2663 1102,2613 1160,2613" fill="#41553f"/><polygon points="1189,2764 1160,2814 1102,2814 1073,2764 1102,2714 1160,2714" fill="#7a7440"/><polygon points="1189,2864 1160,2914 1102,2914 1073,2864 1102,2814 1160,2814" fill="#5c5c66"/><polygon points="1189,2965 1160,3015 1102,3015 1073,2965 1102,2914 1160,2914" fill="#2f5d3a"/><polygon points="1189,3065 1160,3116 1102,3116 1073,3065 1102,3015 1160,3015" fill="#2f5d3a"/><polygon points="1276,2714 1247,2764 1189,2764 1160,2714 1189,2663 1247,2663" fill="#7a7440"/><polygon points="1276,2814 1247,2864 1189,2864 1160,2814 1189,2764 1247,2764" fill="#7a7440"/><polygon points="1276,2914 1247,2965 1189,2965 1160,2914 1189,2864 1247,2864" fill="#41553f"/><polygon points="1276,3015 1247,3065 1189,3065 1160,3015 1189,2965 1247,2965" fill="#7a7440"/><polygon points="1363,2663 1334,2714 1276,2714 1247,2663 1276,2613 1334,2613" fill="#5c5c66"/><polygon points="1363,2764 1334,2814 1276,2814 1247,2764 1276,2714 1334,2714" fill="#2f5d3a"/><polygon points="1363,2864 1334,2914 1276,2914 1247,2864 1276,2814 1334,2814" fill="#2f5d3a"/><polygon points="1363,2965 1334,3015 1276,3015 1247,2965 1276,2914 1334,2914" fill="#7a7440"/><polygon points="1363,3065 1334,3116 1276,3116 1247,3065 1276,3015 1334,3015" fill="#7a7440"/></g><g fill="#5ec8f0"><circle cx="783" cy="2856" r="7"/><circle cx="957" cy="2957" r="7"/></g><g font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#a3b0c0" fill-opacity=".7" text-anchor="middle"><text x="261" y="2706">3,53</text><text x="261" y="2807">3,55</text><text x="261" y="2907">3,57</text><text x="261" y="3008">3,59</text><text x="261" y="3108">3,61</text><text x="348" y="2756">4,54</text><text x="348" y="2857">4,56</text><text x="348" y="2958">4,58</text><text x="348" y="3058">4,60</text><text x="435" y="2706">5,53</text><text x="435" y="2807">5,55</text><text x="435" y="2907">5,57</text><text x="435" y="3008">5,59</text><text x="435" y="3108">5,61</text><text x="522" y="2756">6,54</text><text x="522" y="2857">6,56</text><text x="522" y="2958">6,58</text><text x="522" y="3058">6,60</text><text x="609" y="2706">7,53</text><text x="609" y="2807">7,55</text><text x="609" y="2907">7,57</text><text x="609" y="3008">7,59</text><text x="609" y="3108">7,61</text><text x="696" y="2756">8,54</text><text x="696" y="2857">8,56</text><text x="696" y="2958">8,58</text><text x="696" y="3058">8,60</text><text x="783" y="2706">9,53</text><text x="783" y="2807">9,55</text><text x="783" y="2907">9,57</text><text x="783" y="3008">9,59</text><text x="783" y="3108">9,61</text><text x="870" y="2756">10,54</text><text x="870" y="2857">10,56</text><text x="870" y="2958">10,58</text><text x="870" y="3058">10,60</text><text x="957" y="2706">11,53</text><text x="957" y="2807">11,55</text><text x="957" y="2907">11,57</text><text x="957" y="3008">11,59</text><text x="957" y="3108">11,61</text><text x="1044" y="2756">12,54</text><text x="1044" y="2857">12,56</text><text x="1044" y="2958">12,58</text><text x="1044" y="3058">12,60</text><text x="1131" y="2706">13,53</text><text x="1131" y="2807">13,55</text><text x="1131" y="2907">13,57</text><text x="1131" y="3008">13,59</text><text x="1131" y="3108">13,61</text><text x="1218" y="2756">14,54</text><text x="1218" y="2857">14,56</text><text x="1218" y="2958">14,58</text><text x="1218" y="3058">14,60</text><text x="1305" y="2706">15,53</text><text x="1305" y="2807">15,55</text><text x="1305" y="2907">15,57</text><text x="1305" y="3008">15,59</text><text x="1305" y="3108">15,61</text></g><g font-family="ui-monospace,Menlo,monospace" font-size="9" fill="#10151c" text-anchor="middle"><text x="783" y="2860">2</text><text x="957" y="2961">1</text></g><polygon points="841,2864 812,2914 754,2914 725,2864 754,2814 812,2814" fill="#5aa9de" fill-opacity=".18" stroke="#f5f8fc" stroke-width="2.5"/></svg><div class="callout" style="left:300px;top:118px">nothing knows where 3080 is, so nothing moves</div></div>
+  <div class="dock2">
+    <div class="srail" style="width:150px">
+      <div class="s">This hex <span class="ct">3</span></div>
+      <div class="s">All my units <span class="ct">38</span></div>
+      <div class="grp">Armies</div>
+      <div class="s on">North force <span class="ct">3</span></div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div class="head">Units <span class="hint">&mdash; north force, 3 units</span>
+        <span style="margin-left:auto"><span class="filter">Filter&hellip;</span></span></div>
+      <div style="flex:1;min-height:0;overflow:hidden"><table class="ut">
+<colgroup><col style="width:22px"><col style="width:52px"><col style="width:150px"><col style="width:79px"><col style="width:75px"><col style="width:46px"><col></colgroup>
+<tr><th>*</th><th>Id</th><th>Unit</th><th>Hex</th><th>Seen</th><th>Men</th><th>Long order</th></tr>
+<tr class=""><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td class="hexcell">(15,63)</td><td>turn 71</td><td>8</td><td>study lbow</td></tr>
+<tr class="sel stale"><td class="o">*</td><td class="idown">3080</td><td>Pikes</td><td class="hexcell">(11,49)</td><td>turn 68</td><td>12</td><td>&mdash;</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">4410</td><td>Longbows</td><td class="hexcell">(9,57)</td><td>turn 71</td><td>14</td><td>work</td></tr>
+</table></div>
+    </div>
+  </div>
+</div></div>
+  <ul class="notes">
+    <li>Unchanged from today for that row. The greyed text and <code>Seen: turn 68</code> are the
+      explanation, and the Remove button &mdash; usually why the row was clicked &mdash; stays reachable.</li>
+    <li class="n">A status line was considered and rejected: it would fire on every click of a row
+      that already says twice over that it is stale.</li>
+  </ul>
+</div>
+
+<h3 class="sec">5 &mdash; the keyboard</h3>
+<div class="card">
+  <div class="hexlab">Arrowed down to 6120 &mdash; selected and focused, map unmoved</div>
+  <div class="stage">
+<div class="app appS">
+  <div class="ahead">
+    <span class="wordmark">ATLANTIS HUD</span>
+    <span class="lbl">Turn</span><span class="chip">71</span>
+    <span class="lbl">Level</span><span class="lvlchip">Surface</span>
+    <span class="lbl">Hex</span><span class="chip">plain (9,57)</span>
+    <span class="right"><span class="btn-o">Orders</span><span class="btn-imp">Import report</span></span>
+  </div>
+  <div class="mapwrap"><svg class="mapsvg" viewBox="313 2717 940 294" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><rect x="313" y="2717" width="940" height="294" fill="#1b212a"/><g fill-opacity=".92" stroke="#0a0e13" stroke-width="1.2"><polygon points="319,2663 290,2714 232,2714 203,2663 232,2613 290,2613" fill="#2f5d3a"/><polygon points="319,2764 290,2814 232,2814 203,2764 232,2714 290,2714" fill="#7a7440"/><polygon points="319,2864 290,2914 232,2914 203,2864 232,2814 290,2814" fill="#7a7440"/><polygon points="319,2965 290,3015 232,3015 203,2965 232,2914 290,2914" fill="#41553f"/><polygon points="319,3065 290,3116 232,3116 203,3065 232,3015 290,3015" fill="#7a7440"/><polygon points="406,2714 377,2764 319,2764 290,2714 319,2663 377,2663" fill="#5c5c66"/><polygon points="406,2814 377,2864 319,2864 290,2814 319,2764 377,2764" fill="#2f5d3a"/><polygon points="406,2914 377,2965 319,2965 290,2914 319,2864 377,2864" fill="#2f5d3a"/><polygon points="406,3015 377,3065 319,3065 290,3015 319,2965 377,2965" fill="#7a7440"/><polygon points="493,2663 464,2714 406,2714 377,2663 406,2613 464,2613" fill="#7a7440"/><polygon points="493,2764 464,2814 406,2814 377,2764 406,2714 464,2714" fill="#41553f"/><polygon points="493,2864 464,2914 406,2914 377,2864 406,2814 464,2814" fill="#7a7440"/><polygon points="493,2965 464,3015 406,3015 377,2965 406,2914 464,2914" fill="#5c5c66"/><polygon points="493,3065 464,3116 406,3116 377,3065 406,3015 464,3015" fill="#2f5d3a"/><polygon points="580,2714 551,2764 493,2764 464,2714 493,2663 551,2663" fill="#2f5d3a"/><polygon points="580,2814 551,2864 493,2864 464,2814 493,2764 551,2764" fill="#7a7440"/><polygon points="580,2914 551,2965 493,2965 464,2914 493,2864 551,2864" fill="#7a7440"/><polygon points="580,3015 551,3065 493,3065 464,3015 493,2965 551,2965" fill="#41553f"/><polygon points="667,2663 638,2714 580,2714 551,2663 580,2613 638,2613" fill="#7a7440"/><polygon points="667,2764 638,2814 580,2814 551,2764 580,2714 638,2714" fill="#5c5c66"/><polygon points="667,2864 638,2914 580,2914 551,2864 580,2814 638,2814" fill="#2f5d3a"/><polygon points="667,2965 638,3015 580,3015 551,2965 580,2914 638,2914" fill="#2f5d3a"/><polygon points="667,3065 638,3116 580,3116 551,3065 580,3015 638,3015" fill="#7a7440"/><polygon points="754,2714 725,2764 667,2764 638,2714 667,2663 725,2663" fill="#7a7440"/><polygon points="754,2814 725,2864 667,2864 638,2814 667,2764 725,2764" fill="#41553f"/><polygon points="754,2914 725,2965 667,2965 638,2914 667,2864 725,2864" fill="#7a7440"/><polygon points="754,3015 725,3065 667,3065 638,3015 667,2965 725,2965" fill="#5c5c66"/><polygon points="841,2663 812,2714 754,2714 725,2663 754,2613 812,2613" fill="#2f5d3a"/><polygon points="841,2764 812,2814 754,2814 725,2764 754,2714 812,2714" fill="#2f5d3a"/><polygon points="841,2864 812,2914 754,2914 725,2864 754,2814 812,2814" fill="#7a7440"/><polygon points="841,2965 812,3015 754,3015 725,2965 754,2914 812,2914" fill="#7a7440"/><polygon points="841,3065 812,3116 754,3116 725,3065 754,3015 812,3015" fill="#41553f"/><polygon points="928,2714 899,2764 841,2764 812,2714 841,2663 899,2663" fill="#7a7440"/><polygon points="928,2814 899,2864 841,2864 812,2814 841,2764 899,2764" fill="#5c5c66"/><polygon points="928,2914 899,2965 841,2965 812,2914 841,2864 899,2864" fill="#2f5d3a"/><polygon points="928,3015 899,3065 841,3065 812,3015 841,2965 899,2965" fill="#2f5d3a"/><polygon points="1015,2663 986,2714 928,2714 899,2663 928,2613 986,2613" fill="#7a7440"/><polygon points="1015,2764 986,2814 928,2814 899,2764 928,2714 986,2714" fill="#7a7440"/><polygon points="1015,2864 986,2914 928,2914 899,2864 928,2814 986,2814" fill="#41553f"/><polygon points="1015,2965 986,3015 928,3015 899,2965 928,2914 986,2914" fill="#7a7440"/><polygon points="1015,3065 986,3116 928,3116 899,3065 928,3015 986,3015" fill="#5c5c66"/><polygon points="1102,2714 1073,2764 1015,2764 986,2714 1015,2663 1073,2663" fill="#2f5d3a"/><polygon points="1102,2814 1073,2864 1015,2864 986,2814 1015,2764 1073,2764" fill="#2f5d3a"/><polygon points="1102,2914 1073,2965 1015,2965 986,2914 1015,2864 1073,2864" fill="#7a7440"/><polygon points="1102,3015 1073,3065 1015,3065 986,3015 1015,2965 1073,2965" fill="#7a7440"/><polygon points="1189,2663 1160,2714 1102,2714 1073,2663 1102,2613 1160,2613" fill="#41553f"/><polygon points="1189,2764 1160,2814 1102,2814 1073,2764 1102,2714 1160,2714" fill="#7a7440"/><polygon points="1189,2864 1160,2914 1102,2914 1073,2864 1102,2814 1160,2814" fill="#5c5c66"/><polygon points="1189,2965 1160,3015 1102,3015 1073,2965 1102,2914 1160,2914" fill="#2f5d3a"/><polygon points="1189,3065 1160,3116 1102,3116 1073,3065 1102,3015 1160,3015" fill="#2f5d3a"/><polygon points="1276,2714 1247,2764 1189,2764 1160,2714 1189,2663 1247,2663" fill="#7a7440"/><polygon points="1276,2814 1247,2864 1189,2864 1160,2814 1189,2764 1247,2764" fill="#7a7440"/><polygon points="1276,2914 1247,2965 1189,2965 1160,2914 1189,2864 1247,2864" fill="#41553f"/><polygon points="1276,3015 1247,3065 1189,3065 1160,3015 1189,2965 1247,2965" fill="#7a7440"/><polygon points="1363,2663 1334,2714 1276,2714 1247,2663 1276,2613 1334,2613" fill="#5c5c66"/><polygon points="1363,2764 1334,2814 1276,2814 1247,2764 1276,2714 1334,2714" fill="#2f5d3a"/><polygon points="1363,2864 1334,2914 1276,2914 1247,2864 1276,2814 1334,2814" fill="#2f5d3a"/><polygon points="1363,2965 1334,3015 1276,3015 1247,2965 1276,2914 1334,2914" fill="#7a7440"/><polygon points="1363,3065 1334,3116 1276,3116 1247,3065 1276,3015 1334,3015" fill="#7a7440"/></g><g fill="#5ec8f0"><circle cx="783" cy="2856" r="7"/><circle cx="957" cy="2957" r="7"/></g><g font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#a3b0c0" fill-opacity=".7" text-anchor="middle"><text x="261" y="2706">3,53</text><text x="261" y="2807">3,55</text><text x="261" y="2907">3,57</text><text x="261" y="3008">3,59</text><text x="261" y="3108">3,61</text><text x="348" y="2756">4,54</text><text x="348" y="2857">4,56</text><text x="348" y="2958">4,58</text><text x="348" y="3058">4,60</text><text x="435" y="2706">5,53</text><text x="435" y="2807">5,55</text><text x="435" y="2907">5,57</text><text x="435" y="3008">5,59</text><text x="435" y="3108">5,61</text><text x="522" y="2756">6,54</text><text x="522" y="2857">6,56</text><text x="522" y="2958">6,58</text><text x="522" y="3058">6,60</text><text x="609" y="2706">7,53</text><text x="609" y="2807">7,55</text><text x="609" y="2907">7,57</text><text x="609" y="3008">7,59</text><text x="609" y="3108">7,61</text><text x="696" y="2756">8,54</text><text x="696" y="2857">8,56</text><text x="696" y="2958">8,58</text><text x="696" y="3058">8,60</text><text x="783" y="2706">9,53</text><text x="783" y="2807">9,55</text><text x="783" y="2907">9,57</text><text x="783" y="3008">9,59</text><text x="783" y="3108">9,61</text><text x="870" y="2756">10,54</text><text x="870" y="2857">10,56</text><text x="870" y="2958">10,58</text><text x="870" y="3058">10,60</text><text x="957" y="2706">11,53</text><text x="957" y="2807">11,55</text><text x="957" y="2907">11,57</text><text x="957" y="3008">11,59</text><text x="957" y="3108">11,61</text><text x="1044" y="2756">12,54</text><text x="1044" y="2857">12,56</text><text x="1044" y="2958">12,58</text><text x="1044" y="3058">12,60</text><text x="1131" y="2706">13,53</text><text x="1131" y="2807">13,55</text><text x="1131" y="2907">13,57</text><text x="1131" y="3008">13,59</text><text x="1131" y="3108">13,61</text><text x="1218" y="2756">14,54</text><text x="1218" y="2857">14,56</text><text x="1218" y="2958">14,58</text><text x="1218" y="3058">14,60</text><text x="1305" y="2706">15,53</text><text x="1305" y="2807">15,55</text><text x="1305" y="2907">15,57</text><text x="1305" y="3008">15,59</text><text x="1305" y="3108">15,61</text></g><g font-family="ui-monospace,Menlo,monospace" font-size="9" fill="#10151c" text-anchor="middle"><text x="783" y="2860">2</text><text x="957" y="2961">1</text></g><polygon points="841,2864 812,2914 754,2914 725,2864 754,2814 812,2814" fill="#5aa9de" fill-opacity=".18" stroke="#f5f8fc" stroke-width="2.5"/></svg></div>
+  <div class="dock2">
+    <div class="srail" style="width:150px">
+      <div class="s">This hex <span class="ct">3</span></div>
+      <div class="s on">All my units <span class="ct">38</span></div>
+      <div class="grp">Armies</div>
+      <div class="s">North force <span class="ct">3</span></div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div class="head">Units <span class="hint">&mdash; all my units, 38 units</span>
+        <span style="margin-left:auto"><span class="filter">Filter&hellip;</span></span></div>
+      <div style="flex:1;min-height:0;overflow:hidden"><table class="ut">
+<colgroup><col style="width:22px"><col style="width:52px"><col style="width:150px"><col style="width:79px"><col style="width:46px"><col></colgroup>
+<tr><th>*</th><th>Id</th><th>Unit</th><th>Hex</th><th>Men</th><th>Long order</th></tr>
+<tr class="sel foc"><td class="o">*</td><td class="idown">6120</td><td>Bowmen</td><td class="hexcell">(15,63)</td><td>8</td><td>study lbow</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">6121</td><td>Bowmen II</td><td class="hexcell">(15,63)</td><td>6</td><td>study lbow</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">4410</td><td>Longbows</td><td class="hexcell">(9,57)</td><td>14</td><td>work</td></tr>
+<tr class=""><td class="o">*</td><td class="idown">7710</td><td>Miners</td><td class="hexcell">(11,59)</td><td>22</td><td>produce IRON</td></tr>
+</table></div>
+    </div>
+  </div>
+</div></div>
+  <div class="keys">
+    <div class="k"><span class="kbd">&uarr;</span> <span class="kbd">&darr;</span>
+      <span class="kbd">Home</span> <span class="kbd">End</span></div>
+    <div class="v">move the selection. The map does not move &mdash; walking a long list must stay silent.</div>
+    <div class="k"><span class="kbd">Enter</span></div>
+    <div class="v">travel to the selected unit's hex, in a list that spans hexes. Under
+      <b>This hex</b> it keeps meaning exactly what it means today.</div>
+    <div class="k"><span class="kbd">Space</span></div>
+    <div class="v">unchanged: selects, and swallows the key so the scroller does not jump.</div>
+  </div>
+  <ul class="notes">
+    <li>Without this the table has no keyboard route to the hex at all: it is one tab stop per row
+      with a roving <code>tabIndex</code>, so a keyboard player could find a unit and never reach
+      its ground.</li>
+    <li class="n"><span class="kbd">Space</span> was left alone deliberately &mdash; it is also how
+      a reader stops a list scrolling, and a mis-hit must not move the map.</li>
+  </ul>
+</div>
+</main>
+
+<footer>The chosen design for ah-y9hx, agreed with the navigator across three planning rounds. Colours are the application's own tokens from <code>packages/shared/src/theme.css</code>; the map, the source rail and the units table are drawn to the real geometry, and the hexes themselves are invented.</footer>
+</body></html>
