@@ -10,7 +10,8 @@ import {
   labelBand,
   lineageOf,
   NODE_HEIGHT,
-  NODE_WIDTH
+  NODE_WIDTH,
+  settle
 } from "./magicGraphLayout";
 import { scaleOf } from "./mapViewport";
 
@@ -163,5 +164,18 @@ describe("buildMagicGraph", () => {
     expect(drawn.tiers).toEqual([]);
     expect(drawn.width).toBe(0);
     expect(drawn.height).toBe(0);
+  });
+});
+
+describe("settle", () => {
+  it("spaces a column out without pushing it further than it has to", () => {
+    expect(settle([])).toEqual([]);
+    expect(settle([100])).toEqual([100]);
+    // Already a row apart: nothing moves.
+    expect(settle([0, 27, 54])).toEqual([0, 27, 54]);
+    // Three skills all wanting the same height end up centred on it, not pushed down from the first.
+    expect(settle([100, 100, 100])).toEqual([73, 100, 127]);
+    // A crowded pair opens around its own middle; the one below it was already clear and stays.
+    expect(settle([0, 10, 400])).toEqual([-8.5, 18.5, 400]);
   });
 });

@@ -38,6 +38,12 @@ export const PAD_TOP = 50;
 /** Room under the deepest node, so the drawing does not end flush against its last box. */
 const PAD_BOTTOM = 24;
 
+/**
+ * Vertical distance between one box's top and the next's, in world units. The closest two skills
+ * in a column may ever sit; a box slides freely otherwise.
+ */
+export const ROW_PITCH = NODE_HEIGHT + NODE_GAP;
+
 /** How a node's box is drawn. `MANI` is set apart because it is not a Foundation. */
 export type NodeKind = "foundation" | "apprenticeship" | "skill";
 
@@ -141,6 +147,37 @@ export function edgeKey(from: string, to: string): string {
 /** Two decimals, so an attribute only changes when the layout does. */
 function round(value: number): string {
   return value.toFixed(2);
+}
+
+/**
+ * `wanted` placed in the order it was given, at least `ROW_PITCH` apart, as close to `wanted` as
+ * that allows.
+ *
+ * `wanted` must already be ascending in the order the column is to be drawn. This is isotonic
+ * regression by pool-adjacent-violators over `wanted[i] - i * ROW_PITCH`: it minimises the total
+ * squared distance from where each box wanted to be, subject to the boxes not overlapping. A
+ * simpler "push the next one down if it collides" pass would shove a whole run of boxes below where
+ * any of them wanted to be, every time the first of the run was crowded.
+ */
+export function settle(wanted: readonly number[]): number[] {
+  const blocks: { total: number; count: number; mean: number }[] = [];
+  wanted.forEach((value, index) => {
+    blocks.push({ total: value - index * ROW_PITCH, count: 1, mean: value - index * ROW_PITCH });
+    while (blocks.length > 1 && blocks[blocks.length - 2].mean > blocks[blocks.length - 1].mean) {
+      const upper = blocks.pop()!;
+      const lower = blocks.pop()!;
+      const merged = { total: lower.total + upper.total, count: lower.count + upper.count, mean: 0 };
+      merged.mean = merged.total / merged.count;
+      blocks.push(merged);
+    }
+  });
+  const placed: number[] = [];
+  for (const block of blocks) {
+    for (let index = 0; index < block.count; index += 1) {
+      placed.push(block.mean + placed.length * ROW_PITCH);
+    }
+  }
+  return placed;
 }
 
 /**
