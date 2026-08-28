@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { findByTestId, queryByTestId } from "../testing/elementTree";
 import { ForeignStrip } from "./ForeignStrip";
 import type { FactionPin } from "./unitSource";
 
@@ -46,5 +47,81 @@ describe("what the Other factions list is narrowed to", () => {
 
   it("not declared stands in for a faction with no declared attitude", () => {
     expect(draw(thane, null)).toContain("not declared");
+  });
+
+  it("the attitude follows the chip, with no spacer between them", () => {
+    // The bug this bead fixes was a spacer stranding the attitude at the far right, away from the
+    // name it belongs with.
+    const markup = draw(thane, "hostile");
+
+    expect(markup).not.toContain("ml-auto");
+    expect(markup).toContain("flex-none");
+  });
+
+  it("a declared attitude is introduced by a lead-in", () => {
+    // W2: beside the name, a bare `hostile` is a word without a subject.
+    const markup = draw(thane, "hostile");
+
+    expect(markup).toContain('data-testid="foreign-attitude-lead"');
+    expect(markup).toContain("you have declared");
+    expect(markup).toContain("hostile");
+  });
+
+  it("nothing declared stands alone, with no lead-in", () => {
+    // W5a: `you have declared not declared` does not read, so the lead-in is dropped in that case.
+    const markup = draw(thane, null);
+
+    expect(markup).toContain("not declared");
+    expect(markup).not.toContain("you have declared");
+  });
+
+  it("the lead-in is hidden until the strip has room for it", () => {
+    // W6a: the lead-in carries no information, so it is the right thing to spend first when the
+    // strip is narrow. A container query keeps the whole rule in CSS - this package has no jsdom,
+    // so the visible behaviour is the smoke test's, and the classes are what can be asserted here.
+    const strip = findByTestId(
+      <ForeignStrip pin={thane} attitude="hostile" onClear={() => {}} />,
+      "foreign-strip",
+    );
+    const lead = findByTestId(strip.props.children, "foreign-attitude-lead");
+
+    expect(String(strip.props.className)).toContain("@container");
+    expect(String(lead.props.className)).toContain("hidden");
+    expect(String(lead.props.className)).toContain("@sm:block");
+  });
+
+  it("a concealed owner truncates the sentence and never the chip", () => {
+    // W7a: `Faction not shown` is short and fixed, and the chip is the only way out of the pin, so
+    // the sentence is what gives way - keeping its full text where the reader can reach it.
+    const strip = findByTestId(
+      <ForeignStrip
+        pin={{ kind: "hidden" }}
+        attitude="unfriendly"
+        onClear={() => {}}
+      />,
+      "foreign-strip",
+    );
+    const chip = findByTestId(strip.props.children, "foreign-chip");
+    const sentence = findByTestId(strip.props.children, "foreign-concealed");
+
+    expect(String(chip.props.className)).toContain("flex-none");
+    expect(String(sentence.props.className)).toContain("truncate");
+    expect(sentence.props.title).toBe(
+      "Their owner is concealed from you this turn.",
+    );
+  });
+
+  it("the name and the way out are one chip", () => {
+    // The claim is structural - "inside the chip", not "somewhere on the strip" - so it is made
+    // against the element tree, which a string search of the markup could not distinguish.
+    const chip = findByTestId(
+      <ForeignStrip pin={thane} attitude="hostile" onClear={() => {}} />,
+      "foreign-chip",
+    );
+
+    expect(
+      queryByTestId(chip.props.children, "foreign-chip-name"),
+    ).not.toBeNull();
+    expect(queryByTestId(chip.props.children, "foreign-unpin")).not.toBeNull();
   });
 });
