@@ -579,6 +579,24 @@ pub fn parse_report_full_state(raw_report: String) -> Result<JsValue, JsValue> {
     to_js(&*report)
 }
 
+/// Every combat skill the report's battle rosters disclosed, in report order.
+///
+/// Deliberately **not** through `atlantis_hud_core::cache`, unlike every neighbouring entry point
+/// here: the only caller is a scan over many stored turns, and the cache holds one report, so going
+/// through it would evict the player's open turn on every iteration and make the next
+/// order-validation keystroke re-parse it.
+///
+/// # Errors
+///
+/// Returns an error only when the answer cannot be serialised to JS.
+#[wasm_bindgen]
+pub fn roster_skills_state(raw_report: String) -> Result<JsValue, JsValue> {
+    let report = atlantis_hud_core::report::parse_report_full(&raw_report);
+    to_js(&atlantis_hud_core::report::battle::roster_skills(
+        &report.battles,
+    ))
+}
+
 /// Validates one draft of Atlantis orders and returns structured diagnostics.
 ///
 /// Order validation is pure, so unlike the persistence entry points this is available on every

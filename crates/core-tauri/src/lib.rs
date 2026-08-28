@@ -225,6 +225,24 @@ pub mod commands {
         atlantis_hud_core::report::parse_report_full(raw_report)
     }
 
+    /// Every combat skill the report's battle rosters disclosed, in report order.
+    ///
+    /// Deliberately **not** through `atlantis_hud_core::cache` - the only caller is a scan over many
+    /// stored turns, and the cache holds one report, so going through it would evict the player's
+    /// open turn on every iteration and make the next order-validation keystroke re-parse it.
+    #[must_use]
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "roster_skills")
+    )]
+    pub fn command_roster_skills(
+        raw_report: &str,
+    ) -> Vec<atlantis_hud_core::report::battle::RosterSkills> {
+        atlantis_hud_core::report::battle::roster_skills(
+            &atlantis_hud_core::report::parse_report_full(raw_report).battles,
+        )
+    }
+
     /// Parses one report and returns tolerant parser output.
     #[must_use]
     #[cfg_attr(
@@ -1118,9 +1136,9 @@ pub use commands::{
     command_load_order_draft, command_load_region_sightings, command_merge_report,
     command_order_argument_completions, command_order_commands, command_order_vocabulary,
     command_parse_report, command_parse_report_classified, command_parse_report_full,
-    command_plan_route, command_preview_orders, command_preview_report_import, command_save_army,
-    command_save_hex_note, command_save_order_draft, command_trace_move_orders,
-    command_trade_routes, command_validate_orders,
+    command_plan_route, command_preview_orders, command_preview_report_import,
+    command_roster_skills, command_save_army, command_save_hex_note, command_save_order_draft,
+    command_trace_move_orders, command_trade_routes, command_validate_orders,
 };
 
 /// Creates a game under the application's games directory and applies migrations.

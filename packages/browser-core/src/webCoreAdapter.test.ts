@@ -77,6 +77,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
     // "routes logic calls to the core" test below can prove the argument crossed unshuffled.
     parse_report_state: (raw: string) => ({ ...EMPTY_PARSE_RESULT, raw }),
     parse_report_full_state: (_raw: string) => EMPTY_PARSED_REPORT,
+    roster_skills_state: (_raw: string) => [],
     parse_report_classified_state: (_raw: string, _ruleset: string) => EMPTY_PARSED_REPORT,
     validate_orders_state: (
       rawOrders: string,

@@ -80,6 +80,7 @@ export const SWEEP: SweepEntry[] = [
   { command: "set_active_faction", args: () => ({ game_id: GAME_ID, faction_id: "95" }) },
   { command: "parse_report", args: () => ({ raw_report: REPORT }) },
   { command: "parse_report_full", args: () => ({ raw_report: REPORT }) },
+  { command: "roster_skills", args: () => ({ raw_report: REPORT }) },
   {
     command: "parse_report_classified",
     args: () => ({ raw_report: REPORT, ruleset_json: RULESET })

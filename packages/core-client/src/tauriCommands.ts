@@ -35,6 +35,7 @@ export const TAURI_COMMANDS = {
   setActiveFaction: ["set_active_faction", "game_id", "faction_id"],
   parseReport: ["parse_report", "raw_report"],
   parseReportFull: ["parse_report_full", "raw_report"],
+  rosterSkills: ["roster_skills", "raw_report"],
   parseReportClassified: ["parse_report_classified", "raw_report", "ruleset_json"],
   previewReportImport: ["preview_report_import", "database_path", "game_id", "confirmed_faction_id", "raw_report"],
   commitReportImport: [

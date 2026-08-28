@@ -25,6 +25,7 @@ import type {
   ParsedReport,
   ReportParseResult,
   ReportRegion,
+  RosterSkills,
   RoutePlanResponse,
   TradeRoute,
   TurnRef
@@ -42,6 +43,7 @@ export type CoreWasmModule = {
   get_engine_info(): EngineInfo;
   parse_report_state(rawReport: string): ReportParseResult;
   parse_report_full_state(rawReport: string): ParsedReport;
+  roster_skills_state(rawReport: string): RosterSkills[];
   parse_report_classified_state(rawReport: string, rulesetJson: string): ParsedReport;
   validate_orders_state(
     rawOrders: string,
@@ -305,6 +307,10 @@ export function createWebCoreAdapter(
 
     async parseReportFull(rawReport: string) {
       return wasm.parse_report_full_state(rawReport);
+    },
+
+    async rosterSkills(rawReport: string) {
+      return wasm.roster_skills_state(rawReport);
     },
 
     async loadRegionSightings(databasePath: string, gameId: string, factionId: string) {

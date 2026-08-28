@@ -219,7 +219,8 @@ fn main() {
             atlantis_hud_core_tauri::command_merge_report,
             atlantis_hud_core_tauri::command_load_merged_reports,
             atlantis_hud_core_tauri::command_parse_report_classified,
-            atlantis_hud_core_tauri::command_trade_routes
+            atlantis_hud_core_tauri::command_trade_routes,
+            atlantis_hud_core_tauri::command_roster_skills
         ])
         .run(tauri::generate_context!())
         .expect("error while running atlantis-hud desktop shell");
