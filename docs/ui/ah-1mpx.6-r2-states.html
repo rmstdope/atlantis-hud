@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-1mpx.6 &mdash; Round 2: the cases the happy path hides</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  h4.q { margin:26px 0 6px; font-size:15px; color:var(--ink); }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); } .foreign { color:var(--ink-dim); }
+  .unk { color:var(--ink-dim); font-style:italic; }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .t { color:var(--brass); }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .panel { max-width:300px; font:12.5px/1.6 'Helvetica Neue',Arial,sans-serif; }
+  .panel .h { color:var(--ink-soft); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:3px; }
+  .panel .h.on { color:var(--brass); }
+  .src { color:var(--ink-dim); font-size:11.5px; font-style:italic; }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+  .narrow { width:190px; }
+</style></head><body>
+<header><h1>Round 2 &mdash; <span>the cases the happy path hides</span></h1>
+<p>Settled in round 1: derived skills appear in the <b>export, the units table and the Unit panel</b>; a derived skill carries <b>the turn in the cell</b>; and the scan reads <b>every stored turn</b>. This page is the rest of it &mdash; the states, the words, and the two rules a reader would otherwise have to guess.</p></header>
+<main>
+
+<h4 class="q"><em>T</em> Three skills from one battle: does every skill repeat the turn?</h4>
+<p>Round 1's example unit has three derived skills all from turn 71. Per-skill turns are honest but long; a narrow Skills column is the normal case, not the edge case. Both drawn at a realistic 190&nbsp;px.</p>
+<div class="card"><div class="split2">
+<div>
+<div class="hexlab">T1 &mdash; per skill, always</div>
+<div class="stage">
+  <table class="units"><colgroup><col style="width:30px"><col style="width:56px"><col style="width:130px"><col class="narrow"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th class="colhi">Skills</th></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">4839</td><td>Watazka</td><td class="colhi">RIDI 5 <span class="t">(turn 71)</span>, COMB 2 <span class="t">(turn 71)</span>, LBOW 4 <span class="t">(turn 71)</span></td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">5284</td><td>Squires</td><td class="colhi">COMB 4 <span class="t">(turn 68)</span>, RIDI 5 <span class="t">(turn 71)</span></td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>One rule, no cases. Every skill says where it came from.</li>
+  <li class="con">Watazka truncates after the first skill in a normal-width column &mdash; the repetition crowds out the information.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">T2 &mdash; collapsed when they share a turn <span class="rec">&nbsp;&nbsp;recommended</span></div>
+<div class="stage">
+  <table class="units"><colgroup><col style="width:30px"><col style="width:56px"><col style="width:130px"><col class="narrow"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th class="colhi">Skills</th></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">4839</td><td>Watazka</td><td class="colhi">RIDI 5, COMB 2, LBOW 4 <span class="t">(turn 71)</span></td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">5284</td><td>Squires</td><td class="colhi">COMB 4 <span class="t">(turn 68)</span>, RIDI 5 <span class="t">(turn 71)</span></td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>The common case fits: one battle, one turn, said once.</li>
+  <li>Falls back to per-skill the moment the turns differ, so nothing is ever mislabelled.</li>
+  <li class="con">Two shapes rather than one &mdash; a reader meets both and has to notice which they are looking at.</li>
+</ul>
+</div>
+</div></div>
+
+<h4 class="q"><em>D</em> Two battles disagree about the same unit</h4>
+<p>This is real, not hypothetical: 70 of 595 repeated observations in one game disagreed, and 68 of the 70 were the level going <b>up</b>. Unit 8113's crossbow reads 4 at turn 71 and 5 at turn 72.</p>
+<div class="card"><div class="split2">
+<div>
+<div class="hexlab">D1 &mdash; the newest observation wins <span class="rec">&nbsp;&nbsp;recommended</span></div>
+<div class="stage">
+  <table class="units"><colgroup><col style="width:30px"><col style="width:56px"><col style="width:130px"><col style="width:230px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th class="colhi">Skills</th></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">8113</td><td>Bowmen</td><td class="colhi">XBOW 5 <span class="t">(turn 72)</span></td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>The plain reading of &ldquo;what do we know now&rdquo;, and it is right 68 times out of 70 by construction.</li>
+  <li>Same rule the Army member snapshot already follows: the last report that showed it wins.</li>
+  <li class="con">In the two cases where the level fell, this reports the fall &mdash; which may be a unit that lost its veterans, or may be noise.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">D2 &mdash; the highest ever seen wins</div>
+<div class="stage">
+  <table class="units"><colgroup><col style="width:30px"><col style="width:56px"><col style="width:130px"><col style="width:230px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th class="colhi">Skills</th></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">8113</td><td>Bowmen</td><td class="colhi">XBOW 5 <span class="t">(turn 72)</span></td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Treats a skill as a floor, which is what it mostly is &mdash; you cannot unlearn.</li>
+  <li class="n">Identical to D1 in 68 of the 70 real disagreements; the two rules differ only where the level fell.</li>
+  <li class="con">The turn shown would then be the turn of the <i>highest</i> reading, not the latest &mdash; so the cell says &ldquo;turn 68&rdquo; about a unit last seen at turn 72, which reads as staler than it is.</li>
+</ul>
+</div>
+</div></div>
+
+<h4 class="q"><em>E</em> The states nothing is derived in</h4>
+<p>Three different nothings, and they must not look alike.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">a game whose reports contain no battle at all &mdash; 14 of our 26 fixtures are like this</div>
+  <table class="units"><colgroup><col style="width:30px"><col style="width:56px"><col style="width:150px"><col style="width:250px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th class="colhi">Skills</th></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">8435</td><td>AB Tomb's Bombards</td><td class="unk colhi">not disclosed</td></tr>
+  </table>
+  <ul class="notes"><li class="n">Unchanged from today. Nothing announces that a scan happened and found nothing &mdash; there is nothing to say.</li></ul>
+</div>
+<div class="stage">
+  <div class="hexlab">a foreign unit that has never been in a battle we saw &mdash; the majority, even in a battle-heavy turn</div>
+  <table class="units"><colgroup><col style="width:30px"><col style="width:56px"><col style="width:150px"><col style="width:250px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th class="colhi">Skills</th></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">8435</td><td>AB Tomb's Bombards</td><td class="unk colhi">not disclosed</td></tr>
+  </table>
+  <ul class="notes"><li class="n">Also unchanged. <i>not disclosed</i> keeps meaning exactly what it says.</li></ul>
+</div>
+<div class="stage">
+  <div class="hexlab">the scan is still running &mdash; it is asynchronous, and the table renders first</div>
+  <div class="split2">
+    <div>
+      <div class="hexlab" style="color:var(--brass)">E1 &mdash; show <i>not disclosed</i>, then fill in <span class="rec">&nbsp;rec</span></div>
+      <table class="units"><colgroup><col style="width:30px"><col style="width:56px"><col style="width:130px"><col style="width:180px"></colgroup>
+      <tr><th></th><th>Unit</th><th>Name</th><th class="colhi">Skills</th></tr>
+      <tr><td class="foreign">&ndash;</td><td class="uid">4839</td><td>Watazka</td><td class="unk colhi">not disclosed</td></tr>
+      </table>
+      <div class="src" style="margin-top:6px">&hellip; a moment later &hellip;</div>
+      <table class="units" style="margin-top:4px"><colgroup><col style="width:30px"><col style="width:56px"><col style="width:130px"><col style="width:180px"></colgroup>
+      <tr><td class="foreign">&ndash;</td><td class="uid">4839</td><td>Watazka</td><td class="colhi">RIDI 5, COMB 2, LBOW 4 <span class="t">(turn 71)</span></td></tr>
+      </table>
+    </div>
+    <div>
+      <div class="hexlab">E2 &mdash; a placeholder until the scan lands</div>
+      <table class="units"><colgroup><col style="width:30px"><col style="width:56px"><col style="width:130px"><col style="width:180px"></colgroup>
+      <tr><th></th><th>Unit</th><th>Name</th><th class="colhi">Skills</th></tr>
+      <tr><td class="foreign">&ndash;</td><td class="uid">4839</td><td>Watazka</td><td class="unk colhi">&hellip;</td></tr>
+      </table>
+      <div class="src" style="margin-top:6px">then the same fill-in</div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li class="n">The scan is one pass over the game's stored reports; all 26 committed fixtures parse in 0.20&nbsp;s, so this state is brief but it is not zero.</li>
+    <li class="n">E1 shows a wrong-but-familiar cell for a moment. E2 shows an unfamiliar one, and shows it for every foreign row at once.</li>
+  </ul>
+</div>
+</div>
+
+<h4 class="q"><em>U</em> The Unit panel section, in the words it would ship with</h4>
+<p>A foreign unit's panel has no Skills section today. Two ways to add one. Both also have to say something when there is nothing derived &mdash; drawn beneath each.</p>
+<div class="card"><div class="split2">
+<div>
+<div class="hexlab">U1 &mdash; a section headed by its source <span class="rec">&nbsp;&nbsp;recommended</span></div>
+<div class="stage"><div class="panel">
+  <div style="color:var(--ink);font-size:14px;margin-bottom:2px">Watazka <span class="uid">(4839)</span></div>
+  <div class="src" style="margin-bottom:10px">another faction &mdash; not named in this report</div>
+  <div class="h">Items</div><div style="margin-bottom:10px">mithril sword, book of exorcism</div>
+  <div class="h on">Skills from battle reports</div>
+  <div>riding 5 &nbsp; combat 2 &nbsp; longbow 4</div>
+  <div class="src">Seen in the battle in ocean (25,55), turn 71.</div>
+</div></div>
+<div class="stage"><div class="panel">
+  <div style="color:var(--ink);font-size:14px;margin-bottom:2px">AB Tomb's Bombards <span class="uid">(8435)</span></div>
+  <div class="src" style="margin-bottom:10px">Greywolf (33)</div>
+  <div class="h">Items</div><div style="margin-bottom:10px">2 wood elves, catapult</div>
+  <div class="h on">Skills from battle reports</div>
+  <div class="src">No battle we have seen involved this unit. A report never shows another faction's skills.</div>
+</div></div>
+<ul class="notes">
+  <li>The heading itself carries the caveat, so the levels below it need no marking at all.</li>
+  <li>The empty case teaches the rule &mdash; a player learns <i>why</i> the app cannot tell them, once, where they went looking.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">U2 &mdash; a plain Skills section, marked per line</div>
+<div class="stage"><div class="panel">
+  <div style="color:var(--ink);font-size:14px;margin-bottom:2px">Watazka <span class="uid">(4839)</span></div>
+  <div class="src" style="margin-bottom:10px">another faction &mdash; not named in this report</div>
+  <div class="h">Items</div><div style="margin-bottom:10px">mithril sword, book of exorcism</div>
+  <div class="h">Skills</div>
+  <div>riding 5 <span class="t">(turn 71)</span></div>
+  <div>combat 2 <span class="t">(turn 71)</span></div>
+  <div>longbow 4 <span class="t">(turn 71)</span></div>
+</div></div>
+<div class="stage"><div class="panel">
+  <div style="color:var(--ink);font-size:14px;margin-bottom:2px">AB Tomb's Bombards <span class="uid">(8435)</span></div>
+  <div class="src" style="margin-bottom:10px">Greywolf (33)</div>
+  <div class="h">Items</div><div style="margin-bottom:10px">2 wood elves, catapult</div>
+  <div class="h">Skills</div>
+  <div class="unk">not disclosed</div>
+</div></div>
+<ul class="notes">
+  <li>Reads exactly like an own unit's panel, one heading, one list.</li>
+  <li class="con">A heading saying &ldquo;Skills&rdquo; over figures that are neither current nor complete is the claim this bead exists to avoid making.</li>
+  <li class="con">Repeats the turn on every line even when they all share one &mdash; the thing T2 was chosen to stop doing.</li>
+</ul>
+</div>
+</div></div>
+
+<h4 class="q"><em>F</em> Whose stored reports does the scan read?</h4>
+<p>A game can hold reports from more than one faction &mdash; an ally's report can be merged in. Turns are keyed by <code>(game, faction, turn)</code>, and the turn comparison picker deliberately filters to the active faction only.</p>
+<div class="card"><ul class="notes" style="margin-top:0">
+  <li><b>F1 &mdash; every stored turn of the game, whoever's report it is.</b> A battle roster is a fact about the world; a battle your ally watched happened just as much as one you watched. Every report in the game is one you imported yourself, so nothing is revealed that you did not already have on disk. <span class="rec">recommended</span></li>
+  <li class="n"><b>F2 &mdash; only the faction whose report is on screen.</b> Matches what the comparison picker does. Consistent, and narrower; also throws away battles you are holding, for a reason that does not really apply &mdash; the picker filters because a turn 40 of a different faction is a different document, not because the world is different.</li>
+</ul></div>
+
+</main>
+<footer><p>Unit 8113's crossbow 4&rarr;5 between turns 71 and 72, and unit 5284's riding 4&rarr;5, are two of the 70 real disagreements in <code>neworigins-3.0.0-g7-f95-t71/t72.rep</code>. Watazka's three skills are its actual roster line at turn 71.</p></footer>
+</body></html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-1mpx.6 &mdash; Round 3: the words, exactly as they ship</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:30px 0 6px; font-size:15px; color:var(--ink); }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); } .foreign { color:var(--ink-dim); }
+  .unk { color:var(--ink-dim); font-style:italic; }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .t { color:var(--brass); }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; white-space:pre-line; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .dlg { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px 16px;
+         font:13px/1.6 'Helvetica Neue',Arial,sans-serif; max-width:600px; }
+  .dlg h4 { font-size:14px; margin-bottom:10px; color:var(--ink); font-weight:600; }
+  .notice { font-size:12px; color:var(--ink-soft); display:flex; gap:8px; margin-top:6px; }
+  .dot { flex:0 0 auto; width:7px; height:7px; border-radius:50%; margin-top:6px; }
+  .dot.rem { background:var(--brass); } .dot.for { background:var(--select); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+  .src { color:var(--ink-dim); font-size:11.5px; font-style:italic; }
+  pre.json { background:var(--ground); border:1px solid var(--edge-soft); border-radius:6px;
+             padding:10px 12px; font:11.5px/1.55 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft);
+             overflow-x:auto; margin-top:8px; }
+  pre.json b { color:var(--brass-bright); font-weight:400; }
+</style></head><body>
+<header><h1>Round 3 &mdash; <span>the words, exactly as they ship</span></h1>
+<p>Settled: derived skills in the <b>export, units table and Unit panel</b>; <b>the turn in the cell</b>, collapsed when shared; <b>newest observation wins</b>; <i>not disclosed</i> holds until the scan lands; the panel heading is <b>Skills from battle reports</b>; the scan reads <b>every stored turn of the game</b>.</p>
+<p>What is left is the sentences. Everything quoted on this page is quoted, not paraphrased &mdash; whatever is chosen here is what the implementer writes into the code, verbatim.</p></header>
+<main>
+
+<h4 class="q"><em>W</em> The export dialog's foreign-units notice</h4>
+<p>It reads today: <span class="mono" style="color:var(--brass-bright)">&ldquo;6 units belong to another faction. They go out with their men and equipment but no skills &mdash; a report never shows you those.&rdquo;</span> That sentence is about to become false for some of them. The example throughout: 14 units exported, 6 of them foreign, 4 of those 6 carrying derived skills.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">W1 &mdash; one sentence, split by the count <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="dlg">
+    <div>14 units will be exported.</div>
+    <div class="notice"><span class="dot rem"></span><span>2 units were not in this turn's report. They go out as they were when last seen.</span></div>
+    <div class="notice"><span class="dot for"></span><span>6 units belong to another faction. 4 of them go out with combat skills read from battle reports; the other 2 go out with none.</span></div>
+  </div>
+  <ul class="notes">
+    <li>One notice, as today &mdash; the dialog does not grow a line.</li>
+    <li>Gives the number that actually matters: how many of the six you know something about.</li>
+    <li class="con">Has to name three numbers in one sentence.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">W2 &mdash; the old sentence, corrected, plus a second notice</div>
+  <div class="dlg">
+    <div>14 units will be exported.</div>
+    <div class="notice"><span class="dot rem"></span><span>2 units were not in this turn's report. They go out as they were when last seen.</span></div>
+    <div class="notice"><span class="dot for"></span><span>6 units belong to another faction. A report never shows you their skills.</span></div>
+    <div class="notice"><span class="dot rem"></span><span>4 of them go out with combat skills read from battle reports instead.</span></div>
+  </div>
+  <ul class="notes">
+    <li>Each line says one thing, which is how the other notices in this dialog read.</li>
+    <li class="con">A fourth line in a dialog that already stacks three, and the second line contradicts the third until you have read both.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">W3 &mdash; the rule rather than the count</div>
+  <div class="dlg">
+    <div>14 units will be exported.</div>
+    <div class="notice"><span class="dot rem"></span><span>2 units were not in this turn's report. They go out as they were when last seen.</span></div>
+    <div class="notice"><span class="dot for"></span><span>6 units belong to another faction. They go out with their men and equipment, and with any combat skills a battle report has shown.</span></div>
+  </div>
+  <ul class="notes">
+    <li>Shortest, and always true whatever the counts are.</li>
+    <li class="con">Never tells you whether that is four units or none &mdash; and none is the common case.</li>
+  </ul>
+</div>
+<div class="stage">
+  <div class="hexlab">and the file itself &mdash; unchanged in shape, the simulator has no field for a turn</div>
+  <pre class="json">{ "name": "Watazka (4839)",
+  <b>"skills": [ { "abbr": "RIDI", "level": 5 }, { "abbr": "COMB", "level": 2 }, { "abbr": "LBOW", "level": 4 } ]</b>,
+  "items": [ { "abbr": "LEAD", "amount": 1 }, { "abbr": "MSWO", "amount": 1 } ],
+  "flags": [ "behind" ] }</pre>
+</div>
+</div>
+
+<h4 class="q"><em>H</em> The units-table hover</h4>
+<p>The cell is truncated at any realistic width, so the hover is where the full answer lives. All three name the same facts; they differ in how much.</p>
+<div class="card"><div class="stage">
+  <div class="hexlab">H1 <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="tip"><b>Watazka (4839) &mdash; skills</b>riding 5, combat 2, longbow 4
+Read from the battle in ocean (25,55) on turn 71. A report never shows another faction's skills.</div>
+  <div class="hexlab" style="margin-top:14px">H2 &mdash; without the hex</div>
+  <div class="tip"><b>Watazka (4839) &mdash; skills</b>riding 5, combat 2, longbow 4
+Read from a battle on turn 71.</div>
+  <div class="hexlab" style="margin-top:14px">H3 &mdash; the skills only, spelled out</div>
+  <div class="tip"><b>Watazka (4839) &mdash; skills</b>riding 5, combat 2, longbow 4</div>
+</div>
+<ul class="notes">
+  <li class="n">H1 spells the tags out, names where and when, and explains the rule once. H2 drops the hex, which is a fact the player can no longer act on by the time they read it. H3 assumes the cell already said the rest.</li>
+  <li class="n">In every case the tags become words &mdash; <code>RIDI 5</code> in the cell, <code>riding 5</code> in the hover &mdash; because the cell is short of room and the hover is not.</li>
+</ul></div>
+
+<h4 class="q"><em>R</em> A remembered Army member: two turns in one row</h4>
+<p>The strongest case for this whole bead, and the one that reads oddly. A foreign unit joined an Army at turn 71 and has not been seen since; the report on screen is turn 74. Its <b>Seen</b> column says turn 71 because that is when we last saw the unit. Its <b>Skills</b> say turn 71 too &mdash; but they need not: the skill could come from a battle at turn 72 in which the unit fought somewhere we could not see it standing.</p>
+<div class="card">
+<div class="stage">
+  <div class="hexlab">units dock &mdash; source: an Army &mdash; turn 74 on screen</div>
+  <table class="units"><colgroup><col style="width:30px"><col style="width:56px"><col style="width:140px"><col style="width:44px"><col style="width:210px"><col style="width:110px"><col style="width:80px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th class="colhi">Skills</th><th>Hex</th><th>Seen</th></tr>
+  <tr><td class="own">*</td><td class="uid">3825</td><td>Farmers</td><td>9</td><td class="colhi">COMB 1 (30)</td><td>mountain (36,2)</td><td>now</td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">4839</td><td>Watazka</td><td>1</td><td class="colhi">RIDI 5, COMB 2, LBOW 4 <span class="t">(turn 71)</span></td><td>ocean (25,55)</td><td>turn 71</td></tr>
+  <tr><td class="foreign">&ndash;</td><td class="uid">8113</td><td>Bowmen</td><td>14</td><td class="colhi">XBOW 5 <span class="t">(turn 72)</span></td><td>plain (35,41)</td><td>turn 71</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li class="n">Row 8113 is the honest oddity: last <i>seen</i> at turn 71, but a battle at turn 72 disclosed its crossbow. The two columns disagree because they are answering two different questions, and both answers are right.</li>
+  <li class="n">Nothing on this page proposes changing that. It is drawn so that it is a decision rather than a surprise.</li>
+</ul>
+</div>
+
+<h4 class="q"><em>X</em> Three rules the implementer would otherwise have to guess. Say if any is wrong.</h4>
+<div class="card"><ul class="notes" style="margin-top:0">
+  <li><b>A derived skill never displaces a real one.</b> Derived skills are used only where the unit's own skill list is empty &mdash; so one of your own units, and any unit whose report showed its skills, is untouched. In practice that means foreign units and nothing else.</li>
+  <li><b>Two battles in the same turn that disagree:</b> the later one in the report wins, by the same &ldquo;newest observation&rdquo; rule, since report order is the only ordering a single turn has.</li>
+  <li><b>Sorting and filtering the Skills column read the text as drawn</b> &mdash; so filtering for <code>COMB</code> finds derived rows, and sorting puts <code>COMB 5 (turn 71)</code> where its text falls. Nothing special-cases derived rows.</li>
+</ul></div>
+
+</main>
+<footer><p>The JSON above is the shape <code>packages/shared/src/armyExport.ts</code> already emits; only the <code>skills</code> array changes from empty. <code>RIDI</code>, <code>COMB</code>, <code>LBOW</code>, <code>TACT</code> and <code>XBOW</code> are the ruleset's own tags for the five skills a roster prints, read from <code>config/public/ruleset.json</code>.</p></footer>
+</body></html>
