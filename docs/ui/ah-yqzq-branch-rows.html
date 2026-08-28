@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>ah-yqzq — the study tree's branch rows, as agreed</title>
+<style>
+:root{
+  --ground:#1b212a;--panel:#222933;--raised:#2a323d;--edge:#46525f;--edge-soft:#333d49;
+  --ink:#d4dce6;--ink-soft:#a8b4c2;--ink-dim:#99a4b2;--brass:#e0b25a;--brass-bright:#eebe63;
+  --select:#5aa9de;--ok:#4fb783;--warn:#d9a441;
+  --k-bg:#14261d;--k-fg:#8fd6ae;--k-bd:#2f6b4c;
+  --c-bg:#241d10;--c-fg:#f0cf8a;--c-bd:#6b5424;
+  --m-bg:#1a212a;--m-fg:#c9d3df;--m-bd:#3c4a5a;
+  --o-bg:#111e28;--o-fg:#8dc4e8;--o-bd:#2c5570;
+  --x-bg:#1d1728;--x-fg:#a98cc4;--x-bd:#4a3a63;
+}
+.light{
+  --ground:#f2efe8;--panel:#f0ece2;--raised:#f7f4ec;--edge:#c9c2b0;--edge-soft:#d8d2c2;
+  --ink:#2a3038;--ink-soft:#454d59;--ink-dim:#4a5160;--brass:#8a6317;--brass-bright:#7d5a15;
+  --select:#1f5f8f;--ok:#256b48;--warn:#8a6317;
+  --k-bg:#dceee3;--k-fg:#1d5637;--k-bd:#8dc3a7;
+  --c-bg:#f4e8cd;--c-fg:#6b4e10;--c-bd:#c9ab6a;
+  --m-bg:#e6e9ee;--m-fg:#3b4552;--m-bd:#b3bcc8;
+  --o-bg:#dceaf4;--o-fg:#12506f;--o-bd:#8ab4cf;
+  --x-bg:#ece4f4;--x-fg:#5f3f86;--x-bd:#b49ccb;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#0f1319;color:#d4dce6;
+     font:13px/1.55 ui-monospace,'SF Mono',Menlo,Consolas,monospace;padding:26px 30px 60px}
+h1{font-size:17px;margin:0 0 4px;color:#eebe63;font-weight:600}
+h2{font-size:13.5px;margin:32px 0 6px;border-bottom:1px solid #333d49;padding-bottom:5px}
+p.note{margin:6px 0 12px;color:#99a4b2;font-size:11.5px;max-width:66em;line-height:1.6}
+.pair{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+.cap{font-size:10.5px;color:#8892a0;margin:0 0 5px;text-transform:uppercase;letter-spacing:.7px}
+.pane{background:var(--raised);border:1px solid var(--edge);border-radius:4px;padding:12px;
+      color:var(--ink);width:calc(21rem + 24px)}
+.pane.narrow{width:250px}
+
+/* ---- the agreed row ---- */
+.br{border:1px solid var(--edge);border-radius:4px;padding:6px 8px;margin-bottom:10px;
+    break-inside:avoid}
+.br.dashed{border-style:dashed}
+.br>h5{margin:0 0 3px;font-size:13px;font-weight:600;color:var(--ink);display:flex;
+       align-items:baseline;gap:6px}
+.br>h5 .ct{margin-left:auto;font-weight:400;font-size:10.5px;color:var(--ink-dim)}
+.br>p.blurb{margin:0 0 4px;font-size:11px;color:var(--ink-dim)}
+
+.sk{display:flex;align-items:baseline;gap:6px;padding:2px 0 2px 5px;
+    border-left:4px solid transparent;border-radius:3px}
+.sk .nm{color:var(--select);background:none;border:0;padding:0;font:inherit;text-align:left;
+        min-width:0;cursor:pointer;text-decoration:none}
+.sk .nm:hover{text-decoration:underline}
+.sk .nm:focus-visible{outline:2px solid var(--select);outline-offset:1px;border-radius:2px}
+.sk .tg,.sk .gate{font-size:9.5px;color:var(--ink-dim);white-space:nowrap}
+.sk .lv{font-size:9.5px;border-radius:3px;padding:0 4px;white-space:nowrap;border:1px solid}
+.sk .also{font-size:9.5px;border-radius:3px;padding:0 4px;white-space:nowrap;
+          border:1px solid var(--x-bd);background:var(--x-bg);color:var(--x-fg);
+          font-family:inherit;cursor:pointer;margin-left:auto}
+.sk .also:hover{color:var(--ink)}
+.sk .also:focus-visible{outline:2px solid var(--select);outline-offset:1px}
+.sk .also + .also{margin-left:4px}
+.sk.s-known{border-left:4px solid var(--ok)}
+.sk.s-known .lv{color:var(--k-fg);background:var(--k-bg);border-color:var(--k-bd)}
+.sk.s-ceiling{border-left:4px double var(--warn)}
+.sk.s-ceiling .lv{color:var(--c-fg);background:var(--c-bg);border-color:var(--c-bd)}
+.sk.s-maxed{border-left:4px dotted var(--ink-soft)}
+.sk.s-maxed .lv{color:var(--m-fg);background:var(--m-bg);border-color:var(--m-bd)}
+.sk.s-open{border-left:4px dashed var(--select)}
+.sk.s-open .lv{color:var(--o-fg);background:var(--o-bg);border-color:var(--o-bd)}
+.sk.s-locked{opacity:.55}
+.sk.s-locked .tg,.sk.s-locked .gate{color:var(--ink)}
+.sk.lit{background:var(--panel)}
+.sk.untinted .nm{color:var(--select)}
+
+.legend{display:flex;flex-wrap:wrap;gap:13px;font-size:11px;color:var(--ink-dim);margin:0 0 10px}
+.sw{display:inline-block;width:22px;height:11px;border-radius:2px;vertical-align:-1px;
+    margin-right:5px}
+table.t{border-collapse:collapse;font-size:11.5px;margin:10px 0}
+table.t td,table.t th{border:1px solid #333d49;padding:4px 9px;text-align:left}
+table.t th{color:#99a4b2;font-weight:400}
+table.t code{color:#8fd6ae}
+</style></head><body>
+<h1>ah-yqzq — the magic study tree's branch rows</h1>
+<p class="note">The agreed drawing of a skill row in the branch view, closing the gap between
+<code>docs/ui/ah-67h8-tinted-tree.html</code> and what shipped. Every pane below is at the application's real
+column width and in the application's real font (monospace throughout — the earlier mockup drew names in
+Helvetica, which flattered the fit).</p>
+
+<h2>The row</h2>
+<p class="note">A flex line with a 6px gap: <b>skill name</b> (13px, map blue, opens the dictionary) &middot;
+<b>tag</b> (9.5px, dim) &middot; <b>within-branch gate</b> (9.5px, dim) &middot; <b>standing chip</b> (9.5px,
+tinted fill) &middot; then, pushed to the right edge, the <b>crossing prerequisite pill</b> (9.5px, violet,
+clickable). Tag, gate and both kinds of chip never break; the name is the only thing that wraps.</p>
+<div class="legend">
+<span><span class="sw" style="background:var(--k-bg);border:1px solid var(--k-bd);border-left:4px solid var(--ok)"></span>known, and can still rise</span>
+<span><span class="sw" style="background:var(--c-bg);border:1px solid var(--c-bd);border-left:4px double var(--warn)"></span>at its ceiling</span>
+<span><span class="sw" style="background:var(--m-bg);border:1px solid var(--m-bd);border-left:4px dotted var(--ink-soft)"></span>at the highest there is</span>
+<span><span class="sw" style="background:var(--o-bg);border:1px solid var(--o-bd);border-left:4px dashed var(--select)"></span>can study now</span>
+<span><span class="sw" style="background:var(--x-bg);border:1px solid var(--x-bd)"></span>crossing prerequisite</span>
+</div>
+<div class="pair">
+  <div><p class="cap">Tinted for a mage &mdash; 21rem column</p>
+    <div class="pane">
+      <div class="br"><h5>Illusion<span class="ct">7</span></h5>
+<div class="sk s-ceiling"><button class="nm">illusion</button><span class="tg">ILLU</span><span class="gate">FORC 1, PATT 1</span><span class="lv">at 3, held by pattern</span></div>
+<div class="sk s-open"><button class="nm">create phantasmal beasts</button><span class="tg">PHBE</span><span class="gate">ILLU 1</span><span class="lv">can study</span></div>
+<div class="sk s-ceiling"><button class="nm">create phantasmal demons</button><span class="tg">PHDE</span><span class="gate">ILLU 1</span><span class="lv">at 3, held by illusion</span></div>
+<div class="sk s-open"><button class="nm">dispel illusions</button><span class="tg">DISP</span><span class="gate">ILLU 1</span><span class="lv">can study</span></div>
+<div class="sk s-open lit"><button class="nm">invisibility</button><span class="tg">INVI</span><span class="gate">ILLU 3</span><span class="lv">can study</span></div>
+<div class="sk s-known"><button class="nm">phantasmal entertainment</button><span class="tg">PHEN</span><span class="gate">ILLU 1</span><span class="lv">at 1, ceiling 3</span></div>
+<div class="sk s-maxed"><button class="nm">true seeing</button><span class="tg">TRUE</span><span class="gate">ILLU 3</span><span class="lv">at 5, the highest there is</span></div>
+</div>
+      <div class="br"><h5>Artifact lore<span class="ct">26</span></h5>
+<div class="sk s-known"><button class="nm">artifact lore</button><span class="tg">ARTI</span><span class="gate">FORC 1, PATT 1</span><span class="lv">at 3, ceiling 5</span></div>
+<div class="sk s-open"><button class="nm">create cornucopia</button><span class="tg">CRCO</span><span class="gate">ARTI 1</span><span class="lv">can study</span><button class="also">+EART 2</button></div>
+<div class="sk s-locked"><button class="nm">create cloak of invulnerability</button><span class="tg">CRCL</span><span class="gate">ARTI 4</span><button class="also">+FSHI 4</button></div>
+<div class="sk s-locked"><button class="nm">construct gate</button><span class="tg">CGAT</span><span class="gate">ARTI 2</span><button class="also">+GATE 3</button></div>
+<div class="sk s-known"><button class="nm">engineering</button><span class="tg">ENGR</span><span class="gate">BUIL 1</span><span class="lv">at 2, ceiling 5</span><button class="also">+WEAP 1</button><button class="also">+ARMO 1</button></div>
+</div>
+      <div class="br"><h5>Necromancy<span class="ct">7</span></h5>
+<div class="sk s-open"><button class="nm">necromancy</button><span class="tg">NECR</span><span class="gate">FORC 1, SPIR 1</span><span class="lv">can study</span></div>
+<div class="sk s-locked"><button class="nm">banish undead</button><span class="tg">BUND</span><span class="gate">NECR 1</span></div>
+<div class="sk s-locked"><button class="nm">create aura of fear</button><span class="tg">FEAR</span><span class="gate">NECR 1</span></div>
+<div class="sk s-locked"><button class="nm">summon lich</button><span class="tg">SULI</span><span class="gate">NECR 5</span></div>
+</div>
+    </div></div>
+  <div><p class="cap">Untinted &mdash; no report loaded</p>
+    <div class="pane">
+      <div class="br"><h5>Illusion<span class="ct">7</span></h5>
+<div class="sk untinted"><button class="nm">illusion</button><span class="tg">ILLU</span><span class="gate">FORC 1, PATT 1</span></div>
+<div class="sk untinted"><button class="nm">create phantasmal beasts</button><span class="tg">PHBE</span><span class="gate">ILLU 1</span></div>
+<div class="sk untinted"><button class="nm">create cornucopia</button><span class="tg">CRCO</span><span class="gate">ARTI 1</span><button class="also">+EART 2</button></div>
+<div class="sk untinted"><button class="nm">true seeing</button><span class="tg">TRUE</span><span class="gate">ILLU 3</span></div>
+</div>
+    </div>
+    <p class="note" style="width:calc(21rem + 24px)">With no mage picked there are no standing chips and no
+    left-edge patterns, but every row still reserves the 4px edge, so picking a mage does not shift the whole
+    card sideways.</p></div>
+</div>
+
+<h2>Both themes</h2>
+<p class="note">The chip fills are tokens, so they follow <code>data-theme</code>. Every chip's text clears
+WCAG AA on its own fill: dark 9.4 / 11.1 / 10.7 / 9.0 / 6.0:1, light 7.1 / 6.3 / 8.0 / 7.1 / 6.7:1.</p>
+<div class="pair">
+  <div><p class="cap">Dark</p><div class="pane">
+    <div class="br"><h5>Illusion<span class="ct">7</span></h5>
+<div class="sk s-ceiling"><button class="nm">illusion</button><span class="tg">ILLU</span><span class="gate">FORC 1, PATT 1</span><span class="lv">at 3, held by pattern</span></div>
+<div class="sk s-open"><button class="nm">create phantasmal beasts</button><span class="tg">PHBE</span><span class="gate">ILLU 1</span><span class="lv">can study</span></div>
+<div class="sk s-ceiling"><button class="nm">create phantasmal demons</button><span class="tg">PHDE</span><span class="gate">ILLU 1</span><span class="lv">at 3, held by illusion</span></div>
+<div class="sk s-open"><button class="nm">dispel illusions</button><span class="tg">DISP</span><span class="gate">ILLU 1</span><span class="lv">can study</span></div>
+<div class="sk s-open lit"><button class="nm">invisibility</button><span class="tg">INVI</span><span class="gate">ILLU 3</span><span class="lv">can study</span></div>
+<div class="sk s-known"><button class="nm">phantasmal entertainment</button><span class="tg">PHEN</span><span class="gate">ILLU 1</span><span class="lv">at 1, ceiling 3</span></div>
+<div class="sk s-maxed"><button class="nm">true seeing</button><span class="tg">TRUE</span><span class="gate">ILLU 3</span><span class="lv">at 5, the highest there is</span></div>
+</div>
+    <div class="br"><h5>Artifact lore<span class="ct">26</span></h5>
+<div class="sk s-known"><button class="nm">artifact lore</button><span class="tg">ARTI</span><span class="gate">FORC 1, PATT 1</span><span class="lv">at 3, ceiling 5</span></div>
+<div class="sk s-open"><button class="nm">create cornucopia</button><span class="tg">CRCO</span><span class="gate">ARTI 1</span><span class="lv">can study</span><button class="also">+EART 2</button></div>
+<div class="sk s-locked"><button class="nm">create cloak of invulnerability</button><span class="tg">CRCL</span><span class="gate">ARTI 4</span><button class="also">+FSHI 4</button></div>
+<div class="sk s-locked"><button class="nm">construct gate</button><span class="tg">CGAT</span><span class="gate">ARTI 2</span><button class="also">+GATE 3</button></div>
+<div class="sk s-known"><button class="nm">engineering</button><span class="tg">ENGR</span><span class="gate">BUIL 1</span><span class="lv">at 2, ceiling 5</span><button class="also">+WEAP 1</button><button class="also">+ARMO 1</button></div>
+</div></div></div>
+  <div class="light"><p class="cap">Light</p><div class="pane">
+    <div class="br"><h5>Illusion<span class="ct">7</span></h5>
+<div class="sk s-ceiling"><button class="nm">illusion</button><span class="tg">ILLU</span><span class="gate">FORC 1, PATT 1</span><span class="lv">at 3, held by pattern</span></div>
+<div class="sk s-open"><button class="nm">create phantasmal beasts</button><span class="tg">PHBE</span><span class="gate">ILLU 1</span><span class="lv">can study</span></div>
+<div class="sk s-ceiling"><button class="nm">create phantasmal demons</button><span class="tg">PHDE</span><span class="gate">ILLU 1</span><span class="lv">at 3, held by illusion</span></div>
+<div class="sk s-open"><button class="nm">dispel illusions</button><span class="tg">DISP</span><span class="gate">ILLU 1</span><span class="lv">can study</span></div>
+<div class="sk s-open lit"><button class="nm">invisibility</button><span class="tg">INVI</span><span class="gate">ILLU 3</span><span class="lv">can study</span></div>
+<div class="sk s-known"><button class="nm">phantasmal entertainment</button><span class="tg">PHEN</span><span class="gate">ILLU 1</span><span class="lv">at 1, ceiling 3</span></div>
+<div class="sk s-maxed"><button class="nm">true seeing</button><span class="tg">TRUE</span><span class="gate">ILLU 3</span><span class="lv">at 5, the highest there is</span></div>
+</div>
+    <div class="br"><h5>Artifact lore<span class="ct">26</span></h5>
+<div class="sk s-known"><button class="nm">artifact lore</button><span class="tg">ARTI</span><span class="gate">FORC 1, PATT 1</span><span class="lv">at 3, ceiling 5</span></div>
+<div class="sk s-open"><button class="nm">create cornucopia</button><span class="tg">CRCO</span><span class="gate">ARTI 1</span><span class="lv">can study</span><button class="also">+EART 2</button></div>
+<div class="sk s-locked"><button class="nm">create cloak of invulnerability</button><span class="tg">CRCL</span><span class="gate">ARTI 4</span><button class="also">+FSHI 4</button></div>
+<div class="sk s-locked"><button class="nm">construct gate</button><span class="tg">CGAT</span><span class="gate">ARTI 2</span><button class="also">+GATE 3</button></div>
+<div class="sk s-known"><button class="nm">engineering</button><span class="tg">ENGR</span><span class="gate">BUIL 1</span><span class="lv">at 2, ceiling 5</span><button class="also">+WEAP 1</button><button class="also">+ARMO 1</button></div>
+</div></div></div>
+</div>
+
+<h2>A locked row</h2>
+<p class="note">The row fades to <code>opacity: 0.55</code> &mdash; the fade is what tells you at a glance how
+much of a branch is shut, and 32 of 70 skills are locked for a typical mage. The fade is applied to the row's
+full-strength ink rather than to an already-dim grey, so the tag and gate land at 4.01:1 and stay readable when
+you look straight at one. A locked row keeps its gate text and takes no standing chip: what is missing is the
+reason for showing it at all.</p>
+<div class="pane"><div class="br"><h5>Necromancy<span class="ct">7</span></h5>
+<div class="sk s-open"><button class="nm">necromancy</button><span class="tg">NECR</span><span class="gate">FORC 1, SPIR 1</span><span class="lv">can study</span></div>
+<div class="sk s-locked"><button class="nm">banish undead</button><span class="tg">BUND</span><span class="gate">NECR 1</span></div>
+<div class="sk s-locked"><button class="nm">create aura of fear</button><span class="tg">FEAR</span><span class="gate">NECR 1</span></div>
+<div class="sk s-locked"><button class="nm">summon lich</button><span class="tg">SULI</span><span class="gate">NECR 5</span></div>
+</div></div>
+
+<h2>A narrow window</h2>
+<p class="note">One column at 250px. The name wraps; every tag, gate and pill stays whole. The name is the only
+part of the row that loses nothing by taking a second line.</p>
+<div class="pair">
+  <div><p class="cap">250px, one column</p>
+    <div class="pane narrow"><div class="br"><h5>Artifact lore<span class="ct">26</span></h5>
+<div class="sk s-known"><button class="nm">artifact lore</button><span class="tg">ARTI</span><span class="gate">FORC 1, PATT 1</span><span class="lv">at 3, ceiling 5</span></div>
+<div class="sk s-open"><button class="nm">create cornucopia</button><span class="tg">CRCO</span><span class="gate">ARTI 1</span><span class="lv">can study</span><button class="also">+EART 2</button></div>
+<div class="sk s-locked"><button class="nm">create cloak of invulnerability</button><span class="tg">CRCL</span><span class="gate">ARTI 4</span><button class="also">+FSHI 4</button></div>
+<div class="sk s-locked"><button class="nm">construct gate</button><span class="tg">CGAT</span><span class="gate">ARTI 2</span><button class="also">+GATE 3</button></div>
+<div class="sk s-known"><button class="nm">engineering</button><span class="tg">ENGR</span><span class="gate">BUIL 1</span><span class="lv">at 2, ceiling 5</span><button class="also">+WEAP 1</button><button class="also">+ARMO 1</button></div>
+</div></div></div>
+</div>
+
+<h2>The colours, as tokens</h2>
+<table class="t">
+<tr><th>State</th><th>fill</th><th>ink</th><th>edge</th><th>fill (light)</th><th>ink (light)</th><th>edge (light)</th></tr>
+<tr><td>known</td><td><code>#14261d</code></td><td><code>#8fd6ae</code></td><td><code>#2f6b4c</code></td><td><code>#dceee3</code></td><td><code>#1d5637</code></td><td><code>#8dc3a7</code></td></tr>
+<tr><td>at its ceiling</td><td><code>#241d10</code></td><td><code>#f0cf8a</code></td><td><code>#6b5424</code></td><td><code>#f4e8cd</code></td><td><code>#6b4e10</code></td><td><code>#c9ab6a</code></td></tr>
+<tr><td>at the maximum</td><td><code>#1a212a</code></td><td><code>#c9d3df</code></td><td><code>#3c4a5a</code></td><td><code>#e6e9ee</code></td><td><code>#3b4552</code></td><td><code>#b3bcc8</code></td></tr>
+<tr><td>can study</td><td><code>#111e28</code></td><td><code>#8dc4e8</code></td><td><code>#2c5570</code></td><td><code>#dceaf4</code></td><td><code>#12506f</code></td><td><code>#8ab4cf</code></td></tr>
+<tr><td>crossing pill</td><td><code>#1d1728</code></td><td><code>#a98cc4</code></td><td><code>#4a3a63</code></td><td><code>#ece4f4</code></td><td><code>#5f3f86</code></td><td><code>#b49ccb</code></td></tr>
+</table>
+<p class="note">The left-edge patterns are unchanged and keep their existing tokens: solid <code>ok</code>,
+double <code>warn</code>, dotted <code>ink-soft</code>, dashed <code>select</code>, and transparent for locked.
+The five states still separate by shape as well as by colour.</p>
+</body></html>
