@@ -4324,6 +4324,25 @@ test("a bought item marks the ITEMS cell as a projection", async ({ page }) => {
 });
 
 /**
+ * ah-tguk: `All my units` showed the report's figures while `This hex` showed the coming month.
+ * The same order, the same unit, the same column - read from the source that spans hexes, which is
+ * the one you plan across hexes from.
+ */
+test("All my units shows the coming month too", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "BUY 1 PERF");
+
+  await page.getByTestId("unit-source-own").click();
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  const itemsCell = row.locator('[data-predicted="true"]').first();
+  await expect(itemsCell).toContainText("PERF");
+  await expect(itemsCell).toHaveAttribute("title", /^was: /);
+});
+
+/**
  * ah-bxgs: TRANSPORT now marks the sending row too, exactly as BUY, SELL and the rest already do.
  * Unit 14451 is another own unit, in a different hex ("1:20,40"), which is what makes this a
  * transport rather than a same-hex GIVE. `BUY 2 PERF` buys more than the `TRANSPORT` sends, so the

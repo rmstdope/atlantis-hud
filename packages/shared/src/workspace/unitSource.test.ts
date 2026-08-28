@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SORT, UNIT_COLUMNS, type SortState } from "../unitTable";
 import {
+  dimsDeparting,
   drawnColumnsFor,
   extraColumnsFor,
   FOREIGN_SOURCE,
@@ -110,6 +111,15 @@ describe("which sources take the map to the unit's hex (ah-y9hx)", () => {
     for (const source of [HEX_SOURCE, OWN_SOURCE, FOREIGN_SOURCE, ARMY]) {
       expect(travelsOnSelect(source)).toBe(extraColumnsFor(source).includes("hex"));
     }
+  });
+});
+
+describe("which sources dim a departing row (ah-tguk)", () => {
+  it("dims a departing row in This hex and nowhere else", () => {
+    expect(dimsDeparting(HEX_SOURCE)).toBe(true);
+    expect(dimsDeparting(OWN_SOURCE)).toBe(false);
+    expect(dimsDeparting(FOREIGN_SOURCE)).toBe(false);
+    expect(dimsDeparting(army("a1"))).toBe(false);
   });
 });
 

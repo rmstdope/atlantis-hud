@@ -3,12 +3,14 @@ import type {
   CreatedItem,
   FieldChange,
   ItemAmount,
+  OrdersPreviewResponse,
   ProducedItem,
   RegionPreview,
   ReportUnit,
   TakenUnshown,
   TransportReceived,
   TransportSent,
+  UnitPreview,
   UnitPreviewStatus,
   UnitSilver
 } from "@atlantis/core-client";
@@ -67,54 +69,83 @@ export function mergePreview(
   units: ReportUnit[],
   preview: RegionPreview | null | undefined
 ): PreviewedUnit[] {
-  if (!preview || preview.units.length === 0) {
+  return foldIn(units, preview?.units ?? []);
+}
+
+/**
+ * A list spanning hexes - every own unit in the report - with the whole report's preview folded
+ * in, one row per unit (`ah-tguk`).
+ *
+ * **Every `arriving` row is dropped, and that is what leaves exactly one row per unit.** The core
+ * emits a moving unit twice: an `arriving` row in the destination region and a `departing` row in
+ * the origin, pushed as a pair inside one block (`crates/core/src/orders/effects.rs`), so a list
+ * that spans every hex would otherwise show the same unit twice - and a roster of your own units
+ * is not a place for that. Dropping the arrival keeps the unit on the hex the report gave it, with
+ * the `-> destination` marker its departing row already carries; a departure the trace could not
+ * name a destination for has no arrival row at all, and is kept.
+ */
+export function mergePreviewAcross(
+  units: ReportUnit[],
+  preview: OrdersPreviewResponse | null | undefined
+): PreviewedUnit[] {
+  return foldIn(
+    units,
+    (preview?.regions ?? [])
+      .flatMap((region) => region.units)
+      .filter((one) => one.status !== "arriving")
+  );
+}
+
+/**
+ * The fold itself, over previewed units already chosen by the caller.
+ *
+ * Two identity guarantees, both load-bearing rather than tidy: **the very same array back when
+ * there is nothing to fold**, and **untouched units as the very same objects**. `visible` in
+ * `UnitTableDock` is memoised over the row list and the hover that opens a unit's tooltip is
+ * cancelled whenever that array's identity changes; the preview is refreshed on a 300ms debounce
+ * as orders are typed, so a fresh array every call would cancel the hover 300ms after it began and
+ * the tooltip would never appear (`ah-1wcw.1`, fixed in `ah-1wcw.6`).
+ */
+function foldIn(units: ReportUnit[], previewed: readonly UnitPreview[]): PreviewedUnit[] {
+  if (previewed.length === 0) {
     return units;
   }
 
-  const changed = new Map(preview.units.map((unit) => [unit.unit.unitId, unit]));
+  const changed = new Map(previewed.map((unit) => [unit.unit.unitId, unit]));
   const rows: PreviewedUnit[] = units.map((unit) => {
-    const previewed = changed.get(unit.unitId);
-    if (!previewed) {
+    const found = changed.get(unit.unitId);
+    if (!found) {
       return unit;
     }
     changed.delete(unit.unitId);
-    return {
-      ...previewed.unit,
-      previewStatus: previewed.status,
-      previewChanges: previewed.changes,
-      arrivingFrom: previewed.arrivingFrom,
-      departingTo: previewed.departingTo,
-      aboard: previewed.aboard,
-      uncounted: previewed.uncounted,
-      takenUnshown: previewed.takenUnshown,
-      produced: previewed.produced,
-      built: previewed.built,
-      created: previewed.created,
-      transportSent: previewed.transportSent,
-      transportReceived: previewed.transportReceived
-    };
+    return rowFor(found);
   });
 
   // Whatever is left has no report row here: arrivals and formed units, in preview order.
-  for (const previewed of changed.values()) {
-    rows.push({
-      ...previewed.unit,
-      previewStatus: previewed.status,
-      previewChanges: previewed.changes,
-      arrivingFrom: previewed.arrivingFrom,
-      departingTo: previewed.departingTo,
-      aboard: previewed.aboard,
-      uncounted: previewed.uncounted,
-      takenUnshown: previewed.takenUnshown,
-      produced: previewed.produced,
-      built: previewed.built,
-      created: previewed.created,
-      transportSent: previewed.transportSent,
-      transportReceived: previewed.transportReceived
-    });
+  for (const found of changed.values()) {
+    rows.push(rowFor(found));
   }
 
   return rows;
+}
+
+/** One previewed unit as a table row: the predicted unit, with the preview's extras beside it. */
+function rowFor(previewed: UnitPreview): PreviewedUnit {
+  return {
+    ...previewed.unit,
+    previewStatus: previewed.status,
+    previewChanges: previewed.changes,
+    arrivingFrom: previewed.arrivingFrom,
+    departingTo: previewed.departingTo,
+    aboard: previewed.aboard,
+    uncounted: previewed.uncounted,
+    takenUnshown: previewed.takenUnshown,
+    produced: previewed.produced,
+    built: previewed.built,
+    created: previewed.created,
+    transportSent: previewed.transportSent,
+    transportReceived: previewed.transportReceived
+  };
 }
 
 /** The recorded change for one field of a row, when the orders changed it. */

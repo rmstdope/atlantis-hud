@@ -3907,6 +3907,7 @@ export function AppShell({
               ref={unitDock}
               hex={hex}
               preview={hexPreview}
+              ordersPreview={ordersPreview}
               getLongOrder={getLongOrder}
               getSilver={getSilver}
               silverWarnings={silverWarnings}

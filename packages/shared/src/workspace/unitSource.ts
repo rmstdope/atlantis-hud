@@ -125,6 +125,18 @@ export function travelsOnSelect(source: UnitSource): boolean {
 }
 
 /**
+ * Whether a row that leaves this month reads dimmed (`ah-tguk`).
+ *
+ * True for `This hex` alone, where dim means "gone from the hex you are looking at". In a list of
+ * every unit you own nothing is leaving anything, so a dimmed row there reads as a unit being lost
+ * rather than as one moving on - which is why one unit is deliberately drawn two ways in the two
+ * lists, and why the rule lives here rather than in the row.
+ */
+export function dimsDeparting(source: UnitSource): boolean {
+  return source.kind === "hex";
+}
+
+/**
  * The pane's header for a source: the fixed title, and the grey hint beside it.
  *
  * The pane keeps one identity across sources and only the hint moves (`ah-1mpx.2` U1). `This hex`

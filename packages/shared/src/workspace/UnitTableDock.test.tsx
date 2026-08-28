@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type {
   ArmyMemberRecord,
   ArmyRecord,
+  OrdersPreviewResponse,
   RegionPreview,
   ReportRegion,
   ReportUnit,
@@ -1149,6 +1150,122 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
     );
 
     expect(markup).toContain("No units of your own in this turn&#x27;s report.");
+  });
+});
+
+describe("All my units shows the coming month (ah-tguk)", () => {
+  afterEach(restoreStoresForTest);
+
+  /** One previewed unit, with every field the wire carries defaulted. */
+  const previewed = (
+    unitOverrides: Partial<ReportUnit>,
+    overrides: Partial<RegionPreview["units"][number]> = {}
+  ): RegionPreview["units"][number] => ({
+    unit: unit(unitOverrides),
+    status: "present",
+    changes: [],
+    arrivingFrom: null,
+    departingTo: null,
+    aboard: null,
+    uncounted: [],
+    takenUnshown: [],
+    produced: [],
+    built: [],
+    created: [],
+    transportSent: [],
+    transportReceived: [],
+    ...overrides
+  });
+
+  /** The pane on `All my units`, as markup. `hex={null}`: this source never needed one. */
+  const drawOwn = (ownUnits: ReportUnit[], ordersPreview: OrdersPreviewResponse | null): string =>
+    renderWithStoreState(
+      <UnitTableDock
+        hex={null}
+        ownUnits={ownUnits}
+        ordersPreview={ordersPreview}
+        currentTurn={42}
+        client={{} as never}
+        game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+        initialSource={{ kind: "own" }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [] }
+    );
+
+  /** The same rows on `This hex`, so the two sources can be compared directly. */
+  const drawHex = (units: ReportUnit[], preview: RegionPreview): string =>
+    renderToStaticMarkup(
+      <UnitTableDock hex={hex({ region: region({ units }) })} preview={preview} />
+    );
+
+  const DEPARTING = previewed(
+    { unitId: "5105", name: "MinersA", regionId: "1:6,52" },
+    { status: "departing", departingTo: "1:5,51" }
+  );
+  const ARRIVING = previewed(
+    { unitId: "5105", name: "MinersA", regionId: "1:5,51" },
+    { status: "arriving", arrivingFrom: "1:6,52" }
+  );
+
+  it("marks a changed ITEMS cell in a list spanning hexes", () => {
+    const markup = drawOwn(
+      [unit({ unitId: "1" }), unit({ unitId: "2", regionId: "1:9,55" })],
+      {
+        regions: [
+          {
+            regionId: "1:9,55",
+            units: [
+              previewed(
+                { unitId: "2", regionId: "1:9,55", items: [{ amount: 1, tag: "PERF", name: "perfume" }] },
+                { changes: [{ field: "items", original: "" }] }
+              )
+            ]
+          }
+        ]
+      }
+    );
+
+    expect(markup).toContain('data-predicted="true"');
+    expect(markup).toContain("1 PERF");
+    expect(markup).toContain('title="was: —"');
+  });
+
+  it("draws a moving unit once, where it stands now", () => {
+    const markup = drawOwn(
+      [unit({ unitId: "5105", name: "MinersA", regionId: "1:6,52" })],
+      { regions: [{ regionId: "1:6,52", units: [DEPARTING] }, { regionId: "1:5,51", units: [ARRIVING] }] }
+    );
+
+    expect((markup.match(/unit-row-5105/g) ?? []).length).toBe(1);
+    expect(markup).toContain("1:5,51");
+    expect(markup).not.toContain("←");
+  });
+
+  it("leaves a departing row upright, unlike This hex", () => {
+    const mover = unit({ unitId: "5105", name: "MinersA", regionId: "1:6,52" });
+    const own = drawOwn([mover], { regions: [{ regionId: "1:6,52", units: [DEPARTING] }] });
+    const inHex = drawHex([mover], { regionId: "1:6,52", units: [DEPARTING] });
+
+    expect(own).not.toContain("opacity-60");
+    expect(inHex).toContain("opacity-60");
+  });
+
+  it("lists a unit formed this month", () => {
+    const markup = drawOwn(
+      [unit({ unitId: "1" })],
+      {
+        regions: [
+          {
+            regionId: "1:6,52",
+            units: [previewed({ unitId: "new-1", name: "Unit (new 1)" }, { status: "formed" })]
+          }
+        ]
+      }
+    );
+
+    expect(markup).toContain("unit-row-new-1");
+    expect(markup).toContain(">new<");
   });
 });
 
