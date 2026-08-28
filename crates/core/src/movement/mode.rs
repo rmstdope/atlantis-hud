@@ -178,6 +178,13 @@ pub fn fleet_of<'a>(
 
 /// Reads a structure's `kind` as one or more ship hulls and how many of each.
 ///
+/// **This is a parser, not a classifier.** It reads a string and has no idea what a ship is. Any
+/// non-empty capitalised word with nothing after it comes back as one hull of that name, so
+/// `hulls_named_in("Fort")` is `Some([("Fort", 1)])`, and `"Lair"` and `"Tower"` answer the same
+/// way. The question "is this structure a vessel at all" is [`is_vessel`]; reaching for this one
+/// instead is a mistake `ah-048` and `ah-jk9h` have each already paid a RED cycle for, and each
+/// was caught only by a trap test.
+///
 /// A report writes a fleet's kind two ways: a single ship states its own hull bare - `"Longship"` -
 /// and a fleet of more than one states `"Fleet, <count> <hull>[, <count> <hull>...]"` - `"Fleet, 8
 /// Corsairs"`, `"Fleet, 2 Galleons"`, `"Fleet, 4 Galleons, 1 Balloon"`. Both come back as hull name
