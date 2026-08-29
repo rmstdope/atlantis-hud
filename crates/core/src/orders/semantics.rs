@@ -15068,6 +15068,22 @@ mod tests {
         );
     }
 
+    /// The deliberate divergence from `check_idle_units`, which bails on an unread line. That
+    /// check claims a unit does *nothing*, which an unread line could falsify; two readable
+    /// month-long orders are two whatever else the block holds.
+    #[test]
+    fn an_unread_order_line_does_not_silence_a_second_month_long_order() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![unit("683")])],
+            "unit 683\nMOVE N\nSTUDY Combat\nFLIBBERTIGIBBET 4021\n",
+        )));
+        assert_eq!(finding.line, Some(3));
+        assert_eq!(
+            finding.message,
+            "MOVE already spends this unit's month, so this STUDY will not run"
+        );
+    }
+
     // --- coverage ---------------------------------------------------------------------------
 
     #[test]
