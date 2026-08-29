@@ -1186,7 +1186,8 @@ pub fn forecast_unit(
                         )
                     });
                 let recipe = found.as_ref().map(|(_, _, recipe)| *recipe);
-                let (priced, plan) = price_production(recipe, work, facts.items);
+                let (priced, plan) =
+                    price_production(recipe, work, facts.items, RegionShare::Unlimited);
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
@@ -2909,8 +2910,9 @@ pub fn price_production(
     recipe: Option<&Production>,
     work: Workforce,
     held: &[ItemAmount],
+    region: RegionShare,
 ) -> (Priced, Option<ProductionPlan>) {
-    match recipe.and_then(|recipe| plan_production(recipe, work, held)) {
+    match recipe.and_then(|recipe| plan_production(recipe, work, held, region)) {
         Some(plan) => (
             Priced {
                 spends: plan.silver,
@@ -3201,6 +3203,30 @@ pub enum ProductionCap {
     /// clamped (`ah-ofpb.5`). Only ever set for a summon, and only for the four skills that state
     /// a cap.
     Room,
+    /// The region yields less of the item than the unit's men could make of it, once the hex's own
+    /// units have been settled against its `Products` line (`ah-256d`). Only ever set for a
+    /// *primary* `PRODUCE` - one whose recipe takes no materials - and never for a summon.
+    Region,
+}
+
+/// What the region a unit produces in leaves that unit's `PRODUCE` order.
+///
+/// Three answers rather than an `Option<i64>`, because "no pool applies to this recipe at all" and
+/// "the hex yields none of this" are opposite facts that must not be spelled the same way: the
+/// first leaves the run untouched, the second makes it nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RegionShare {
+    /// No regional pool applies. `rules/sequenceofevents` runs "Manufacturing PRODUCE orders
+    /// (those that produce items from other items...)" in a phase of their own, ahead of the
+    /// primary ones: a sword is made from iron the unit carries rather than from the hex, so
+    /// nothing limits it but the unit's own holdings. Also what a caller with no region to consult
+    /// supplies, which is what keeps this module's own tests reading as they did.
+    #[default]
+    Unlimited,
+    /// The region's `Products` line names none of it, so nothing is produced here at all.
+    NothingHere,
+    /// The region yields it, and the settlement leaves this unit this much of it.
+    Share(i64),
 }
 
 /// What one `PRODUCE` order makes, and what it takes to make it.
@@ -3251,6 +3277,7 @@ pub fn plan_production(
     recipe: &Production,
     work: Workforce,
     held: &[ItemAmount],
+    region: RegionShare,
 ) -> Option<ProductionPlan> {
     if recipe.inputs_are_alternatives {
         return None;
@@ -3265,6 +3292,16 @@ pub fn plan_production(
     if work.level < i64::from(recipe.level) {
         return Some(ProductionPlan::default());
     }
+
+    // The hex yields none of it, so nothing is produced here whatever the unit's men could do.
+    // An empty plan rather than a cap, and that is the navigator's decision (2026-08-29): the
+    // Problems panel's `produce-not-here` already says why, immediately beside this, and two
+    // copies of one sentence are two things to keep in step. The same shape - and the same
+    // reasoning - as the minimum-level gate directly above.
+    if matches!(region, RegionShare::NothingHere) {
+        return Some(ProductionPlan::default());
+    }
+
     let wanted = (work.man_months() / man_months) * outputs;
     if wanted <= 0 {
         return Some(ProductionPlan::default());
@@ -3299,10 +3336,24 @@ pub fn plan_production(
         .min()
         .unwrap_or(i64::MAX);
 
-    let made = wanted.min(by_silver).min(by_materials);
-    // Silver is named first when both bind, because the column this feeds is about silver.
+    let by_region = match region {
+        RegionShare::Unlimited => i64::MAX,
+        // Answered by the guard above; kept exhaustive rather than caught by a wildcard.
+        RegionShare::NothingHere => 0,
+        RegionShare::Share(share) => share.max(0),
+    };
+
+    let made = wanted.min(by_silver).min(by_materials).min(by_region);
+    // The region is named first when it ties, because it is the only one of the three the unit
+    // cannot fix by carrying more - "buy more iron" is wasted advice about a hex that has none
+    // left. In this ruleset it can never tie: every recipe drawing on a pool has no inputs at all,
+    // so `by_silver` and `by_materials` are both `i64::MAX` whenever `by_region` is not. The order
+    // is stated so that a ruleset which changed that would still be deterministic. Silver is then
+    // named before materials when those two bind, because the column this feeds is about silver.
     let capped_by = if made == wanted {
         None
+    } else if by_region <= by_silver && by_region <= by_materials {
+        Some(ProductionCap::Region)
     } else if by_silver <= by_materials {
         Some(ProductionCap::Silver)
     } else {
@@ -3632,6 +3683,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 10);
@@ -3753,6 +3805,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 99)]),
+            RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 0);
@@ -3773,10 +3826,92 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 99)]),
+            RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 9);
         assert_eq!(plan.made, 9);
+    }
+
+    /// Iron, stated exactly as `config/public/ruleset.json`'s `skills.MINI.produces` entry does:
+    /// no material input at all, one man-month for one, first makeable at mining 1. A *primary*
+    /// recipe, which is what makes it draw on the region's own yield.
+    fn iron() -> Production {
+        Production {
+            tag: "IRON".to_string(),
+            level: 1,
+            inputs: Vec::new(),
+            inputs_are_alternatives: false,
+            man_months: Some(1),
+            outputs: Some(1),
+        }
+    }
+
+    /// MinersA (5105) of the committed turn 42: 8 orcs at mining 5, so 40 man-months of iron, in a
+    /// hex whose `Products` line states 36 iron shared with a second mining unit. Its settled share
+    /// is 20, and the report's own `Produces` line says 20.
+    #[test]
+    fn a_share_of_the_regions_yield_caps_the_run() {
+        let plan = plan_production(
+            &iron(),
+            Workforce {
+                men: 8,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[]),
+            RegionShare::Share(20),
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 40);
+        assert_eq!(plan.made, 20);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Region));
+    }
+
+    /// Farmers (3493)'s row: a pool that covers what the unit asked divides nothing, and there is
+    /// no cap to name.
+    #[test]
+    fn a_share_that_covers_the_run_names_no_cap() {
+        let plan = plan_production(
+            &iron(),
+            Workforce {
+                men: 8,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[]),
+            RegionShare::Share(40),
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 40);
+        assert_eq!(plan.made, 40);
+        assert_eq!(plan.capped_by, None);
+    }
+
+    /// A hex whose `Products` line names none of it yields none of it. An empty plan rather than a
+    /// cap, and that is the navigator's decision (2026-08-29): `wanted` is 0 rather than 40 and
+    /// `capped_by` is `None` rather than `Some(Region)`, which is what keeps the hover silent -
+    /// `produce-not-here` already says why, immediately beside it.
+    #[test]
+    fn a_region_that_yields_none_of_it_makes_none() {
+        let plan = plan_production(
+            &iron(),
+            Workforce {
+                men: 8,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[]),
+            RegionShare::NothingHere,
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan, ProductionPlan::default());
+        assert_eq!(plan.wanted, 0);
+        assert_eq!(plan.made, 0);
+        assert_eq!(plan.capped_by, None);
     }
 
     /// `rules/tableiteminfo`: "five men at skill level one are exactly equivalent to one man at
@@ -3797,6 +3932,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 12);
@@ -3820,7 +3956,8 @@ mod production_tests {
             }
         );
 
-        let (priced, plan) = price_production(None, Workforce::default(), &[]);
+        let (priced, plan) =
+            price_production(None, Workforce::default(), &[], RegionShare::Unlimited);
         assert_eq!(
             priced,
             Priced {
@@ -3845,6 +3982,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            RegionShare::Unlimited,
         );
         assert_eq!(
             priced,
@@ -3870,6 +4008,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 100_000)]),
+            RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 0);
@@ -3892,6 +4031,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 3000), ("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+            RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 12);
@@ -3916,6 +4056,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
         assert_eq!(plan.made, 1);
@@ -3933,6 +4074,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 3000), ("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
+            RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
         assert_eq!(plan.made, 1);
@@ -3958,6 +4100,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 2)]),
+            RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 5);
@@ -3987,7 +4130,8 @@ mod production_tests {
                     tool_bonus: 0,
                     tools: 0,
                 },
-                &held(&[("GRAI", 99)])
+                &held(&[("GRAI", 99)]),
+                RegionShare::Unlimited,
             ),
             None
         );
@@ -4006,13 +4150,23 @@ mod production_tests {
             tools: 0,
         };
         assert_eq!(
-            plan_production(&unscraped, ten_carpenters, &held(&[])),
+            plan_production(
+                &unscraped,
+                ten_carpenters,
+                &held(&[]),
+                RegionShare::Unlimited
+            ),
             None
         );
         let mut no_output = catapult();
         no_output.outputs = None;
         assert_eq!(
-            plan_production(&no_output, ten_carpenters, &held(&[])),
+            plan_production(
+                &no_output,
+                ten_carpenters,
+                &held(&[]),
+                RegionShare::Unlimited
+            ),
             None
         );
     }

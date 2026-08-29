@@ -42,8 +42,8 @@ use crate::orders::silver::{
     transfer_shape, transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster,
     ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
     LateFoodRelief, Lookups, MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
-    PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, TransferShape, Transmuting,
-    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce, FOOD_TAGS,
+    PurchaseAnswer, Receipts, RegionShare, RegionWages, SaleAnswer, SilverDoubt, TransferShape,
+    Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce, FOOD_TAGS,
 };
 use crate::report::composition;
 use crate::report::model::{
@@ -4126,7 +4126,8 @@ fn produce(
     // picture, and are what TAX and the SILVER column already read (`ah-dxfd.2`). A transfer this
     // walk could not follow falls back to the report's own figures, as every other term here does;
     // `holdings_unknown()` is deliberately not consulted (`ah-qct4`).
-    let (priced, plan) = price_production(recipe, work, actor.early_items());
+    let (priced, plan) =
+        price_production(recipe, work, actor.early_items(), RegionShare::Unlimited);
     let Some(plan) = plan else {
         // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
         // same posture `buy` takes for goods the market does not carry - and the ITEMS column
