@@ -35,16 +35,16 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, ItemKind, Ruleset};
 use crate::orders::items::item_named;
 use crate::orders::silver::{
-    because_clause, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
-    late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants, price_buy_all,
-    price_cast, price_claim, price_pillage, price_production, price_purchase, price_sale_line,
-    price_study, price_tax, producing_skill, quantity_bought, readiness, settle_unclaimed,
-    flagged_to_tax, split_pool, taxes, transfer_shape, transmute_argument, unit_upkeep,
-    workforce_for, BuyAllCap,
-    Caster, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
-    LateFoodRelief, Lookups, MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
-    PurchaseAnswer, Receipts, RegionShare, RegionWages, SaleAnswer, SilverDoubt, TransferShape,
-    Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce, FOOD_TAGS,
+    because_clause, feed_after_silver, feed_from_faction_food, flagged_to_tax, food_claim,
+    forecast_unit, late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants,
+    price_buy_all, price_cast, price_claim, price_pillage, price_production, price_purchase,
+    price_sale_line, price_study, price_tax, producing_skill, quantity_bought, readiness,
+    settle_unclaimed, split_pool, taxes, transfer_shape, transmute_argument, unit_upkeep,
+    workforce_for, BuyAllCap, Caster, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim,
+    LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, Pillagers, PoolOverrun,
+    PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionShare, RegionWages,
+    SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
+    UpkeepSettlement, Workforce, FOOD_TAGS,
 };
 use crate::report::composition;
 use crate::report::model::{
