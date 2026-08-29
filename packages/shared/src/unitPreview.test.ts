@@ -435,7 +435,7 @@ describe("formatItems and itemsTooltip", () => {
       "was: 5 IRON, 350 SILV\n" +
         "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
         "This unit has men for 5 swords: GIVE and TAKE resolve before production, so the men that leave it this month do not work for it.\n" +
-        "This unit has materials for 5 swords, not the 8 its men could make."
+        "This unit has materials for 5 swords, not the 8 its skill and tools could make."
     );
   });
 
@@ -458,7 +458,7 @@ describe("formatItems and itemsTooltip", () => {
     expect(itemsTooltip(row, silver)).toBe(
       "was: 5 IRON, 350 SILV\n" +
         "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
-        "This unit has materials for 5 swords, not the 8 its men could make."
+        "This unit has materials for 5 swords, not the 8 its skill and tools could make."
     );
   });
 
@@ -491,7 +491,7 @@ describe("formatItems and itemsTooltip", () => {
     });
 
     expect(itemsTooltip(row, silver)).toBe(
-      "was: 3 SWOR\nThis unit has materials for 0 catapults, not the 3 its men could make."
+      "was: 3 SWOR\nThis unit has materials for 0 catapults, not the 3 its skill and tools could make."
     );
   });
 
@@ -528,7 +528,7 @@ describe("formatItems and itemsTooltip", () => {
       "was: 0 GRAI\n" +
         "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
         "This unit has silver for 19 grain, not the 30 this market offers.\n" +
-        "This unit has materials for 5 swords, not the 8 its men could make."
+        "This unit has materials for 5 swords, not the 8 its skill and tools could make."
     );
   });
 
@@ -729,7 +729,7 @@ describe("formatItems and itemsTooltip", () => {
     expect(itemsTooltip(row, silver)).toBe(
       "was: 5 IRON, 30 WOOD\n" +
         "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
-        "This unit has materials for 5 swords, not the 8 its men could make.\n" +
+        "This unit has materials for 5 swords, not the 8 its skill and tools could make.\n" +
         "Spends 15 WOOD on Building 4 this month.\n" +
         "This unit has wood for 15 units of work, not the 30 its men could do."
     );
@@ -877,7 +877,7 @@ describe("formatItems and itemsTooltip", () => {
       "was: 5 IRON, 30 WOOD\n" +
         "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
         "Includes 30 STON transported from unit 6857. Transport resolves last, so they cannot be spent this month.\n" +
-        "This unit has materials for 5 swords, not the 8 its men could make.\n" +
+        "This unit has materials for 5 swords, not the 8 its skill and tools could make.\n" +
         "Spends 15 WOOD on Building 4 this month.\n" +
         "This unit has wood for 15 units of work, not the 30 its men could do.\n" +
         "Sends 5 IRON to unit 6857."

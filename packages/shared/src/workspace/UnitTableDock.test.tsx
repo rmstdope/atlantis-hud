@@ -716,7 +716,7 @@ describe("the Silver column", () => {
       })
     );
 
-    expect(markup).toContain("not the 8 its men could make");
+    expect(markup).toContain("not the 8 its skill and tools could make");
   });
 });
 

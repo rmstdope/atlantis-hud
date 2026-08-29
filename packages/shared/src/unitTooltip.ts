@@ -186,7 +186,7 @@ function countOf(count: number, name: string): string {
 }
 
 /**
- * "This unit has materials for 5 swords, not the 8 its men could make." - the shape
+ * "This unit has materials for 5 swords, not the 8 its skill and tools could make." - the shape
  * [`productionCapSentence`] and [`castCapSentence`] share, differing in two words: what limited
  * the run, what it names, how many it could have made, what that count is of, and what it would
  * have done with them (`ah-ofpb.4`, `ah-ofpb.5`).
@@ -195,7 +195,7 @@ function capSentence(
   has: ProductionCap,
   named: string,
   wanted: number,
-  could: "its men" | "its level",
+  could: "its skill and tools" | "its level",
   verb: "make" | "summon",
 ): string {
   const what = has === "silver" ? "silver" : has === "materials" ? "materials" : "room";
@@ -203,7 +203,7 @@ function capSentence(
 }
 
 /**
- * "This unit has materials for 5 swords, not the 8 its men could make." - `undefined` when
+ * "This unit has materials for 5 swords, not the 8 its skill and tools could make." - `undefined` when
  * nothing capped the run, or when there is no priceable PRODUCE to speak about.
  *
  * Exported because the ITEMS hover says it too (`ah-ofpb.1`), and two copies of one sentence are
@@ -217,7 +217,7 @@ export function productionCapSentence(silver: UnitSilver | null | undefined): st
     silver.productionCappedBy,
     countOf(silver.produced, silver.producedName),
     silver.productionWanted,
-    "its men",
+    "its skill and tools",
     "make",
   );
 }
@@ -628,7 +628,7 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
-  // Before `production-capped`, because that sentence quotes "the N its men could make" and this
+  // Before `production-capped`, because that sentence quotes "the N its skill and tools could make" and this
   // one is what explains why N is what it is (`ah-qct4`). `SILVER_NOTES`' order is reading order,
   // not precedence - every note whose `when` holds is shown - so this changes only where it reads.
   {
