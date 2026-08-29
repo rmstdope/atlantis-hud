@@ -309,9 +309,10 @@ export function planReportBatch(
   steps.sort((left, right) => {
     // Map exports last, whatever turn they name: they are not part of the run of turns, and the
     // walk needs the viewer's own turns to have landed before it adds hexes to the map they make.
-    const mapExports = (left.kind === "mapExport" ? 1 : 0) - (right.kind === "mapExport" ? 1 : 0);
-    if (mapExports !== 0) {
-      return mapExports;
+    const mapExportOrder =
+      (left.kind === "mapExport" ? 1 : 0) - (right.kind === "mapExport" ? 1 : 0);
+    if (mapExportOrder !== 0) {
+      return mapExportOrder;
     }
     if (left.kind === "mapExport" || right.kind === "mapExport") {
       return left.index - right.index;
