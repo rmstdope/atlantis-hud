@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-256d — A hex's yield, shared between the units producing there</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --brass:#d9a441; --soft:#a3b0c0; --bad:#e0765c; --good:#7fb069; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 30px 0 6px; border-bottom: 1px dashed var(--edge);
+       padding-bottom: 4px; }
+  h3 { font-size: 13px; margin: 18px 0 6px; color: var(--brass); letter-spacing: .4px; }
+  p.note { color: var(--dim); max-width: 88ch; } p.note b { color: var(--ink); }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; margin: 10px 0 4px; align-items: flex-start; }
+  .tip { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
+         padding: 9px 12px; max-width: 52ch; white-space: pre-wrap;
+         font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--soft); }
+  .tip .cap { color: var(--ink); }
+  .lab { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--dim);
+         margin: 0 0 4px; }
+  .lab b { color: var(--brass); letter-spacing: 0; text-transform: none; font-size: 12px; }
+  .cost { color: var(--dim); font-size: 12.5px; margin: 6px 0 0; max-width: 74ch; }
+  table.g { border-collapse: collapse; margin: 8px 0; font-size: 12.5px; }
+  table.g th, table.g td { border: 1px solid var(--edge); padding: 5px 12px; text-align: left; }
+  table.g th { color: var(--dim); font-weight: 500; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .old { color: var(--bad); } .new { color: var(--good); } .hi { color: var(--brass); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 20px; }
+  .rej { opacity: .55; }
+  .chosen { border-color: var(--brass); }
+  pre.rep { background:#0c1016; border:1px solid var(--edge); border-radius:8px; padding:10px 12px;
+            font:12px/1.5 ui-monospace, Menlo, monospace; color:var(--soft); overflow-x:auto; }
+</style>
+</head>
+<body>
+<h1>ah-256d — A hex's yield, shared between the units producing there</h1>
+
+<p class="note">
+  A region's <b>Products</b> line states how much of each resource the hex yields this month, and
+  every unit producing there shares it. <b>rules/tableiteminfo</b>: an item that lists no raw
+  material <i>"may be produced directly from the land … Shown on the description of a region is a
+  list of the items that can be produced, and the amount of each that can be produced per month. …
+  If the units in a region attempt to produce more of a commodity than can be produced that month,
+  then the amount available is distributed among the producers"</i>. The app modelled no pool at
+  all, so after <b>ah-vtwn</b> a lone quarrier was shown making 20 stone in a hex holding 16, and
+  two miners were shown making 72 iron between them in a hex holding 36.
+</p>
+
+<p class="note">
+  <b>Decisions (recorded from the planning discussion, navigator, 2026-08-29, two rounds):</b>
+  the cap is <b>quiet</b> — no Problems entry, no new warning, no Region-panel change; the hover
+  sentence reads <b>"This region has iron for 20, not the 40 its skill and tools could make."</b>;
+  a hex that yields none of the item makes <b>0</b> and says <b>nothing</b>, exactly as a unit
+  below the recipe's minimum skill already does; nothing is said about other factions. Rejected,
+  and why, below each choice.
+</p>
+
+<h2>The hex that proves the arithmetic — mountain (36,4) in Slounspifra, turn 42</h2>
+<pre class="rep">  Products: 34 livestock [LIVE], 36 iron [IRON], 16 stone [STON], 9
+    mithril [MITH], 6 admantium [ADMT].</pre>
+<table class="g">
+  <tr><th>Unit</th><th>Men, skill, tools</th><th class="num">Asks</th><th class="num">Hex holds</th>
+      <th class="num">App today</th><th class="num">Report's own Produces line</th></tr>
+  <tr><td>Miners (1795)</td><td>8 orcs, mining 3, 8 picks</td><td class="num">32</td>
+      <td class="num" rowspan="2">36 iron</td><td class="num old">32</td><td class="num new">16</td></tr>
+  <tr><td>MinersA (5105)</td><td>8 orcs, mining 5</td><td class="num">40</td>
+      <td class="num old">40</td><td class="num new">20</td></tr>
+  <tr><td>Stoneworkers (2693)</td><td>10 orcs, quarrying 2</td><td class="num">20</td>
+      <td class="num">16 stone</td><td class="num old">20</td><td class="num new">16</td></tr>
+  <tr><td>Farmers (3493)</td><td>17 orcs, farming 2</td><td class="num">34</td>
+      <td class="num">34 livestock</td><td class="num new">34</td><td class="num new">34</td></tr>
+  <tr><td>MinersM (3826)</td><td>2 orcs, mining 4, 2 picks</td><td class="num">10</td>
+      <td class="num">9 mithril</td><td class="num old">10</td><td class="num new">9</td></tr>
+  <tr><td>MinersA (7671)</td><td>2 orcs, mining 5</td><td class="num">10</td>
+      <td class="num">6 admantium</td><td class="num old">10</td><td class="num new">6</td></tr>
+</table>
+<p class="cost">
+  Every row is reproduced exactly by <code>split_pool</code> — the same proportional division the
+  app already applies to a contended market line. Iron: 32 and 40 against 36 gives <b>16</b> and
+  <b>20</b>, which is what the report says. <b>A lone producer is capped too</b> (stone, mithril,
+  admantium), and a pool that covers everybody divides nothing (livestock). The pick bonus is
+  inside the asks and is load-bearing: without it Miners would ask 24, and 24 against 40 gives 13,
+  not the 16 the report states.
+</p>
+
+<h2>Decision 1 — the cap is quiet <span class="hi">(chosen)</span></h2>
+<div class="row">
+  <div class="tip chosen"><span class="lab">Chosen — A</span>
+Problems panel, mountain (36,4):
+<span class="cap">(nothing about production)</span></div>
+  <div class="tip rej"><span class="lab">Rejected — B</span>
+ * Miners (1795) — your units here produce
+   72 iron between them and this region has 36
+ * MinersA (5105) — (the same sentence)
+ * Stoneworkers (2693) — this unit produces
+   20 stone and this region has 16
+ * MinersM (3826) — …10 mithril… has 9
+ * MinersA (7671) — …10 admantium… has 6</div>
+  <div class="tip rej"><span class="lab">Rejected — C</span>
+The same entries as B, under a new
+toggle of their own, so they could be
+switched off without also losing the
+tax, wage and market warnings.</div>
+</div>
+<p class="cost">
+  <b>Why A.</b> A busy mining hex is oversubscribed on purpose: you post two miners because you
+  want both of them mining, and the game splits the seam without refusing anything. Five entries
+  from one perfectly ordinary hex, every turn, is a line the player learns to ignore — and the
+  Problems panel's value is that it is short. <b>B</b> was rejected for that, and because its
+  toggle is all-or-nothing with the tax, wage and market warnings, which <i>are</i> mistakes.
+  <b>C</b> was rejected as a new warning code, a new Settings row and a new piece of vocabulary
+  bought for a fact the ITEMS figure and its hover already carry.
+  <b>What A costs:</b> a unit whose man-months are being wasted is discoverable only by hovering
+  that one unit; nothing says "this hex is over-mined by 36 man-months".
+</p>
+
+<h2>Decision 2 — the cap sentence <span class="hi">(chosen: W1)</span></h2>
+<div class="row">
+  <div><p class="lab"><b>W1 — chosen</b></p><div class="tip chosen">This unit will produce 20 iron.
+<span class="cap">This region has iron for 20, not the 40 its skill and tools could make.</span></div>
+  <div class="tip chosen">This unit will produce 16 stone.
+<span class="cap">This region has stone for 16, not the 20 its skill and tools could make.</span></div></div>
+  <div><p class="lab">W2 — rejected</p><div class="tip rej">This unit will produce 20 iron.
+<span class="cap">This unit takes 20 of the region's 36 iron, not the 40 its skill and tools could make.</span></div></div>
+  <div><p class="lab">W3 — rejected</p><div class="tip rej">This unit will produce 20 iron.
+<span class="cap">Your units here produce 72 iron between them and this region has 36, so this unit takes 20 of the 40 its skill and tools could make.</span></div></div>
+</div>
+<p class="cost">
+  <b>Why W1.</b> One sentence for both the crowded hex and the small one, and it is the shape the
+  three existing reasons already use — "This unit has materials for 5 swords, not the 46 its skill
+  and tools could make." <b>W2</b> was rejected because "16 of the region's 16 stone" is what a
+  lone producer exhausting a hex reads as, and it is odd; <b>W3</b> because its contended form runs
+  to about 130 characters where the other three reasons run to about 70. <b>What W1 costs:</b> it
+  never says <i>why</i> 20, so a small hex and a crowded one read identically.
+</p>
+
+<h3>Where the noun comes from</h3>
+<p class="note">
+  The sentence needs a bare noun. The region's own <b>Products</b> line already carries the right
+  word for every one of the nineteen things a hex can yield, and it is <b>not</b> the catalogue's
+  singular — which is what the rejected alternative would have used:
+</p>
+<table class="g">
+  <tr><th>Tag</th><th>Products line (used)</th><th>Catalogue singular (rejected)</th></tr>
+  <tr><td>IRON</td><td class="new">iron</td><td>iron — the same either way</td></tr>
+  <tr><td>HORS</td><td class="new">horses</td><td class="old">horse</td></tr>
+  <tr><td>FLOA</td><td class="new">floater hides</td><td class="old">floater hide</td></tr>
+  <tr><td>HERB</td><td class="new">herbs</td><td class="old">herb</td></tr>
+  <tr><td>LIVE</td><td class="new">livestock</td><td>livestock — the same either way</td></tr>
+</table>
+
+<h2>Decision 3 — the hex yields none of it <span class="hi">(chosen: silent)</span></h2>
+<p class="note">
+  A unit ordered <code>PRODUCE floater hide</code> in a mountain. The Products line does not
+  mention it, so nothing can be produced there and the figure goes to <b>0</b>.
+</p>
+<div class="row">
+  <div><p class="lab"><b>Z3 — chosen</b></p><div class="tip chosen">This unit will produce no floater hides.
+<span class="cap">(no cap sentence)</span>
+
+Problems panel:
+ * cannot produce floater hide here: this
+   region produces livestock, iron, stone,
+   mithril and admantium</div></div>
+  <div><p class="lab">Z1 — rejected</p><div class="tip rej">This unit will produce no floater hides.
+<span class="cap">This region has no floater hide, not the 10 its skill and tools could make.</span></div></div>
+  <div><p class="lab">Z2 — rejected</p><div class="tip rej">This unit will produce no floater hides.
+<span class="cap">This region produces none of it, not the 10 its skill and tools could make.</span></div></div>
+</div>
+<p class="cost">
+  <b>Why Z3.</b> <code>produce-not-here</code> already says it, immediately below, and two copies
+  of one sentence are two things to keep in step — the same reasoning that made <b>ah-vtwn</b>
+  silent about a unit below the recipe's minimum skill, and the same shape in the code: an empty
+  plan, no cap, no sentence. <b>Z1</b> was rejected as a second source of nouns inside one sentence
+  family; <b>Z2</b> because "none of it" leans on the line above to say what "it" is.
+</p>
+
+<h2>Decisions 4 to 6 — three things that do not change</h2>
+<div class="grid">
+  <div><p class="lab"><b>The ITEMS cell at zero</b> — unchanged</p>
+    <div class="tip chosen">ITEMS   8 orcs · 20 iron</div>
+    <p class="cost">A run that makes none pushes nothing into the cell today, and still does. The
+      rejected alternative added a dimmed <code>+0 floater hides</code> row to a cell that is
+      already crowded in a big unit.</p></div>
+  <div><p class="lab"><b>The Region panel</b> — unchanged</p>
+    <div class="tip chosen">Products
+  34 livestock
+  36 iron
+  16 stone
+  9 mithril
+  6 admantium</div>
+    <p class="cost">Rejected: appending "· 72 claimed" per line, or "· oversubscribed". Both were
+      real answers to what decision 1 gave up, and both were declined — on an established hex the
+      answer is nearly always "oversubscribed", so the column would say the same thing every
+      turn.</p></div>
+  <div><p class="lab"><b>Other factions</b> — not mentioned</p>
+    <div class="tip chosen">This unit will produce 20 iron.
+This region has iron for 20, not the 40
+its skill and tools could make.</div>
+    <p class="cost">Only our own units are visible, so every figure here is an upper bound. Nothing
+      says so: the whole preview is a forecast and no other figure in it carries a caveat.
+      Rejected: a second hover line, always or only when a foreign unit stands in the hex.</p></div>
+</div>
+</body></html>
