@@ -14,7 +14,12 @@ import type {
   UnitPreviewStatus,
   UnitSilver
 } from "@atlantis/core-client";
-import { buyAllSentences, castCapSentence, productionCapSentence } from "./unitTooltip";
+import {
+  buyAllSentences,
+  castCapSentence,
+  productionCapSentence,
+  productionMenSentence
+} from "./unitTooltip";
 
 /**
  * How the orders preview folds into the units table.
@@ -209,6 +214,7 @@ export function itemsTooltip(
   const transportReceived = unit.transportReceived ?? [];
   const buyAll = buyAllSentences(silver);
   const capSentence = productionCapSentence(silver);
+  const menSentence = productionMenSentence(silver);
   const castCap = castCapSentence(silver);
   if (
     !change &&
@@ -221,6 +227,7 @@ export function itemsTooltip(
     transportReceived.length === 0 &&
     buyAll.length === 0 &&
     capSentence === undefined &&
+    menSentence === undefined &&
     castCap === undefined
   ) {
     return undefined;
@@ -256,6 +263,11 @@ export function itemsTooltip(
     lines.push(
       `Includes ${arrival.amount} ${arrival.tag} transported from unit ${arrival.from}. Transport resolves last, so they cannot be spent this month.`
     );
+  }
+  // Before the cap sentence, because that one quotes "the N its men could make" and this one is
+  // what explains why N is what it is (`ah-qct4`) - the same order the SILVER hover reads in.
+  if (menSentence !== undefined) {
+    lines.push(menSentence);
   }
   if (capSentence !== undefined) {
     lines.push(capSentence);

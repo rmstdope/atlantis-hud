@@ -362,7 +362,8 @@ pub struct Gaps {
 /// quoted or underscored, which the caller normalises before asking.
 ///
 /// The plural rule is crude on purpose: the text as written first, then with a trailing `es` or
-/// `s` removed. **The order matters and is the caller's to honour**: every spelling must be tried
+/// `s` removed. The suffix is matched without regard to case, so `ORCS` strips to `ORC` exactly as
+/// `orcs` strips to `orc`. **The order matters and is the caller's to honour**: every spelling must be tried
 /// across the whole catalogue before the next one is, or an entry whose own name ends in `s` -
 /// `pearls`, `spices`, `figurines` - could be beaten by some other entry matching its stripped
 /// form. Nothing in the committed ruleset collides that way today, which is precisely why the
@@ -375,11 +376,18 @@ pub fn item_spellings(written: &str) -> [Option<&str>; 3] {
     if written.is_empty() {
         return [None, None, None];
     }
-    [
-        Some(written),
-        written.strip_suffix("es"),
-        written.strip_suffix('s'),
-    ]
+    /// The text without `suffix`, matched without regard to case - [`Ruleset::find_item`] is
+    /// case-insensitive everywhere else, and a player writing `ALL ORCS` in the case the report
+    /// prints tags in must reach the same item as one writing `all orcs` (`ah-qct4`).
+    fn without<'a>(written: &'a str, suffix: &str) -> Option<&'a str> {
+        let cut = written.len().checked_sub(suffix.len())?;
+        written
+            .is_char_boundary(cut)
+            .then(|| &written[..cut])
+            .filter(|_| written[cut..].eq_ignore_ascii_case(suffix))
+    }
+
+    [Some(written), without(written, "es"), without(written, "s")]
 }
 
 /// One thing a cast consumes: an item tag (`SILV` for silver) and how many.
@@ -1664,6 +1672,20 @@ mod tests {
         );
         assert_eq!(item_spellings("sword"), [Some("sword"), None, None]);
         assert_eq!(item_spellings(""), [None, None, None]);
+    }
+
+    /// The report prints tags in upper case (`8 orcs [ORC]`), so a player writing `ALL ORCS` in
+    /// that voice must reach the same item as one writing `all orcs` (`ah-qct4`).
+    #[test]
+    fn an_upper_case_plural_strips_the_same_as_a_lower_case_one() {
+        assert_eq!(item_spellings("ORCS")[2], Some("ORC"));
+        assert_eq!(item_spellings("LEADERS")[2], Some("LEADER"));
+        assert_eq!(item_spellings("BOXES")[1], Some("BOX"));
+        assert_eq!(item_spellings("SpiceS")[2], Some("Spice"));
+
+        // The text as written stays first, whatever its case.
+        assert_eq!(item_spellings("ORCS")[0], Some("ORCS"));
+        assert_eq!(item_spellings("BOXES")[0], Some("BOXES"));
     }
 
     /// What the spelling-major order protects, asserted rather than left to a doc comment.

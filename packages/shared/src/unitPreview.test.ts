@@ -414,6 +414,31 @@ describe("formatItems and itemsTooltip", () => {
     expect(itemsTooltip(undefined)).toBeUndefined();
   });
 
+  it("says the men left before production, above the materials sentence", () => {
+    const row = previewedUnit({
+      items: [
+        { amount: 5, name: "iron", tag: "IRON" },
+        { amount: 350, name: "silver", tag: "SILV" }
+      ],
+      previewChanges: [{ field: "items", original: "5 IRON, 350 SILV" }],
+      produced: [{ amount: 5, tag: "SWOR" }]
+    });
+    const silver = aUnitSilver({
+      produced: 5,
+      producedName: "sword",
+      productionWanted: 8,
+      productionCappedBy: "materials",
+      productionMenLeft: 3
+    });
+
+    expect(itemsTooltip(row, silver)).toBe(
+      "was: 5 IRON, 350 SILV\n" +
+        "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "This unit has men for 5 swords: GIVE and TAKE resolve before production, so the men that leave it this month do not work for it.\n" +
+        "This unit has materials for 5 swords, not the 8 its men could make."
+    );
+  });
+
   it("words the hover for a producing unit whose run was capped", () => {
     const row = previewedUnit({
       items: [

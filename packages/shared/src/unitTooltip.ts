@@ -223,6 +223,34 @@ export function productionCapSentence(silver: UnitSilver | null | undefined): st
 }
 
 /**
+ * "This unit has men for 3 swords: GIVE and TAKE resolve before production, so the men that leave
+ * it this month do not work for it." - `undefined` when no men left this unit this month, when it
+ * has no priceable PRODUCE, or when the run makes nothing at all.
+ *
+ * Silent at nothing made, by the navigator's choice: the MEN cell has already gone to 0 in italics
+ * with its own `was:` tooltip, and that is the whole explanation. Silent for a unit that *gains*
+ * men too, because `productionMenLeft` is clamped at zero in the core.
+ *
+ * One neutral verb pair rather than a sentence per route: `rules/take` says TAKE "works just like
+ * the GIVE order, except that the direction of transfer is reversed", so both move men out of a
+ * unit before production and one sentence is true of either (`ah-qct4`).
+ *
+ * Exported because the ITEMS hover says it as well, the arrangement [`productionCapSentence`]
+ * already has.
+ */
+export function productionMenSentence(silver: UnitSilver | null | undefined): string | undefined {
+  if (
+    !silver ||
+    silver.productionMenLeft <= 0 ||
+    silver.produced <= 0 ||
+    silver.producedName === null
+  ) {
+    return undefined;
+  }
+  return `This unit has men for ${countOf(silver.produced, silver.producedName)}: GIVE and TAKE resolve before production, so the men that leave it this month do not work for it.`;
+}
+
+/**
  * One sentence per `BUY ALL` this unit wrote, in document order - what it buys and what stopped
  * it buying more. Empty when the unit wrote none, or when its sums are doubted.
  *
@@ -595,6 +623,25 @@ export const SILVER_NOTES: readonly SilverNote[] = [
             cappedBy: "silver"
           }
         ]
+      }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  // Before `production-capped`, because that sentence quotes "the N its men could make" and this
+  // one is what explains why N is what it is (`ah-qct4`). `SILVER_NOTES`' order is reading order,
+  // not precedence - every note whose `when` holds is shown - so this changes only where it reads.
+  {
+    id: "production-men-left",
+    when: ({ silver }) => productionMenSentence(silver) !== undefined,
+    say: ({ silver }) => productionMenSentence(silver) ?? "",
+    example: () => ({
+      unit: aReportUnit({ men: 3 }),
+      silver: aUnitSilver({
+        produced: 3,
+        producedName: "sword",
+        productionWanted: 3,
+        productionMenLeft: 5
       }),
       warned: false,
       countUpkeep: true

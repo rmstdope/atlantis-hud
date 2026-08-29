@@ -1575,6 +1575,28 @@ mod tests {
         .join("\n")
     }
 
+    /// [`report_with_a_smith`], with a neighbour to give to - for the cases where a transfer and a
+    /// `PRODUCE` are written in the same month (`ah-qct4`).
+    ///
+    /// A second helper rather than a second unit on the shipped one, because `only_unit` asserts
+    /// exactly one unit changed for three tests that already read it. The men stay the *first*
+    /// item on each own unit's line, as `count_men` (`report/unit.rs:221`) requires.
+    fn report_with_a_smith_and_a_neighbour() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON]. Weight: 180. Capacity: 0/0/120/0.",
+            "* Hands (901), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
     /// Two regions joined by an exit, own units in both, and one foreign unit - for the
     /// `TRANSPORT`/`DISTRIBUTE` cases (`ah-bxgs`). `5530` sends; `6857` is a quartermaster that can
     /// receive. `7001` is a foreign unit visible in `6857`'s hex, present so a transport aimed at a
@@ -3499,6 +3521,131 @@ mod tests {
                 }]
             );
             change(unit, "items");
+        }
+    }
+
+    /// `ah-qct4`. `rules/sequenceofevents` settles "Give orders. GIVE and TAKE orders are
+    /// processed." nine phases before "Primary PRODUCE orders ... are processed", so the men who
+    /// work this month and the materials they work with are the ones the month's gifts leave
+    /// behind - not the ones the report printed.
+    mod production_after_a_gift {
+        use super::*;
+
+        fn preview_gift(orders: &str) -> OrdersPreviewResponse {
+            preview_over(
+                &report_with_a_smith_and_a_neighbour(),
+                &format!("unit 900\n{orders}\n"),
+            )
+        }
+
+        fn giver(response: &OrdersPreviewResponse) -> &UnitPreview {
+            row(response, "1:1,1", "900").expect("the giver's row is previewed")
+        }
+
+        fn held(unit: &UnitPreview, tag: &str) -> i64 {
+            unit.unit
+                .items
+                .iter()
+                .find(|item| item.tag == tag)
+                .map_or(0, |item| item.amount)
+        }
+
+        /// The report prints `8 orcs [ORC]`, so `ALL ORCS` is the first thing anyone would type -
+        /// and until `item_spellings` folded case it resolved to nothing at all.
+        #[test]
+        fn an_upper_case_plural_gift_of_men_empties_the_unit() {
+            let response = preview_gift("GIVE 901 ALL ORCS");
+            let giver = giver(&response);
+
+            assert_eq!(giver.unit.men, 0, "every orc left this unit");
+            assert_eq!(held(giver, "ORC"), 0, "no orcs remain in the item list");
+        }
+
+        /// `rules/tableiteminfo` pays production in man-months - "The higher the skill of the unit,
+        /// the more productive each man-month of work will be" - so a unit with no men left at
+        /// PRODUCE time makes nothing, and its materials stay where they are.
+        #[test]
+        fn a_unit_that_gives_its_men_away_produces_nothing() {
+            let response = preview_gift("GIVE 901 ALL MEN\nPRODUCE sword");
+            let giver = giver(&response);
+
+            assert!(
+                giver.produced.is_empty(),
+                "no men, no production: {:?}",
+                giver.produced
+            );
+            assert_eq!(held(giver, "SWOR"), 0, "no phantom swords in the item list");
+            assert_eq!(held(giver, "IRON"), 20, "the iron was never spent");
+        }
+
+        /// Half the men leave, so half the month's work does.
+        #[test]
+        fn a_unit_that_gives_half_its_men_away_produces_half() {
+            let response = preview_gift("GIVE 901 4 ORC\nPRODUCE sword");
+
+            assert_eq!(
+                giver(&response).produced,
+                vec![ProducedItem {
+                    amount: 4,
+                    tag: "SWOR".to_string(),
+                }]
+            );
+        }
+
+        /// `rules/tableiteminfo`: "Producing items will always produce as many items as during a
+        /// month up to the limit of the supplies carried by the producing unit" - and a unit that
+        /// gave its supplies away in the Give phase carries none.
+        #[test]
+        fn a_unit_that_gives_its_materials_away_produces_nothing() {
+            let response = preview_gift("GIVE 901 ALL IRON\nPRODUCE sword");
+            let giver = giver(&response);
+
+            assert!(
+                giver.produced.is_empty(),
+                "no iron, no swords: {:?}",
+                giver.produced
+            );
+            assert_eq!(giver.unit.men, 8, "the men are all still here");
+        }
+
+        /// Fifteen of the twenty iron leave, so five swords are all the month can make.
+        #[test]
+        fn a_unit_that_gives_some_materials_away_produces_what_is_left() {
+            let response = preview_gift("GIVE 901 15 IRON\nPRODUCE sword");
+
+            assert_eq!(
+                giver(&response).produced,
+                vec![ProducedItem {
+                    amount: 5,
+                    tag: "SWOR".to_string(),
+                }]
+            );
+        }
+
+        /// The regression that must not move: giving away the *goods* changes nothing about the
+        /// month's run, because the swords leave in the Give phase and the new ones are made in
+        /// the last one.
+        #[test]
+        fn a_gift_of_the_goods_it_makes_leaves_this_months_production_behind() {
+            let report = report_with_a_smith_and_a_neighbour().replace(
+                "8 orcs [ORC], 20 iron [IRON]",
+                "8 orcs [ORC], 20 iron [IRON], 5 swords [SWOR]",
+            );
+            let response = preview_over(&report, "unit 900\nGIVE 901 ALL SWOR\nPRODUCE sword\n");
+
+            assert_eq!(
+                held(giver(&response), "SWOR"),
+                8,
+                "the month's eight swords stay with the giver"
+            );
+            assert_eq!(
+                held(
+                    row(&response, "1:1,1", "901").expect("the receiver's row is previewed"),
+                    "SWOR"
+                ),
+                5,
+                "the five it already had are what the receiver gets"
+            );
         }
     }
 

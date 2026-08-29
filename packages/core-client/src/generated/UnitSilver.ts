@@ -197,6 +197,14 @@ withdrawing: boolean,
  */
 produced: number, 
 /**
+ * How many fewer men work this unit's `PRODUCE` this month than its report showed, because
+ * `GIVE` and `TAKE` resolve before either PRODUCE phase (`rules/sequenceofevents`).
+ *
+ * `0` for a unit with no priceable `PRODUCE` order, exactly as [`UnitSilver::produced`] is,
+ * and `0` for one that *gained* men - which produces more and needs no sentence (`ah-qct4`).
+ */
+productionMenLeft: number, 
+/**
  * The item's name, as the ruleset or the report calls it, for the hover to say. `None` only
  * when the unit has no priceable `PRODUCE` order at all - **not** when a cap leaves it making
  * none. Unit 12881 `Carpenters` in the committed turn holds no silver of its own and so makes

@@ -970,6 +970,7 @@ fn forecast_hex(
             region_id: &hex.region.region_id,
             held: ordered.holding(SILVER),
             men: ordered.early_men(),
+            men_reported: ordered.unit.men,
             men_estimated: ordered.unit.men_estimated,
             men_by_race: ordered.early_men_by_race(),
             items: ordered.early_items(),
@@ -2928,6 +2929,7 @@ fn unit_facts<'a>(
         region_id: &hex.region.region_id,
         held: ordered.holding(SILVER),
         men: ordered.early_men(),
+        men_reported: ordered.unit.men,
         men_estimated: ordered.unit.men_estimated,
         men_by_race: ordered.early_men_by_race(),
         items: ordered.early_items(),
@@ -4093,7 +4095,13 @@ fn produce(
     let who = &actor.unit.unit_id;
     let tag = resolve_item(item, hex, actor, ruleset);
     let recipe = tag.as_deref().and_then(|tag| recipe_for(ruleset, tag));
-    let (priced, plan) = price_production(recipe, actor.unit.men, &actor.unit.items);
+    // `rules/sequenceofevents` settles the Give phase nine phases before either PRODUCE phase, so
+    // the men who work this month and the materials they work with are the ones this month's gifts
+    // leave behind - not the ones the report printed. `early_men`/`early_items` are exactly that
+    // picture, and are what TAX and the SILVER column already read (`ah-dxfd.2`). A transfer this
+    // walk could not follow falls back to the report's own figures, as every other term here does;
+    // `holdings_unknown()` is deliberately not consulted (`ah-qct4`).
+    let (priced, plan) = price_production(recipe, actor.early_men(), actor.early_items());
     let Some(plan) = plan else {
         // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
         // same posture `buy` takes for goods the market does not carry - and the ITEMS column

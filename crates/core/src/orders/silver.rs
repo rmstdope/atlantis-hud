@@ -244,6 +244,12 @@ pub struct UnitSilver {
     /// How many of the item its `PRODUCE` order names this unit will make. `0` for a unit with no
     /// such order, and for one whose men cannot make even one (`ah-19l2.2`).
     pub produced: i64,
+    /// How many fewer men work this unit's `PRODUCE` this month than its report showed, because
+    /// `GIVE` and `TAKE` resolve before either PRODUCE phase (`rules/sequenceofevents`).
+    ///
+    /// `0` for a unit with no priceable `PRODUCE` order, exactly as [`UnitSilver::produced`] is,
+    /// and `0` for one that *gained* men - which produces more and needs no sentence (`ah-qct4`).
+    pub production_men_left: i64,
     /// The item's name, as the ruleset or the report calls it, for the hover to say. `None` only
     /// when the unit has no priceable `PRODUCE` order at all - **not** when a cap leaves it making
     /// none. Unit 12881 `Carpenters` in the committed turn holds no silver of its own and so makes
@@ -681,6 +687,13 @@ pub struct UnitFacts<'a> {
     /// the market opens, so this is what those terms read; a term settled after the market reads
     /// [`UnitFacts::late`] instead.
     pub men: i64,
+    /// The unit's headcount as the *report* printed it, before any of this month's orders.
+    ///
+    /// The only term that reads it is the production sentence, which has to say that men left this
+    /// unit this month; every other term wants `men` (the early picture) or `late().men`. Kept
+    /// here rather than derived, because by the time [`forecast_unit`] runs there is nothing left
+    /// that remembers what the report said (`ah-qct4`).
+    pub men_reported: i64,
     pub men_estimated: bool,
     /// `men`'s breakdown by race, which is what tells a leader from an ordinary character. Empty
     /// where the report did not break the unit down, which means *all ordinary characters* - the
@@ -980,6 +993,7 @@ pub fn forecast_unit(
             given_to_nobody: 0,
             withdrawing: false,
             produced: 0,
+            production_men_left: 0,
             produced_name: None,
             production_wanted: 0,
             production_capped_by: None,
@@ -1020,6 +1034,9 @@ pub fn forecast_unit(
     // What a `PRODUCE` order will make, for the four fields the hover reads. Filled by the arm
     // below; a unit with no such order leaves it at nothing.
     let mut production: Option<(String, ProductionPlan)> = None;
+    // How many fewer men work this month than the report showed, for the unit's `PRODUCE` order.
+    // `0` for a unit with no priceable one, and for one that gained men (`ah-qct4`).
+    let mut production_men_left: i64 = 0;
     // What a `CAST` order will make, for the four `cast_*` fields the hover reads. Filled by the
     // arm below; a unit with no such order, or none the ruleset prices, leaves it at nothing.
     let mut cast: Option<CastPlan> = None;
@@ -1155,6 +1172,13 @@ pub fn forecast_unit(
                             spent_on = spent_on.or(Some(SilverSpender::Produce));
                         }
                         production = Some(((lookups.item_name)(&recipe.tag), plan));
+                        // `rules/sequenceofevents` settles GIVE and TAKE before either PRODUCE
+                        // phase, so a unit that parts with men produces less than its report
+                        // suggests - and nothing else on the row says so. Clamped at zero: a unit
+                        // that *gains* men produces more, which needs no sentence (`ah-qct4`).
+                        // Set here rather than before the `match`, so it stays `0` for a unit
+                        // whose PRODUCE the ruleset cannot price, exactly as `produced` does.
+                        production_men_left = (facts.men_reported - facts.late().men).max(0);
                     }
                     None => {
                         expense_doubt = expense_doubt.or(priced.doubt);
@@ -1486,6 +1510,7 @@ pub fn forecast_unit(
         given_to_nobody,
         withdrawing,
         produced: production.as_ref().map_or(0, |(_, plan)| plan.made),
+        production_men_left,
         produced_name: production.as_ref().map(|(name, _)| name.clone()),
         production_wanted: production.as_ref().map_or(0, |(_, plan)| plan.wanted),
         production_capped_by: production.as_ref().and_then(|(_, plan)| plan.capped_by),
@@ -3023,14 +3048,19 @@ pub struct ProductionPlan {
 
 /// What a unit's `PRODUCE` order makes this month, from the recipe and what the unit holds.
 ///
-/// `held` is the unit's inventory as the report shows it, and the cap is taken against **that**
-/// rather than against a running balance. That is a decision, not an oversight: the ledger keeps a
-/// running balance and `forecast_unit` does not, so capping against one would give the two
-/// surfaces different answers for the same order - which is exactly the drift `ah-ycuj`'s corpus
-/// test exists to catch. Holdings are imprecise in both directions (a unit that BUYs wood first
-/// makes more than this says; one that spends its silver elsewhere makes fewer), they are the
-/// figure the player can see in the report, and they need no assumption about the order in which
-/// orders resolve.
+/// `men` and `held` are the caller's to supply, and the cap is taken against `held` rather than
+/// against a running balance. That is a decision, not an oversight: the ledger keeps a running
+/// balance and `forecast_unit` does not, so capping against one would give the two surfaces
+/// different answers for the same order - which is exactly the drift `ah-ycuj`'s corpus test
+/// exists to catch.
+///
+/// **Both callers supply the post-gift picture** (`ah-qct4`): `rules/sequenceofevents` settles
+/// "Give orders. GIVE and TAKE orders are processed." nine phases before either PRODUCE phase, so
+/// the men who work and the materials they work with are the ones this month's transfers leave
+/// behind. The two still differ for men bought or sold this month - the ledger cannot see the
+/// market during its own intent loop - which is pre-existing and documented at the `PRODUCE` arm
+/// of [`forecast_unit`]. The figures remain imprecise in the other direction too: a unit that BUYs
+/// wood first makes more than this says.
 ///
 /// `None` when the recipe cannot be applied at all: a recipe stating no man-months or no outputs
 /// (a ruleset scraped before `ah-19l2.1`, or cooking, whose page states a formula), or one whose
@@ -4127,6 +4157,8 @@ mod tests {
             region_id: "mountain (7,53)",
             held: 0,
             men,
+            // No transfers in these tests, so the report's headcount is the early one (`ah-qct4`).
+            men_reported: men,
             men_estimated: false,
             men_by_race: &[],
             items: &[],
@@ -4307,6 +4339,113 @@ mod tests {
     fn ruleset() -> Ruleset {
         Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
             .expect("the committed ruleset should be usable")
+    }
+
+    /// `ah-qct4`. `rules/sequenceofevents` settles GIVE and TAKE before either PRODUCE phase, so
+    /// a unit that parts with men produces less than its report suggests - and nothing else on the
+    /// row says so, which is what `production_men_left` is for.
+    ///
+    /// The committed ruleset's sword recipe is weaponsmith, one iron a sword, one man-month a
+    /// sword, one output - so three men with twenty iron make three and nothing caps them.
+    #[test]
+    fn a_unit_that_parted_with_men_reports_how_many_left() {
+        let receipts = Receipts::default();
+        let intents = [placed(Intent::Produce {
+            item: "SWOR".to_string(),
+        })];
+        let items = [ItemAmount {
+            amount: 20,
+            name: "iron".into(),
+            tag: "IRON".into(),
+        }];
+        let unit = forecast_unit(
+            UnitFacts {
+                men_reported: 8,
+                items: &items,
+                late: Some(LateFacts {
+                    men: 3,
+                    men_by_race: &[],
+                    items: &items,
+                }),
+                ..facts(3, &intents, &receipts)
+            },
+            paying("$12.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            Some(&ruleset()),
+        );
+
+        assert_eq!(unit.production_men_left, 5);
+        assert_eq!(unit.produced, 3);
+    }
+
+    /// Clamped at zero: a unit that *gains* men produces more, which needs no sentence.
+    #[test]
+    fn a_unit_that_gained_men_reports_none_left() {
+        let receipts = Receipts::default();
+        let intents = [placed(Intent::Produce {
+            item: "SWOR".to_string(),
+        })];
+        let items = [ItemAmount {
+            amount: 20,
+            name: "iron".into(),
+            tag: "IRON".into(),
+        }];
+        let unit = forecast_unit(
+            UnitFacts {
+                men_reported: 3,
+                items: &items,
+                late: Some(LateFacts {
+                    men: 8,
+                    men_by_race: &[],
+                    items: &items,
+                }),
+                ..facts(8, &intents, &receipts)
+            },
+            paying("$12.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            Some(&ruleset()),
+        );
+
+        assert_eq!(unit.production_men_left, 0);
+        assert_eq!(unit.produced, 8);
+    }
+
+    /// `0` for a unit with no `PRODUCE` at all, exactly as `produced` is - the field says how many
+    /// fewer men work *this unit's production*, and a unit producing nothing has none.
+    #[test]
+    fn a_unit_with_no_production_reports_none_left() {
+        let receipts = Receipts::default();
+        let items = [ItemAmount {
+            amount: 20,
+            name: "iron".into(),
+            tag: "IRON".into(),
+        }];
+        let unit = forecast_unit(
+            UnitFacts {
+                men_reported: 8,
+                items: &items,
+                late: Some(LateFacts {
+                    men: 3,
+                    men_by_race: &[],
+                    items: &items,
+                }),
+                ..facts(3, &[], &receipts)
+            },
+            paying("$12.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            Some(&ruleset()),
+        );
+
+        assert_eq!(unit.production_men_left, 0);
     }
 
     /// Flags as the report prints them, for the taxing-flag rules.
@@ -6553,6 +6692,8 @@ mod tests {
             region_id: "mountain (7,53)",
             held: 0,
             men,
+            // No transfers in these tests, so the report's headcount is the early one (`ah-qct4`).
+            men_reported: men,
             men_estimated: false,
             men_by_race,
             items,
@@ -7012,6 +7153,8 @@ mod combat_ready_tests {
             region_id: "mountain (36,4)",
             held: 0,
             men,
+            // No transfers in these tests, so the report's headcount is the early one (`ah-qct4`).
+            men_reported: men,
             men_estimated: false,
             men_by_race: &[],
             items,

@@ -7,6 +7,7 @@ import {
   buyAllSentences,
   placeTooltip,
   productionCapSentence,
+  productionMenSentence,
   summariseUnit,
   type SilverFacts
 } from "./unitTooltip";
@@ -121,6 +122,61 @@ describe("placeTooltip", () => {
   it("never places the tooltip above the top of the viewport", () => {
     const tall = { width: 200, height: 900 };
     expect(placeTooltip({ x: 100, y: 750 }, tall, viewport)).toEqual({ left: 112, top: 0 });
+  });
+});
+
+describe("productionMenSentence", () => {
+  it("says how many the men that are left can make", () => {
+    expect(
+      productionMenSentence(
+        aUnitSilver({
+          produced: 3,
+          producedName: "sword",
+          productionWanted: 3,
+          productionMenLeft: 5
+        })
+      )
+    ).toBe(
+      "This unit has men for 3 swords: GIVE and TAKE resolve before production, so the men that leave it this month do not work for it."
+    );
+  });
+
+  it("says nothing when no men left this unit", () => {
+    expect(
+      productionMenSentence(
+        aUnitSilver({
+          produced: 8,
+          producedName: "sword",
+          productionWanted: 8,
+          productionMenLeft: 0
+        })
+      )
+    ).toBeUndefined();
+  });
+
+  it("says nothing when the run makes nothing at all", () => {
+    expect(
+      productionMenSentence(
+        aUnitSilver({
+          produced: 0,
+          producedName: "sword",
+          productionWanted: 0,
+          productionMenLeft: 8
+        })
+      )
+    ).toBeUndefined();
+  });
+
+  it("says nothing for a unit with no priceable production", () => {
+    expect(
+      productionMenSentence(
+        aUnitSilver({
+          produced: 3,
+          producedName: null,
+          productionMenLeft: 5
+        })
+      )
+    ).toBeUndefined();
   });
 });
 
@@ -1332,6 +1388,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
       "A faction-mate's silver in this hex pays for this unit's orders.",
     "buy-all-settled":
       "This unit has silver for 19 grain, not the 30 this market offers.",
+    "production-men-left":
+      "This unit has men for 3 swords: GIVE and TAKE resolve before production, so the men that leave it this month do not work for it.",
     "production-capped":
       "This unit has silver for 1 catapult, not the 3 its men could make.",
     "cast-capped":
@@ -1569,6 +1627,9 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
       producedName: "catapult",
       productionWanted: 3,
       productionCappedBy: "silver",
+      // Men left this unit as well as its silver running short: both notes are true at once, and
+      // the men note reads first because it explains the count the cap note quotes (`ah-qct4`).
+      productionMenLeft: 5,
       worksByDefault: true,
       taxesByFlag: true,
       castMade: 2,
