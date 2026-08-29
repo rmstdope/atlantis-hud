@@ -212,6 +212,37 @@ describe("productionCapSentence", () => {
     expect(productionCapSentence(null)).toBeUndefined();
     expect(productionCapSentence(undefined)).toBeUndefined();
   });
+
+  it("names the region when the hex's yield is what limited the run", () => {
+    expect(
+      productionCapSentence(
+        aUnitSilver({
+          produced: 20,
+          producedName: "iron",
+          productionWanted: 40,
+          productionCappedBy: "region",
+          productionRegionName: "iron"
+        })
+      )
+    ).toBe("This region has iron for 20, not the 40 its skill and tools could make.");
+  });
+
+  it("takes the noun from the region's own Products line, not the catalogue's singular", () => {
+    // The `Products` line writes `floater hides` where the catalogue writes `floater hide`, and
+    // this slot wants a bare noun rather than a counted one (`ah-256d`). Seven of the nineteen
+    // land recipes differ this way - HORS, HERB, FLOA, TURT, MUSH, WING and CAME.
+    expect(
+      productionCapSentence(
+        aUnitSilver({
+          produced: 4,
+          producedName: "floater hide",
+          productionWanted: 10,
+          productionCappedBy: "region",
+          productionRegionName: "floater hides"
+        })
+      )
+    ).toBe("This region has floater hides for 4, not the 10 its skill and tools could make.");
+  });
 });
 
 describe("buyAllSentences (ah-jown)", () => {

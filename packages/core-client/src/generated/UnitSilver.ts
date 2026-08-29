@@ -227,6 +227,17 @@ productionWanted: number,
  */
 productionCappedBy: ProductionCap | null, 
 /**
+ * The region's own word for what this unit is producing, from its `Products` line - `iron`,
+ * `horses`, `floater hides` - for the one sentence that says it.
+ *
+ * The region's word and **not** the catalogue's, which is the singular: the `Products` line
+ * writes `horses`, `herbs` and `floater hides` where the catalogue writes `horse`, `herb` and
+ * `floater hide`, and this sentence needs a bare noun rather than a counted one.
+ *
+ * `None` unless [`UnitSilver::production_capped_by`] is [`ProductionCap::Region`].
+ */
+productionRegionName: string | null, 
+/**
  * Whether this unit has no month-long order and will therefore be set to work, earning the
  * region's wage. `false` for every unit that spends its month on something (`ah-gjq4`).
  *

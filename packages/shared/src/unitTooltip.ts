@@ -192,7 +192,10 @@ function countOf(count: number, name: string): string {
  * have done with them (`ah-ofpb.4`, `ah-ofpb.5`).
  */
 function capSentence(
-  has: ProductionCap,
+  // `"region"` is excluded rather than handled: that reason's noun is not a fixed word but the
+  // region's own, so it is worded in `productionCapSentence` before this is reached. Narrowed
+  // rather than cast, so the compiler keeps proving there is no other route in (`ah-256d`).
+  has: Exclude<ProductionCap, "region">,
   named: string,
   wanted: number,
   could: "its skill and tools" | "its level",
@@ -212,6 +215,14 @@ function capSentence(
 export function productionCapSentence(silver: UnitSilver | null | undefined): string | undefined {
   if (!silver || silver.productionCappedBy === null || silver.producedName === null) {
     return undefined;
+  }
+  // The region's yield is the one reason whose noun is not a fixed word, so it does not go through
+  // `capSentence` (`ah-256d`). The noun is the region's own, from its `Products` line - `iron`,
+  // `horses`, `floater hides` - because the catalogue's is the singular and this slot wants a bare
+  // noun. `producedName` is the fallback for a payload written before the field existed.
+  if (silver.productionCappedBy === "region") {
+    const named = silver.productionRegionName ?? silver.producedName;
+    return `This region has ${named} for ${silver.produced}, not the ${silver.productionWanted} its skill and tools could make.`;
   }
   return capSentence(
     silver.productionCappedBy,
@@ -294,6 +305,11 @@ export function buyAllSentences(silver: UnitSilver | null | undefined): string[]
  */
 export function castCapSentence(silver: UnitSilver | null | undefined): string | undefined {
   if (!silver || silver.castCappedBy === null || silver.castMadeNamed === null) {
+    return undefined;
+  }
+  // `castCappedBy` is never the region: `plan_cast` sets only the three a summon can hit. Stated
+  // as a guard rather than a cast so the compiler keeps checking it (`ah-256d`).
+  if (silver.castCappedBy === "region") {
     return undefined;
   }
   return capSentence(

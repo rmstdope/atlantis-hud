@@ -4389,8 +4389,10 @@ test("a BUY ALL settles and marks the ITEMS cell as a projection", async ({ page
  *
  * That is why this cannot use the default turn-71 fixture - its five own units carry only
  * observation, stealth and manipulation - and follows the `CAST` walk below onto `F42_T42`.
- * `MinersA (5105)` is 8 orcs with `mining [MINI] 5` in `mountain (36,4)`, holds no picks, and iron
- * takes no materials, so nothing caps the run.
+ * `MinersA (5105)` is 8 orcs with `mining [MINI] 5` in `mountain (36,4)` and holds no picks, so
+ * its men could make 40 iron. What it actually makes is less: `ah-256d` shares the hex's own
+ * `Products: ... 36 iron` between the units producing there. The walk asserts the cell names IRON
+ * and carries the projection title, both of which hold whatever the settled figure is.
  */
 test("a produced item marks the ITEMS cell as a projection", async ({ page }) => {
   await loadReport(page, "Produce smoke", F42_T42, "regions");
