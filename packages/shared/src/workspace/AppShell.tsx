@@ -20,6 +20,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildHexMapModel,
+  levelClause,
   parseRegionId,
   SURFACE_LEVEL,
   unitsForHex,
@@ -65,6 +66,7 @@ import {
   routeReport,
   storeOlderTurn,
   type LoadedTurn,
+  type PendingMapExport,
   type PendingReportLoad
 } from "../reportLoad";
 import { chooseViewerFaction } from "../reportBatch";
@@ -77,6 +79,7 @@ import {
 } from "../batchImport";
 import type { ImportSummary } from "../importSummary";
 import { describeMerge } from "../foreignReport";
+import { describeMapExportAdded } from "../mapExportPrompt";
 import {
   AUTOSAVE_CEILING_MS,
   AUTOSAVE_IDLE_MS,
@@ -125,6 +128,7 @@ import { UNSUPPORTED_UPDATES } from "./appUpdate";
 import type { OpenExternal } from "./openExternal";
 import { OPEN_EXTERNAL_IN_NEW_TAB } from "./openExternal";
 import { ForeignReportPrompt } from "./ForeignReportPrompt";
+import { MapExportPrompt } from "./MapExportPrompt";
 import { ImportSummaryDialog } from "./ImportSummaryDialog";
 import { OrdersImportPrompt } from "./OrdersImportPrompt";
 import { OrdersImportSummaryDialog, type OrdersImportSummary } from "./OrdersImportSummaryDialog";
@@ -627,6 +631,9 @@ export function AppShell({
   // A report from another faction, parsed and waiting for the player to say what to do with it,
   // and whose reports have already been folded into the turn on screen.
   const [pendingLoad, setPendingLoad] = useState<PendingReportLoad | null>(null);
+  // One of our own map exports, held for the same reason and cleared the same way. It is never a
+  // turn, so unlike `pendingLoad` there is no third answer that opens it.
+  const [pendingMapExport, setPendingMapExport] = useState<PendingMapExport | null>(null);
   // An orders file, recognised and waiting for the player to confirm the overwrite it names -
   // `pendingLoad`'s sibling for the other kind of file the Import target takes. The two clear each
   // other on arrival: only one question is ever on screen at a time.
@@ -1391,12 +1398,27 @@ export function AppShell({
           // leading-group figure is exactly right.
           const report = await parseReport(text);
 
-          const route = routeReport(parsed, report, text, fileName);
+          // The shell's own map answers "new to your map", so the prompt can say how much of the
+          // file is worth adding before the player commits, with no second call into the core.
+          const route = routeReport(
+            parsed,
+            report,
+            text,
+            fileName,
+            new Set(model.hexes.map((hex) => hex.regionId))
+          );
 
           if (route.kind === "reject") {
             // Thrown rather than reported here, so `runReported`'s `could not read <file>: …`
             // prefix and red status apply exactly as they do to a file that would not parse.
             throw new Error(route.reason);
+          }
+
+          if (route.kind === "mapExport") {
+            // A map is added, never opened, so the load stops here exactly as `ask` does.
+            setPendingOrdersImport(null);
+            setPendingMapExport(route.pending);
+            return;
           }
 
           if (route.kind === "ask") {
@@ -1421,8 +1443,9 @@ export function AppShell({
       ),
     // `ruleset` belongs here: without it the callback closes over the value at first render, which
     // is null, and every report is parsed unclassified however long the ruleset took to arrive.
-    // `parsed` because the routing above is decided against whatever is on screen.
-    [client, ruleset, parsed, applyReport, storeReportOnly]
+    // `parsed` because the routing above is decided against whatever is on screen, and `model`
+    // because the map-export prompt counts its hexes against the map the player already has.
+    [client, ruleset, parsed, model, applyReport, storeReportOnly]
   );
 
   /** Opens the pending report as its own faction: today's behaviour, chosen rather than assumed. */
@@ -1476,6 +1499,49 @@ export function AppShell({
       { busy: setBusy, prefix: `could not merge ${pending.fileName}` }
     );
   }, [pendingLoad, client, game, rulesetText, rawReport]);
+
+  /**
+   * Adds the pending map export's hexes to the player's map, and changes nothing else.
+   *
+   * The same restraint `mergeReport` shows, and for a stronger reason: this file is not a turn at
+   * all. None of `setParsed`, `setRawReport`, `setOrdersDocument`, `setSave`, `clearPlan`,
+   * `setRoute` or `selectRegion` is called - the turn on screen, the orders being written and the
+   * hex being looked at all stay exactly where the player left them. The core recognises the file
+   * as a map export and merges each hex at the turn it was actually seen.
+   */
+  const addMapExport = useCallback(() => {
+    const pending = pendingMapExport;
+    if (!pending || !game) {
+      return;
+    }
+    setPendingMapExport(null);
+    void runReported(
+      async () => {
+        const outcome = await mergeTurn(
+          client,
+          game,
+          pending.viewer.factionId,
+          pending.viewer.turnNumber,
+          pending.text,
+          rulesetText,
+          new Date().toISOString(),
+          rawReport
+        );
+        setMemory({ remembered: outcome.remembered, knownMap: outcome.knownMap });
+        setMergedReports(outcome.merged);
+        // `levelClause` already answers "" on the surface, so the status names a level only when
+        // what landed is somewhere the player is not looking.
+        const levelPhrase = levelClause(model.levels, pending.level).replace(/^, /, "");
+        setStatus(
+          outcome.warning !== null
+            ? warningStatus(outcome.warning)
+            : noticeStatus(describeMapExportAdded(outcome.result.newRegionCount, levelPhrase))
+        );
+      },
+      (message) => setStatus(failedStatus(message)),
+      { busy: setBusy, prefix: `could not add ${pending.fileName} to your map` }
+    );
+  }, [pendingMapExport, client, game, rulesetText, rawReport, model.levels]);
 
   /**
    * Decides what an orders file dropped on the Import target should do: refuse it outright, or hold
@@ -3603,6 +3669,19 @@ export function AppShell({
           onMerge={mergeReport}
           onSwitch={switchFaction}
           onCancel={() => setPendingLoad(null)}
+        />
+      ) : null}
+
+      {/*
+        The same shape again for one of our own map exports, which is a map and never a turn: two
+        buttons, and nothing on screen changes until Add to map is pressed.
+      */}
+      {pendingMapExport ? (
+        <MapExportPrompt
+          pending={pendingMapExport}
+          busy={busy}
+          onAdd={addMapExport}
+          onCancel={() => setPendingMapExport(null)}
         />
       ) : null}
 

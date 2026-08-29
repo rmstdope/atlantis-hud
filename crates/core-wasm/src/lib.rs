@@ -60,6 +60,12 @@ struct PreparedMergeDto {
     region_sightings: Vec<RegionSighting>,
     merged_region_count: u32,
     new_region_count: u32,
+    /// Whether the core recognised the file as one of our own map exports.
+    ///
+    /// The adapter needs it to decide whether to write a merged-report record, and the decision is
+    /// the core's for the same reason the merge itself is: the desktop, which writes that record in
+    /// Rust, must not be able to answer differently.
+    map_export: bool,
     /// `None` when the report may be merged; otherwise why it may not be.
     rejection: Option<String>,
 }
@@ -295,12 +301,14 @@ pub fn prepare_report_merge_state(
     // it uses `reject_merge` rather than `reject_import` - the latter asks whether a report may be
     // filed under a faction, and answers from a candidate list that holds only the reporting
     // faction, so it refuses every ally there is.
-    let outcome = match plan_merge(
+    let plan = plan_merge(
         &raw_report,
         &parse_result,
         viewer_turn_number,
         &viewer_faction_id,
-    ) {
+    );
+    let map_export = matches!(plan, MergePlan::MapExport { .. });
+    let outcome = match plan {
         MergePlan::Refused(rejection) => {
             return to_js(&PreparedMergeDto {
                 turn_number: parse_result.turn_header.as_ref().map(|it| it.turn_number),
@@ -309,6 +317,7 @@ pub fn prepare_report_merge_state(
                 region_sightings: Vec::new(),
                 merged_region_count: 0,
                 new_region_count: 0,
+                map_export: false,
                 rejection: Some(rejection),
             });
         }
@@ -330,6 +339,7 @@ pub fn prepare_report_merge_state(
         region_sightings: outcome.sightings,
         merged_region_count: u32::try_from(outcome.merged_region_count).unwrap_or(u32::MAX),
         new_region_count: u32::try_from(outcome.new_region_count).unwrap_or(u32::MAX),
+        map_export,
         rejection: None,
     })
 }

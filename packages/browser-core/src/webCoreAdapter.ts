@@ -176,6 +176,11 @@ type PreparedMerge = {
   regionSightings: PreparedRegionSighting[];
   mergedRegionCount: number;
   newRegionCount: number;
+  /**
+   * Whether the core recognised the file as one of our own map exports. The core decides it, for
+   * the same reason it decides the merge: the desktop must not be able to answer differently.
+   */
+  mapExport: boolean;
   /** `null` when the report may be merged; otherwise the core's reason to refuse it. */
   rejection: string | null;
 };
@@ -388,15 +393,21 @@ export function createWebCoreAdapter(
         }))
       );
 
-      await store.putMergedReport({
-        databasePath,
-        gameId,
-        factionId: viewerFactionId,
-        turnNumber: prepared.turnNumber,
-        mergedFactionId: prepared.mergedFactionId,
-        mergedFactionName: prepared.mergedFactionName ?? prepared.mergedFactionId,
-        mergedAt
-      });
+      // A map export of the viewer's own map writes no provenance row: its key would name the
+      // viewer as their own ally, which is nonsense in front of anything reading merged reports.
+      // An ally's map export still writes one, which is the provenance worth keeping.
+      const ownMapExport = prepared.mapExport && prepared.mergedFactionId === viewerFactionId;
+      if (!ownMapExport) {
+        await store.putMergedReport({
+          databasePath,
+          gameId,
+          factionId: viewerFactionId,
+          turnNumber: prepared.turnNumber,
+          mergedFactionId: prepared.mergedFactionId,
+          mergedFactionName: prepared.mergedFactionName ?? prepared.mergedFactionId,
+          mergedAt
+        });
+      }
 
       return {
         turnNumber: prepared.turnNumber,
