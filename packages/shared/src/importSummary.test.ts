@@ -18,6 +18,13 @@ const merged = (fileName: string, turnNumber: number): BatchStep => ({
   turnNumber,
   unreadableCount: 0
 });
+const mapped = (fileName: string, hexesAdded: number, turnNumber = 71): BatchStep => ({
+  kind: "mapExport",
+  index: next++,
+  fileName,
+  turnNumber,
+  hexesAdded
+});
 const skip = (fileName: string, reason: string) => ({ index: next++, fileName, reason });
 
 const summary = (over: Partial<Parameters<typeof importSummaryCopy>[0]> = {}) =>
@@ -154,5 +161,113 @@ describe("the lines a batch could not read", () => {
     });
 
     expect(copy.lines.some((line) => line.text.includes("could not be read"))).toBe(false);
+  });
+});
+
+/**
+ * A map export lands hexes and nothing else - no turn changes hands and nothing moves on screen -
+ * so a batch of nothing but map exports used to read `Nothing was imported.` while eleven hexes
+ * had just been added. Its own sentence after the turns, which is what the navigator chose over a
+ * third clause on the turn sentence (variant B, 2026-08-29).
+ */
+describe("the headline of a batch holding map exports", () => {
+  it("counts the hexes of several map exports together", () => {
+    expect(summary({ steps: [mapped("a.txt", 8), mapped("b.txt", 3)] }).headline).toBe(
+      "11 hexes added to your map from 2 map exports."
+    );
+  });
+
+  it("names a single map export as one rather than counting it", () => {
+    expect(summary({ steps: [mapped("a.txt", 8)] }).headline).toBe(
+      "8 hexes added to your map from a map export."
+    );
+  });
+
+  it("counts one hex as one hex", () => {
+    expect(summary({ steps: [mapped("a.txt", 1)] }).headline).toBe(
+      "1 hex added to your map from a map export."
+    );
+  });
+
+  it("puts the hexes after the turns and before the turn on screen", () => {
+    expect(
+      summary({
+        steps: [imported("a.rep", 69), imported("b.rep", 70), imported("c.rep", 71), mapped("m.txt", 8)],
+        finalTurn: 71
+      }).headline
+    ).toBe(
+      "Imported 3 turns for Borg (95). 8 hexes added to your map from a map export. Turn 71 is on screen."
+    );
+  });
+
+  it("says all three of turns, allies and map exports", () => {
+    expect(
+      summary({
+        steps: [imported("a.rep", 71), merged("b.rep", 71), mapped("m.txt", 8), mapped("n.txt", 3)],
+        finalTurn: 71
+      }).headline
+    ).toBe(
+      "Imported 1 turn for Borg (95) and merged 1 allied report. 11 hexes added to your map from 2 map exports. Turn 71 is on screen."
+    );
+  });
+
+  /**
+   * Words rather than `0 hexes added`, which reads like a fault worth looking into - and it echoes
+   * the single-file status line the navigator chose in ah-jpcj's round 3.
+   */
+  it("says in words when a map export held nothing new", () => {
+    expect(summary({ steps: [mapped("a.txt", 0)] }).headline).toBe(
+      "Nothing added to your map — the map export held nothing new."
+    );
+  });
+
+  it("says the same of several that held nothing new", () => {
+    expect(summary({ steps: [mapped("a.txt", 0), mapped("b.txt", 0)] }).headline).toBe(
+      "Nothing added to your map — the map exports held nothing new."
+    );
+  });
+
+  /** A batch of nothing but map exports is not a batch that did nothing. */
+  it("never says nothing was imported when a map export landed", () => {
+    expect(summary({ steps: [mapped("a.txt", 0)], skipped: [skip("x.txt", "not a report")] }).headline).toBe(
+      "Nothing added to your map — the map export held nothing new. 1 file was skipped."
+    );
+  });
+
+  it("still says plainly when nothing landed at all", () => {
+    expect(summary({ skipped: [skip("notes.txt", "not a report")] }).headline).toBe(
+      "Nothing was imported. 1 file was skipped."
+    );
+  });
+});
+
+describe("the file-by-file account of a map export", () => {
+  it("counts the hexes it added", () => {
+    expect(summary({ steps: [mapped("ally-map.txt", 8)] }).lines.map((line) => line.text)).toEqual([
+      "ally-map.txt — map export, 8 hexes added"
+    ]);
+  });
+
+  it("counts one hex as one hex", () => {
+    expect(summary({ steps: [mapped("ally-map.txt", 1)] }).lines.map((line) => line.text)).toEqual([
+      "ally-map.txt — map export, 1 hex added"
+    ]);
+  });
+
+  it("says in words when it held nothing new", () => {
+    expect(summary({ steps: [mapped("ally-map.txt", 0)] }).lines.map((line) => line.text)).toEqual([
+      "ally-map.txt — map export, nothing new to your map"
+    ]);
+  });
+
+  /** One the batch would not act on at all takes the ordinary skip line, in its own words. */
+  it("skips an unimportable one on the batch's own skip line", () => {
+    expect(
+      summary({
+        skipped: [skip("bad-map.txt", "the map export does not say which turn it was written on")]
+      }).lines.map((line) => line.text)
+    ).toEqual([
+      "bad-map.txt — skipped: the map export does not say which turn it was written on"
+    ]);
   });
 });

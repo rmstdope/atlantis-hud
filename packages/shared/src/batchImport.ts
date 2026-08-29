@@ -14,6 +14,7 @@
 
 import type { CoreClient, OpenedGame, ParsedReport } from "@atlantis/core-client";
 import { commitMerge, commitTurn } from "./gameMemory";
+import { isMapExport } from "./mapExportImport";
 import {
   planReportBatch,
   type BatchCandidate,
@@ -68,7 +69,9 @@ export async function prepareBatch(
         factionId: report.header.factionId,
         turnNumber: report.header.turnNumber,
         usable: judgeReportUsable(report),
-        unreadableCount: report.unreadableLines.length
+        unreadableCount: report.unreadableLines.length,
+        isMapExport: isMapExport(text),
+        hasRegions: report.regions.length > 0
       });
     } catch (error) {
       read.push(null);
@@ -83,7 +86,10 @@ export async function prepareBatch(
         turnNumber: null,
         usable: { ok: false, reason },
         // Nothing of it parsed, so there are no individual lines to count.
-        unreadableCount: 0
+        unreadableCount: 0,
+        // Nothing of it could be read, so it is skipped as unreadable before either is looked at.
+        isMapExport: false,
+        hasRegions: false
       });
       unreadable.push({ index, fileName: chosen.name, reason });
     }
@@ -164,6 +170,15 @@ export async function walkBatch(
   // otherwise stop at "6/10" and read like a run that gave up.
   onProgress(0, plan.steps.length);
 
+  // A map export files nothing under a turn of its own - the core stamps each hex with the age the
+  // file records - so this is the viewer's own turn, which is what the merged-report record means
+  // by "when the player took this in" (ah-jpcj.1). `plan.finalTurn` first, because a batch that
+  // imports turn 71 and adds a map export in the same run has that turn by the time this runs -
+  // which is exactly why map-export steps sort last.
+  const mapExportTurn = plan.finalTurn ?? workingTurn;
+
+  /** How many hexes each landed map export added, keyed by the chosen file's index. */
+  const hexesAdded = new Map<number, number>();
   const failures: BatchSkip[] = [];
   let done = 0;
   for (const step of plan.steps) {
@@ -194,6 +209,21 @@ export async function walkBatch(
         if (committed.warning !== null) {
           throw new Error(committed.warning);
         }
+      } else if (step.kind === "mapExport") {
+        // The same call an ally's report takes: the core recognises the text as a map export and
+        // routes it to the per-hex merge itself (`plan_merge`, ah-jpcj.1), so there is no second
+        // command here. `planReportBatch` raises no map-export step without a faction of the
+        // viewer's own and none without a turn to add to, so both casts hold wherever this runs.
+        const merged = await commitMerge(
+          client,
+          game,
+          viewerFactionId as string,
+          mapExportTurn as number,
+          source.text,
+          rulesetText,
+          now()
+        );
+        hexesAdded.set(step.index, merged.newRegionCount);
       } else {
         // Under the viewer's faction and the ally's own turn: that turn is the only one an ally's
         // account of a moment can be merged into. `viewerFactionId` is non-null here even though the
@@ -225,9 +255,13 @@ export async function walkBatch(
     }
   }
 
-  const landed = plan.steps.filter(
-    (step) => !failures.some((failure) => failure.index === step.index)
-  );
+  const landed = plan.steps
+    .filter((step) => !failures.some((failure) => failure.index === step.index))
+    // The count is only knowable here, from the merge's own answer, so it is filled in on the way
+    // out rather than guessed by the planner.
+    .map((step) =>
+      step.kind === "mapExport" ? { ...step, hexesAdded: hexesAdded.get(step.index) ?? 0 } : step
+    );
 
   // The *last* report of the final turn, not the first. Two files can describe one turn - the same
   // report saved twice, or a corrected re-send - and committing overwrites, so the one the database

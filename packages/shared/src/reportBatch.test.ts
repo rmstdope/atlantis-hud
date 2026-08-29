@@ -6,6 +6,12 @@ import {
   REPORT_NAMES_NO_TURN,
   type ReportUsability
 } from "./reportLoadDecision";
+import {
+  MAP_EXPORT_HAS_NO_HEXES,
+  MAP_EXPORT_NAMES_NO_FACTION,
+  MAP_EXPORT_NAMES_NO_TURN,
+  MAP_EXPORT_NEEDS_A_MAP
+} from "./mapExportImport";
 
 /**
  * A candidate, named the way the summary will name it. `usable` is what `judgeReportUsable` would
@@ -20,7 +26,23 @@ const file = (
     : turnNumber === null
       ? { ok: false, reason: REPORT_NAMES_NO_TURN }
       : { ok: true }
-): BatchCandidate => ({ fileName, factionId, turnNumber, usable, unreadableCount: 0 });
+): BatchCandidate => ({
+  fileName,
+  factionId,
+  turnNumber,
+  usable,
+  unreadableCount: 0,
+  isMapExport: false,
+  hasRegions: true
+});
+
+/** One of our own map exports, as `prepareBatch` would have marked it. */
+const mapExport = (
+  fileName: string,
+  factionId: string | null,
+  turnNumber: number | null,
+  over: Partial<BatchCandidate> = {}
+): BatchCandidate => ({ ...file(fileName, factionId, turnNumber), isMapExport: true, ...over });
 
 const borg = (turnNumber: number | null, name = `f95-t${turnNumber}.rep`) =>
   file(name, "95", turnNumber);
@@ -319,6 +341,123 @@ describe("planning a batch of reports", () => {
     expect(plan.finalTurn).toBeNull();
     expect(plan.skipped).toEqual([
       { index: 0, fileName: "notes.txt", reason: "the report does not name its faction" }
+    ]);
+  });
+});
+
+/**
+ * One of our own map exports among the files, which is a third kind of step entirely.
+ *
+ * A map export parses as a report and, from the viewer's own faction, used to take the batch's
+ * `import` step - which replaces the stored report for that turn with a file that has no orders
+ * template, no faction status, no events and possibly no units at all. That is the data loss this
+ * whole group of tests exists to keep closed.
+ */
+describe("planning a batch holding a map export", () => {
+  const viewer = (factionId: string | null, turnNumber: number | null = null) => ({
+    factionId,
+    turnNumber
+  });
+
+  it("never imports a map export as a turn, even from the viewer's own faction", () => {
+    const plan = planReportBatch(viewer("95", 71), [mapExport("map.txt", "95", 71)]);
+
+    expect(plan.steps).toEqual([
+      { kind: "mapExport", index: 0, fileName: "map.txt", turnNumber: 71, hexesAdded: null }
+    ]);
+    expect(plan.finalTurn).toBeNull();
+  });
+
+  /** An ally's report of turn 40 would be a merge; a map export of it is a map export. */
+  it("lands a map export from an older turn", () => {
+    const plan = planReportBatch(viewer("95", 71), [mapExport("map.txt", "73", 40)]);
+
+    expect(plan.steps).toEqual([
+      { kind: "mapExport", index: 0, fileName: "map.txt", turnNumber: 40, hexesAdded: null }
+    ]);
+  });
+
+  /**
+   * The newer-than-your-own-turn rule is about an ally's account of a turn you have not reached.
+   * A map export is not an account of a turn at all - each hex carries the age it was seen at - so
+   * one written on a turn ahead of yours still lands.
+   */
+  it("lands a map export newer than the viewer's own turn, which an ally's report would not", () => {
+    const plan = planReportBatch(viewer("95", 71), [mapExport("map.txt", "73", 90), ally(90)]);
+
+    expect(plan.steps).toEqual([
+      { kind: "mapExport", index: 0, fileName: "map.txt", turnNumber: 90, hexesAdded: null }
+    ]);
+    expect(plan.skipped).toEqual([
+      { index: 1, fileName: "f73-t90.rep", reason: "turn 90 is newer than your own turn 71" }
+    ]);
+  });
+
+  /**
+   * The refusals are the single-file path's own constants, so the batch and one file at a time say
+   * one thing about the same file. `judgeReportUsable`'s sentences are about reports and would send
+   * the player looking for the wrong thing.
+   */
+  it("skips a map export with nothing to add it to", () => {
+    expect(planReportBatch(viewer(null), [mapExport("map.txt", "95", 71)]).skipped).toEqual([
+      { index: 0, fileName: "map.txt", reason: MAP_EXPORT_NEEDS_A_MAP }
+    ]);
+  });
+
+  /** No own turn in the batch and none on screen: there is no map for the hexes to land in. */
+  it("skips a map export when there is no turn of the viewer's own anywhere", () => {
+    const plan = planReportBatch(viewer("95", null), [mapExport("map.txt", "95", 71)]);
+
+    expect(plan.steps).toEqual([]);
+    expect(plan.skipped).toEqual([
+      { index: 0, fileName: "map.txt", reason: MAP_EXPORT_NEEDS_A_MAP }
+    ]);
+  });
+
+  it("lands a map export when the batch itself brings the turn to add it to", () => {
+    const plan = planReportBatch(viewer("95", null), [mapExport("map.txt", "95", 71), borg(71)]);
+
+    expect(plan.steps.map((step) => step.kind)).toEqual(["import", "mapExport"]);
+  });
+
+  it("skips a map export that does not say which faction wrote it", () => {
+    expect(planReportBatch(viewer("95", 71), [mapExport("map.txt", null, 71)]).skipped).toEqual([
+      { index: 0, fileName: "map.txt", reason: MAP_EXPORT_NAMES_NO_FACTION }
+    ]);
+  });
+
+  it("skips a map export that does not say which turn it was written on", () => {
+    expect(planReportBatch(viewer("95", 71), [mapExport("map.txt", "95", null)]).skipped).toEqual([
+      { index: 0, fileName: "map.txt", reason: MAP_EXPORT_NAMES_NO_TURN }
+    ]);
+  });
+
+  it("skips a map export with no hexes in it", () => {
+    expect(
+      planReportBatch(viewer("95", 71), [
+        mapExport("map.txt", "95", 71, { hasRegions: false })
+      ]).skipped
+    ).toEqual([{ index: 0, fileName: "map.txt", reason: MAP_EXPORT_HAS_NO_HEXES }]);
+  });
+
+  /**
+   * Load-bearing rather than cosmetic: `walkBatch` merges a map export under the turn the batch
+   * ends on, and a batch that imports its own turn in the same run only has that turn once the
+   * import step has run.
+   */
+  it("plans every map export after every report, in the order the files were chosen", () => {
+    const plan = planReportBatch(viewer("95", 71), [
+      mapExport("second-map.txt", "73", 90),
+      borg(71),
+      mapExport("first-map.txt", "73", 40),
+      ally(70)
+    ]);
+
+    expect(plan.steps.map((step) => [step.kind, step.fileName])).toEqual([
+      ["merge", "f73-t70.rep"],
+      ["import", "f95-t71.rep"],
+      ["mapExport", "second-map.txt"],
+      ["mapExport", "first-map.txt"]
     ]);
   });
 });

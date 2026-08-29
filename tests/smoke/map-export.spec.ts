@@ -175,6 +175,60 @@ test("re-imports its own export as a map, and leaves the turn alone", async ({ p
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
 });
 
+/**
+ * The same file among several, which is the path that used to lose a turn.
+ *
+ * A batch asks nothing by design, and a map export from the viewer's own faction was classified by
+ * faction alone - so it took the batch's `import` step and `commitTurn` replaced the stored report
+ * for that turn with a file that has no orders template, no faction status and no events. The last
+ * two assertions are the bead: the turn on screen, and a unit of it still there.
+ */
+test("adds a map export handed over in a batch, and keeps the turn it came with", async ({
+  page
+}, testInfo) => {
+  await clearGames(page);
+  await createGame(page, "Export game");
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  await openMapExport(page);
+  const { text, name } = await exportAndRead(page, testInfo);
+
+  // Both files at once: the turn report and the map export written from it.
+  await page.setInputFiles('input[type="file"]', [
+    { name: "turn-71.rep", mimeType: "text/plain", buffer: Buffer.from(TURN_71, "utf8") },
+    { name, mimeType: "text/plain", buffer: Buffer.from(text, "utf8") }
+  ]);
+
+  // A batch asks nothing, the map export included.
+  await expect(page.getByTestId("map-export-prompt")).toHaveCount(0);
+
+  const dialog = page.getByTestId("import-summary");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Imported 1 turn for Borg TNG (95).");
+  // Every hex of it came out of the map it is being added back to, so nothing is new - and the
+  // headline says so instead of reading "Nothing was imported."
+  await expect(dialog).toContainText(
+    "Nothing added to your map — the map export held nothing new."
+  );
+  await expect(dialog).toContainText("Turn 71 is on screen.");
+  await expect(dialog).toContainText(`${name} — map export, nothing new to your map`);
+
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+
+  // The turn survived the batch, faction and all.
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+  await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
+
+  // And the stored report is still the real one. The faction's allowances come from the report's
+  // faction status, which a map export does not carry at all - so this is empty exactly when the
+  // map export was committed as the turn, which is the loss this walk exists to catch.
+  await page.getByTestId("faction-chip").click();
+  await expect(page.getByTestId("faction-panel-body")).toContainText("Allowances");
+  await expect(page.getByTestId("faction-panel-body")).toContainText("Mages");
+});
+
 test("cancels a map export without writing anything", async ({ page }, testInfo) => {
   await clearGames(page);
   await createGame(page, "Export game");
