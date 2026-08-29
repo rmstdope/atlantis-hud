@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-vcp8.2 — what a GIVE's target means, in one classification</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --brass:#d9a441; --soft:#a3b0c0; --bad:#e0765c; --good:#7fb069; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 90px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 34px 0 6px; border-bottom: 1px dashed var(--edge);
+       padding-bottom: 4px; }
+  h3 { font-size: 12px; margin: 16px 0 8px; color: var(--brass); letter-spacing: .6px;
+       text-transform: uppercase; }
+  p.note { color: var(--dim); max-width: 92ch; }
+  p.note b { color: var(--ink); }
+  code { color: var(--soft); }
+  blockquote { border-left: 2px solid var(--brass); margin: 10px 0; padding: 2px 0 2px 14px;
+               color: var(--ink); max-width: 92ch; }
+  blockquote cite { display:block; color: var(--dim); font-style: normal; font-size: 12px;
+                    margin-top: 6px; }
+  .settled { border-left:2px solid var(--good); padding-left:14px; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 18px;
+          align-items: start; }
+  .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 4px;
+          padding: 14px 16px 16px; }
+  .card > h3 { margin-top: 0; }
+  .card.picked { border-color: var(--good); }
+  .card .cost { color: var(--dim); font-size: 12px; margin: 12px 0 0;
+                border-top: 1px dashed var(--edge); padding-top: 10px; }
+  .verdict { font-size: 11px; letter-spacing:.7px; text-transform: uppercase; }
+  .verdict.yes { color: var(--good); } .verdict.no { color: var(--bad); }
+  table.g { border-collapse: collapse; margin: 10px 0; font-size: 12.5px; }
+  table.g th, table.g td { border: 1px solid var(--edge); padding: 5px 12px; text-align: left;
+                           vertical-align: top; }
+  table.g th { color: var(--dim); font-weight: 500; }
+  table.row { border-collapse: collapse; font: 12px/1.5 ui-monospace, Menlo, monospace;
+              background: #131a23; border: 1px solid var(--edge); width: 100%; margin: 6px 0 0; }
+  table.row th { color: var(--dim); font-weight: 500; text-align: left;
+                 border-bottom: 1px solid var(--edge); padding: 4px 10px; font-size: 10.5px;
+                 letter-spacing: .8px; }
+  table.row td { padding: 5px 10px; color: var(--soft); }
+  .orderline { font: 12px/1.6 ui-monospace, Menlo, monospace; color: var(--ink);
+               background:#0c1117; border:1px solid var(--edge); border-radius:3px;
+               padding: 4px 10px; display: inline-block; margin: 8px 0 4px; }
+  .warn { display:block; font-size: 12px; margin: 4px 0 0; padding: 6px 10px;
+          border-left: 3px solid var(--brass); background:#1b2029; color: var(--ink); }
+  .warn .code { color: var(--dim); font-size: 10.5px; letter-spacing:.6px; display:block; }
+  .silent { display:block; font-size: 12px; margin: 4px 0 0; padding: 6px 10px;
+            border-left: 3px solid var(--edge); background:#141a22; color: var(--dim);
+            font-style: italic; }
+  .setting { margin: 10px 0 0; padding: 9px 11px; background:#0f141b;
+             border:1px solid var(--edge); border-radius:3px; display:flex; gap:10px; }
+  .setting .box { width:13px; height:13px; border:1px solid var(--brass); border-radius:2px;
+                  background:var(--brass); flex:none; margin-top:2px; }
+  .setting .t { font-size:12.5px; color:var(--ink); }
+  .setting .d { font-size:11.5px; color:var(--dim); margin-top:2px; }
+  .new { color: var(--good); } .old { color: var(--bad); } .hi { color: var(--brass); }
+</style>
+</head>
+<body>
+
+<h1>ah-vcp8.2 — what a GIVE's target means, in one classification</h1>
+
+<p class="note">
+  <code>Hex::read</code> filters a region's units to our own, so today's "target not found" arm lumps
+  an ally standing beside the giver in with a unit number the report names nowhere — and four
+  surfaces then disagree about what that means. This page is the record of the decisions that settle
+  it: the two taken on <b>2026-08-29</b> while splitting <code>ah-vcp8</code>, and the three taken
+  while planning this bead.
+</p>
+
+<h2>Where the four disagree today</h2>
+<table class="g">
+  <tr><th>target of <code>GIVE &lt;id&gt; 10 SWOR</code></th><th>units table</th>
+      <th><code>early_men</code></th><th>ledger</th><th>SILVER</th><th>does the game move them?</th></tr>
+  <tr><td>our own unit in this hex</td><td class="new">moves</td><td class="new">moves</td>
+      <td class="new">moves</td><td class="new">moves</td><td>yes</td></tr>
+  <tr><td>an ally's unit standing in this hex</td><td class="old">nothing</td><td class="old">nothing</td>
+      <td>giver charged</td><td>giver charged</td>
+      <td>yes — <code>rules/give</code> allows it once they declare us Friendly</td></tr>
+  <tr><td><code>FACTION 2 NEW 1</code></td><td class="old">nothing</td><td class="old">nothing</td>
+      <td>giver charged</td><td>giver charged</td><td>yes</td></tr>
+  <tr><td>a unit number the report names nowhere</td><td>nothing</td><td>nothing</td>
+      <td class="old">giver charged</td><td class="old">giver charged</td><td>unknowable</td></tr>
+</table>
+
+<h2>Decision 1 &amp; 2 — settled on splitting <code>ah-vcp8</code> (navigator, 2026-08-29)</h2>
+
+<p class="note settled">
+  <b>1. A unit number the report names nowhere: the order does nothing.</b> No charge, no credit, no
+  movement and no doubt marker — the row reads exactly as it would with the order deleted. Rejected:
+  charging the giver, which is alarming and wrong when the player simply mistyped a number, the
+  commoner mistake; and showing <code>?</code> with a doubt marker, which was offered and set aside.
+  <br><br>
+  <b>2. A unit the report does show but we cannot project: the goods leave, and no row of ours gains
+  them.</b> An ally standing here, and <code>FACTION 2 NEW 1</code>, which the game creates here. The
+  giver's row empties exactly as it already does for a <code>GIVE 0</code> discard. Rejected: leaving
+  both alone, which would show a player still holding ten swords they have given away. No new
+  wording — the ITEMS cell's own <code>was:</code> tooltip carries it.
+</p>
+
+<p class="note">
+  So there are <b>three</b> cases where there are two today, one classification written once and read
+  by all four surfaces: <b>ours</b> (charge the giver, credit the receiver), <b>shown here but not
+  ours</b> (charge the giver, credit nobody), and <b>named nowhere in this region</b> — which now
+  also covers a <code>NEW</code> alias no <code>FORM</code> here creates, and a unit giving to
+  itself, which the server refuses.
+</p>
+
+<h2>Decision 3 — men are ordinary goods <i>in this bead</i></h2>
+
+<blockquote>
+  “First, silver may be given to any unit, regardless of factional affiliation. <b>Second, men may
+  not be given to units in other factions (you must give the entire unit)</b>; the reason for this is
+  to prevent highly skilled units from being sabotaged with a GIVE order.”
+  <cite>rules/give — NewOrigins v8.0.0, committed snapshot. <code>rules/exchange</code> agrees:
+  “Men may not be exchanged.”</cite>
+</blockquote>
+
+<p class="note">
+  Decision 2 is right for iron, swords and silver and <b>wrong for men</b>: the game refuses that
+  half of the order. Three readings were put to the navigator — reuse the existing
+  <code>items-cannot-be-given</code> sentence, name the reason in a new one, or say nothing.
+</p>
+
+<p class="note settled">
+  <b>Chosen: none of them, here.</b> Men are treated as ordinary goods in this bead, and the refusal
+  is <b><code>ah-8lej</code></b>, filed unranked, which carries the three wordings above for its own
+  planning session. This bead therefore ships one case it knows to be wrong, deliberately and on the
+  board rather than in somebody's head.
+</p>
+
+<h2>Decision 4 — <code>GIVE NEW 3</code> when no <code>FORM 3</code> exists in this hex</h2>
+
+<p class="note">
+  <code>NEW 3</code> is named nowhere in this region, so decision 1 applies: the order does nothing.
+  But it differs from a mistyped unit number in one way. A mistyped number already gets
+  <code>give-target-not-here</code>, so the player is told; that check deliberately passes over
+  <code>NEW n</code>, because an alias names nothing the report could show. Left alone, an unformed
+  alias would be <b>silent everywhere</b> — no charge, no movement, no warning. The order would
+  simply disappear from the screen.
+</p>
+
+<div class="cols">
+  <div class="card">
+    <h3>Silent, as decision 1 alone would leave it</h3>
+    <span class="verdict no">rejected</span>
+    <span class="orderline">unit 900<br>GIVE NEW 3 100 SILV</span>
+    <table class="row">
+      <tr><th>UNIT</th><th>SILVER</th><th>ITEMS</th></tr>
+      <tr><td>Guards (900)</td><td>500 &nbsp;<span style="color:var(--dim)">out 0</span></td><td>8 ORC, 20 IRON</td></tr>
+    </table>
+    <span class="silent">nothing said — the row reads as with no order</span>
+    <p class="cost">Nothing to build. But unlike the mistyped number, nothing else on the screen
+      covers for it: the order fails and vanishes at the same time.</p>
+  </div>
+  <div class="card picked">
+    <h3>Warn, in this bead</h3>
+    <span class="verdict yes">chosen</span>
+    <span class="orderline">unit 900<br>GIVE NEW 3 100 SILV</span>
+    <table class="row">
+      <tr><th>UNIT</th><th>SILVER</th><th>ITEMS</th></tr>
+      <tr><td>Guards (900)</td><td>500 &nbsp;<span style="color:var(--dim)">out 0</span></td><td>8 ORC, 20 IRON</td></tr>
+    </table>
+    <span class="warn"><span class="code">give-target-not-here</span>
+      no FORM in this hex creates NEW 3, so this order does nothing</span>
+    <p class="cost">One new sentence in an existing finding, and the check learns to read the hex's
+      <code>FORM</code> orders — which the hex already carries.</p>
+  </div>
+  <div class="card">
+    <h3>A bead of its own</h3>
+    <span class="verdict no">rejected</span>
+    <span class="silent">same screen as today; the gap on the board instead</span>
+    <p class="cost">Rejected here, though it is the call taken on the men question above — the
+      difference is that this one costs a single sentence rather than a rule.</p>
+  </div>
+</div>
+
+<h2>Decision 5 — the words, and where the toggle lives</h2>
+
+<p class="note">
+  Today's neighbouring sentences in the same finding, for the shape to match or depart from:
+  <br>&bull; <code>unit 999 is not in this hex to be given to, and appears nowhere else in your report</code>
+  <br>&bull; <code>unit 999 is not in this hex to be given to - your report shows it in plain (2,2) in Nowhere</code>
+</p>
+
+<div class="cols">
+  <div class="card">
+    <h3>Match the neighbours</h3>
+    <span class="verdict no">rejected</span>
+    <span class="warn"><span class="code">give-target-not-here</span>
+      NEW 3 is not formed in this hex to be given to - no FORM order here creates it</span>
+    <span class="warn"><span class="code">give-target-not-here</span>
+      NEW 3 is not formed in this hex to be taken from - no FORM order here creates it</span>
+    <p class="cost">Three sentences in the group read alike. Longer, needs a GIVE and a TAKE form,
+      and leaves the effect implied by the group rather than stated.</p>
+  </div>
+  <div class="card picked">
+    <h3>State the effect</h3>
+    <span class="verdict yes">chosen</span>
+    <span class="orderline">GIVE NEW 3 100 SILV</span>
+    <span class="warn"><span class="code">give-target-not-here</span>
+      no FORM in this hex creates NEW 3, so this order does nothing</span>
+    <span class="orderline">TAKE FROM NEW 3 10 IRON</span>
+    <span class="warn"><span class="code">give-target-not-here</span>
+      no FORM in this hex creates NEW 3, so this order does nothing</span>
+    <div class="setting">
+      <div class="box"></div>
+      <div><div class="t">Gifts to units that are not here</div>
+        <div class="d">A GIVE or TAKE naming a unit the report does not show in that hex,
+          <span class="hi">or a NEW number no FORM order there creates</span>.</div></div>
+    </div>
+    <p class="cost">One sentence for both verbs; says the consequence the player cares about — the
+      row will look untouched. One toggle, its description extended.</p>
+  </div>
+  <div class="card">
+    <h3>Its own code and toggle</h3>
+    <span class="verdict no">rejected</span>
+    <span class="warn"><span class="code">form-alias-not-created</span>
+      no FORM in this hex creates NEW 3, so this order does nothing</span>
+    <div class="setting">
+      <div class="box"></div>
+      <div><div class="t">Gifts to a NEW unit nothing forms</div>
+        <div class="d">A GIVE or TAKE naming a NEW number that no FORM order in that hex creates.</div></div>
+    </div>
+    <p class="cost">Silenceable on its own — a forgotten FORM is a different mistake from a mistyped
+      number. Costs a code registered in four places and another row in a long Settings list.</p>
+  </div>
+</div>
+
+<h2>Decision 6 — a warning that starts firing on its own</h2>
+
+<p class="note settled">
+  <b>Let it fire.</b> Once a gift to an ally really empties the giver, a <code>SELL</code> written
+  below it has nothing left to sell, and <code>nothing-left-to-sell</code> already knows how to say
+  so. No new wording; the sentence already ships for <code>GIVE 0</code> and for a faction-mate's
+  <code>TAKE</code>. Rejected: suppressing it for this one target, which would leave the SELL row
+  promising income the server will not pay.
+</p>
+
+<table class="g">
+  <tr><th>The orders</th><th>Today</th><th>After this bead</th></tr>
+  <tr>
+    <td><code>unit 900</code><br><code>GIVE 4573 ALL IRON</code>
+        <span style="color:var(--dim)">(4573 = an ally here)</span><br><code>SELL ALL IRON</code></td>
+    <td class="old">the iron never leaves, so the sale looks fine and earns money it will not earn</td>
+    <td class="new">“this unit gives away all 20 of its iron before the market opens, so this sells nothing”</td>
+  </tr>
+  <tr>
+    <td><code>unit 900</code><br><code>GIVE 999 ALL IRON</code>
+        <span style="color:var(--dim)">(999 = nowhere)</span><br><code>SELL ALL IRON</code></td>
+    <td>no warning</td>
+    <td>no warning — the gift does nothing, so the iron is still there to sell. Unchanged.</td>
+  </tr>
+</table>
+
+<h2>What the classification must answer, case by case</h2>
+<table class="g">
+  <tr><th>Order, from a unit standing in this hex</th><th>Reach</th><th>What happens</th><th>Said</th></tr>
+  <tr><td><code>GIVE 901 10 IRON</code> — one of ours here</td><td>ours</td>
+      <td>giver charged, receiver credited</td><td>nothing</td></tr>
+  <tr><td><code>GIVE NEW 1 10 IRON</code>, a sibling here writes <code>FORM 1</code></td><td>ours</td>
+      <td>as above; the alias is per-hex, not per-unit</td><td>nothing</td></tr>
+  <tr><td><code>GIVE 0 10 IRON</code></td><td>discard</td>
+      <td>giver charged; the game hands over even what it will not give another unit</td><td>nothing</td></tr>
+  <tr><td><code>GIVE 4573 10 IRON</code> — an ally here</td><td>shown, not ours</td>
+      <td class="new">giver charged, nobody credited</td><td>nothing</td></tr>
+  <tr><td><code>GIVE FACTION 2 NEW 1 10 IRON</code></td><td>shown, not ours</td>
+      <td class="new">as above; the game creates that unit here</td><td>nothing</td></tr>
+  <tr><td><code>GIVE 999 10 IRON</code> — nowhere</td><td>nowhere</td>
+      <td class="new">nothing at all</td><td><code>give-target-not-here</code>, as today</td></tr>
+  <tr><td><code>GIVE NEW 3 10 IRON</code>, nothing forms a 3 here</td><td>nowhere</td>
+      <td class="new">nothing at all</td><td class="new">the new sentence, decision 5</td></tr>
+  <tr><td><code>GIVE 900 10 IRON</code> from unit 900</td><td>nowhere</td>
+      <td class="new">nothing at all; the server refuses a unit giving to itself</td>
+      <td>nothing — the target really is here, so no finding</td></tr>
+  <tr><td><code>GIVE 4573 UNIT</code></td><td>—</td>
+      <td>unchanged; a change of ownership moves nobody's holdings</td><td>nothing</td></tr>
+</table>
+
+</body>
+</html>
