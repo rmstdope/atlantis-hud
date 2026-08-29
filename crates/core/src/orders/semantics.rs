@@ -14934,6 +14934,52 @@ mod tests {
         );
     }
 
+    /// `rules/magic_usingmagic`: "a CAST order is not a full month order; a mage may still MOVE,
+    /// STUDY, or use any other month long order." This check inherits that from
+    /// `spends_the_month`; the test pins that it does.
+    #[test]
+    fn a_cast_beside_a_month_long_order_is_not_a_second() {
+        assert_eq!(
+            two_month_long(check_months(
+                vec![region(vec![unit("683")])],
+                "unit 683\nCAST Earth_Lore\nSTUDY Earth_Lore\n",
+            )),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn giving_and_buying_beside_a_month_long_order_are_not_a_second() {
+        assert_eq!(
+            two_month_long(check_months(
+                vec![region(vec![unit("683")])],
+                "unit 683\nGIVE 5104 100 SILV\nBUY 5 HORS\nGUARD 1\nSTUDY Combat\n",
+            )),
+            vec![]
+        );
+    }
+
+    /// Every later order is marked against the *first*, not against the one above it: the first is
+    /// the one that will run, so it is the one each loss is measured from.
+    #[test]
+    fn every_order_after_the_first_is_marked_against_it() {
+        let findings = two_month_long(check_months(
+            vec![region(vec![unit("683")])],
+            "unit 683\nMOVE N\nBUILD Tower\nENTERTAIN\n",
+        ));
+        assert_eq!(findings.len(), 2, "{findings:?}");
+        assert_eq!(findings[0].line, Some(3));
+        assert_eq!(
+            findings[0].message,
+            "MOVE already spends this unit's month, so this BUILD will not run"
+        );
+        assert_eq!(findings[1].line, Some(4));
+        assert_eq!(
+            findings[1].message,
+            "MOVE already spends this unit's month, so this ENTERTAIN will not run"
+        );
+    }
+
     // --- coverage ---------------------------------------------------------------------------
 
     #[test]
