@@ -4746,6 +4746,7 @@ mod tests {
             line: 1,
             column_start: 0,
             column_end: 1,
+            keyword: "",
         }
     }
 
