@@ -1206,6 +1206,20 @@ impl Ruleset {
         !self.buildings.is_empty()
     }
 
+    /// The catalogue entry one **exact** spelling names - no plural rule and no underscores, both
+    /// of which the caller has already applied.
+    ///
+    /// The per-spelling half of [`Ruleset::find_item`], separate so a resolver that must
+    /// interleave the catalogue with a unit's own inventory can try one spelling against both
+    /// before moving to the next (`orders::items::item_named`). Written once so the two cannot
+    /// come to disagree about what "names this item" means.
+    #[must_use]
+    pub fn item_spelled(&self, spelling: &str) -> Option<&ItemEntry> {
+        self.items.values().find(|item| {
+            item.tag.eq_ignore_ascii_case(spelling) || item.name.eq_ignore_ascii_case(spelling)
+        })
+    }
+
     /// The item an order names, written as a tag, a name, or the plural the rules' own examples
     /// use.
     ///
@@ -1213,15 +1227,12 @@ impl Ruleset {
     #[must_use]
     pub fn find_item(&self, text: &str) -> Option<&ItemEntry> {
         let written = text.replace('_', " ");
+        // Bound to a local so the borrowed `written` outlives the search: the spellings borrow it
+        // and the block's own drop order would otherwise take it first.
         let found = item_spellings(&written)
             .into_iter()
             .flatten()
-            .find_map(|spelling| {
-                self.items.values().find(|item| {
-                    item.tag.eq_ignore_ascii_case(spelling)
-                        || item.name.eq_ignore_ascii_case(spelling)
-                })
-            });
+            .find_map(|spelling| self.item_spelled(spelling));
         found
     }
 
