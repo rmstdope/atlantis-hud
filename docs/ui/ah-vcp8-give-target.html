@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-vcp8 — One item resolver, and the give that lands nowhere</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --brass:#d9a441; --soft:#a3b0c0; --bad:#e0765c; --good:#7fb069; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 30px 0 6px; border-bottom: 1px dashed var(--edge);
+       padding-bottom: 4px; }
+  h3 { font-size: 13px; margin: 18px 0 6px; color: var(--brass); letter-spacing: .4px; }
+  p.note { color: var(--dim); max-width: 88ch; }
+  p.note b { color: var(--ink); }
+  code { color: var(--soft); }
+  .cost { color: var(--dim); font-size: 12.5px; margin: 6px 0 0; max-width: 66ch; }
+  table.g { border-collapse: collapse; margin: 10px 0; font-size: 12.5px; }
+  table.g th, table.g td { border: 1px solid var(--edge); padding: 5px 12px; text-align: left; }
+  table.g th { color: var(--dim); font-weight: 500; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .old { color: var(--bad); } .new { color: var(--good); } .hi { color: var(--brass); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 22px; }
+  /* a units-table row, roughly as the dock draws one */
+  table.row { border-collapse: collapse; font: 12.5px/1.5 ui-monospace, Menlo, monospace;
+              background: var(--panel); border: 1px solid var(--edge); }
+  table.row th { color: var(--dim); font-weight: 500; text-align: left;
+                 border-bottom: 1px solid var(--edge); padding: 4px 12px; font-size: 11px;
+                 letter-spacing: .8px; }
+  table.row td { padding: 5px 12px; color: var(--soft); }
+  .pred { color: var(--brass); font-style: italic; }
+  .wrong { color: var(--bad); }
+</style>
+</head>
+<body>
+<h1>ah-vcp8 — One item resolver, and the give that lands nowhere</h1>
+
+<p class="note">
+  An order's item argument is resolved three different ways by three functions that search
+  different places, so the same legal order can move men in one column of a row and not in another.
+  Measured by reading the code on <code>ae426d8</code>, on a two-unit hex holding
+  <code>8 orcs [ORC]</code> and <code>8 leaders [LEAD]</code>.
+</p>
+
+
+<p class="note" style="border-left:2px solid var(--brass);padding-left:14px">
+  <b>Decisions (recorded from the planning discussion, navigator, 2026-08-29).</b>
+  The bead is split: <b>ah-vcp8.1</b> is the spelling half — one resolver, searching the catalogue
+  and the holdings spelling by spelling, used by all three surfaces; it needed no decision from the
+  navigator and changes no word on screen. <b>ah-vcp8.2</b> is the target half and carries the
+  three answers below. Both were kept in the same epic rather than one being deferred.
+  <br><br>
+  <b>1.</b> A unit number the report names nowhere: <b>the order does nothing</b> — no charge, no
+  credit, no doubt marker (reading A). Rejected: charging the giver, which is alarming and wrong
+  when the player simply mistyped a number; and showing <code>?</code> with a doubt marker
+  (reading C), which was offered and set aside.
+  <br>
+  <b>2.</b> A unit the report <i>does</i> show but we cannot project — an ally standing here, or
+  <code>FACTION 2 NEW 1</code>: <b>the goods leave, and no row of ours gains them</b> (reading D).
+  Rejected: leaving both alone (reading E), which would show a player still holding ten swords they
+  have given away.
+  <br>
+  <b>3.</b> No new wording either way. The ITEMS cell's own <code>was:</code> tooltip carries it.
+</p>
+<h2>Where the three disagree</h2>
+<table class="g">
+  <tr><th>Resolver</th><th>Searches</th><th>Builds</th></tr>
+  <tr><td><code>effects::find_item</code></td><td>the holder's own inventory, by tag and by the
+      name the <b>report</b> prints — which for men is a plural, "leaders"</td>
+      <td>the units-table preview</td></tr>
+  <tr><td><code>Ruleset::find_item</code></td><td>the <b>catalogue</b>, where the name is singular,
+      "leader"</td><td><code>early_men</code>/<code>early_items</code>, which every early-phase
+      term reads</td></tr>
+  <tr><td><code>semantics::resolve_item</code></td><td>the catalogue first, then every inventory in
+      the hex — the union of the other two</td><td>the ledger, and so the SILVER column</td></tr>
+</table>
+<table class="g">
+  <tr><th>The order a player writes</th><th>units table</th><th>early_men</th><th>ledger</th></tr>
+  <tr><td><code>GIVE 901 ALL ORCS</code> — the report's own plural</td>
+      <td class="new">moves</td><td class="new">moves</td><td class="new">moves</td></tr>
+  <tr><td><code>GIVE 901 ALL LEAD</code> — the tag</td>
+      <td class="new">moves</td><td class="new">moves</td><td class="new">moves</td></tr>
+  <tr><td><code>GIVE 901 ALL LEADER</code> — the <b>catalogue's singular</b></td>
+      <td class="old">nothing</td><td class="new">moves</td><td class="new">moves</td></tr>
+  <tr><td><code>GIVE 901 ALL "wood elves"</code> — the <b>report's</b> plural of a multi-word race</td>
+      <td class="new">moves</td><td class="old">nothing</td><td class="new">moves</td></tr>
+</table>
+<p class="cost">
+  Every one of those four is a legal spelling of a legal order. The fix is one resolver that
+  searches the catalogue <b>and</b> the item lists in front of it, spelling by spelling, and all
+  three callers using it. That part needs no decision from you and is not on this page.
+</p>
+
+<h2>What the row looks like today — <code>GIVE 901 ALL LEADER</code></h2>
+<div class="grid">
+  <div>
+    <h3>Today</h3>
+    <table class="row">
+      <tr><th>UNIT</th><th>MEN</th><th>ITEMS</th><th>SILVER</th></tr>
+      <tr><td>Guards (900)</td><td class="wrong">8</td><td class="wrong">8 LEAD</td>
+          <td class="pred">−400</td></tr>
+    </table>
+    <p class="cost">The men never leave, and the SILVER column has already charged their upkeep
+      to a unit the early phases think is empty.</p>
+  </div>
+  <div>
+    <h3>After the resolvers are unified</h3>
+    <table class="row">
+      <tr><th>UNIT</th><th>MEN</th><th>ITEMS</th><th>SILVER</th></tr>
+      <tr><td>Guards (900)</td><td class="pred">0</td><td class="pred">—</td>
+          <td class="pred">0</td></tr>
+    </table>
+    <p class="cost">All three columns agree that the leaders went.</p>
+  </div>
+</div>
+
+<h2>The question — <code>GIVE 999 ALL ORCS</code>, where 999 is not in this hex</h2>
+<p class="note">
+  This is the second half of the bead, and it is a different question from spelling. The two sides
+  already disagree <b>on purpose</b>, each for a stated reason:
+</p>
+<ul class="note">
+  <li><b>The preview treats it as void.</b> <code>effects::give</code> returns early when the
+    target is not a row in this hex, so nothing leaves the giver.</li>
+  <li><b>The ledger charges the giver anyway.</b> Its own comment says so in as many words: "a
+    gift out of the hex is charged to the giver and credited to nobody."</li>
+</ul>
+<p class="note">
+  Neither is obviously wrong. <b>rules/give</b>: <em>"A unit may only give items, including silver,
+  to a unit which it is able to see, unless the faction of the target unit has declared you
+  Friendly or better."</em> A unit we cannot see may still be standing there — stealth is a skill
+  — and if it is, the goods really do leave. So the ledger is being pessimistic on purpose, and
+  the preview is being literal about what it can see.
+</p>
+
+<div class="grid">
+  <div>
+    <h3>Reading A — the giver keeps them (the preview wins)</h3>
+    <table class="row">
+      <tr><th>UNIT</th><th>MEN</th><th>ITEMS</th><th>SILVER</th></tr>
+      <tr><td>Miners (900)</td><td>8</td><td>8 ORC, 20 IRON</td><td>−80</td></tr>
+    </table>
+    <p class="cost">The row says the order did nothing, which is what the player will see next
+      turn if the target does not exist. If it does exist and is hiding, the row is wrong and the
+      player is short eight orcs they had planned around.</p>
+  </div>
+  <div>
+    <h3>Reading B — the giver loses them (the ledger wins)</h3>
+    <table class="row">
+      <tr><th>UNIT</th><th>MEN</th><th>ITEMS</th><th>SILVER</th></tr>
+      <tr><td>Miners (900)</td><td class="pred">0</td><td class="pred">20 IRON</td>
+          <td class="pred">0</td></tr>
+    </table>
+    <p class="cost">The row shows the worst case. Safe if the target is hiding; alarming and wrong
+      if the player simply typed a unit number that does not exist — which is the commoner
+      mistake.</p>
+  </div>
+  <div>
+    <h3>Reading C — say it cannot be told</h3>
+    <table class="row">
+      <tr><th>UNIT</th><th>MEN</th><th>ITEMS</th><th>SILVER</th></tr>
+      <tr><td>Miners (900)</td><td>8</td><td>8 ORC, 20 IRON</td><td class="hi">?</td></tr>
+    </table>
+    <p class="cost">The app's existing posture for a sum it cannot follow — a <code>?</code> and a
+      doubt marker, the same shape <code>uncounted</code> already gives a class it cannot
+      classify. Claims nothing, and tells the player their order names a unit this report does not
+      show.</p>
+  </div>
+</div>
+
+<h2>Round 2 — the third case, found while working out how to implement reading A</h2>
+<p class="note">
+  "A unit this hex does not show" turns out to be two different things, and the code has to branch
+  on both. <code>hex.units</code> holds <b>own units only</b>
+  (<code>.filter(|unit| unit.own)</code>), so today's "not found" arm catches an ally's unit
+  standing right beside the giver as well as a unit number that appears nowhere. The effects
+  walker already keeps the two apart — <code>known_units</code> is "every unit id the report
+  names, ours and everyone else's", and TRANSPORT already uses it — but GIVE does not.
+</p>
+<table class="g">
+  <tr><th>Target of <code>GIVE &lt;id&gt; 10 SWOR</code></th><th>units table today</th>
+      <th>ledger today</th><th>does the game move them?</th></tr>
+  <tr><td>our own unit in this hex</td><td class="new">moves</td><td class="new">moves</td>
+      <td class="new">yes</td></tr>
+  <tr><td><b>an ally's unit standing in this hex</b><br>
+      <span style="font-size:11.5px;color:var(--dim)">the report shows it; we cannot project its row</span></td>
+      <td class="old">nothing</td><td class="hi">giver charged</td>
+      <td class="new">yes — <code>rules/give</code> allows it once they declare us Friendly</td></tr>
+  <tr><td><code>FACTION 2 NEW 1</code><br>
+      <span style="font-size:11.5px;color:var(--dim)">another faction's unit formed this turn</span></td>
+      <td class="old">nothing</td><td class="hi">giver charged</td><td class="new">yes</td></tr>
+  <tr><td>a unit number the report names nowhere</td><td class="new">nothing</td>
+      <td class="old">giver charged</td><td>unknowable</td></tr>
+</table>
+<p class="cost">
+  The last row is what you already settled: <b>reading A, the giver keeps them.</b> The two middle
+  rows are the question below — and there the ledger looks right and the units table looks wrong,
+  which is the opposite way round from the last row.
+</p>
+
+<div class="grid">
+  <div>
+    <h3>D — the goods leave, and nobody visible gains them — CHOSEN</h3>
+    <table class="row">
+      <tr><th>UNIT</th><th>MEN</th><th>ITEMS</th><th>SILVER</th></tr>
+      <tr><td>Smiths (900)</td><td>8</td><td class="pred">10 IRON</td><td class="pred">0</td></tr>
+    </table>
+    <p class="cost">The giver's row empties, the same way it already does when giving to one of
+      our own. Matches what the ledger has always said, and what the game will do. Costs nothing
+      new in words — the swords simply go, exactly as a <code>GIVE 0</code> discard already
+      shows.</p>
+  </div>
+  <div>
+    <h3>E — leave both alone, as the units table does today</h3>
+    <table class="row">
+      <tr><th>UNIT</th><th>MEN</th><th>ITEMS</th><th>SILVER</th></tr>
+      <tr><td>Smiths (900)</td><td>8</td><td>10 SWOR, 10 IRON</td><td>−80</td></tr>
+    </table>
+    <p class="cost">One rule for every target we cannot project, which is simpler to hold in the
+      head. But it shows a player still holding ten swords they have given away, which is the
+      failure this whole bead is about.</p>
+  </div>
+</div>
+</body>
+</html>
