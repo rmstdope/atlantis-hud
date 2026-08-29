@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>ah-o7td — round 2: the words, and the awkward cases</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63;
+    --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1020px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:16px; margin:30px 0 4px; border-top:1px solid var(--edge); padding-top:16px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  p { color:var(--ink-soft); max-width:94ch; margin-top:9px; font-size:14px; }
+  strong { color:var(--ink); } code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:.9em; color:var(--brass-bright); }
+  .opt { display:inline-block; margin-top:14px; padding:6px 12px; border:1px solid var(--brass); border-radius:4px;
+     color:var(--brass-bright); font:12px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.4px; text-transform:uppercase; }
+  .ed { background:#0c1016; border:1px solid var(--edge); border-radius:5px; padding:10px 12px; margin-top:12px;
+     font:12.5px/1.9 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; }
+  .ed b { color:var(--ink); font-weight:normal; }
+  .wavy { text-decoration:underline wavy var(--warn); text-underline-offset:4px; color:var(--ink); }
+  .msg { display:block; margin-top:6px; padding-left:2px; color:var(--warn); font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .unit { color:var(--ink-dim); font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; margin-top:8px; font-style:italic; }
+  .note { color:var(--ink-dim); font-size:12.5px; margin-top:14px; font-style:italic; max-width:94ch; }
+  .silent { color:var(--ok); font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; margin-top:8px; }
+  .fires { color:var(--warn); font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; margin-top:8px; }
+  table { border-collapse:collapse; margin-top:14px; font:13px/1.5 'Helvetica Neue',Arial,sans-serif; width:100%; }
+  th,td { border:1px solid var(--edge); padding:6px 9px; text-align:left; vertical-align:top; }
+  th { color:var(--brass); font-weight:normal; text-transform:uppercase; letter-spacing:1.2px; font-size:11px; }
+  td { color:var(--ink-soft); }
+  td.y { color:var(--warn); } td.n { color:var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-o7td</span> &mdash; round 2: the words, and the awkward cases</h1>
+  <p>Settled last round: <strong>Option B</strong> (everything <code>spends_the_month</code> counts,
+  so <code>MOVE</code>/<code>SAIL</code>/<code>ADVANCE</code>, <code>TAX</code> and
+  <code>PILLAGE</code> are in, <code>CAST</code> is out); <strong>the second and later lines are
+  marked</strong>, the first left alone; <strong>a toggle in the Warnings tab, on by
+  default</strong>.</p>
+  <p><strong>What I found since:</strong> the same finding is shown in three places, and only one of
+  them counts lines the way the core does. <code>orderEditor.ts:145</code> says it outright &mdash;
+  <em>&ldquo;line 604&rdquo; means nothing to someone looking at a four-line block.</em> The
+  finding&rsquo;s <em>position</em> is re-based per unit, but a line number written <em>inside the
+  message text</em> is not. So <code>W1</code> below is correct in the map-wide Problems list and
+  wrong in the unit&rsquo;s own panel.</p>
+</header>
+<main>
+
+<h2 class="rule"><em>W1</em> naming the line</h2>
+<div class="ed"><b>unit 5187</b>
+MOVE N NE
+<span class="wavy">STUDY Combat</span>
+<span class="msg">a second order for the month: line 2 already gives this unit MOVE, and only one of the two will run</span></div>
+<p>Same shape as <code>form-alias-reused</code>. In the whole-document Problems list, &ldquo;line
+2&rdquo; is right. In the Orders panel, where this block is re-based to start at line 1, it is
+<strong>wrong</strong> &mdash; and in a real orders file the number would be something like 604.</p>
+
+<h2 class="rule"><em>W2</em> naming the order instead of the line</h2>
+<div class="ed"><b>unit 5187</b>
+MOVE N NE
+<span class="wavy">STUDY Combat</span>
+<span class="msg">MOVE already spends this unit's month, so this STUDY will not run</span></div>
+<p>No line number, so it reads correctly in all three places. Names both orders, so the player can
+see which one is being kept and which dropped without looking anywhere else.</p>
+
+<h2 class="rule"><em>W3</em> shorter, no claim about which one wins</h2>
+<div class="ed"><b>unit 5187</b>
+MOVE N NE
+<span class="wavy">STUDY Combat</span>
+<span class="msg">this unit already has a month-long order: MOVE</span></div>
+<p>Says only what is certain. Does not promise that <code>MOVE</code> is the one that runs &mdash;
+which the rules never state, and which the sequence of events makes plausible but not sure.</p>
+
+<h2 class="rule"><em>Three orders</em> how each wording repeats</h2>
+<div class="ed"><b>unit 5187</b>
+MOVE N
+<span class="wavy">BUILD Tower</span>
+<span class="msg">MOVE already spends this unit's month, so this BUILD will not run</span>
+<span class="wavy">ENTERTAIN</span>
+<span class="msg">MOVE already spends this unit's month, so this ENTERTAIN will not run</span></div>
+<p class="note">Both later lines point back at the same first order, not at each other. W3 would read
+<code>this unit already has a month-long order: MOVE</code> twice, identically.</p>
+
+<h2 class="rule"><em>Case 1</em> MOVE and SAIL in the same block</h2>
+<div class="ed"><b>unit 5187</b>
+MOVE N
+SAIL NW</div>
+<p><code>rules/move</code> says multiple <code>MOVE</code> orders chain, and <code>rules/sail</code>
+shows <code>SAIL N</code> / <code>SAIL NW</code> as a form of one route. <strong>Neither says
+anything about mixing them.</strong> They are separate variants in the core
+(<code>Intent::Move</code> and <code>Intent::Sail</code>), so this is a decision, not a fact:
+walking and sailing in one month, or a conflict worth marking?</p>
+
+<h2 class="rule"><em>Case 2</em> two STUDY lines</h2>
+<div class="ed"><b>unit 5187</b>
+STUDY Combat
+<span class="wavy">STUDY Longbow</span>
+<span class="msg">STUDY already spends this unit's month, so this STUDY will not run</span></div>
+<p>Nothing in the rules lets two <code>STUDY</code> orders chain the way <code>MOVE</code> and
+<code>TEACH</code> do, so this warns &mdash; but the message names the same word twice, which reads
+oddly. Same for two <code>PRODUCE</code> lines, two <code>BUILD</code> lines, two
+<code>WORK</code> lines.</p>
+
+<h2 class="rule"><em>Case 3</em> a block with a line the reader could not parse</h2>
+<div class="ed"><b>unit 5187</b>
+MOVE N
+<span class="wavy">STUDY Combat</span>
+<span class="msg">MOVE already spends this unit's month, so this STUDY will not run</span>
+ASSASSINATE 4021</div>
+<p>The <em>Units that do nothing</em> check refuses to judge a unit holding an order it could not
+read &mdash; an unreadable line may well be a month&rsquo;s work, so claiming the unit does nothing
+could be wrong. <strong>This check is the other way round:</strong> two readable month-long orders
+are two whatever else the block holds, and an unread line can only add a third. So it still warns.
+That is my call unless you disagree.</p>
+
+<h2 class="rule"><em>Case 4</em> a unit formed this month</h2>
+<div class="ed"><b>unit 5187</b>
+FORM 2
+  <b>new 2</b>
+  WORK
+  <span class="wavy">STUDY Combat</span>
+  <span class="msg">WORK already spends this unit's month, so this STUDY will not run</span>
+END</div>
+<p>Handled for free by the existing machinery &mdash; the finding carries the <code>formed</code>
+subject, and the Problems list shows it as <strong>new 2</strong> with a click through to 5187.
+Nothing to decide, shown so you can see it.</p>
+
+<h2 class="rule"><em>The settings entry</em> as it would read in the Warnings tab</h2>
+<div class="ed" style="font-family:'Helvetica Neue',Arial,sans-serif; line-height:1.6;"><span style="color:var(--brass); font-size:11px; letter-spacing:1.2px;">ORDERS</span>
+<b>Two orders for one month</b>
+<span style="color:var(--ink-dim); font-size:12px;">A unit given more than one order that spends its month, such as MOVE and STUDY together, where only one of them will run.</span></div>
+<p class="note">It would sit in the existing <strong>Orders</strong> group, beside <em>Units that do
+nothing</em> &mdash; the two are opposite halves of the same idea.</p>
+</main>
+</body>
+</html>

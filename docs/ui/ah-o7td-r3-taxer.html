@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>ah-o7td — round 3: the standing taxer, and the settings copy</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63;
+    --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1020px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:16px; margin:30px 0 4px; border-top:1px solid var(--edge); padding-top:16px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  p { color:var(--ink-soft); max-width:94ch; margin-top:9px; font-size:14px; }
+  strong { color:var(--ink); } code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:.9em; color:var(--brass-bright); }
+  .opt { display:inline-block; margin-top:14px; padding:6px 12px; border:1px solid var(--brass); border-radius:4px;
+     color:var(--brass-bright); font:12px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.4px; text-transform:uppercase; }
+  .ed { background:#0c1016; border:1px solid var(--edge); border-radius:5px; padding:10px 12px; margin-top:12px;
+     font:12.5px/1.9 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; }
+  .ed b { color:var(--ink); font-weight:normal; }
+  .wavy { text-decoration:underline wavy var(--warn); text-underline-offset:4px; color:var(--ink); }
+  .msg { display:block; margin-top:6px; padding-left:2px; color:var(--warn); font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .unit { color:var(--ink-dim); font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; margin-top:8px; font-style:italic; }
+  .note { color:var(--ink-dim); font-size:12.5px; margin-top:14px; font-style:italic; max-width:94ch; }
+  .silent { color:var(--ok); font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; margin-top:8px; }
+  .fires { color:var(--warn); font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; margin-top:8px; }
+  table { border-collapse:collapse; margin-top:14px; font:13px/1.5 'Helvetica Neue',Arial,sans-serif; width:100%; }
+  th,td { border:1px solid var(--edge); padding:6px 9px; text-align:left; vertical-align:top; }
+  th { color:var(--brass); font-weight:normal; text-transform:uppercase; letter-spacing:1.2px; font-size:11px; }
+  td { color:var(--ink-soft); }
+  td.y { color:var(--warn); } td.n { color:var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-o7td</span> &mdash; round 3: the standing taxer, and the settings copy</h1>
+  <p>Everything else is settled. Two things left, both of them words or behaviour you will see.</p>
+</header>
+<main>
+
+<h2 class="rule"><em>Corrected</em> the written order wins, so the tax is what is lost</h2>
+<p>You settled two things at once here: the check <strong>does</strong> read the standing tax flag,
+and <strong>the written month-long order beats it</strong> &mdash; a flagged unit given
+<code>WORK</code> works, and does not tax. So the finding runs the other way from every other case:
+the underlined line is the one that <em>will</em> run, and the loss is the tax.</p>
+
+<h2 class="rule"><em>X1</em> naming what is lost</h2>
+<div class="ed"><b>unit 5187</b>
+<span class="wavy">WORK</span>
+<span class="msg">this unit is set to tax every month, but this WORK spends its month instead, so it will not tax</span></div>
+<p class="unit">Tax collectors (5187) &mdash; 20 men, taxing, in plain (12,8). No TAX line: the flag does it.</p>
+
+<h2 class="rule"><em>X2</em> shorter</h2>
+<div class="ed"><b>unit 5187</b>
+<span class="wavy">WORK</span>
+<span class="msg">this WORK spends the month, so this unit will not tax as its flag says</span></div>
+
+<h2 class="rule"><em>X3</em> on the unit block rather than the order line</h2>
+<div class="ed"><b>unit 5187</b>
+<span class="msg" style="margin-top:0">set to tax every month, but WORK spends the month instead, so it will not tax</span>
+WORK</div>
+<p>The tax has no line of its own, so the mark could sit on the <code>unit 5187</code> line rather
+than underlining the order &mdash; which is what the pillage check already does for a flagged taxer.
+The <code>WORK</code> line is then left clean, since nothing is wrong with it.</p>
+
+<h2 class="rule"><em>And with two written orders as well</em></h2>
+<div class="ed"><b>unit 5187</b>
+<span class="msg" style="margin-top:0">set to tax every month, but MOVE spends the month instead, so it will not tax</span>
+MOVE N
+<span class="wavy">WORK</span>
+<span class="msg">MOVE already spends this unit's month, so this WORK will not run</span></div>
+<p class="note">Two separate findings, both from this one check: the flag loses to the first written
+order, and the second written order loses to the first as well.</p>
+
+<h2 class="rule"><em>The settings entry</em> two ways of naming it</h2>
+<p><strong>S1</strong> &mdash; in the existing <strong>Orders</strong> group, beside <em>Units that do nothing</em>:</p>
+<div class="ed" style="font-family:'Helvetica Neue',Arial,sans-serif; line-height:1.6;"><span style="color:var(--brass); font-size:11px; letter-spacing:1.2px;">ORDERS</span>
+<b>Two orders for one month</b>
+<span style="color:var(--ink-dim); font-size:12px;">A unit given more than one order that spends its month, such as MOVE and STUDY together, where only one of them will run.</span></div>
+
+<p><strong>S2</strong> &mdash; same place, named after the waste rather than the count:</p>
+<div class="ed" style="font-family:'Helvetica Neue',Arial,sans-serif; line-height:1.6;"><span style="color:var(--brass); font-size:11px; letter-spacing:1.2px;">ORDERS</span>
+<b>Orders that will not run</b>
+<span style="color:var(--ink-dim); font-size:12px;">A unit whose month is already spoken for by an earlier order, such as a STUDY under a MOVE.</span></div>
+
+<p class="note">For comparison, the two neighbours it would sit among, exactly as they read today:
+<em>Units that do nothing</em> &mdash; &ldquo;A unit with no order that spends its month.&rdquo; and
+<em>Reused FORM numbers</em> &mdash; &ldquo;Two units formed in the same hex this month with the same
+NEW number.&rdquo;</p>
+</main>
+</body>
+</html>
