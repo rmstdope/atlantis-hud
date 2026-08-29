@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-jpcj &mdash; the batch, and what a borrowed hex remembers</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1180px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .notes code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:32px 0 6px; font-size:15px; }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; }
+  .stage + .stage { margin-top:12px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:9px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .settled { background:var(--raised); border-left:3px solid var(--ok); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin:14px 0; max-width:112ch; }
+  .found { background:var(--raised); border-left:3px solid var(--danger); padding:11px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin:14px 0; max-width:112ch; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+  .app { background:var(--panel); border:1px solid var(--edge); border-radius:7px; overflow:hidden; font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .apphdr { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:9px 12px; border-bottom:1px solid var(--edge); background:var(--raised); }
+  .apphdr .name { color:var(--brass); font-weight:600; letter-spacing:.02em; }
+  .btn { border:1px solid var(--brass); color:var(--brass); background:none; border-radius:4px; padding:4px 10px; font:12.5px 'Helvetica Neue',Arial,sans-serif; }
+  .btn.sec { border-color:var(--edge); color:var(--ink); background:var(--raised); }
+  .btn.ter { border-color:var(--edge); color:var(--ink-soft); background:none; }
+  .btn.bad { border-color:var(--danger); color:var(--danger); }
+  .status { display:flex; align-items:center; gap:7px; margin-left:auto; font-size:12.5px; color:var(--ink-soft); }
+  .dot { width:8px; height:8px; border-radius:50%; flex:none; }
+  .dot.ok { background:var(--ok); } .dot.bad { background:var(--danger); }
+  .dot.warn { background:var(--brass); } .dot.note { background:var(--select); }
+  .prompt { border-bottom:1px solid var(--edge); background:var(--panel); padding:11px 13px; }
+  .prompt p { font-size:12.5px; color:var(--ink-soft); max-width:92ch; }
+  .prompt p + p { margin-top:6px; }
+  .prompt .row { display:flex; gap:7px; margin-top:10px; }
+  .map { height:118px; background:
+      repeating-linear-gradient(60deg, #141a23 0 14px, #121821 14px 28px),
+      repeating-linear-gradient(-60deg, #141a23 0 14px, #121821 14px 28px);
+      position:relative; }
+  .map .tag { position:absolute; left:12px; top:11px; font-size:11px; color:var(--ink-dim); letter-spacing:.1em; text-transform:uppercase; }
+  .map .tag b { color:var(--brass); font-weight:600; }
+  .arrow { text-align:center; color:var(--ink-dim); font-size:17px; margin:7px 0; }
+  .panel { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:11px 13px; font:12.5px/1.6 'Helvetica Neue',Arial,sans-serif; }
+  .panel h5 { color:var(--brass); font-size:13px; font-weight:600; margin-bottom:3px; }
+  .banner { border-left:3px solid var(--brass); background:#0f141b; padding:7px 10px; margin:8px 0; font-size:12px; color:var(--ink-soft); }
+  .banner strong { color:var(--brass-bright); font-weight:500; }
+  .banner.lie { border-left-color:var(--danger); }
+  .banner.lie strong { color:var(--danger); }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:900px) { .two { grid-template-columns:1fr; } }
+</style></head><body>
+<header>
+<h1>Two more things your answers opened &mdash; <span>the batch, and what a borrowed hex remembers</span></h1>
+<p>These are independent of the button question. Both come straight out of round 1: &ldquo;it always asks&rdquo; has to mean
+something on the path that asks nothing, and &ldquo;fix the staleness here&rdquo; changes what the panels say.</p>
+</header>
+<main>
+
+<h4 class="q"><em>Q3</em> A map export among twenty files &mdash; the batch importer asks nothing by design</h4>
+<p>Drag a folder in and the batch importer plans everything up front, then runs it and shows one summary. There is no
+prompt anywhere on that path. A map export in the pile has to do <i>something</i>.</p>
+<div class="card">
+  <div class="two">
+    <div class="stage">
+      <div class="hexlab">B1 &mdash; added, and counted on its own line</div>
+      <div class="app">
+        <div class="apphdr"><span class="name">Borg TNG (95)</span> <span style="color:var(--ink-dim)">turn 71</span></div>
+        <div style="padding:12px 13px; font-size:12.5px; color:var(--ink-soft)">
+          <p style="color:var(--ink); margin-bottom:7px">Imported 3 turns for Borg TNG (95). Turn 71 is on screen.</p>
+          <div class="mono" style="font-size:12px; line-height:1.85">
+            t69.rep &mdash; imported as turn 69<br>
+            t70.rep &mdash; imported as turn 70<br>
+            t71.rep &mdash; imported as turn 71<br>
+            <span style="color:var(--ok)">ally-map.txt &mdash; map export, 8 hexes added</span>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>A folder of everything an ally sent you just works.</li>
+        <li>Safe: adding hexes can never destroy anything, which is why no prompt is owed.</li>
+        <li class="con">It is the one place a map export lands without being asked about.</li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div class="hexlab">B2 &mdash; skipped, with a reason</div>
+      <div class="app">
+        <div class="apphdr"><span class="name">Borg TNG (95)</span> <span style="color:var(--ink-dim)">turn 71</span></div>
+        <div style="padding:12px 13px; font-size:12.5px; color:var(--ink-soft)">
+          <p style="color:var(--ink); margin-bottom:7px">Imported 3 turns for Borg TNG (95). Turn 71 is on screen. 1 file was skipped.</p>
+          <div class="mono" style="font-size:12px; line-height:1.85">
+            t69.rep &mdash; imported as turn 69<br>
+            t70.rep &mdash; imported as turn 70<br>
+            t71.rep &mdash; imported as turn 71<br>
+            <span style="color:var(--brass-bright)">ally-map.txt &mdash; skipped: a map export is imported on its own, not in a batch</span>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>&ldquo;It always asks&rdquo; holds without exception.</li>
+        <li class="con">You have to notice the line and re-import the file by hand.</li>
+        <li class="con">A folder of an ally&rsquo;s files silently does less than you asked.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h4 class="q"><em>Q4</em> What a borrowed hex remembers</h4>
+<p>The export already writes <span class="mono">; last seen turn 40, 31 turns before this export</span> above each
+remembered hex, and nothing has ever read it. Today every hex in an imported file is stamped with the file&rsquo;s turn.
+Here is the same hex, before and after the fix &mdash; the ally saw it on turn 40 and exported on turn 71.</p>
+<div class="card">
+  <div class="two">
+    <div class="stage">
+      <div class="hexlab">Today &mdash; the panel states a falsehood</div>
+      <div class="panel">
+        <h5>mountain (12,48) in Cadaver</h5>
+        <div class="banner lie"><strong>Last seen turn 71</strong> &mdash; this turn</div>
+        <div style="color:var(--ink-dim); font-size:12px">2 units &middot; 3,410 peasants (hill dwarves)</div>
+      </div>
+      <ul class="notes">
+        <li class="con">You were never there, and nobody has been since turn 40 &mdash; but the hex reads as current.</li>
+        <li class="con">The map shades it as fresh, and <span class="mono">Not seen since turn&hellip;</span> never fires.</li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div class="hexlab">After &mdash; the file&rsquo;s own comment is finally read</div>
+      <div class="panel">
+        <h5>mountain (12,48) in Cadaver</h5>
+        <div class="banner"><strong>Last seen turn 40</strong> &mdash; 31 turns ago</div>
+        <div style="color:var(--ink-dim); font-size:12px">2 units &middot; 3,410 peasants (hill dwarves)</div>
+      </div>
+      <ul class="notes">
+        <li>Identical to how your own remembered hexes already read &mdash; no new component, no new words.</li>
+        <li>The map&rsquo;s age shading and the stale banners become true for borrowed hexes too.</li>
+        <li class="n">A hex the exporter saw <i>on</i> the export turn carries no comment and lands at the file&rsquo;s turn, as now.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="found"><b>The question is whether the exporter&rsquo;s turn numbers mean anything in your game.</b>
+  They do when you are both in the same game &mdash; turn 40 is turn 40 for everyone in it, which is the only case a map
+  export is meant for. A file from a <i>different</i> game would put its turn numbers into yours, and nothing in the
+  file says which game it came from.</div>
+</div>
+
+<footer>The button question is in the other two files &mdash; open those as well.</footer>
+</main>
+</body></html>

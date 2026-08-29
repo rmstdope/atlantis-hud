@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-jpcj &mdash; Option B: a map export is a report, and you are asked</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1180px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .notes code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:32px 0 6px; font-size:15px; }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; }
+  .stage + .stage { margin-top:12px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:9px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .settled { background:var(--raised); border-left:3px solid var(--ok); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:112ch; }
+  .found { background:var(--raised); border-left:3px solid var(--danger); padding:11px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin:14px 0; max-width:112ch; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+
+  /* --- the app chrome --- */
+  .app { background:var(--panel); border:1px solid var(--edge); border-radius:7px; overflow:hidden; font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .apphdr { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:9px 12px; border-bottom:1px solid var(--edge); background:var(--raised); }
+  .apphdr .name { color:var(--brass); font-weight:600; letter-spacing:.02em; }
+  .btn { border:1px solid var(--brass); color:var(--brass); background:none; border-radius:4px; padding:4px 10px; font:12.5px 'Helvetica Neue',Arial,sans-serif; }
+  .btn.sec { border-color:var(--edge); color:var(--ink); background:var(--raised); }
+  .btn.ter { border-color:var(--edge); color:var(--ink-soft); background:none; }
+  .status { display:flex; align-items:center; gap:7px; margin-left:auto; font-size:12.5px; color:var(--ink-soft); }
+  .dot { width:8px; height:8px; border-radius:50%; flex:none; }
+  .dot.ok { background:var(--ok); } .dot.bad { background:var(--danger); }
+  .dot.warn { background:var(--brass); } .dot.note { background:var(--select); }
+  .body { padding:0; }
+  .prompt { border-bottom:1px solid var(--edge); background:var(--panel); padding:11px 13px; }
+  .prompt p { font-size:12.5px; color:var(--ink-soft); max-width:92ch; }
+  .prompt p + p { margin-top:6px; }
+  .prompt .row { display:flex; gap:7px; margin-top:10px; }
+  .map { height:132px; background:
+      repeating-linear-gradient(60deg, #141a23 0 14px, #121821 14px 28px),
+      repeating-linear-gradient(-60deg, #141a23 0 14px, #121821 14px 28px);
+      position:relative; }
+  .map .tag { position:absolute; left:12px; top:11px; font-size:11px; color:var(--ink-dim); letter-spacing:.1em; text-transform:uppercase; }
+  .map .tag b { color:var(--brass); font-weight:600; }
+  .map.lost .tag b { color:var(--danger); }
+  .arrow { text-align:center; color:var(--ink-dim); font-size:17px; margin:7px 0; }
+</style></head><body>
+<header>
+<h1>Importing a map export &mdash; <span>Option B: it is a report, and you are asked</span></h1>
+<p><b>The rule.</b> A map export stays an ordinary report file. The routing the app already has does the work: an ally&rsquo;s
+raises the existing <i>Report from another faction</i> prompt, and yours would load &mdash; except that loading a map export
+over your own turn destroys it, so <b>the one thing added is a prompt for your own export.</b> Nothing is ever done
+silently: every map export asks first.</p>
+</header>
+<main>
+
+<h4 class="q"><em>State 1</em> An ally&rsquo;s map export, same turn as yours</h4>
+<p>Exactly the prompt the app shows today for any allied report &mdash; no new component, no new words.</p>
+<div class="card">
+  <div class="stage">
+    <div class="app">
+      <div class="apphdr"><span class="name">Borg TNG (95)</span> <span style="color:var(--ink-dim)">turn 71</span>
+        <button class="btn">Import</button>
+        <div class="status"><span class="dot ok"></span>11 regions &middot; 34 units</div></div>
+      <div class="prompt">
+        <p><span class="mono" style="color:var(--ink)">map-turn-71-level-1.txt</span> is Mantzikert (39)&rsquo;s report for turn 71 &mdash;
+           the same turn as your own report for Borg TNG (95).</p>
+        <p>Merge adds everywhere Mantzikert (39) went to your map and leaves you playing Borg TNG (95).</p>
+        <p>Switch faction opens the report itself: the map, the units and the orders all become Mantzikert (39)&rsquo;s.</p>
+        <div class="row"><button class="btn">Merge</button><button class="btn sec">Switch faction</button><button class="btn ter">Cancel</button></div>
+      </div>
+      <div class="map"><div class="tag">your map &mdash; <b>11 hexes</b></div></div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Zero new UI. This is the component and the wording that already ship.</li>
+    <li class="con">&ldquo;Switch faction&rdquo; on a map export makes you a faction with no units and no orders &mdash; the prompt offers it anyway.</li>
+    <li class="n">On Merge, status: <span class="mono">merged 19 regions from Mantzikert (39), turn 71 &mdash; 8 new to your map</span></li>
+  </ul>
+</div>
+
+<h4 class="q"><em>State 2</em> An ally&rsquo;s map export from a <i>different</i> turn</h4>
+<p>Their turn 70 export while you hold turn 71. The Merge button is removed, not disabled &mdash; the app&rsquo;s existing rule.</p>
+<div class="card">
+  <div class="stage">
+    <div class="app">
+      <div class="apphdr"><span class="name">Borg TNG (95)</span> <span style="color:var(--ink-dim)">turn 71</span>
+        <button class="btn">Import</button></div>
+      <div class="prompt">
+        <p><span class="mono" style="color:var(--ink)">map-turn-70-level-1.txt</span> is Mantzikert (39)&rsquo;s report for turn 70, and you have
+           Borg TNG (95)&rsquo;s turn 71 open. Merging needs a report from turn 71, so only switching is on offer.</p>
+        <p>Turn 70 is older than the turn you have loaded, so it may not be the latest report there is.</p>
+        <p>Switch faction opens the report itself: the map, the units and the orders all become Mantzikert (39)&rsquo;s.</p>
+        <div class="row"><button class="btn sec">Switch faction</button><button class="btn ter">Cancel</button></div>
+      </div>
+      <div class="map"><div class="tag">your map &mdash; <b>11 hexes</b></div></div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li class="con">The map in that file cannot be taken at all. The only offer is to become a faction with no units.</li>
+    <li class="con">An ally who exported on a different turn from yours has sent you a file you can do nothing with.</li>
+  </ul>
+</div>
+
+<h4 class="q"><em>State 3</em> Your own map export, back into the same game <span class="rec">&nbsp;&nbsp;this is what you did</span></h4>
+<p>This is the state that needs something new. Without a prompt, the file replaces your turn.</p>
+<div class="card">
+  <div class="stage">
+    <div class="hexlab">The new prompt Option B has to add</div>
+    <div class="app">
+      <div class="apphdr"><span class="name">Borg TNG (95)</span> <span style="color:var(--ink-dim)">turn 71</span>
+        <button class="btn">Import</button></div>
+      <div class="prompt">
+        <p><span class="mono" style="color:var(--ink)">map-turn-71-level-1.txt</span> is a map export from your own faction,
+           Borg TNG (95), turn 71. It holds hexes only &mdash; no units, no orders and no events.</p>
+        <p>Add to map keeps the turn you have open and takes any hex the file knows and your map does not.</p>
+        <p>Open it instead replaces the turn on screen with the file, and your units, orders and events for turn 71 go with it.</p>
+        <div class="row"><button class="btn">Add to map</button><button class="btn sec">Open it instead</button><button class="btn ter">Cancel</button></div>
+      </div>
+      <div class="map"><div class="tag">your map &mdash; <b>11 hexes</b></div></div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Nothing is destroyed without being warned about first.</li>
+    <li class="con">A third prompt to design, word and test &mdash; and a destructive option kept on offer.</li>
+    <li class="con">The question is put every time, including the common case where the answer adds nothing.</li>
+  </ul>
+</div>
+
+<h4 class="q"><em>State 4</em> A map export with no game open</h4>
+<div class="card">
+  <div class="stage">
+    <div class="app">
+      <div class="apphdr"><span style="color:var(--ink-dim)">no report loaded</span>
+        <button class="btn">Import</button>
+        <div class="status"><span class="dot ok"></span>11 regions &middot; 0 units</div></div>
+      <div class="map"><div class="tag">map from the file &mdash; <b>11 hexes</b></div></div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>It just opens, like any first report &mdash; a map export <i>can</i> start a game under Option B.</li>
+    <li class="con">The game it starts has a faction with no units and no orders template, which will confuse the next thing you do.</li>
+  </ul>
+</div>
+
+<h4 class="q"><em>State 5</em> A map export among twenty files (the batch importer)</h4>
+<div class="card">
+  <div class="stage">
+    <div class="app">
+      <div class="apphdr"><span class="name">Borg TNG (95)</span> <span style="color:var(--ink-dim)">turn 71</span>
+        <button class="btn">Import</button></div>
+      <div style="padding:12px 13px; font-size:12.5px; color:var(--ink-soft)">
+        <p style="color:var(--ink); margin-bottom:7px">Imported 4 turns for Borg TNG (95). Turn 71 is on screen.</p>
+        <div class="mono" style="font-size:12px; line-height:1.85; color:var(--ink-soft)">
+          t69.rep &mdash; imported as turn 69<br>
+          t70.rep &mdash; imported as turn 70<br>
+          t71.rep &mdash; imported as turn 71<br>
+          <span style="color:var(--danger)">map-turn-71-level-1.txt &mdash; imported as turn 71</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li class="con">The batch importer never asks. A map export in a batch overwrites the real turn 71 silently &mdash;
+      the prompt in State 3 does not exist on this path.</li>
+  </ul>
+</div>
+
+<div class="found"><b>What Option B costs.</b> It keeps a destructive option on offer and puts a question in front of
+the player every time. And the batch importer, which asks nothing by design, cannot be protected the same way &mdash; so
+State 5 stays wrong unless the file is recognised as a map export there too, which is most of Option A&rsquo;s work anyway.</div>
+
+<footer><b>Compare with Option A</b> &mdash; a map export is map knowledge and nothing else, so it can never
+destroy anything and is never asked about. Open both before choosing; the difference is in what
+happens in States 3 and 5, and it does not survive being described.</footer>
+</main></body></html>
