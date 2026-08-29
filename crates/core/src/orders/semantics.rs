@@ -39,7 +39,8 @@ use crate::orders::silver::{
     late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants, price_buy_all,
     price_cast, price_claim, price_pillage, price_production, price_purchase, price_sale_line,
     price_study, price_tax, producing_skill, quantity_bought, readiness, settle_unclaimed,
-    split_pool, taxes, transfer_shape, transmute_argument, unit_upkeep, workforce_for, BuyAllCap,
+    flagged_to_tax, split_pool, taxes, transfer_shape, transmute_argument, unit_upkeep,
+    workforce_for, BuyAllCap,
     Caster, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
     LateFoodRelief, Lookups, MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
     PurchaseAnswer, Receipts, RegionShare, RegionWages, SaleAnswer, SilverDoubt, TransferShape,
@@ -7099,6 +7100,26 @@ fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: 
                     later = placed.keyword,
                 ),
                 Some(placed),
+            ));
+        }
+
+        // A unit set to tax every turn is a claimant on the month too, and it loses to any written
+        // month-long order - which `silver::taxes` already forecasts, so the Silver column and this
+        // finding cannot disagree. A block with its own `TAX` line is left to the ordinary wording
+        // above: the tax it names is the same tax. The finding sits on the block, because the tax
+        // has no line of its own and nothing is wrong with the order that beat it.
+        if flagged_to_tax(&ordered.unit.flags)
+            && !ordered
+                .intents()
+                .any(|intent| matches!(intent, Intent::Tax))
+        {
+            findings.push(ordered.finding_at_block(
+                hex,
+                codes::TWO_MONTH_LONG_ORDERS,
+                format!(
+                    "set to tax every month, but {} spends the month instead, so it will not tax",
+                    winner.keyword,
+                ),
             ));
         }
     }
@@ -14977,6 +14998,73 @@ mod tests {
         assert_eq!(
             findings[1].message,
             "MOVE already spends this unit's month, so this ENTERTAIN will not run"
+        );
+    }
+
+    /// The navigator's decision of 2026-08-29: the flag is a claimant, and a written month-long
+    /// order beats it. This is what `silver::taxes` has already forecast since `ah-v8zh`; the
+    /// finding says it out loud.
+    #[test]
+    fn a_flagged_taxer_given_work_is_told_it_will_not_tax() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![taxing_by_flag(unit("683"))])],
+            "unit 683\nWORK\n",
+        )));
+        assert_eq!(finding.line, Some(1));
+        assert_eq!(finding.column_start, None);
+        assert_eq!(finding.column_end, None);
+        assert_eq!(
+            finding.message,
+            "set to tax every month, but WORK spends the month instead, so it will not tax"
+        );
+    }
+
+    /// A block with its own `TAX` is not also told about the flag: the tax it names is the one the
+    /// ordinary wording is already about.
+    #[test]
+    fn a_flagged_taxer_with_a_written_tax_line_is_not_told_twice() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![taxing_by_flag(unit("683"))])],
+            "unit 683\nTAX\nWORK\n",
+        )));
+        assert_eq!(finding.line, Some(3));
+        assert_eq!(
+            finding.message,
+            "TAX already spends this unit's month, so this WORK will not run"
+        );
+    }
+
+    /// The flag alone is one claimant, not two - a flagged unit with a free month taxes, which is
+    /// exactly what it was set to do.
+    #[test]
+    fn a_flagged_taxer_with_nothing_else_to_do_is_left_alone() {
+        assert_eq!(
+            two_month_long(check_months(
+                vec![region(vec![taxing_by_flag(unit("683"))])],
+                "unit 683\n",
+            )),
+            vec![]
+        );
+    }
+
+    /// Both losses are measured from the first written order. The hex re-sorts its findings by
+    /// line, so the block-anchored one (the `unit 683` line) comes first here.
+    #[test]
+    fn a_flagged_taxer_loses_to_the_first_of_two_written_orders() {
+        let findings = two_month_long(check_months(
+            vec![region(vec![taxing_by_flag(unit("683"))])],
+            "unit 683\nMOVE N\nWORK\n",
+        ));
+        assert_eq!(findings.len(), 2, "{findings:?}");
+        assert_eq!(findings[0].line, Some(1));
+        assert_eq!(
+            findings[0].message,
+            "set to tax every month, but MOVE spends the month instead, so it will not tax"
+        );
+        assert_eq!(findings[1].line, Some(3));
+        assert_eq!(
+            findings[1].message,
+            "MOVE already spends this unit's month, so this WORK will not run"
         );
     }
 
