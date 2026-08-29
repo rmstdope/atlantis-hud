@@ -142,7 +142,10 @@ mod tests {
     #[test]
     fn without_a_catalogue_the_holdings_still_answer() {
         let orcs = held(&[(8, "orcs", "ORC")]);
-        assert_eq!(item_named(None, "orcs", || orcs.iter()), Some("ORC".to_string()));
+        assert_eq!(
+            item_named(None, "orcs", || orcs.iter()),
+            Some("ORC".to_string())
+        );
         assert_eq!(item_named(None, "LEADER", || orcs.iter()), None);
     }
 }
