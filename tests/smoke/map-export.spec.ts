@@ -133,3 +133,61 @@ test("leaves out the content the player unticks", async ({ page }, testInfo) => 
   expect(text).not.toContain("(18642)");
   expect(text).toContain("Products:");
 });
+
+/**
+ * The round trip, through the application's own front door.
+ *
+ * The one test that catches a marker the shell does not recognise: a map export that is not
+ * recognised parses perfectly well as a report, so it takes the report path and replaces the turn
+ * on screen with a file that has no orders template, no faction status and no events. Nothing else
+ * in this repository compares the Rust `MAP_EXPORT_MARKER` with the TypeScript one - they are two
+ * string literals in two languages - so this walk is the check between them.
+ */
+test("re-imports its own export as a map, and leaves the turn alone", async ({ page }, testInfo) => {
+  await clearGames(page);
+  await createGame(page, "Export game");
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  await openMapExport(page);
+  const { text, name } = await exportAndRead(page, testInfo);
+
+  await importReport(page, name, text);
+
+  // A prompt, never a load: the file is a map and the player is asked before anything is written.
+  const prompt = page.getByTestId("map-export-prompt");
+  await expect(prompt).toBeVisible();
+  await expect(prompt).toContainText("is a map export from your own faction");
+  await expect(page.getByTestId("map-export-add")).toBeFocused();
+
+  await page.getByTestId("map-export-add").click();
+
+  // Every hex of it came out of the map it is being added back to, so nothing is new.
+  await expect(page.getByTestId("import-status")).toContainText(
+    "nothing added — your map already had all of it"
+  );
+  await expect(page.getByTestId("map-export-prompt")).toHaveCount(0);
+
+  // The turn on screen survived, faction and all - which is the whole point of the bead.
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+  await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
+});
+
+test("cancels a map export without writing anything", async ({ page }, testInfo) => {
+  await clearGames(page);
+  await createGame(page, "Export game");
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  await openMapExport(page);
+  const { text, name } = await exportAndRead(page, testInfo);
+
+  await importReport(page, name, text);
+  await expect(page.getByTestId("map-export-prompt")).toBeVisible();
+
+  await page.getByTestId("map-export-cancel").click();
+
+  await expect(page.getByTestId("map-export-prompt")).toHaveCount(0);
+  await expect(page.getByTestId("import-status")).not.toContainText("added to your map");
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+});
