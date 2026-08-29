@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-jpcj.2 — the batch summary, and refusing an export nobody could import</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink);
+         font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1180px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:34px 0 6px; font-size:15px; }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px;
+          padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em;
+            text-transform:uppercase; color:var(--ink-dim); margin-bottom:9px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .settled { background:var(--raised); border-left:3px solid var(--ok); padding:10px 14px;
+             border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin:14px 0; max-width:112ch; }
+  .found { background:var(--raised); border-left:3px solid var(--danger); padding:11px 14px;
+           border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin:14px 0; max-width:112ch; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:900px) { .two { grid-template-columns:1fr; } }
+  /* the summary panel as the app draws it */
+  .app { background:var(--panel); border:1px solid var(--edge); border-radius:7px; overflow:hidden;
+         font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .apphdr { display:flex; align-items:center; gap:10px; padding:9px 12px;
+            border-bottom:1px solid var(--edge); background:var(--raised); }
+  .apphdr .name { color:var(--brass); font-weight:600; }
+  .body { padding:11px 13px; }
+  .head { color:var(--ink); font-size:13px; margin-bottom:8px; }
+  ul.files { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:3px; }
+  ul.files li::before { content:"\00b7 "; color:var(--ink-dim); }
+  ul.files li.new { color:var(--brass-bright); }
+  ul.files li.skip { color:var(--danger); }
+  /* the export dialog at its real 26rem */
+  .dlg { width:26rem; background:var(--raised); border:1px solid var(--edge); border-radius:5px;
+         padding:12px; font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .dlg h2 { font-size:14px; color:var(--ink); font-weight:500; margin-bottom:8px; }
+  .dlg p { font-size:12.5px; color:var(--ink-soft); margin:5px 0; }
+  .dlg p.dim { color:var(--ink-dim); font-size:11.5px; }
+  .dlg p.bad { color:var(--danger); }
+  .sw { display:flex; justify-content:space-between; color:var(--ink-soft); font-size:12.5px;
+        border-top:1px solid var(--edge); padding-top:7px; margin-top:7px; }
+  .row { display:flex; justify-content:flex-end; gap:8px; margin-top:11px; }
+  .btn { border:1px solid var(--brass); color:var(--brass); background:none; border-radius:4px;
+         padding:3px 10px; font:12.5px 'Helvetica Neue',Arial,sans-serif; }
+  .btn.sec { border-color:var(--edge); color:var(--ink-soft); }
+  .btn.off { border-color:var(--edge); color:var(--ink-dim); }
+</style>
+</head>
+<body>
+<header>
+<h1><span>ah-jpcj.2</span> — the batch summary, and refusing an export nobody could import</h1>
+<p>
+  The two halves left over from <code>ah-jpcj.1</code>, which is already being built. The decisions
+  were taken in round 2 and round 3 — a map export in a batch is <b>added and counted on its own
+  line</b> (B1), and an export from a report with no faction or no date is <b>refused at the export
+  dialog</b> (E9). What was never written down is the exact wording in the cases the two mockups did
+  not draw, and that is all this page asks about.
+</p>
+<div class="found">
+  <b>Found while planning this, and worth knowing before you answer.</b> Today a map export dropped
+  into a batch is judged by <code>judgeReportUsable</code> like any other report — so one from
+  <i>your own</i> faction takes the batch's <code>import</code> path and <b>commits as your turn</b>,
+  replacing the stored report with a file that has no orders template, no events and no units.
+  Only single-type factions can reach that today; <code>ah-jpcj.1</code>'s header fix hands it to
+  everybody. That is what makes this bead a P0 rather than a tidy-up.
+</div>
+</header>
+
+<main>
+
+<div class="settled"><b>Chosen (navigator, 2026-08-29): B, D and F.</b> The headline gets its own sentence rather than a third clause; a map export that added nothing says so in words rather than showing a nought; and the export dialog states only why, dropping E9's "Export is unavailable for this turn" tail, because the greyed button already says that and the tail said <i>turn</i> twice in two senses. Each rejected variant is drawn beside the chosen one below.</div>
+
+<h4 class="q"><em>Q1</em> The batch headline, when hexes landed and turns did not</h4>
+<p>
+  The existing headline counts turns and allied reports and then says <code>Nothing was
+  imported.</code> when neither happened. E7 already showed that reading as a failure over two
+  successful map exports, and you accepted the fix in principle. Here are the two shapes it could
+  take, each across four batches.
+</p>
+
+<div class="two">
+<div class="card">
+  <p class="hexlab">A — a clause on the existing sentence</p>
+
+  <div class="app"><div class="apphdr"><span class="name">Borg TNG (95)</span><span>turn 71</span></div>
+  <div class="body">
+    <p class="hexlab">two map exports, nothing else</p>
+    <p class="head">Added 11 hexes to Borg TNG (95)’s map from 2 map exports.</p>
+    <ul class="files">
+      <li class="new">ally-map.txt — map export, 8 hexes added</li>
+      <li class="new">other-ally-map.txt — map export, 3 hexes added</li>
+    </ul>
+  </div></div>
+
+  <div class="app" style="margin-top:12px"><div class="apphdr"><span class="name">Borg TNG (95)</span><span>turn 71</span></div>
+  <div class="body">
+    <p class="hexlab">three turns and one map export</p>
+    <p class="head">Imported 3 turns for Borg TNG (95) and added 8 hexes from a map export. Turn 71 is on screen.</p>
+    <ul class="files">
+      <li>t69.rep — imported as turn 69</li>
+      <li>t70.rep — imported as turn 70</li>
+      <li>t71.rep — imported as turn 71</li>
+      <li class="new">ally-map.txt — map export, 8 hexes added</li>
+    </ul>
+  </div></div>
+
+  <div class="app" style="margin-top:12px"><div class="apphdr"><span class="name">Borg TNG (95)</span><span>turn 71</span></div>
+  <div class="body">
+    <p class="hexlab">a turn, an ally's report and two map exports</p>
+    <p class="head">Imported 1 turn for Borg TNG (95), merged 1 allied report and added 11 hexes from 2 map exports. Turn 71 is on screen.</p>
+  </div></div>
+
+  <div class="app" style="margin-top:12px"><div class="apphdr"><span class="name">Borg TNG (95)</span><span>turn 71</span></div>
+  <div class="body">
+    <p class="hexlab">one map export that added nothing new</p>
+    <p class="head">Added no hexes to Borg TNG (95)’s map — the map export held nothing new.</p>
+  </div></div>
+
+  <ul class="notes">
+    <li>One sentence to read, and it always names the faction whose map grew.</li>
+    <li class="con">The three-clause form is long, and it is the commonest real batch.</li>
+    <li class="n">Every clause is built by the same <code>count()</code> helper the headline already uses.</li>
+  </ul>
+</div>
+
+<div class="card">
+  <p class="hexlab">B — its own sentence, after the turns — CHOSEN</p>
+
+  <div class="app"><div class="apphdr"><span class="name">Borg TNG (95)</span><span>turn 71</span></div>
+  <div class="body">
+    <p class="hexlab">two map exports, nothing else</p>
+    <p class="head">11 hexes added to your map from 2 map exports.</p>
+    <ul class="files">
+      <li class="new">ally-map.txt — map export, 8 hexes added</li>
+      <li class="new">other-ally-map.txt — map export, 3 hexes added</li>
+    </ul>
+  </div></div>
+
+  <div class="app" style="margin-top:12px"><div class="apphdr"><span class="name">Borg TNG (95)</span><span>turn 71</span></div>
+  <div class="body">
+    <p class="hexlab">three turns and one map export</p>
+    <p class="head">Imported 3 turns for Borg TNG (95). 8 hexes added to your map from a map export. Turn 71 is on screen.</p>
+    <ul class="files">
+      <li>t69.rep — imported as turn 69</li>
+      <li>t70.rep — imported as turn 70</li>
+      <li>t71.rep — imported as turn 71</li>
+      <li class="new">ally-map.txt — map export, 8 hexes added</li>
+    </ul>
+  </div></div>
+
+  <div class="app" style="margin-top:12px"><div class="apphdr"><span class="name">Borg TNG (95)</span><span>turn 71</span></div>
+  <div class="body">
+    <p class="hexlab">a turn, an ally's report and two map exports</p>
+    <p class="head">Imported 1 turn for Borg TNG (95) and merged 1 allied report. 11 hexes added to your map from 2 map exports. Turn 71 is on screen.</p>
+  </div></div>
+
+  <div class="app" style="margin-top:12px"><div class="apphdr"><span class="name">Borg TNG (95)</span><span>turn 71</span></div>
+  <div class="body">
+    <p class="hexlab">one map export that added nothing new</p>
+    <p class="head">Nothing added to your map — the map export held nothing new.</p>
+  </div></div>
+
+  <ul class="notes">
+    <li>E7's own wording, kept verbatim. Each sentence answers one question.</li>
+    <li>The turn sentence never grows, so the commonest batch reads exactly as it does today.</li>
+    <li>Matches the single-file status line, which already says <code>8 hexes added to your map</code>.</li>
+    <li class="con">Three sentences where two would do, in the mixed case.</li>
+  </ul>
+</div>
+</div>
+
+<div class="settled">
+  <b>Not in question.</b> The per-file line is B1's, as you chose:
+  <code>ally-map.txt — map export, 8 hexes added</code>. Q2 below only asks what the tail of that
+  line says when the number is nought.
+</div>
+
+<h4 class="q"><em>Q2</em> A map export in the batch that added nothing new</h4>
+<p>
+  Every hex in the file was already on your map — a second copy of an ally's file, or one you have
+  already taken. It is not a failure and it is not a skip.
+</p>
+<div class="two">
+<div class="card">
+  <p class="hexlab">C — the count, whatever it is</p>
+  <div class="app"><div class="apphdr"><span class="name">Borg TNG (95)</span><span>turn 71</span></div>
+  <div class="body"><ul class="files">
+    <li class="new">ally-map.txt — map export, 8 hexes added</li>
+    <li>other-ally-map.txt — map export, 0 hexes added</li>
+  </ul></div></div>
+  <ul class="notes">
+    <li>One shape for every map export, and the numbers line up down the list.</li>
+    <li class="con"><code>0 hexes added</code> reads like a fault the player should look into.</li>
+  </ul>
+</div>
+<div class="card">
+  <p class="hexlab">D — say it in words — CHOSEN</p>
+  <div class="app"><div class="apphdr"><span class="name">Borg TNG (95)</span><span>turn 71</span></div>
+  <div class="body"><ul class="files">
+    <li class="new">ally-map.txt — map export, 8 hexes added</li>
+    <li>other-ally-map.txt — map export, nothing new to your map</li>
+  </ul></div></div>
+  <ul class="notes">
+    <li>Says plainly that nothing was wrong, which <code>0</code> does not.</li>
+    <li>Same idea as the single-file status line you chose:
+      <code>nothing added — your map already had all of it</code>.</li>
+    <li class="con">Two shapes of line to read down instead of one.</li>
+  </ul>
+</div>
+</div>
+
+<h4 class="q"><em>Q3</em> The export dialog, refusing a file nobody could import</h4>
+<p>
+  E9 settled the no-faction case and its sentence, and that the button goes away rather than the
+  save failing later. The date case needs the same treatment and was never drawn. Both are shown
+  at the dialog's real 26rem width, with the existing area line and switch block above them.
+</p>
+
+<div class="two">
+<div class="card">
+  <p class="hexlab">E — as E9 drew it: a sentence, and the button unavailable</p>
+  <div class="dlg">
+    <h2>Export map</h2>
+    <p>The entire known map on this level.</p>
+    <p class="dim">Shift-drag on the map to export part of it instead.</p>
+    <div class="sw"><span>Structures</span><span>✓</span></div>
+    <div class="sw"><span>Units</span><span>✓</span></div>
+    <div class="sw"><span>Advanced resources</span><span>✓</span></div>
+    <p>40 regions will be exported.</p>
+    <p class="bad">This turn’s report does not name its faction, so a map exported from it could
+      not be imported by anyone — including you. Export is unavailable for this turn.</p>
+    <div class="row"><span class="btn sec">Cancel</span><span class="btn off">Export</span></div>
+  </div>
+  <p class="hexlab" style="margin-top:14px">the same, for a report with no date</p>
+  <div class="dlg">
+    <p class="bad">This turn’s report does not name its turn, so a map exported from it could
+      not be imported by anyone — including you. Export is unavailable for this turn.</p>
+    <div class="row"><span class="btn sec">Cancel</span><span class="btn off">Export</span></div>
+  </div>
+  <ul class="notes">
+    <li>Fails where the mistake is, not in the recipient's client a week later.</li>
+    <li>The same shape the dialog already uses for an empty rectangle — the button is simply not
+      available, with the reason above it.</li>
+    <li class="con">"does not name its turn … Export is unavailable for this turn" says
+      <i>turn</i> twice in two senses.</li>
+  </ul>
+</div>
+
+<div class="card">
+  <p class="hexlab">F — one sentence covering both, naming what is missing — CHOSEN</p>
+  <div class="dlg">
+    <h2>Export map</h2>
+    <p>The entire known map on this level.</p>
+    <p class="dim">Shift-drag on the map to export part of it instead.</p>
+    <div class="sw"><span>Structures</span><span>✓</span></div>
+    <div class="sw"><span>Units</span><span>✓</span></div>
+    <div class="sw"><span>Advanced resources</span><span>✓</span></div>
+    <p>40 regions will be exported.</p>
+    <p class="bad">This report does not name its faction, so a map exported from it could not be
+      imported by anyone — including you.</p>
+    <div class="row"><span class="btn sec">Cancel</span><span class="btn off">Export</span></div>
+  </div>
+  <p class="hexlab" style="margin-top:14px">the same, for a report with no date</p>
+  <div class="dlg">
+    <p class="bad">This report does not say which turn it is from, so a map exported from it could
+      not be imported by anyone — including you.</p>
+    <div class="row"><span class="btn sec">Cancel</span><span class="btn off">Export</span></div>
+  </div>
+  <ul class="notes">
+    <li>Drops the trailing "Export is unavailable for this turn" — the greyed button already says
+      that, and it is the sentence that made <i>turn</i> collide with itself.</li>
+    <li>"which turn it is from" avoids the collision without inventing a new word.</li>
+    <li class="con">A player who does not notice the button is grey is told only why, not what.</li>
+  </ul>
+</div>
+</div>
+
+<div class="settled">
+  <b>Decided without asking, being reuse rather than new words.</b> A map export in a batch that is
+  itself unimportable — no faction, no turn, no hexes — is skipped with the same sentence the
+  single-file path already uses, on the batch's existing skip line: <code>bad-map.txt — skipped:
+  the map export does not say which turn it was written on</code>. And a batch with no faction of
+  the player's own to import into keeps the reason it gives today for every other file.
+</div>
+
+</main>
+</body>
+</html>
