@@ -4701,37 +4701,35 @@ fn market<'a>(
 /// The catalogue settles it where there is one. Without a ruleset the inventories in the hex are
 /// the next best authority, since a report names every item a unit holds by both tag and name.
 /// Anything neither can identify is left unresolved rather than guessed at.
+///
+/// Through the one resolver every surface uses ([`item_named`]), which keeps the same order of
+/// authority - catalogue, then the actor's own list, then the rest of the hex - and searches
+/// spelling-major, so an inventory holding both `pearl` and `pearls` can no longer resolve
+/// `pearls` to the wrong one (`ah-vcp8.1`).
 fn resolve_item(
     text: &str,
     hex: &Hex<'_>,
     actor: &Ordered<'_>,
     ruleset: Option<&Ruleset>,
 ) -> Option<String> {
-    if let Some(item) = ruleset.and_then(|ruleset| ruleset.find_item(text)) {
-        return Some(item.tag.to_ascii_uppercase());
-    }
-
-    actor
-        .unit
-        .items
-        .iter()
-        .chain(
+    item_named(ruleset, text, || {
+        actor.unit.items.iter().chain(
             hex.units
                 .iter()
                 .flat_map(|ordered| ordered.unit.items.iter()),
         )
-        .find(|item| names_the_same_item(text, &item.tag, &item.name))
-        .map(|item| item.tag.to_ascii_uppercase())
+    })
 }
 
 /// Whether an order's item argument names this tag or name, plural and underscores allowed.
 ///
-/// This answers about one entry, and `resolve_item` above walks the inventories asking it entry by
-/// entry - the opposite nesting to the two catalogue searches, which try each spelling across
-/// everything before the next. So an inventory holding both `pearl` and `pearls` could resolve
-/// `pearls` to the wrong one here where `Ruleset::find_item` would not. No such pair exists in the
-/// committed catalogue, and this searches a hex's inventories rather than the catalogue, so it has
-/// never mattered; it is written down because the difference is invisible until it is not.
+/// This answers about one entry, so a caller that walks a list asking it entry by entry searches
+/// item-major - the opposite nesting to the catalogue searches, which try each spelling across
+/// everything before the next. A list holding both `pearl` and `pearls` can resolve `pearls` to
+/// the wrong one that way. No such pair exists in the committed catalogue, and its two remaining
+/// callers search a market line and a no-ruleset silver check rather than a unit's inventory, so
+/// it has never mattered; it is written down because the difference is invisible until it is not.
+/// A caller that needs the rule honoured wants [`item_named`] instead.
 fn names_the_same_item(text: &str, tag: &str, name: &str) -> bool {
     let written = text.replace('_', " ");
     let matched = item_spellings(&written)
@@ -12805,6 +12803,33 @@ mod tests {
             );
             assert_eq!(sell_then_give, give_then_sell);
             assert_eq!(sell_then_give, (0, 0));
+        }
+
+        /// Spelling-major across the holder's own list too: `moonbeams` must be tried against
+        /// every entry before `moonbeam` is tried against any. Walking entry by entry moved the
+        /// wrong stock (`ah-vcp8.1`; the fault `resolve_item`'s own comment recorded as latent).
+        ///
+        /// `AAAA`/`BBBB` and `moonbeam` are outside the catalogue on purpose: the catalogue
+        /// answers first within a spelling, so a pair it knows would never reach the holdings and
+        /// the rule would not be under test. `can_be_given` is a deny-list and answers `true` for
+        /// a tag it has never heard of, so the transfer is not refused.
+        #[test]
+        fn the_ledger_moves_the_stock_the_written_spelling_names() {
+            let giver = with_item(
+                with_item(unit("900"), 2, "moonbeam", "AAAA"),
+                3,
+                "moonbeams",
+                "BBBB",
+            );
+            let hex_region = region(vec![giver, unit("901")]);
+            with_ledger(hex_region, "unit 900\nGIVE 901 ALL moonbeams\n", |ledger| {
+                assert_eq!(balance_of(ledger, "901", "BBBB"), 3, "the exact word won");
+                assert_eq!(
+                    balance_of(ledger, "901", "AAAA"),
+                    0,
+                    "the singular was not touched"
+                );
+            });
         }
 
         #[test]
