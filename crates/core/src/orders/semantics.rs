@@ -7025,6 +7025,32 @@ fn check_idle_units(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
     }
 }
 
+/// What a month-long order is competing for, for the purpose of `two-month-long-orders`.
+///
+/// Three orders repeat without conflicting, so every line of each collapses to one claim:
+/// `MOVE`/`ADVANCE` chain (`rules/move`: "Multiple MOVE orders given by one unit will chain
+/// together"), `SAIL` chains (`rules/sail` gives `SAIL N` / `SAIL NW` as one route), and `TEACH`
+/// accumulates (`rules/teach`: "Subsequent TEACH orders can be used to add units to be taught").
+/// Everything else claims the month once per line, so two `STUDY` lines are two claims. `Move` and
+/// `Sail` deliberately differ: walking and sailing are two journeys.
+#[derive(PartialEq, Eq)]
+enum MonthClaim {
+    Travelling,
+    Sailing,
+    Teaching,
+    /// Anything else, told apart by the line it was written on.
+    Line(usize),
+}
+
+fn month_claim(placed: &PlacedIntent) -> MonthClaim {
+    match placed.intent {
+        Intent::Move { .. } => MonthClaim::Travelling,
+        Intent::Sail { .. } => MonthClaim::Sailing,
+        Intent::Teach { .. } => MonthClaim::Teaching,
+        _ => MonthClaim::Line(placed.line),
+    }
+}
+
 /// Every own unit given more than one order that spends its month.
 ///
 /// The first month-long order in the block is the one that will run and is left unmarked; each
@@ -7041,11 +7067,22 @@ fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: 
     }
 
     for ordered in &hex.units {
+        let mut seen: Vec<MonthClaim> = Vec::new();
         let claimants: Vec<&PlacedIntent> = ordered
             .intents
             .iter()
             .filter(|placed| spends_the_month(&placed.intent))
+            // A keyword `GRAMMAR` does not hold would print as an empty word in the message, so
+            // it is skipped rather than named. No order yielding an intent is one.
             .filter(|placed| !placed.keyword.is_empty())
+            .filter(|placed| {
+                let claim = month_claim(placed);
+                let first = !seen.contains(&claim);
+                if first {
+                    seen.push(claim);
+                }
+                first
+            })
             .collect();
 
         let Some((winner, rest)) = claimants.split_first() else {
@@ -14829,6 +14866,71 @@ mod tests {
         assert_eq!(
             finding.message,
             "MOVE already spends this unit's month, so this STUDY will not run"
+        );
+    }
+
+    /// `rules/move`: "Multiple MOVE orders given by one unit will chain together."
+    #[test]
+    fn two_move_lines_are_one_journey() {
+        assert_eq!(
+            two_month_long(check_months(
+                vec![region(vec![unit("683")])],
+                "unit 683\nMOVE N\nMOVE NE\n",
+            )),
+            vec![]
+        );
+    }
+
+    /// `rules/teach`: "Subsequent TEACH orders can be used to add units to be taught."
+    #[test]
+    fn two_teach_lines_are_one_teaching() {
+        assert_eq!(
+            two_month_long(check_months(
+                vec![region(vec![unit("683")])],
+                "unit 683\nTEACH NEW 2\nTEACH 5104\n",
+            )),
+            vec![]
+        );
+    }
+
+    /// `rules/sail` gives `SAIL N` / `SAIL NW` on separate lines as one route.
+    #[test]
+    fn two_sail_lines_are_one_route() {
+        assert_eq!(
+            two_month_long(check_months(
+                vec![region(vec![unit("683")])],
+                "unit 683\nSAIL N\nSAIL NW\n",
+            )),
+            vec![]
+        );
+    }
+
+    /// Walking and sailing are two journeys, not one - the rules say nothing either way, and this
+    /// is the navigator's decision of 2026-08-29.
+    #[test]
+    fn move_and_sail_are_two_journeys() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![unit("683")])],
+            "unit 683\nMOVE N\nSAIL NW\n",
+        )));
+        assert_eq!(finding.line, Some(3));
+        assert_eq!(
+            finding.message,
+            "MOVE already spends this unit's month, so this SAIL will not run"
+        );
+    }
+
+    /// Nothing in the rules lets STUDY chain the way MOVE and TEACH explicitly do, so the second
+    /// line is a wasted one - and says so with the same word twice, which is accurate.
+    #[test]
+    fn two_study_lines_are_two_claims_on_the_month() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![unit("683")])],
+            "unit 683\nSTUDY Combat\nSTUDY Longbow\n",
+        )));
+        assert_eq!(
+            finding.message,
+            "STUDY already spends this unit's month, so this STUDY will not run"
         );
     }
 
