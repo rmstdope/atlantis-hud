@@ -166,6 +166,15 @@ impl UnitIntents {
     }
 }
 
+/// The grammar's own spelling of a keyword the player wrote, for [`PlacedIntent::keyword`].
+///
+/// `""` for a keyword `GRAMMAR` does not hold. Unreachable for anything that yields an intent -
+/// the parser checks argument shape against the same table - so the empty string is a floor rather
+/// than a case, and a reader skips it instead of printing it.
+fn canonical_keyword(command: &str) -> &'static str {
+    super::grammar::find_order(command).map_or("", |order| order.name)
+}
+
 /// Reads a whole orders document into one entry per unit block.
 ///
 /// Lines before the first `unit` line belong to no unit and are dropped: they are the `#atlantis`
@@ -176,15 +185,6 @@ impl UnitIntents {
 /// them under. Reading either as though it were the surrounding unit's would charge that unit for
 /// work it is not doing and move it out of a hex it is still standing in.
 #[must_use]
-/// The grammar's own spelling of a keyword the player wrote, for [`PlacedIntent::keyword`].
-///
-/// `""` for a keyword `GRAMMAR` does not hold. Unreachable for anything that yields an intent -
-/// the parser checks argument shape against the same table - so the empty string is a floor rather
-/// than a case, and a reader skips it instead of printing it.
-fn canonical_keyword(command: &str) -> &'static str {
-    super::grammar::find_order(command).map_or("", |order| order.name)
-}
-
 pub fn read_intents(source: &str) -> Vec<UnitIntents> {
     let mut units: Vec<UnitIntents> = Vec::new();
 
