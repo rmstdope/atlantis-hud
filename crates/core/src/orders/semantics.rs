@@ -131,6 +131,7 @@ pub mod codes {
     pub const ARRIVALS_LOWER_A_SKILL: Code = Code("arrivals-lower-a-skill");
     pub const ITEMS_CANNOT_BE_GIVEN: Code = Code("items-cannot-be-given");
     pub const NOTHING_LEFT_TO_BUY: Code = Code("nothing-left-to-buy");
+    pub const TWO_MONTH_LONG_ORDERS: Code = Code("two-month-long-orders");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -139,7 +140,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 37] = [
+    pub const ALL: [Code; 38] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -177,6 +178,7 @@ pub mod codes {
         ARRIVALS_LOWER_A_SKILL,
         ITEMS_CANNOT_BE_GIVEN,
         NOTHING_LEFT_TO_BUY,
+        TWO_MONTH_LONG_ORDERS,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -484,6 +486,7 @@ pub fn review_turn(
         check_magic_study(hex, ruleset, &options, &mut findings);
         check_forms(hex, &options, &mut findings);
         check_idle_units(hex, &options, &mut findings);
+        check_two_month_long_orders(hex, &options, &mut findings);
         check_transfer_targets(hex, &located, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
         check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
@@ -7019,6 +7022,48 @@ fn check_idle_units(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
             codes::UNIT_DOES_NOTHING,
             "has no order that spends the month".to_string(),
         ));
+    }
+}
+
+/// Every own unit given more than one order that spends its month.
+///
+/// The first month-long order in the block is the one that will run and is left unmarked; each
+/// later one is marked on its own line, naming the first. A unit that taxes by its report flag is
+/// a claimant too, and loses to any written month-long order - which is what [`taxes`] already
+/// decides, so the Silver column and this finding cannot disagree.
+///
+/// Unlike [`check_idle_units`], a block holding a line this reader could not parse is still
+/// judged: that check claims a unit does *nothing*, which an unread line could falsify, whereas
+/// two readable month-long orders are two whatever else the block holds.
+fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !options.emits(codes::TWO_MONTH_LONG_ORDERS) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        let claimants: Vec<&PlacedIntent> = ordered
+            .intents
+            .iter()
+            .filter(|placed| spends_the_month(&placed.intent))
+            .filter(|placed| !placed.keyword.is_empty())
+            .collect();
+
+        let Some((winner, rest)) = claimants.split_first() else {
+            continue;
+        };
+
+        for placed in rest {
+            findings.push(ordered.finding(
+                hex,
+                codes::TWO_MONTH_LONG_ORDERS,
+                format!(
+                    "{first} already spends this unit's month, so this {later} will not run",
+                    first = winner.keyword,
+                    later = placed.keyword,
+                ),
+                Some(placed),
+            ));
+        }
     }
 }
 
@@ -14569,7 +14614,7 @@ mod tests {
     }
 
     /// Runs the checks with the committed ruleset, which is what the shell serves.
-    /// The runtime default, with `unit-does-nothing` off.
+    /// The runtime default, with `unit-does-nothing` and `two-month-long-orders` off.
     ///
     /// Nearly every fixture below stands up a unit to exercise one check and gives it only the
     /// orders that check is about - a GIVE, a BUY, a bare block - so on the real default this check
@@ -14577,12 +14622,17 @@ mod tests {
     /// shape `check_ignoring_transfer_targets` below was written for when `give-target-not-here`
     /// arrived. The check's own fixtures use `check_idle` above, and
     /// `every_advisory_code_can_be_silenced` runs fully enabled.
+    ///
+    /// `two-month-long-orders` is off here for the same reason: a fixture written for another
+    /// check often gives one unit a `MOVE` and a `STUDY`, or two `STUDY` lines, because that is
+    /// the smallest way to exercise what it is about - and the finding then buries the assertion.
+    /// The check's own fixtures use `check_months`.
     fn check(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
         check_turn(
             &report(regions),
             orders,
             Some(&ruleset()),
-            disabling(codes::UNIT_DOES_NOTHING),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
         )
     }
 
@@ -14619,6 +14669,7 @@ mod tests {
                 codes::BUILD_OUTSIDE_STRUCTURE,
                 codes::BUILD_HELP_NOT_BUILDING,
                 codes::UNIT_DOES_NOTHING,
+                codes::TWO_MONTH_LONG_ORDERS,
             ]),
         )
     }
@@ -14743,6 +14794,41 @@ mod tests {
         assert!(
             codes(&findings).contains(&codes::TEACHER_HAS_FREE_SLOTS.as_str()),
             "{findings:?}"
+        );
+    }
+
+    // --- two orders for one month (ah-o7td) ---------------------------------------------------
+
+    /// `check`, with `two-month-long-orders` left on - it is what these fixtures are about.
+    fn check_months(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
+        check_turn(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            disabling(codes::UNIT_DOES_NOTHING),
+        )
+    }
+
+    /// Only the `two-month-long-orders` findings, so a fixture's other advice cannot mask what
+    /// these tests are about.
+    fn two_month_long(findings: Vec<Finding>) -> Vec<Finding> {
+        findings
+            .into_iter()
+            .filter(|finding| finding.code == codes::TWO_MONTH_LONG_ORDERS)
+            .collect()
+    }
+
+    #[test]
+    fn a_second_month_long_order_is_marked_naming_the_first() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![unit("683")])],
+            "unit 683\nMOVE N\nSTUDY Combat\n",
+        )));
+        assert_eq!(finding.line, Some(3));
+        assert_eq!(finding.unit_id, Some("683".to_string()));
+        assert_eq!(
+            finding.message,
+            "MOVE already spends this unit's month, so this STUDY will not run"
         );
     }
 
@@ -20977,6 +21063,13 @@ mod tests {
                 allowance: None,
                 unclaimed: None,
             },
+            Case {
+                code: codes::TWO_MONTH_LONG_ORDERS,
+                regions: vec![region(vec![unit("683")])],
+                orders: "unit 683\nMOVE N\nSTUDY Combat\n",
+                allowance: None,
+                unclaimed: None,
+            },
         ];
 
         assert_eq!(
@@ -21131,7 +21224,10 @@ mod tests {
             &report_with_status("Quartermasters", used, maximum, regions),
             orders,
             Some(&ruleset()),
-            disabling(codes::NOT_ENOUGH_SILVER),
+            // Some fixtures below write two STUDY lines, or a WORK above a STUDY, to say
+            // something about the allowance rather than about the month. `two-month-long-orders`
+            // is right about every one of them and beside the point here.
+            disabling_all(&[codes::NOT_ENOUGH_SILVER, codes::TWO_MONTH_LONG_ORDERS]),
         )
     }
 
@@ -24458,6 +24554,7 @@ mod tests {
                 codes::UNIT_DOES_NOTHING,
                 codes::PRODUCE_WITHOUT_SKILL,
                 codes::PRODUCE_NOT_HERE,
+                codes::TWO_MONTH_LONG_ORDERS,
             ]),
         )
     }

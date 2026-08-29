@@ -2889,12 +2889,21 @@ pub fn taxes(flags: &[String], intents: &[PlacedIntent]) -> bool {
         return true;
     }
 
-    works_by_default(intents)
-        && flags.iter().any(|flag| {
-            TAXING_FLAGS
-                .iter()
-                .any(|known| flag.eq_ignore_ascii_case(known))
-        })
+    works_by_default(intents) && flagged_to_tax(flags)
+}
+
+/// Whether the unit's report flags say it taxes every turn without an order.
+///
+/// The flag half of [`taxes`], on its own: `taxes` also asks whether the month is free, and
+/// `two-month-long-orders` needs the flag alone - a flagged unit whose month is spoken for is
+/// exactly the case it reports.
+#[must_use]
+pub fn flagged_to_tax(flags: &[String]) -> bool {
+    flags.iter().any(|flag| {
+        TAXING_FLAGS
+            .iter()
+            .any(|known| flag.eq_ignore_ascii_case(known))
+    })
 }
 
 /// Whether the unit is set to spend food on its maintenance, by either `consuming ...` flag.
