@@ -264,7 +264,7 @@ export function itemsTooltip(
       `Includes ${arrival.amount} ${arrival.tag} transported from unit ${arrival.from}. Transport resolves last, so they cannot be spent this month.`
     );
   }
-  // Before the cap sentence, because that one quotes "the N its men could make" and this one is
+  // Before the cap sentence, because that one quotes "the N its skill and tools could make" and this one is
   // what explains why N is what it is (`ah-qct4`) - the same order the SILVER hover reads in.
   if (menSentence !== undefined) {
     lines.push(menSentence);

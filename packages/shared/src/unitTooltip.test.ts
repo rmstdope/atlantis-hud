@@ -191,7 +191,7 @@ describe("productionCapSentence", () => {
           productionCappedBy: "silver"
         })
       )
-    ).toBe("This unit has silver for 1 catapult, not the 3 its men could make.");
+    ).toBe("This unit has silver for 1 catapult, not the 3 its skill and tools could make.");
   });
 
   it("says nothing when nothing capped the run", () => {
@@ -501,7 +501,7 @@ describe("the silver section", () => {
     );
 
     expect(capped.silver?.note).toBe(
-      "This unit has silver for 1 catapult, not the 2 its men could make."
+      "This unit has silver for 1 catapult, not the 2 its skill and tools could make."
     );
   });
 
@@ -524,7 +524,7 @@ describe("the silver section", () => {
     // now said alongside rather than swallowed.
     expect(capped.silver?.note).toBe(
       [
-        "This unit has materials for 0 catapults, not the 2 its men could make.",
+        "This unit has materials for 0 catapults, not the 2 its skill and tools could make.",
         "Nothing this unit is ordered to do moves silver."
       ].join("\n")
     );
@@ -551,7 +551,7 @@ describe("the silver section", () => {
     expect(both.silver?.note).toBe(
       [
         "This unit cannot pay the 200 its production costs.",
-        "This unit has silver for 1 catapult, not the 2 its men could make."
+        "This unit has silver for 1 catapult, not the 2 its skill and tools could make."
       ].join("\n")
     );
   });
@@ -1391,7 +1391,7 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
     "production-men-left":
       "This unit has men for 3 swords: GIVE and TAKE resolve before production, so the men that leave it this month do not work for it.",
     "production-capped":
-      "This unit has silver for 1 catapult, not the 3 its men could make.",
+      "This unit has silver for 1 catapult, not the 3 its skill and tools could make.",
     "cast-capped":
       "This unit has silver for 2 amulets of protection, not the 3 its level could make.",
     "food-contended":

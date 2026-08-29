@@ -4383,21 +4383,24 @@ test("a BUY ALL settles and marks the ITEMS cell as a projection", async ({ page
 });
 
 /**
- * ah-ofpb.1: a PRODUCE now shows what it makes. Unit 18642 is a one-man leader with no lumberjack
- * skill, and that is deliberate: the projection is taken from the recipe, the men and the
- * holdings, and never from whether the unit can actually do it - a unit ordered to make what it
- * cannot make is `produce-without-skill`'s business and not the column's.
+ * ah-ofpb.1: a PRODUCE now shows what it makes. The projection now *does* depend on whether the
+ * unit can do it: `ah-vtwn` counts the producing skill's level into the rate, so a unit with no
+ * level in it makes nothing at all and marks no cell.
+ *
+ * That is why this cannot use the default turn-71 fixture - its five own units carry only
+ * observation, stealth and manipulation - and follows the `CAST` walk below onto `F42_T42`.
+ * `MinersA (5105)` is 8 orcs with `mining [MINI] 5` in `mountain (36,4)`, holds no picks, and iron
+ * takes no materials, so nothing caps the run.
  */
 test("a produced item marks the ITEMS cell as a projection", async ({ page }) => {
-  await loadReport(page);
-  await selectHex(page, "1:7,53");
-  await selectUnit(page, OWN_UNIT);
+  await loadReport(page, "Produce smoke", F42_T42, "regions");
+  await selectHex(page, "1:36,4");
+  await selectUnit(page, "5105");
+  await fillOrders(page, "PRODUCE iron");
 
-  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
-  await fillOrders(page, "PRODUCE wood");
-
+  const row = page.getByTestId("unit-row-5105");
   const itemsCell = row.locator('[data-predicted="true"]').first();
-  await expect(itemsCell).toContainText("WOOD");
+  await expect(itemsCell).toContainText("IRON");
   await expect(itemsCell).toHaveAttribute("title", /this unit will produce/);
 });
 

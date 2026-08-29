@@ -32,17 +32,17 @@ use crate::movement::mode::{
     sailing_requirement, Capacities,
 };
 use crate::movement::orders::MoveStep;
-use crate::movement::rules::{item_spellings, ItemKind, Production, Ruleset, SkillEntry};
+use crate::movement::rules::{item_spellings, ItemKind, Ruleset};
 use crate::orders::silver::{
     because_clause, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
     late_income, parse_wage_centis, pillage_threshold, pool_wants, price_buy_all, price_cast,
     price_claim, price_pillage, price_production, price_purchase, price_sale_line, price_study,
-    price_tax, quantity_bought, readiness, recipe_for, settle_unclaimed, split_pool, taxes,
-    transfer_shape, transmute_argument, unit_upkeep, BuyAllCap, Caster, ContendedPool,
-    FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
-    MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts,
-    RegionWages, SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver,
-    UpkeepClaim, UpkeepSettlement, FOOD_TAGS,
+    price_tax, producing_skill, quantity_bought, readiness, settle_unclaimed, split_pool, taxes,
+    transfer_shape, transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster,
+    ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
+    LateFoodRelief, Lookups, MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
+    PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, TransferShape, Transmuting,
+    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce, FOOD_TAGS,
 };
 use crate::report::composition;
 use crate::report::model::{
@@ -4094,14 +4094,34 @@ fn produce(
 ) {
     let who = &actor.unit.unit_id;
     let tag = resolve_item(item, hex, actor, ruleset);
-    let recipe = tag.as_deref().and_then(|tag| recipe_for(ruleset, tag));
+    // The level and the tools enter through `workforce_for`, which the SILVER column also calls -
+    // one builder, so the two surfaces cannot be given different workforces (`ah-vtwn`).
+    //
+    // `actor.unit.skills`, not `actor.skills()`: the column reads the report's own list
+    // (`UnitFacts.skills`), and the two must read the same one or
+    // `crates/core/tests/silver_agrees_with_the_warning.rs` is what finds out. Moving every reader
+    // to the gift-merged list is `ah-dna4`.
+    let found = tag
+        .as_deref()
+        .and_then(|tag| producing_skill(ruleset, tag, Some(&actor.unit.skills)));
+    let work = found.map_or(Workforce::default(), |(skill, _)| {
+        workforce_for(
+            ruleset,
+            skill,
+            tag.as_deref().unwrap_or_default(),
+            actor.early_men(),
+            &actor.unit.skills,
+            actor.early_items(),
+        )
+    });
+    let recipe = found.map(|(_, recipe)| recipe);
     // `rules/sequenceofevents` settles the Give phase nine phases before either PRODUCE phase, so
     // the men who work this month and the materials they work with are the ones this month's gifts
     // leave behind - not the ones the report printed. `early_men`/`early_items` are exactly that
     // picture, and are what TAX and the SILVER column already read (`ah-dxfd.2`). A transfer this
     // walk could not follow falls back to the report's own figures, as every other term here does;
     // `holdings_unknown()` is deliberately not consulted (`ah-qct4`).
-    let (priced, plan) = price_production(recipe, actor.early_men(), actor.early_items());
+    let (priced, plan) = price_production(recipe, work, actor.early_items());
     let Some(plan) = plan else {
         // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
         // same posture `buy` takes for goods the market does not carry - and the ITEMS column
@@ -6461,7 +6481,7 @@ fn check_production(
 
         let skills = ordered.skills(); // Option<&[Skill]>
         let recipe = resolve_item(item, hex, ordered, Some(ruleset))
-            .and_then(|tag| producing_skill(ruleset, &tag, skills).map(|found| (tag, found)));
+            .and_then(|tag| producing_skill(Some(ruleset), &tag, skills).map(|found| (tag, found)));
         let Some((tag, (skill, recipe))) = recipe else {
             // The item resolves to nothing, or nothing in the game produces it. Either way the
             // month is wasted, so this is a sentence rather than silence.
@@ -6550,40 +6570,6 @@ fn check_production(
             }
         }
     }
-}
-
-/// The skill that makes an item tag, and the recipe by which it makes it.
-///
-/// [`crate::orders::silver::recipe_for`] answers the recipe alone, which is all the ledger needs;
-/// here the message has to name the skill too, and both surfaces must agree on which recipe, so
-/// this is that lookup extended rather than a second one.
-///
-/// Which skill, when more than one produces the same tag: the one the unit already has, if any
-/// does; otherwise the one needing the lowest level; ties broken alphabetically by tag, which the
-/// `BTreeMap`'s own order gives. Deterministic on purpose - a message that changed with map
-/// iteration order would flake a test months later.
-fn producing_skill<'a>(
-    ruleset: &'a Ruleset,
-    tag: &str,
-    skills: Option<&[Skill]>,
-) -> Option<(&'a SkillEntry, &'a Production)> {
-    let candidates: Vec<(&SkillEntry, &Production)> = ruleset
-        .skills
-        .values()
-        .flat_map(|skill| {
-            skill
-                .produces
-                .iter()
-                .filter(|recipe| recipe.tag.eq_ignore_ascii_case(tag))
-                .map(move |recipe| (skill, recipe))
-        })
-        .collect();
-
-    candidates
-        .iter()
-        .find(|(skill, _)| skills.is_some_and(|held| level_in(held, &skill.tag) > 0))
-        .or_else(|| candidates.iter().min_by_key(|(_, recipe)| recipe.level))
-        .copied()
 }
 
 /// `a`, `a and b`, `a, b and c` - the shape `namesInAList` already uses in the interface.
@@ -13200,7 +13186,7 @@ mod tests {
         #[test]
         fn a_produce_records_the_materials_it_consumes() {
             let hex_region = region(vec![with_item(
-                with_men(unit("2391"), 8),
+                with_skill(with_men(unit("2391"), 8), "WEAP", 1),
                 20,
                 "iron",
                 "IRON",
@@ -13224,7 +13210,7 @@ mod tests {
 
         #[test]
         fn a_produce_that_makes_nothing_records_no_movement() {
-            let hex_region = region(vec![with_men(unit("2391"), 8)]);
+            let hex_region = region(vec![with_skill(with_men(unit("2391"), 8), "WEAP", 1)]);
             with_ledger(hex_region, "unit 2391\nPRODUCE sword\n", |ledger| {
                 assert!(
                     ledger.movements.is_empty(),
@@ -13237,7 +13223,7 @@ mod tests {
         #[test]
         fn a_produce_records_what_it_makes() {
             let hex_region = region(vec![with_item(
-                with_men(unit("2391"), 8),
+                with_skill(with_men(unit("2391"), 8), "WEAP", 1),
                 20,
                 "iron",
                 "IRON",
@@ -13262,7 +13248,7 @@ mod tests {
         #[test]
         fn a_capped_produce_records_only_what_it_makes() {
             let hex_region = region(vec![with_item(
-                with_men(unit("2391"), 8),
+                with_skill(with_men(unit("2391"), 8), "WEAP", 1),
                 5,
                 "iron",
                 "IRON",
@@ -13298,7 +13284,7 @@ mod tests {
         #[test]
         fn a_produce_still_credits_the_unit_nothing() {
             let hex_region = region(vec![with_item(
-                with_men(unit("2391"), 8),
+                with_skill(with_men(unit("2391"), 8), "WEAP", 1),
                 20,
                 "iron",
                 "IRON",
@@ -13501,7 +13487,7 @@ mod tests {
 
         #[test]
         fn a_produce_of_a_recipe_of_alternatives_cannot_be_counted() {
-            let hex_region = region(vec![with_men(unit("2391"), 8)]);
+            let hex_region = region(vec![with_skill(with_men(unit("2391"), 8), "WEAP", 1)]);
             with_ledger(hex_region, "unit 2391\nPRODUCE meal\n", |ledger| {
                 assert_eq!(
                     ledger.uncounted.get("2391").map(Vec::as_slice),
@@ -13516,7 +13502,7 @@ mod tests {
 
         #[test]
         fn a_produce_of_something_no_skill_makes_cannot_be_counted() {
-            let hex_region = region(vec![with_men(unit("2391"), 8)]);
+            let hex_region = region(vec![with_skill(with_men(unit("2391"), 8), "WEAP", 1)]);
             with_ledger(hex_region, "unit 2391\nPRODUCE moonbeam\n", |ledger| {
                 assert_eq!(
                     ledger.uncounted.get("2391").map(Vec::as_slice),
@@ -13527,7 +13513,7 @@ mod tests {
 
         #[test]
         fn a_bare_produce_cannot_be_counted() {
-            let hex_region = region(vec![with_men(unit("2391"), 8)]);
+            let hex_region = region(vec![with_skill(with_men(unit("2391"), 8), "WEAP", 1)]);
             with_ledger(hex_region, "unit 2391\nPRODUCE\n", |ledger| {
                 assert_eq!(
                     ledger.uncounted.get("2391").map(Vec::as_slice),
@@ -15454,11 +15440,11 @@ mod tests {
             with_item(
                 with_item(
                     with_item(with_silver(unit("12881"), silver), wood, "wood", "WOOD"),
-                    999,
+                    9999,
                     "ironwood",
                     "IRWD",
                 ),
-                999,
+                9999,
                 "furs",
                 "FUR",
             ),
@@ -15481,7 +15467,7 @@ mod tests {
         );
         assert_eq!(forecast.produced, 1);
         assert_eq!(forecast.produced_name.as_deref(), Some("catapult"));
-        assert_eq!(forecast.production_wanted, 2);
+        assert_eq!(forecast.production_wanted, 12);
         assert_eq!(
             forecast.production_capped_by,
             Some(crate::orders::silver::ProductionCap::Silver)
@@ -15495,15 +15481,15 @@ mod tests {
             "unit 12881\nPRODUCE catapult\n",
         );
 
-        assert_eq!(forecast.expense, Some(6000));
-        assert_eq!(forecast.produced, 2);
-        assert_eq!(forecast.production_wanted, 2);
+        assert_eq!(forecast.expense, Some(36_000));
+        assert_eq!(forecast.produced, 12);
+        assert_eq!(forecast.production_wanted, 12);
         assert_eq!(forecast.production_capped_by, None);
     }
 
     /// The committed turn's own case: `Carpenters` holds no silver of its own, so it makes none of
-    /// the two its men could - and the hover must still be able to say so, which is why the name
-    /// survives a cap of zero.
+    /// the twelve its skill and tools could - and the hover must still be able to say so, which is
+    /// why the name survives a cap of zero.
     #[test]
     fn a_unit_capped_to_none_still_names_what_it_would_have_made() {
         let forecast = forecast_with_ruleset(
@@ -15513,7 +15499,7 @@ mod tests {
 
         assert_eq!(forecast.expense, Some(0));
         assert_eq!(forecast.produced, 0);
-        assert_eq!(forecast.production_wanted, 2);
+        assert_eq!(forecast.production_wanted, 12);
         assert_eq!(forecast.produced_name.as_deref(), Some("catapult"));
         assert_eq!(
             forecast.production_capped_by,

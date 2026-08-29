@@ -29,9 +29,10 @@ use common::ruleset;
 /// One hex, a smith with men and iron, and a neighbour to give to.
 ///
 /// The men must be the *first* item on each own unit's line: `count_men`
-/// (`crates/core/src/report/unit.rs`) reads the headcount off `items.first()`. The smith has no
-/// skills, exactly as `effects.rs`'s own fixture family does, so every case here also raises
-/// `produce-without-skill` - expected, and it moves no figure.
+/// (`crates/core/src/report/unit.rs`) reads the headcount off `items.first()`. The smith carries
+/// `weaponsmith 1`, exactly as `effects.rs`'s own fixture family does, because the rate counts the
+/// level (`ah-vtwn`): a smith with no skill at all would make none of every case below, and each
+/// row would then pass for the wrong reason.
 fn report() -> String {
     [
         "Foo (1) Report",
@@ -42,7 +43,7 @@ fn report() -> String {
         "  Southeast : plain (2,2) in Nowhere.",
         "",
         "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON]. Weight: 180. \
-         Capacity: 0/0/120/0.",
+         Capacity: 0/0/120/0. Skills: weaponsmith [WEAP] 1 (30).",
         "* Hands (901), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
         "",
     ]

@@ -10,6 +10,7 @@
 //! shows `?`, and rounding is always downward, because a forecast that overstates income is the
 //! dangerous direction for a column whose negatives are what a player acts on.
 
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
@@ -1163,8 +1164,29 @@ pub fn forecast_unit(
                 // late picture's `items` here would price this order against a balance its own
                 // ledger twin has already spent, silently halving what the unit can make. Pending
                 // a way to read a mid-month balance rather than the ledger's own end state.
-                let recipe = (lookups.item_tag)(item).and_then(|tag| recipe_for(ruleset, &tag));
-                let (priced, plan) = price_production(recipe, facts.late().men, facts.items);
+                //
+                // The level and the tools enter through `workforce_for`, which the ITEMS ledger
+                // also calls - one builder, so the two surfaces cannot be given different
+                // workforces (`ah-vtwn`). The tag is carried alongside because `workforce_for`
+                // needs it to find the tools, and `(lookups.item_tag)` allocates.
+                let found = (lookups.item_tag)(item).and_then(|tag| {
+                    producing_skill(ruleset, &tag, Some(facts.skills))
+                        .map(|(skill, recipe)| (tag, skill, recipe))
+                });
+                let work = found
+                    .as_ref()
+                    .map_or(Workforce::default(), |(tag, skill, _)| {
+                        workforce_for(
+                            ruleset,
+                            skill,
+                            tag,
+                            facts.late().men,
+                            facts.skills,
+                            facts.items,
+                        )
+                    });
+                let recipe = found.as_ref().map(|(_, _, recipe)| *recipe);
+                let (priced, plan) = price_production(recipe, work, facts.items);
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
@@ -2885,10 +2907,10 @@ pub fn price_study(cost: Option<i64>, men: i64) -> Priced {
 #[must_use]
 pub fn price_production(
     recipe: Option<&Production>,
-    men: i64,
+    work: Workforce,
     held: &[ItemAmount],
 ) -> (Priced, Option<ProductionPlan>) {
-    match recipe.and_then(|recipe| plan_production(recipe, men, held)) {
+    match recipe.and_then(|recipe| plan_production(recipe, work, held)) {
         Some(plan) => (
             Priced {
                 spends: plan.silver,
@@ -2994,19 +3016,175 @@ fn moves_silver_per_man(placed: &PlacedIntent) -> bool {
     )
 }
 
-/// The recipe that makes an item tag, from whichever skill produces it.
+/// The skill that makes an item tag, and the recipe by which it makes it.
 ///
-/// Shared by both surfaces for the same reason `plan_production` is: the column and the ledger
-/// must find the same recipe, or they price the same order differently. The unit's own skill is
-/// deliberately not consulted - a unit ordered to make what it cannot make is `ah-wbr9`'s business,
-/// not this module's.
+/// Shared by all three readers - the SILVER column, the ITEMS ledger and
+/// `check_produce_orders`'s `produce-without-skill` - for the same reason [`plan_production`] is:
+/// they must find the same recipe, or they price and describe the same order differently.
+///
+/// Which skill, when more than one produces the same tag: the one the unit already has, if any
+/// does; otherwise the one needing the lowest level; ties broken alphabetically by tag, which the
+/// `BTreeMap`'s own order gives. Deterministic on purpose - a message that changed with map
+/// iteration order would flake a test months later.
+///
+/// `skills` distinguishes `None` (nothing is known about the unit's skills) from an empty list (it
+/// is known to have none), which `check_produce_orders` relies on.
 #[must_use]
-pub fn recipe_for<'a>(ruleset: Option<&'a Ruleset>, tag: &str) -> Option<&'a Production> {
-    ruleset?
+pub fn producing_skill<'a>(
+    ruleset: Option<&'a Ruleset>,
+    tag: &str,
+    skills: Option<&[Skill]>,
+) -> Option<(&'a SkillEntry, &'a Production)> {
+    let candidates: Vec<(&SkillEntry, &Production)> = ruleset?
         .skills
         .values()
-        .flat_map(|skill| skill.produces.iter())
-        .find(|recipe| recipe.tag.eq_ignore_ascii_case(tag))
+        .flat_map(|skill| {
+            skill
+                .produces
+                .iter()
+                .filter(|recipe| recipe.tag.eq_ignore_ascii_case(tag))
+                .map(move |recipe| (skill, recipe))
+        })
+        .collect();
+
+    candidates
+        .iter()
+        .find(|(skill, _)| skills.is_some_and(|held| skill_level(held, &skill.tag) > 0))
+        .or_else(|| candidates.iter().min_by_key(|(_, recipe)| recipe.level))
+        .copied()
+}
+
+/// What a unit brings to one month of one recipe.
+///
+/// A struct rather than four more positional arguments, for the reason [`UnitFacts`] is one: the
+/// call site should read as a description of the unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Workforce {
+    /// The headcount, as the calling surface reads it. The two surfaces read different ones and
+    /// that is deliberate - see the module's known traps - so this is the caller's to supply.
+    pub men: i64,
+    /// The unit's level in the skill that makes the recipe. `0` for a skill it has not got.
+    pub level: i64,
+    /// The per-man bonus of the tool the unit holds for this item. `0` where it holds none.
+    pub tool_bonus: i64,
+    /// How many of that tool the unit holds. `0` where it holds none.
+    pub tools: i64,
+}
+
+impl Workforce {
+    /// `men * level + min(men, tools) * tool_bonus`.
+    ///
+    /// The level term is the rules': "five men at skill level one are exactly equivalent to one
+    /// man at skill level 5 in terms of base output" (`rules/tableiteminfo`). The `min` is not -
+    /// the same page states each tool's bonus and never says how many men one tool serves, so
+    /// one tool to one man, spare tools idle, is the navigator's reading of the game, recorded in
+    /// `docs/ui/ah-vtwn-production-at-skill-level.html`. Do not "correct" it to `men * (level +
+    /// tool_bonus)`: that was one of the two readings it was chosen over.
+    #[must_use]
+    pub fn man_months(self) -> i64 {
+        self.men
+            .saturating_mul(self.level)
+            .saturating_add(self.men.min(self.tools).saturating_mul(self.tool_bonus))
+            .max(0)
+    }
+}
+
+/// The workforce a unit brings to one recipe, built the one way both production surfaces must
+/// build it.
+///
+/// `men` is the caller's because the two surfaces read different headcounts; everything else is
+/// computed here exactly once, so the level and the tools cannot drift between them.
+#[must_use]
+pub fn workforce_for(
+    ruleset: Option<&Ruleset>,
+    skill: &SkillEntry,
+    tag: &str,
+    men: i64,
+    skills: &[Skill],
+    held: &[ItemAmount],
+) -> Workforce {
+    let (tool_bonus, tools) = tools_for(ruleset, tag, held);
+    Workforce {
+        men,
+        level: skill_level(skills, &skill.tag),
+        tool_bonus,
+        tools,
+    }
+}
+
+/// The tool a unit holds that best helps it produce `tag`, as `(per-man bonus, how many held)`.
+///
+/// `(0, 0)` where the unit holds no such tool, where there is no ruleset, and where nothing in the
+/// catalogue boosts that tag - which is most items. The highest bonus wins; ties go to the lower
+/// item tag, which [`Ruleset::items`]' own `BTreeMap` order gives. Deterministic on purpose, and
+/// unobservable in this ruleset: no item in it is boosted by two different tools.
+#[must_use]
+pub fn tools_for(ruleset: Option<&Ruleset>, tag: &str, held: &[ItemAmount]) -> (i64, i64) {
+    let Some(ruleset) = ruleset else {
+        return (0, 0);
+    };
+    ruleset
+        .items
+        .values()
+        .filter_map(|item| {
+            let count = held
+                .iter()
+                .find(|owned| owned.tag.eq_ignore_ascii_case(&item.tag))
+                .map_or(0, |owned| owned.amount);
+            if count <= 0 {
+                return None;
+            }
+            let bonus = production_bonuses(item.description.as_deref().unwrap_or_default())
+                .into_iter()
+                .find(|(boosted, _)| boosted.eq_ignore_ascii_case(tag))
+                .map(|(_, bonus)| bonus)?;
+            (bonus > 0).then_some((bonus, count))
+        })
+        // `min_by_key` over the reversed bonus rather than `max_by_key`, which returns the *last*
+        // of several equal maxima: the doc above promises the first, which in a `BTreeMap`'s own
+        // order is the lower item tag.
+        .min_by_key(|(bonus, _)| Reverse(*bonus))
+        .unwrap_or((0, 0))
+}
+
+/// The marker sentence every tool's data-page description carries.
+const PRODUCTION_BONUS_MARKER: &str = "This item increases the production of ";
+
+/// The per-item production bonuses one item's data-page description states.
+///
+/// Every `[TAG] by <n>` in the sentence beginning "This item increases the production of", in the
+/// order written; empty for a description without that sentence, which is every item that is not
+/// a tool.
+///
+/// Reads the prose rather than a scraped field for the same reason [`required_riding`] does: the
+/// ruleset carries each item's description whole, nothing else in it states this, and adding a
+/// scraped field would drag `packages/ruleset` and a regenerated `config/public/ruleset.json` into
+/// a P0.
+///
+/// Scans for the brackets rather than splitting on `", "` and `" and "`: the two separators are
+/// mixed, and the Oxford comma appears in some entries and not others.
+fn production_bonuses(description: &str) -> Vec<(String, i64)> {
+    let Some((_, sentence)) = description.split_once(PRODUCTION_BONUS_MARKER) else {
+        return Vec::new();
+    };
+    let sentence = sentence.split_once(". ").map_or(sentence, |(head, _)| head);
+
+    let mut bonuses = Vec::new();
+    let mut rest = sentence;
+    while let Some((_, after)) = rest.split_once('[') {
+        let Some((item, after)) = after.split_once(']') else {
+            break;
+        };
+        rest = after;
+        let Some(amount) = after.strip_prefix(" by ") else {
+            continue;
+        };
+        let digits: String = amount.chars().take_while(char::is_ascii_digit).collect();
+        if let Ok(bonus) = digits.parse::<i64>() {
+            bonuses.push((item.to_string(), bonus));
+        }
+    }
+    bonuses
 }
 
 /// Which limit decided how many a unit produces, when it is not its men - or, for a `CAST` that
@@ -3030,8 +3208,9 @@ pub enum ProductionCap {
 pub struct ProductionPlan {
     /// How many the unit will actually make.
     pub made: i64,
-    /// How many its men alone would make - `men / man_months`, rounded down. Equal to `made`
-    /// unless something capped it.
+    /// How many its men alone would make - the unit's man-months over the recipe's, rounded down,
+    /// where its man-months are `men * level + min(men, tools) * tool_bonus` ([`Workforce`]).
+    /// Equal to `made` unless something capped it.
     pub wanted: i64,
     /// Silver the whole run costs: `made * <the recipe's SILV input>`. `0` for the great majority
     /// of recipes, which take no silver.
@@ -3070,7 +3249,7 @@ pub struct ProductionPlan {
 #[must_use]
 pub fn plan_production(
     recipe: &Production,
-    men: i64,
+    work: Workforce,
     held: &[ItemAmount],
 ) -> Option<ProductionPlan> {
     if recipe.inputs_are_alternatives {
@@ -3079,7 +3258,14 @@ pub fn plan_production(
     let man_months = i64::from(recipe.man_months.filter(|months| *months > 0)?);
     let outputs = i64::from(recipe.outputs.filter(|made| *made > 0)?);
 
-    let wanted = (men / man_months) * outputs;
+    // A unit below the recipe's minimum level makes nothing at all, whatever its headcount:
+    // `rules/tableiteminfo` states a minimum level for every recipe. Returned as an empty plan
+    // rather than `None`, because the recipe *is* priceable - this unit simply makes none of it,
+    // and `None` would put a `?` in the column where a 0 belongs.
+    if work.level < i64::from(recipe.level) {
+        return Some(ProductionPlan::default());
+    }
+    let wanted = (work.man_months() / man_months) * outputs;
     if wanted <= 0 {
         return Some(ProductionPlan::default());
     }
@@ -3428,11 +3614,18 @@ mod production_tests {
         }
     }
 
+    /// Ten carpenters at the catapult's own minimum level bring forty man-months, and a catapult
+    /// is four of them - so the whole run is ten, and its silver and materials are ten times one.
     #[test]
-    fn ten_men_make_two_catapults_at_four_man_months() {
+    fn ten_carpenters_at_level_four_make_ten_catapults() {
         let plan = plan_production(
             &catapult(),
-            10,
+            Workforce {
+                men: 10,
+                level: 4,
+                tool_bonus: 0,
+                tools: 0,
+            },
             &held(&[
                 ("SILV", 100_000),
                 ("WOOD", 9999),
@@ -3441,17 +3634,173 @@ mod production_tests {
             ]),
         )
         .expect("a priceable recipe");
-        assert_eq!(plan.wanted, 2);
-        assert_eq!(plan.made, 2);
-        assert_eq!(plan.silver, 6000);
+        assert_eq!(plan.wanted, 10);
+        assert_eq!(plan.made, 10);
+        assert_eq!(plan.silver, 30_000);
         assert_eq!(
             plan.materials
                 .iter()
                 .map(|item| (item.tag.as_str(), item.amount))
                 .collect::<Vec<_>>(),
-            vec![("WOOD", 500), ("IRWD", 60), ("FUR", 160)]
+            vec![("WOOD", 2500), ("IRWD", 300), ("FUR", 800)]
         );
         assert_eq!(plan.capped_by, None);
+    }
+
+    /// The committed ruleset, for the lookups that read the real catalogue.
+    fn ruleset() -> Ruleset {
+        Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
+            .expect("the committed ruleset should be usable")
+    }
+
+    #[test]
+    fn a_tool_lifts_the_rate_by_one_per_man_that_holds_one() {
+        let work = Workforce {
+            men: 8,
+            level: 5,
+            tool_bonus: 1,
+            tools: 3,
+        };
+        assert_eq!(work.man_months(), 43);
+    }
+
+    #[test]
+    fn only_as_many_tools_as_men_can_be_used() {
+        let work = Workforce {
+            men: 8,
+            level: 5,
+            tool_bonus: 1,
+            tools: 20,
+        };
+        assert_eq!(work.man_months(), 48);
+    }
+
+    /// The pick's own description in the committed data page, verbatim.
+    #[test]
+    fn a_picks_bonuses_are_read_from_its_description() {
+        let bonuses = production_bonuses(
+            "This is a tool. This item increases the production of iron [IRON] by 1, stone [STON] \
+             by 1, mithril [MITH] by 1, rootstone [ROOT] by 1, and admantium [ADMT] by 1.",
+        );
+        assert_eq!(
+            bonuses,
+            vec![
+                ("IRON".to_string(), 1),
+                ("STON".to_string(), 1),
+                ("MITH".to_string(), 1),
+                ("ROOT".to_string(), 1),
+                ("ADMT".to_string(), 1),
+            ]
+        );
+    }
+
+    /// The net's, whose grammar is "A and B" rather than "A, B, and C" - and whose bonus is 2.
+    #[test]
+    fn a_nets_bonuses_are_read_from_its_description() {
+        let bonuses = production_bonuses(
+            "This is a tool. This item increases the production of fish [FISH] by 2 and giant \
+             turtle [TURT] by 1.",
+        );
+        assert_eq!(
+            bonuses,
+            vec![("FISH".to_string(), 2), ("TURT".to_string(), 1)]
+        );
+    }
+
+    /// Every other item in the game says nothing of the kind.
+    #[test]
+    fn an_item_that_is_not_a_tool_states_no_bonuses() {
+        assert_eq!(
+            production_bonuses("This is a piercing weapon and each attack deals 1 damage."),
+            Vec::new()
+        );
+    }
+
+    /// `tools_for` against the real catalogue: a pick boosts iron and says nothing about swords.
+    #[test]
+    fn a_unit_holding_picks_mines_more_iron() {
+        let ruleset = ruleset();
+        let picks = held(&[("PICK", 3)]);
+        assert_eq!(tools_for(Some(&ruleset), "IRON", &picks), (1, 3));
+        assert_eq!(tools_for(Some(&ruleset), "SWOR", &picks), (0, 0));
+        assert_eq!(tools_for(None, "IRON", &picks), (0, 0));
+        assert_eq!(tools_for(Some(&ruleset), "IRON", &held(&[])), (0, 0));
+    }
+
+    /// Plate armor, stated exactly as `config/public/ruleset.json`'s `skills.ARMO.produces` entry
+    /// does: three iron and three man-months for one, first makeable at armorer 3.
+    fn plate_armor() -> Production {
+        Production {
+            tag: "PARM".to_string(),
+            level: 3,
+            inputs: vec![input("IRON", 3)],
+            inputs_are_alternatives: false,
+            man_months: Some(3),
+            outputs: Some(1),
+        }
+    }
+
+    /// Plate armor states `armorer (3)` in `rules/tableiteminfo`, so nine armorer-1 men make none
+    /// of it - not the three their nine man-months over its three would otherwise suggest.
+    #[test]
+    fn a_unit_below_the_recipes_level_makes_none() {
+        let plan = plan_production(
+            &plate_armor(),
+            Workforce {
+                men: 9,
+                level: 1,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("IRON", 99)]),
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 0);
+        assert_eq!(plan.made, 0);
+        assert_eq!(plan.capped_by, None);
+    }
+
+    /// The boundary, so the gate cannot be written as `<=`: at exactly the recipe's level the unit
+    /// produces, and its twenty-seven man-months over three are nine.
+    #[test]
+    fn a_unit_exactly_at_the_recipes_level_produces() {
+        let plan = plan_production(
+            &plate_armor(),
+            Workforce {
+                men: 9,
+                level: 3,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("IRON", 99)]),
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 9);
+        assert_eq!(plan.made, 9);
+    }
+
+    /// `rules/tableiteminfo`: "five men at skill level one are exactly equivalent to one man at
+    /// skill level 5". Ten carpenters at level 5 bring 50 man-months, and a catapult is four.
+    #[test]
+    fn ten_carpenters_at_level_five_make_twelve_catapults() {
+        let plan = plan_production(
+            &catapult(),
+            Workforce {
+                men: 10,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[
+                ("SILV", 100_000),
+                ("WOOD", 9999),
+                ("IRWD", 999),
+                ("FUR", 999),
+            ]),
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 12);
+        assert_eq!(plan.made, 12);
     }
 
     #[test]
@@ -3471,7 +3820,7 @@ mod production_tests {
             }
         );
 
-        let (priced, plan) = price_production(None, 5, &[]);
+        let (priced, plan) = price_production(None, Workforce::default(), &[]);
         assert_eq!(
             priced,
             Priced {
@@ -3484,7 +3833,12 @@ mod production_tests {
         let recipe = catapult();
         let (priced, plan) = price_production(
             Some(&recipe),
-            10,
+            Workforce {
+                men: 10,
+                level: 4,
+                tool_bonus: 0,
+                tools: 0,
+            },
             &held(&[
                 ("SILV", 100_000),
                 ("WOOD", 9999),
@@ -3495,17 +3849,29 @@ mod production_tests {
         assert_eq!(
             priced,
             Priced {
-                spends: 6000,
+                spends: 30_000,
                 ..Priced::default()
             }
         );
-        assert_eq!(plan.expect("a priceable recipe").made, 2);
+        assert_eq!(plan.expect("a priceable recipe").made, 10);
     }
 
+    /// The `wanted <= 0` branch, which the ledger can reach for real: `ah-qct4` settles GIVE nine
+    /// phases before production, so a unit that parted with all its men this month brings no
+    /// man-months at all, whatever its level.
     #[test]
-    fn a_unit_too_small_to_make_one_makes_none() {
-        let plan = plan_production(&catapult(), 3, &held(&[("SILV", 100_000)]))
-            .expect("a priceable recipe");
+    fn a_unit_with_no_men_left_makes_none() {
+        let plan = plan_production(
+            &catapult(),
+            Workforce {
+                men: 0,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("SILV", 100_000)]),
+        )
+        .expect("a priceable recipe");
         assert_eq!(plan.wanted, 0);
         assert_eq!(plan.made, 0);
         assert_eq!(plan.silver, 0);
@@ -3513,17 +3879,22 @@ mod production_tests {
         assert_eq!(plan.capped_by, None);
     }
 
-    /// Unit 12881 `Carpenters` as the committed turn has it: ten men, materials for two, silver
-    /// for one.
+    /// Unit 12881 `Carpenters` as the committed turn has it: ten men at carpenter 5, so twelve
+    /// man-months' worth of catapults wanted - and silver for one.
     #[test]
     fn silver_caps_what_a_unit_produces() {
         let plan = plan_production(
             &catapult(),
-            10,
+            Workforce {
+                men: 10,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
             &held(&[("SILV", 3000), ("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
         )
         .expect("a priceable recipe");
-        assert_eq!(plan.wanted, 2);
+        assert_eq!(plan.wanted, 12);
         assert_eq!(plan.made, 1);
         assert_eq!(plan.silver, 3000);
         assert_eq!(plan.capped_by, Some(ProductionCap::Silver));
@@ -3533,7 +3904,12 @@ mod production_tests {
     fn materials_cap_what_a_unit_produces() {
         let plan = plan_production(
             &catapult(),
-            10,
+            Workforce {
+                men: 10,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
             &held(&[
                 ("SILV", 100_000),
                 ("WOOD", 250),
@@ -3550,7 +3926,12 @@ mod production_tests {
     fn silver_is_named_first_when_both_bind() {
         let plan = plan_production(
             &catapult(),
-            10,
+            Workforce {
+                men: 10,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
             &held(&[("SILV", 3000), ("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
         )
         .expect("a priceable recipe");
@@ -3568,7 +3949,17 @@ mod production_tests {
             man_months: Some(1),
             outputs: Some(1),
         };
-        let plan = plan_production(&sword, 5, &held(&[("IRON", 2)])).expect("a priceable recipe");
+        let plan = plan_production(
+            &sword,
+            Workforce {
+                men: 5,
+                level: 1,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("IRON", 2)]),
+        )
+        .expect("a priceable recipe");
         assert_eq!(plan.wanted, 5);
         assert_eq!(plan.made, 2);
         assert_eq!(plan.silver, 0);
@@ -3587,7 +3978,19 @@ mod production_tests {
             man_months: Some(1),
             outputs: Some(1),
         };
-        assert_eq!(plan_production(&meals, 5, &held(&[("GRAI", 99)])), None);
+        assert_eq!(
+            plan_production(
+                &meals,
+                Workforce {
+                    men: 5,
+                    level: 1,
+                    tool_bonus: 0,
+                    tools: 0,
+                },
+                &held(&[("GRAI", 99)])
+            ),
+            None
+        );
     }
 
     /// A ruleset scraped before `ah-19l2.1` states neither rate nor output, and a default of 1
@@ -3596,10 +3999,22 @@ mod production_tests {
     fn a_recipe_with_no_stated_rate_is_not_priced() {
         let mut unscraped = catapult();
         unscraped.man_months = None;
-        assert_eq!(plan_production(&unscraped, 10, &held(&[])), None);
+        let ten_carpenters = Workforce {
+            men: 10,
+            level: 4,
+            tool_bonus: 0,
+            tools: 0,
+        };
+        assert_eq!(
+            plan_production(&unscraped, ten_carpenters, &held(&[])),
+            None
+        );
         let mut no_output = catapult();
         no_output.outputs = None;
-        assert_eq!(plan_production(&no_output, 10, &held(&[])), None);
+        assert_eq!(
+            plan_production(&no_output, ten_carpenters, &held(&[])),
+            None
+        );
     }
 }
 
@@ -4346,7 +4761,9 @@ mod tests {
     /// row says so, which is what `production_men_left` is for.
     ///
     /// The committed ruleset's sword recipe is weaponsmith, one iron a sword, one man-month a
-    /// sword, one output - so three men with twenty iron make three and nothing caps them.
+    /// sword, one output - so three weaponsmith-1 men with twenty iron make three and nothing caps
+    /// them. The skill is stated because the rate counts it (`ah-vtwn`); at level 0 the unit would
+    /// make none.
     #[test]
     fn a_unit_that_parted_with_men_reports_how_many_left() {
         let receipts = Receipts::default();
@@ -4358,10 +4775,12 @@ mod tests {
             name: "iron".into(),
             tag: "IRON".into(),
         }];
+        let smith = [skill("WEAP", 1)];
         let unit = forecast_unit(
             UnitFacts {
                 men_reported: 8,
                 items: &items,
+                skills: &smith,
                 late: Some(LateFacts {
                     men: 3,
                     men_by_race: &[],
@@ -4393,10 +4812,12 @@ mod tests {
             name: "iron".into(),
             tag: "IRON".into(),
         }];
+        let smith = [skill("WEAP", 1)];
         let unit = forecast_unit(
             UnitFacts {
                 men_reported: 3,
                 items: &items,
+                skills: &smith,
                 late: Some(LateFacts {
                     men: 8,
                     men_by_race: &[],

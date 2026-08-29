@@ -1569,7 +1569,7 @@ mod tests {
             "Exits:",
             "  Southeast : plain (2,2) in Nowhere.",
             "",
-            "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON]. Weight: 180. Capacity: 0/0/120/0.",
+            "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON]. Weight: 180. Capacity: 0/0/120/0. Skills: weaponsmith [WEAP] 1 (30).",
             "",
         ]
         .join("\n")
@@ -1590,7 +1590,7 @@ mod tests {
             "Exits:",
             "  Southeast : plain (2,2) in Nowhere.",
             "",
-            "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON]. Weight: 180. Capacity: 0/0/120/0.",
+            "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON]. Weight: 180. Capacity: 0/0/120/0. Skills: weaponsmith [WEAP] 1 (30).",
             "* Hands (901), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
             "",
         ]
@@ -3385,7 +3385,7 @@ mod tests {
                 "  Southeast : plain (2,2) in Nowhere.",
                 "",
                 "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 8 iron [IRON]. Weight: 180. \
-                 Capacity: 0/0/120/0.",
+                 Capacity: 0/0/120/0. Skills: weaponsmith [WEAP] 1 (30).",
                 "",
             ]
             .join("\n");
