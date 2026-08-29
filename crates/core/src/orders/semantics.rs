@@ -33,6 +33,7 @@ use crate::movement::mode::{
 };
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, ItemKind, Ruleset};
+use crate::orders::items::item_named;
 use crate::orders::silver::{
     because_clause, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
     late_income, parse_wage_centis, pillage_threshold, pool_wants, price_buy_all, price_cast,
@@ -1637,6 +1638,7 @@ fn move_holding(state: &mut Working, tag: &str, name: &str, delta: i64) {
 }
 
 /// Which of a holder's tags one transfer moves, and whether this walk can say at all.
+#[derive(Debug, PartialEq, Eq)]
 enum Moves {
     /// Every tag listed, in the holder's own item order.
     Tags(Vec<String>),
@@ -1656,8 +1658,11 @@ fn moves(
         // `rules/give`: it "gives the entire unit to the specified unit's faction" - a change of
         // ownership, and nobody's holdings move.
         Selector::WholeUnit => Moves::Tags(Vec::new()),
-        Selector::Item(text) => match ruleset.find_item(text) {
-            Some(entry) => Moves::Tags(vec![entry.tag.to_ascii_uppercase()]),
+        // The catalogue *and* the holder's own list, through the one resolver every surface uses:
+        // the catalogue cannot strip the report's `wood elves` down to its own `wood elf`, and a
+        // transfer it could not name fell back to the report's own headcount (`ah-vcp8.1`).
+        Selector::Item(text) => match item_named(Some(ruleset), text, || held.values()) {
+            Some(tag) => Moves::Tags(vec![tag]),
             None => Moves::Unknowable,
         },
         Selector::Class(name) => {
@@ -8027,6 +8032,33 @@ mod tests {
 
     fn ruleset() -> Ruleset {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
+    }
+
+    /// `item_spellings` strips `wood elves` to `wood elv`, which the catalogue's `wood elf` does
+    /// not match - so before this the whole transfer was unknowable and `early_men` fell back to
+    /// the report's own headcount (`ah-vcp8.1`).
+    #[test]
+    fn a_gift_by_the_reports_plural_of_a_multi_word_race_is_followed() {
+        let held: BTreeMap<String, ItemAmount> = [(
+            "WELF".to_string(),
+            ItemAmount {
+                amount: 5,
+                name: "wood elves".to_string(),
+                tag: "WELF".to_string(),
+            },
+        )]
+        .into_iter()
+        .collect();
+
+        assert_eq!(
+            moves(
+                &held,
+                &Selector::Item("wood_elves".to_string()),
+                &Amount::All { except: 0 },
+                &ruleset(),
+            ),
+            Moves::Tags(vec!["WELF".to_string()]),
+        );
     }
 
     /// `ah-rsdz`. A count and an item name have to agree in number, and the plural comes from the
