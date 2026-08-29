@@ -15,7 +15,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::cache::ReportCache;
-use crate::movement::rules::item_spellings;
+use crate::movement::rules::Ruleset;
+use crate::orders::items::item_named;
 use crate::orders::standing::{standing_after, BoardingOrder};
 use crate::report::composition;
 use crate::report::model::{level_for_points, ReportUnit, Skill};
@@ -1213,7 +1214,9 @@ impl Working {
                 // Re-resolved by tag rather than kept from the snapshot, exactly as `give` does:
                 // an earlier transport in this same document may have emptied a stock ahead of
                 // this one and shifted every index after it.
-                let Some(held) = find_item(&self.units[pending.sender].unit.items, &tag) else {
+                let Some(held) =
+                    find_item(&self.ruleset, &self.units[pending.sender].unit.items, &tag)
+                else {
                     continue;
                 };
                 take_item(&mut self.units[pending.sender].unit.items, held, moved);
@@ -1271,7 +1274,8 @@ impl Working {
 
         let moving: Vec<(String, String, i64)> = match what {
             Selector::Item(item) => {
-                let Some(held) = find_item(&self.units[holder].unit.items, item) else {
+                let Some(held) = find_item(&self.ruleset, &self.units[holder].unit.items, item)
+                else {
                     return Vec::new();
                 };
                 let (name, tag, held_amount) = {
@@ -1447,18 +1451,19 @@ fn set_flag(flags: &mut Vec<String>, flag: &str, set: bool) {
 
 /// The index of the item this text names, accepting the same spellings the game does.
 ///
-/// Spelling-major, as [`item_spellings`] requires.
-fn find_item(items: &[crate::report::model::ItemAmount], text: &str) -> Option<usize> {
-    let written = text.replace('_', " ");
-    let found = item_spellings(&written)
-        .into_iter()
-        .flatten()
-        .find_map(|spelling| {
-            items.iter().position(|item| {
-                item.tag.eq_ignore_ascii_case(spelling) || item.name.eq_ignore_ascii_case(spelling)
-            })
-        });
-    found
+/// The catalogue as well as the holding, through the one resolver every surface uses
+/// ([`item_named`]): a player may write `LEADER`, which the catalogue knows and a unit's own
+/// `8 leaders [LEAD]` matches neither way round (`ah-vcp8.1`). A tag the catalogue knows but this
+/// unit does not hold still answers `None`, exactly as it did before.
+fn find_item(
+    ruleset: &Ruleset,
+    items: &[crate::report::model::ItemAmount],
+    text: &str,
+) -> Option<usize> {
+    let tag = item_named(Some(ruleset), text, || items.iter())?;
+    items
+        .iter()
+        .position(|item| item.tag.eq_ignore_ascii_case(&tag))
 }
 
 fn take_item(items: &mut Vec<crate::report::model::ItemAmount>, index: usize, amount: i64) {
@@ -1591,6 +1596,28 @@ mod tests {
             "  Southeast : plain (2,2) in Nowhere.",
             "",
             "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON]. Weight: 180. Capacity: 0/0/120/0. Skills: weaponsmith [WEAP] 1 (30).",
+            "* Hands (901), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
+    /// Two own units, the giver holding men whose tag, report name and catalogue name are three
+    /// different words - `LEAD`, `leaders`, `leader` - which is what makes the spellings diverge.
+    ///
+    /// The men must be the *first* item on each own unit's line (`count_men`,
+    /// `report/unit.rs:221`).
+    fn report_with_leaders() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Guards (900), Foo (1), behind, 8 leaders [LEAD], 20 iron [IRON]. Weight: 180. \
+             Capacity: 0/0/120/0.",
             "* Hands (901), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
             "",
         ]
@@ -3522,6 +3549,16 @@ mod tests {
             );
             change(unit, "items");
         }
+    }
+
+    /// The catalogue calls a leader "leader"; the report calls eight of them "leaders" and tags
+    /// them `LEAD`. All three are legal spellings and only this one moved nothing (`ah-vcp8.1`).
+    #[test]
+    fn a_gift_written_with_the_catalogues_own_name_empties_the_unit() {
+        let response = preview_over(&report_with_leaders(), "unit 900\nGIVE 901 ALL LEADER\n");
+        let giver = row(&response, "1:1,1", "900").expect("the giver's row is previewed");
+
+        assert_eq!(giver.unit.men, 0, "every leader left this unit");
     }
 
     /// `ah-qct4`. `rules/sequenceofevents` settles "Give orders. GIVE and TAKE orders are
