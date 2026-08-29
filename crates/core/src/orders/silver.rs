@@ -10,6 +10,7 @@
 //! shows `?`, and rounding is always downward, because a forecast that overstates income is the
 //! dangerous direction for a column whose negatives are what a player acts on.
 
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
@@ -3137,7 +3138,10 @@ pub fn tools_for(ruleset: Option<&Ruleset>, tag: &str, held: &[ItemAmount]) -> (
                 .map(|(_, bonus)| bonus)?;
             (bonus > 0).then_some((bonus, count))
         })
-        .max_by_key(|(bonus, _)| *bonus)
+        // `min_by_key` over the reversed bonus rather than `max_by_key`, which returns the *last*
+        // of several equal maxima: the doc above promises the first, which in a `BTreeMap`'s own
+        // order is the lower item tag.
+        .min_by_key(|(bonus, _)| Reverse(*bonus))
         .unwrap_or((0, 0))
 }
 
@@ -3639,6 +3643,86 @@ mod production_tests {
             vec![("WOOD", 2500), ("IRWD", 300), ("FUR", 800)]
         );
         assert_eq!(plan.capped_by, None);
+    }
+
+    /// The committed ruleset, for the lookups that read the real catalogue.
+    fn ruleset() -> Ruleset {
+        Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
+            .expect("the committed ruleset should be usable")
+    }
+
+    #[test]
+    fn a_tool_lifts_the_rate_by_one_per_man_that_holds_one() {
+        let work = Workforce {
+            men: 8,
+            level: 5,
+            tool_bonus: 1,
+            tools: 3,
+        };
+        assert_eq!(work.man_months(), 43);
+    }
+
+    #[test]
+    fn only_as_many_tools_as_men_can_be_used() {
+        let work = Workforce {
+            men: 8,
+            level: 5,
+            tool_bonus: 1,
+            tools: 20,
+        };
+        assert_eq!(work.man_months(), 48);
+    }
+
+    /// The pick's own description in the committed data page, verbatim.
+    #[test]
+    fn a_picks_bonuses_are_read_from_its_description() {
+        let bonuses = production_bonuses(
+            "This is a tool. This item increases the production of iron [IRON] by 1, stone [STON] \
+             by 1, mithril [MITH] by 1, rootstone [ROOT] by 1, and admantium [ADMT] by 1.",
+        );
+        assert_eq!(
+            bonuses,
+            vec![
+                ("IRON".to_string(), 1),
+                ("STON".to_string(), 1),
+                ("MITH".to_string(), 1),
+                ("ROOT".to_string(), 1),
+                ("ADMT".to_string(), 1),
+            ]
+        );
+    }
+
+    /// The net's, whose grammar is "A and B" rather than "A, B, and C" - and whose bonus is 2.
+    #[test]
+    fn a_nets_bonuses_are_read_from_its_description() {
+        let bonuses = production_bonuses(
+            "This is a tool. This item increases the production of fish [FISH] by 2 and giant \
+             turtle [TURT] by 1.",
+        );
+        assert_eq!(
+            bonuses,
+            vec![("FISH".to_string(), 2), ("TURT".to_string(), 1)]
+        );
+    }
+
+    /// Every other item in the game says nothing of the kind.
+    #[test]
+    fn an_item_that_is_not_a_tool_states_no_bonuses() {
+        assert_eq!(
+            production_bonuses("This is a piercing weapon and each attack deals 1 damage."),
+            Vec::new()
+        );
+    }
+
+    /// `tools_for` against the real catalogue: a pick boosts iron and says nothing about swords.
+    #[test]
+    fn a_unit_holding_picks_mines_more_iron() {
+        let ruleset = ruleset();
+        let picks = held(&[("PICK", 3)]);
+        assert_eq!(tools_for(Some(&ruleset), "IRON", &picks), (1, 3));
+        assert_eq!(tools_for(Some(&ruleset), "SWOR", &picks), (0, 0));
+        assert_eq!(tools_for(None, "IRON", &picks), (0, 0));
+        assert_eq!(tools_for(Some(&ruleset), "IRON", &held(&[])), (0, 0));
     }
 
     /// Plate armor, stated exactly as `config/public/ruleset.json`'s `skills.ARMO.produces` entry
