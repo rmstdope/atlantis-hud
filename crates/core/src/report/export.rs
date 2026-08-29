@@ -149,8 +149,10 @@ fn write_header(header: &ReportHeader) -> String {
 
     if let (Some(name), Some(id)) = (&header.faction_name, &header.faction_id) {
         text.push_str(&format!("{name} ({id})"));
-        for faction_type in &header.faction_types {
-            text.push_str(&format!(" ({faction_type})"));
+        if !header.faction_types.is_empty() {
+            // One comma-separated parenthetical, which is what the game writes and what
+            // `parse_faction` can find an id in front of.
+            text.push_str(&format!(" ({})", header.faction_types.join(", ")));
         }
         text.push('\n');
     }
@@ -432,5 +434,45 @@ mod tests {
         let mut cache = ReportCache::new();
         assert!(export_map_text(&mut cache, REPORT, "[]", "not json").is_err());
         assert!(export_map_text(&mut cache, REPORT, "not json", "{}").is_err());
+    }
+
+    /**
+     * The game prints one parenthetical holding every faction type, comma separated. Writing one
+     * bracket per type made the id unfindable to our own parser, so a multi-type faction's export
+     * could not be read back at all.
+     */
+    #[test]
+    fn faction_types_are_written_as_one_parenthetical() {
+        let mut header = ReportHeader {
+            faction_id: Some("42".into()),
+            faction_name: Some("The Disinherited Knights".into()),
+            ..ReportHeader::default()
+        };
+        header.faction_types = vec!["War 1".into(), "Trade 1".into(), "Magic 1".into()];
+
+        let text = write_header(&header);
+
+        assert!(
+            text.contains("The Disinherited Knights (42) (War 1, Trade 1, Magic 1)"),
+            "the game's own shape:\n{text}"
+        );
+        assert!(
+            !text.contains(") (Trade"),
+            "one parenthetical, not one per type:\n{text}"
+        );
+    }
+
+    #[test]
+    fn a_faction_with_no_types_gets_no_empty_parenthetical() {
+        let header = ReportHeader {
+            faction_id: Some("42".into()),
+            faction_name: Some("The Disinherited Knights".into()),
+            ..ReportHeader::default()
+        };
+
+        let text = write_header(&header);
+
+        assert!(text.contains("The Disinherited Knights (42)\n"), "{text}");
+        assert!(!text.contains("()"), "{text}");
     }
 }
