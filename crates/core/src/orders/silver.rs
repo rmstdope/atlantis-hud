@@ -3252,6 +3252,13 @@ pub fn plan_production(
     let man_months = i64::from(recipe.man_months.filter(|months| *months > 0)?);
     let outputs = i64::from(recipe.outputs.filter(|made| *made > 0)?);
 
+    // A unit below the recipe's minimum level makes nothing at all, whatever its headcount:
+    // `rules/tableiteminfo` states a minimum level for every recipe. Returned as an empty plan
+    // rather than `None`, because the recipe *is* priceable - this unit simply makes none of it,
+    // and `None` would put a `?` in the column where a 0 belongs.
+    if work.level < i64::from(recipe.level) {
+        return Some(ProductionPlan::default());
+    }
     let wanted = (work.man_months() / man_months) * outputs;
     if wanted <= 0 {
         return Some(ProductionPlan::default());
@@ -3632,6 +3639,58 @@ mod production_tests {
             vec![("WOOD", 2500), ("IRWD", 300), ("FUR", 800)]
         );
         assert_eq!(plan.capped_by, None);
+    }
+
+    /// Plate armor, stated exactly as `config/public/ruleset.json`'s `skills.ARMO.produces` entry
+    /// does: three iron and three man-months for one, first makeable at armorer 3.
+    fn plate_armor() -> Production {
+        Production {
+            tag: "PARM".to_string(),
+            level: 3,
+            inputs: vec![input("IRON", 3)],
+            inputs_are_alternatives: false,
+            man_months: Some(3),
+            outputs: Some(1),
+        }
+    }
+
+    /// Plate armor states `armorer (3)` in `rules/tableiteminfo`, so nine armorer-1 men make none
+    /// of it - not the three their nine man-months over its three would otherwise suggest.
+    #[test]
+    fn a_unit_below_the_recipes_level_makes_none() {
+        let plan = plan_production(
+            &plate_armor(),
+            Workforce {
+                men: 9,
+                level: 1,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("IRON", 99)]),
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 0);
+        assert_eq!(plan.made, 0);
+        assert_eq!(plan.capped_by, None);
+    }
+
+    /// The boundary, so the gate cannot be written as `<=`: at exactly the recipe's level the unit
+    /// produces, and its twenty-seven man-months over three are nine.
+    #[test]
+    fn a_unit_exactly_at_the_recipes_level_produces() {
+        let plan = plan_production(
+            &plate_armor(),
+            Workforce {
+                men: 9,
+                level: 3,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("IRON", 99)]),
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 9);
+        assert_eq!(plan.made, 9);
     }
 
     /// `rules/tableiteminfo`: "five men at skill level one are exactly equivalent to one man at
