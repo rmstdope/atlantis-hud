@@ -11,12 +11,14 @@
 use std::path::Path;
 
 use atlantis_hud_core::report::import::{import_writes, SeenRegion};
-use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
+use atlantis_hud_core::report::merge::{
+    merge_map_export_into_sightings, merge_report_into_sightings, StoredSighting,
+};
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
     completions_at_caret, engine_info, order_argument_completions, order_commands,
-    order_vocabulary, parse_report, reject_import, reject_merge, CaretCompletions, EngineInfo,
-    OrderCheckOptions, OrderCompletion, OrderValidationResult, ReportParseResult,
+    order_vocabulary, parse_report, plan_merge, reject_import, CaretCompletions, EngineInfo,
+    MergePlan, OrderCheckOptions, OrderCompletion, OrderValidationResult, ReportParseResult,
     ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
@@ -854,8 +856,16 @@ pub mod commands {
             cache.classified_when_possible(raw_report, ruleset_json)
         });
         let parse_result = atlantis_hud_core::summarize(&report);
-        if let Some(rejection) = reject_merge(&parse_result, viewer_turn_number, viewer_faction_id)
-        {
+
+        // `plan_merge` decides which of the three this file is: one of our own map exports, an
+        // allied report, or neither. It lives in the core so the browser cannot answer differently.
+        let plan = plan_merge(
+            raw_report,
+            &parse_result,
+            viewer_turn_number,
+            viewer_faction_id,
+        );
+        if let MergePlan::Refused(rejection) = plan {
             return Err(rejection);
         }
 
@@ -870,7 +880,15 @@ pub mod commands {
                 .iter()
                 .map(StoredSighting::from)
                 .collect();
-        let outcome = merge_report_into_sightings(&existing, &report, viewer_turn_number);
+        let outcome = match &plan {
+            MergePlan::Refused(_) => unreachable!("refused above"),
+            MergePlan::AlliedReport => {
+                merge_report_into_sightings(&existing, &report, viewer_turn_number)
+            }
+            MergePlan::MapExport { file_turn, ages } => {
+                merge_map_export_into_sightings(&existing, &report, *file_turn, ages)
+            }
+        };
 
         upsert_region_sightings(
             Path::new(database_path),
@@ -880,18 +898,25 @@ pub mod commands {
         )
         .map_err(|error| error.to_string())?;
 
-        upsert_merged_report(
-            Path::new(database_path),
-            &MergedReportRecord {
-                game_id: game_id.to_string(),
-                faction_id: viewer_faction_id.to_string(),
-                turn_number: viewer_turn_number,
-                merged_faction_id: ally.faction_id.clone(),
-                merged_faction_name: ally.name.clone(),
-                merged_at: merged_at.to_string(),
-            },
-        )
-        .map_err(|error| error.to_string())?;
+        // A map export of the viewer's own map writes no provenance row: its key would name the
+        // viewer as their own ally, which is nonsense in front of anything reading merged reports.
+        // An ally's map export still writes one, which is the provenance worth keeping.
+        let own_map_export =
+            matches!(plan, MergePlan::MapExport { .. }) && ally.faction_id == viewer_faction_id;
+        if !own_map_export {
+            upsert_merged_report(
+                Path::new(database_path),
+                &MergedReportRecord {
+                    game_id: game_id.to_string(),
+                    faction_id: viewer_faction_id.to_string(),
+                    turn_number: viewer_turn_number,
+                    merged_faction_id: ally.faction_id.clone(),
+                    merged_faction_name: ally.name.clone(),
+                    merged_at: merged_at.to_string(),
+                },
+            )
+            .map_err(|error| error.to_string())?;
+        }
 
         Ok(ReportMergeResultDto {
             turn_number: viewer_turn_number,

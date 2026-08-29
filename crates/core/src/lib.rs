@@ -474,6 +474,75 @@ pub fn reject_merge(
     None
 }
 
+/// Why a map export may not be added to the viewer's map, or `None` when it may.
+///
+/// Unlike [`reject_merge`] this allows the viewer's own faction and any turn: a map export carries
+/// hexes rather than a turn, so neither rule has anything to say about it. What is left is what the
+/// merge genuinely cannot do without. The shells refuse all three earlier with friendlier words;
+/// this is the backstop that keeps the rule where both platforms read it.
+#[must_use]
+pub fn reject_map_export(parsed: &ReportParseResult) -> Option<String> {
+    if parsed.detected_factions.is_empty() {
+        return Some("a map export that does not name its faction cannot be added".to_string());
+    }
+    if parsed.turn_header.is_none() {
+        return Some("a map export that does not name its turn cannot be added".to_string());
+    }
+    if parsed.regions.is_empty() {
+        return Some("a map export with no hexes in it cannot be added".to_string());
+    }
+
+    None
+}
+
+/// What a merge should do with one file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MergePlan {
+    /// Why the file may not be merged at all.
+    Refused(String),
+    /// An ordinary allied report: every hex lands at the viewer's turn.
+    AlliedReport,
+    /// One of our own map exports: each hex lands at the turn `ages` records for it, or at
+    /// `file_turn` when the file named no age for that hex.
+    MapExport {
+        file_turn: u32,
+        ages: std::collections::BTreeMap<String, u32>,
+    },
+}
+
+/// Which of the three a file warrants.
+///
+/// The map-export test and the refusal rule that follows from it are decided here and nowhere else,
+/// so the browser and the desktop cannot answer differently - and so both answers can be tested
+/// without a JavaScript runtime.
+#[must_use]
+pub fn plan_merge(
+    raw_report: &str,
+    parsed: &ReportParseResult,
+    viewer_turn_number: u32,
+    viewer_faction_id: &str,
+) -> MergePlan {
+    if report::export::is_map_export(raw_report) {
+        if let Some(rejection) = reject_map_export(parsed) {
+            return MergePlan::Refused(rejection);
+        }
+
+        let file_turn = parsed
+            .turn_header
+            .as_ref()
+            .map_or(viewer_turn_number, |header| header.turn_number);
+        return MergePlan::MapExport {
+            file_turn,
+            ages: report::export::map_export_ages(raw_report),
+        };
+    }
+
+    match reject_merge(parsed, viewer_turn_number, viewer_faction_id) {
+        Some(rejection) => MergePlan::Refused(rejection),
+        None => MergePlan::AlliedReport,
+    }
+}
+
 /// The parts of a stored turn import that decide whether re-importing changes anything.
 ///
 /// Deliberately free of any storage concern so both the desktop SQLite layer and the browser
@@ -1122,5 +1191,142 @@ mod tests {
         assert_eq!(parsed.units.len(), 2, "units still parse");
         // Without a turn the import is not viable, which is the tolerant contract working.
         assert!(!parsed.meets_minimum_import_threshold());
+    }
+
+    /// A map export of the mini report's own map, at turn 71, from faction 17.
+    fn mini_map_export() -> String {
+        use crate::report::export::{export_map, MapExportRequest};
+        use crate::report::write::ExportContent;
+
+        export_map(
+            &report::parse_report_full(MINI_REPORT),
+            &[],
+            &MapExportRequest {
+                level: 1,
+                from_x: -1000,
+                from_y: -1000,
+                to_x: 1000,
+                to_y: 1000,
+                content: ExportContent::default(),
+            },
+        )
+    }
+
+    /// Neither of `reject_merge`'s two rules has anything to say about a map export: it carries
+    /// hexes rather than a turn, and sharing your own map back to yourself is the ordinary case.
+    #[test]
+    fn a_map_export_from_the_viewers_own_faction_may_be_added() {
+        let parsed = parse_report(&mini_map_export());
+
+        assert_eq!(reject_map_export(&parsed), None);
+        assert!(
+            reject_merge(&parsed, 2, "17").is_some(),
+            "the same file as a report would be refused"
+        );
+    }
+
+    #[test]
+    fn a_map_export_from_another_turn_may_be_added() {
+        let parsed = parse_report(&mini_map_export());
+
+        assert_eq!(reject_map_export(&parsed), None);
+        assert!(
+            reject_merge(&parsed, 71, "99").is_some(),
+            "the same file as a report would be refused"
+        );
+    }
+
+    #[test]
+    fn a_map_export_with_no_hexes_is_refused() {
+        let rejection = reject_map_export(&parse_report(
+            "; Map export from Atlantis HUD\n\nAtlantis Report For:\nCrimson Tide (17) (Magic 5)\nMarch, Year 1\n\n",
+        ));
+
+        assert_eq!(
+            rejection.as_deref(),
+            Some("a map export with no hexes in it cannot be added")
+        );
+    }
+
+    #[test]
+    fn a_map_export_that_names_no_faction_is_refused() {
+        let rejection = reject_map_export(&parse_report(
+            "; Map export from Atlantis HUD\n\nMarch, Year 1\n\nplain (12,34) in Coast of Dawn, 1200 peasants (humans), $500.\n",
+        ));
+
+        assert_eq!(
+            rejection.as_deref(),
+            Some("a map export that does not name its faction cannot be added")
+        );
+    }
+
+    #[test]
+    fn a_map_export_that_names_no_turn_is_refused() {
+        let rejection = reject_map_export(&parse_report(
+            "; Map export from Atlantis HUD\n\nAtlantis Report For:\nCrimson Tide (17) (Magic 5)\n\nplain (12,34) in Coast of Dawn, 1200 peasants (humans), $500.\n",
+        ));
+
+        assert_eq!(
+            rejection.as_deref(),
+            Some("a map export that does not name its turn cannot be added")
+        );
+    }
+
+    #[test]
+    fn an_allied_report_is_planned_as_a_report() {
+        assert_eq!(
+            plan_merge(MINI_REPORT, &parse_report(MINI_REPORT), 2, "99"),
+            MergePlan::AlliedReport
+        );
+    }
+
+    #[test]
+    fn an_own_faction_report_that_is_not_a_map_export_is_still_refused() {
+        assert_eq!(
+            plan_merge(MINI_REPORT, &parse_report(MINI_REPORT), 2, "17"),
+            MergePlan::Refused("a faction's own report is loaded rather than merged".to_string())
+        );
+    }
+
+    #[test]
+    fn a_map_export_is_planned_with_its_own_ages() {
+        use crate::movement::graph::RememberedRegion;
+        use crate::report::export::{export_map, MapExportRequest};
+        use crate::report::write::ExportContent;
+
+        let remembered = vec![RememberedRegion {
+            region: report::parse_report_full("forest (99,99) in Elsewhere.\n")
+                .regions
+                .into_iter()
+                .next()
+                .expect("fixture region"),
+            last_seen_turn: 1,
+        }];
+        let text = export_map(
+            &report::parse_report_full(MINI_REPORT),
+            &remembered,
+            &MapExportRequest {
+                level: 1,
+                from_x: -1000,
+                from_y: -1000,
+                to_x: 1000,
+                to_y: 1000,
+                content: ExportContent::default(),
+            },
+        );
+
+        let MergePlan::MapExport { file_turn, ages } =
+            plan_merge(&text, &parse_report(&text), 71, "17")
+        else {
+            panic!("a map export should be planned as one");
+        };
+
+        assert_eq!(file_turn, 2, "the turn the file itself names");
+        assert_eq!(ages.get("1:99,99"), Some(&1));
+        assert_eq!(
+            ages.get("1:12,34"),
+            None,
+            "a hex from the export's own turn carries no age"
+        );
     }
 }

@@ -10,10 +10,12 @@
 use atlantis_hud_core::backup::ManifestEdit;
 use atlantis_hud_core::reopen::{latest_turn, TurnRef};
 use atlantis_hud_core::report::import::{import_writes, SeenRegion};
-use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
+use atlantis_hud_core::report::merge::{
+    merge_map_export_into_sightings, merge_report_into_sightings, StoredSighting,
+};
 use atlantis_hud_core::report::sighting::RegionSighting;
 use atlantis_hud_core::{
-    diff_imported_turn, engine_info, reject_import, reject_merge, ImportedTurnSnapshot,
+    diff_imported_turn, engine_info, plan_merge, reject_import, ImportedTurnSnapshot, MergePlan,
     OrderCheckOptions, ReportParseResult, ReportParseResultWire,
 };
 use serde::{Deserialize, Serialize};
@@ -288,24 +290,38 @@ pub fn prepare_report_merge_state(
     });
     let parse_result = atlantis_hud_core::summarize(&report);
 
-    // `reject_merge`, never `reject_import`. The latter asks whether a report may be filed under a
-    // faction, and answers from a candidate list that holds only the reporting faction - so it
-    // refuses every ally there is.
-    if let Some(rejection) = reject_merge(&parse_result, viewer_turn_number, &viewer_faction_id) {
-        return to_js(&PreparedMergeDto {
-            turn_number: parse_result.turn_header.as_ref().map(|it| it.turn_number),
-            merged_faction_id: None,
-            merged_faction_name: None,
-            region_sightings: Vec::new(),
-            merged_region_count: 0,
-            new_region_count: 0,
-            rejection: Some(rejection),
-        });
-    }
+    // `plan_merge` decides which of the three this file is: one of our own map exports, an
+    // allied report, or neither. It is in the core so the desktop cannot answer differently, and
+    // it uses `reject_merge` rather than `reject_import` - the latter asks whether a report may be
+    // filed under a faction, and answers from a candidate list that holds only the reporting
+    // faction, so it refuses every ally there is.
+    let outcome = match plan_merge(
+        &raw_report,
+        &parse_result,
+        viewer_turn_number,
+        &viewer_faction_id,
+    ) {
+        MergePlan::Refused(rejection) => {
+            return to_js(&PreparedMergeDto {
+                turn_number: parse_result.turn_header.as_ref().map(|it| it.turn_number),
+                merged_faction_id: None,
+                merged_faction_name: None,
+                region_sightings: Vec::new(),
+                merged_region_count: 0,
+                new_region_count: 0,
+                rejection: Some(rejection),
+            });
+        }
+        MergePlan::AlliedReport => {
+            merge_report_into_sightings(&existing, &report, viewer_turn_number)
+        }
+        MergePlan::MapExport { file_turn, ages } => {
+            merge_map_export_into_sightings(&existing, &report, file_turn, &ages)
+        }
+    };
 
     // Clearing the threshold means the report named its faction, so this is present.
     let ally = parse_result.detected_factions.first();
-    let outcome = merge_report_into_sightings(&existing, &report, viewer_turn_number);
 
     to_js(&PreparedMergeDto {
         turn_number: Some(viewer_turn_number),

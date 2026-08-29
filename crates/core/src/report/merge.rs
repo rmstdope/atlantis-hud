@@ -21,7 +21,7 @@
 //! Like [`super::sighting`], the rule lives here rather than in either storage adapter, so a hex
 //! merged on the desktop and the same hex merged in the browser cannot come out different.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -137,6 +137,34 @@ pub fn merge_report_into_sightings(
     incoming: &ParsedReport,
     turn_number: u32,
 ) -> MergeOutcome {
+    merge_into_sightings(existing, incoming, &|_| turn_number)
+}
+
+/// Folds one of our own map exports into the viewer's sightings, each hex at the turn it was
+/// actually seen.
+///
+/// `ages` comes from [`super::export::map_export_ages`]; a hex it does not name was seen on the
+/// export turn itself and takes `file_turn`. The skip rule is the one
+/// [`merge_report_into_sightings`] uses, applied per hex: a hex the viewer knows from a *later*
+/// turn is left alone, so a stale borrowed sighting can never overwrite a fresher own one.
+#[must_use]
+pub fn merge_map_export_into_sightings(
+    existing: &[StoredSighting],
+    incoming: &ParsedReport,
+    file_turn: u32,
+    ages: &BTreeMap<String, u32>,
+) -> MergeOutcome {
+    merge_into_sightings(existing, incoming, &|region_id| {
+        ages.get(region_id).copied().unwrap_or(file_turn)
+    })
+}
+
+/// The one implementation of the skip rule and the counting, over a per-hex turn.
+fn merge_into_sightings(
+    existing: &[StoredSighting],
+    incoming: &ParsedReport,
+    turn_of: &dyn Fn(&str) -> u32,
+) -> MergeOutcome {
     let stored: HashMap<&str, &StoredSighting> = existing
         .iter()
         .map(|sighting| (sighting.region_id.as_str(), sighting))
@@ -150,6 +178,7 @@ pub fn merge_report_into_sightings(
     };
 
     for region in &incoming.regions {
+        let turn_number = turn_of(region.region_id.as_str());
         let contribution = as_foreign_sighting(region);
         let previous = stored.get(region.region_id.as_str()).copied();
 
@@ -646,5 +675,74 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["12", "13", "9"]
         );
+    }
+
+    /// A hex borrowed from a map export keeps the turn it was actually seen, not the file's turn -
+    /// otherwise every panel and every shade on the map states a falsehood about it.
+    #[test]
+    fn a_borrowed_hex_keeps_the_turn_it_was_seen() {
+        let mut old = region();
+        old.coordinate = Coordinate { x: 4, y: 50, z: 1 };
+        old.region_id = old.coordinate.id();
+        let fresh = region();
+
+        let mut ages = BTreeMap::new();
+        ages.insert(old.region_id.clone(), 40);
+
+        let outcome = merge_map_export_into_sightings(
+            &[],
+            &report_of(vec![old.clone(), fresh.clone()]),
+            71,
+            &ages,
+        );
+
+        let by_id: BTreeMap<&str, u32> = outcome
+            .sightings
+            .iter()
+            .map(|sighting| (sighting.region_id.as_str(), sighting.last_seen_turn))
+            .collect();
+        assert_eq!(by_id.get(old.region_id.as_str()), Some(&40));
+        assert_eq!(
+            by_id.get(fresh.region_id.as_str()),
+            Some(&71),
+            "a hex the file named no age for was seen on the export turn"
+        );
+        assert_eq!(outcome.new_region_count, 2);
+    }
+
+    #[test]
+    fn a_hex_the_viewer_knows_more_recently_is_left_alone() {
+        let borrowed = region();
+        let existing = vec![sighting_of(&borrowed, 50)];
+
+        let mut ages = BTreeMap::new();
+        ages.insert(borrowed.region_id.clone(), 40);
+
+        let outcome =
+            merge_map_export_into_sightings(&existing, &report_of(vec![borrowed]), 71, &ages);
+
+        assert_eq!(outcome.skipped_region_count, 1);
+        assert!(outcome.sightings.is_empty(), "nothing was written");
+        assert_eq!(outcome.merged_region_count, 0);
+    }
+
+    #[test]
+    fn a_hex_the_viewer_knows_from_the_same_turn_is_merged_into() {
+        let borrowed = region();
+        let existing = vec![sighting_of(&borrowed, 40)];
+
+        let mut ages = BTreeMap::new();
+        ages.insert(borrowed.region_id.clone(), 40);
+
+        let outcome =
+            merge_map_export_into_sightings(&existing, &report_of(vec![borrowed]), 71, &ages);
+
+        assert_eq!(outcome.skipped_region_count, 0);
+        assert_eq!(outcome.merged_region_count, 1);
+        assert_eq!(
+            outcome.new_region_count, 0,
+            "the viewer already had the hex"
+        );
+        assert_eq!(outcome.sightings[0].last_seen_turn, 40);
     }
 }
