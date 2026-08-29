@@ -163,3 +163,31 @@ test("a foreign unit's row takes the map to its hex", async ({ page }) => {
   await row.click();
   await expect(page.getByTestId("panel-region")).toContainText(where);
 });
+
+test("the attitude's lead-in gives way before the faction name does", async ({ page }) => {
+  await workspace(page);
+  await page.getByTestId("unit-source-foreign").click();
+  await rows(page).first().getByTestId(/^open-faction-dossier-/).click();
+  await page.getByTestId("dossier-show-units").click();
+
+  const lead = page.getByTestId("foreign-attitude-lead");
+  const attitude = page.getByTestId("foreign-attitude");
+  await expect(lead).toBeVisible();
+  // Whatever this fixture declares toward whichever faction the first row named. Read, never
+  // named: hardcoding one makes this a test of the fixture (the test above reads its `label` off
+  // the cell for the same reason).
+  const declared = ((await attitude.textContent()) ?? "").trim();
+  expect(declared).not.toBe("");
+
+  // The dock is the full width of the map area, so the window is what narrows the strip.
+  const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
+  await page.setViewportSize({ width: 520, height: viewport.height });
+
+  await expect(lead).toBeHidden();
+  // Both facts survive at every width - that is what the lead-in is spent to keep.
+  await expect(page.getByTestId("foreign-chip")).toBeVisible();
+  await expect(attitude).toHaveText(declared);
+
+  await page.setViewportSize(viewport);
+  await expect(lead).toBeVisible();
+});
