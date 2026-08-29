@@ -39,7 +39,8 @@ export const ADVISORY_CHECK_CODES = [
   "nothing-left-to-sell",
   "arrivals-lower-a-skill",
   "items-cannot-be-given",
-  "nothing-left-to-buy"
+  "nothing-left-to-buy",
+  "two-month-long-orders"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
