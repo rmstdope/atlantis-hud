@@ -156,3 +156,76 @@ fn a_rectangle_exports_only_what_it_covers() {
 
     assert_eq!(exported, inside);
 }
+
+/// Every level any fixture describes, so the walk below covers the underworld as well as the surface.
+fn levels_of(report: &atlantis_hud_core::report::ParsedReport) -> Vec<u32> {
+    let mut levels: Vec<u32> = report
+        .regions
+        .iter()
+        .map(|region| region.coordinate.z)
+        .collect();
+    levels.sort_unstable();
+    levels.dedup();
+    levels
+}
+
+/**
+ * The header is the half of the file the old round-trip test never looked at, and it is the half
+ * that broke: a faction with more than one type was written as `(War 1) (Trade 1)`, which hides the
+ * id from `parse_faction`, so the file named no faction and the application refused it.
+ */
+#[test]
+fn every_fixture_exports_a_header_that_reads_back() {
+    for fixture in atlantis_hud_fixtures::ALL {
+        let report = parse_report_full(fixture.text);
+        let levels = levels_of(&report);
+        assert!(!levels.is_empty(), "{} describes no hexes", fixture.file);
+
+        for level in levels {
+            let mut request = whole_map(ExportContent::default());
+            request.level = level;
+            let text = export_map(&report, &[], &request);
+            let reparsed = parse_report_full(&text);
+
+            assert_eq!(
+                reparsed.header.faction_id, report.header.faction_id,
+                "{} level {level} lost its faction id:\n{text}",
+                fixture.file
+            );
+            assert_eq!(
+                reparsed.header.faction_name, report.header.faction_name,
+                "{} level {level} lost its faction name",
+                fixture.file
+            );
+            assert_eq!(
+                reparsed.header.turn_number, report.header.turn_number,
+                "{} level {level} lost its turn",
+                fixture.file
+            );
+
+            let before = by_id(
+                report
+                    .regions
+                    .iter()
+                    .filter(|region| region.coordinate.z == level)
+                    .cloned()
+                    .collect(),
+            );
+            let after = by_id(reparsed.regions);
+            assert_eq!(
+                before.keys().collect::<Vec<_>>(),
+                after.keys().collect::<Vec<_>>(),
+                "{} level {level} did not export the same hexes",
+                fixture.file
+            );
+            for (id, region) in &before {
+                assert_eq!(
+                    after.get(id),
+                    Some(region),
+                    "{} region {id} changed in writing",
+                    fixture.file
+                );
+            }
+        }
+    }
+}

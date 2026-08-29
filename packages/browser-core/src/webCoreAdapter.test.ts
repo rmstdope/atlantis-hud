@@ -269,6 +269,8 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       existingSightingsJson: string
     ) => {
       const [, factionId, turn, regionList] = /MERGE: (\S+) (\d+) (\S+)/u.exec(raw) ?? [];
+      // The real core answers this from the marker on the file's first line, and so does this.
+      const mapExport = raw.startsWith("; Map export from Atlantis HUD");
       if (!factionId) {
         return {
           turnNumber: null,
@@ -277,10 +279,11 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           regionSightings: [],
           mergedRegionCount: 0,
           newRegionCount: 0,
+          mapExport: false,
           rejection: "parsed report did not meet minimum import threshold"
         };
       }
-      if (factionId === viewerFactionId) {
+      if (!mapExport && factionId === viewerFactionId) {
         return {
           turnNumber: Number(turn),
           mergedFactionId: null,
@@ -288,10 +291,11 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           regionSightings: [],
           mergedRegionCount: 0,
           newRegionCount: 0,
+          mapExport: false,
           rejection: "a faction's own report is loaded rather than merged"
         };
       }
-      if (Number(turn) !== viewerTurnNumber) {
+      if (!mapExport && Number(turn) !== viewerTurnNumber) {
         return {
           turnNumber: Number(turn),
           mergedFactionId: null,
@@ -299,6 +303,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           regionSightings: [],
           mergedRegionCount: 0,
           newRegionCount: 0,
+          mapExport: false,
           rejection: `a report from turn ${turn} cannot be merged into turn ${viewerTurnNumber}`
         };
       }
@@ -318,6 +323,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         })),
         mergedRegionCount: regions.length,
         newRegionCount: regions.filter((regionId) => !known.has(regionId)).length,
+        mapExport,
         rejection: null
       };
     },
@@ -1619,6 +1625,35 @@ describe("merging an allied report", () => {
     });
     await expect(adapter.loadRegionSightings("/db", "p", "95")).resolves.toHaveLength(2);
     await expect(adapter.loadRegionSightings("/db", "p", "73")).resolves.toEqual([]);
+  });
+
+  const OWN_MAP_EXPORT = "; Map export from Atlantis HUD\nMERGE: 95 40 1:5,5";
+  const ALLYS_MAP_EXPORT = "; Map export from Atlantis HUD\nMERGE: 73 40 1:5,5";
+
+  /**
+   * A map export of the viewer's own map would file a provenance row naming the viewer as their own
+   * ally, which is nonsense in front of anything reading `loadMergedReports`.
+   */
+  it("records no ally for a map export of the viewer's own map", async () => {
+    const store = await withViewersMap();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+
+    await adapter.mergeReport("/db", "p", "95", 71, OWN_MAP_EXPORT, null, MERGED_AT);
+
+    await expect(adapter.loadMergedReports("/db", "p", "95", 71)).resolves.toEqual([]);
+    await expect(adapter.loadRegionSightings("/db", "p", "95")).resolves.toHaveLength(2);
+  });
+
+  /** An ally's map export still records who it came from, which is provenance worth keeping. */
+  it("records the ally behind their own map export", async () => {
+    const store = await withViewersMap();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+
+    await adapter.mergeReport("/db", "p", "95", 71, ALLYS_MAP_EXPORT, null, MERGED_AT);
+
+    await expect(adapter.loadMergedReports("/db", "p", "95", 71)).resolves.toMatchObject([
+      { mergedFactionId: "73" }
+    ]);
   });
 
   /**

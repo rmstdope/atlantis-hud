@@ -36,6 +36,14 @@ import type { StatusLine } from "./workspace/shellStatus";
 import { commitTurn, rememberTurn, type MemoryOutcome } from "./gameMemory";
 import { documentFor, draftKeyFor } from "./orderDraft";
 import { decideReportLoad, judgeReportUsable } from "./reportLoadDecision";
+import {
+  MAP_EXPORT_HAS_NO_HEXES,
+  MAP_EXPORT_NAMES_NO_FACTION,
+  MAP_EXPORT_NAMES_NO_TURN,
+  MAP_EXPORT_NEEDS_A_MAP,
+  hexesNewToMap,
+  isMapExport
+} from "./mapExportImport";
 import { sortUnitsForDisplay } from "./hexMapModel";
 import { countsStatus, noticeStatus, warningStatus } from "./workspace/shellStatus";
 
@@ -249,11 +257,36 @@ export type PendingReportLoad = {
   incoming: { factionLabel: string; turnNumber: number | null };
 };
 
+/**
+ * One of our own map exports, held while the player decides whether to add it.
+ *
+ * Like {@link PendingReportLoad} the viewer's identity is a snapshot taken when the question was
+ * raised, never read again when it is answered: the report on screen can change under an open
+ * prompt, and adding a map to whoever happens to be showing by then is not what was asked.
+ */
+export type PendingMapExport = {
+  report: ParsedReport;
+  text: string;
+  fileName: string;
+  /** Whether the file was written by the faction currently on screen. */
+  ownFaction: boolean;
+  incomingFactionLabel: string;
+  incomingTurn: number;
+  /** Every hex the file carries. */
+  totalHexes: number;
+  /** Of those, the ones the player's map does not hold at all. */
+  newHexes: number;
+  /** One export covers one level, so the first region speaks for all of them. */
+  level: number;
+  viewer: { factionId: string; factionLabel: string; turnNumber: number };
+};
+
 export type ReportRoute =
   | { kind: "reject"; reason: string }
   | { kind: "load" }
   | { kind: "storeOnly"; currentTurn: number }
-  | { kind: "ask"; pending: PendingReportLoad };
+  | { kind: "ask"; pending: PendingReportLoad }
+  | { kind: "mapExport"; pending: PendingMapExport };
 
 /**
  * Where a parsed report goes: `judgeReportUsable` first - the one answer to whether a report can be
@@ -265,8 +298,17 @@ export function routeReport(
   viewer: ParsedReport | null,
   report: ParsedReport,
   text: string,
-  fileName: string
+  fileName: string,
+  knownRegionIds: ReadonlySet<string>
 ): ReportRoute {
+  // Before `judgeReportUsable`, so a map export never collects one of the generic report refusals:
+  // they name the wrong thing to go looking for, and one of them ("the report does not name its
+  // faction") is the very message our own broken exports used to produce.
+  const mapExport = routeMapExport(viewer, report, text, fileName, knownRegionIds);
+  if (mapExport !== null) {
+    return mapExport;
+  }
+
   const usable = judgeReportUsable(report);
   if (!usable.ok) {
     return { kind: "reject", reason: usable.reason };
@@ -303,6 +345,61 @@ export function routeReport(
   }
 
   return { kind: "load" };
+}
+
+/**
+ * The map-export route, or `null` when the file is not one.
+ *
+ * A map export is written in the game's own syntax, so it parses as a report and would otherwise
+ * take the report path - which for the player's own faction and turn means replacing the turn on
+ * screen with a file that has no orders template, no faction status and no events.
+ */
+function routeMapExport(
+  viewer: ParsedReport | null,
+  report: ParsedReport,
+  text: string,
+  fileName: string,
+  knownRegionIds: ReadonlySet<string>
+): ReportRoute | null {
+  if (!isMapExport(text)) {
+    return null;
+  }
+
+  // A map export adds to a map. There is nothing to file its hexes under without one, and a game
+  // started from one would have no units and no orders template.
+  if (viewer === null || viewer.header.factionId === null || viewer.header.turnNumber === null) {
+    return { kind: "reject", reason: MAP_EXPORT_NEEDS_A_MAP };
+  }
+  if (report.header.factionId === null) {
+    return { kind: "reject", reason: MAP_EXPORT_NAMES_NO_FACTION };
+  }
+  if (report.header.turnNumber === null) {
+    return { kind: "reject", reason: MAP_EXPORT_NAMES_NO_TURN };
+  }
+  const first = report.regions[0];
+  if (first === undefined) {
+    return { kind: "reject", reason: MAP_EXPORT_HAS_NO_HEXES };
+  }
+
+  return {
+    kind: "mapExport",
+    pending: {
+      report,
+      text,
+      fileName,
+      ownFaction: viewer.header.factionId === report.header.factionId,
+      incomingFactionLabel: factionLabelOf(report) ?? "an unnamed faction",
+      incomingTurn: report.header.turnNumber,
+      totalHexes: report.regions.length,
+      newHexes: hexesNewToMap(report, knownRegionIds),
+      level: first.coordinate.z,
+      viewer: {
+        factionId: viewer.header.factionId,
+        factionLabel: factionLabelOf(viewer) ?? "an unnamed faction",
+        turnNumber: viewer.header.turnNumber
+      }
+    }
+  };
 }
 
 /**

@@ -67,7 +67,7 @@ impl ParsedReport {
 ///
 /// The terrain check matters: `Errors during turn:` and other section headers also sit at the outer
 /// indent, and an events line can mention a coordinate without opening a region.
-fn opens_a_region(line: &LogicalLine) -> bool {
+pub(crate) fn opens_a_region(line: &LogicalLine) -> bool {
     if line.indent != 0 || line.marker().is_some() {
         return false;
     }

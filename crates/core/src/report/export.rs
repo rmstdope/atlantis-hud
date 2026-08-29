@@ -10,10 +10,64 @@ use serde::{Deserialize, Serialize};
 
 use super::header::ReportHeader;
 use super::model::ReportRegion;
+use super::region::parse_region_header;
+use super::unwrap::unwrap_lines;
 use super::write::{write_region, ExportContent};
-use super::ParsedReport;
+use super::{opens_a_region, ParsedReport};
 use crate::cache::ReportCache;
 use crate::movement::graph::RememberedRegion;
+
+/// The first line the exporter writes, and the whole test for whether a file is one of ours.
+///
+/// The shell has its own copy in `packages/shared/src/mapExportImport.ts`; nothing compiles a check
+/// between the two, so the smoke suite's round trip is what catches a divergence.
+pub const MAP_EXPORT_MARKER: &str = "; Map export from Atlantis HUD";
+
+/// The opening of every per-hex age comment; see [`staleness_note`].
+const STALENESS_PREFIX: &str = "; last seen turn ";
+
+/// Whether this text is one of our own map exports.
+///
+/// The marker is looked for on the first non-blank line only, so a turn report that happens to
+/// quote the phrase further down is not caught.
+#[must_use]
+pub fn is_map_export(text: &str) -> bool {
+    text.lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .is_some_and(|line| line == MAP_EXPORT_MARKER)
+}
+
+/// The turn each hex was actually last seen, by `region_id`.
+///
+/// A hex the exporter saw on the export turn itself carries no comment ([`staleness_note`] returns
+/// `None` when the age is zero) and is absent here; the caller stamps those with the file's own
+/// turn.
+#[must_use]
+pub fn map_export_ages(text: &str) -> BTreeMap<String, u32> {
+    let mut ages = BTreeMap::new();
+    let mut pending: Option<u32> = None;
+
+    for line in unwrap_lines(text) {
+        let body = line.body();
+        if let Some(rest) = body.strip_prefix(STALENESS_PREFIX) {
+            // Both forms `staleness_note` writes open the same way; the digits stop at the comma.
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            pending = digits.parse().ok();
+            continue;
+        }
+
+        // `opens_a_region` is what tells a region header from an exit line, which parses as one on
+        // its own.
+        if opens_a_region(&line) {
+            if let (Some(turn), Some(region)) = (pending.take(), parse_region_header(body)) {
+                ages.insert(region.region_id, turn);
+            }
+        }
+    }
+
+    ages
+}
 
 /// The area, level and content one export covers.
 ///
@@ -127,9 +181,10 @@ fn preamble(request: &MapExportRequest, regions: usize) -> String {
     let yes_or_no = |included: bool| if included { "yes" } else { "no" };
 
     format!(
-        "; Map export from Atlantis HUD\n\
+        "{}\n\
          ; level {}, hexes ({},{}) to ({},{}), {} region{}\n\
          ; structures: {}, units: {}, advanced resources: {}\n\n",
+        MAP_EXPORT_MARKER,
         request.level,
         request.from_x.min(request.to_x),
         request.from_y.min(request.to_y),
@@ -149,8 +204,10 @@ fn write_header(header: &ReportHeader) -> String {
 
     if let (Some(name), Some(id)) = (&header.faction_name, &header.faction_id) {
         text.push_str(&format!("{name} ({id})"));
-        for faction_type in &header.faction_types {
-            text.push_str(&format!(" ({faction_type})"));
+        if !header.faction_types.is_empty() {
+            // One comma-separated parenthetical, which is what the game writes and what
+            // `parse_faction` can find an id in front of.
+            text.push_str(&format!(" ({})", header.faction_types.join(", ")));
         }
         text.push('\n');
     }
@@ -172,7 +229,7 @@ fn write_header(header: &ReportHeader) -> String {
 fn staleness_note(last_seen_turn: Option<u32>, current_turn: Option<u32>) -> Option<String> {
     let seen = last_seen_turn?;
     let Some(age) = current_turn.and_then(|current| current.checked_sub(seen)) else {
-        return Some(format!("; last seen turn {seen}"));
+        return Some(format!("{STALENESS_PREFIX}{seen}"));
     };
 
     if age == 0 {
@@ -180,7 +237,7 @@ fn staleness_note(last_seen_turn: Option<u32>, current_turn: Option<u32>) -> Opt
     }
 
     Some(format!(
-        "; last seen turn {seen}, {age} turn{} before this export",
+        "{STALENESS_PREFIX}{seen}, {age} turn{} before this export",
         if age == 1 { "" } else { "s" }
     ))
 }
@@ -432,5 +489,95 @@ mod tests {
         let mut cache = ReportCache::new();
         assert!(export_map_text(&mut cache, REPORT, "[]", "not json").is_err());
         assert!(export_map_text(&mut cache, REPORT, "not json", "{}").is_err());
+    }
+
+    /**
+     * The game prints one parenthetical holding every faction type, comma separated. Writing one
+     * bracket per type made the id unfindable to our own parser, so a multi-type faction's export
+     * could not be read back at all.
+     */
+    #[test]
+    fn faction_types_are_written_as_one_parenthetical() {
+        let mut header = ReportHeader {
+            faction_id: Some("42".into()),
+            faction_name: Some("The Disinherited Knights".into()),
+            ..ReportHeader::default()
+        };
+        header.faction_types = vec!["War 1".into(), "Trade 1".into(), "Magic 1".into()];
+
+        let text = write_header(&header);
+
+        assert!(
+            text.contains("The Disinherited Knights (42) (War 1, Trade 1, Magic 1)"),
+            "the game's own shape:\n{text}"
+        );
+        assert!(
+            !text.contains(") (Trade"),
+            "one parenthetical, not one per type:\n{text}"
+        );
+    }
+
+    #[test]
+    fn a_faction_with_no_types_gets_no_empty_parenthetical() {
+        let header = ReportHeader {
+            faction_id: Some("42".into()),
+            faction_name: Some("The Disinherited Knights".into()),
+            ..ReportHeader::default()
+        };
+
+        let text = write_header(&header);
+
+        assert!(text.contains("The Disinherited Knights (42)\n"), "{text}");
+        assert!(!text.contains("()"), "{text}");
+    }
+
+    #[test]
+    fn a_map_export_is_recognised_by_its_first_line() {
+        let export = export_map(&parse_report_full(REPORT), &[], &request((4, 50), (8, 54)));
+
+        assert!(is_map_export(&export), "our own output:\n{export}");
+        assert!(!is_map_export(REPORT), "a turn report is not a map export");
+        assert!(!is_map_export(""), "empty text names nothing");
+        assert!(
+            !is_map_export(&format!("{REPORT}\n{MAP_EXPORT_MARKER}\n")),
+            "the marker counts on the first line only"
+        );
+        assert!(
+            is_map_export(&format!("\n\n{export}")),
+            "leading blank lines are skipped"
+        );
+    }
+
+    #[test]
+    fn each_remembered_hex_carries_the_turn_it_was_seen() {
+        let remembered = vec![remembered_at(4, 50, 1, 60)];
+        let text = export_map(
+            &parse_report_full(REPORT),
+            &remembered,
+            &request((4, 50), (8, 54)),
+        );
+
+        let ages = map_export_ages(&text);
+
+        assert_eq!(ages.get("1:4,50"), Some(&60), "the remembered hex's turn");
+        assert_eq!(
+            ages.get("1:7,53"),
+            None,
+            "a hex from the export's own turn carries no age"
+        );
+    }
+
+    #[test]
+    fn an_exit_line_is_never_taken_for_a_hex_of_its_own() {
+        let remembered = vec![remembered_at(4, 50, 1, 60)];
+        let text = export_map(
+            &parse_report_full(REPORT),
+            &remembered,
+            &request((4, 50), (8, 54)),
+        );
+
+        let ages = map_export_ages(&text);
+
+        assert_eq!(ages.len(), 1, "one aged hex, not its exits too: {ages:?}");
     }
 }
