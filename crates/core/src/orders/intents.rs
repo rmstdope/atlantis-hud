@@ -123,6 +123,13 @@ pub struct PlacedIntent {
     /// The span of the order's keyword, counted as [`super::lexer::Token`] counts.
     pub column_start: usize,
     pub column_end: usize,
+    /// The order's own keyword, in the grammar's canonical spelling - `ADVANCE` stays `ADVANCE`
+    /// even though it and `MOVE` share one [`Intent::Move`]. A message that quotes the order the
+    /// player wrote needs this; the variant cannot supply it.
+    ///
+    /// `""` only where the keyword is not in `GRAMMAR` at all, which no order yielding an intent
+    /// is: a reader of this field skips the empty case rather than printing it.
+    pub keyword: &'static str,
 }
 
 /// One unit's block, read.
@@ -157,6 +164,15 @@ impl UnitIntents {
     pub fn any(&self, predicate: impl FnMut(&Intent) -> bool) -> bool {
         self.find(predicate).is_some()
     }
+}
+
+/// The grammar's own spelling of a keyword the player wrote, for [`PlacedIntent::keyword`].
+///
+/// `""` for a keyword `GRAMMAR` does not hold. Unreachable for anything that yields an intent -
+/// the parser checks argument shape against the same table - so the empty string is a floor rather
+/// than a case, and a reader skips it instead of printing it.
+fn canonical_keyword(command: &str) -> &'static str {
+    super::grammar::find_order(command).map_or("", |order| order.name)
 }
 
 /// Reads a whole orders document into one entry per unit block.
@@ -199,6 +215,7 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
                         line: line.number,
                         column_start: line.command.column_start,
                         column_end: line.command.column_end,
+                        keyword: canonical_keyword(&line.command.text),
                     });
                 } else if !is_free_order(line.command) {
                     // A recognised free order is dropped exactly as an unread one used to be: it
@@ -237,6 +254,7 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
                     line: line.number,
                     column_start: line.command.column_start,
                     column_end: line.command.column_end,
+                    keyword: canonical_keyword(&line.command.text),
                 });
             }
         }
@@ -413,6 +431,7 @@ impl FormReader<'_> {
                 line: line_number,
                 column_start: command.column_start,
                 column_end: command.column_end,
+                keyword: canonical_keyword(&command.text),
             });
         } else if !is_free_order(command) {
             block.unread.push(line_number);
@@ -729,6 +748,17 @@ mod tests {
     }
 
     // --- the document's own shape ---------------------------------------------------------
+
+    /// `MOVE` and `ADVANCE` share one `Intent::Move`, so a message that quotes the order the
+    /// player wrote cannot derive the keyword from the variant.
+    #[test]
+    fn an_advance_keeps_its_own_keyword() {
+        let unit = only_unit("unit 1\nADVANCE N\n");
+        assert_eq!(unit.intents.len(), 1, "{unit:?}");
+        let placed = &unit.intents[0];
+        assert_eq!(placed.keyword, "ADVANCE");
+        assert!(matches!(placed.intent, Intent::Move { .. }), "{placed:?}");
+    }
 
     #[test]
     fn an_unknown_keyword_is_recorded_as_unread() {

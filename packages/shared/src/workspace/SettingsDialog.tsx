@@ -580,6 +580,12 @@ export const WARNING_GROUPS: readonly {
         description: "A unit with no order that spends its month."
       },
       {
+        code: "two-month-long-orders",
+        title: "Two orders for one month",
+        description:
+          "A unit given more than one order that spends its month, such as MOVE and STUDY together, where only one of them will run."
+      },
+      {
         code: "taxed-a-pillaged-hex",
         title: "Taxing a hex you are pillaging",
         description:

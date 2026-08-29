@@ -35,15 +35,16 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, ItemKind, Ruleset};
 use crate::orders::items::item_named;
 use crate::orders::silver::{
-    because_clause, feed_after_silver, feed_from_faction_food, food_claim, forecast_unit,
-    late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants, price_buy_all,
-    price_cast, price_claim, price_pillage, price_production, price_purchase, price_sale_line,
-    price_study, price_tax, producing_skill, quantity_bought, readiness, settle_unclaimed,
-    split_pool, taxes, transfer_shape, transmute_argument, unit_upkeep, workforce_for, BuyAllCap,
-    Caster, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
-    LateFoodRelief, Lookups, MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
-    PurchaseAnswer, Receipts, RegionShare, RegionWages, SaleAnswer, SilverDoubt, TransferShape,
-    Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce, FOOD_TAGS,
+    because_clause, feed_after_silver, feed_from_faction_food, flagged_to_tax, food_claim,
+    forecast_unit, late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants,
+    price_buy_all, price_cast, price_claim, price_pillage, price_production, price_purchase,
+    price_sale_line, price_study, price_tax, producing_skill, quantity_bought, readiness,
+    settle_unclaimed, split_pool, taxes, transfer_shape, transmute_argument, unit_upkeep,
+    workforce_for, BuyAllCap, Caster, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim,
+    LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, Pillagers, PoolOverrun,
+    PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionShare, RegionWages,
+    SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
+    UpkeepSettlement, Workforce, FOOD_TAGS,
 };
 use crate::report::composition;
 use crate::report::model::{
@@ -131,6 +132,7 @@ pub mod codes {
     pub const ARRIVALS_LOWER_A_SKILL: Code = Code("arrivals-lower-a-skill");
     pub const ITEMS_CANNOT_BE_GIVEN: Code = Code("items-cannot-be-given");
     pub const NOTHING_LEFT_TO_BUY: Code = Code("nothing-left-to-buy");
+    pub const TWO_MONTH_LONG_ORDERS: Code = Code("two-month-long-orders");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -139,7 +141,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 37] = [
+    pub const ALL: [Code; 38] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -177,6 +179,7 @@ pub mod codes {
         ARRIVALS_LOWER_A_SKILL,
         ITEMS_CANNOT_BE_GIVEN,
         NOTHING_LEFT_TO_BUY,
+        TWO_MONTH_LONG_ORDERS,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -484,6 +487,7 @@ pub fn review_turn(
         check_magic_study(hex, ruleset, &options, &mut findings);
         check_forms(hex, &options, &mut findings);
         check_idle_units(hex, &options, &mut findings);
+        check_two_month_long_orders(hex, &options, &mut findings);
         check_transfer_targets(hex, &located, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
         check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
@@ -7019,6 +7023,105 @@ fn check_idle_units(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
             codes::UNIT_DOES_NOTHING,
             "has no order that spends the month".to_string(),
         ));
+    }
+}
+
+/// What a month-long order is competing for, for the purpose of `two-month-long-orders`.
+///
+/// Three orders repeat without conflicting, so every line of each collapses to one claim:
+/// `MOVE`/`ADVANCE` chain (`rules/move`: "Multiple MOVE orders given by one unit will chain
+/// together"), `SAIL` chains (`rules/sail` gives `SAIL N` / `SAIL NW` as one route), and `TEACH`
+/// accumulates (`rules/teach`: "Subsequent TEACH orders can be used to add units to be taught").
+/// Everything else claims the month once per line, so two `STUDY` lines are two claims. `Move` and
+/// `Sail` deliberately differ: walking and sailing are two journeys.
+#[derive(PartialEq, Eq)]
+enum MonthClaim {
+    Travelling,
+    Sailing,
+    Teaching,
+    /// Anything else, told apart by the line it was written on.
+    Line(usize),
+}
+
+fn month_claim(placed: &PlacedIntent) -> MonthClaim {
+    match placed.intent {
+        Intent::Move { .. } => MonthClaim::Travelling,
+        Intent::Sail { .. } => MonthClaim::Sailing,
+        Intent::Teach { .. } => MonthClaim::Teaching,
+        _ => MonthClaim::Line(placed.line),
+    }
+}
+
+/// Every own unit given more than one order that spends its month.
+///
+/// The first month-long order in the block is the one that will run and is left unmarked; each
+/// later one is marked on its own line, naming the first. A unit that taxes by its report flag is
+/// a claimant too, and loses to any written month-long order - which is what [`taxes`] already
+/// decides, so the Silver column and this finding cannot disagree.
+///
+/// Unlike [`check_idle_units`], a block holding a line this reader could not parse is still
+/// judged: that check claims a unit does *nothing*, which an unread line could falsify, whereas
+/// two readable month-long orders are two whatever else the block holds.
+fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !options.emits(codes::TWO_MONTH_LONG_ORDERS) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        let mut seen: Vec<MonthClaim> = Vec::new();
+        let claimants: Vec<&PlacedIntent> = ordered
+            .intents
+            .iter()
+            .filter(|placed| spends_the_month(&placed.intent))
+            // A keyword `GRAMMAR` does not hold would print as an empty word in the message, so
+            // it is skipped rather than named. No order yielding an intent is one.
+            .filter(|placed| !placed.keyword.is_empty())
+            .filter(|placed| {
+                let claim = month_claim(placed);
+                let first = !seen.contains(&claim);
+                if first {
+                    seen.push(claim);
+                }
+                first
+            })
+            .collect();
+
+        let Some((winner, rest)) = claimants.split_first() else {
+            continue;
+        };
+
+        for placed in rest {
+            findings.push(ordered.finding(
+                hex,
+                codes::TWO_MONTH_LONG_ORDERS,
+                format!(
+                    "{first} already spends this unit's month, so this {later} will not run",
+                    first = winner.keyword,
+                    later = placed.keyword,
+                ),
+                Some(placed),
+            ));
+        }
+
+        // A unit set to tax every turn is a claimant on the month too, and it loses to any written
+        // month-long order - which `silver::taxes` already forecasts, so the Silver column and this
+        // finding cannot disagree. A block with its own `TAX` line is left to the ordinary wording
+        // above: the tax it names is the same tax. The finding sits on the block, because the tax
+        // has no line of its own and nothing is wrong with the order that beat it.
+        if flagged_to_tax(&ordered.unit.flags)
+            && !ordered
+                .intents()
+                .any(|intent| matches!(intent, Intent::Tax))
+        {
+            findings.push(ordered.finding_at_block(
+                hex,
+                codes::TWO_MONTH_LONG_ORDERS,
+                format!(
+                    "set to tax every month, but {} spends the month instead, so it will not tax",
+                    winner.keyword,
+                ),
+            ));
+        }
     }
 }
 
@@ -14569,7 +14672,7 @@ mod tests {
     }
 
     /// Runs the checks with the committed ruleset, which is what the shell serves.
-    /// The runtime default, with `unit-does-nothing` off.
+    /// The runtime default, with `unit-does-nothing` and `two-month-long-orders` off.
     ///
     /// Nearly every fixture below stands up a unit to exercise one check and gives it only the
     /// orders that check is about - a GIVE, a BUY, a bare block - so on the real default this check
@@ -14577,12 +14680,17 @@ mod tests {
     /// shape `check_ignoring_transfer_targets` below was written for when `give-target-not-here`
     /// arrived. The check's own fixtures use `check_idle` above, and
     /// `every_advisory_code_can_be_silenced` runs fully enabled.
+    ///
+    /// `two-month-long-orders` is off here for the same reason: a fixture written for another
+    /// check often gives one unit a `MOVE` and a `STUDY`, or two `STUDY` lines, because that is
+    /// the smallest way to exercise what it is about - and the finding then buries the assertion.
+    /// The check's own fixtures use `check_months`.
     fn check(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
         check_turn(
             &report(regions),
             orders,
             Some(&ruleset()),
-            disabling(codes::UNIT_DOES_NOTHING),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
         )
     }
 
@@ -14619,6 +14727,7 @@ mod tests {
                 codes::BUILD_OUTSIDE_STRUCTURE,
                 codes::BUILD_HELP_NOT_BUILDING,
                 codes::UNIT_DOES_NOTHING,
+                codes::TWO_MONTH_LONG_ORDERS,
             ]),
         )
     }
@@ -14743,6 +14852,235 @@ mod tests {
         assert!(
             codes(&findings).contains(&codes::TEACHER_HAS_FREE_SLOTS.as_str()),
             "{findings:?}"
+        );
+    }
+
+    // --- two orders for one month (ah-o7td) ---------------------------------------------------
+
+    /// `check`, with `two-month-long-orders` left on - it is what these fixtures are about.
+    fn check_months(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
+        check_turn(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            disabling(codes::UNIT_DOES_NOTHING),
+        )
+    }
+
+    /// Only the `two-month-long-orders` findings, so a fixture's other advice cannot mask what
+    /// these tests are about.
+    fn two_month_long(findings: Vec<Finding>) -> Vec<Finding> {
+        findings
+            .into_iter()
+            .filter(|finding| finding.code == codes::TWO_MONTH_LONG_ORDERS)
+            .collect()
+    }
+
+    #[test]
+    fn a_second_month_long_order_is_marked_naming_the_first() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![unit("683")])],
+            "unit 683\nMOVE N\nSTUDY Combat\n",
+        )));
+        assert_eq!(finding.line, Some(3));
+        assert_eq!(finding.unit_id, Some("683".to_string()));
+        assert_eq!(
+            finding.message,
+            "MOVE already spends this unit's month, so this STUDY will not run"
+        );
+    }
+
+    /// `rules/move`: "Multiple MOVE orders given by one unit will chain together."
+    #[test]
+    fn two_move_lines_are_one_journey() {
+        assert_eq!(
+            two_month_long(check_months(
+                vec![region(vec![unit("683")])],
+                "unit 683\nMOVE N\nMOVE NE\n",
+            )),
+            vec![]
+        );
+    }
+
+    /// `rules/teach`: "Subsequent TEACH orders can be used to add units to be taught."
+    #[test]
+    fn two_teach_lines_are_one_teaching() {
+        assert_eq!(
+            two_month_long(check_months(
+                vec![region(vec![unit("683")])],
+                "unit 683\nTEACH NEW 2\nTEACH 5104\n",
+            )),
+            vec![]
+        );
+    }
+
+    /// `rules/sail` gives `SAIL N` / `SAIL NW` on separate lines as one route.
+    #[test]
+    fn two_sail_lines_are_one_route() {
+        assert_eq!(
+            two_month_long(check_months(
+                vec![region(vec![unit("683")])],
+                "unit 683\nSAIL N\nSAIL NW\n",
+            )),
+            vec![]
+        );
+    }
+
+    /// Walking and sailing are two journeys, not one - the rules say nothing either way, and this
+    /// is the navigator's decision of 2026-08-29.
+    #[test]
+    fn move_and_sail_are_two_journeys() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![unit("683")])],
+            "unit 683\nMOVE N\nSAIL NW\n",
+        )));
+        assert_eq!(finding.line, Some(3));
+        assert_eq!(
+            finding.message,
+            "MOVE already spends this unit's month, so this SAIL will not run"
+        );
+    }
+
+    /// Nothing in the rules lets STUDY chain the way MOVE and TEACH explicitly do, so the second
+    /// line is a wasted one - and says so with the same word twice, which is accurate.
+    #[test]
+    fn two_study_lines_are_two_claims_on_the_month() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![unit("683")])],
+            "unit 683\nSTUDY Combat\nSTUDY Longbow\n",
+        )));
+        assert_eq!(
+            finding.message,
+            "STUDY already spends this unit's month, so this STUDY will not run"
+        );
+    }
+
+    /// `rules/magic_usingmagic`: "a CAST order is not a full month order; a mage may still MOVE,
+    /// STUDY, or use any other month long order." This check inherits that from
+    /// `spends_the_month`; the test pins that it does.
+    #[test]
+    fn a_cast_beside_a_month_long_order_is_not_a_second() {
+        assert_eq!(
+            two_month_long(check_months(
+                vec![region(vec![unit("683")])],
+                "unit 683\nCAST Earth_Lore\nSTUDY Earth_Lore\n",
+            )),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn giving_and_buying_beside_a_month_long_order_are_not_a_second() {
+        assert_eq!(
+            two_month_long(check_months(
+                vec![region(vec![unit("683")])],
+                "unit 683\nGIVE 5104 100 SILV\nBUY 5 HORS\nGUARD 1\nSTUDY Combat\n",
+            )),
+            vec![]
+        );
+    }
+
+    /// Every later order is marked against the *first*, not against the one above it: the first is
+    /// the one that will run, so it is the one each loss is measured from.
+    #[test]
+    fn every_order_after_the_first_is_marked_against_it() {
+        let findings = two_month_long(check_months(
+            vec![region(vec![unit("683")])],
+            "unit 683\nMOVE N\nBUILD Tower\nENTERTAIN\n",
+        ));
+        assert_eq!(findings.len(), 2, "{findings:?}");
+        assert_eq!(findings[0].line, Some(3));
+        assert_eq!(
+            findings[0].message,
+            "MOVE already spends this unit's month, so this BUILD will not run"
+        );
+        assert_eq!(findings[1].line, Some(4));
+        assert_eq!(
+            findings[1].message,
+            "MOVE already spends this unit's month, so this ENTERTAIN will not run"
+        );
+    }
+
+    /// The navigator's decision of 2026-08-29: the flag is a claimant, and a written month-long
+    /// order beats it. This is what `silver::taxes` has already forecast since `ah-v8zh`; the
+    /// finding says it out loud.
+    #[test]
+    fn a_flagged_taxer_given_work_is_told_it_will_not_tax() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![taxing_by_flag(unit("683"))])],
+            "unit 683\nWORK\n",
+        )));
+        assert_eq!(finding.line, Some(1));
+        assert_eq!(finding.column_start, None);
+        assert_eq!(finding.column_end, None);
+        assert_eq!(
+            finding.message,
+            "set to tax every month, but WORK spends the month instead, so it will not tax"
+        );
+    }
+
+    /// A block with its own `TAX` is not also told about the flag: the tax it names is the one the
+    /// ordinary wording is already about.
+    #[test]
+    fn a_flagged_taxer_with_a_written_tax_line_is_not_told_twice() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![taxing_by_flag(unit("683"))])],
+            "unit 683\nTAX\nWORK\n",
+        )));
+        assert_eq!(finding.line, Some(3));
+        assert_eq!(
+            finding.message,
+            "TAX already spends this unit's month, so this WORK will not run"
+        );
+    }
+
+    /// The flag alone is one claimant, not two - a flagged unit with a free month taxes, which is
+    /// exactly what it was set to do.
+    #[test]
+    fn a_flagged_taxer_with_nothing_else_to_do_is_left_alone() {
+        assert_eq!(
+            two_month_long(check_months(
+                vec![region(vec![taxing_by_flag(unit("683"))])],
+                "unit 683\n",
+            )),
+            vec![]
+        );
+    }
+
+    /// Both losses are measured from the first written order. The hex re-sorts its findings by
+    /// line, so the block-anchored one (the `unit 683` line) comes first here.
+    #[test]
+    fn a_flagged_taxer_loses_to_the_first_of_two_written_orders() {
+        let findings = two_month_long(check_months(
+            vec![region(vec![taxing_by_flag(unit("683"))])],
+            "unit 683\nMOVE N\nWORK\n",
+        ));
+        assert_eq!(findings.len(), 2, "{findings:?}");
+        assert_eq!(findings[0].line, Some(1));
+        assert_eq!(
+            findings[0].message,
+            "set to tax every month, but MOVE spends the month instead, so it will not tax"
+        );
+        assert_eq!(findings[1].line, Some(3));
+        assert_eq!(
+            findings[1].message,
+            "MOVE already spends this unit's month, so this WORK will not run"
+        );
+    }
+
+    /// The deliberate divergence from `check_idle_units`, which bails on an unread line. That
+    /// check claims a unit does *nothing*, which an unread line could falsify; two readable
+    /// month-long orders are two whatever else the block holds.
+    #[test]
+    fn an_unread_order_line_does_not_silence_a_second_month_long_order() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![unit("683")])],
+            "unit 683\nMOVE N\nSTUDY Combat\nFLIBBERTIGIBBET 4021\n",
+        )));
+        assert_eq!(finding.line, Some(3));
+        assert_eq!(
+            finding.message,
+            "MOVE already spends this unit's month, so this STUDY will not run"
         );
     }
 
@@ -20977,6 +21315,13 @@ mod tests {
                 allowance: None,
                 unclaimed: None,
             },
+            Case {
+                code: codes::TWO_MONTH_LONG_ORDERS,
+                regions: vec![region(vec![unit("683")])],
+                orders: "unit 683\nMOVE N\nSTUDY Combat\n",
+                allowance: None,
+                unclaimed: None,
+            },
         ];
 
         assert_eq!(
@@ -21131,7 +21476,10 @@ mod tests {
             &report_with_status("Quartermasters", used, maximum, regions),
             orders,
             Some(&ruleset()),
-            disabling(codes::NOT_ENOUGH_SILVER),
+            // Some fixtures below write two STUDY lines, or a WORK above a STUDY, to say
+            // something about the allowance rather than about the month. `two-month-long-orders`
+            // is right about every one of them and beside the point here.
+            disabling_all(&[codes::NOT_ENOUGH_SILVER, codes::TWO_MONTH_LONG_ORDERS]),
         )
     }
 
@@ -24458,6 +24806,7 @@ mod tests {
                 codes::UNIT_DOES_NOTHING,
                 codes::PRODUCE_WITHOUT_SKILL,
                 codes::PRODUCE_NOT_HERE,
+                codes::TWO_MONTH_LONG_ORDERS,
             ]),
         )
     }
