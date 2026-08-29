@@ -39,11 +39,10 @@ use crate::orders::silver::{
     price_claim, price_pillage, price_production, price_purchase, price_sale_line, price_study,
     price_tax, producing_skill, quantity_bought, readiness, settle_unclaimed, split_pool, taxes,
     transfer_shape, transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster,
-    ContendedPool,
-    FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
-    MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts,
-    RegionWages, SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver,
-    UpkeepClaim, UpkeepSettlement, Workforce, FOOD_TAGS,
+    ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
+    LateFoodRelief, Lookups, MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
+    PurchaseAnswer, Receipts, RegionWages, SaleAnswer, SilverDoubt, TransferShape, Transmuting,
+    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce, FOOD_TAGS,
 };
 use crate::report::composition;
 use crate::report::model::{

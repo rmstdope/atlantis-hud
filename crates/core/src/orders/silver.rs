@@ -1173,16 +1173,18 @@ pub fn forecast_unit(
                     producing_skill(ruleset, &tag, Some(facts.skills))
                         .map(|(skill, recipe)| (tag, skill, recipe))
                 });
-                let work = found.as_ref().map_or(Workforce::default(), |(tag, skill, _)| {
-                    workforce_for(
-                        ruleset,
-                        skill,
-                        tag,
-                        facts.late().men,
-                        facts.skills,
-                        facts.items,
-                    )
-                });
+                let work = found
+                    .as_ref()
+                    .map_or(Workforce::default(), |(tag, skill, _)| {
+                        workforce_for(
+                            ruleset,
+                            skill,
+                            tag,
+                            facts.late().men,
+                            facts.skills,
+                            facts.items,
+                        )
+                    });
                 let recipe = found.as_ref().map(|(_, _, recipe)| *recipe);
                 let (priced, plan) = price_production(recipe, work, facts.items);
                 match plan.zip(recipe) {
@@ -4003,10 +4005,16 @@ mod production_tests {
             tool_bonus: 0,
             tools: 0,
         };
-        assert_eq!(plan_production(&unscraped, ten_carpenters, &held(&[])), None);
+        assert_eq!(
+            plan_production(&unscraped, ten_carpenters, &held(&[])),
+            None
+        );
         let mut no_output = catapult();
         no_output.outputs = None;
-        assert_eq!(plan_production(&no_output, ten_carpenters, &held(&[])), None);
+        assert_eq!(
+            plan_production(&no_output, ten_carpenters, &held(&[])),
+            None
+        );
     }
 }
 
