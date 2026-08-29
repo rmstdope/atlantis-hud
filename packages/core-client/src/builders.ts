@@ -251,6 +251,7 @@ export function aUnitSilver(overrides: Partial<UnitSilver> = {}): UnitSilver {
     sharedSilverForOrders: 0,
     withdrawing: false,
     produced: 0,
+    productionMenLeft: 0,
     producedName: null,
     productionWanted: 0,
     productionCappedBy: null,

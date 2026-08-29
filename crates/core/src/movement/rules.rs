@@ -387,11 +387,7 @@ pub fn item_spellings(written: &str) -> [Option<&str>; 3] {
             .filter(|_| written[cut..].eq_ignore_ascii_case(suffix))
     }
 
-    [
-        Some(written),
-        without(written, "es"),
-        without(written, "s"),
-    ]
+    [Some(written), without(written, "es"), without(written, "s")]
 }
 
 /// One thing a cast consumes: an item tag (`SILV` for silver) and how many.
