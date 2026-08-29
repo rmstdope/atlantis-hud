@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-vtwn — Production counted at the unit's skill level and tools</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --brass:#d9a441; --soft:#a3b0c0; --bad:#e0765c; --good:#7fb069; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 30px 0 6px; border-bottom: 1px dashed var(--edge);
+       padding-bottom: 4px; }
+  h3 { font-size: 13px; margin: 18px 0 6px; color: var(--brass); letter-spacing: .4px; }
+  p.note { color: var(--dim); max-width: 88ch; }
+  p.note b { color: var(--ink); }
+  .row { display: flex; gap: 24px; flex-wrap: wrap; margin: 10px 0 4px; align-items: flex-start; }
+  .tip { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
+         padding: 9px 12px; max-width: 46ch; white-space: pre-wrap;
+         font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--soft); }
+  .tip .cap { color: var(--ink); }
+  .tip .was { color: var(--dim); }
+  .lab { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--dim);
+         margin: 0 0 4px; }
+  .cost { color: var(--dim); font-size: 12.5px; margin: 6px 0 0; max-width: 64ch; }
+  table.g { border-collapse: collapse; margin: 8px 0; font-size: 12.5px; }
+  table.g th, table.g td { border: 1px solid var(--edge); padding: 5px 12px; text-align: left; }
+  table.g th { color: var(--dim); font-weight: 500; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .old { color: var(--bad); } .new { color: var(--good); } .hi { color: var(--brass); }
+  .chosen { border-color: var(--brass); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+  .rej { opacity: .55; }
+</style>
+</head>
+<body>
+<h1>ah-vtwn — A unit's PRODUCE is counted at its skill level and its tools</h1>
+
+<p class="note">
+  The preview computed what a PRODUCE order makes as <b>men ÷ man-months</b>. The rules
+  (<b>rules/tableiteminfo</b>) say the man-months a unit brings are <b>men × level</b>: "five men at
+  skill level one are exactly equivalent to one man at skill level 5 in terms of base output", with
+  a worked example that six level-1 men make two of a three-man-month item and six level-3 men make
+  six. The same page gives eight items a production bonus. Neither entered the arithmetic, so every
+  producing unit's ITEMS cell, both hovers, the SILVER cost and the two shortfall warnings were too
+  small by a factor of the unit's level — 3 to 5 for a mature faction.
+</p>
+
+<p class="note">
+  <b>Decisions (recorded from the planning discussion, navigator, 2026-08-29):</b>
+  the rate is <b>men × level + min(men, tools) × bonus</b> — one tool to one man, spare tools idle;
+  a unit below the recipe's minimum level makes <b>none</b>, and the hover says nothing about it
+  because the Problems panel's <code>produce-without-skill</code> already carries that sentence;
+  the cap sentence reads <b>"…not the 46 its skill and tools could make."</b>; tools are done in
+  this bead rather than a later one. Rejected, and why, below each choice.
+</p>
+
+<h2>What the figures become</h2>
+<table class="g">
+  <tr><th>Unit</th><th>Recipe</th><th class="num">Before</th><th class="num">After</th></tr>
+  <tr><td>8 orcs, mining 5 — PRODUCE iron</td><td>iron, 1 man-month</td>
+      <td class="num old">8</td><td class="num new">40</td></tr>
+  <tr><td>8 orcs, mining 5, <b>3 picks</b> — PRODUCE iron</td><td>iron, 1 man-month, pick +1</td>
+      <td class="num old">8</td><td class="num new">43</td></tr>
+  <tr><td>8 orcs, mining 5, <b>20 picks</b> — PRODUCE iron</td><td>only 8 picks can be swung</td>
+      <td class="num old">8</td><td class="num new">48</td></tr>
+  <tr><td>10 men, carpenter 5 — PRODUCE catapult</td><td>catapult, 4 man-months</td>
+      <td class="num old">2</td><td class="num new">12</td></tr>
+  <tr><td>9 men, armorer 1 — PRODUCE plate armor</td><td>plate armor, <b>needs armorer 3</b></td>
+      <td class="num old">3</td><td class="num new">0</td></tr>
+</table>
+<p class="cost">
+  The last row is the second decision: the engine makes nothing at all for a unit below the
+  recipe's minimum level, so the honest figure is 0 rather than 3.
+</p>
+
+<h2>The eight tools, as the game data states them</h2>
+<p class="note">
+  Every one of them says it the same way in its description on the data page — "This item increases
+  the production of iron [IRON] by 1, stone [STON] by 1, …". Read out of the committed ruleset:
+</p>
+<table class="g">
+  <tr><th>Tool</th><th>Increases the production of</th></tr>
+  <tr><td>pick [PICK]</td><td>iron 1, stone 1, mithril 1, rootstone 1, admantium 1</td></tr>
+  <tr><td>hammer [HAMM]</td><td>sword 1, chain armor 1, plate armor 1, … 13 items, all by 1</td></tr>
+  <tr><td>axe [AXE]</td><td>wood 1, crossbow 1, longbow 1, wagon 1, … 16 items, all by 1</td></tr>
+  <tr><td>spear [SPEA]</td><td>fur 1, floater hide 1</td></tr>
+  <tr><td>lasso [LASS]</td><td>livestock 1, horse 1, winged horse 1, camel 1</td></tr>
+  <tr><td>net [NET]</td><td>fish <b class="hi">2</b>, giant turtle 1</td></tr>
+  <tr><td>bag [BAG]</td><td>grain <b class="hi">2</b>, herb <b class="hi">2</b>, mushroom <b class="hi">2</b></td></tr>
+  <tr><td>spinning wheel [SPIN]</td><td>net <b class="hi">2</b>, lasso <b class="hi">2</b>, bag <b class="hi">2</b>, leather armor <b class="hi">2</b></td></tr>
+</table>
+<p class="cost">
+  No item in this ruleset is boosted by two different tools — checked over the whole catalogue — so
+  "which tool wins" never arises in play.
+</p>
+
+<h2>Decision 1 — how tools combine with men — CHOSEN: one tool, one man</h2>
+<p class="note">
+  The rules page states the bonus and stops; it never says how many men one tool serves, so this is
+  the navigator's reading of the game and not a lookup. Worked on <b>MinersA (5105) — 8 orcs,
+  mining 5, PRODUCE iron</b>, iron being 1 man-month.
+</p>
+<table class="g">
+  <tr><th>Reading</th><th>Rate</th><th class="num">3 picks</th><th class="num">20 picks</th></tr>
+  <tr class="chosen"><td><b>One tool, one man — CHOSEN</b><br>
+        <span style="font-size:11.5px;color:var(--dim)">a man can only swing one pick; spare picks sit in the pack</span></td>
+      <td>men × level + min(men, tools) × bonus</td>
+      <td class="num"><b class="hi">43</b></td><td class="num"><b class="hi">48</b></td></tr>
+  <tr class="rej"><td>Any tool helps the whole unit<br>
+        <span style="font-size:11.5px">rejected: one pick would lift eight men, which the tool count then never affects</span></td>
+      <td>men × (level + bonus)</td><td class="num">48</td><td class="num">48</td></tr>
+  <tr class="rej"><td>Every tool counts<br>
+        <span style="font-size:11.5px">rejected: twenty picks and eight men would out-produce the men who carry them</span></td>
+      <td>men × level + tools × bonus</td><td class="num">43</td><td class="num">60</td></tr>
+</table>
+
+<h2>Decision 2 — the cap sentence — CHOSEN: "its skill and tools"</h2>
+<p class="note">
+  It appears in both the SILVER hover and the ITEMS hover wherever the unit could have made more
+  than its silver or materials allow. Shown for <b>8 men, weaponsmith 5, 6 hammers, holding 5
+  iron, ordered PRODUCE sword</b> — 8×5 + 6 = 46 man-months, capped at 5 by the iron.
+</p>
+<div class="grid">
+  <div>
+    <h3>CHOSEN — "its skill and tools"</h3>
+    <p class="lab">ITEMS hover</p>
+    <div class="tip chosen"><span class="was">was: 5 IRON, 350 SILV</span>
+Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.
+<span class="cap">This unit has materials for 5 swords, not the 46 its skill and tools could make.</span></div>
+    <p class="lab" style="margin-top:10px">SILVER hover — 10 men, carpenter 5, silver for one catapult</p>
+    <div class="tip chosen"><span class="cap">This unit has silver for 1 catapult, not the 12 its skill and tools could make.</span></div>
+    <p class="cost">Accurate in every case. Says "and tools" to units carrying none, which was
+      weighed and accepted.</p>
+  </div>
+  <div class="rej">
+    <h3>Rejected — "its skill"</h3>
+    <div class="tip"><span class="cap">This unit has materials for 5 swords, not the 46 its skill could make.</span></div>
+    <p class="cost">Chosen in the first round, when the figure was men × level alone; withdrawn once
+      tools came into this bead, because the hammers are inside that 46 and "skill" does not cover
+      them.</p>
+  </div>
+  <div class="rej">
+    <h3>Rejected — "its men" (the shipped wording)</h3>
+    <div class="tip"><span class="cap">This unit has materials for 5 swords, not the 46 its men could make.</span></div>
+    <p class="cost">Covers both without naming either and moves no test string, but says nothing
+      about where 46 came from — which is the number a player would otherwise recompute by hand.</p>
+  </div>
+</div>
+
+<h2>Decision 3 — the unit that cannot make it at all — CHOSEN: silent</h2>
+<p class="note">
+  <b>9 men at armorer 1, ordered PRODUCE plate armor</b>, which needs armorer 3. The ITEMS cell
+  showed 3 plate armor appearing; it now shows no change at all.
+</p>
+<div class="grid">
+  <div>
+    <h3>CHOSEN — silent; the Problems panel carries it</h3>
+    <p class="lab">ITEMS hover</p>
+    <div class="tip chosen"><span class="was">was: 9 HUMN, 40 IRON</span>
+<span class="was">(no production line at all)</span></div>
+    <p class="lab" style="margin-top:10px">Problems panel, unchanged</p>
+    <div class="tip chosen"><span class="cap">cannot produce plate armor: needs armorer 3, has armorer 1</span></div>
+    <p class="cost">One statement of the fact, in the panel that exists for it. A unit with no
+      level in the skill at all reads the same way.</p>
+  </div>
+  <div class="rej">
+    <h3>Rejected — the hover says why</h3>
+    <div class="tip"><span class="was">was: 9 HUMN, 40 IRON</span>
+<span class="cap">This unit makes no plate armor: it needs armorer 3 and has armorer 1.</span></div>
+    <p class="cost">Answers the question where it is asked, but duplicates the panel's sentence —
+      two things to keep in step — and would still say it when that warning is switched off in
+      settings.</p>
+  </div>
+</div>
+
+<h2>Deliberately not in this bead</h2>
+<p class="note">
+  <b>The region's resource pool.</b> A hex states how much of each resource it holds and every unit
+  producing there shares it. The real report says <b>MinersA (5105): Produces 20 iron</b> for a
+  unit whose men could make 40 — the pool is what took it down, and the app models none. Named here
+  so this bead's verification is not confused by it: the preview will say 40 where the report said
+  20, and that is correct for this bead.
+</p>
+</body>
+</html>
