@@ -4,14 +4,15 @@ import { describe, expect, it, vi } from "vitest";
 import { batchSummary, prepareBatch, viewerFactionOptions, walkBatch, type ChosenFile } from "./batchImport";
 import type { BatchCandidate } from "./reportBatch";
 import { REPORT_NAMES_NO_FACTION, REPORT_NAMES_NO_TURN } from "./reportLoadDecision";
+import { MAP_EXPORT_MARKER } from "./mapExportImport";
 
 /**
  * A candidate as `prepareBatch` builds one: `usable` is what `judgeReportUsable` said about the
  * report behind it, derived here from the identity so a fixture cannot forget the judgement.
  */
 function candidate(
-  fields: Omit<BatchCandidate, "usable" | "unreadableCount"> &
-    Partial<Pick<BatchCandidate, "usable" | "unreadableCount">>
+  fields: Omit<BatchCandidate, "usable" | "unreadableCount" | "isMapExport" | "hasRegions"> &
+    Partial<Pick<BatchCandidate, "usable" | "unreadableCount" | "isMapExport" | "hasRegions">>
 ): BatchCandidate {
   const usable: BatchCandidate["usable"] =
     fields.usable ??
@@ -20,7 +21,7 @@ function candidate(
       : fields.turnNumber === null
         ? { ok: false, reason: REPORT_NAMES_NO_TURN }
         : { ok: true });
-  return { unreadableCount: 0, ...fields, usable };
+  return { unreadableCount: 0, isMapExport: false, hasRegions: true, ...fields, usable };
 }
 
 // One region, because a report with nothing in it is refused outright (ah-sgn.1) and these fixtures
@@ -102,7 +103,9 @@ describe("prepareBatch", () => {
         turnNumber: null,
         // A file nothing could be read from carries the read failure as its verdict too, so the plan
         // never reports a faction-shaped reason for a parse failure.
-        usable: { ok: false, reason: "could not be read: gone" }
+        usable: { ok: false, reason: "could not be read: gone" },
+        // Nothing of it parsed, so it describes no hex either.
+        hasRegions: false
       })
     ]);
     expect(batch.unreadable).toEqual([{ index: 1, fileName: "bad.rep", reason: "could not be read: gone" }]);
@@ -119,12 +122,54 @@ describe("prepareBatch", () => {
         fileName: "bad.rep",
         factionId: null,
         turnNumber: null,
-        usable: { ok: false, reason: "could not be read: not a report" }
+        usable: { ok: false, reason: "could not be read: not a report" },
+        hasRegions: false
       })
     ]);
     expect(batch.unreadable).toEqual([
       { index: 0, fileName: "bad.rep", reason: "could not be read: not a report" }
     ]);
+  });
+});
+
+/**
+ * A map export parses as a report, so nothing downstream can tell one apart unless the read says
+ * so. `isMapExport` is that answer, and `hasRegions` is the same fact `judgeReportUsable` knows in
+ * words meant for a report - a map export needs its own sentence for it.
+ */
+describe("prepareBatch and our own map exports", () => {
+  it("marks a map export, and leaves an ordinary report unmarked", async () => {
+    const parse = vi.fn().mockResolvedValue(report());
+
+    const batch = await prepareBatch(
+      [file("turn.rep", "Atlantis Report For:"), file("map.txt", `${MAP_EXPORT_MARKER}\n; level 1`)],
+      parse
+    );
+
+    expect(batch.candidates[0].isMapExport).toBe(false);
+    expect(batch.candidates[1].isMapExport).toBe(true);
+  });
+
+  it("says whether the file describes any hex at all", async () => {
+    const parse = vi
+      .fn()
+      .mockResolvedValueOnce(report())
+      .mockResolvedValueOnce(aParsedReport({ header: aReportHeaderInfo({ month: "January" }), regions: [] }));
+
+    const batch = await prepareBatch([file("a.rep", "one"), file("b.rep", "two")], parse);
+
+    expect(batch.candidates[0].hasRegions).toBe(true);
+    expect(batch.candidates[1].hasRegions).toBe(false);
+  });
+
+  /** Nothing of an unreadable file parsed, so neither question has an answer worth acting on. */
+  it("marks a file that would not parse as neither", async () => {
+    const parse = vi.fn().mockRejectedValue(new Error("not a report"));
+
+    const batch = await prepareBatch([file("bad.rep", "garbage")], parse);
+
+    expect(batch.candidates[0].isMapExport).toBe(false);
+    expect(batch.candidates[0].hasRegions).toBe(false);
   });
 });
 
@@ -307,6 +352,107 @@ describe("walkBatch", () => {
       { index: 0, fileName: "mystery.rep", reason: "the report does not name its faction" }
     ]);
     expect(walk.finish).toBeNull();
+  });
+});
+
+/**
+ * The walk's half of the bead: a map export is merged, never committed, and the only place the
+ * number of hexes it added can be known is the merge's own answer.
+ */
+describe("walkBatch and a map export", () => {
+  const MAP_TEXT = `${MAP_EXPORT_MARKER}\n; level 1`;
+
+  it("merges a map export, counts its hexes and never commits it as a turn", async () => {
+    const core = client({ mergeReport: vi.fn().mockResolvedValue({ ...MERGE_RESULT, newRegionCount: 8 }) });
+    const batch = {
+      read: [{ text: MAP_TEXT, report: report({ factionId: "95", turnNumber: 71 }) }],
+      candidates: [
+        candidate({ fileName: "map.txt", factionId: "95", turnNumber: 71, isMapExport: true })
+      ],
+      unreadable: []
+    };
+
+    const walk = await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
+
+    expect(core.commitReportImport).not.toHaveBeenCalled();
+    expect(walk.landed).toEqual([
+      { kind: "mapExport", index: 0, fileName: "map.txt", turnNumber: 71, hexesAdded: 8 }
+    ]);
+    // Nothing about the turn on screen moves, whoever wrote the file.
+    expect(walk.finish).toBeNull();
+  });
+
+  /**
+   * The viewer's own turn, not the file's: the core stamps each hex with the age the file records,
+   * so the turn here is only what the merged-report record means by "when the player took this in".
+   * `plan.finalTurn` first, because a batch that imports turn 71 and adds a map export in the same
+   * run has that turn by the time this step is walked - which is why map exports sort last.
+   */
+  it("merges a map export under the turn the batch ends on", async () => {
+    const core = client();
+    const batch = {
+      read: [
+        { text: "own", report: report({ factionId: "95", turnNumber: 71 }) },
+        { text: MAP_TEXT, report: report({ factionId: "73", turnNumber: 40 }) }
+      ],
+      candidates: [
+        candidate({ fileName: "own.rep", factionId: "95", turnNumber: 71 }),
+        candidate({ fileName: "map.txt", factionId: "73", turnNumber: 40, isMapExport: true })
+      ],
+      unreadable: []
+    };
+
+    await walkBatch(core, OPEN_GAME, batch, "95", null, RULESET, NOW, () => {});
+
+    expect(core.mergeReport).toHaveBeenCalledWith(
+      "p.sqlite",
+      "aug-2026",
+      "95",
+      71,
+      MAP_TEXT,
+      RULESET,
+      NOW()
+    );
+  });
+
+  /** With no own turn in the batch, the turn on screen is the one the hexes are taken in on. */
+  it("falls back to the turn already on screen when the batch imports none", async () => {
+    const core = client();
+    const batch = {
+      read: [{ text: MAP_TEXT, report: report({ factionId: "73", turnNumber: 40 }) }],
+      candidates: [
+        candidate({ fileName: "map.txt", factionId: "73", turnNumber: 40, isMapExport: true })
+      ],
+      unreadable: []
+    };
+
+    await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
+
+    expect(core.mergeReport).toHaveBeenCalledWith(
+      "p.sqlite",
+      "aug-2026",
+      "95",
+      71,
+      MAP_TEXT,
+      RULESET,
+      NOW()
+    );
+  });
+
+  it("demotes a map export the core refuses to a skip, and keeps it out of the landed steps", async () => {
+    const core = client({ mergeReport: vi.fn().mockRejectedValue(new Error("disk is full")) });
+    const batch = {
+      read: [{ text: MAP_TEXT, report: report({ factionId: "95", turnNumber: 71 }) }],
+      candidates: [
+        candidate({ fileName: "map.txt", factionId: "95", turnNumber: 71, isMapExport: true })
+      ],
+      unreadable: []
+    };
+
+    const walk = await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
+
+    expect(walk.landed).toEqual([]);
+    expect(walk.skipped).toEqual([{ index: 0, fileName: "map.txt", reason: "disk is full" }]);
   });
 });
 

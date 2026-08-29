@@ -11,6 +11,12 @@
  * is left with the doing - reading the files, walking the steps, and saying what happened.
  */
 
+import {
+  MAP_EXPORT_HAS_NO_HEXES,
+  MAP_EXPORT_NAMES_NO_FACTION,
+  MAP_EXPORT_NAMES_NO_TURN,
+  MAP_EXPORT_NEEDS_A_MAP
+} from "./mapExportImport";
 import type { ReportUsability } from "./reportLoadDecision";
 
 /** As much of a report as planning a batch needs, plus the name the summary will use for it. */
@@ -22,6 +28,16 @@ export type BatchCandidate = {
   usable: ReportUsability;
   /** How many lines of this report the parser could not read. Zero for one it never parsed. */
   unreadableCount: number;
+  /**
+   * Whether this file is one of our own map exports (`mapExportImport.isMapExport`). Such a file
+   * is never committed as a turn, whoever wrote it.
+   */
+  isMapExport: boolean;
+  /**
+   * Whether the file describes any hex at all. `judgeReportUsable` answers this too, but in words
+   * meant for a report; a map export needs its own sentence for the same fact.
+   */
+  hasRegions: boolean;
 };
 
 /** One report the batch will act on, and how. */
@@ -42,6 +58,23 @@ export type BatchStep =
       fileName: string;
       turnNumber: number;
       unreadableCount: number;
+    }
+  /**
+   * One of our own map exports: its hexes are added to the viewer's map, and nothing about the
+   * turn on screen moves. Never an `import`, whoever wrote the file - committing one as a turn is
+   * what this bead exists to stop.
+   */
+  | {
+      kind: "mapExport";
+      index: number;
+      fileName: string;
+      /** The turn the file was written on. Carried for the record; nothing is filed under it. */
+      turnNumber: number;
+      /**
+       * How many hexes it actually added. `null` from the planner, which cannot know - filled in
+       * by `walkBatch` from the merge's own `newRegionCount`.
+       */
+      hexesAdded: number | null;
     };
 
 /**
@@ -153,8 +186,34 @@ export function planReportBatch(
     turnNumber: number;
     own: boolean;
   }[] = [];
+  // Map exports whose own four questions are answered. Held back rather than turned into steps
+  // here, because the last of those questions - is there any turn at all to add hexes to - is
+  // answered by `ceiling` below, which is not known until every report has been looked at.
+  const mapExports: { index: number; candidate: BatchCandidate; turnNumber: number }[] = [];
 
   for (const [index, candidate] of candidates.entries()) {
+    // A map export takes its own branch *before* `judgeReportUsable`'s verdict is read: those
+    // sentences are about reports, and a player told "the report does not name its faction" about
+    // a map export goes looking for the wrong thing. The refusals below are the single-file path's
+    // own constants, so both paths say one thing about the same file.
+    if (candidate.isMapExport) {
+      const refusal =
+        viewer.factionId === null
+          ? MAP_EXPORT_NEEDS_A_MAP
+          : candidate.factionId === null
+            ? MAP_EXPORT_NAMES_NO_FACTION
+            : candidate.turnNumber === null
+              ? MAP_EXPORT_NAMES_NO_TURN
+              : !candidate.hasRegions
+                ? MAP_EXPORT_HAS_NO_HEXES
+                : null;
+      if (refusal !== null) {
+        skipped.push({ index, fileName: candidate.fileName, reason: refusal });
+      } else {
+        mapExports.push({ index, candidate, turnNumber: candidate.turnNumber as number });
+      }
+      continue;
+    }
     // Whether a report can be imported at all is one rule, shared with the single-file path -
     // `judgeReportUsable`, already answered for this candidate by `prepareBatch` (ah-sgn.1).
     if (!candidate.usable.ok) {
@@ -216,6 +275,30 @@ export function planReportBatch(
     });
   }
 
+  for (const entry of mapExports) {
+    if (ceiling === null) {
+      // No turn of the viewer's own anywhere - not on screen, and none the batch brings - so there
+      // is no map for these hexes to be added to. The same sentence the single file gets.
+      skipped.push({
+        index: entry.index,
+        fileName: entry.candidate.fileName,
+        reason: MAP_EXPORT_NEEDS_A_MAP
+      });
+      continue;
+    }
+    // No `ceiling` test of its own: the newer-than-your-own-turn rule is about an ally's account
+    // of a turn you have not reached, and a map export is not an account of a turn at all - each
+    // hex carries the age it was seen at, and the merge lets the freshest sighting win. And never
+    // `own`, whoever wrote the file: a map export is never committed as a turn.
+    steps.push({
+      kind: "mapExport",
+      index: entry.index,
+      fileName: entry.candidate.fileName,
+      turnNumber: entry.turnNumber,
+      hexesAdded: null
+    });
+  }
+
   // Ordered by turn, then own report before its allies, then by the order the files were chosen.
   //
   // That last clause is spelled out rather than left to the sort being stable. It is - the language
@@ -224,6 +307,16 @@ export function planReportBatch(
   // the one the database keeps and the one put on screen. A reader should be able to see that the
   // order is decided here rather than have to remember a property of `sort`.
   steps.sort((left, right) => {
+    // Map exports last, whatever turn they name: they are not part of the run of turns, and the
+    // walk needs the viewer's own turns to have landed before it adds hexes to the map they make.
+    const mapExportOrder =
+      (left.kind === "mapExport" ? 1 : 0) - (right.kind === "mapExport" ? 1 : 0);
+    if (mapExportOrder !== 0) {
+      return mapExportOrder;
+    }
+    if (left.kind === "mapExport" || right.kind === "mapExport") {
+      return left.index - right.index;
+    }
     if (left.turnNumber !== right.turnNumber) {
       return left.turnNumber - right.turnNumber;
     }

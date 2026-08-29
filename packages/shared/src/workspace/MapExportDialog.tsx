@@ -23,6 +23,7 @@ export function MapExportDialog({
   selection,
   busy,
   error,
+  refusal,
   onExport,
   onDismiss
 }: {
@@ -32,6 +33,8 @@ export function MapExportDialog({
   selection: MapRect | null;
   busy: boolean;
   error: string | null;
+  /** Why this report cannot be exported at all, from `mapExportRefusal`. `null` when it can. */
+  refusal: string | null;
   onExport: (rect: MapRect, content: MapExportContent) => void;
   onDismiss: () => void;
 }) {
@@ -112,6 +115,11 @@ export function MapExportDialog({
         <p data-testid="map-export-summary" className="text-ink-soft">
           {exportSummary(regions)}
         </p>
+        {refusal ? (
+          <p data-testid="map-export-unimportable" className="text-danger">
+            {refusal}
+          </p>
+        ) : null}
         {error ? (
           <p data-testid="map-export-error" className="text-danger">
             {error}
@@ -130,8 +138,9 @@ export function MapExportDialog({
             type="button"
             data-testid="map-export-confirm"
             // A file with no regions in it is a file the player would send and the ally would
-            // wonder about, so the button that writes one is not available.
-            disabled={busy || regions === 0}
+            // wonder about, so the button that writes one is not available. Nor is one whose
+            // header would leave the file unimportable by anyone, the player included.
+            disabled={busy || regions === 0 || refusal !== null}
             onClick={() => onExport(bounds, content)}
             className="rounded border border-brass px-2 py-0.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim"
           >

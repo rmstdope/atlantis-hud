@@ -64,3 +64,45 @@ export function exportSummary(regions: number): string {
   }
   return `${regions} region${regions === 1 ? "" : "s"} will be exported.`;
 }
+
+/** As much of a report header as deciding whether an export could be imported needs. */
+export type ExportableHeader = {
+  factionId: string | null;
+  factionName: string | null;
+  month: string | null;
+  year: number | null;
+};
+
+/**
+ * Why a map export written from this report could never be imported, or `null` when it could.
+ *
+ * Mirrors `write_header` (`crates/core/src/report/export.rs:202-220`) exactly: it writes the
+ * faction line only when the name *and* the id are present, and the date line only when the month
+ * *and* the year are - and an importer needs both lines, because `judgeReportUsable` requires a
+ * faction id and a turn number. So a file written without either is one nobody can read back,
+ * which is what this stops being produced.
+ *
+ * The faction is reported first when both are missing: it is the one the player can do something
+ * about by loading a different turn.
+ *
+ * `null` for a `null` header - there is no report open, so there is nothing to export and the
+ * dialog's existing `regions === 0` rule has already turned the button off.
+ */
+export function mapExportRefusal(header: ExportableHeader | null): string | null {
+  if (header === null) {
+    return null;
+  }
+  if (header.factionId === null || header.factionName === null) {
+    return (
+      "This report does not name its faction, so a map exported from it could not be imported " +
+      "by anyone — including you."
+    );
+  }
+  if (header.month === null || header.year === null) {
+    return (
+      "This report does not say which turn it is from, so a map exported from it could not be " +
+      "imported by anyone — including you."
+    );
+  }
+  return null;
+}

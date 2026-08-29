@@ -79,6 +79,7 @@ import {
 } from "../batchImport";
 import type { ImportSummary } from "../importSummary";
 import { describeMerge } from "../foreignReport";
+import { mapExportRefusal } from "../mapExport";
 import { describeMapExportAdded } from "../mapExportPrompt";
 import {
   AUTOSAVE_CEILING_MS,
@@ -4057,6 +4058,7 @@ export function AppShell({
           selection={exportRect}
           busy={exportBusy}
           error={exportError}
+          refusal={mapExportRefusal(parsed?.header ?? null)}
           onExport={(rect, content) => void exportMap(rect, content)}
           onDismiss={() => setExportOpen(false)}
         />
