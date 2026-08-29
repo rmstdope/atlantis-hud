@@ -631,8 +631,9 @@ export function AppShell({
   // A report from another faction, parsed and waiting for the player to say what to do with it,
   // and whose reports have already been folded into the turn on screen.
   const [pendingLoad, setPendingLoad] = useState<PendingReportLoad | null>(null);
-  // One of our own map exports, held for the same reason and cleared the same way. It is never a
-  // turn, so unlike `pendingLoad` there is no third answer that opens it.
+  // One of our own map exports, held for the same reason and cleared the same way: it replaces
+  // whichever of the three questions was already up, and is replaced by either of them. It is never
+  // a turn, so unlike `pendingLoad` there is no third answer that opens it.
   const [pendingMapExport, setPendingMapExport] = useState<PendingMapExport | null>(null);
   // An orders file, recognised and waiting for the player to confirm the overwrite it names -
   // `pendingLoad`'s sibling for the other kind of file the Import target takes. The two clear each
@@ -1415,7 +1416,9 @@ export function AppShell({
           }
 
           if (route.kind === "mapExport") {
-            // A map is added, never opened, so the load stops here exactly as `ask` does.
+            // A map is added, never opened, so the load stops here exactly as `ask` does - and it
+            // replaces whichever question was already up, because only one is ever on screen.
+            setPendingLoad(null);
             setPendingOrdersImport(null);
             setPendingMapExport(route.pending);
             return;
@@ -1427,6 +1430,7 @@ export function AppShell({
             // player cannot answer would be worse than no prompt. A second file dropped while this
             // is up simply replaces the question rather than queueing behind it.
             setPendingOrdersImport(null);
+            setPendingMapExport(null);
             setPendingLoad(route.pending);
             return;
           }
@@ -1559,8 +1563,10 @@ export function AppShell({
         return;
       }
       // The one question a file drop can raise, whichever kind of file it turns out to be - this
-      // one replaces a foreign-report question left open exactly as a second report replaces it.
+      // one replaces a foreign-report or map-export question left open exactly as a second report
+      // replaces it.
       setPendingLoad(null);
+      setPendingMapExport(null);
       setPendingOrdersImport(route.pending);
     },
     [game, parsed, ordersDocument]
@@ -2086,6 +2092,7 @@ export function AppShell({
       // batch's question carries a whole selection of parsed reports and would write them into
       // whichever game is open when it is answered; the summary describes a game nobody is in.
       setPendingLoad(null);
+      setPendingMapExport(null);
       setPendingBatch(null);
       setImportSummary(null);
       setMergedReports([]);

@@ -17,6 +17,8 @@ import {
  */
 
 const TURN_71 = readReport("g7f95t71");
+/** An ally's report for the same turn, which raises the *other* question a dropped file can raise. */
+const ALLY_REPORT = readReport("g8f73t71");
 
 
 /**
@@ -190,4 +192,39 @@ test("cancels a map export without writing anything", async ({ page }, testInfo)
   await expect(page.getByTestId("map-export-prompt")).toHaveCount(0);
   await expect(page.getByTestId("import-status")).not.toContainText("added to your map");
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+});
+
+/**
+ * Only one question is ever on screen, whichever two of the three are involved.
+ *
+ * The three prompts render on independent state and each registers its own document-level Escape
+ * handler, so a pair left stacked would answer one Escape twice. `busy` is released as soon as a
+ * prompt opens - deliberately, so the Import control the player would have to use is not dead - so
+ * a second file really can arrive on top of a first question.
+ */
+test("a map export replaces a question already on screen, and is replaced by one", async ({
+  page
+}, testInfo) => {
+  await clearGames(page);
+  await createGame(page, "Export game");
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  await openMapExport(page);
+  const { text, name } = await exportAndRead(page, testInfo);
+
+  // An ally's report first, then the map export on top of it.
+  await importReport(page, "turn-71-f73.rep", ALLY_REPORT);
+  await expect(page.getByTestId("foreign-report-prompt")).toBeVisible();
+
+  await importReport(page, name, text);
+
+  await expect(page.getByTestId("map-export-prompt")).toBeVisible();
+  await expect(page.getByTestId("foreign-report-prompt")).toHaveCount(0);
+
+  // And the other way about.
+  await importReport(page, "turn-71-f73.rep", ALLY_REPORT);
+
+  await expect(page.getByTestId("foreign-report-prompt")).toBeVisible();
+  await expect(page.getByTestId("map-export-prompt")).toHaveCount(0);
 });
