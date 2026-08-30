@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ah-1mpx.6.3 — Mixed sources</title>
+  <style>
+    :root { color-scheme: dark; --ground:#10151c; --panel:#171d26; --edge:#26303d; --ink:#dbe3ec; --soft:#a3b0c0; --dim:#8a97a8; --brass:#d9a441; }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:32px; background:var(--ground); color:var(--ink); font:14px/1.5 system-ui,sans-serif; }
+    main { max-width:940px; margin:auto; }
+    h1 { font:24px/1.2 Georgia,serif; }
+    h2 { margin:30px 0 8px; color:var(--brass); font-size:13px; letter-spacing:.1em; text-transform:uppercase; }
+    .surface { padding:16px; border:1px solid var(--edge); border-radius:9px; background:var(--panel); }
+    .grid { display:grid; grid-template-columns:minmax(260px,1fr) minmax(260px,1fr); gap:18px; }
+    .heading { margin:14px 0 5px; color:var(--brass); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+    .skills { margin:0; }
+    .source { margin:2px 0 10px; color:var(--dim); font-size:12px; font-style:italic; }
+    .tip { max-width:360px; padding:10px 12px; border:1px solid var(--edge); border-radius:6px; background:#1c232e; }
+    .tip strong { display:block; margin-bottom:7px; color:#eebe63; }
+    .note { color:var(--soft); }
+    @media (max-width:650px) { body { padding:16px; } .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Group skills by battle</h1>
+  <p class="note">Skills sharing a source stay together. A second source becomes a second group.</p>
+  <div class="grid">
+    <section>
+      <h2>Unit panel</h2>
+      <div class="surface">
+        <strong>Squires (5284)</strong>
+        <div class="heading">Skills from battle reports</div>
+        <p class="skills">combat 4</p>
+        <p class="source">Seen in the battle in desert (14,22), turn 68.</p>
+        <p class="skills">riding 5 · longbow 2</p>
+        <p class="source">Seen in the battle in ocean (25,55), turn 71.</p>
+      </div>
+    </section>
+    <section>
+      <h2>Units-table hover</h2>
+      <div class="tip">
+        <strong>Squires (5284) — skills</strong>
+        combat 4<br>
+        <span class="source">Read from the battle in desert (14,22) on turn 68.</span>
+        riding 5, longbow 2<br>
+        <span class="source">Read from the battle in ocean (25,55) on turn 71.</span>
+        <span class="note">A report never shows another faction's skills.</span>
+      </div>
+    </section>
+  </div>
+  <h2>Missing battle location</h2>
+  <div class="surface">
+    <p class="skills">crossbow 3</p>
+    <p class="source">Seen in a battle on turn 70.</p>
+  </div>
+</main>
+</body>
+</html>

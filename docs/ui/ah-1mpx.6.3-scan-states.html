@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ah-1mpx.6.3 — Scan states</title>
+  <style>
+    :root{color-scheme:dark;--g:#10151c;--p:#171d26;--e:#26303d;--i:#dbe3ec;--d:#8a97a8;--b:#d9a441}
+    *{box-sizing:border-box}body{margin:0;padding:32px;background:var(--g);color:var(--i);font:14px/1.5 system-ui,sans-serif}main{max-width:900px;margin:auto}
+    h1{font:24px/1.2 Georgia,serif}h2{margin:26px 0 8px;color:var(--b);font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+    .pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}.panel{padding:15px;border:1px solid var(--e);border-radius:8px;background:var(--p)}
+    .head{margin:15px 0 4px;color:var(--b);font-size:11px;letter-spacing:.08em;text-transform:uppercase}.empty{color:var(--d);font-style:italic}.src{color:var(--d);font-size:12px;font-style:italic}
+    table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:5px 7px;border-bottom:1px solid var(--e);text-align:left}th{color:var(--d);text-transform:uppercase;font-size:10px}
+    @media(max-width:650px){body{padding:16px}.pair{grid-template-columns:1fr}}
+  </style>
+</head>
+<body><main>
+  <h1>Surfaces stay quiet while scanning</h1>
+  <p>The existing final-state words remain on screen until recovered skills arrive. An unread stored turn is reported only in the export dialog, where it already appears.</p>
+  <h2>While scanning</h2>
+  <div class="pair">
+    <div class="panel"><strong>Watazka (4839)</strong><div class="head">Skills from battle reports</div><div class="empty">No battle we have seen involved this unit. A report never shows another faction's skills.</div></div>
+    <div class="panel"><table><tr><th>Unit</th><th>Skills</th></tr><tr><td>Watazka (4839)</td><td class="empty">not disclosed</td></tr></table></div>
+  </div>
+  <h2>After a partial scan</h2>
+  <div class="pair">
+    <div class="panel"><strong>Watazka (4839)</strong><div class="head">Skills from battle reports</div><div>riding 5 · combat 2 · longbow 4</div><div class="src">Seen in the battle in ocean (25,55), turn 71.</div></div>
+    <div class="panel"><table><tr><th>Unit</th><th>Skills</th></tr><tr><td>Watazka (4839)</td><td>RIDI 5, COMB 2, LBOW 4 (turn 71)</td></tr></table></div>
+  </div>
+</main></body></html>
