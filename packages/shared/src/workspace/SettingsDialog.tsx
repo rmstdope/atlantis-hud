@@ -563,7 +563,8 @@ export const WARNING_GROUPS: readonly {
       {
         code: "items-cannot-be-given",
         title: "Gifts the game will refuse",
-        description: "A GIVE or TAKE naming items that cannot change hands, such as most monsters."
+        description:
+          "A GIVE or TAKE naming items that cannot change hands, or men given to another faction."
       },
       {
         code: "too-many-trade-regions",
