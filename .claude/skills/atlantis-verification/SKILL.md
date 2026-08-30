@@ -79,6 +79,14 @@ Three steps, in order.
    a named fixture constant instead would force every made fixture to be committed, and the
    navigator ruled against that. Quote what the probe printed in the briefing.
 
+**For a batch, scan rather than pick.** The same probe harness answers "which committed hex serves
+   all of these beads at once" — walk every fixture, classify each region with the shipped ruleset,
+   and score hexes by how many of the batch's preconditions they hold (a market that sells
+   something, a market that wants something an own unit holds, an own unit with silver, a tax base,
+   and so on). Print the top few and choose from them. It is worth the few minutes: it is what turns
+   five launches into one, and it tells you honestly when no hex serves the whole batch — in which
+   case **drop a bead from the batch rather than trim a fixture to fit**.
+
 3. **Build a minimal one, only when nothing committed reaches the case.** Trim a copy of the nearest
    committed report down to the smallest thing that reaches it, write it to
    `.cerebro/scratch/<bead>-<slug>.rep`, and prove it with the same probe above. Trim rather than
@@ -92,9 +100,51 @@ Three steps, in order.
 When a fixture was made rather than picked, the page must say so — see Q7 under *The script the
 navigator reads*.
 
+## One sitting, several beads
+
+A pass may prepare **one bead or a batch of four to six**, and a batch is often the better use of the
+navigator's time. Most beads in this project are the same gesture — type one order, read two cells —
+so once a shell is up and a report imported, the marginal cost of another bead is a step or two
+rather than a whole launch. Two batches run this way on 2026-08-28 settled six beads between them,
+one of which failed.
+
+**What makes a set of beads a batch**, all three, not two of them:
+
+- **One fixture and one hex serve every bead in it**, proved together before the navigator is asked
+  — see the probe below, which scans for such a hex rather than assuming one.
+- **They share a mental model.** The market columns (`BUY`/`SELL` against Silver and Items) are one;
+  the Problems panel and its findings are another. Mixing them makes the navigator change gear
+  mid-sitting, which is where attention goes.
+- **Four to six.** This is the real limit and it is not about logistics. The whole point of the role
+  is that a person actually looks; somewhere past the sixth "type this, read that cell" a sitting
+  becomes a rubber stamp, and twelve verdicts of which four were examined is worse than four honest
+  ones. **Never batch a whole family because it happens to share a fixture.**
+
+**A verdict is still per bead** — passed · passed with a follow-up · failed, one each — because a
+reopen is per bead. Take them at the end, bead by bead, and **ask rather than infer**: "mostly
+passed" is not a verdict for any particular bead, and a failure reopens at P0, so the one thing a
+batch must never do is let a vague answer stand in for five specific ones.
+
+**The page carries one section per bead**, each headed with the bead's id, priority and title and a
+sentence on what it changed, and the steps numbered continuously through the whole sitting so the
+navigator never loses their place. Everything else about the page — the title, the subtitle, the
+facts block, the made-data block, the bounded exploration at the end — is written once for the
+sitting rather than once per bead. The file is `.cerebro/scratch/verify-<slug>.html`, named for the
+batch (`verify-market-columns.html`) rather than for any one bead in it.
+
+**State bleed is the batch's own failure mode**, and it has one countermeasure: a line above step 1,
+in its own block, telling the navigator to delete the previous order before typing the next, and
+every section written so it begins from an empty orders box. An order left behind from an earlier
+bead changes what the next one shows, and the resulting verdict is confidently wrong.
+
+**A failure mid-batch does not stop the sitting.** The later verdicts are still verdicts against the
+sha you launched, and the reopened bead comes back round on a later pass anyway. Record them all,
+then run the reopen procedure once the sitting is over.
+
 ## The script the navigator reads
 
-The script is a self-contained HTML page written to `.cerebro/scratch/verify-<id>.html`,
+The script is a self-contained HTML page written to `.cerebro/scratch/verify-<id>.html` — or
+`verify-<slug>.html` when it covers a batch, see *One sitting, several beads* above —
 **overwritten** each time that bead is verified (a bookmarked tab then reloads to the current
 script, and nothing piles up as `verify-<id>-2.html`, `-3.html`, …). The terminal handoff (below)
 carries a `file://` link to it — never the whole script printed in the terminal, where it scrolls
@@ -163,6 +213,23 @@ The script — open this first:
 <n> steps, about <n> minutes. Tell me when you have a verdict:
   passed · passed with a follow-up · failed
 ```
+
+**A batch's handoff says so, and names every bead in it**, so the navigator knows what they are
+committing to before they start rather than discovering it on the page:
+
+```
+verifying <n> beads at origin/main <short sha>, fetched <time>.
+The <name> shell is up at <url> with the fixture already prepared.
+
+The script — open this first:
+  file:///<absolute path>/.cerebro/scratch/verify-<slug>.html
+
+<n> steps, about <n> minutes — longer than a single bead. Tell me the verdicts bead by bead:
+  <id> · <id> · <id> — each passed · passed with a follow-up · failed
+```
+
+Quote the minutes honestly. A batch of five is a quarter of an hour, and saying "about five minutes"
+of one buys a yes that the sitting then spends.
 
 The sha is visible here without a click on purpose — two retrospectives (`ah-m9q.2.md`,
 `ah-wxk.1-verifier.md`) turn on exactly that fact, so it is not left to a click into the page.
