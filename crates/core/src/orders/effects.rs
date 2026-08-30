@@ -924,8 +924,15 @@ impl Working {
         self.forming.push(Some(index));
     }
 
+    /// Applied through the grammar's own consumed prefix (`ah-86vk`), like [`super::intents`]:
+    /// trailing text a valid order ignores is trimmed away before any reader below sees it, so an
+    /// accepted line previews the same thing validation and `intents` agree it means, and a
+    /// malformed required argument previews nothing at all - the same answer `check_shape` gives.
     fn read_order(&mut self, command: &super::lexer::Token, arguments: &[super::lexer::Token]) {
         let Some(active) = self.active() else {
+            return;
+        };
+        let Some(arguments) = super::grammar::consumed_arguments(command, arguments) else {
             return;
         };
 
@@ -1846,33 +1853,61 @@ mod tests {
         assert!(unreadable.regions.is_empty(), "{:?}", unreadable.regions);
     }
 
-    // --- orders the validator refuses (#92) ---------------------------------------------------
+    // --- trailing text after a completed order is ignored, matching the engine (ah-86vk) ------
     //
-    // This walker used to read its own arguments and was looser than the syntax checker about
-    // them: it would act on lines the editor was underlining in red. Now that both read through
-    // `super::forms`, an order the validator refuses previews nothing, which is the only answer
-    // that agrees with what the server will do with the file.
-    //
-    // Each of these is a line the validator already reports as an error today.
+    // The validator used to invent an "extra-arguments" error once a form's own arguments were
+    // consumed, and this walker mirrored that by treating the whole order as unreadable. Neither
+    // matches the engine, which simply stops reading once a form is satisfied - so both now read
+    // through `grammar::consumed_arguments`, and an order the validator accepts previews the same
+    // thing it did without the trailing text. The malformed-argument controls beside them are
+    // unaffected: a form the grammar cannot complete at all still previews nothing.
 
     #[test]
-    fn a_give_with_a_trailing_token_is_unreadable() {
-        // "extra-arguments" from the validator. Reading the first three arguments and ignoring
-        // the rest previewed a gift the server would never make.
+    fn a_give_with_a_trailing_token_still_moves_the_stock() {
+        // `[unit] [amount] [item]` is complete after three tokens; `junk` is trailing text the
+        // engine never reads.
         let response = preview("unit 900\nGIVE 901 1 SWOR junk\n");
-        assert!(response.regions.is_empty(), "{:?}", response.regions);
+        let giver = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the giver changed");
+        assert_eq!(
+            giver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .map_or(0, |item| item.amount),
+            2
+        );
     }
 
     #[test]
-    fn an_except_without_all_is_unreadable() {
-        // EXCEPT belongs to the ALL form alone. Taken as a plain quantity with trailing noise,
-        // this previewed a gift of two.
+    fn an_except_without_all_is_ignored_as_trailing_text() {
+        // EXCEPT belongs to the ALL form alone, so `[unit] [amount] [item]` is still the form
+        // that matches here; `EXCEPT 1` is trailing text the engine drops, not a reserve.
         let response = preview("unit 900\nGIVE 901 2 SWOR EXCEPT 1\n");
-        assert!(response.regions.is_empty(), "{:?}", response.regions);
+        let receiver = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "901")
+            .expect("the receiver changed");
+        assert_eq!(
+            receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .map_or(0, |item| item.amount),
+            2
+        );
     }
 
-    /// The lexer calls a token a number only when it is all digits, so `-1` is a word. Parsing it
-    /// as an integer made `EXCEPT -1` keep back minus one sword, which is to say all of them.
+    /// The lexer calls a token a number only when it is all digits, so `-1` is a word. `ALL SWOR
+    /// EXCEPT` reaches one token farther than the plain `[unit] [amount] [item]` form before
+    /// finding no reserve there, so that farther failure still wins over the shorter form's
+    /// trailing-text reading - the order stays unreadable rather than giving everything away.
     #[test]
     fn a_negative_reserve_is_unreadable_rather_than_giving_everything() {
         let response = preview("unit 900\nGIVE 901 ALL SWOR EXCEPT -1\n");
@@ -1880,13 +1915,9 @@ mod tests {
     }
 
     #[test]
-    fn a_flag_order_with_a_trailing_token_is_unreadable() {
+    fn a_flag_order_with_a_trailing_token_still_sets_the_flag() {
         let response = preview("unit 900\nGUARD 1 junk\n");
-        assert!(response.regions.is_empty(), "{:?}", response.regions);
-
-        // The control, so this is not passing because GUARD stopped working altogether.
-        let set = preview("unit 900\nGUARD 1\n");
-        assert!(only_unit(&set).unit.on_guard);
+        assert!(only_unit(&response).unit.on_guard);
     }
 
     /// A flag is the literal `0` or `1`. `01` parses to one but is not an order the game has, and
@@ -2423,13 +2454,36 @@ mod tests {
         assert!(left.regions.is_empty(), "{:?}", left.regions);
     }
 
-    /// An ENTER the game would not read moves nobody: `read_only_number` is the same reader
-    /// `orders::intents` uses, so a stray argument or a non-numeric one leaves the unit alone.
+    /// Trailing text the grammar now ignores (`ah-86vk`) still applies ENTER and LEAVE; a
+    /// genuinely malformed target still moves nobody, exactly as `read_only_number` already
+    /// read it for `orders::intents`.
     #[test]
-    fn an_unreadable_enter_or_leave_moves_nobody() {
-        assert!(preview("unit 900\nENTER 4 X\n").regions.is_empty());
+    fn accepted_trailing_text_still_boards_and_leaves() {
+        let entered = preview("unit 900\nENTER 4 note\n");
+        assert_eq!(only_unit(&entered).unit.structure_id.as_deref(), Some("4"));
+
+        // A unit already inside a structure, so a LEAVE has something to undo - unlike the
+        // control above, where the unit starts ashore and a no-op LEAVE previews nothing.
+        let boarded_report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "+ Tower [4] : Tower.",
+            "  * Walker (900), Foo (1), behind, leader [LEAD], 3 swords [SWOR]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let left = preview_over(&boarded_report, "unit 900\nLEAVE note\n");
+        assert_eq!(only_unit(&left).unit.structure_id, None);
+    }
+
+    #[test]
+    fn a_malformed_enter_target_moves_nobody() {
         assert!(preview("unit 900\nENTER shed\n").regions.is_empty());
-        assert!(preview("unit 900\nLEAVE 3\n").regions.is_empty());
     }
 
     /// The walker abandons an unclosed TURN at the next `unit` line, as the parser and the intents
