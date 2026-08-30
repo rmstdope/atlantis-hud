@@ -4903,6 +4903,28 @@ mod tests {
         )
     }
 
+    #[test]
+    fn produce_with_unknown_arrival_skills_reports_a_doubt() {
+        let receipts = Receipts::default();
+        let intents = [placed(Intent::Produce {
+            item: "SWOR".to_string(),
+        })];
+        let mut facts = facts(8, &intents, &receipts);
+        facts.skills_unknown = true;
+
+        let unit = forecast_unit(
+            facts,
+            paying("$12.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            Some(&ruleset()),
+        );
+
+        assert_eq!(unit.doubt, Some(SilverDoubt::UnknownSkillsAfterArrivals));
+    }
+
     fn purse(unclaimed: Option<i64>) -> FactionPurse {
         FactionPurse { unclaimed }
     }

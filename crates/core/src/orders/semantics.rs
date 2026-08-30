@@ -4343,10 +4343,8 @@ fn produce(
     // The level and the tools enter through `workforce_for`, which the SILVER column also calls -
     // one builder, so the two surfaces cannot be given different workforces (`ah-vtwn`).
     //
-    // `actor.unit.skills`, not `actor.skills()`: the column reads the report's own list
-    // (`UnitFacts.skills`), and the two must read the same one or
-    // `crates/core/tests/silver_agrees_with_the_warning.rs` is what finds out. Moving every reader
-    // to the gift-merged list is `ah-dna4`.
+    // Use the gift-merged list, which is the phase-stable skill picture shared with
+    // `UnitFacts.skills`; recruits are applied later and belong only to post-market checks.
     let found = tag
         .as_deref()
         .and_then(|tag| producing_skill(ruleset, tag, actor.skills_before_the_market()));
