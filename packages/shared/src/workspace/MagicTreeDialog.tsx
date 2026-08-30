@@ -107,8 +107,8 @@ export function MagicTreeDialog({
   // Keyed on the view as well, because toggling back to Branches does not remount the dialog - it
   // swaps the body - so an effect keyed on `highlighted` alone never runs for the cards that have
   // just appeared, and the skill the graph was lighting is only found when it happens to be on
-  // screen already. The cards are a multi-column layout that scrolls sideways: with a mage picked
-  // every row carries a chip, the body grows past three screen-widths, and "happens to be on
+  // screen already. The cards are a vertically scrolling layout: with a mage picked every row
+  // carries a chip, the body grows beyond the viewport, and "happens to be on
   // screen" stops being true (ah-67h8).
   const cards = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -290,9 +290,7 @@ export function MagicTreeDialog({
         </div>
 
         {/*
-          A CSS multi-column layout rather than a grid: it gives one column on a narrow window with
-          no breakpoint logic, and `break-inside-avoid` keeps a card whole rather than splitting one
-          across the fold.
+          Cards flow in one vertical column at every width.
         */}
         {showingGraph ? (
           // Panning is the transform, so the body must not scroll: a scrollable body fights the
@@ -310,7 +308,7 @@ export function MagicTreeDialog({
             />
           </div>
         ) : (
-          <div ref={cards} className="min-h-0 columns-[21rem] gap-3 overflow-y-auto p-3">
+          <div ref={cards} className="min-h-0 overflow-y-auto p-3">
             {tree.branches.map((branch) => (
               <Card
                 key={branch.key}
@@ -399,7 +397,7 @@ function Card({
   return (
     <section
       data-testid={`magic-tree-branch-${branch.key}`}
-      className={`mb-3 break-inside-avoid rounded border px-2 py-1.5 ${
+      className={`mb-3 rounded border px-2 py-1.5 ${
         // The apprenticeship is set apart, because it is not a foundation and nothing builds on it.
         branch.key === "MANI" ? "border-dashed border-edge" : "border-edge"
       }`}

@@ -24,10 +24,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
 
@@ -47,7 +47,7 @@ jobs:
           fi
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 9.12.0
 
@@ -136,7 +136,7 @@ jobs:
           done
 
       - name: Upload the macOS bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: macos-bundle
           path: target/universal-apple-darwin/release/bundle/dmg/*.dmg
@@ -149,7 +149,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Linux desktop dependencies
         run: |
@@ -163,12 +163,12 @@ jobs:
             patchelf
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 9.12.0
 
@@ -194,7 +194,7 @@ jobs:
         run: pnpm --filter @atlantis/desktop exec tauri build --features desktop-runtime --bundles appimage
 
       - name: Upload the Linux bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: linux-bundle
           path: target/release/bundle/appimage/*.AppImage
@@ -207,15 +207,15 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 9.12.0
 
@@ -241,7 +241,7 @@ jobs:
         run: pnpm --filter @atlantis/desktop exec tauri build --features desktop-runtime --bundles nsis
 
       - name: Upload the Windows bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-bundle
           path: target/release/bundle/nsis/*.exe
@@ -264,7 +264,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Same guard as macos: the tarball's name embeds the tag, so a mismatch here would ship a
       # mislabelled file rather than fail loudly.
@@ -280,12 +280,12 @@ jobs:
           fi
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 9.12.0
 
@@ -353,7 +353,7 @@ jobs:
           done
 
       - name: Upload the web tarball
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: web-tarball
           path: atlantis-hud-web-*.tar.gz
@@ -368,25 +368,25 @@ jobs:
       contents: write
     steps:
       - name: Download the macOS bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: macos-bundle
           path: release-artifacts/macos
 
       - name: Download the Linux bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: linux-bundle
           path: release-artifacts/linux
 
       - name: Download the Windows bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: windows-bundle
           path: release-artifacts/windows
 
       - name: Download the web tarball
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: web-tarball
           path: release-artifacts/web

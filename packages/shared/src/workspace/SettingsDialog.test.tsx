@@ -163,6 +163,9 @@ describe("the Warnings settings tab", () => {
     for (const title of titles) {
       expect(html).toContain(title);
     }
+    expect(html).toContain(
+      "A GIVE or TAKE naming items that cannot change hands, or men given to another faction."
+    );
 
     // Two orders draw on the one fund, and the description is where that detail lives - the row's
     // title stays what a returning user looks for (`ah-tdsi`).

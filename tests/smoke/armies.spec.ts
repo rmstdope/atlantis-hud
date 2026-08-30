@@ -342,18 +342,23 @@ async function dragOnto(page: Page, from: Locator, onto: Locator) {
   await onto.hover();
 }
 
-test("shift-clicking picks the run between two rows, and ctrl-clicking takes one back out", async ({
+test("shift-clicking and ctrl-clicking change the pick without moving the cursor row", async ({
   page
 }) => {
   await workspace(page);
   const row = rows(page);
 
   await row.nth(0).click();
+  await expect(row.nth(0)).toHaveAttribute("data-selected", "true");
   await row.nth(2).click({ modifiers: ["Shift"] });
   await expect(page.getByTestId("unit-bulk-line")).toContainText("3 units picked.");
+  await expect(row.nth(0)).toHaveAttribute("data-selected", "true");
+  await expect(row.nth(2)).toHaveAttribute("data-selected", "false");
 
   await row.nth(1).click({ modifiers: ["ControlOrMeta"] });
   await expect(page.getByTestId("unit-bulk-line")).toContainText("2 units picked.");
+  await expect(row.nth(0)).toHaveAttribute("data-selected", "true");
+  await expect(row.nth(1)).toHaveAttribute("data-selected", "false");
 });
 
 test("the bulk line appears at two picked and takes the header button out of play", async ({

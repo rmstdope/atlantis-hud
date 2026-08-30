@@ -551,7 +551,8 @@ export const WARNING_GROUPS: readonly {
       {
         code: "give-target-not-here",
         title: "Gifts to units that are not here",
-        description: "A GIVE or TAKE naming a unit the report does not show in that hex."
+        description:
+          "A GIVE or TAKE naming a unit the report does not show in that hex, or a NEW number no FORM order there creates."
       },
       {
         code: "arrivals-lower-a-skill",
@@ -562,7 +563,8 @@ export const WARNING_GROUPS: readonly {
       {
         code: "items-cannot-be-given",
         title: "Gifts the game will refuse",
-        description: "A GIVE or TAKE naming items that cannot change hands, such as most monsters."
+        description:
+          "A GIVE or TAKE naming items that cannot change hands, or men given to another faction."
       },
       {
         code: "too-many-trade-regions",

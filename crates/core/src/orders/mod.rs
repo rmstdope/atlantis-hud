@@ -22,6 +22,7 @@ pub mod silver;
 pub mod standing;
 #[cfg(test)]
 mod standing_agreement;
+pub mod targets;
 pub mod vocabulary;
 pub mod walk;
 

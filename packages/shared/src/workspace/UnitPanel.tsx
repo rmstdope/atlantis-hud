@@ -6,6 +6,8 @@ import { CollapsiblePanel } from "./CollapsiblePanel";
 import { skillEntryId, type GameDataIndex } from "../gameData";
 import { highestMagicSkill, type MagicTree } from "../magicTree";
 import type { MageStanding } from "../magicStanding";
+import { battleSkillGroups, battleSkillSource } from "../battleSkillPresentation";
+import type { DerivedSkill } from "../battleSkills";
 import {
   Absent,
   Field,
@@ -35,7 +37,8 @@ export function UnitPanelBody({
   onOpenGameData,
   magicTree = null,
   onOpenMagicTree,
-  standing = null
+  standing = null,
+  derivedSkills = []
 }: {
   unit: ReportUnit | null;
   hex: HexNode | null;
@@ -57,6 +60,12 @@ export function UnitPanelBody({
    * Null leaves the row reading `Mage` exactly as it did before `ah-67h8`.
    */
   standing?: MageStanding | null;
+  /**
+   * Combat skills recovered from battle rosters for this unit (`ah-1mpx.6.3`), or `[]` for a unit
+   * with report-native skills - the two sections are mutually exclusive, and a derived skill never
+   * displaces a real one.
+   */
+  derivedSkills?: readonly DerivedSkill[];
 }) {
   /** Both must be present: a link with nothing to open is worse than plain text. */
   const linkable = gameData !== null && onOpenGameData !== undefined ? onOpenGameData : null;
@@ -145,31 +154,50 @@ export function UnitPanelBody({
         </p>
       )}
 
-      <Section title="Skills" count={unit.skills.length || undefined}>
-        {unit.skills.length === 0 ? (
-          <Absent>none</Absent>
-        ) : (
-          unit.skills.map((skill) => (
-            <Row
-              key={skill.tag}
-              label={
-                <>
-                  {/* The name is the link; the tag beside it is an identifier the eye scans past. */}
-                  {linkable ? (
-                    <GameDataLink entryId={skillEntryId(skill.tag)} onOpen={linkable}>
-                      {skill.name}
-                    </GameDataLink>
-                  ) : (
-                    skill.name
-                  )}{" "}
-                  {skill.tag}
-                </>
-              }
-              value={`${skill.level} (${skill.points})`}
-            />
-          ))
-        )}
-      </Section>
+      {unit.own || unit.skills.length > 0 ? (
+        <Section title="Skills" count={unit.skills.length || undefined}>
+          {unit.skills.length === 0 ? (
+            <Absent>none</Absent>
+          ) : (
+            unit.skills.map((skill) => (
+              <Row
+                key={skill.tag}
+                label={
+                  <>
+                    {/* The name is the link; the tag beside it is an identifier the eye scans past. */}
+                    {linkable ? (
+                      <GameDataLink entryId={skillEntryId(skill.tag)} onOpen={linkable}>
+                        {skill.name}
+                      </GameDataLink>
+                    ) : (
+                      skill.name
+                    )}{" "}
+                    {skill.tag}
+                  </>
+                }
+                value={`${skill.level} (${skill.points})`}
+              />
+            ))
+          )}
+        </Section>
+      ) : (
+        <Section title="Skills from battle reports">
+          {derivedSkills.length === 0 ? (
+            <Absent>
+              {"No battle we have seen involved this unit. A report never shows another faction's skills."}
+            </Absent>
+          ) : (
+            battleSkillGroups(derivedSkills).map((group, index) => (
+              <div key={index}>
+                <p className="m-0 text-ink-soft">
+                  {group.skills.map((skill) => `${skill.name.toLowerCase()} ${skill.level}`).join(", ")}
+                </p>
+                <p className="m-0 text-ink-dim">{battleSkillSource(group, "seen")}</p>
+              </div>
+            ))
+          )}
+        </Section>
+      )}
 
       <Section title="Items" count={items.length || undefined}>
         {items.length === 0 ? (
