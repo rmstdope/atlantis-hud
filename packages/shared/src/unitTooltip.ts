@@ -446,6 +446,18 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     })
   },
   {
+    id: "doubt-unknown-skills-after-arrivals",
+    when: ({ silver }) => silver.doubt === "unknown-skills-after-arrivals",
+    say: () =>
+      "This unit's skills after this month's arrivals cannot be worked out, so what it produces cannot be said.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "unknown-skills-after-arrivals" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  {
     id: "doubt-unpriced-skill",
     when: ({ silver }) => silver.doubt === "unpriced-skill",
     say: () => "The ruleset does not say what studying this skill costs.",

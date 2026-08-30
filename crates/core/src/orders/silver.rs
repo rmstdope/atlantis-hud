@@ -452,6 +452,8 @@ pub enum SilverDoubt {
     /// cannot be tested. Distinct from [`SilverDoubt::EstimatedMen`]: this unit's own headcount
     /// may be exact, and usually is - what is missing belongs to the hex.
     UnknownCombatReady,
+    /// This month's arrivals cannot be merged into the unit's skills, so PRODUCE is uncountable.
+    UnknownSkillsAfterArrivals,
 }
 
 /// What one unit may draw from one contended regional pool, once its faction-mates in the same hex
@@ -735,6 +737,8 @@ pub struct UnitFacts<'a> {
     /// before this bead, and the unit already carries an existing doubt for the order that caused
     /// this.
     pub after_gifts_unknown: bool,
+    /// Set when arrivals cannot be merged into the unit's skills.
+    pub skills_unknown: bool,
     /// The same unit once the market, the withdrawals and this month's production have run.
     ///
     /// `rules/sequenceofevents` settles STUDY, PRODUCE, ENTERTAIN, WORK and maintenance after the
@@ -1173,6 +1177,11 @@ pub fn forecast_unit(
             // `plan_production` the ledger uses - one function, two callers, which is what keeps
             // this column and the `not-enough-silver` warning from drifting apart (`ah-ycuj`).
             Intent::Produce { item } => {
+                if facts.skills_unknown {
+                    expense_doubt = expense_doubt.or(Some(SilverDoubt::UnknownSkillsAfterArrivals));
+                    doubt_subject = doubt_subject.or(Some(item.to_lowercase()));
+                    continue;
+                }
                 // PRODUCE is priced after the market opens (`rules/sequenceofevents`), so its
                 // man-months capacity reads the late headcount - men this month's `BUY`/`GIVE`
                 // bring, not only what the report printed (`ah-dxfd.2`).
@@ -2402,6 +2411,9 @@ impl NearMiss {
 #[must_use]
 pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Readiness> {
     if facts.men_estimated {
+        return None;
+    }
+    if facts.skills_unknown {
         return None;
     }
     // A transfer this month cannot be followed, so the weapons and men this unit will actually
@@ -4777,6 +4789,7 @@ mod tests {
             receipts,
             formed: None,
             after_gifts_unknown: false,
+            skills_unknown: false,
             late: None,
         }
     }
@@ -7331,6 +7344,7 @@ mod tests {
             receipts: no_receipts(),
             formed: None,
             after_gifts_unknown: false,
+            skills_unknown: false,
             late: None,
         }
     }
@@ -7792,6 +7806,7 @@ mod combat_ready_tests {
             receipts,
             formed: None,
             after_gifts_unknown: false,
+            skills_unknown: false,
             late: None,
         }
     }
