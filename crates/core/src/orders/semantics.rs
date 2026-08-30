@@ -113,6 +113,8 @@ pub mod codes {
     pub const UNIT_OVERLOADED: Code = Code("unit-overloaded");
     pub const TOO_MANY_QUARTERMASTERS: Code = Code("too-many-quartermasters");
     pub const STUDY_AT_MAXIMUM: Code = Code("study-at-maximum");
+    pub const MAGIC_STUDY_CAPPED_BY_PREREQUISITES: Code =
+        Code("magic-study-capped-by-prerequisites");
     pub const ALREADY_BUILT: Code = Code("already-built");
     pub const TOO_MANY_TRADE_REGIONS: Code = Code("too-many-trade-regions");
     pub const MAGIC_STUDY_OUTSIDE_BUILDING: Code = Code("magic-study-outside-building");
@@ -142,7 +144,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 38] = [
+    pub const ALL: [Code; 39] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -181,6 +183,7 @@ pub mod codes {
         ITEMS_CANNOT_BE_GIVEN,
         NOTHING_LEFT_TO_BUY,
         TWO_MONTH_LONG_ORDERS,
+        MAGIC_STUDY_CAPPED_BY_PREREQUISITES,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -499,6 +502,7 @@ pub fn review_turn(
         check_production(hex, &by_coordinate, ruleset, &options, &mut findings);
         check_studying(hex, ruleset, &options, &mut findings);
         check_magic_study(hex, ruleset, &options, &mut findings);
+        check_magic_study_prerequisites(hex, ruleset, &options, &mut findings);
         check_forms(hex, &options, &mut findings);
         check_idle_units(hex, &options, &mut findings);
         check_two_month_long_orders(hex, &options, &mut findings);
@@ -7132,6 +7136,97 @@ fn check_studying(
                 Some(placed),
             ));
         }
+    }
+}
+
+fn check_magic_study_prerequisites(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    let Some(ruleset) = ruleset else { return };
+    if !options.emits(codes::MAGIC_STUDY_CAPPED_BY_PREREQUISITES) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        let Some((placed, studying)) = ordered.studies_placed() else {
+            continue;
+        };
+        let Some(skill) = ruleset.find_skill(studying) else {
+            continue;
+        };
+        if !ruleset.is_magic(&skill.tag) || skill.requires.is_empty() {
+            continue;
+        }
+        let Some(skills) = ordered.skills() else {
+            continue;
+        };
+        let level = skills
+            .iter()
+            .find(|entry| entry.tag.eq_ignore_ascii_case(&skill.tag))
+            .map_or(0, |entry| entry.level);
+        if level >= skill.max_level {
+            continue;
+        }
+        let next_level = level + 1;
+        let blockers: Vec<(String, u32)> = skill
+            .requires
+            .iter()
+            .filter_map(|requirement| {
+                let prerequisite_level = skills
+                    .iter()
+                    .find(|entry| entry.tag.eq_ignore_ascii_case(&requirement.tag))
+                    .map_or(0, |entry| entry.level);
+                let threshold = next_level.max(requirement.level);
+                if prerequisite_level >= threshold {
+                    return None;
+                }
+                let name = ruleset.find_skill(&requirement.tag).map_or_else(
+                    || requirement.tag.to_lowercase(),
+                    |entry| entry.name.clone(),
+                );
+                Some((name, threshold))
+            })
+            .collect();
+        if blockers.is_empty() {
+            continue;
+        }
+        let requirements = blockers
+            .iter()
+            .enumerate()
+            .map(|(index, (name, threshold))| {
+                if blockers.len() == 1 || index == blockers.len() - 1 && blockers.len() == 2 {
+                    format!(
+                        "{} reach{} level {}",
+                        name,
+                        if blockers.len() == 1 { "es" } else { "" },
+                        threshold
+                    )
+                } else {
+                    format!("{} reaches level {}", name, threshold)
+                }
+            })
+            .collect::<Vec<_>>();
+        let joined = match requirements.as_slice() {
+            [one] => one.clone(),
+            [one, two] => format!("{one} and {two}"),
+            many => format!(
+                "{}, and {}",
+                many[..many.len() - 1].join(", "),
+                many.last().expect("non-empty")
+            ),
+        };
+        findings.push(ordered.finding(
+            hex,
+            codes::MAGIC_STUDY_CAPPED_BY_PREREQUISITES,
+            format!(
+                "{} cannot advance past level {} until {}",
+                skill.name, level, joined
+            ),
+            Some(placed),
+        ));
     }
 }
 
@@ -21633,6 +21728,21 @@ mod tests {
                     5,
                 )])],
                 orders: "unit 5\nSTUDY OBSE\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::MAGIC_STUDY_CAPPED_BY_PREREQUISITES,
+                regions: vec![region(vec![with_skill(
+                    with_skill(
+                        with_skill(with_silver(unit("5"), 1000), "EART", 1),
+                        "PATT",
+                        1,
+                    ),
+                    "FORC",
+                    1,
+                )])],
+                orders: "unit 5\nSTUDY EART\n",
                 allowance: None,
                 unclaimed: None,
             },
