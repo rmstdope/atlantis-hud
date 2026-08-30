@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ah-grgn round 2 - chosen warning states</title>
+<style>
+:root{--bg:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#2b3542;--ink:#dbe3ec;--soft:#a3b0c0;--dim:#7d8b9b;--warn:#d9a441;--blue:#4a9fd8;--ok:#70ad7d}
+*{box-sizing:border-box}body{margin:0;padding:28px;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,sans-serif}main{max-width:1050px;margin:auto}
+h1{font-size:21px;margin:0 0 6px}h2{font-size:16px;margin:28px 0 8px;border-top:1px solid var(--edge);padding-top:16px}p{color:var(--soft);max-width:90ch}
+.chosen{border-left:3px solid var(--ok);padding:10px 13px;background:var(--raised)}code{font:12px ui-monospace,monospace;color:var(--ink)}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--edge)}th,td{text-align:left;vertical-align:top;padding:9px 10px;border-bottom:1px solid var(--edge)}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim)}td:first-child{white-space:nowrap;color:var(--soft)}.warn{color:var(--warn)}.silent{color:var(--dim)}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}.box{background:var(--panel);border:1px solid var(--edge);border-radius:7px;padding:13px}
+.label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:7px}.row{display:flex;gap:9px}.check{width:14px;height:14px;background:var(--blue);border-radius:3px;flex:none;margin-top:3px;position:relative}.check:after{content:"✓";position:absolute;color:var(--bg);font-size:10px;left:2px;top:-1px}
+.title{font-weight:650}.desc{font-size:12px;color:var(--dim)}ul{padding-left:19px;color:var(--soft)}li{margin:5px 0}
+@media(max-width:600px){body{padding:14px}.pair{grid-template-columns:1fr}table,tbody,tr,td{display:block}thead{display:none}tr{border-bottom:1px solid var(--edge);padding:6px}td{border:0;padding:3px 5px}td:first-child{white-space:normal;font-weight:650;color:var(--ink)}}
+</style>
+</head>
+<body><main>
+<h1>ah-grgn — chosen behavior, edge states, and final words</h1>
+<p class="chosen"><strong>Chosen:</strong> warn whenever the studied magic skill's next level is above at least one prerequisite's current level. Accumulated days do not change whether the warning appears.</p>
+
+<h2>Exact warning behavior</h2>
+<table><thead><tr><th>State</th><th>Result on the STUDY line</th></tr></thead><tbody>
+<tr><td>Earth Lore 1; Pattern 1; Force 1</td><td class="warn">earth lore cannot advance past level 1 until pattern and force reach level 2</td></tr>
+<tr><td>Earth Lore 1; Pattern 2; Force 1</td><td class="warn">earth lore cannot advance past level 1 until force reaches level 2</td></tr>
+<tr><td>Earth Lore 1; Pattern 2; Force 2</td><td class="silent">No prerequisite warning.</td></tr>
+<tr><td>Never studied Fire; Force 0</td><td class="warn">fire cannot advance past level 0 until force reaches level 1</td></tr>
+<tr><td><code>STUDY EART 3</code></td><td>Same current-cap warning; the requested target does not change which prerequisite must rise next.</td></tr>
+<tr><td>Skill figures unknowable after transfers</td><td class="silent">Silent rather than risk a false warning, matching the semantic validator's existing doubt policy.</td></tr>
+<tr><td>No ruleset, unknown skill, or no scraped requirements</td><td class="silent">Silent: there is no trustworthy prerequisite relationship to judge.</td></tr>
+<tr><td>Also studying magic above level 2 outside shelter</td><td>Both independent warnings remain; disabling either setting removes only that warning.</td></tr>
+</tbody></table>
+
+<h2>Exact setting words</h2>
+<div class="pair">
+  <div class="box"><div class="label">Studying/Teaching</div><div class="row"><span class="check"></span><span>
+    <span class="title">Magic study capped by prerequisites</span><br>
+    <span class="desc">A mage ordered to study a magic skill whose next level is blocked by prerequisite skills.</span>
+  </span></div></div>
+  <div class="box"><div class="label">Interaction contract</div><ul>
+    <li>On by default, like every narrow advisory except Unguarded hexes.</li>
+    <li>The checkbox is keyboard-focusable and Space toggles it.</li>
+    <li>Turning it off immediately removes this code from counts, panels, and editor underlines on the next validation.</li>
+    <li>There is no Cancel state: warning toggles persist immediately, as they do today.</li>
+    <li>At narrow width, message and setting description wrap; neither truncates.</li>
+  </ul></div>
+</div>
+</main></body>
+</html>
