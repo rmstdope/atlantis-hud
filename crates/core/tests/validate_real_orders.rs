@@ -254,21 +254,16 @@ fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
         "this faction shares throughout, which is what makes the finding below the hex's"
     );
 
-    // A nine-figure gift is beyond any holding or income in the game. Unit 13401 is a real unit
-    // elsewhere in this same report (see `semantics.rs`'s `give-target-not-here` fixtures), which
-    // would also be a true positive for that check; it is disabled below because this test is about
-    // the resource ledger, not the transfer-target check, and `semantics.rs` already covers the
-    // latter on input built to vary it.
-    let damaged = template().replace("unit 13432\n", "unit 13432\nGIVE 13401 999999999 SILV\n");
+    // A nine-figure gift is beyond any holding or income in the game. AactLO (10541), Archon
+    // Dominion (53), stands in this same swamp hex as unit 13432, so the goods genuinely leave
+    // even though the report cannot say a foreign faction receives them
+    // (`orders::targets::GiveReach::Unprojectable`, `ah-vcp8.2`) - which is what makes this a
+    // ledger overspend rather than the no-op a gift to a unit the report never shows at all would
+    // be (`semantics.rs`'s `give-target-not-here` fixtures cover that latter case).
+    let damaged = template().replace("unit 13432\n", "unit 13432\nGIVE 10541 999999999 SILV\n");
     assert_ne!(damaged, template(), "the template should have been altered");
 
-    let mut options = CheckOptions::default();
-    options.disabled.insert(
-        atlantis_hud_core::orders::semantics::codes::GIVE_TARGET_NOT_HERE
-            .as_str()
-            .to_string(),
-    );
-    let findings = check_turn(&report, &damaged, Some(&ruleset()), options);
+    let findings = check_turn(&report, &damaged, Some(&ruleset()), CheckOptions::default());
 
     // Alongside the introduced shortfall, the turn's genuine findings (see `EXPECTED`) still
     // fire - this fixture is not otherwise clean. Derived from the one table rather than repeated,

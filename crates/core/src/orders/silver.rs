@@ -635,6 +635,12 @@ pub struct Lookups<'a> {
     /// catalogue cannot say which items that class holds. See `semantics::class_carries_silver`,
     /// which is the one implementation - the column and the ledger must not answer this two ways.
     pub class_carries_silver: &'a dyn Fn(&str) -> Option<bool>,
+    /// Whether a `GIVE`'s target is one this order can reach at all. `false` for a unit number
+    /// named nowhere in the hex, a `NEW` alias no `FORM` there creates, and a unit giving to
+    /// itself: the server refuses all three, so the order costs this unit nothing (`ah-vcp8.2`).
+    /// A closure for the same reason `item_tag` is one - resolving a party against a hex is
+    /// `super::semantics`' business, and this module holds no hex types.
+    pub give_lands: &'a dyn Fn(&Party) -> bool,
 }
 
 /// What this hex's market says about goods a unit is ordered to sell.
@@ -1344,6 +1350,11 @@ pub fn forecast_unit(
                 }
             },
             Intent::Give { to, what, amount } => {
+                // A target the order cannot reach costs this unit nothing. Before the class branch
+                // below, which defers `GIVE ... ALL ITEMS` against the running total (`ah-vcp8.2`).
+                if !(lookups.give_lands)(to) {
+                    continue;
+                }
                 if let Selector::Class(name) = what {
                     if *amount == (Amount::All { except: 0 }) {
                         match (lookups.class_carries_silver)(name) {
@@ -4811,6 +4822,12 @@ mod tests {
         None
     }
 
+    /// `true` for every target - what the column did before `ah-vcp8.2`, so no existing assertion
+    /// moves for a reason unrelated to what it tests.
+    fn every_target_lands(_party: &Party) -> bool {
+        true
+    }
+
     /// No region to consult, so no regional pool applies - which is what keeps this module's own
     /// tests reading exactly as they did before `ah-256d` (`RegionShare::Unlimited`).
     fn no_region_pool(_item: &str) -> RegionShare {
@@ -4835,6 +4852,7 @@ mod tests {
             counted_item: &verbatim_counted,
             counted_or_none: &verbatim_counted_or_none,
             class_carries_silver: &no_class_members,
+            give_lands: &every_target_lands,
         }
     }
 

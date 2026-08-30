@@ -672,6 +672,13 @@ struct Working {
     /// `by_id` is a unit we can see and cannot project; one in neither is what the hover calls
     /// "which your report does not show" (`ah-bxgs`).
     known_units: std::collections::BTreeSet<String>,
+    /// Every unit id the report shows in each region, ours and everyone else's, keyed by region id.
+    ///
+    /// `known_units` above is report-wide and answers `ah-bxgs`'s TRANSPORT question, which reaches
+    /// across hexes. A `GIVE` is settled in one hex - `rules/sequenceofevents` runs it in phase 4,
+    /// before anything moves in phase 9 - so the test a target needs is per-region, and the two
+    /// must not be confused (`ah-vcp8.2`).
+    shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>>,
 }
 
 /// One `TRANSPORT`/`DISTRIBUTE` order, held until the month's other orders have been worked out
@@ -715,6 +722,14 @@ impl Working {
             });
         }
         let known_units = report.units().map(|unit| unit.unit_id.clone()).collect();
+        let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
+            BTreeMap::new();
+        for region in &report.regions {
+            let shown = shown_in_region.entry(region.region_id.clone()).or_default();
+            for unit in &region.units {
+                shown.insert(unit.unit_id.clone());
+            }
+        }
         Self {
             units,
             by_id,
@@ -724,6 +739,7 @@ impl Working {
             ruleset,
             transports: Vec::new(),
             known_units,
+            shown_in_region,
         }
     }
 
@@ -997,6 +1013,23 @@ impl Working {
             .replace('_', " ");
     }
 
+    /// Our own row for a unit id standing in one region - a reported unit by number, or one this
+    /// month's `FORM` orders create, whose id `formed_unit` mints as `new-{alias}` (`:520`).
+    /// `by_alias` is keyed `(region, alias)`, so the prefix is stripped back off to reach it.
+    fn index_in(&self, region: &str, id: &str) -> Option<usize> {
+        match id.strip_prefix("new-") {
+            Some(alias) => self
+                .by_alias
+                .get(&(region.to_string(), alias.to_string()))
+                .copied(),
+            None => self
+                .by_id
+                .get(id)
+                .copied()
+                .filter(|&index| self.units[index].unit.region_id == region),
+        }
+    }
+
     /// `GIVE target amount item`, where the target is a unit, `NEW n`, another faction's new unit,
     /// or `0` to discard.
     ///
@@ -1009,7 +1042,7 @@ impl Working {
     /// makes the whole order a no-op: the validator flags what the server would refuse, and
     /// half-applying it here would show a transfer that will not happen.
     fn give(&mut self, giver: usize, arguments: &[super::lexer::Token]) {
-        use super::forms::Party;
+        use super::targets::{give_reach, party_unit_id, GiveReach};
 
         let Some((target, rest)) = super::forms::read_party(arguments) else {
             return;
@@ -1018,36 +1051,30 @@ impl Working {
             return;
         };
 
-        let receiver = match target {
-            Party::New(alias) => {
-                let key = (self.units[giver].unit.region_id.clone(), alias);
-                match self.by_alias.get(&key) {
-                    Some(index) => Some(*index),
-                    None => return,
-                }
-            }
-            Party::Discard => None,
-            // Another faction's new unit is not a row of ours. It has to be turned away here
-            // rather than left to fall through: read as a plain id it would find nothing, but
-            // read as a zero it would silently destroy the goods.
-            Party::Foreign { .. } => return,
-            Party::Unit(id) => match self.by_id.get(&id) {
-                Some(&index)
-                    if self.units[index].unit.region_id == self.units[giver].unit.region_id =>
-                {
-                    Some(index)
-                }
-                _ => return,
+        let region = self.units[giver].unit.region_id.clone();
+        let giver_id = self.units[giver].unit.unit_id.clone();
+        let reach = give_reach(
+            &target,
+            &giver_id,
+            |id| self.index_in(&region, id).is_some(),
+            |id| {
+                self.shown_in_region
+                    .get(&region)
+                    .is_some_and(|shown| shown.contains(id))
             },
+        );
+        let receiver = match reach {
+            // Nothing at all: not even the giver loses what it named (`ah-vcp8.2`).
+            GiveReach::Nowhere => return,
+            // The goods leave and no row of ours gains them.
+            GiveReach::Discard | GiveReach::Unprojectable => None,
+            // Decided by this same lookup a line ago, so it answers again.
+            GiveReach::Ours => party_unit_id(&target).and_then(|id| self.index_in(&region, &id)),
         };
 
-        // The server refuses a unit giving to itself, and even a net-zero application here would
-        // reorder the item list into a phantom "items changed" row.
-        if receiver == Some(giver) {
-            return;
-        }
-
-        for (name, tag, moved) in self.tags_moved(giver, &what, &amount, receiver.is_none()) {
+        for (name, tag, moved) in
+            self.tags_moved(giver, &what, &amount, matches!(reach, GiveReach::Discard))
+        {
             // Re-resolved by tag rather than kept from the snapshot: an earlier tag in this same
             // loop may have removed an item ahead of this one and shifted every index after it.
             let Some(held) = self.units[giver]
@@ -2264,14 +2291,24 @@ mod tests {
         assert!(receiver.unit.items.iter().any(|item| item.tag == "ORC"));
     }
 
-    /// A gift to another faction's new unit leaves this faction's rows alone. The shared reader
-    /// recognises the `FACTION f NEW n` form, so it has to be turned away deliberately - taken as
-    /// a plain unit id it would find nothing, but taken as a zero it would silently destroy the
-    /// goods.
+    /// A gift to another faction's new unit is decided without either closure: the game really
+    /// creates that unit in this hex, so it is not "named nowhere" however little the report can
+    /// say about it. The goods leave the giver and no row of ours gains them (`ah-vcp8.2`; this
+    /// test held the opposite answer before that bead).
     #[test]
-    fn giving_to_another_factions_new_unit_previews_nothing() {
+    fn giving_to_another_factions_new_unit_empties_the_giver() {
         let response = preview("unit 900\nGIVE FACTION 14 NEW 2 1 SWOR\n");
-        assert!(response.regions.is_empty(), "{:?}", response.regions);
+        let giver = only_unit(&response);
+        assert_eq!(
+            giver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .map(|item| item.amount),
+            Some(2),
+            "one of the three swords left the giver"
+        );
 
         // The control: our own new unit, same order shape. Without it this test would pass just as
         // well against a reader that had stopped understanding `NEW` at all - and the arm it
@@ -2822,6 +2859,40 @@ mod tests {
                 .map_or(0, |item| item.amount),
             3
         );
+    }
+
+    /// `7001` is another faction's unit standing in `6857`'s own hex. `rules/give` allows the gift
+    /// once they have declared us Friendly, and the report cannot say whether they have - so the
+    /// goods leave and no row of ours gains them (`ah-vcp8.2`).
+    #[test]
+    fn a_gift_to_another_factions_unit_in_this_hex_empties_the_giver() {
+        let response = two_hex_preview("unit 6857\nGIVE 7001 10 STON\n");
+        let giver = row(&response, "1:2,2", "6857").expect("the giver's row is previewed");
+
+        assert_eq!(
+            giver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount),
+            Some(5),
+            "ten of the fifteen stone left the giver"
+        );
+        assert!(
+            row(&response, "1:2,2", "7001").is_none(),
+            "no row of ours gains them"
+        );
+    }
+
+    /// A unit number this hex does not show: the order does nothing at all, so the giver's row is
+    /// unchanged - and an unchanged row is dropped from the response entirely (`effects.rs:382`), which is what
+    /// "reads exactly as it would with the order deleted" means here (`ah-vcp8.2`).
+    #[test]
+    fn a_gift_to_a_unit_this_hex_does_not_show_moves_nothing() {
+        let response = two_hex_preview("unit 6857\nGIVE 9999 10 STON\n");
+
+        assert!(row(&response, "1:2,2", "6857").is_none());
     }
 
     #[test]
