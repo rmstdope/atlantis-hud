@@ -8580,7 +8580,7 @@ mod tests {
         #[test]
         fn a_shortfall_of_several_reads_plural() {
             let regions = vec![region(vec![
-                unit("5"),
+                with_men(unit("5"), 0),
                 dictionary("7", 3, "swords", "SWOR"),
                 an_ally("9"),
             ])];
@@ -8597,7 +8597,7 @@ mod tests {
         #[test]
         fn a_shortfall_of_one_reads_singular() {
             let regions = vec![region(vec![
-                unit("5"),
+                with_men(unit("5"), 0),
                 dictionary("7", 3, "swords", "SWOR"),
                 an_ally("9"),
             ])];
@@ -8614,7 +8614,7 @@ mod tests {
         #[test]
         fn a_hex_shortfall_of_several_reads_plural() {
             let regions = vec![region(vec![
-                unit("5"),
+                with_men(unit("5"), 0),
                 sharing(with_item(unit("7"), 20, "swords", "SWOR")),
                 an_ally("9"),
             ])];
@@ -14617,29 +14617,33 @@ mod tests {
     }
 
     fn unit(id: &str) -> ReportUnit {
-        ReportUnit {
-            unit_id: id.to_string(),
-            name: format!("Unit {id}"),
-            region_id: "1:7,53".to_string(),
-            faction_id: Some("95".to_string()),
-            faction_name: Some("Ours".to_string()),
-            own: true,
-            men: 1,
-            // The checks that price a study are entitled to an exact headcount, so the fixtures
-            // give them one; `an_estimated_headcount_prices_no_study` covers the other case.
-            men_estimated: false,
-            // Every unit owes maintenance now (`ah-1wcw.4`), and a fixture that did not pay it
-            // would warn `not-enough-silver` in a hundred tests about something else. These
-            // fixtures feed themselves: the flag and the grain pay the fee in food, so no
-            // fixture's *silver* moves and every existing assertion still means what it did.
-            flags: vec!["consuming unit's food".to_string()],
-            items: vec![ItemAmount {
-                amount: 1,
-                name: "grain".to_string(),
-                tag: "GRAI".to_string(),
-            }],
-            ..Default::default()
-        }
+        with_men(
+            ReportUnit {
+                unit_id: id.to_string(),
+                name: format!("Unit {id}"),
+                region_id: "1:7,53".to_string(),
+                faction_id: Some("95".to_string()),
+                faction_name: Some("Ours".to_string()),
+                own: true,
+                men: 1,
+                men_by_race: vec![],
+                // The checks that price a study are entitled to an exact headcount, so the fixtures
+                // give them one; `an_estimated_headcount_prices_no_study` covers the other case.
+                men_estimated: false,
+                // Every unit owes maintenance now (`ah-1wcw.4`), and a fixture that did not pay it
+                // would warn `not-enough-silver` in a hundred tests about something else. These
+                // fixtures feed themselves: the flag and the grain pay the fee in food, so no
+                // fixture's *silver* moves and every existing assertion still means what it did.
+                flags: vec!["consuming unit's food".to_string()],
+                items: vec![ItemAmount {
+                    amount: 1,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                }],
+                ..Default::default()
+            },
+            1,
+        )
     }
 
     /// A fixture unit with its maintenance grain taken away again, for the handful of tests that
@@ -14688,6 +14692,28 @@ mod tests {
         unit
     }
 
+    fn with_people(mut unit: ReportUnit, people: Vec<ItemAmount>) -> ReportUnit {
+        assert!(people.iter().all(|person| person.amount >= 0));
+        let old_tags: Vec<String> = unit
+            .men_by_race
+            .iter()
+            .map(|person| person.tag.to_ascii_lowercase())
+            .collect();
+        unit.items.retain(|item| {
+            !old_tags
+                .iter()
+                .any(|tag| item.tag.eq_ignore_ascii_case(tag))
+        });
+        let people: Vec<ItemAmount> = people
+            .into_iter()
+            .filter(|person| person.amount != 0)
+            .collect();
+        unit.men = people.iter().map(|person| person.amount).sum();
+        unit.men_by_race = people.clone();
+        unit.items.extend(people);
+        unit
+    }
+
     /// Enough armed men to pillage a hex of this tax base - the threshold exactly, each with a
     /// sword, which is a weapon anyone may wield (`ah-1ad6.2`).
     fn armed_to_pillage(unit: ReportUnit, tax_base: i64) -> ReportUnit {
@@ -14696,9 +14722,45 @@ mod tests {
     }
 
     fn with_men(mut unit: ReportUnit, men: i64) -> ReportUnit {
-        unit.men = men;
+        unit = with_people(
+            unit,
+            if men == 0 {
+                vec![]
+            } else {
+                vec![ItemAmount {
+                    amount: men,
+                    name: "human".to_string(),
+                    tag: "HUMN".to_string(),
+                }]
+            },
+        );
         // More men owe more maintenance, so a fixture that feeds itself has to feed all of them -
         // one grain for each 50 silver owed, or the fee spills over into silver and warns.
+        for item in &mut unit.items {
+            if item.tag.eq_ignore_ascii_case("GRAI") {
+                item.amount = (men * 10 + 49) / 50;
+            }
+        }
+        unit
+    }
+
+    fn with_race(unit: ReportUnit, men: i64, name: &str, tag: &str) -> ReportUnit {
+        let unit = with_people(
+            unit,
+            if men == 0 {
+                vec![]
+            } else {
+                vec![ItemAmount {
+                    amount: men,
+                    name: name.to_string(),
+                    tag: tag.to_string(),
+                }]
+            },
+        );
+        with_men_grain(unit, men)
+    }
+
+    fn with_men_grain(mut unit: ReportUnit, men: i64) -> ReportUnit {
         for item in &mut unit.items {
             if item.tag.eq_ignore_ascii_case("GRAI") {
                 item.amount = (men * 10 + 49) / 50;
@@ -14715,6 +14777,29 @@ mod tests {
             points: 0,
         });
         unit
+    }
+
+    #[test]
+    fn fixture_helpers_keep_exact_headcounts_backed_by_people_items() {
+        for unit in [
+            unit("1"),
+            with_men(unit("2"), 6),
+            with_race(unit("3"), 4, "orcs", "ORC"),
+            with_men(unit("4"), 0),
+        ] {
+            let (races, total) = composition::men_in(&unit.items, &ruleset());
+            assert_eq!(races, unit.men_by_race);
+            assert_eq!(total, unit.men);
+            for person in &unit.men_by_race {
+                assert_eq!(
+                    unit.items
+                        .iter()
+                        .filter(|item| item.tag.eq_ignore_ascii_case(&person.tag))
+                        .count(),
+                    1
+                );
+            }
+        }
     }
 
     /// A longship, stated exactly as the fixture reports write one: `Load: 110/150; Sailors:
@@ -16155,7 +16240,7 @@ mod tests {
 
         assert_eq!(
             codes(&check(vec![region(vec![quartermaster, first, second])], "")),
-            Vec::<&str>::new()
+            ["unit-overloaded"]
         );
     }
 
@@ -16632,7 +16717,7 @@ mod tests {
 
         assert_eq!(
             codes(&check_with_purse(Some(8450), regions, "")),
-            Vec::<&str>::new()
+            ["unit-overloaded"]
         );
     }
 
@@ -17672,14 +17757,15 @@ mod tests {
     }
 
     /// A unit made of leaders, which owe $50 each rather than $10, for the maintenance rules.
-    fn with_leaders(mut unit: ReportUnit, count: i64) -> ReportUnit {
-        unit.men = count;
-        unit.men_by_race = vec![ItemAmount {
-            amount: count,
-            name: "leader".to_string(),
-            tag: "LEAD".to_string(),
-        }];
-        unit
+    fn with_leaders(unit: ReportUnit, count: i64) -> ReportUnit {
+        with_people(
+            unit,
+            vec![ItemAmount {
+                amount: count,
+                name: "leader".to_string(),
+                tag: "LEAD".to_string(),
+            }],
+        )
     }
 
     /// `ah-uwa3`: wages arrive in the turn's last phase, which is late for everything the orders
@@ -18315,7 +18401,7 @@ mod tests {
             regions,
             "unit 5\nGIVE 9 10 HUMN\n",
         ));
-        assert_eq!(finding.code.as_str(), "not-enough-items");
+        assert_eq!(finding.code.as_str(), "items-cannot-be-given");
         assert_eq!(
             finding.unit_id.as_deref(),
             Some("5"),
@@ -20472,7 +20558,12 @@ mod tests {
     fn a_discard_is_not_a_missing_unit() {
         assert_eq!(
             codes(&check(
-                vec![region(vec![with_item(unit("8443"), 30, "grain", "GRAI")])],
+                vec![region(vec![with_item(
+                    unfed(unit("8443")),
+                    30,
+                    "grain",
+                    "GRAI"
+                )])],
                 "unit 8443\nGIVE 0 30 GRAI\n",
             )),
             Vec::<&str>::new()
@@ -22694,10 +22785,7 @@ mod tests {
             structures: vec![longship("329")],
             ..region(vec![
                 aboard("11125", "329", 200, 0),
-                ReportUnit {
-                    weight: Some(0),
-                    ..unit("999")
-                },
+                with_people(unit("999"), vec![]),
             ])
         };
 
@@ -22842,19 +22930,27 @@ mod tests {
     /// A unit carrying `weight` that the report says can move `allowance` on foot, as a real
     /// report states it: `Weight: 600. Capacity: 0/0/75/0.`
     fn carrying(id: &str, weight: i64, allowance: i64) -> ReportUnit {
+        let mut base = unit(id);
+        base = with_people(base, vec![]);
+        base.men = 1;
+        base.men_estimated = true;
         ReportUnit {
             weight: Some(weight),
             capacity: Some(format!("0/0/{allowance}/0")),
-            ..unit(id)
+            ..base
         }
     }
 
     /// `carrying`, where the capacity line is stated in full rather than as a walk figure alone.
     fn carrying_with(id: &str, weight: i64, capacity: &str) -> ReportUnit {
+        let mut base = unit(id);
+        base = with_people(base, vec![]);
+        base.men = 1;
+        base.men_estimated = true;
         ReportUnit {
             weight: Some(weight),
             capacity: Some(capacity.to_string()),
-            ..unit(id)
+            ..base
         }
     }
 
@@ -22918,7 +23014,7 @@ mod tests {
     fn a_gift_that_overloads_a_unit_stops_it_moving() {
         let region = region(vec![
             carrying("999", 100, 150),
-            with_item(unit("8801"), 30, "grain", "GRAI"),
+            with_item(with_people(unit("8801"), vec![]), 30, "grain", "GRAI"),
         ]);
         let finding = only(check(
             vec![region],
@@ -22941,7 +23037,7 @@ mod tests {
         let unit = ReportUnit {
             weight: Some(80),
             capacity: Some("0/70/85/0".to_string()),
-            ..unit("13432")
+            ..carrying("13432", 80, 85)
         };
         assert_eq!(
             codes(&check(vec![region(vec![unit])], "unit 13432\nMOVE S\n")),
@@ -23058,11 +23154,13 @@ mod tests {
 
     #[test]
     fn a_unit_the_report_gives_no_capacity_is_not_judged() {
-        let unit = ReportUnit {
+        let mut unit = ReportUnit {
             weight: Some(9999),
             capacity: None,
-            ..unit("5")
+            ..with_people(unit("5"), vec![])
         };
+        unit.men = 1;
+        unit.men_estimated = true;
         assert_eq!(
             codes(&check(vec![region(vec![unit])], "unit 5\nMOVE S\n")),
             Vec::<&str>::new()
@@ -23331,13 +23429,7 @@ mod tests {
     /// `unit(id)`, with `men` set and that many HUMN reported - what a GIVE/TAKE of men reads via
     /// `Ordered::holding`.
     fn men_holder(id: &str, men: i64) -> ReportUnit {
-        let mut unit = with_men(unit(id), men);
-        unit.items.push(ItemAmount {
-            amount: men,
-            name: "men".to_string(),
-            tag: "HUMN".to_string(),
-        });
-        unit
+        with_men(unit(id), men)
     }
 
     /// Reads one hex's units and orders and resolves this month's gifts of men against them. The
@@ -23378,12 +23470,12 @@ mod tests {
         // ORC is a man tag, so each unit's `men` is set to match its own reported headcount item
         // - which the gift below never touches.
         let giver = with_item(
-            with_item(with_men(unit("1234"), 10), 10, "orcs", "ORC"),
+            with_race(unit("1234"), 10, "orcs", "ORC"),
             35,
             "swords",
             "SWOR",
         );
-        let receiver = with_item(with_men(unit("2200"), 12), 12, "orcs", "ORC");
+        let receiver = with_race(unit("2200"), 12, "orcs", "ORC");
         let orders = "unit 1234\nGIVE 2200 10 SWOR\n";
         let ordered = OrderedUnits::read(orders);
         let region = region(vec![giver, receiver]);
