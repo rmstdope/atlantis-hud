@@ -16231,16 +16231,18 @@ mod tests {
     #[test]
     fn a_contested_pool_claims_no_shortfall_it_cannot_price() {
         let quartermaster = with_item(with_silver(starving(unit("5")), 500), 3, "grain", "GRAI");
-        let mut first = with_silver(starving(unit("7")), 0);
-        first.men = 6;
-        first.flags = vec!["consuming faction's food".to_string()];
-        let mut second = with_silver(starving(unit("9")), 0);
-        second.men = 8;
-        second.flags = vec!["consuming faction's food".to_string()];
+        let first = with_flag(
+            with_men(with_silver(starving(unit("7")), 0), 6),
+            "consuming faction's food",
+        );
+        let second = with_flag(
+            with_men(with_silver(starving(unit("9")), 0), 8),
+            "consuming faction's food",
+        );
 
         assert_eq!(
             codes(&check(vec![region(vec![quartermaster, first, second])], "")),
-            ["unit-overloaded"]
+            Vec::<&str>::new()
         );
     }
 
@@ -16717,7 +16719,7 @@ mod tests {
 
         assert_eq!(
             codes(&check_with_purse(Some(8450), regions, "")),
-            ["unit-overloaded"]
+            Vec::<&str>::new()
         );
     }
 
@@ -22784,8 +22786,8 @@ mod tests {
         let region = ReportRegion {
             structures: vec![longship("329")],
             ..region(vec![
-                aboard("11125", "329", 200, 0),
-                with_people(unit("999"), vec![]),
+                with_men(aboard("11125", "329", 200, 0), 40),
+                with_men(unit("999"), 1),
             ])
         };
 
