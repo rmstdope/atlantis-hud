@@ -1072,9 +1072,7 @@ impl Working {
             GiveReach::Ours => party_unit_id(&target).and_then(|id| self.index_in(&region, &id)),
         };
 
-        for (name, tag, moved) in
-            self.tags_moved(giver, &what, &amount, matches!(reach, GiveReach::Discard))
-        {
+        for (name, tag, moved) in self.tags_moved(giver, &what, &amount, reach) {
             // Re-resolved by tag rather than kept from the snapshot: an earlier tag in this same
             // loop may have removed an item ahead of this one and shifted every index after it.
             let Some(held) = self.units[giver]
@@ -1156,7 +1154,12 @@ impl Working {
             return;
         }
 
-        for (_, tag, moved) in self.tags_moved(source_index, &what, &amount, false) {
+        for (_, tag, moved) in self.tags_moved(
+            source_index,
+            &what,
+            &amount,
+            super::targets::GiveReach::Ours,
+        ) {
             if !self.ruleset.is_man(&tag) {
                 continue;
             }
@@ -1223,9 +1226,12 @@ impl Working {
             // `discarding: true` bypasses `tags_moved`'s `can_be_given` filter: `TRANSPORT` has
             // its own permission gate, `can_be_transported`, checked below - the two lists are
             // not the same (`IENT` may not be given but may be transported).
-            for (name, tag, moved) in
-                self.tags_moved(pending.sender, &pending.what, &pending.amount, true)
-            {
+            for (name, tag, moved) in self.tags_moved(
+                pending.sender,
+                &pending.what,
+                &pending.amount,
+                super::targets::GiveReach::Discard,
+            ) {
                 if !self.ruleset.can_be_transported(&tag) {
                     self.units[pending.sender]
                         .transport_sent
@@ -1295,7 +1301,7 @@ impl Working {
         holder: usize,
         what: &super::forms::Selector,
         amount: &super::forms::Amount,
-        discarding: bool,
+        reach: super::targets::GiveReach,
     ) -> Vec<(String, String, i64)> {
         use super::forms::{Amount, Selector};
 
@@ -1358,14 +1364,12 @@ impl Working {
             Selector::WholeUnit => Vec::new(),
         };
 
-        if discarding {
-            moving
-        } else {
-            moving
-                .into_iter()
-                .filter(|(_, tag, _)| self.ruleset.can_be_given(tag))
-                .collect()
-        }
+        moving
+            .into_iter()
+            .filter(|(_, tag, _)| {
+                super::targets::give_refusal(reach, tag, Some(&self.ruleset)).is_none()
+            })
+            .collect()
     }
 }
 

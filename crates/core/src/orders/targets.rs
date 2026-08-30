@@ -6,6 +6,31 @@
 //! `effects::Working` has no `Hex` and `orders::silver` holds no hex types.
 
 use super::forms::Party;
+use crate::movement::rules::Ruleset;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GiveRefusal {
+    CannotChangeHands,
+    MenToAnotherFaction,
+}
+
+#[must_use]
+pub fn give_refusal(reach: GiveReach, tag: &str, ruleset: Option<&Ruleset>) -> Option<GiveRefusal> {
+    let ruleset = ruleset?;
+    match reach {
+        GiveReach::Discard | GiveReach::Nowhere => None,
+        GiveReach::Ours => (!ruleset.can_be_given(tag)).then_some(GiveRefusal::CannotChangeHands),
+        GiveReach::Unprojectable => {
+            if !ruleset.can_be_given(tag) {
+                Some(GiveRefusal::CannotChangeHands)
+            } else if ruleset.is_man(tag) {
+                Some(GiveRefusal::MenToAnotherFaction)
+            } else {
+                None
+            }
+        }
+    }
+}
 
 /// What a `GIVE`'s target is, as far as this region's report can tell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

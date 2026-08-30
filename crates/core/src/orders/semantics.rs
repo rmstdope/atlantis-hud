@@ -46,7 +46,7 @@ use crate::orders::silver::{
     SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
     UpkeepSettlement, Workforce, FOOD_TAGS,
 };
-use crate::orders::targets::{give_reach, party_unit_id, GiveReach};
+use crate::orders::targets::{give_reach, give_refusal, party_unit_id, GiveReach, GiveRefusal};
 use crate::report::composition;
 use crate::report::model::{
     Coordinate, ItemAmount, MarketItem, ReportRegion, ReportUnit, Skill, Structure,
@@ -1975,6 +1975,7 @@ struct RefusedTransfer {
     /// with the count it would have carried, in the order the walk met them. Never empty: a
     /// `RefusedTransfer` is recorded only when something was actually refused.
     refused: Vec<(String, i64)>,
+    refused_to_another_faction: Vec<(String, i64)>,
     /// What the transfer still moves, same shape, same order. Empty when nothing survives.
     moving: Vec<(String, i64)>,
 }
@@ -2213,6 +2214,7 @@ fn apply_transfers(units: &mut [Ordered<'_>], region: &ReportRegion, ruleset: Op
         // What this transfer refuses and what it still moves, in the order the walk meets them -
         // written into `RefusedTransfer` after the loop, only when something was refused.
         let mut refused: Vec<(String, i64)> = Vec::new();
+        let mut refused_to_another_faction: Vec<(String, i64)> = Vec::new();
         let mut moving: Vec<(String, i64)> = Vec::new();
 
         for tag in tags {
@@ -2257,8 +2259,23 @@ fn apply_transfers(units: &mut [Ordered<'_>], region: &ReportRegion, ruleset: Op
             // units.`, and a discard is not another unit (decision 9 above) - so a discard moves
             // them too, recording nothing, while any other receiver does not.
             if !discarding {
-                if !ruleset.can_be_given(&tag) {
-                    refused.push((tag.clone(), moved));
+                let reach = if transfer.is_give {
+                    match receiver {
+                        GiveTarget::Unit(_) => GiveReach::Ours,
+                        GiveTarget::Discard => GiveReach::Discard,
+                        GiveTarget::Unprojectable => GiveReach::Unprojectable,
+                        GiveTarget::Nowhere => GiveReach::Nowhere,
+                    }
+                } else {
+                    GiveReach::Ours
+                };
+                if let Some(reason) = give_refusal(reach, &tag, Some(ruleset)) {
+                    match reason {
+                        GiveRefusal::CannotChangeHands => refused.push((tag.clone(), moved)),
+                        GiveRefusal::MenToAnotherFaction => {
+                            refused_to_another_faction.push((tag.clone(), moved))
+                        }
+                    }
                     continue;
                 }
                 moving.push((tag.clone(), moved));
@@ -2315,13 +2332,14 @@ fn apply_transfers(units: &mut [Ordered<'_>], region: &ReportRegion, ruleset: Op
             move_holding(source_state, &tag, &name, -moved);
         }
 
-        if !refused.is_empty() {
+        if !refused.is_empty() || !refused_to_another_faction.is_empty() {
             refused_by_position.push((
                 transfer.position,
                 RefusedTransfer {
                     line: transfer.line,
                     is_give: transfer.is_give,
                     refused,
+                    refused_to_another_faction,
                     moving,
                 },
             ));
@@ -3748,7 +3766,7 @@ fn apply(
                         receiver.clone(),
                         RecordMovement::No,
                         None,
-                        discarding,
+                        reach,
                     );
                 }
             } else {
@@ -3763,7 +3781,7 @@ fn apply(
                     receiver,
                     RecordMovement::No,
                     None,
-                    discarding,
+                    reach,
                 );
             }
         }
@@ -3805,7 +3823,7 @@ fn apply(
                         Some(who.clone()),
                         RecordMovement::Yes,
                         None,
-                        false,
+                        GiveReach::Ours,
                     );
                 }
             } else {
@@ -3820,7 +3838,7 @@ fn apply(
                     Some(who.clone()),
                     RecordMovement::Yes,
                     from_unshown,
-                    false,
+                    GiveReach::Ours,
                 );
             }
         }
@@ -4028,7 +4046,7 @@ fn transfer(
     from_unshown: Option<String>,
     // `true` only for `GIVE 0 ...`: unit 0 is not "another unit", so the items the game refuses to
     // hand to another unit still leave the giver (`rules/give`, epic decision 9).
-    discarding: bool,
+    reach: GiveReach,
 ) {
     // The same reading `silver::forecast_unit` gets, so the two surfaces cannot classify one
     // order two ways (`ah-lu0f`). `Unpriceable` is a whole class of items, or the unit itself:
@@ -4057,10 +4075,11 @@ fn transfer(
     // The item is resolved and the transfer *is* counted - it simply moves nothing, exactly as a
     // unit holding none of it would. Neither `doubted` nor `uncounted` is touched: those mark a
     // sum this ledger could not follow, and this one was followed to the end.
-    if !discarding
+    if give_refusal(reach, &tag, ledger.ruleset).is_some()
         && ledger
-            .ruleset
-            .is_some_and(|ruleset| !ruleset.can_be_given(&tag))
+            .balance
+            .get(&(actor.unit.unit_id.clone(), tag.clone()))
+            .is_some_and(|amount| *amount > 0)
     {
         return;
     }
@@ -7616,10 +7635,17 @@ fn check_refused_transfers(
             } else {
                 format!("only {}", named(&refused.moving))
             };
-            let message = format!(
-                "{} cannot be {verb}, so this order moves {tail}",
-                named(&refused.refused)
-            );
+            let mut reasons = Vec::new();
+            if !refused.refused_to_another_faction.is_empty() {
+                reasons.push(format!(
+                    "{} cannot be given to another faction",
+                    named(&refused.refused_to_another_faction)
+                ));
+            }
+            if !refused.refused.is_empty() {
+                reasons.push(format!("{} cannot be {verb}", named(&refused.refused)));
+            }
+            let message = format!("{}, so this order moves {tail}", reasons.join(" and "));
             let placed = ordered
                 .intents
                 .iter()
@@ -23883,6 +23909,7 @@ mod tests {
                 line: 2,
                 is_give: true,
                 refused: vec![("LION".to_string(), 20)],
+                refused_to_another_faction: vec![],
                 moving: vec![("SKEL".to_string(), 1)],
             }]
         );
