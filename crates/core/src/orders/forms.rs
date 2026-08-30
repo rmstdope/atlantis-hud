@@ -11,9 +11,13 @@
 //! counts tokens, `intents` records, `effects` resolves and applies.
 //!
 //! These readers are **strict**: an order that does not consume its arguments exactly is
-//! unreadable, and unreadable means nothing at all rather than a best guess. That is the same
-//! answer the syntax checker gives, which is the point - a line the editor is underlining in red
-//! should not also be quietly previewed as though the server would run it.
+//! unreadable, and unreadable means nothing at all rather than a best guess. That strictness is
+//! still correct, but it is no longer the answer to "what may follow the order's own arguments":
+//! that question belongs to [`super::grammar::consumed_arguments`], which trims a line to the
+//! exact prefix the engine reads before any of these readers see it. A caller reading an order's
+//! arguments calls that first and hands its answer - never the raw line - to the readers below,
+//! so a line the syntax checker accepts cannot be read as something else here, and a genuinely
+//! malformed required argument still leaves a reader with nothing to work from.
 
 use super::lexer::{Token, TokenKind};
 use crate::movement::orders::{parse_move, MoveStep};

@@ -49,12 +49,12 @@ pub fn order_vocabulary(ruleset: Option<&Ruleset>) -> Vec<String> {
     words.into_iter().collect()
 }
 
-/// The fixed words one argument can take, `Arg::Rest` unwrapped.
+/// The fixed words one argument can take, `Arg::Rest` and `Arg::Repeat` unwrapped.
 ///
-/// `grammar::keywords` lumps `Rest` in with the open arguments and answers nothing for it, so
+/// `grammar::keywords` lumps both in with the open arguments and answers nothing for either, so
 /// without this recursion every repeated argument's keywords - the directions among them - vanish.
 fn collect_argument(argument: &'static Arg, words: &mut BTreeSet<String>) {
-    if let Arg::Rest(inner) = argument {
+    if let Arg::Rest(inner) | Arg::Repeat(inner) = argument {
         collect_argument(inner, words);
         return;
     }
