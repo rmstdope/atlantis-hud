@@ -1034,7 +1034,7 @@ fn production_tag_of(
     ruleset: Option<&Ruleset>,
 ) -> Option<String> {
     let tag = resolve_item(item, hex, ordered, ruleset)?.to_ascii_uppercase();
-    let (_, recipe) = producing_skill(ruleset, &tag, Some(&ordered.unit.skills))?;
+    let (_, recipe) = producing_skill(ruleset, &tag, ordered.skills_before_the_market())?;
     // Only a recipe with no material inputs comes from the region itself - the same test
     // `check_production` applies before it says `produce-not-here`.
     if !recipe.inputs.is_empty() {
@@ -1058,13 +1058,13 @@ fn production_tag_of(
 /// to the one it is listed in - the passenger's whole difficulty (`ah-k43x`). `None` where the run
 /// is not priceable at all, or where the men could make none of it anyway.
 fn production_ask(ordered: &Ordered<'_>, tag: &str, ruleset: Option<&Ruleset>) -> Option<i64> {
-    let (skill, recipe) = producing_skill(ruleset, tag, Some(&ordered.unit.skills))?;
+    let (skill, recipe) = producing_skill(ruleset, tag, ordered.skills_before_the_market())?;
     let work = workforce_for(
         ruleset,
         skill,
         tag,
         ordered.early_men(),
-        &ordered.unit.skills,
+        ordered.skills_before_the_market()?,
         ordered.early_items(),
     );
     let plan = plan_production(recipe, work, ordered.early_items(), RegionShare::Unlimited)?;
@@ -1339,11 +1339,14 @@ fn forecast_hex(
             men_by_race: ordered.early_men_by_race(),
             items: ordered.early_items(),
             flags: &ordered.unit.flags,
-            skills: &ordered.unit.skills,
+            skills: ordered
+                .skills_before_the_market()
+                .unwrap_or(&ordered.unit.skills),
             intents: ordered.intents,
             receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
             formed: ordered.formed.as_ref(),
             after_gifts_unknown: ordered.holdings_unknown(),
+            skills_unknown: ordered.skills_before_the_market().is_none(),
             late: Some(late.of(index)),
         };
         claims.push(food_claim(&facts));
@@ -1829,6 +1832,8 @@ struct Ordered<'a> {
     /// The unit's skills once this month's gifts of men have run. Written by `apply_transfers`
     /// after the hex is read; `Unchanged` until then.
     skills_after_gifts: SkillsAfterGifts,
+    /// The unit's skills after this month's recruits have merged on top of gifts.
+    skills_after_recruits: Option<SkillsAfterGifts>,
     /// The unit's people and goods once this month's GIVE and TAKE orders have run. Written by
     /// `apply_transfers` after the hex is read, alongside `skills_after_gifts`; `Unchanged` until
     /// then.
@@ -1869,6 +1874,7 @@ impl<'a> Hex<'a> {
                     unread: orders.is_some_and(|orders| orders.unread),
                     formed: None,
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
+                    skills_after_recruits: None,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
                     refused_transfers: Vec::new(),
                     men_after_orders: unit.men,
@@ -1890,6 +1896,7 @@ impl<'a> Hex<'a> {
                         formed_by: formed.block.formed_by.clone(),
                     }),
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
+                    skills_after_recruits: None,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
                     refused_transfers: Vec::new(),
                     men_after_orders: formed.unit.men,
@@ -2550,6 +2557,7 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
             units[index].skills_after_gifts,
             SkillsAfterGifts::Unknowable
         ) {
+            units[index].skills_after_recruits = Some(SkillsAfterGifts::Unknowable);
             continue;
         }
 
@@ -2568,7 +2576,7 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
             // recruited nobody. `BUY ALL PEASANTS` cannot be told from `BUY ALL SWORDS` here -
             // `PEASANTS` names no catalogue item at all - so the test is on the amount, not the
             // item. `ah-jown` makes this arm deletable.
-            units[index].skills_after_gifts = SkillsAfterGifts::Unknowable;
+            units[index].skills_after_recruits = Some(SkillsAfterGifts::Unknowable);
             continue;
         }
 
@@ -2592,7 +2600,7 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
             // The two walks disagree about one unit. Step 2 above and the `clamped` flag on
             // `apply_transfers` cover the routes known to diverge, so nothing should reach here
             // - this is a backstop, and silence is the right shape for one.
-            units[index].skills_after_gifts = SkillsAfterGifts::Unknowable;
+            units[index].skills_after_recruits = Some(SkillsAfterGifts::Unknowable);
             continue;
         }
         if recruited == 0 {
@@ -2601,7 +2609,7 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
         if units[index].unit.men_estimated {
             // The merge is weighted by the receiver's headcount, and `settle_headcounts` skips
             // such a unit for the same reason.
-            units[index].skills_after_gifts = SkillsAfterGifts::Unknowable;
+            units[index].skills_after_recruits = Some(SkillsAfterGifts::Unknowable);
             continue;
         }
 
@@ -2619,11 +2627,11 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
         let merged = effects::merge_skills(&current, before, &[], recruited);
         ordered.men_after_orders = before + recruited;
         ordered.arrivals.bought += recruited;
-        ordered.skills_after_gifts = if merged == ordered.unit.skills {
+        ordered.skills_after_recruits = Some(if merged == ordered.unit.skills {
             SkillsAfterGifts::Unchanged
         } else {
             SkillsAfterGifts::Merged(merged)
-        };
+        });
     }
 }
 
@@ -2685,6 +2693,18 @@ impl Ordered<'_> {
     /// module's rule is that a warning that is wrong is worse than one that is missing, and
     /// `sailing_levels_after_orders` already answers `None` for the same reason.
     fn skills(&self) -> Option<&[Skill]> {
+        match self
+            .skills_after_recruits
+            .as_ref()
+            .unwrap_or(&self.skills_after_gifts)
+        {
+            SkillsAfterGifts::Unchanged => Some(&self.unit.skills),
+            SkillsAfterGifts::Merged(merged) => Some(merged),
+            SkillsAfterGifts::Unknowable => None,
+        }
+    }
+
+    fn skills_before_the_market(&self) -> Option<&[Skill]> {
         match &self.skills_after_gifts {
             SkillsAfterGifts::Unchanged => Some(&self.unit.skills),
             SkillsAfterGifts::Merged(merged) => Some(merged),
@@ -3362,7 +3382,10 @@ fn unit_facts<'a>(
         men_by_race: ordered.early_men_by_race(),
         items: ordered.early_items(),
         flags: &ordered.unit.flags,
-        skills: &ordered.unit.skills,
+        skills: ordered
+            .skills_before_the_market()
+            .unwrap_or(&ordered.unit.skills),
+        skills_unknown: ordered.skills_before_the_market().is_none(),
         intents: ordered.intents,
         receipts: nothing,
         formed: ordered.formed.as_ref(),
@@ -4539,20 +4562,20 @@ fn produce(
     // The level and the tools enter through `workforce_for`, which the SILVER column also calls -
     // one builder, so the two surfaces cannot be given different workforces (`ah-vtwn`).
     //
-    // `actor.unit.skills`, not `actor.skills()`: the column reads the report's own list
-    // (`UnitFacts.skills`), and the two must read the same one or
-    // `crates/core/tests/silver_agrees_with_the_warning.rs` is what finds out. Moving every reader
-    // to the gift-merged list is `ah-dna4`.
+    // Use the gift-merged list, which is the phase-stable skill picture shared with
+    // `UnitFacts.skills`; recruits are applied later and belong only to post-market checks.
     let found = tag
         .as_deref()
-        .and_then(|tag| producing_skill(ruleset, tag, Some(&actor.unit.skills)));
+        .and_then(|tag| producing_skill(ruleset, tag, actor.skills_before_the_market()));
     let work = found.map_or(Workforce::default(), |(skill, _)| {
         workforce_for(
             ruleset,
             skill,
             tag.as_deref().unwrap_or_default(),
             actor.early_men(),
-            &actor.unit.skills,
+            actor
+                .skills_before_the_market()
+                .unwrap_or(&actor.unit.skills),
             actor.early_items(),
         )
     });
@@ -5017,7 +5040,9 @@ fn cast(
     // has from a unit's other orders.
     let receipts = ledger.receipts.get(who);
     let caster = Caster {
-        skills: &actor.unit.skills,
+        skills: actor
+            .skills_before_the_market()
+            .unwrap_or(&actor.unit.skills),
         held: &actor.unit.items,
         silver_available: actor.holding(SILVER)
             + receipts.map_or(0, |receipts| {

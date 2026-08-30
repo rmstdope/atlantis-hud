@@ -1398,6 +1398,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
     "shared-silver-covers-shortfall": "Shared silver in this hex covers the shortfall.",
     "doubt-unknown-tax-base": "The report never said what this region's tax base is.",
     "doubt-unpriced-production": "The ruleset does not say what producing mithril costs.",
+    "doubt-unknown-skills-after-arrivals":
+      "This unit's skills after this month's arrivals cannot be worked out, so what it produces cannot be said.",
     "doubt-unpriced-skill": "The ruleset does not say what studying this skill costs.",
     "doubt-unknown-goods":
       "The report does not say what widgets are, so what this sale earns cannot be said.",
@@ -1618,7 +1620,8 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     "market-does-not-sell",
     "gives-a-whole-class",
     "contested-faction-food",
-    "unknown-combat-ready"
+    "unknown-combat-ready",
+    "unknown-skills-after-arrivals"
   ];
 
   // Built with `aUnitSilver` (`ah-uhnd`) so a field added to `UnitSilver` later does not silently
