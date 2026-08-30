@@ -460,6 +460,12 @@ export const WARNING_GROUPS: readonly {
         description: "A unit ordered to study a skill it has already taken to the ruleset's maximum."
       },
       {
+        code: "magic-study-capped-by-prerequisites",
+        title: "Magic study capped by prerequisites",
+        description:
+          "A mage ordered to study a magic skill whose next level is blocked by prerequisite skills."
+      },
+      {
         code: "magic-study-outside-building",
         title: "Magic study outside a building",
         description:
