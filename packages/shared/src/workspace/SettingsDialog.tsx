@@ -551,7 +551,8 @@ export const WARNING_GROUPS: readonly {
       {
         code: "give-target-not-here",
         title: "Gifts to units that are not here",
-        description: "A GIVE or TAKE naming a unit the report does not show in that hex."
+        description:
+          "A GIVE or TAKE naming a unit the report does not show in that hex, or a NEW number no FORM order there creates."
       },
       {
         code: "arrivals-lower-a-skill",

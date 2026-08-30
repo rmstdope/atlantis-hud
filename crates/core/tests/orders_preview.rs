@@ -29,9 +29,12 @@ fn the_committed_template_previews_exactly_its_one_real_effect() {
     .expect("the ruleset loads");
 
     // The template is 27 unit blocks of @claim, @study, @work, taxing and standing @give
-    // discards of items nobody holds - none of which may leak into the preview. Its one order
-    // with a real effect is unit 15571's "MOVE SE SE", so the whole answer is that departure
-    // and its arrival, and nothing else.
+    // discards of items nobody holds - none of which may leak into the preview. `GIVE 2396 ALL
+    // MARM`/`GIVE 2396 ALL MSWO`, standing in four of those blocks, are the exception: 2396
+    // (Wistful Soldiers) stands in the same ocean hex as these units, so the goods genuinely
+    // leave even though the report cannot say who receives them (`ah-vcp8.2`'s `Unprojectable`).
+    // The one order with any *other* effect is unit 15571's "MOVE SE SE", so the whole answer is
+    // that departure, its arrival, and the four gifts that empty their givers.
     let rows: Vec<_> = response
         .regions
         .iter()
@@ -44,7 +47,7 @@ fn the_committed_template_previews_exactly_its_one_real_effect() {
         .collect();
     assert_eq!(
         rows.len(),
-        2,
+        6,
         "rows were: {:?}",
         rows.iter()
             .map(|(region, unit)| format!("{region}: {} {:?}", unit.unit.unit_id, unit.status))
@@ -71,6 +74,26 @@ fn the_committed_template_previews_exactly_its_one_real_effect() {
     assert_eq!(*destination, "1:20,46");
     assert_eq!(arriving.unit.unit_id, "15571");
     assert_eq!(arriving.arriving_from.as_deref(), Some("1:18,44"));
+
+    // The four units whose `GIVE 2396 ALL ...` empties them of the one item they hold that 2396
+    // can be given: present (they moved nowhere), and the tag is gone from their item list.
+    for (unit_id, tag) in [
+        ("881", "MARM"),
+        ("12878", "MSWO"),
+        ("12879", "MSWO"),
+        ("20", "MARM"),
+    ] {
+        let (_, given) = rows
+            .iter()
+            .find(|(_, unit)| unit.unit.unit_id == unit_id)
+            .unwrap_or_else(|| panic!("unit {unit_id} should have a preview row"));
+        assert_eq!(given.status, UnitPreviewStatus::Present);
+        assert!(
+            !given.unit.items.iter().any(|item| item.tag == tag),
+            "unit {unit_id} should have given away every {tag}: {:?}",
+            given.unit.items
+        );
+    }
 }
 
 #[test]
