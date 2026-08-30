@@ -27,6 +27,8 @@ import type { HexNode } from "../hexMapModel";
 import { unitsForHex } from "../hexMapModel";
 import { unitStructureLabel } from "../structureLabel";
 import { describeMenBriefly, whyEstimated } from "../unitComposition";
+import { derivedSkillsFor, NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
+import { unitSkillsCell } from "../battleSkillPresentation";
 import {
   DEFAULT_SORT,
   EXTRA_COLUMN_SHARES,
@@ -225,6 +227,12 @@ type UnitTableDockProps = {
    * which is why it is of no use to a real caller.
    */
   initialPick?: UnitPick;
+  /**
+   * Combat skills recovered from this game's battle rosters (`ah-1mpx.6.2`), for a foreign unit's
+   * Skills cell and hover. Absent draws exactly as before - `not disclosed` for every foreign unit
+   * with nothing of its own.
+   */
+  derivedSkills?: DerivedSkills;
 };
 
 export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>(
@@ -249,7 +257,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       foreignUnits,
       initialPin = null,
       attitudes = null,
-      initialPick = NO_PICK
+      initialPick = NO_PICK,
+      derivedSkills = NO_DERIVED_SKILLS
     },
     ref
   ) {
@@ -441,14 +450,14 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const visible = useMemo(
     () =>
       sortUnits(
-        filterUnits(units, filter, structures),
+        filterUnits(units, filter, structures, (unit) => unitSkillsCell(unit, derivedSkills)),
         sort,
         structures,
         longOrders,
         silverByUnit,
         sourced.seen
       ),
-    [units, filter, sort, structures, longOrders, silverByUnit, sourced.seen]
+    [units, filter, sort, structures, longOrders, silverByUnit, sourced.seen, derivedSkills]
   );
   /** The unit numbers the table is drawing, in the order it is drawing them. */
   const rowIds = useMemo(() => visible.map((unit) => unit.unitId), [visible]);
@@ -1363,6 +1372,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                   getSilver={getSilver}
                   silverWarnings={silverWarnings}
                   countUpkeep={countUpkeep}
+                  derivedSkills={derivedSkills}
                   onSelectUnit={onSelectUnit}
                   renderFactionName={renderFactionName}
                   onPinFaction={source.kind === "foreign" ? setPin : undefined}
@@ -1386,6 +1396,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                 hovered.unit.own ? (getSilver?.(hovered.unit.unitId, regionId ?? "") ?? null) : null
               }
               warned={silverWarnings?.has(silverKey(regionId ?? "", hovered.unit.unitId)) ?? false}
+              derivedSkills={derivedSkillsFor(derivedSkills, hovered.unit)}
             />
           ) : null}
         </div>
@@ -1798,7 +1809,8 @@ function UnitRow({
   seen,
   fromReport,
   dimDeparting,
-  onRemove
+  onRemove,
+  derivedSkills
 }: {
   unit: PreviewedUnit;
   /** The columns the header is drawing, so a row's cells can never fall out of step with it. */
@@ -1865,8 +1877,10 @@ function UnitRow({
   dimDeparting: boolean;
   /** Drops this unit from the Army on screen. Absent for every source that is not an Army. */
   onRemove?: () => void;
+  /** Combat skills recovered from battle rosters, for a foreign unit's Skills cell (`ah-1mpx.6.3`). */
+  derivedSkills: DerivedSkills;
 }) {
-  const skills = unit.skills.map((skill) => `${skill.tag} ${skill.level} (${skill.points})`).join(", ");
+  const skills = unitSkillsCell(unit, derivedSkills);
   const items = formatItems(unit.items, unit.created);
 
   // Which cells the orders changed, so each one can say so and show what the report said.

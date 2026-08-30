@@ -116,6 +116,7 @@ import { DEFAULT_LEVEL, useWorkspaceStore, workspaceGameOf } from "../workspaceS
 import { useHexNotesStore } from "../hexNotesStore";
 import { useArmiesStore } from "../armiesStore";
 import { useBattleSkillsStore } from "../battleSkillsStore";
+import { derivedSkillsFor } from "../battleSkills";
 import { unitsByIdIn } from "../armies";
 import { useSettingsStore } from "../settingsStore";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
@@ -898,6 +899,17 @@ export function AppShell({
       hexPreview?.units.find((previewed) => previewed.unit.unitId === selectedUnitId)?.unit ??
       null,
     [hex, hexPreview, selectedUnitId]
+  );
+
+  /**
+   * The selected unit's own combat skills recovered from battle rosters (`ah-1mpx.6.3`), or `[]`
+   * for an own unit or one with report-native skills - `derivedSkillsFor`'s guard, not a second
+   * copy of it. Threaded into the Unit panel directly rather than letting it subscribe to the
+   * store itself, matching how the table already reads this one map.
+   */
+  const unitDerivedSkills = useMemo(
+    () => (unit === null ? [] : derivedSkillsFor(derivedSkills, unit)),
+    [unit, derivedSkills]
   );
 
   /** What the engine said about this turn. Null when there is no turn on screen to say it about. */
@@ -3903,6 +3915,7 @@ export function AppShell({
                   onOpenMagicTree={
                     magicTree === null ? undefined : (tag) => setMagicTreeOpen({ tag })
                   }
+                  derivedSkills={unitDerivedSkills}
                   planner={
                     movementPlanner
                       ? {
@@ -4006,6 +4019,7 @@ export function AppShell({
               currentTurn={parsed?.header.turnNumber ?? null}
               client={client}
               game={game}
+              derivedSkills={derivedSkills}
               // The header status line, which never expires: it stands until the next `setStatus`,
               // which is the existing behaviour and is right for a failure.
               onFailure={(message) => setStatus(failedStatus(message))}

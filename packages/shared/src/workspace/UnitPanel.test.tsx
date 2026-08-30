@@ -167,3 +167,56 @@ describe("the study tree door in the unit pane (ah-gjbs.1)", () => {
     expect(html).not.toContain("magic skills open");
   });
 });
+
+describe("battle-derived skills in the unit pane (ah-1mpx.6.3)", () => {
+  const foreignUnit = aReportUnit({ own: false, skills: [], items: [] });
+
+  it("a foreign unit groups battle skills under their source", () => {
+    const html = renderToStaticMarkup(
+      <UnitPanel
+        unit={foreignUnit}
+        hex={HEX}
+        derivedSkills={[
+          { name: "riding", tag: "RIDI", level: 5, turn: 71, coordinate: { x: 25, y: 55, z: 1 }, terrain: "ocean" },
+          { name: "combat", tag: "COMB", level: 2, turn: 71, coordinate: { x: 25, y: 55, z: 1 }, terrain: "ocean" }
+        ]}
+      />
+    );
+
+    expect(html).toContain("Skills from battle reports");
+    expect(html).toContain("riding 5, combat 2");
+    expect(html).toContain("Seen in the battle in ocean (25,55), turn 71.");
+  });
+
+  it("a foreign unit with no recovered skills explains the empty battle section", () => {
+    const html = renderToStaticMarkup(<UnitPanel unit={foreignUnit} hex={HEX} derivedSkills={[]} />);
+
+    expect(html).toContain("Skills from battle reports");
+    expect(html).toContain(
+      "No battle we have seen involved this unit. A report never shows another faction&#x27;s skills."
+    );
+  });
+
+  it("a real skill keeps the native Skills section even with derived skills supplied", () => {
+    const html = renderToStaticMarkup(
+      <UnitPanel
+        unit={aReportUnit({ own: false, skills: [{ name: "combat", tag: "COMB", level: 3, points: 180 }] })}
+        hex={HEX}
+        derivedSkills={[
+          { name: "riding", tag: "RIDI", level: 5, turn: 71, coordinate: null, terrain: null }
+        ]}
+      />
+    );
+
+    expect(html).not.toContain("Skills from battle reports");
+    expect(html).toContain("3 (180)");
+  });
+
+  it("an own unit with no skills keeps the native empty Skills section, not the battle one", () => {
+    const html = renderToStaticMarkup(
+      <UnitPanel unit={aReportUnit({ own: true, skills: [] })} hex={HEX} />
+    );
+
+    expect(html).not.toContain("Skills from battle reports");
+  });
+});
