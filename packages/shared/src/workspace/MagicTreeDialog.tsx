@@ -290,9 +290,8 @@ export function MagicTreeDialog({
         </div>
 
         {/*
-          A CSS multi-column layout rather than a grid: it gives one column on a narrow window with
-          no breakpoint logic, and `break-inside-avoid` keeps a card whole rather than splitting one
-          across the fold.
+          Cards flow in one vertical column at every width, and `break-inside-avoid` keeps a card
+          whole rather than splitting one across the fold.
         */}
         {showingGraph ? (
           // Panning is the transform, so the body must not scroll: a scrollable body fights the
@@ -310,7 +309,7 @@ export function MagicTreeDialog({
             />
           </div>
         ) : (
-          <div ref={cards} className="min-h-0 columns-[21rem] gap-3 overflow-y-auto p-3">
+          <div ref={cards} className="min-h-0 overflow-y-auto p-3">
             {tree.branches.map((branch) => (
               <Card
                 key={branch.key}

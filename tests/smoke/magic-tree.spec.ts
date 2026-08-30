@@ -47,6 +47,26 @@ test("F3 opens the tree, a chip walks it, and a name opens the dictionary", asyn
   await expect(dialog).toHaveCount(0);
 });
 
+test("the branch cards share one left edge in top-to-bottom order", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F3");
+  const cards = page.locator('[data-testid^="magic-tree-branch-"]');
+  await expect(cards).toHaveCount(10);
+
+  const rectangles = await cards.evaluateAll((elements) =>
+    elements.map((element) => {
+      const { left, top } = element.getBoundingClientRect();
+      return { left: Math.round(left), top: Math.round(top) };
+    }),
+  );
+
+  expect(new Set(rectangles.map(({ left }) => left)).size).toBe(1);
+  for (let index = 1; index < rectangles.length; index += 1) {
+    expect(rectangles[index].top).toBeGreaterThan(rectangles[index - 1].top);
+  }
+});
+
 test("a mage's pane opens the tree on the skill they are furthest along in", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, MAGE_HEX);
