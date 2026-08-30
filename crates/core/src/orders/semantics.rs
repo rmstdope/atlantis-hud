@@ -402,12 +402,24 @@ pub fn review_turn(
     // at once costs peak memory rather than work - each ledger is still built exactly once. A
     // region with no own units now builds an empty ledger where the single-pass loop skipped it,
     // which is a walk of nothing.
-    let mut hexes: Vec<(Hex<'_>, Ledger<'_>)> = report
+    let hexes: Vec<Hex<'_>> = report
         .regions
         .iter()
-        .map(|region| {
-            let mut hex = hex_with_transfers(region, &ordered, &formed, ruleset);
-            let ledger = ledger_for(&hex, ruleset, &receipts);
+        .map(|region| hex_with_transfers(region, &ordered, &formed, ruleset))
+        .collect();
+
+    // A `Products` line is shared by everyone producing against it, and who that is is a
+    // report-wide question: a unit a vessel carries away produces where the vessel arrives, in
+    // another hex entirely (`ah-256d`, `ah-k43x`). So every hex has to exist before any unit can
+    // be priced, and this one settlement is what both the ledgers and the SILVER column read. No
+    // overruns: the navigator chose against a Problems entry for this, because a busy mining hex
+    // is oversubscribed on purpose.
+    let production = production_shares_for(&hexes, ruleset);
+
+    let mut hexes: Vec<(Hex<'_>, Ledger<'_>)> = hexes
+        .into_iter()
+        .map(|mut hex| {
+            let ledger = ledger_for_with_production(&hex, ruleset, &receipts, &production);
             apply_recruits(&mut hex.units, &ledger, ruleset);
             (hex, ledger)
         })
@@ -446,6 +458,7 @@ pub fn review_turn(
                 settlement: &settlement,
             },
             &plurals,
+            &production,
             &mut silver,
             &mut overruns,
         );
@@ -801,71 +814,219 @@ fn market_shares_for(
         .collect()
 }
 
-/// Every own unit's claim on each of this hex's `Products` lines, settled (`ah-256d`).
+/// What one region's monthly yield leaves one unit's `PRODUCE`, and what that region calls the
+/// goods (`ah-256d`, `ah-k43x`).
 ///
-/// Keyed by canonical item tag. Each vector is index-aligned with `hex.units`, as the market shares
-/// are and for the same reason: two units may carry the same id, and a map keyed by id would merge
-/// them.
+/// The noun travels with the share because the two come from the same `Products` line, and for a
+/// passenger that line is in a region the unit is not standing in - so a hover built from the
+/// unit's own hex would name the wrong region's word, or none at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProductionRegionAnswer {
+    share: RegionShare,
+    /// The producing region's own word for the goods - `iron`, `horses`, `floater hides`, which is
+    /// not the catalogue's singular for `HORS`, `HERB`, `FLOA`, `TURT`, `MUSH`, `WING` or `CAME`.
+    /// `None` where that region lists none of the goods, which is exactly [`RegionShare::NothingHere`].
+    product_name: Option<String>,
+}
+
+/// Every own unit's claim on the `Products` line it actually produces against, settled across the
+/// whole report (`ah-256d`, `ah-k43x`).
+///
+/// **Report-wide rather than per hex, because a producer's region is not always its own.**
+/// `rules/movement_sailing` has a fleet carry every unit aboard it, and a unit aboard may execute
+/// another order; `PRODUCE` is phase 10 and movement is phase 9, so a passenger produces where the
+/// vessel arrives. Its claim therefore lands in a different `Hex` from the one it is listed in, and
+/// the units already producing there have to be settled against it - which no per-hex pass can do.
+///
+/// Keyed by the unit's **report-origin coordinate**, and each vector is index-aligned with that
+/// origin's `hex.units`, as the market shares are and for the same reason: two units may carry the
+/// same id, and a map keyed by id would merge them. The inner map is keyed by canonical uppercase
+/// item tag.
+///
+/// An absent answer is [`RegionShare::Unlimited`]: either no regional pool applies at all, or the
+/// sail cannot be followed through the report and the destination is unknowable.
+#[derive(Debug, Default)]
+struct ProductionShares {
+    by_origin: HashMap<Coordinate, Vec<BTreeMap<String, ProductionRegionAnswer>>>,
+}
+
+impl ProductionShares {
+    /// What was settled for the unit at `actor_index` of the hex at `origin`, for `tag`.
+    ///
+    /// `None` where nothing was settled, which every caller reads as
+    /// [`RegionShare::Unlimited`] - see the type's own note for the two ways that happens.
+    fn answer_for(
+        &self,
+        origin: Coordinate,
+        actor_index: usize,
+        tag: &str,
+    ) -> Option<&ProductionRegionAnswer> {
+        self.by_origin
+            .get(&origin)?
+            .get(actor_index)?
+            .get(&tag.to_ascii_uppercase())
+    }
+}
+
+/// One unit's claim on a destination's `Products` line, held until every claim on it is known.
+///
+/// The origin coordinate and index travel with the amount because that pair is where the answer
+/// has to be written back to, and it is not where the pool is.
+struct ProductionClaim {
+    origin: Coordinate,
+    actor_index: usize,
+    wanted: i64,
+}
+
+/// Every own unit's primary `PRODUCE`, settled against the region that will actually yield it.
 ///
 /// Only *primary* production contends. `rules/sequenceofevents` runs "Manufacturing PRODUCE orders
 /// (those that produce items from other items...)" in a phase of its own ahead of "Primary PRODUCE
 /// orders (those that produce items from region resources...)", and only the second draws on the
-/// hex; a recipe with no material inputs is exactly the second, which is the same test
+/// region; a recipe with no material inputs is exactly the second, which is the same test
 /// [`check_production`] already applies before it says `produce-not-here`.
 ///
 /// The **first** `PRODUCE` of each unit and no more: a `PRODUCE` is month-long, so a unit has at
 /// most one that matters - the reason [`check_production`] anchors its own finding the same way.
 ///
-/// A unit a vessel is carrying away claims nothing here: it produces where the vessel arrives, and
-/// letting it eat a share of the hex it is leaving would take that share off the units that stay.
-/// It is left uncapped rather than settled against a destination this pass does not price.
+/// Where a unit produces is [`carried_away`] and [`sail_destination`]'s answer, exactly as
+/// `check_production`'s own sailing arm asks it (`ah-jk9h`, `ah-8myf`). A sail the report cannot
+/// follow leaves the answer absent rather than falling back to the origin: `None` there means
+/// "cannot say", and a guessed cap is worse than none.
 ///
 /// [`PoolShare::Unknowable`] has no counterpart here, and neither does [`PoolOverrun`]: a guessed
 /// headcount is handled by [`region_share_of`], and the navigator chose against any finding at all
 /// (`ah-256d`, 2026-08-29), so nothing is reported and there is no overruns argument.
-fn production_shares_for(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> BTreeMap<String, Vec<i64>> {
-    let mut wants: BTreeMap<String, Vec<i64>> = BTreeMap::new();
-
-    for (index, ordered) in hex.units.iter().enumerate() {
-        let Some(placed) = ordered
-            .intents
+fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> ProductionShares {
+    let by_coordinate: HashMap<Coordinate, &ReportRegion> = hexes
+        .iter()
+        .map(|hex| (hex.region.coordinate, hex.region))
+        .collect();
+    let mut settled = ProductionShares {
+        by_origin: hexes
             .iter()
-            .find(|placed| matches!(placed.intent, Intent::Produce { .. }))
-        else {
-            continue;
-        };
-        let Intent::Produce { item } = &placed.intent else {
-            continue;
-        };
-        let Some(tag) = production_tag_of(hex, ordered, item, ruleset) else {
-            continue;
-        };
-        let Some(wanted) = production_ask(hex, ordered, &tag, ruleset) else {
-            continue;
-        };
-        wants.entry(tag).or_insert_with(|| vec![0; hex.units.len()])[index] = wanted;
+            .map(|hex| {
+                (
+                    hex.region.coordinate,
+                    vec![BTreeMap::new(); hex.units.len()],
+                )
+            })
+            .collect(),
+    };
+    // Keyed by where the goods come from rather than by who asks for them - the destination's own
+    // producers and every visible arrival draw on one line, so they have to meet in one group.
+    let mut claims: HashMap<(Coordinate, String), Vec<ProductionClaim>> = HashMap::new();
+
+    for hex in hexes {
+        for (actor_index, ordered) in hex.units.iter().enumerate() {
+            let Some(placed) = ordered
+                .intents
+                .iter()
+                .find(|placed| matches!(placed.intent, Intent::Produce { .. }))
+            else {
+                continue;
+            };
+            let Intent::Produce { item } = &placed.intent else {
+                continue;
+            };
+            let Some(tag) = production_tag_of(hex, ordered, item, ruleset) else {
+                continue;
+            };
+            let Some(wanted) = production_ask(ordered, &tag, ruleset) else {
+                continue;
+            };
+            let sailing = ruleset.and_then(|rules| carried_away(hex, ordered, rules));
+            let produces_in = match sailing.map(|placed| &placed.intent) {
+                Some(Intent::Sail { steps }) => sail_destination(hex.region, steps, &by_coordinate),
+                _ => Some(hex.region),
+            };
+            // The report cannot follow the sail, so there is no yield to settle against and the
+            // answer stays absent - never the origin, and never the last region reached.
+            let Some(region) = produces_in else {
+                continue;
+            };
+            if !region
+                .products
+                .iter()
+                .any(|product| product.tag.eq_ignore_ascii_case(&tag))
+            {
+                write_answer(
+                    &mut settled,
+                    hex.region.coordinate,
+                    actor_index,
+                    tag,
+                    ProductionRegionAnswer {
+                        share: RegionShare::NothingHere,
+                        product_name: None,
+                    },
+                );
+                continue;
+            }
+            claims
+                .entry((region.coordinate, tag))
+                .or_default()
+                .push(ProductionClaim {
+                    origin: hex.region.coordinate,
+                    actor_index,
+                    wanted,
+                });
+        }
     }
 
-    wants
-        .into_iter()
-        .map(|(tag, claims)| {
-            let pool = hex
-                .region
+    for ((coordinate, tag), group) in claims {
+        let product = by_coordinate.get(&coordinate).and_then(|region| {
+            region
                 .products
                 .iter()
                 .find(|product| product.tag.eq_ignore_ascii_case(&tag))
-                .map_or(0, |product| product.amount);
-            let shares = split_pool(&claims, pool);
-            (tag, shares)
-        })
-        .collect()
+        });
+        let pool = product.map_or(0, |product| product.amount);
+        let name = product.map(|product| product.name.clone());
+        let wants: Vec<i64> = group.iter().map(|claim| claim.wanted).collect();
+        let shares = split_pool(&wants, pool);
+        for (claim, share) in group.iter().zip(shares) {
+            write_answer(
+                &mut settled,
+                claim.origin,
+                claim.actor_index,
+                tag.clone(),
+                ProductionRegionAnswer {
+                    share: RegionShare::Share(share),
+                    product_name: name.clone(),
+                },
+            );
+        }
+    }
+
+    settled
 }
 
-/// The canonical tag of the goods a `PRODUCE` names, where the hex's own yield is what limits it.
+/// Records one settled answer, which is only ever written for a unit the caller has just walked -
+/// so an origin or an index this does not know about is unreachable rather than handled.
+fn write_answer(
+    settled: &mut ProductionShares,
+    origin: Coordinate,
+    actor_index: usize,
+    tag: String,
+    answer: ProductionRegionAnswer,
+) {
+    if let Some(unit) = settled
+        .by_origin
+        .get_mut(&origin)
+        .and_then(|units| units.get_mut(actor_index))
+    {
+        unit.insert(tag, answer);
+    }
+}
+
+/// The canonical tag of the goods a `PRODUCE` names, where a region's own yield is what limits it.
 ///
 /// `None` for every case in which no regional pool can be said to apply, in the order
 /// [`region_share_of`] states them: goods nothing could resolve, an item no skill this unit has
-/// produces, a recipe that takes materials, and a unit a vessel is carrying away.
+/// produces, and a recipe that takes materials.
+///
+/// A unit a vessel is carrying away is **not** excluded here: sailing decides *which* region owns
+/// the pool, not whether this is primary production at all (`ah-k43x`).
 fn production_tag_of(
     hex: &Hex<'_>,
     ordered: &Ordered<'_>,
@@ -874,46 +1035,30 @@ fn production_tag_of(
 ) -> Option<String> {
     let tag = resolve_item(item, hex, ordered, ruleset)?.to_ascii_uppercase();
     let (_, recipe) = producing_skill(ruleset, &tag, Some(&ordered.unit.skills))?;
-    // Only a recipe with no material inputs comes from the hex itself - the same test
+    // Only a recipe with no material inputs comes from the region itself - the same test
     // `check_production` applies before it says `produce-not-here`.
     if !recipe.inputs.is_empty() {
-        return None;
-    }
-    // A passenger produces where the vessel arrives, not here.
-    if ruleset.is_some_and(|rules| carried_away(hex, ordered, rules).is_some()) {
         return None;
     }
     Some(tag)
 }
 
-/// How many of the goods a unit's own men could make, which is what it claims of the hex.
+/// How many of the goods a unit's own men could make, which is what it claims of its region.
 ///
 /// Built from **`early_men()`, `unit.skills` and `early_items()`** - the ledger's picture, and
-/// never `facts.late().men`. `ledger_for` and `forecast_hex` both compute this settlement, with
+/// never `facts.late().men`. `ledger_for` and `forecast_hex` both read this settlement, with
 /// `apply_recruits` running between them; that pass rewrites `skills_after_gifts` and
 /// `men_after_orders` and nothing else, so these three terms are the ones both passes can read and
 /// agree on (`ah-vtwn`, `ah-ycuj`).
 ///
 /// `tag` is the canonical tag [`production_tag_of`] resolved, so this is only ever asked about a
-/// primary `PRODUCE` that draws on the hex at all.
+/// primary `PRODUCE` that draws on a region at all.
 ///
-/// `None` where the hex yields none of the goods - there is nothing to divide, and
-/// [`region_share_of`] answers that case directly - or where the run is not priceable at all.
-fn production_ask(
-    hex: &Hex<'_>,
-    ordered: &Ordered<'_>,
-    tag: &str,
-    ruleset: Option<&Ruleset>,
-) -> Option<i64> {
+/// **Says nothing about availability**, which belongs to the region the unit produces in and not
+/// to the one it is listed in - the passenger's whole difficulty (`ah-k43x`). `None` where the run
+/// is not priceable at all, or where the men could make none of it anyway.
+fn production_ask(ordered: &Ordered<'_>, tag: &str, ruleset: Option<&Ruleset>) -> Option<i64> {
     let (skill, recipe) = producing_skill(ruleset, tag, Some(&ordered.unit.skills))?;
-    if !hex
-        .region
-        .products
-        .iter()
-        .any(|product| product.tag.eq_ignore_ascii_case(tag))
-    {
-        return None;
-    }
     let work = workforce_for(
         ruleset,
         skill,
@@ -933,63 +1078,60 @@ fn production_ask(
 /// their inputs, and `crates/core/tests/silver_agrees_with_the_warning.rs` is what finds out when
 /// they drift.
 ///
-/// [`RegionShare::Unlimited`] for a recipe that takes materials, for a unit a vessel is carrying
-/// away, for goods nothing could resolve, and where there is no ruleset - every case in which no
-/// regional pool can be said to apply. [`RegionShare::NothingHere`] where the hex's `Products` line
-/// names none of the goods. Otherwise this unit's settled [`RegionShare::Share`].
+/// The answer is read out of the report-wide settlement by origin coordinate and unit index, never
+/// recomputed from `hex.region.products`: for a passenger the pool is in another hex entirely
+/// (`ah-k43x`).
 ///
-/// **A guessed headcount is what the last `unwrap_or` is for, and it is deliberate.** A producer
+/// [`RegionShare::Unlimited`] for a recipe that takes materials, for goods nothing could resolve,
+/// where there is no ruleset, and for a sail the report cannot follow - every case in which no
+/// regional pool can be said to apply. [`RegionShare::NothingHere`] where the producing region's
+/// `Products` line names none of the goods. Otherwise this unit's settled [`RegionShare::Share`].
+///
+/// **A guessed headcount is what the missing answer is for, and it is deliberate.** A producer
 /// whose `men_estimated` is true has a guessed ask, so [`production_shares_for`] still counts it
-/// and the split is a guess for everybody in the hex. That is accepted rather than answered with a
-/// [`PoolShare::Unknowable`]: primary production costs no silver, so there is no [`SilverDoubt`]
-/// for it to reach, the ITEMS column has no way to render an unknowable quantity, and
-/// `men_estimated` is only ever true for a unit the catalogue could not classify - which means no
-/// ruleset, which means no recipe and `Unlimited` two gates earlier.
+/// and the split is a guess for everybody drawing on that region. That is accepted rather than
+/// answered with a [`PoolShare::Unknowable`]: primary production costs no silver, so there is no
+/// [`SilverDoubt`] for it to reach, the ITEMS column has no way to render an unknowable quantity,
+/// and `men_estimated` is only ever true for a unit the catalogue could not classify - which means
+/// no ruleset, which means no recipe and `Unlimited` two gates earlier.
 fn region_share_of(
     hex: &Hex<'_>,
     ordered: &Ordered<'_>,
     index: usize,
     item: &str,
-    shares: &BTreeMap<String, Vec<i64>>,
+    production: &ProductionShares,
     ruleset: Option<&Ruleset>,
 ) -> RegionShare {
     let Some(tag) = production_tag_of(hex, ordered, item, ruleset) else {
         return RegionShare::Unlimited;
     };
-    if !hex
-        .region
-        .products
-        .iter()
-        .any(|product| product.tag.eq_ignore_ascii_case(&tag))
-    {
-        return RegionShare::NothingHere;
-    }
-    RegionShare::Share(
-        shares
-            .get(&tag)
-            .and_then(|shares| shares.get(index))
-            .copied()
-            .unwrap_or(0),
-    )
+    production
+        .answer_for(hex.region.coordinate, index, &tag)
+        .map_or(RegionShare::Unlimited, |answer| answer.share)
 }
 
-/// The region's own word for the goods a `PRODUCE` names, from its `Products` line.
+/// The producing region's own word for the goods a `PRODUCE` names, from its `Products` line.
 ///
 /// `iron`, `horses`, `floater hides` - the game's own noun, which is not the catalogue's singular
-/// for `HORS`, `HERB`, `FLOA`, `TURT`, `MUSH`, `WING` or `CAME`. `None` where the region lists none
-/// of the goods, which is exactly when nothing is produced there at all.
+/// for `HORS`, `HERB`, `FLOA`, `TURT`, `MUSH`, `WING` or `CAME`. `None` where that region lists
+/// none of the goods, which is exactly when nothing is produced there at all.
+///
+/// **The producing region, not this one.** A passenger is capped by the hex its vessel arrives in,
+/// so the noun in the cap sentence has to come from there too, or the hover names goods the region
+/// doing the limiting never listed (`ah-k43x`).
 fn region_product_name(
     hex: &Hex<'_>,
     ordered: &Ordered<'_>,
+    index: usize,
     item: &str,
+    production: &ProductionShares,
     ruleset: Option<&Ruleset>,
 ) -> Option<String> {
     let tag = production_tag_of(hex, ordered, item, ruleset)?;
-    hex.region
-        .products
-        .iter()
-        .find(|product| product.tag.eq_ignore_ascii_case(&tag))
-        .map(|product| product.name.clone())
+    production
+        .answer_for(hex.region.coordinate, index, &tag)?
+        .product_name
+        .clone()
 }
 
 /// The region's shared figures, as both surfaces that price a hex read them.
@@ -1060,6 +1202,7 @@ fn forecast_hex(
     ruleset: Option<&Ruleset>,
     relief: &Relief<'_>,
     plurals: &Plurals,
+    production: &ProductionShares,
     into: &mut Vec<UnitSilver>,
     overruns: &mut Vec<PoolOverrun>,
 ) {
@@ -1085,11 +1228,9 @@ fn forecast_hex(
     // oversubscription split in proportion to what each unit tried to trade (`ah-t2pn.3`).
     let market_shares = market_shares_for(hex, ruleset, overruns);
 
-    // The hex's own `Products` line is shared the same way: every unit producing there draws on
-    // one monthly yield, so who else is producing has to be settled before any one of them can be
-    // priced against it (`ah-256d`). No overruns: the navigator chose against a Problems entry for
-    // this, because a busy mining hex is oversubscribed on purpose.
-    let production_shares = production_shares_for(hex, ruleset);
+    // The hex's own `Products` line is shared the same way, but who draws on it is a report-wide
+    // question - a passenger produces where its vessel arrives - so the settlement is handed in
+    // rather than computed here (`ah-256d`, `ah-k43x`).
 
     // What this hex's `SHARE` flags lend for orders, settled once and read by both surfaces: the
     // same function `report_shortfalls` judges against, so the column cannot call a unit short
@@ -1164,8 +1305,9 @@ fn forecast_hex(
         // for the goods - one function each, shared with the ITEMS ledger, so the two surfaces
         // cannot settle the same hex differently (`ah-256d`, `ah-ycuj`).
         let region_share =
-            |text: &str| region_share_of(hex, ordered, index, text, &production_shares, ruleset);
-        let region_product = |text: &str| region_product_name(hex, ordered, text, ruleset);
+            |text: &str| region_share_of(hex, ordered, index, text, production, ruleset);
+        let region_product =
+            |text: &str| region_product_name(hex, ordered, index, text, production, ruleset);
         let name_of = |tag: &str| item_name(tag, hex, ruleset);
         // Named `counted_by_name` rather than `counted_item`, which is the private function it
         // calls: shadowing it here would make the closure recurse (`ah-ofpb.4`).
@@ -2892,16 +3034,38 @@ fn own_unit_pillages(hex: &Hex<'_>) -> bool {
     hex.units.iter().any(orders_a_pillage)
 }
 
+/// Everything the hex's units hold, with this month's orders applied, settled against nothing but
+/// this hex's own production.
+///
+/// The one-hex test helper, and **not** what either entry point calls: production is settled
+/// across the whole report, because a passenger's claim lands in the hex its vessel arrives in
+/// (`ah-k43x`). A hex read alone can still settle its own producers, which is what every focused
+/// test of this module wants and what this gives them.
+#[cfg(test)]
+fn ledger_for<'a>(
+    hex: &Hex<'_>,
+    ruleset: Option<&'a Ruleset>,
+    receipts: &'a BTreeMap<String, Receipts>,
+) -> Ledger<'a> {
+    let production = production_shares_for(std::slice::from_ref(hex), ruleset);
+    ledger_for_with_production(hex, ruleset, receipts, &production)
+}
+
 /// Everything the hex's units hold, with this month's orders applied.
 ///
 /// Built once per hex and read by two checks: `check_resources` asks whether the sums go negative,
 /// `check_sailing` asks what the change of stock weighs. One ledger rather than two, because the
 /// answer has to be the same one - a fleet judged against a different set of transfers from the
 /// set that produced the shortfall warnings would be two models of the same turn.
-fn ledger_for<'a>(
+///
+/// `production` is the whole report's production settlement, computed once by the caller and read
+/// by both preview paths: settling it here, per hex, would price a passenger against the hex it is
+/// leaving (`ah-k43x`).
+fn ledger_for_with_production<'a>(
     hex: &Hex<'_>,
     ruleset: Option<&'a Ruleset>,
     receipts: &'a BTreeMap<String, Receipts>,
+    production: &ProductionShares,
 ) -> Ledger<'a> {
     let mut ledger = Ledger {
         ruleset,
@@ -2943,9 +3107,6 @@ fn ledger_for<'a>(
     // the two passes are separate entry points, and threading one computation between them means
     // restructuring both together.
     let market_shares = market_shares_for(hex, ruleset, &mut Vec::new());
-    // The hex's own `Products` line is shared the same way, and settled at exactly the two sites
-    // `market_shares_for` occupies - a third call site would be a third answer (`ah-256d`).
-    let production_shares = production_shares_for(hex, ruleset);
     // Once per hex, not once per intent - `apply` runs per intent and this path runs on every
     // keystroke, so a city of forty units would otherwise walk its own units forty times for the
     // combat-ready sum alone (`ah-1ad6.2`, `ah-lu0f.3`).
@@ -2961,7 +3122,7 @@ fn ledger_for<'a>(
                 region,
                 HexStanding {
                     market: &market_shares,
-                    production: &production_shares,
+                    production,
                     actor_index: index,
                 },
             );
@@ -2989,17 +3150,28 @@ pub(crate) fn item_effects(
     let mut result: BTreeMap<String, UnitItemEffects> = BTreeMap::new();
     let no_receipts = BTreeMap::new();
 
-    for region in &report.regions {
-        // `&[]`: a unit this month's `FORM` orders create is out of scope here, exactly as it was
-        // before `ah-jw85` gave `Hex::read` a third argument - `ah-agbm`'s own follow-up, not this
-        // bead's, if the ITEMS column is to project a formed unit's BUY or SELL too.
-        //
-        // `hex_with_transfers` projects this month's GIVE/TAKE onto the hex's units (`ah-dxfd.2`),
-        // exactly as `review_turn` does - one reader for both entry points, so they cannot
-        // diverge. `item_effects` only ever reads `ledger.movements` and `ledger.uncounted`,
-        // neither of which the projection touches, so this changes no output here.
-        let hex = hex_with_transfers(region, &ordered, &[], ruleset);
-        let ledger = ledger_for(&hex, ruleset, &no_receipts);
+    // `&[]`: a unit this month's `FORM` orders create is out of scope here, exactly as it was
+    // before `ah-jw85` gave `Hex::read` a third argument - `ah-agbm`'s own follow-up, not this
+    // bead's, if the ITEMS column is to project a formed unit's BUY or SELL too.
+    //
+    // `hex_with_transfers` projects this month's GIVE/TAKE onto the hex's units (`ah-dxfd.2`),
+    // exactly as `review_turn` does - one reader for both entry points, so they cannot
+    // diverge. `item_effects` only ever reads `ledger.movements` and `ledger.uncounted`,
+    // neither of which the projection touches, so this changes no output here.
+    let hexes: Vec<Hex<'_>> = report
+        .regions
+        .iter()
+        .map(|region| hex_with_transfers(region, &ordered, &[], ruleset))
+        .collect();
+
+    // Every hex before any ledger, and one settlement for all of them: a passenger produces where
+    // its vessel arrives, so the pool it draws on is in another hex's `Products` line. Settling
+    // this per hex here would leave the ITEMS cell disagreeing with the SILVER cell beside it,
+    // which reads the report-wide answer (`ah-k43x`).
+    let production = production_shares_for(&hexes, ruleset);
+
+    for hex in &hexes {
+        let ledger = ledger_for_with_production(hex, ruleset, &no_receipts, &production);
 
         for movement in ledger.movements {
             result
@@ -4324,8 +4496,9 @@ fn gives_all_silver_after(
 struct HexStanding<'a> {
     /// Index-aligned with `hex.units`, exactly as [`market_shares_for`] builds it.
     market: &'a BTreeMap<(String, MarketSide), Vec<i64>>,
-    /// Index-aligned with `hex.units`, exactly as [`production_shares_for`] builds it.
-    production: &'a BTreeMap<String, Vec<i64>>,
+    /// The whole report's production settlement, read by origin coordinate and `actor_index`: a
+    /// passenger's pool is in the hex its vessel arrives in, not in this one (`ah-k43x`).
+    production: &'a ProductionShares,
     /// Which of `hex.units` the order being priced belongs to.
     actor_index: usize,
 }
@@ -13213,6 +13386,121 @@ mod tests {
             // nothing here.
             assert_eq!(silver_of(&review, "1795").produced, 32);
             assert_eq!(silver_of(&review, "1795").production_capped_by, None);
+        }
+
+        /// The hex above, given an exit north so the report can follow the sail, plus whatever
+        /// regions the test wants beyond it. The origin yields nothing at all, so anything the
+        /// passenger is capped by came from the destination and from nowhere else.
+        fn sailing_north(beyond: Vec<ReportRegion>) -> ParsedReport {
+            let passenger = ReportUnit {
+                structure_id: Some("329".to_string()),
+                ..producer("4021", 8, "MINI", 5)
+            };
+            let mut sailor = ReportUnit {
+                structure_id: Some("329".to_string()),
+                ..unit("4022")
+            };
+            sailor.skills.push(sail(4));
+            let here = ReportRegion {
+                structures: vec![longship("329")],
+                exits: vec![Exit {
+                    direction: "North".to_string(),
+                    coordinate: Coordinate { x: 7, y: 51, z: 1 },
+                    ..Default::default()
+                }],
+                ..yielding(Vec::new(), vec![passenger, sailor])
+            };
+            let mut regions = vec![here];
+            regions.extend(beyond);
+            report(regions)
+        }
+
+        /// The region north of `sailing_north`'s hex: `Products: 36 iron`, and whichever units
+        /// are already standing in it.
+        fn iron_to_the_north(units: Vec<ReportUnit>) -> ReportRegion {
+            ReportRegion {
+                products: vec![product(36, "iron", "IRON")],
+                ..region_at("1:7,51", 7, 51, units)
+            }
+        }
+
+        /// What the ITEMS column shows this unit making, which is the `produced` movements of the
+        /// goods summed - the same figure the SILVER column's `produced` states.
+        fn produced_in_items(
+            effects: &BTreeMap<String, UnitItemEffects>,
+            id: &str,
+            tag: &str,
+        ) -> i64 {
+            effects.get(id).map_or(0, |unit| {
+                unit.moved
+                    .iter()
+                    .filter(|movement| movement.produced && movement.tag == tag)
+                    .map(|movement| movement.delta)
+                    .sum()
+            })
+        }
+
+        const SAILING_MINERS: &str =
+            "unit 4021\nPRODUCE iron\nunit 4022\nSAIL N\nunit 1795\nPRODUCE iron\n";
+
+        /// `ah-k43x`. A passenger produces where the vessel arrives, so it draws on *that* hex's
+        /// monthly yield alongside the units already producing there - and the two are settled
+        /// against one another even though they stand in different regions of the report. The
+        /// passenger asks 40 and the miner 32 of a yield of 36, so `split_pool` leaves them 20 and
+        /// 16. Both preview columns are asserted, because both price the same order through arms
+        /// that share only their inputs.
+        #[test]
+        fn a_passenger_and_a_local_producer_split_the_destinations_yield_in_both_columns() {
+            let report = sailing_north(vec![iron_to_the_north(vec![with_item(
+                producer("1795", 8, "MINI", 3),
+                8,
+                "pick",
+                "PICK",
+            )])]);
+            let review = review_turn(
+                &report,
+                SAILING_MINERS,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let passenger = silver_of(&review, "4021");
+            assert_eq!(passenger.produced, 20);
+            assert_eq!(passenger.production_wanted, 40);
+            assert_eq!(
+                passenger.production_capped_by,
+                Some(crate::orders::silver::ProductionCap::Region)
+            );
+            let miner = silver_of(&review, "1795");
+            assert_eq!(miner.produced, 16);
+            assert_eq!(miner.production_wanted, 32);
+            assert_eq!(
+                miner.production_capped_by,
+                Some(crate::orders::silver::ProductionCap::Region)
+            );
+
+            let effects = item_effects(&report, SAILING_MINERS, Some(&ruleset()));
+            assert_eq!(produced_in_items(&effects, "4021", "IRON"), 20);
+            assert_eq!(produced_in_items(&effects, "1795", "IRON"), 16);
+        }
+
+        /// `ah-k43x`. `sail_destination` answering `None` means "cannot say", never "did not
+        /// move": the exit is reported but the region beyond it is not, so there is no yield to
+        /// settle against and the passenger keeps today's uncapped answer. Never the origin's
+        /// yield, and never the last region the route could be followed to.
+        #[test]
+        fn a_passenger_whose_destination_is_not_in_the_report_stays_uncapped_in_both_columns() {
+            let report = sailing_north(Vec::new());
+            let orders = "unit 4021\nPRODUCE iron\nunit 4022\nSAIL N\n";
+            let review = review_turn(&report, orders, Some(&ruleset()), CheckOptions::default());
+
+            let passenger = silver_of(&review, "4021");
+            assert_eq!(passenger.produced, 40);
+            assert_eq!(passenger.production_wanted, 40);
+            assert_eq!(passenger.production_capped_by, None);
+
+            let effects = item_effects(&report, orders, Some(&ruleset()));
+            assert_eq!(produced_in_items(&effects, "4021", "IRON"), 40);
         }
     }
 
