@@ -333,6 +333,23 @@ describe("filterUnits", () => {
   it("returns nothing when no unit matches", () => {
     expect(filterUnits(units, "nobody")).toEqual([]);
   });
+
+  it("the filter finds the exact Skills text supplied by the table", () => {
+    // `ah-1mpx.6.3`: the callback is what the Skills cell drew, not the unit's own report-native
+    // list - so a battle-derived cell reading `RIDI 5 (turn 71)` is found by that exact text even
+    // though the unit's own `skills` array is empty.
+    const drawn = new Map([["12538", "RIDI 5 (turn 71)"]]);
+    const skillsText = (unit: ReportUnit) => drawn.get(unit.unitId) ?? "";
+
+    expect(ids(filterUnits(units, "turn 71", [], skillsText))).toEqual(["12538"]);
+    expect(ids(filterUnits(units, "RIDI", [], skillsText))).toEqual(["12538"]);
+  });
+
+  it("without a callback the filter still finds a unit's own report-native skills", () => {
+    const withSkills = [unit("77", true, { skills: [{ name: "combat", tag: "COMB", level: 3, points: 180 }] })];
+
+    expect(ids(filterUnits(withSkills, "COMB 3"))).toEqual(["77"]);
+  });
 });
 
 describe("sorts by the long order, ignoring case and a leading @", () => {

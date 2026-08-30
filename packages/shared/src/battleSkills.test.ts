@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ArmyMemberRecord, RosterSkills } from "@atlantis/core-client";
+import { aReportUnit } from "@atlantis/core-client";
 
 import {
   derivedSkillsFor,
@@ -215,6 +216,30 @@ describe("derivedSkillsFor", () => {
       derivedSkillsFor(
         derived,
         aMember({ skills: [{ name: "combat", tag: "COMB", level: 1, points: 30 }] })
+      )
+    ).toEqual([]);
+  });
+
+  it("accepts a live report unit without widening its eligibility", () => {
+    // `SkillBearingUnit` is narrowed to `unitId`, `own` and `skills` so a live `ReportUnit` can be
+    // asked as directly as an `ArmyMemberRecord` (`ah-1mpx.6.3`) - but the same rule must still
+    // apply: a foreign unit with no skills of its own is filled, and nothing else is.
+    expect(
+      derivedSkillsFor(derived, aReportUnit({ unitId: "4839", own: false, skills: [] })).map(
+        (skill) => skill.tag
+      )
+    ).toEqual(["COMB"]);
+    expect(derivedSkillsFor(derived, aReportUnit({ unitId: "4839", own: true, skills: [] }))).toEqual(
+      []
+    );
+    expect(
+      derivedSkillsFor(
+        derived,
+        aReportUnit({
+          unitId: "4839",
+          own: false,
+          skills: [{ name: "combat", tag: "COMB", level: 1, points: 30 }]
+        })
       )
     ).toEqual([]);
   });

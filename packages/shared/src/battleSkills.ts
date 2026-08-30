@@ -9,7 +9,7 @@
  * Pure, like `armyExport.ts` beside it: no React, no store, no client, no clock.
  */
 
-import type { ArmyMemberRecord, Coordinate, RosterSkills } from "@atlantis/core-client";
+import type { Coordinate, ReportUnit, RosterSkills } from "@atlantis/core-client";
 
 /**
  * One combat skill recovered for one unit from one battle roster.
@@ -168,26 +168,36 @@ function withObserved(
 }
 
 /**
- * The skills this member exports that are not its own, or `[]`.
+ * The fields `derivedSkillsFor`'s ownership/real-skills guard actually reads.
  *
- * **The whole of decision O1, in one place.** Non-empty only when the member belongs to another
+ * Narrowed from the complete persisted `ArmyMemberRecord` (`ah-1mpx.6.3`) so the same guard can be
+ * reused for a live `ReportUnit` as well - the units table, its hover, and the Unit panel all read
+ * this from a turn's report rather than from an Army snapshot, and neither carries anything the
+ * predicate needs beyond these three fields.
+ */
+export type SkillBearingUnit = Pick<ReportUnit, "unitId" | "own" | "skills">;
+
+/**
+ * The skills this unit exports that are not its own, or `[]`.
+ *
+ * **The whole of decision O1, in one place.** Non-empty only when the unit belongs to another
  * faction *and* carries no skills of its own. Both halves matter:
  *
  * - Own units are never filled. Your own report lists your own units' skills in full and every
  *   turn, so a roster is a worse source for them, not a fallback - and an empty skill list on an
  *   own unit is the truth, not a gap.
- * - A member that already has skills is never touched, which is the family's standing rule that a
+ * - A unit that already has skills is never touched, which is the family's standing rule that a
  *   derived skill never displaces a real one.
  *
- * Both the export and the dialog's "N of them" count go through this, so the file and the sentence
- * about it can never disagree.
+ * The export, the dialog's "N of them" count, the units table, the hover and the Unit panel all go
+ * through this, so none of them can ever disagree about which units are eligible.
  */
 export function derivedSkillsFor(
   derived: DerivedSkills,
-  member: ArmyMemberRecord
+  unit: SkillBearingUnit
 ): readonly DerivedSkill[] {
-  if (member.own || member.skills.length > 0) {
+  if (unit.own || unit.skills.length > 0) {
     return [];
   }
-  return derived.get(member.unitId) ?? [];
+  return derived.get(unit.unitId) ?? [];
 }

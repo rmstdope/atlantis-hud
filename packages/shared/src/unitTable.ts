@@ -128,11 +128,17 @@ export function windowRange(
  * The structure is matched by its whole label - name, number and type - rather than by its id
  * alone: the table shows the name now, and a column showing text the filter cannot find reads as
  * a bug (ah-kdgc).
+ *
+ * `skillsText` is what the Skills cell drew, so the filter can find `RIDI 5` or `turn 71` on a row
+ * that is showing battle-derived skills rather than its own (`ah-1mpx.6.3`). It defaults to the
+ * unit's own report-native skill text, so a unit whose caller passes nothing is still searchable by
+ * its skills exactly as it always was.
  */
 export function filterUnits(
   units: ReportUnit[],
   needle: string,
-  structures: readonly StructureInfo[] = []
+  structures: readonly StructureInfo[] = [],
+  skillsText: (unit: ReportUnit) => string = defaultSkillsText
 ): ReportUnit[] {
   const wanted = needle.trim().toLowerCase();
   if (!wanted) {
@@ -145,7 +151,8 @@ export function filterUnits(
       unit.unitId,
       unit.factionName ?? "",
       unit.structureId ?? "",
-      unitStructureLabel(unit.structureId, byId) ?? ""
+      unitStructureLabel(unit.structureId, byId) ?? "",
+      skillsText(unit)
     ]
       .join(" ")
       .toLowerCase()
@@ -155,6 +162,10 @@ export function filterUnits(
 
 const indexById = (structures: readonly StructureInfo[]) =>
   new Map(structures.map((structure) => [structure.structureId, structure]));
+
+/** `filterUnits`' default `skillsText`: exactly the report-native text the Skills cell has always shown. */
+const defaultSkillsText = (unit: ReportUnit): string =>
+  unit.skills.map((skill) => `${skill.tag} ${skill.level} (${skill.points})`).join(", ");
 
 /**
  * Compares two values of a column, with absent ones always last.

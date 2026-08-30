@@ -1393,6 +1393,35 @@ describe("the Other factions source (ah-1mpx.5)", () => {
     expect(markup).not.toContain("not disclosed");
   });
 
+  it("a foreign unit's recovered skills replace not disclosed", () => {
+    // `ah-1mpx.6.3`: a unit with no report-native skills but a battle-recovered entry now draws
+    // that recovered text instead of the notice - the notice is reserved for nothing recovered.
+    const derived = new Map([
+      ["2", [{ name: "riding", tag: "RIDI", level: 5, turn: 71, coordinate: null, terrain: null }]]
+    ]);
+
+    const markup = drawForeign({ derivedSkills: derived });
+    const row2 = /<tr data-testid="unit-row-2"[\s\S]*?<\/tr>/.exec(markup)?.[0];
+
+    expect(row2).toContain("RIDI 5 (turn 71)");
+    expect(row2).not.toContain("not disclosed");
+  });
+
+  it("a real skill still wins over recovered skills", () => {
+    // A derived-skill map is fed for every unit, including one that already discloses a skill of
+    // its own - the ownership/real-skills guard in `derivedSkillsFor` must still refuse it.
+    const derived = new Map([
+      ["2", [{ name: "riding", tag: "RIDI", level: 5, turn: 71, coordinate: null, terrain: null }]]
+    ]);
+
+    const markup = drawForeign({ derivedSkills: derived }, [
+      theirs("2", { skills: [{ name: "combat", tag: "COMB", level: 3, points: 180 }] })
+    ]);
+
+    expect(markup).toContain("COMB 3 (180)");
+    expect(markup).not.toContain("RIDI 5");
+  });
+
   it("the faction cell of a concealed unit is a button only in the Other factions source", () => {
     const inForeign = drawForeign();
     const inHex = draw(
