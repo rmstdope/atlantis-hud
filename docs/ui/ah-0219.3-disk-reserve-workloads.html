@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ah-0219.3 - Option A</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    body { margin: 0; background: #111827; color: #e5e7eb; }
+    main { max-width: 980px; margin: 0 auto; padding: 32px 20px 56px; }
+    h1 { font: 700 24px system-ui, sans-serif; margin: 0 0 8px; }
+    .lede { color: #9ca3af; font: 15px/1.5 system-ui, sans-serif; margin: 0 0 28px; }
+    section { margin-top: 22px; }
+    h2 { color: #93c5fd; font: 650 15px system-ui, sans-serif; margin: 0 0 8px; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 16px; border: 1px solid #374151; border-radius: 8px; background: #030712; line-height: 1.55; }
+    .bad { color: #fca5a5; }
+    .good { color: #86efac; }
+    .dim { color: #9ca3af; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Option A: keep a smaller non-Rust safety floor</h1>
+  <p class="lede">The project declares an 8 GB full-build floor and a 2 GB non-Rust floor. The workflow selects the workload explicitly; an omitted workload preserves today's conservative full-build behavior.</p>
+
+  <section>
+    <h2>Non-Rust work above its smaller floor</h2>
+    <pre><span class="good">$ disk-preflight --workload non-rust
+disk: 4.4 GB free, above the 2 GB floor for non-Rust work.</span></pre>
+  </section>
+
+  <section>
+    <h2>Non-Rust work below its smaller floor</h2>
+    <pre><span class="bad">$ disk-preflight --workload non-rust
+disk: 1.7 GB free, below the 2 GB floor for non-Rust work.</span>
+A check that runs out of space can fail in a tool and read like a code error.
+<span class="dim">No declared reclaim can recover the missing 0.3 GB.</span></pre>
+  </section>
+
+  <section>
+    <h2>Rust work keeps the full reserve</h2>
+    <pre><span class="bad">$ disk-preflight --workload rust
+disk: 5.7 GB free, below the 8 GB floor for Rust work.</span>
+A build that runs out of space fails inside the linker and reads like a code error.
+<span class="good">To recover the missing 2.3 GB, run from /Users/you/project:
+  cargo clean -p atlantis-hud-core</span></pre>
+  </section>
+
+  <section>
+    <h2>Old caller omits the workload</h2>
+    <pre><span class="dim">$ disk-preflight
+disk: no workload supplied; using the 8 GB full-build floor.</span>
+<span class="bad">disk: 5.7 GB free, below the 8 GB floor for Rust work.</span></pre>
+  </section>
+
+  <section>
+    <h2>Unknown workload</h2>
+    <pre><span class="bad">$ disk-preflight --workload docs
+disk-preflight: unknown workload "docs"; expected rust or non-rust.</span></pre>
+  </section>
+
+  <section style="max-width: 360px">
+    <h2>Narrow terminal</h2>
+    <pre><span class="good">$ disk-preflight --workload non-rust
+disk: 4.4 GB free, above the 2 GB floor for non-Rust work.</span></pre>
+  </section>
+</main>
+</body>
+</html>
