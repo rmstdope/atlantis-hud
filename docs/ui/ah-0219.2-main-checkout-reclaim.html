@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ah-0219.2 - Option A</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #111827; color: #e5e7eb; }
+    body { max-width: 1040px; margin: 0 auto; padding: 32px 20px; }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    p { color: #9ca3af; margin: 0 0 24px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+    section { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 16px; }
+    h2 { color: #93c5fd; font-size: 14px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: .08em; }
+    pre { margin: 0; white-space: pre-wrap; color: #d1fae5; font: 13px/1.55 ui-monospace, monospace; }
+    strong { color: #f9fafb; }
+  </style>
+</head>
+<body>
+  <h1>Option A: identify the checkout as <strong>main/target</strong></h1>
+  <p>The shared checkout uses the same compact owner/directory shape as agent worktrees.</p>
+  <div class="grid">
+    <section>
+      <h2>Reclaimed</h2>
+      <pre>prune-worktrees: reclaimed main/target
+(2.6G freed, 5 GB free against the 8 GB floor,
+cold for over 120 minutes)</pre>
+    </section>
+    <section>
+      <h2>Dry run</h2>
+      <pre>prune-worktrees: would reclaim main/target
+(2.6G, 5 GB free against the 8 GB floor,
+cold for over 120 minutes)</pre>
+    </section>
+    <section>
+      <h2>Warm checkout, no cold candidates</h2>
+      <pre>prune-worktrees: 5 GB free against the 8 GB
+floor, and no build tree has been cold for
+30 minutes
+prune-worktrees: no agent worktrees</pre>
+    </section>
+    <section>
+      <h2>Roomy disk</h2>
+      <pre>prune-worktrees: no agent worktrees</pre>
+    </section>
+  </div>
+</body>
+</html>
