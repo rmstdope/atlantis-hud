@@ -18389,11 +18389,12 @@ mod tests {
         );
     }
 
-    /// A unit cannot give away more men than it holds, even when another unit shares the hex.
+    /// Men are the engine's one exception (`GetSharedNum` excludes `IT_MAN`): never borrowed,
+    /// sharer or no sharer.
     #[test]
-    fn a_unit_cannot_give_more_men_than_it_holds_when_sharing() {
+    fn men_are_never_borrowed_from_a_sharing_unit() {
         let regions = vec![region(vec![
-            unit("5"),
+            with_men(unit("5"), 0),
             sharing(with_item(unit("7"), 10, "human", "HUMN")),
             an_ally("9"),
         ])];
@@ -18402,11 +18403,11 @@ mod tests {
             regions,
             "unit 5\nGIVE 9 10 HUMN\n",
         ));
-        assert_eq!(finding.code.as_str(), "items-cannot-be-given");
+        assert_eq!(finding.code.as_str(), "not-enough-items");
         assert_eq!(
             finding.unit_id.as_deref(),
             Some("5"),
-            "the transfer is rejected against the giving unit's own human inventory"
+            "men do not pool, so the shortfall stays with the unit that ordered it"
         );
     }
 
