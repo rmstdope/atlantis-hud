@@ -829,15 +829,17 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       return;
     }
     const modifiers = { shift: event.shiftKey, mod: isMac ? event.metaKey : event.ctrlKey };
-    // A modified press is building the pick, not choosing a row, so it leaves the map where it is
+    // A modified press writes the pick alone, leaving the cursor and map where they are
     // (`ah-y9hx` P1): a five-unit pick across four hexes would otherwise throw the map four times,
     // and one Shift+click adding ten rows would send it to the last of them.
     const plain = !modifiers.shift && !modifiers.mod;
     const outcome = onPress(pick, unit.unitId, modifiers, rowIds);
     if (outcome.now) {
-      settleOn(outcome.now, rowTarget);
       if (plain) {
+        settleOn(outcome.now, rowTarget);
         travelTo(rowTarget);
+      } else {
+        setPick(outcome.now);
       }
     }
     // Mouse only. A row is a scrollable surface on a touch screen, and `touch-none` on it would
