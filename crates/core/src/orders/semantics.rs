@@ -4044,8 +4044,7 @@ fn transfer(
     // For `TAKE` from a unit the report does not show here: that unit's number, carried onto the
     // `to` end's movement so the hover can say the source is unverifiable (`ah-agbm`).
     from_unshown: Option<String>,
-    // `true` only for `GIVE 0 ...`: unit 0 is not "another unit", so the items the game refuses to
-    // hand to another unit still leave the giver (`rules/give`, epic decision 9).
+    // The target reach controls inherent item refusal and the men-to-another-faction rule.
     reach: GiveReach,
 ) {
     // The same reading `silver::forecast_unit` gets, so the two surfaces cannot classify one

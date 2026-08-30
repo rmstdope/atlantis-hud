@@ -1223,7 +1223,7 @@ impl Working {
     fn apply_transports(&mut self) {
         let pending = std::mem::take(&mut self.transports);
         for pending in pending {
-            // `discarding: true` bypasses `tags_moved`'s `can_be_given` filter: `TRANSPORT` has
+            // `GiveReach::Discard` bypasses target-specific refusal: `TRANSPORT` has
             // its own permission gate, `can_be_transported`, checked below - the two lists are
             // not the same (`IENT` may not be given but may be transported).
             for (name, tag, moved) in self.tags_moved(
@@ -1293,9 +1293,8 @@ impl Working {
     /// `GIVE target UNIT` hands over the whole unit rather than anything it holds - ownership is
     /// a different question from what a row shows, and is left to a later issue.
     ///
-    /// `discarding` is `true` only for `GIVE 0 ...`: 52 items carry `This item cannot be given to
-    /// other units.`, and unit 0 is not another unit, so a discard moves them too while any other
-    /// receiver does not (`rules/give`, the epic's decision 9).
+    /// `GiveReach` preserves the discard exception and rejects men aimed at another faction
+    /// (`rules/give`).
     fn tags_moved(
         &self,
         holder: usize,
