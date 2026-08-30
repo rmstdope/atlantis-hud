@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>ah-dna4 — a unit's skills after this month's arrivals</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --brass:#d9a441; --soft:#a3b0c0; --bad:#e0765c; --good:#7fb069; --blue:#6ba8d9; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 30px 0 6px; border-bottom: 1px dashed var(--edge);
+       padding-bottom: 4px; }
+  h3 { font-size: 13px; margin: 18px 0 6px; color: var(--brass); letter-spacing: .4px; }
+  p.note { color: var(--dim); max-width: 92ch; }
+  p.note b { color: var(--ink); }
+  .cost { color: var(--dim); font-size: 12.5px; margin: 6px 0 0; max-width: 78ch; }
+  table.g { border-collapse: collapse; margin: 8px 0; font-size: 12.5px; }
+  table.g th, table.g td { border: 1px solid var(--edge); padding: 5px 12px; text-align: left;
+       vertical-align: top; }
+  table.g th { color: var(--dim); font-weight: 500; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .old { color: var(--bad); } .new { color: var(--good); } .hi { color: var(--brass); }
+  .same { color: var(--dim); }
+  .tip { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
+         padding: 9px 12px; max-width: 52ch; white-space: pre-wrap;
+         font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--soft); }
+  .tip .cap { color: var(--ink); }
+  .row { display: flex; gap: 24px; flex-wrap: wrap; margin: 10px 0 4px; align-items: flex-start; }
+  .lab { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--dim);
+         margin: 0 0 4px; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px;
+           letter-spacing:.6px; text-transform:uppercase; }
+  .badge.a { background:#1d3324; color:var(--good); border:1px solid #2f5138; }
+  .badge.b { background:#332320; color:var(--bad); border:1px solid #55332c; }
+  .phase { border-collapse:collapse; font-size:12.5px; margin:8px 0; }
+  .phase td { padding:3px 10px; border-bottom:1px solid var(--edge); }
+  .phase td.p { color:var(--dim); width:15ch; }
+  .phase tr.mark td { color:var(--brass); }
+  code { background:#0c1118; padding:1px 5px; border-radius:4px; color:var(--soft); }
+</style></head><body>
+<h1>ah-dna4 — a unit's skills after this month's arrivals</h1>
+
+<p class="note">
+  <b>Decisions recorded from the planning discussion (navigator, 2026-08-29/30).</b> A unit that is
+  given men, or that recruits them, has its skills diluted — <b>rules/buy</b> says so in as many
+  words: <i>"Recruit 5 barbarians into the current unit. (This will dilute the skills that the unit
+  has.)"</i> The merge averages skill <b>points</b> across the new headcount and recomputes the
+  level, so a level can fall to nothing. Five surfaces read a unit's skills and only one of them
+  knew.
+</p>
+
+<h2>The fault, reproduced</h2>
+<p class="note">A smith with <b>weaponsmith 1</b> and 8 orcs, given one unskilled orc by its
+neighbour, ordering <code>PRODUCE sword</code>. One orc is enough: 8×30 points shared over 9 men is
+26, and level 1 needs 30.</p>
+<div class="tip"><span class="cap">today</span>
+produced = 9 swords
+"cannot produce sword: needs weaponsmith 1, has no weaponsmith"
+"giving 1 man to this unit lowers its weaponsmith from 1 to 0"</div>
+<p class="cost">The row credits nine swords the game will not make, while the panel beside it says
+the unit cannot make any.</p>
+
+<h2>Where each phase sits (rules/sequenceofevents)</h2>
+<table class="phase">
+  <tr class="mark"><td class="p">Give phase</td><td><b>GIVE and TAKE</b> — men arrive, skills dilute</td></tr>
+  <tr class="mark"><td class="p">Tax phase</td><td><b>PILLAGE</b>, TAX — reads combat readiness</td></tr>
+  <tr class="mark"><td class="p">Instant magic</td><td><b>Spells are CAST</b></td></tr>
+  <tr class="mark"><td class="p">Market</td><td>SELL, <b>BUY</b> — recruits arrive, skills dilute again</td></tr>
+  <tr><td class="p">Movement</td><td>MOVE, SAIL</td></tr>
+  <tr class="mark"><td class="p">Month long</td><td>STUDY, <b>PRODUCE</b>, BUILD, <b>ENTERTAIN</b>, WORK</td></tr>
+</table>
+<p class="cost">
+  PILLAGE and CAST settle <b>before</b> the market, so a same-month recruit must not touch them.
+  And the application's own pipeline settles the hex's product pool on <i>both</i> sides of the
+  recruit merge, so every figure must read one <b>phase-stable</b> list. That list is the
+  gift-merged one, and it is what every surface below now reads.
+</p>
+
+<h2>Decision 1 — every term moves, by its own phase</h2>
+<table class="g">
+  <tr><th>Surface</th><th>Read before</th><th>Reads after</th></tr>
+  <tr><td>ITEMS cell — produced list</td><td class="old">report's list</td><td class="new">after gifts</td></tr>
+  <tr><td>SILVER column — production figure</td><td class="old">report's list</td><td class="new">after gifts</td></tr>
+  <tr><td>The hex's product-pool share</td><td class="old">report's list</td><td class="new">after gifts</td></tr>
+  <tr><td>SILVER column — ENTERTAIN income</td><td class="old">report's list</td><td class="new">after gifts</td></tr>
+  <tr><td>SILVER column — CAST</td><td class="old">report's list</td><td class="new">after gifts</td></tr>
+  <tr><td><code>pillage-without-men</code> readiness</td><td class="old">report's list</td><td class="new">after gifts</td></tr>
+  <tr><td><code>produce-without-skill</code></td><td class="same">gifts + recruits</td><td class="same">gifts + recruits (unchanged)</td></tr>
+</table>
+<p class="cost">
+  <b>Rejected:</b> moving the two production surfaces only, which would fix the fault above and
+  knowingly leave three surfaces reading a pre-gift list — each one a row where the app tells the
+  player something the game will not do.
+</p>
+
+<h2>Decision 2 — the warning stays stricter than the columns</h2>
+<p class="note">
+  The recruit merge is computed <i>from</i> the ledger that builds the ITEMS cell, so that cell can
+  never see recruits — the dependency is circular. For a unit that recruits <b>itself</b> below the
+  recipe's level, the two columns therefore show a figure while the warning fires.
+</p>
+<div class="tip"><span class="cap">Problems panel</span>
+cannot produce sword: needs weaponsmith 1, has no weaponsmith
+buying 10 men lowers its weaponsmith from 1 to 0</div>
+<p class="cost">
+  <b>Chosen deliberately</b>, and pinned by a test so it is not later read as a regression: a
+  warning that catches a real fault beats three surfaces agreeing by making the check blinder.
+  <b>Rejected:</b> moving the warning onto the gift list too. Gifts — the case in the title — are
+  fixed on all three surfaces either way.
+</p>
+
+<h2>Decision 3 — what shows when the dilution cannot be worked out</h2>
+<div class="row">
+  <div>
+    <p class="lab">Chosen — the produce is uncounted</p>
+    <table class="g">
+      <tr><th>ITEMS cell</th><td>20 iron <span class="hi">+ ?</span></td></tr>
+      <tr><th>SILVER produced</th><td class="same">—</td></tr>
+      <tr><th>Problems panel</th><td class="same">(silent)</td></tr>
+    </table>
+    <div class="tip"><span class="cap">Items after orders</span>
+Spends 8 iron on this month's PRODUCE.
+and more that cannot be counted: PRODUCE sword</div>
+    <div class="tip"><span class="cap">Silver hover — the sentence, as it ships</span>
+This unit's skills after this month's arrivals cannot be worked out, so what it produces cannot be said.</div>
+    <p class="cost">Uses the marker and the hover line the row already has for an order nothing can
+      price. Three surfaces saying the same thing: the app does not know.</p>
+  </div>
+  <div>
+    <p class="lab">Rejected — fall back to the report's own skills</p>
+    <table class="g">
+      <tr><th>ITEMS cell</th><td>20 iron → 8 swords</td></tr>
+      <tr><th>SILVER produced</th><td>8 swords</td></tr>
+      <tr><th>Problems panel</th><td class="same">(silent)</td></tr>
+    </table>
+    <p class="cost">What the column does today. The figure is the pre-gift one and nothing on the
+      row says so — the shape of fault this bead removes.</p>
+    <p class="lab" style="margin-top:14px">Also rejected — the wording</p>
+    <div class="tip"><span class="was">This unit was given men this month by a route that cannot be followed…</span>
+<span class="was">Men joined this unit this month, so its skills cannot be said…</span></div>
+    <p class="cost">The first is long and "route" is the app's vocabulary rather than the game's;
+      the second overstates — men joining is usually followed perfectly well.</p>
+  </div>
+</div>
+
+<h2>Decision 4 — ENTERTAIN and CAST fall back; the pillage count goes quiet</h2>
+<div class="row">
+  <div><p class="lab">ENTERTAIN and CAST — fall back, say nothing</p>
+    <table class="g"><tr><th>SILVER income / cast cost</th><td>the reported figure</td></tr>
+      <tr><th>Hover</th><td class="same">(nothing said)</td></tr></table>
+    <p class="cost">What every other estimated figure on the row does, and no warning sits beside
+      either to contradict it — which is exactly why PRODUCE cannot fall back. <b>Rejected:</b>
+      doubting them; entertainment contends for a regional pool, so one doubted unit would make the
+      whole hex's pool unsettleable.</p></div>
+  <div><p class="lab">PILLAGE — silenced, in words the app already ships</p>
+    <div class="tip">may not be able to pillage here: needs 24 combat ready men, and a transfer this month means this unit's cannot be counted</div>
+    <p class="cost">True word for word: every gift-phase cause really is a transfer. More units go
+      quiet than today. <b>Rejected:</b> a definite count built on a list the month has already
+      moved past — a wrong warning rather than a missing one.</p></div>
+</div>
+
+<h2>What actually makes a unit's skills unsayable</h2>
+<p class="note">Corrected during the discussion: a <code>GIVE</code> of a whole class <b>can</b> be
+worked out. It sets the <i>holdings</i> doubt, and only where the other party is a unit the report
+does not show; a class given to a unit standing in the hex is enumerated from that unit's own held
+map and followed like any other gift.</p>
+<table class="g">
+  <tr><th>Cause</th><th>Which list</th></tr>
+  <tr><td>Men given by a unit the report does not show — no skills list to merge from</td><td class="hi">after gifts</td></tr>
+  <tr><td>The giving unit's own skills are already doubted — it propagates</td><td class="hi">after gifts</td></tr>
+  <tr><td>The <i>receiving</i> unit's headcount is an estimate — the merge is weighted by it</td><td class="hi">after gifts</td></tr>
+  <tr><td>A gift of men the source could not cover, clamped by one walk and not the other</td><td class="hi">after gifts</td></tr>
+  <tr><td><code>BUY ALL &lt;people&gt;</code> — the ledger credits nothing, so arrivals read as zero</td><td class="new">recruits only</td></tr>
+  <tr><td>The two walks disagree about a unit's arrivals (a backstop)</td><td class="new">recruits only</td></tr>
+  <tr><td>An estimated headcount at recruit time</td><td class="new">recruits only</td></tr>
+  <tr class="same"><td><code>GIVE</code> of a whole class, to a unit the hex shows</td><td class="same">followed normally — not a doubt</td></tr>
+</table>
+</body></html>
