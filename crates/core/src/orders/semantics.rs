@@ -20362,6 +20362,19 @@ mod tests {
     }
 
     #[test]
+    fn a_gift_to_a_new_unit_not_formed_here_says_so() {
+        let finding = only(check(
+            vec![region(vec![with_silver(unit("13303"), 1000)])],
+            "unit 13303\nGIVE NEW 7 500 SILV\n",
+        ));
+
+        assert_eq!(
+            finding.message,
+            "no FORM in this hex creates NEW 7, so this order does nothing"
+        );
+    }
+
+    #[test]
     fn a_take_from_a_unit_the_report_shows_elsewhere_names_that_hex() {
         let mut elsewhere = region(vec![unit("13304")]);
         elsewhere.region_id = "1:8,53".to_string();
