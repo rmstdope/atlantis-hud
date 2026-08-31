@@ -3232,13 +3232,8 @@ fn settle_recruits_before_production(
             .filter(|unit| !unit.own)
             .map(|unit| unit.unit_id.clone())
             .collect();
-        let ledger = ledger_for_with_production(
-            hex,
-            ruleset,
-            receipts,
-            &provisional,
-            &foreign_unit_ids,
-        );
+        let ledger =
+            ledger_for_with_production(hex, ruleset, receipts, &provisional, &foreign_unit_ids);
         apply_recruits(&mut hex.units, &ledger, ruleset);
     }
 }
