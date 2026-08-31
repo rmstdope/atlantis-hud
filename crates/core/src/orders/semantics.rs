@@ -20078,6 +20078,29 @@ mod tests {
 
     // --- teaching ---------------------------------------------------------------------------
 
+    #[test]
+    fn a_non_leader_teacher_is_warned_before_student_checks() {
+        let findings = check(
+            vec![region(vec![
+                with_race(with_silver(unit("500"), 1000), 3, "humans", "HUMN"),
+                with_skill(with_men(with_silver(unit("700"), 1000), 1), "COMB", 1),
+            ])],
+            "unit 500\nTEACH 700\n",
+        );
+
+        let teacher = findings
+            .iter()
+            .find(|finding| finding.code == codes::TEACHER_CANNOT_TEACH)
+            .expect("ineligible teacher warning");
+        assert_eq!(
+            teacher.message,
+            "only leaders can teach; this unit has 3 humans"
+        );
+        assert!(!findings
+            .iter()
+            .any(|finding| finding.code == codes::TAUGHT_NOT_STUDYING));
+    }
+
     fn teaching_hex() -> Vec<ReportUnit> {
         vec![
             with_leaders(
