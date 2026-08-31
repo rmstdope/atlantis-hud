@@ -26,7 +26,7 @@ weapon?: Weapon,
  * favour of the data value - 22 humans consume 8 livestock, which is `ceil(220 / 30)`, not
  * `ceil(220 / 50)` - so food eligibility and value are read from this per-item field alone.
  */
-maintenanceValue?: number,
+maintenanceValue?: number, 
 /**
  * What the data page says about it, after the preamble of name, tag, weight and capacity the
  * fields above already carry. `None` for an entry that is nothing but that preamble, and for
