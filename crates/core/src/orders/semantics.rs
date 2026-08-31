@@ -3225,7 +3225,20 @@ fn settle_recruits_before_production(
 ) {
     let provisional = production_shares_for(hexes, ruleset);
     for hex in hexes.iter_mut() {
-        let ledger = ledger_for_with_production(hex, ruleset, receipts, &provisional);
+        let foreign_unit_ids = hex
+            .region
+            .units
+            .iter()
+            .filter(|unit| !unit.own)
+            .map(|unit| unit.unit_id.clone())
+            .collect();
+        let ledger = ledger_for_with_production(
+            hex,
+            ruleset,
+            receipts,
+            &provisional,
+            &foreign_unit_ids,
+        );
         apply_recruits(&mut hex.units, &ledger, ruleset);
     }
 }
