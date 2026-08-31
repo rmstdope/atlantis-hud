@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ah-7fgw - order-spelling labels</title>
+<style>
+:root{--g:#10151c;--p:#171d26;--r:#1c232e;--e:#26303d;--i:#dbe3ec;--s:#a3b0c0;--b:#d9a441;--w:#eebe63}
+*{box-sizing:border-box}body{margin:0;padding:30px 20px;background:var(--g);color:var(--i);font:15px/1.5 Georgia,serif}
+main{max-width:980px;margin:auto}h1 span{color:var(--b)}p{color:var(--s)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.card{background:var(--p);border:1px solid var(--e);border-radius:7px;padding:16px}.lab{color:var(--b);font:11px Arial;letter-spacing:1px;text-transform:uppercase}
+pre{background:#0d1218;border:1px solid var(--e);border-radius:5px;padding:12px;font:12px/1.6 Menlo,monospace;color:var(--s);overflow:auto}
+.warn{background:var(--r);border-left:3px solid var(--w);padding:10px 12px;margin-top:9px;font:13px Arial}.warn b{color:var(--w)}
+.note{font-size:12px;color:var(--s);margin-top:12px}@media(max-width:620px){.grid{grid-template-columns:1fr}body{padding:18px 12px}}
+</style></head><body><main>
+<h1><span>Option A</span> - speak as the order does</h1>
+<p>Messages say “new unit 1”, matching <code>TEACH NEW 1</code> and hiding the internal
+<code>new-1</code> lookup key. Recommended.</p>
+<div class="grid">
+<section class="card"><div class="lab">Missing study order</div>
+<pre>unit 500
+  FORM 1
+  END
+  TEACH NEW 1</pre>
+<div class="warn"><b>Warning, line 4</b><br>new unit 1 is being taught but has no STUDY order</div>
+</section>
+<section class="card"><div class="lab">Alias not formed here</div>
+<pre>unit 500
+  TEACH NEW 9</pre>
+<div class="warn"><b>Warning, line 2</b><br>new unit 9 is not in this hex to be taught</div>
+</section>
+<section class="card"><div class="lab">Spare slots</div>
+<div class="warn"><b>Advice</b><br>has 8 teaching slots still free and could also teach new unit 2</div>
+<div class="note">The existing numbered form remains “could also teach unit 700”.</div>
+</section>
+<section class="card"><div class="lab">Capacity</div>
+<div class="warn"><b>Warning</b><br>12 students on 10 slots, so each gets less than a full month</div>
+<div class="note">A formed student's people received this month count exactly like a numbered student's.</div>
+</section>
+</div></main></body></html>
