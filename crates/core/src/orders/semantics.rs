@@ -20081,7 +20081,15 @@ mod tests {
     fn teaching_hex() -> Vec<ReportUnit> {
         vec![
             with_leaders(
-                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                with_leaders(
+                    with_race(
+                        with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                        3,
+                        "leaders",
+                        "LEAD",
+                    ),
+                    3,
+                ),
                 3,
             ),
             with_men(with_silver(unit("700"), 1000), 2),
@@ -20124,7 +20132,10 @@ mod tests {
         assert_eq!(
             check(
                 vec![region(vec![
-                    with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                    with_leaders(
+                        with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                        3,
+                    ),
                     foreign,
                 ])],
                 "unit 500\nTEACH 700\n"
@@ -20140,7 +20151,12 @@ mod tests {
         assert_eq!(
             codes(&check(
                 vec![
-                    region_at("1:7,53", 7, 53, vec![unit("500")]),
+                    region_at(
+                        "1:7,53",
+                        7,
+                        53,
+                        vec![with_race(unit("500"), 3, "leaders", "LEAD")],
+                    ),
                     region_at("1:8,53", 8, 53, vec![foreign]),
                 ],
                 "unit 500\nTEACH 700\n"
@@ -20152,7 +20168,12 @@ mod tests {
     #[test]
     fn a_new_student_is_accepted_on_doubt() {
         assert!(codes(&check(
-            vec![region(vec![with_skill(unit("500"), "COMB", 3)])],
+            vec![region(vec![with_race(
+                with_skill(with_men(unit("500"), 3), "COMB", 3),
+                3,
+                "leaders",
+                "LEAD",
+            )])],
             "unit 500\nFORM 1\nSTUDY combat\nEND\nTEACH NEW 1\n"
         ))
         .is_empty());
@@ -20246,7 +20267,10 @@ mod tests {
         let mut foreign = an_ally("800");
         foreign.men = 2;
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+                1,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
             foreign,
             with_men(with_silver(unit("900"), 1000), 2),
@@ -20284,7 +20308,10 @@ mod tests {
         let mut foreign = an_ally("800");
         foreign.men = 2;
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+                1,
+            ),
             with_skill(with_men(with_silver(unit("700"), 1000), 20), "COMB", 2),
             foreign,
         ];
