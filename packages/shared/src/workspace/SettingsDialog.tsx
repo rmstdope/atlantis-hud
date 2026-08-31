@@ -617,6 +617,11 @@ export const WARNING_GROUPS: readonly {
           "TAX and PILLAGE orders in a hex where another faction has a unit on guard, which can block them."
       },
       {
+        code: "tax-without-combat-ready-men",
+        title: "Taxing without combat-ready men",
+        description: "A TAX order or taxing flag on a unit with no combat-ready men."
+      },
+      {
         code: "pillage-without-men",
         title: "Pillaging without the men",
         description:

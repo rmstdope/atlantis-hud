@@ -39,12 +39,13 @@ use crate::orders::silver::{
     forecast_unit, late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants,
     price_buy_all, price_cast, price_claim, price_pillage, price_production, price_purchase,
     price_sale_line, price_study, price_tax, producing_skill, quantity_bought, readiness,
-    settle_unclaimed, split_pool, taxes, transfer_shape, transmute_argument, unit_upkeep,
-    workforce_for, BuyAllCap, Caster, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim,
-    LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, Pillagers, PoolOverrun,
-    PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionShare, RegionWages,
-    SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
-    UpkeepSettlement, Workforce,
+    readiness_reason, settle_unclaimed, split_pool, taxes, taxing_men, transfer_shape,
+    transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
+    FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
+    MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts,
+    RegionShare, RegionWages, SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts,
+    UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+>>>>>>> e0b4c3b (fix(ah-dta3): warn on unready taxers)
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{give_reach, give_refusal, party_unit_id, GiveReach, GiveRefusal};
@@ -143,6 +144,7 @@ pub mod codes {
     pub const NOTHING_LEFT_TO_BUY: Code = Code("nothing-left-to-buy");
     pub const TWO_MONTH_LONG_ORDERS: Code = Code("two-month-long-orders");
     pub const WITHDRAW_IN_NEXUS: Code = Code("withdraw-in-nexus");
+    pub const TAX_WITHOUT_COMBAT_READY_MEN: Code = Code("tax-without-combat-ready-men");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -151,7 +153,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 41] = [
+    pub const ALL: [Code; 42] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -193,6 +195,7 @@ pub mod codes {
         MAGIC_STUDY_CAPPED_BY_PREREQUISITES,
         GUARD_WITHOUT_TAX_ABILITY,
         WITHDRAW_IN_NEXUS,
+        TAX_WITHOUT_COMBAT_READY_MEN,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -501,6 +504,7 @@ pub fn review_turn(
             &options,
             &mut findings,
         );
+        check_tax_readiness(hex, ruleset, &plurals, &options, &mut findings);
         check_pillage_men(hex, ruleset, &plurals, &options, &mut findings);
         check_guard(hex, ruleset, &plurals, &options, &mut findings);
         check_teaching(hex, ruleset, &options, &mut findings);
@@ -581,6 +585,7 @@ fn pool_shares_for(
     hex: &Hex<'_>,
     region: RegionWages,
     late: Option<&LateHoldings>,
+    ruleset: Option<&Ruleset>,
 ) -> PoolSettlement {
     /// One contended pool, as the loop below reads it: what a unit asks of it, where that unit's
     /// share of it is written, what the region says it holds, and which pool to name in a finding
@@ -595,7 +600,7 @@ fn pool_shares_for(
     let nothing = Receipts::default();
     let wants: Vec<PoolWants> = hex_facts(hex, &nothing, late)
         .iter()
-        .map(|facts| pool_wants(facts, region))
+        .map(|facts| pool_wants(facts, region, ruleset))
         .collect();
 
     let mut shares = vec![PoolShares::default(); hex.units.len()];
@@ -1234,7 +1239,7 @@ fn forecast_hex(
 
     // A region's pools are shared, so who else in this hex draws on them has to be settled before
     // any one unit can be priced against them (`ah-t2pn`).
-    let settled = pool_shares_for(hex, region, Some(&late));
+    let settled = pool_shares_for(hex, region, Some(&late), ruleset);
     let shares = settled.shares;
     overruns.extend(settled.overruns);
 
@@ -3173,7 +3178,9 @@ fn ledger_for_with_production<'a>(
     // keystroke, so a city of forty units would otherwise walk its own units forty times for the
     // combat-ready sum alone (`ah-1ad6.2`, `ah-lu0f.3`).
     let region = region_wages(hex, ruleset);
+    let nothing = Receipts::default();
     for (index, ordered) in hex.units.iter().enumerate() {
+        let facts = unit_facts(hex, ordered, &nothing, None);
         for placed in ordered.intents {
             apply(
                 &mut ledger,
@@ -3189,7 +3196,7 @@ fn ledger_for_with_production<'a>(
                 },
             );
         }
-        credit_tax(&mut ledger, hex, ordered, pillaged);
+        credit_tax(&mut ledger, hex, ordered, &facts, ruleset, pillaged);
         settle_buy_all(&mut ledger, hex, ordered);
     }
 
@@ -3464,7 +3471,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     // The same settlement `forecast_hex` prices the column from: `WORK` and `ENTERTAIN` reach both
     // surfaces through one `late_income`, so two settlements would be two answers to one question.
     let region = region_wages(hex, ledger.ruleset);
-    let shares = pool_shares_for(hex, region, Some(&late)).shares;
+    let shares = pool_shares_for(hex, region, Some(&late), ledger.ruleset).shares;
 
     // The check and the Silver column read one fact, so they settle the hex's faction-food pool
     // the same way: warning that a unit cannot pay a fee its faction-mates' grain already paid is
@@ -3496,7 +3503,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         // Only what the late earnings cannot cover reaches the balance. `ledger.upkeep` keeps the
         // *full* fee: it is read only to word the finding ("orders and upkeep" against "orders"),
         // and a unit whose wages cover its fee is still a unit with a fee.
-        let charged = (owed - late_income(facts, region, *shares)).max(0);
+        let charged = (owed - late_income(facts, region, *shares, ledger.ruleset)).max(0);
         if charged > 0 {
             *ledger
                 .balance
@@ -3893,6 +3900,58 @@ fn check_guarded_tax(
     }
 }
 
+/// A unit that will TAX but has no combat-ready men, whether by an explicit order or its flag.
+fn check_tax_readiness(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::TAX_WITHOUT_COMBAT_READY_MEN) {
+        return;
+    }
+    let nothing = Receipts::default();
+    let facts = hex_facts(hex, &nothing, None);
+    for (ordered, facts) in hex.units.iter().zip(&facts) {
+        if !taxes(ordered.unit.flags.as_slice(), ordered.intents) {
+            continue;
+        }
+        let Some(readiness) = readiness(facts, ruleset) else {
+            continue;
+        };
+        if readiness.ready > 0 {
+            continue;
+        }
+        let message = if readiness.men <= 0 {
+            "cannot tax: this unit has no men".to_string()
+        } else {
+            readiness_reason(&readiness, ruleset, plurals).map_or_else(
+                || "cannot tax: it has no combat-ready men".to_string(),
+                |reason| format!("cannot tax: {reason}"),
+            )
+        };
+        if let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Tax))
+        {
+            findings.push(ordered.finding(
+                hex,
+                codes::TAX_WITHOUT_COMBAT_READY_MEN,
+                message,
+                Some(placed),
+            ));
+        } else {
+            findings.push(ordered.finding_at_block(
+                hex,
+                codes::TAX_WITHOUT_COMBAT_READY_MEN,
+                message,
+            ));
+        }
+    }
+}
+
 /// A market's own lines, in the report's order and the report's own spelling, joined for a
 /// message: `"perfume, gems and hill dwarves"`, or just `"perfume"` for a single line.
 fn market_list(lines: &[MarketItem]) -> String {
@@ -3918,7 +3977,14 @@ fn market_list(lines: &[MarketItem]) -> String {
 /// surfaces reading one order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj`
 /// exists). "PILLAGE comes before TAX", so a pillage leaves every own taxer with nothing
 /// (`ah-cxxa`), and that rule lives in `price_tax` as well.
-fn credit_tax(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>, pillaged: bool) {
+fn credit_tax(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    actor: &Ordered<'_>,
+    facts: &UnitFacts<'_>,
+    ruleset: Option<&Ruleset>,
+    pillaged: bool,
+) {
     if !taxes(&actor.unit.flags, actor.intents) {
         return;
     }
@@ -3937,7 +4003,7 @@ fn credit_tax(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>, pilla
     // TAX is an early-phase order (`rules/sequenceofevents`): it sees men bought, taken or given
     // this month, not the market that opens after it.
     let priced = price_tax(
-        actor.early_men(),
+        taxing_men(facts, ruleset),
         Some(ceiling),
         pillaged,
         PoolShare::Uncontended,
@@ -9205,7 +9271,7 @@ mod tests {
         fn taxer(id: &str, men: i64) -> ReportUnit {
             let mut unit = unit(id);
             unit.men = men;
-            unit
+            with_skill(unit, "COMB", 1)
         }
 
         fn review(base: Option<i64>, units: Vec<ReportUnit>, orders: &str) -> TurnReview {
@@ -9562,7 +9628,7 @@ mod tests {
         fn taxer(id: &str, men: i64) -> ReportUnit {
             let mut unit = unit(id);
             unit.men = men;
-            unit
+            with_skill(unit, "COMB", 1)
         }
 
         fn silver_of(review: &TurnReview, id: &str) -> UnitSilver {
@@ -9594,7 +9660,7 @@ mod tests {
             };
             let ordered = OrderedUnits::read(orders);
             let hex = Hex::read(&hex_region, &ordered, &[]);
-            pool_shares_for(&hex, region_wages(&hex, None), None).overruns
+            pool_shares_for(&hex, region_wages(&hex, None), None, None).overruns
         }
 
         /// `ah-t2pn.4`. The settlement says what it divided, so the sentence a player reads comes
@@ -9627,6 +9693,28 @@ mod tests {
                 ),
                 vec![]
             );
+        }
+
+        /// A certainly unready claimant contributes no ask, while the ready taxer remains the
+        /// only claimant and receives the whole base.
+        #[test]
+        fn an_unready_taxer_is_excluded_when_paired_with_a_ready_taxer() {
+            let review = tax_review(
+                Some(500),
+                vec![with_men(unit("2390"), 10), taxer("2391", 10)],
+                "unit 2390\nTAX\nunit 2391\nTAX\n",
+            );
+
+            assert!(
+                review
+                    .findings
+                    .iter()
+                    .all(|finding| finding.code != codes::REGION_POOL_OVERSUBSCRIBED),
+                "the unready unit must not make the regional pool look oversubscribed: {:?}",
+                review.findings
+            );
+            assert_eq!(silver_of(&review, "2390").income, Some(0));
+            assert_eq!(silver_of(&review, "2391").income, Some(500));
         }
 
         /// A pool nothing can settle has no total to put in a sentence. The units carry
@@ -11430,7 +11518,7 @@ mod tests {
     /// A unit set to tax every turn, with no `TAX` in this month's orders.
     fn taxing_by_flag(mut unit: ReportUnit) -> ReportUnit {
         unit.flags.push("taxing".to_string());
-        unit
+        with_skill(unit, "COMB", 1)
     }
 
     #[test]
@@ -11477,7 +11565,7 @@ mod tests {
         let ordered = OrderedUnits::read("unit 1\nTAX\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let region = region_wages(&hex, None);
-        let settled = pool_shares_for(&hex, region, None);
+        let settled = pool_shares_for(&hex, region, None, None);
 
         assert_eq!(settled.shares.len(), 2);
         for share in &settled.shares {
@@ -11637,7 +11725,10 @@ mod tests {
                 tag: "SWOR".to_string(),
                 price: 100,
             }],
-            ..region(vec![with_men(with_silver(unit("1"), 100), 10)])
+            ..region(vec![with_men(
+                with_skill(with_silver(unit("1"), 100), "COMB", 1),
+                10,
+            )])
         };
         let review = review_turn(
             &report(vec![hex_region]),
@@ -11689,8 +11780,8 @@ mod tests {
                 price: 100,
             }],
             ..region(vec![
-                with_men(with_silver(unit("1"), 100), 10),
-                with_men(with_silver(unit("2"), 100), 10),
+                with_men(with_skill(with_silver(unit("1"), 100), "COMB", 1), 10),
+                with_men(with_skill(with_silver(unit("2"), 100), "COMB", 1), 10),
             ])
         };
         let review = review_turn(
@@ -12251,7 +12342,7 @@ mod tests {
             tax_base: Some(2500),
             ..region(vec![
                 armed_to_pillage(with_silver(unit("1"), 0), 2500),
-                with_silver(unit("2"), 0),
+                with_skill(with_silver(unit("2"), 0), "COMB", 1),
             ])
         };
         let review = review_turn(
@@ -12369,7 +12460,12 @@ mod tests {
         };
         let mut elsewhere = ReportRegion {
             tax_base: Some(2500),
-            ..region_at("1:9,53", 9, 53, vec![with_silver(unit("2"), 0)])
+            ..region_at(
+                "1:9,53",
+                9,
+                53,
+                vec![with_skill(with_silver(unit("2"), 0), "COMB", 1)],
+            )
         };
         for unit in &mut elsewhere.units {
             unit.region_id = "1:9,53".to_string();
@@ -12431,6 +12527,86 @@ mod tests {
             .find(|row| row.unit_id == "1")
             .expect("priced");
         assert_eq!(row.income, Some(5000), "the pillage still pays");
+    }
+
+    #[test]
+    fn an_unready_tax_order_is_reported_on_its_tax_line() {
+        let review = review_turn(
+            &report(vec![region(vec![unit("1")])]),
+            "unit 1\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let finding = review
+            .findings
+            .iter()
+            .find(|finding| finding.code == codes::TAX_WITHOUT_COMBAT_READY_MEN)
+            .expect("an unready TAX should be reported");
+        assert_eq!(finding.unit_id.as_deref(), Some("1"));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "cannot tax: it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
+        );
+    }
+
+    #[test]
+    fn an_unready_taxing_flag_is_reported_on_its_unit_block() {
+        let review = review_turn(
+            &report(vec![region(vec![with_flag(unit("2"), "taxing")])]),
+            "unit 2\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let finding = review
+            .findings
+            .iter()
+            .find(|finding| finding.code == codes::TAX_WITHOUT_COMBAT_READY_MEN)
+            .expect("an unready taxing flag should be reported");
+        assert_eq!(finding.unit_id.as_deref(), Some("2"));
+        assert_eq!(finding.line, Some(1));
+    }
+
+    #[test]
+    fn a_combat_ready_taxer_is_not_reported_as_unready() {
+        let review = review_turn(
+            &report(vec![region(vec![with_skill(unit("3"), "COMB", 1)])]),
+            "unit 3\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TAX_WITHOUT_COMBAT_READY_MEN),
+            "a combat-ready taxer needs no readiness warning: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    #[test]
+    fn an_estimated_taxers_readiness_is_left_unjudged() {
+        let mut taxer = unit("4");
+        taxer.men_estimated = true;
+        let review = review_turn(
+            &report(vec![region(vec![taxer])]),
+            "unit 4\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TAX_WITHOUT_COMBAT_READY_MEN),
+            "an estimated headcount cannot prove unreadiness: {:?}",
+            codes(&review.findings)
+        );
     }
 
     /// A foreign unit on guard, for the `taxed-a-guarded-hex` fixtures (`ah-g7ts`). Ownership is
@@ -12584,7 +12760,7 @@ mod tests {
         let review = review_turn(
             &report(vec![guarded_hex(vec![
                 armed_to_pillage(with_silver(unit("1"), 0), 8963),
-                with_silver(unit("2"), 0),
+                with_skill(with_silver(unit("2"), 0), "COMB", 1),
             ])]),
             "unit 1\nPILLAGE\n\nunit 2\nTAX\n",
             Some(&ruleset()),
@@ -14220,9 +14396,10 @@ mod tests {
             let hex_region = ReportRegion {
                 tax_base: Some(1000),
                 for_sale: vec![line(30, 18, "grain", "GRAI")],
-                ..region(vec![with_flag(
-                    with_item(unit("2390"), 0, "grain", "GRAI"),
-                    "taxing",
+                ..region(vec![with_skill(
+                    with_flag(with_item(unit("2390"), 0, "grain", "GRAI"), "taxing"),
+                    "COMB",
+                    1,
                 )])
             };
             with_ledger(
@@ -17287,7 +17464,10 @@ mod tests {
     /// $200 purchase is affordable in the best case and goes unremarked.
     #[test]
     fn a_taxing_unit_is_credited_the_most_it_could_possibly_collect() {
-        let mut hex = region(vec![with_men(with_silver(unit("5"), 0), 5)]);
+        let mut hex = region(vec![with_men(
+            with_silver(with_skill(unit("5"), "COMB", 1), 0),
+            5,
+        )]);
         hex.tax_base = Some(500);
         hex.for_sale.push(MarketItem {
             amount: 10,
@@ -17303,7 +17483,10 @@ mod tests {
     /// best is short.
     #[test]
     fn a_taxing_unit_short_even_at_its_best_is_still_warned_about() {
-        let mut hex = region(vec![with_men(with_silver(unit("5"), 0), 5)]);
+        let mut hex = region(vec![with_men(
+            with_silver(with_skill(unit("5"), "COMB", 1), 0),
+            5,
+        )]);
         hex.tax_base = Some(100);
         hex.for_sale.push(MarketItem {
             amount: 10,
@@ -17316,6 +17499,126 @@ mod tests {
             codes(&check(vec![hex], "unit 5\nTAX\nBUY 4 horses\n")),
             ["not-enough-silver"],
             "the whole $100 base could not buy $200 of men"
+        );
+    }
+
+    /// `rules/tax` requires combat-ready men. A known-zero readiness is therefore a certain zero
+    /// on both the Silver column and the ledger, rather than an optimistic full-headcount credit.
+    #[test]
+    fn a_certainly_unready_taxer_is_zero_in_the_review_and_ledger() {
+        let hex = ReportRegion {
+            tax_base: Some(500),
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "sword".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region(vec![with_men(with_silver(unit("5"), 0), 10)])
+        };
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 5\nTAX\nBUY 4 sword\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let taxer = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "5")
+            .expect("the taxer is priced");
+        assert_eq!(taxer.income, Some(0));
+        assert_eq!(taxer.at_month_end, Some(-400));
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("5")),
+            "the ledger must not credit a certainly unready taxer: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// Readiness can be unknowable after an unclassified transfer, but that is not proof that the
+    /// unit cannot tax. The optimistic review and ledger policy keeps the report's headcount.
+    #[test]
+    fn an_uncertain_taxer_keeps_full_headcount_pricing() {
+        let hex = ReportRegion {
+            tax_base: Some(500),
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "sword".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region(vec![with_men(with_silver(unit("5"), 0), 10), unit("7")])
+        };
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 7\nGIVE 5 ALL MAGIC\nunit 5\nTAX\nBUY 4 sword\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let taxer = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "5")
+            .expect("the taxer is priced");
+        assert_eq!(taxer.income, Some(500));
+        assert_eq!(taxer.at_month_end, Some(100));
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("5")),
+            "the optimistic ledger must credit the uncertain taxer: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// A partly-ready unit is still eligible to TAX under the review's optimistic policy: only a
+    /// certainly zero readiness suppresses the full reported headcount.
+    #[test]
+    fn a_partly_ready_taxer_keeps_full_headcount_pricing() {
+        let hex = ReportRegion {
+            tax_base: Some(500),
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "sword".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region(vec![with_men(
+                with_item(with_silver(unit("5"), 0), 3, "sword", "SWOR"),
+                10,
+            )])
+        };
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 5\nTAX\nBUY 4 sword\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let taxer = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "5")
+            .expect("the taxer is priced");
+        assert_eq!(taxer.income, Some(500));
+        assert_eq!(taxer.at_month_end, Some(100));
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("5")),
+            "the ledger must keep the full headcount for a partly-ready taxer: {:?}",
+            codes(&review.findings)
         );
     }
 
@@ -22596,7 +22899,10 @@ mod tests {
                 code: codes::REGION_POOL_OVERSUBSCRIBED,
                 regions: vec![ReportRegion {
                     tax_base: Some(2500),
-                    ..region(vec![with_men(unit("500"), 10), with_men(unit("700"), 50)])
+                    ..region(vec![
+                        with_men(with_skill(unit("500"), "COMB", 1), 10),
+                        with_men(with_skill(unit("700"), "COMB", 1), 50),
+                    ])
                 }],
                 orders: "unit 500\nTAX\nunit 700\nTAX\n",
                 allowance: None,
@@ -22608,6 +22914,13 @@ mod tests {
                     tax_base: Some(8963),
                     ..region(vec![with_silver(unit("683"), 0), foreign_guard("14")])
                 }],
+                orders: "unit 683\nTAX\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::TAX_WITHOUT_COMBAT_READY_MEN,
+                regions: vec![region(vec![unit("683")])],
                 orders: "unit 683\nTAX\n",
                 allowance: None,
                 unclaimed: None,
@@ -24823,7 +25136,7 @@ mod tests {
     /// opens (`rules/sequenceofevents`), so it must not see the same `BUY`.
     #[test]
     fn a_tax_is_still_priced_before_the_market() {
-        let taxer = with_silver(men_holder("900", 10), 400);
+        let taxer = with_skill(with_silver(men_holder("900", 10), 400), "COMB", 1);
         let hex_region = ReportRegion {
             tax_base: Some(100_000),
             for_sale: vec![MarketItem {
@@ -26242,7 +26555,7 @@ mod tests {
         let regions = vec![
             region_at("1:7,53", 7, 53, vec![unit("5")]),
             region_at("1:8,53", 8, 53, vec![unit("6")]),
-            region_at("1:9,53", 9, 53, vec![unit("7")]),
+            region_at("1:9,53", 9, 53, vec![with_skill(unit("7"), "COMB", 1)]),
         ];
         let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nTAX\n";
         let findings = check_trade(regions, orders, "Regions", 2);
@@ -26276,7 +26589,12 @@ mod tests {
     #[test]
     fn a_region_that_both_produces_and_taxes_counts_once_under_the_pooled_schema() {
         let regions = vec![
-            region_at("1:7,53", 7, 53, vec![unit("5"), unit("6")]),
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![unit("5"), with_skill(unit("6"), "COMB", 1)],
+            ),
             region_at("1:8,53", 8, 53, vec![unit("7")]),
         ];
         let orders = "unit 5\nPRODUCE grain\nunit 6\nTAX\nunit 7\nPRODUCE grain\n";
@@ -26318,9 +26636,9 @@ mod tests {
         let regions = vec![
             region_at("1:7,53", 7, 53, vec![unit("5")]),
             region_at("1:8,53", 8, 53, vec![unit("6")]),
-            region_at("1:9,53", 9, 53, vec![unit("7")]),
-            region_at("1:10,53", 10, 53, vec![unit("8")]),
-            region_at("1:11,53", 11, 53, vec![unit("9")]),
+            region_at("1:9,53", 9, 53, vec![with_skill(unit("7"), "COMB", 1)]),
+            region_at("1:10,53", 10, 53, vec![with_skill(unit("8"), "COMB", 1)]),
+            region_at("1:11,53", 11, 53, vec![with_skill(unit("9"), "COMB", 1)]),
         ];
         let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nTAX\nunit 8\nTAX\n\
                       unit 9\nTAX\n";
@@ -26391,9 +26709,9 @@ mod tests {
     #[test]
     fn no_produce_orders_means_nothing_to_warn_about() {
         let regions = vec![
-            region_at("1:7,53", 7, 53, vec![unit("5")]),
-            region_at("1:8,53", 8, 53, vec![unit("6")]),
-            region_at("1:9,53", 9, 53, vec![unit("7")]),
+            region_at("1:7,53", 7, 53, vec![with_skill(unit("5"), "COMB", 1)]),
+            region_at("1:8,53", 8, 53, vec![with_skill(unit("6"), "COMB", 1)]),
+            region_at("1:9,53", 9, 53, vec![with_skill(unit("7"), "COMB", 1)]),
         ];
         let orders = "unit 5\nTAX\nunit 6\nTAX\nunit 7\nTAX\n";
 

@@ -158,6 +158,7 @@ describe("the Warnings settings tab", () => {
       "Upkeep the faction cannot pay",
       "Taxing a hex you are pillaging",
       "Pillaging without the men",
+      "Taxing without combat-ready men",
       "Promised more than the region has",
       "Taxing a hex someone else guards"
     ];
@@ -182,6 +183,9 @@ describe("the Warnings settings tab", () => {
     // "region's" - the shipped string itself is the plain one.
     expect(html).toContain(
       "TAX orders in a hex where one of your own units is ordered to PILLAGE, which collects the region&#x27;s money first."
+    );
+    expect(html).toContain(
+      "A TAX order or taxing flag on a unit with no combat-ready men."
     );
 
     // A race may stop a unit short of the skill's own maximum, and the description is what says so

@@ -658,13 +658,17 @@ pub struct PoolWants {
 /// ENTERTAIN are priced after it, so they read `facts.late().men` instead
 /// (`rules/sequenceofevents`, `ah-dxfd.2`).
 #[must_use]
-pub fn pool_wants(facts: &UnitFacts<'_>, region: RegionWages) -> PoolWants {
+pub fn pool_wants(
+    facts: &UnitFacts<'_>,
+    region: RegionWages,
+    ruleset: Option<&Ruleset>,
+) -> PoolWants {
     let mut wants = PoolWants::default();
     // A unit-level term, like the tax term in [`forecast_unit`]: a unit taxes by its flag with no
     // `TAX` order at all, and a flagged taxer contends for the region's base like any other - or
     // every other taxer's share comes out too large (`ah-fvzu`, `ah-t2pn.1`).
     if taxes(facts.flags, facts.intents) {
-        wants.tax = facts.men.saturating_mul(TAX_PER_MAN);
+        wants.tax = taxing_men(facts, ruleset).saturating_mul(TAX_PER_MAN);
     }
     let late = facts.late();
     for placed in facts.intents {
@@ -1006,8 +1010,13 @@ pub fn parse_wage_centis(wages: Option<&str>) -> Option<i64> {
 /// pure - and because [`forecast_unit`] and `semantics::charge_upkeep` must be handed **the same**
 /// shares, for the reason this function exists at all.
 #[must_use]
-pub fn late_income(facts: &UnitFacts<'_>, region: RegionWages, shares: PoolShares) -> i64 {
-    let wants = pool_wants(facts, region);
+pub fn late_income(
+    facts: &UnitFacts<'_>,
+    region: RegionWages,
+    shares: PoolShares,
+    ruleset: Option<&Ruleset>,
+) -> i64 {
+    let wants = pool_wants(facts, region, ruleset);
     let mut late = 0i64;
     let mut worked = false;
     let mut entertained = false;
@@ -1094,7 +1103,7 @@ pub fn forecast_unit(
         unit_id,
         region_id,
         held,
-        men,
+        men: _,
         men_estimated,
         intents,
         receipts,
@@ -1216,7 +1225,12 @@ pub fn forecast_unit(
         // The settlement is what the column shows: this unit's actual take once its faction-mates
         // in the hex are settled against it. `semantics::credit_tax` passes `Uncontended` instead,
         // and that difference is deliberate - see [`price_tax`].
-        let priced = price_tax(men, region.tax_base, region.pillaged, shares.tax);
+        let priced = price_tax(
+            taxing_men(&facts, ruleset),
+            region.tax_base,
+            region.pillaged,
+            shares.tax,
+        );
         income = income.saturating_add(priced.earns);
         income_doubt = income_doubt.or(priced.doubt);
     }
@@ -1573,7 +1587,7 @@ pub fn forecast_unit(
         }
     }
 
-    let late = late_income(&facts, region, shares);
+    let late = late_income(&facts, region, shares, ruleset);
     income = income.saturating_add(late);
 
     // Everything that spends what is *left*, in document order, against a running total that
@@ -2760,18 +2774,20 @@ pub fn combat_ready(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<
 /// at all - by Combat skill, or by a mount - and one with Combat 1 must not be told it holds no
 /// weapons while its men are being counted.
 #[must_use]
-pub fn because_clause(
+pub fn readiness_reason(
     readiness: &Readiness,
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
-) -> String {
+) -> Option<String> {
     if readiness.men <= 0 || readiness.ready > 0 {
-        return String::new();
+        return None;
     }
     let Some(miss) = readiness.nearest_miss.as_ref() else {
-        return " — it has no combat skill, no weapon it can wield, no mount it can ride and no \
-                damaging spell"
-            .to_string();
+        return Some(
+            "it has no combat skill, no weapon it can wield, no mount it can ride and no damaging \
+             spell"
+                .to_string(),
+        );
     };
     let goods = counted_with_singular(
         miss.count,
@@ -2793,7 +2809,30 @@ pub fn because_clause(
         format!("has no {skill}")
     };
     let level = miss.level;
-    format!(" — its {goods} {verb} {skill} {level}, and it {has}")
+    Some(format!("its {goods} {verb} {skill} {level}, and it {has}"))
+}
+
+/// Why this unit's men do not count, as the tail of the pillage warning.
+#[must_use]
+pub fn because_clause(
+    readiness: &Readiness,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+) -> String {
+    readiness_reason(readiness, ruleset, plurals)
+        .map_or_else(String::new, |reason| format!(" — {reason}"))
+}
+
+/// How many men this unit contributes to TAX.
+///
+/// A certainly zero readiness is the one known failure: it contributes no taxing men. Unknown
+/// readiness and every positive count preserve the optimistic full-headcount policy.
+#[must_use]
+pub fn taxing_men(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> i64 {
+    match readiness(facts, ruleset) {
+        Some(Readiness { ready: 0, .. }) => 0,
+        _ => facts.men,
+    }
 }
 
 /// What a unit's taxing earns this month: `men * TAX_PER_MAN`, capped.
