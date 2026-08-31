@@ -100,6 +100,7 @@ pub mod codes {
     pub const NOT_ENOUGH_ITEMS: Code = Code("not-enough-items");
     pub const GUARD_DROPPED: Code = Code("guard-dropped");
     pub const HEX_UNGUARDED: Code = Code("hex-unguarded");
+    pub const GUARD_WITHOUT_TAX_ABILITY: Code = Code("guard-without-tax-ability");
     pub const TAUGHT_NOT_HERE: Code = Code("taught-not-here");
     pub const TAUGHT_NOT_STUDYING: Code = Code("taught-not-studying");
     pub const TEACHER_CANNOT_TEACH: Code = Code("teacher-cannot-teach");
@@ -144,7 +145,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 39] = [
+    pub const ALL: [Code; 40] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -184,6 +185,7 @@ pub mod codes {
         NOTHING_LEFT_TO_BUY,
         TWO_MONTH_LONG_ORDERS,
         MAGIC_STUDY_CAPPED_BY_PREREQUISITES,
+        GUARD_WITHOUT_TAX_ABILITY,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -493,7 +495,7 @@ pub fn review_turn(
             &mut findings,
         );
         check_pillage_men(hex, ruleset, &plurals, &options, &mut findings);
-        check_guard(hex, &options, &mut findings);
+        check_guard(hex, ruleset, &plurals, &options, &mut findings);
         check_teaching(hex, ruleset, &options, &mut findings);
         check_building(hex, &options, &mut findings);
         check_building_outside(hex, &options, &mut findings);
@@ -2666,16 +2668,22 @@ impl Ordered<'_> {
 
     /// Whether the unit will be guarding at the end of the turn. The last GUARD order wins, as it
     /// would on the server; a unit that walks away guards nothing.
-    fn will_guard(&self) -> bool {
-        let ordered = self
-            .intents()
-            .filter_map(|intent| match intent {
-                Intent::Guard(on) => Some(*on),
+    fn final_guard_order(&self) -> Option<(&PlacedIntent, bool)> {
+        self.intents
+            .iter()
+            .filter_map(|placed| match &placed.intent {
+                Intent::Guard(on) => Some((placed, *on)),
                 _ => None,
             })
-            .last();
+            .next_back()
+    }
 
-        ordered.unwrap_or(self.unit.on_guard) && !self.leaves_the_hex()
+    fn will_guard(&self, eligible: Option<bool>) -> bool {
+        let guarding = match self.final_guard_order() {
+            Some((_, on)) => on && eligible != Some(false),
+            None => self.unit.on_guard,
+        };
+        guarding && !self.leaves_the_hex()
     }
 
     /// Whether the unit's month is already spoken for by something other than teaching.
@@ -6175,9 +6183,42 @@ fn item_name(tag: &str, hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> String {
 
 // --- who is left guarding ----------------------------------------------------------------------
 
-fn check_guard(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+fn check_guard(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
     let guarded_now = hex.units.iter().any(|ordered| ordered.unit.on_guard);
-    let guarded_next = hex.units.iter().any(Ordered::will_guard);
+    let nothing = Receipts::default();
+    let mut eligibility = Vec::with_capacity(hex.units.len());
+    for ordered in &hex.units {
+        let Some((placed, true)) = ordered.final_guard_order() else {
+            eligibility.push(None);
+            continue;
+        };
+        let read = readiness(&unit_facts(hex, ordered, &nothing, None), ruleset);
+        let eligible = read.as_ref().map(|read| read.ready > 0);
+        if eligible == Some(false) && options.emits(codes::GUARD_WITHOUT_TAX_ABILITY) {
+            let because = read
+                .as_ref()
+                .map(|read| because_clause(read, ruleset, plurals))
+                .unwrap_or_default();
+            findings.push(ordered.finding(
+                hex,
+                codes::GUARD_WITHOUT_TAX_ABILITY,
+                format!("cannot guard: this unit cannot tax{because}"),
+                Some(placed),
+            ));
+        }
+        eligibility.push(eligible);
+    }
+    let guarded_next = hex
+        .units
+        .iter()
+        .zip(eligibility)
+        .any(|(ordered, eligible)| ordered.will_guard(eligible));
 
     if guarded_next {
         return;
@@ -19153,7 +19194,7 @@ mod tests {
 
         assert_eq!(
             check(
-                vec![region(vec![leaving, unit("7")])],
+                vec![region(vec![leaving, with_skill(unit("7"), "COMB", 1)])],
                 "unit 5\nMOVE N\nunit 7\nGUARD 1\n"
             ),
             vec![]
@@ -21188,7 +21229,10 @@ mod tests {
     /// could be earning is worth being told about. The navigator chose this; do not "fix" it.
     #[test]
     fn a_unit_that_guards_is_warned() {
-        let findings = check_idle(vec![region(vec![unit("4021")])], "unit 4021\nGUARD 1\n");
+        let findings = check_idle(
+            vec![region(vec![with_skill(unit("4021"), "COMB", 1)])],
+            "unit 4021\nGUARD 1\n",
+        );
         assert_eq!(codes(&findings), vec![codes::UNIT_DOES_NOTHING.as_str()]);
     }
 
@@ -21660,6 +21704,13 @@ mod tests {
                 code: codes::GUARD_DROPPED,
                 regions: vec![region(vec![guard_dropping])],
                 orders: "unit 5\nMOVE N\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::GUARD_WITHOUT_TAX_ABILITY,
+                regions: vec![region(vec![unit("5")])],
+                orders: "unit 5\nGUARD 1\n",
                 allowance: None,
                 unclaimed: None,
             },

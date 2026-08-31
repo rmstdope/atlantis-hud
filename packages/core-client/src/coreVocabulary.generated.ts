@@ -41,7 +41,8 @@ export const ADVISORY_CHECK_CODES = [
   "items-cannot-be-given",
   "nothing-left-to-buy",
   "two-month-long-orders",
-  "magic-study-capped-by-prerequisites"
+  "magic-study-capped-by-prerequisites",
+  "guard-without-tax-ability"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
