@@ -7260,7 +7260,6 @@ fn check_magic_study_prerequisites(
         return;
     }
 
-    let mut occupied: HashMap<&str, i64> = HashMap::new();
     for ordered in &hex.units {
         let Some((placed, studying)) = ordered.studies_placed() else {
             continue;
@@ -7369,6 +7368,7 @@ fn check_magic_study(
         return;
     }
 
+    let mut occupied: HashMap<&str, i64> = HashMap::new();
     for ordered in &hex.units {
         let Some((placed, studying)) = ordered.studies_placed() else {
             continue;
@@ -21006,7 +21006,10 @@ mod tests {
             }],
             "unit 7\nSTUDY FORC\nunit 5\nSTUDY FORC\nunit 6\nSTUDY FORC\n",
         );
-        let mut warned = findings.iter().map(|f| f.unit_id.as_deref()).collect::<Vec<_>>();
+        let mut warned = findings
+            .iter()
+            .map(|f| f.unit_id.as_deref())
+            .collect::<Vec<_>>();
         warned.sort_unstable();
         assert_eq!(warned, vec![Some("6"), Some("7")]);
     }
