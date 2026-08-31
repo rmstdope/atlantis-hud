@@ -868,6 +868,14 @@ pub struct UnitFacts<'a> {
     pub after_gifts_unknown: bool,
     /// Set when arrivals cannot be merged into the unit's skills.
     pub skills_unknown: bool,
+    /// The unit's skills once this month's recruits have merged on top of its gifts - the picture
+    /// `rules/buy` says a `BUY` dilutes, read only by the PRODUCE arm below. Every other arm
+    /// keeps reading `skills`, the pre-market view, because `rules/sequenceofevents` prices STUDY,
+    /// ENTERTAIN and maintenance against a phase that has not seen the market yet (`ah-40c9`).
+    pub production_skills: &'a [Skill],
+    /// Set when arrivals - gifts or recruits - cannot be merged into the unit's skills, so the
+    /// PRODUCE arm must go silent rather than price a run against a guess.
+    pub production_skills_unknown: bool,
     /// The same unit once the market, the withdrawals and this month's production have run.
     ///
     /// `rules/sequenceofevents` settles STUDY, PRODUCE, ENTERTAIN, WORK and maintenance after the
@@ -1316,7 +1324,7 @@ pub fn forecast_unit(
             // `plan_production` the ledger uses - one function, two callers, which is what keeps
             // this column and the `not-enough-silver` warning from drifting apart (`ah-ycuj`).
             Intent::Produce { item } => {
-                if facts.skills_unknown {
+                if facts.production_skills_unknown {
                     expense_doubt = expense_doubt.or(Some(SilverDoubt::UnknownSkillsAfterArrivals));
                     doubt_subject = doubt_subject.or(Some(item.to_lowercase()));
                     continue;
@@ -1337,7 +1345,7 @@ pub fn forecast_unit(
                 // workforces (`ah-vtwn`). The tag is carried alongside because `workforce_for`
                 // needs it to find the tools, and `(lookups.item_tag)` allocates.
                 let found = (lookups.item_tag)(item).and_then(|tag| {
-                    producing_skill(ruleset, &tag, Some(facts.skills))
+                    producing_skill(ruleset, &tag, Some(facts.production_skills))
                         .map(|(skill, recipe)| (tag, skill, recipe))
                 });
                 let work = found
@@ -1348,7 +1356,7 @@ pub fn forecast_unit(
                             skill,
                             tag,
                             facts.late().men,
-                            facts.skills,
+                            facts.production_skills,
                             facts.items,
                         )
                     });
@@ -5079,6 +5087,8 @@ mod tests {
             formed: None,
             after_gifts_unknown: false,
             skills_unknown: false,
+            production_skills: &[],
+            production_skills_unknown: false,
             late: None,
         }
     }
@@ -5206,7 +5216,7 @@ mod tests {
             item: "SWOR".to_string(),
         })];
         let mut facts = facts(8, &intents, &receipts);
-        facts.skills_unknown = true;
+        facts.production_skills_unknown = true;
 
         let unit = forecast_unit(
             facts,
@@ -5319,6 +5329,7 @@ mod tests {
                 men_reported: 8,
                 items: &items,
                 skills: &smith,
+                production_skills: &smith,
                 late: Some(LateFacts {
                     men: 3,
                     men_by_race: &[],
@@ -5356,6 +5367,7 @@ mod tests {
                 men_reported: 3,
                 items: &items,
                 skills: &smith,
+                production_skills: &smith,
                 late: Some(LateFacts {
                     men: 8,
                     men_by_race: &[],
@@ -7663,6 +7675,8 @@ mod tests {
             formed: None,
             after_gifts_unknown: false,
             skills_unknown: false,
+            production_skills: &[],
+            production_skills_unknown: false,
             late: None,
         }
     }
@@ -8233,6 +8247,8 @@ mod combat_ready_tests {
             formed: None,
             after_gifts_unknown: false,
             skills_unknown: false,
+            production_skills: skills,
+            production_skills_unknown: false,
             late: None,
         }
     }

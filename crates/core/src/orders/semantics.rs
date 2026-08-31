@@ -441,6 +441,15 @@ pub fn review_turn(
     // be priced, and this one settlement is what both the ledgers and the SILVER column read. No
     // overruns: the navigator chose against a Problems entry for this, because a busy mining hex
     // is oversubscribed on purpose.
+    //
+    // Recruitment settles first: `settle_recruits_before_production` prices a provisional
+    // production claim and ledger per hex purely to learn how many people each `BUY` actually
+    // acquired, then runs `apply_recruits` from it. Only after every hex has recruits settled is
+    // the real, final `ProductionShares` computed below - a per-hex recomputation would restore
+    // the cross-hex disagreement `ah-k43x` fixed (`ah-40c9`).
+    let mut hexes = hexes;
+    settle_recruits_before_production(&mut hexes, ruleset, &receipts);
+
     let production = production_shares_for(&hexes, ruleset);
 
     let mut hexes: Vec<(Hex<'_>, Ledger<'_>)> = hexes
@@ -1072,7 +1081,7 @@ fn production_tag_of(
     ruleset: Option<&Ruleset>,
 ) -> Option<String> {
     let tag = resolve_item(item, hex, ordered, ruleset)?.to_ascii_uppercase();
-    let (_, recipe) = producing_skill(ruleset, &tag, ordered.skills_before_the_market())?;
+    let (_, recipe) = producing_skill(ruleset, &tag, ordered.skills())?;
     // Only a recipe with no material inputs comes from the region itself - the same test
     // `check_production` applies before it says `produce-not-here`.
     if !recipe.inputs.is_empty() {
@@ -1083,11 +1092,13 @@ fn production_tag_of(
 
 /// How many of the goods a unit's own men could make, which is what it claims of its region.
 ///
-/// Built from **`early_men()`, `unit.skills` and `early_items()`** - the ledger's picture, and
-/// never `facts.late().men`. `ledger_for` and `forecast_hex` both read this settlement, with
-/// `apply_recruits` running between them; that pass rewrites `skills_after_gifts` and
-/// `men_after_orders` and nothing else, so these three terms are the ones both passes can read and
-/// agree on (`ah-vtwn`, `ah-ycuj`).
+/// Built from **`men_after_orders`, `Ordered::skills()` and `early_items()`** - the settled
+/// post-recruit people and skill picture, paired with the early-phase item picture. `rules/buy`
+/// dilutes a unit's skills with what it recruits, and `rules/sequenceofevents` settles BUY before
+/// either PRODUCE phase, so both the Problems check and this claim must read the same post-market
+/// headcount and skill level `apply_recruits` already settled by the time either runs
+/// (`ah-40c9`). Materials stay the early picture on purpose: the ledger deliberately owns that
+/// balance, and this bead is about people and skills rather than the item-phase model.
 ///
 /// `tag` is the canonical tag [`production_tag_of`] resolved, so this is only ever asked about a
 /// primary `PRODUCE` that draws on a region at all.
@@ -1096,13 +1107,13 @@ fn production_tag_of(
 /// to the one it is listed in - the passenger's whole difficulty (`ah-k43x`). `None` where the run
 /// is not priceable at all, or where the men could make none of it anyway.
 fn production_ask(ordered: &Ordered<'_>, tag: &str, ruleset: Option<&Ruleset>) -> Option<i64> {
-    let (skill, recipe) = producing_skill(ruleset, tag, ordered.skills_before_the_market())?;
+    let (skill, recipe) = producing_skill(ruleset, tag, ordered.skills())?;
     let work = workforce_for(
         ruleset,
         skill,
         tag,
-        ordered.early_men(),
-        ordered.skills_before_the_market()?,
+        ordered.men_after_orders,
+        ordered.skills()?,
         ordered.early_items(),
     );
     let plan = plan_production(recipe, work, ordered.early_items(), RegionShare::Unlimited)?;
@@ -1385,6 +1396,10 @@ fn forecast_hex(
             formed: ordered.formed.as_ref(),
             after_gifts_unknown: ordered.holdings_unknown(),
             skills_unknown: ordered.skills_before_the_market().is_none(),
+            // `ordered.skills()` already carries this month's recruits merged on top of its
+            // gifts, since `apply_recruits` runs before this hex is priced (`ah-40c9`).
+            production_skills: ordered.skills().unwrap_or(&ordered.unit.skills),
+            production_skills_unknown: ordered.skills().is_none(),
             late: Some(late.of(index)),
         };
         claims.push(food_claim(&facts, ruleset));
@@ -3192,6 +3207,29 @@ fn ledger_for<'a>(
 /// `production` is the whole report's production settlement, computed once by the caller and read
 /// by both preview paths: settling it here, per hex, would price a passenger against the hex it is
 /// leaving (`ah-k43x`).
+/// Settles this month's recruits before production is priced anywhere, so the headcount and
+/// skill state PRODUCE reads already includes what BUY brought in - exactly once, for every
+/// caller (`ah-40c9`).
+///
+/// `rules/sequenceofevents` resolves BUY in the market phase, before the month-long PRODUCE that
+/// follows it, and `apply_recruits` needs a ledger to know how many people a BUY actually paid
+/// for. So this builds one provisional `ProductionShares` and one provisional [`Ledger`] per hex
+/// from the transfer-settled hexes it is given, and applies recruits from each hex's own ledger.
+/// Both are discarded once recruitment is settled: state ownership stays on each `Ordered`
+/// through `men_after_orders`, `arrivals` and `skills_after_recruits`, and every caller recomputes
+/// `ProductionShares` and its final ledger from that post-recruit state after this returns.
+fn settle_recruits_before_production(
+    hexes: &mut [Hex<'_>],
+    ruleset: Option<&Ruleset>,
+    receipts: &BTreeMap<String, Receipts>,
+) {
+    let provisional = production_shares_for(hexes, ruleset);
+    for hex in hexes.iter_mut() {
+        let ledger = ledger_for_with_production(hex, ruleset, receipts, &provisional);
+        apply_recruits(&mut hex.units, &ledger, ruleset);
+    }
+}
+
 fn ledger_for_with_production<'a>(
     hex: &Hex<'_>,
     ruleset: Option<&'a Ruleset>,
@@ -3299,6 +3337,12 @@ pub(crate) fn item_effects(
         .iter()
         .map(|region| hex_with_transfers(region, &ordered, &[], ruleset, &foreign_unit_ids))
         .collect();
+
+    // Recruitment settles before production is ever priced here, exactly as `review_turn` does
+    // through the same shared helper - the seam preventing Problems, SILVER and ITEMS from
+    // acquiring separate recruitment settlements (`ah-40c9`).
+    let mut hexes = hexes;
+    settle_recruits_before_production(&mut hexes, ruleset, &no_receipts);
 
     // Every hex before any ledger, and one settlement for all of them: a passenger produces where
     // its vessel arrives, so the pool it draws on is in another hex's `Products` line. Settling
@@ -3503,6 +3547,10 @@ fn unit_facts<'a>(
             .skills_before_the_market()
             .unwrap_or(&ordered.unit.skills),
         skills_unknown: ordered.skills_before_the_market().is_none(),
+        // See `forecast_hex`'s literal: `ordered.skills()` is the post-recruit picture, read only
+        // by the SILVER column's PRODUCE arm (`ah-40c9`).
+        production_skills: ordered.skills().unwrap_or(&ordered.unit.skills),
+        production_skills_unknown: ordered.skills().is_none(),
         intents: ordered.intents,
         receipts: nothing,
         formed: ordered.formed.as_ref(),
@@ -4754,30 +4802,33 @@ fn produce(
     // The level and the tools enter through `workforce_for`, which the SILVER column also calls -
     // one builder, so the two surfaces cannot be given different workforces (`ah-vtwn`).
     //
-    // Use the gift-merged list, which is the phase-stable skill picture shared with
-    // `UnitFacts.skills`; recruits are applied later and belong only to post-market checks.
+    // Use `Ordered::skills()`, the post-recruit picture: `settle_recruits_before_production` has
+    // already run `apply_recruits` on this hex by the time either ledger prices a `PRODUCE`, so
+    // this and the SILVER column's `production_skills` read the same settled skill level
+    // (`ah-40c9`).
     let found = tag
         .as_deref()
-        .and_then(|tag| producing_skill(ruleset, tag, actor.skills_before_the_market()));
+        .and_then(|tag| producing_skill(ruleset, tag, actor.skills()));
     let work = found.map_or(Workforce::default(), |(skill, _)| {
         workforce_for(
             ruleset,
             skill,
             tag.as_deref().unwrap_or_default(),
-            actor.early_men(),
-            actor
-                .skills_before_the_market()
-                .unwrap_or(&actor.unit.skills),
+            actor.men_after_orders,
+            actor.skills().unwrap_or(&actor.unit.skills),
             actor.early_items(),
         )
     });
     let recipe = found.map(|(_, recipe)| recipe);
-    // `rules/sequenceofevents` settles the Give phase nine phases before either PRODUCE phase, so
-    // the men who work this month and the materials they work with are the ones this month's gifts
-    // leave behind - not the ones the report printed. `early_men`/`early_items` are exactly that
-    // picture, and are what TAX and the SILVER column already read (`ah-dxfd.2`). A transfer this
-    // walk could not follow falls back to the report's own figures, as every other term here does;
-    // `holdings_unknown()` is deliberately not consulted (`ah-qct4`).
+    // `rules/sequenceofevents` settles the Give phase nine phases before either PRODUCE phase, and
+    // BUY before that, so the men who work this month and their diluted skill level are the ones
+    // this month's gifts and recruits leave behind - not the ones the report printed.
+    // `men_after_orders`/`Ordered::skills()` are exactly that settled picture (`ah-dxfd.2`,
+    // `ah-40c9`). Materials stay the early picture, deliberately: the ledger owns that balance
+    // separately, and reading a late picture here would price this order against a balance
+    // nothing has actually spent from. A transfer this walk could not follow falls back to the
+    // report's own figures, as every other term here does; `holdings_unknown()` is deliberately
+    // not consulted (`ah-qct4`).
     // What this hex's `Products` line leaves this unit, once its faction-mates producing the same
     // goods here are settled against it - the same settlement the SILVER column reads, through the
     // same function, so the two surfaces cannot answer it differently (`ah-256d`, `ah-ycuj`).
