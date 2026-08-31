@@ -435,8 +435,8 @@ export const WARNING_GROUPS: readonly {
       },
       {
         code: "teacher-cannot-teach",
-        title: "Teachers lacking the skill",
-        description: "The teacher cannot teach what the student is studying."
+        title: "Teachers unable to teach",
+        description: "A teacher is not all leaders or cannot teach what a student is studying."
       },
       {
         code: "taught-not-studying",

@@ -497,7 +497,7 @@ pub fn review_turn(
         );
         check_pillage_men(hex, ruleset, &plurals, &options, &mut findings);
         check_guard(hex, ruleset, &plurals, &options, &mut findings);
-        check_teaching(hex, ruleset, &options, &mut findings);
+        check_teaching(hex, ruleset, &plurals, &options, &mut findings);
         check_building(hex, &options, &mut findings);
         check_building_outside(hex, &options, &mut findings);
         check_build_help(hex, &options, &mut findings);
@@ -2652,6 +2652,29 @@ fn level_in(skills: &[Skill], tag: &str) -> u32 {
 }
 
 impl Ordered<'_> {
+    fn teaching_eligibility(&self) -> Option<bool> {
+        if self.unit.men_estimated || self.holdings_unknown() {
+            return None;
+        }
+        let races = self.early_men_by_race();
+        if races.iter().map(|item| item.amount).sum::<i64>() != self.early_men() {
+            return None;
+        }
+        Some(
+            self.early_men() > 0
+                && races
+                    .iter()
+                    .all(|item| item.tag.eq_ignore_ascii_case("LEAD")),
+        )
+    }
+
+    fn intent_spends_the_month(&self, intent: &Intent) -> bool {
+        match intent {
+            Intent::Teach { .. } => matches!(self.teaching_eligibility(), Some(true) | None),
+            _ => spends_the_month(intent),
+        }
+    }
+
     fn intents(&self) -> impl Iterator<Item = &Intent> {
         self.intents.iter().map(|placed| &placed.intent)
     }
@@ -6252,6 +6275,7 @@ fn check_guard(
 fn check_teaching(
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
@@ -6268,7 +6292,7 @@ fn check_teaching(
     }
 
     for ordered in &hex.units {
-        check_one_teacher(hex, ordered, ruleset, options, findings);
+        check_one_teacher(hex, ordered, ruleset, plurals, options, findings);
         offer_free_slots(hex, ordered, &taught, ruleset, options, findings);
     }
 }
@@ -6278,6 +6302,7 @@ fn check_one_teacher(
     hex: &Hex<'_>,
     teacher: &Ordered<'_>,
     ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
@@ -6291,6 +6316,44 @@ fn check_one_teacher(
     let Intent::Teach { students } = &placed.intent else {
         return;
     };
+    match teacher.teaching_eligibility() {
+        Some(false) => {
+            if options.emits(codes::TEACHER_CANNOT_TEACH) {
+                let non_leaders: Vec<String> = teacher
+                    .early_men_by_race()
+                    .iter()
+                    .filter(|item| !item.tag.eq_ignore_ascii_case("LEAD"))
+                    .map(|item| counted_item(item.amount, &item.tag, hex, ruleset, plurals))
+                    .collect();
+                let message = if non_leaders.is_empty() {
+                    "only leaders can teach; this unit has no people".to_string()
+                } else {
+                    let prefix = if teacher
+                        .early_men_by_race()
+                        .iter()
+                        .any(|item| item.tag.eq_ignore_ascii_case("LEAD"))
+                    {
+                        "this unit also has"
+                    } else {
+                        "this unit has"
+                    };
+                    format!(
+                        "only leaders can teach; {prefix} {}",
+                        in_a_list(&non_leaders)
+                    )
+                };
+                findings.push(teacher.finding(
+                    hex,
+                    codes::TEACHER_CANNOT_TEACH,
+                    message,
+                    Some(placed),
+                ));
+            }
+            return;
+        }
+        None => return,
+        Some(true) => {}
+    }
 
     let mut taught_men = 0;
     for student in students {
@@ -6382,6 +6445,9 @@ fn offer_free_slots(
     findings: &mut Vec<Finding>,
 ) {
     if !options.emits(codes::TEACHER_HAS_FREE_SLOTS) {
+        return;
+    }
+    if teacher.teaching_eligibility() != Some(true) {
         return;
     }
     let Some(ruleset) = ruleset else { return };
@@ -7448,7 +7514,10 @@ fn check_idle_units(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
         if taxes(&ordered.unit.flags, ordered.intents) {
             continue;
         }
-        if ordered.intents().any(spends_the_month) {
+        if ordered
+            .intents()
+            .any(|intent| ordered.intent_spends_the_month(intent))
+        {
             continue;
         }
         findings.push(ordered.finding_at_block(
@@ -7505,7 +7574,7 @@ fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: 
         let claimants: Vec<&PlacedIntent> = ordered
             .intents
             .iter()
-            .filter(|placed| spends_the_month(&placed.intent))
+            .filter(|placed| ordered.intent_spends_the_month(&placed.intent))
             // A keyword `GRAMMAR` does not hold would print as an empty word in the message, so
             // it is skipped rather than named. No order yielding an intent is one.
             .filter(|placed| !placed.keyword.is_empty())
