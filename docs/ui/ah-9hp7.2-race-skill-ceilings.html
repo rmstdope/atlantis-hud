@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ah-9hp7.2 - Option B: lead with the race restriction</title>
+<style>
+:root{--bg:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#2b3542;--ink:#dbe3ec;--soft:#a3b0c0;--dim:#7d8b9b;--warn:#d9a441;--blue:#4a9fd8}
+*{box-sizing:border-box}body{margin:0;padding:28px;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,sans-serif}main{max-width:980px;margin:auto}
+h1{font-size:21px;margin:0 0 6px}h2{font-size:16px;margin:28px 0 8px;border-top:1px solid var(--edge);padding-top:16px}p{color:var(--soft);max-width:90ch}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--edge)}th,td{text-align:left;vertical-align:top;padding:9px 10px;border-bottom:1px solid var(--edge)}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim)}td:first-child{white-space:nowrap;color:var(--soft)}.warn{color:var(--warn)}
+.box{background:var(--panel);border:1px solid var(--edge);border-radius:7px;padding:13px;max-width:640px}.label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:7px}
+.row{display:flex;gap:9px}.check{width:14px;height:14px;background:var(--blue);border-radius:3px;flex:none;margin-top:3px}.title{font-weight:650}.desc{font-size:12px;color:var(--dim)}
+.note{background:var(--raised);border-left:3px solid var(--warn);padding:10px 13px;color:var(--soft)}.chosen{border-left-color:#70ad7d}
+@media(max-width:600px){body{padding:14px}table,tbody,tr,td{display:block}thead{display:none}tr{border-bottom:1px solid var(--edge);padding:6px}td{border:0;padding:3px 5px}td:first-child{white-space:normal;font-weight:650;color:var(--ink)}}
+</style>
+</head>
+<body><main>
+<h1>ah-9hp7.2 - race-specific STUDY ceilings</h1>
+<p>The warning explains the restriction before saying that the unit has reached it. This is longer,
+but reads as a reason rather than only naming a limit.</p>
+<p class="note chosen"><strong>Chosen:</strong> lead with the race restriction; name every limiting
+race even when the sentence wraps; name the actual level when the unit is already above its legal
+ceiling; preserve today's global-ceiling behavior when race data is unavailable.</p>
+
+<h2>Warning states</h2>
+<table><thead><tr><th>Unit and skill</th><th>Exact warning</th></tr></thead><tbody>
+<tr><td>Human, observation 2</td><td class="warn">humans cannot learn observation past level 2, and this unit is already there</td></tr>
+<tr><td>Human + wood elf, combat 2</td><td class="warn">wood elves cannot learn combat past level 2, and this unit is already there</td></tr>
+<tr><td>Human + wood elf, entertainment 2</td><td class="warn">humans and wood elves cannot learn entertainment past level 2, and this unit is already there</td></tr>
+<tr><td>Human, observation 3 (already above its ceiling)</td><td class="warn">humans cannot learn observation past level 2, and this unit is already at level 3</td></tr>
+<tr><td>Global ceiling is lower</td><td class="warn">observation stops at level 5 and this unit is already there</td></tr>
+<tr><td>Below the legal ceiling</td><td>No warning; the skill remains in STUDY completion.</td></tr>
+<tr><td>Race limits unavailable</td><td>Keep today's global-ceiling behavior; do not guess a race limit.</td></tr>
+</tbody></table>
+
+<h2>When three or more races tie for the limit</h2>
+<table><thead><tr><th>Unit and skill</th><th>Exact warning</th></tr></thead><tbody>
+<tr><td>Human + wood elf + high elf, entertainment 2</td><td class="warn">humans, wood elves, and high elves cannot learn entertainment past level 2, and this unit is already there</td></tr>
+</tbody></table>
+<p>Every limiting race is named. The sentence may wrap across several lines rather than hiding
+which races impose the ceiling.</p>
+
+<h2>Warnings setting</h2>
+<div class="box"><div class="label">Studying/Teaching</div><div class="row"><span class="check"></span><span>
+<span class="title">Study with nothing to learn</span><br>
+<span class="desc">A unit ordered to study a skill that at least one of its races cannot learn any further.</span>
+</span></div></div>
+
+<h2>Interaction and narrow width</h2>
+<p class="note">No new control, focus behavior, shortcut, persistence, loading state, or cancel
+state. The existing warning toggle still persists immediately. These longer sentences wrap in the
+editor and Problems list without truncation. A skill at the applicable ceiling is absent from
+STUDY completion; it returns when the unit composition or current level permits more study.</p>
+</main></body>
+</html>
