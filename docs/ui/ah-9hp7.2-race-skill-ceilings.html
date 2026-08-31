@@ -22,7 +22,8 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim)
 but reads as a reason rather than only naming a limit.</p>
 <p class="note chosen"><strong>Chosen:</strong> lead with the race restriction; name every limiting
 race even when the sentence wraps; name the actual level when the unit is already above its legal
-ceiling; preserve today's global-ceiling behavior when race data is unavailable.</p>
+ceiling; name the global skill cap when it equals a race cap; preserve today's global-ceiling
+behavior when race data is unavailable.</p>
 
 <h2>Warning states</h2>
 <table><thead><tr><th>Unit and skill</th><th>Exact warning</th></tr></thead><tbody>
@@ -30,10 +31,19 @@ ceiling; preserve today's global-ceiling behavior when race data is unavailable.
 <tr><td>Human + wood elf, combat 2</td><td class="warn">wood elves cannot learn combat past level 2, and this unit is already there</td></tr>
 <tr><td>Human + wood elf, entertainment 2</td><td class="warn">humans and wood elves cannot learn entertainment past level 2, and this unit is already there</td></tr>
 <tr><td>Human, observation 3 (already above its ceiling)</td><td class="warn">humans cannot learn observation past level 2, and this unit is already at level 3</td></tr>
-<tr><td>Global ceiling is lower</td><td class="warn">observation stops at level 5 and this unit is already there</td></tr>
+<tr><td>Global ceiling is lower than or equal to the race ceiling</td><td class="warn">observation stops at level 5 and this unit is already there</td></tr>
 <tr><td>Below the legal ceiling</td><td>No warning; the skill remains in STUDY completion.</td></tr>
 <tr><td>Race limits unavailable</td><td>Keep today's global-ceiling behavior; do not guess a race limit.</td></tr>
 </tbody></table>
+
+<h2>When the report never shows the race's plural</h2>
+<p>A report can contain one human and never write "humans" anywhere. Atlantis HUD deliberately
+does not invent item plurals because many are irregular. The grammatical fallback names the
+singular race explicitly:</p>
+<table><thead><tr><th>Unit and skill</th><th>Exact warning</th></tr></thead><tbody>
+<tr><td>One human; no "humans" elsewhere in the report</td><td class="warn">the human race cannot learn observation past level 2, and this unit is already there</td></tr>
+</tbody></table>
+<p>When the report has shown the plural, the approved "humans cannot..." form remains unchanged.</p>
 
 <h2>When three or more races tie for the limit</h2>
 <table><thead><tr><th>Unit and skill</th><th>Exact warning</th></tr></thead><tbody>
