@@ -182,6 +182,24 @@ function withdrawOf(paragraph: string): { withdrawCost?: number } {
   return cost === null ? {} : { withdrawCost: cost };
 }
 
+/**
+ * The maintenance value the data page gives a food item, as a spreadable field so a non-food item
+ * carries no key. A positive integer in this exact clause is the sole food discriminator: nothing
+ * is inferred from tags, names, item classes, or the bare word "eaten".
+ *
+ * The rules page (`rules/economy_maintenance`) and the data page disagree - the rules section says
+ * one food substitutes for each 50 silver, while `data/GRAI`, `data/LIVE`, `data/FISH` and
+ * `data/MEAL` each state 30 here. `ah-773o` resolved it in favour of this per-item value, which the
+ * committed turn-17 report corroborates. This scraper reads what the data page states and no more.
+ */
+function maintenanceOf(paragraph: string): { maintenanceValue?: number } {
+  const value = readNumber(
+    paragraph,
+    /can be eaten to provide (\d+) silver towards a unit's maintenance cost/i
+  );
+  return value === null ? {} : { maintenanceValue: value };
+}
+
 /** `No skill is needed to wield this weapon.` */
 const WIELD_NONE = /No skill is needed to wield this weapon\./i;
 /** `Knowledge of crossbow [XBOW] is needed to wield this weapon.` */
@@ -273,6 +291,7 @@ export function parseItemReference(html: string): ItemReference {
       selfMobile,
       ...conditionOf(paragraph),
       ...withdrawOf(paragraph),
+      ...maintenanceOf(paragraph),
       ...cargoOf(kind, paragraph),
       ...sailingOf(kind, paragraph),
       ...weaponOf(kind, paragraph),

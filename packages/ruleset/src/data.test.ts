@@ -86,6 +86,32 @@ describe("parseItemReference", () => {
     expect(items.LONG).not.toHaveProperty("withdrawCost");
   });
 
+  it("reads the maintenance value of each food the page prices", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    // "grain [GRAI] ... This item can be eaten to provide 30 silver towards a unit's maintenance
+    //  cost." The same clause appears verbatim on livestock, fish and meals.
+    for (const tag of ["GRAI", "LIVE", "FISH", "MEAL"]) {
+      expect(items[tag]?.maintenanceValue, tag).toBe(30);
+    }
+  });
+
+  it("leaves an item the page never calls food without a maintenance value", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    // "iron [IRON] ..." carries no maintenance clause, so it is not food.
+    expect(items.IRON).not.toHaveProperty("maintenanceValue");
+  });
+
+  it("parses the number the clause states rather than assuming 30", () => {
+    // A synthetic item proves the value is read from the page, not replaced by the committed 30.
+    const html =
+      "<html><body><pre>manna [MANN], weight 1. This item can be eaten to provide 45 silver " +
+      "towards a unit's maintenance cost.</pre></body></html>";
+    const items = parseItemReference(html);
+    expect(items.MANN?.maintenanceValue).toBe(45);
+  });
+
   it("reads a weapon that needs no skill", () => {
     const items = parseItemReference(DATA_HTML);
 

@@ -62,35 +62,154 @@ const EARTH_LORE_PER_LEVEL_PER_WAGE: i64 = 2;
 const UPKEEP_PER_CHARACTER: i64 = 10;
 const UPKEEP_PER_LEADER: i64 = 50;
 
-/// "Units may substitute one unit of grain, livestock, fish or meals for each 50 silver (or
-/// fraction thereof) of maintenance owed. Food value for a fractional maintenance cost still
-/// consumes the entire unit of food."
+/// One kind of food a unit or hex holds, priced by the ruleset for maintenance.
 ///
-/// **The data page says 30, and it is stale** (`ah-j00u`, settled with the navigator 2026-08-23).
-/// Every food item's entry there reads "can be eaten to provide 30 silver towards a unit's
-/// maintenance cost", and that sentence is scraped verbatim into
-/// `config/public/ruleset.json`'s `items.GRAI.description` and its three siblings - so a reader
-/// who checks the catalogue rather than the rules will find 30 and think this constant wrong.
-///
-/// It is not. The rules page carries 50 in the *Maintenance Costs* section, which is the section
-/// that describes the mechanic; the changelog records "Meals are now 50 silver each (was 30
-/// silver)"; and the data page's 30 appears identically on all four food items, which is what a
-/// generated string that was never regenerated looks like rather than a second opinion.
-///
-/// The report corpus was searched for a unit whose food fell between two turns and cannot settle
-/// it: every candidate is a supply unit visibly trading food, and the rest hold too little to tell
-/// `ceil(owed/50)` from `ceil(owed/30)`. `committed.test.ts`'s
-/// `still records the data page's stale food value` fails when upstream fixes the page, which is
-/// the signal to delete this note.
-const SILVER_PER_FOOD: i64 = 50;
+/// The rules page (`rules/economy_maintenance`) says one food substitutes for each 50 silver of
+/// maintenance owed, while `data/GRAI`, `data/LIVE`, `data/FISH` and `data/MEAL` each state 30.
+/// `ah-773o` resolved the disagreement in favour of the per-item data value, corroborated by the
+/// committed turn-17 report (22 humans consume 8 livestock, which is `ceil(220 / 30)`, not
+/// `ceil(220 / 50)`). So there is no one food value in this module any more: every food carries its
+/// own, read from `ItemEntry::maintenance_value`, and an item the catalogue does not price is not
+/// food and pays nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FoodAmount {
+    pub tag: String,
+    pub amount: i64,
+    pub maintenance_value: i64,
+}
 
-/// The food items the rules name, by tag.
+/// What consuming food off a stock paid, and what it cost in items.
 ///
-/// Public because every surface that decides *which* items are food must decide it the same way:
-/// `lone_food_tag` names the food a hover says will be eaten, `food_claim` counts what the
-/// accounting spends, and a test asserts against both. Three copies of one literal are three things
-/// to keep in step (`ah-eacd`).
-pub const FOOD_TAGS: [&str; 4] = ["GRAI", "LIVE", "FISH", "MEAL"];
+/// Built by [`consume_food`], which removes the consumed items from the stock it is handed. The
+/// silver covered and the item counts are read straight off this rather than re-derived from a
+/// value, so the two can never drift.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct FoodUse {
+    /// Silver of maintenance the eaten food paid, never more than the debt it was set against.
+    covered: i64,
+    /// The items eaten, per tag, in the order they were consumed.
+    consumed: Vec<FoodAmount>,
+}
+
+impl FoodUse {
+    /// How many items were eaten in all.
+    fn items(&self) -> i64 {
+        self.consumed.iter().map(|entry| entry.amount).sum()
+    }
+
+    /// The tag of the eaten food when it was all one kind; `None` when several kinds were eaten,
+    /// because the hover cannot then name a single food.
+    fn lone_tag(&self) -> Option<String> {
+        let mut eaten = self.consumed.iter().filter(|entry| entry.amount > 0);
+        let first = eaten.next()?;
+        eaten
+            .all(|entry| entry.tag == first.tag)
+            .then(|| first.tag.clone())
+    }
+}
+
+/// Builds a food stock from a unit's inventory, keeping only what the ruleset prices for
+/// maintenance.
+///
+/// A missing ruleset, an unknown tag, an absent `maintenance_value`, or a value of zero or less is
+/// not food and contributes nothing: the conservative reading is that an item the catalogue cannot
+/// price as food does not feed a unit, so its maintenance stays owed in full and known.
+fn food_stock(items: &[ItemAmount], ruleset: Option<&Ruleset>) -> Vec<FoodAmount> {
+    let Some(ruleset) = ruleset else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter(|item| item.amount > 0)
+        .filter_map(|item| {
+            let entry = ruleset.items.get(&item.tag.to_ascii_uppercase())?;
+            let value = entry.maintenance_value?;
+            (value > 0).then(|| FoodAmount {
+                tag: item.tag.to_ascii_uppercase(),
+                amount: item.amount,
+                maintenance_value: value,
+            })
+        })
+        .collect()
+}
+
+/// Spends food off `stock` against `owed` silver of maintenance, returning what it paid and cost.
+///
+/// The one place maintenance food arithmetic lives - steps 1, 2, 5 and 6 of the payment order all
+/// go through here. Food is eaten least valuable first (`maintenance_value` then `tag`): where a
+/// future ruleset gives foods different values but does not say which the engine eats, spending the
+/// cheapest first is the conservative direction - it eats more items for the same relief and so
+/// cannot overstate the maintenance a hex can pay. A fractional maintenance cost still consumes a
+/// whole unit of food, so each entry rounds its need up; the covered silver is capped at the
+/// remaining debt, and all arithmetic saturates so an absurd headcount cannot overflow it.
+fn consume_food(stock: &mut Vec<FoodAmount>, owed: i64) -> FoodUse {
+    stock.sort_by(|a, b| {
+        a.maintenance_value
+            .cmp(&b.maintenance_value)
+            .then_with(|| a.tag.cmp(&b.tag))
+    });
+
+    let mut remaining = owed.max(0);
+    let mut use_ = FoodUse::default();
+    for entry in stock.iter_mut() {
+        if remaining <= 0 {
+            break;
+        }
+        if entry.maintenance_value <= 0 || entry.amount <= 0 {
+            continue;
+        }
+        let needed =
+            remaining.saturating_add(entry.maintenance_value - 1) / entry.maintenance_value;
+        let used = entry.amount.min(needed);
+        if used <= 0 {
+            continue;
+        }
+        let gain = used.saturating_mul(entry.maintenance_value).min(remaining);
+        remaining -= gain;
+        entry.amount -= used;
+        use_.covered = use_.covered.saturating_add(gain);
+        use_.consumed.push(FoodAmount {
+            tag: entry.tag.clone(),
+            amount: used,
+            maintenance_value: entry.maintenance_value,
+        });
+    }
+    stock.retain(|entry| entry.amount > 0);
+    use_
+}
+
+/// The part of a unit's own food a hex still holds, per tag, for step 5's cap.
+///
+/// Step 2 pools every unit's spare food, so a unit's larder at step 5 is only what survived the
+/// pool. Matching per tag - not by total count - is what the pool remainder makes possible: it
+/// names exactly which foods are left, so a unit whose grain the pool ate cannot spend it again.
+fn own_available(own: &[FoodAmount], remaining: &[FoodAmount]) -> Vec<FoodAmount> {
+    own.iter()
+        .filter_map(|food| {
+            let held = remaining
+                .iter()
+                .find(|entry| entry.tag == food.tag)
+                .map_or(0, |entry| entry.amount);
+            let amount = food.amount.min(held);
+            (amount > 0).then(|| FoodAmount {
+                tag: food.tag.clone(),
+                amount,
+                maintenance_value: food.maintenance_value,
+            })
+        })
+        .collect()
+}
+
+/// Removes the items a unit's own food consumed at step 5 from the shared hex remainder, so step 6
+/// draws only on what is genuinely left.
+fn remove_from_stock(stock: &mut Vec<FoodAmount>, consumed: &[FoodAmount]) {
+    for eaten in consumed {
+        if let Some(entry) = stock.iter_mut().find(|entry| entry.tag == eaten.tag) {
+            entry.amount = (entry.amount - eaten.amount).max(0);
+        }
+    }
+    stock.retain(|entry| entry.amount > 0);
+}
 
 /// The tag a leader carries in `men_by_race`.
 const LEADER_TAG: &str = "LEAD";
@@ -961,7 +1080,7 @@ pub fn forecast_unit(
     ruleset: Option<&Ruleset>,
 ) -> UnitSilver {
     let sale = lookups.sale;
-    let own_food = own_food_pass(&facts);
+    let own_food = own_food_pass(&facts, ruleset);
     // Kept before the destructure below, which does not name the field.
     let unit_flags = facts.flags;
     let formed = facts.formed.cloned();
@@ -1640,16 +1759,17 @@ enum Deferred {
 ///
 /// `None` for a headcount that is itself a guess: charge nothing rather than a guess.
 #[must_use]
-pub fn unit_upkeep(facts: &UnitFacts<'_>) -> Option<i64> {
-    own_food_pass(facts).map(|pass| pass.owed_after_own_food)
+pub fn unit_upkeep(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<i64> {
+    own_food_pass(facts, ruleset).map(|pass| pass.owed_after_own_food)
 }
 
 /// What step 1 of the payment order did to one unit: what it still owes, and what food it has left.
 struct OwnFoodPass {
     owed_after_own_food: i64,
-    spare_food: i64,
+    /// The food the unit still holds after step 1, as a stock, for its faction pool and step 5.
+    spare_food: Vec<FoodAmount>,
     /// What the unit's own food paid off, in silver. Recorded where step 1 actually happens, so
-    /// nothing re-derives it from `items` and `SILVER_PER_FOOD` and drifts from this.
+    /// nothing re-derives it from `items` and a food value and drifts from this.
     own_food_covered: i64,
 }
 
@@ -1659,7 +1779,7 @@ struct OwnFoodPass {
 /// (`rules/sequenceofevents`), so this reads `facts.late()` throughout (`ah-dxfd.2`).
 ///
 /// `None` for a headcount that is itself a guess: charge nothing rather than a guess.
-fn own_food_pass(facts: &UnitFacts<'_>) -> Option<OwnFoodPass> {
+fn own_food_pass(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<OwnFoodPass> {
     if facts.men_estimated {
         return None;
     }
@@ -1681,36 +1801,24 @@ fn own_food_pass(facts: &UnitFacts<'_>) -> Option<OwnFoodPass> {
         .saturating_add(characters.saturating_mul(UPKEEP_PER_CHARACTER))
         .max(0);
 
-    let held = late
-        .items
-        .iter()
-        .filter(|entry| {
-            FOOD_TAGS
-                .iter()
-                .any(|tag| entry.tag.eq_ignore_ascii_case(tag))
-        })
-        .map(|entry| entry.amount.max(0))
-        .sum::<i64>();
+    let mut stock = food_stock(late.items, ruleset);
 
     if owed <= 0 || !is_consuming(facts.flags) {
         // Steps 3 before 5: a unit not set to consume spends its silver before its own food, and
         // this column is about silver. Its food is untouched, and so is spare for its faction.
         return Some(OwnFoodPass {
             owed_after_own_food: owed,
-            spare_food: held,
+            spare_food: stock,
             own_food_covered: 0,
         });
     }
 
-    // A fractional maintenance cost still consumes a whole unit of food, so the need rounds up.
-    let needed = (owed + SILVER_PER_FOOD - 1) / SILVER_PER_FOOD;
-    let used = held.min(needed);
-    let covered = used.saturating_mul(SILVER_PER_FOOD).min(owed);
+    let use_ = consume_food(&mut stock, owed);
 
     Some(OwnFoodPass {
-        owed_after_own_food: owed - covered,
-        spare_food: held - used,
-        own_food_covered: covered,
+        owed_after_own_food: owed - use_.covered,
+        spare_food: stock,
+        own_food_covered: use_.covered,
     })
 }
 
@@ -1721,8 +1829,9 @@ fn own_food_pass(facts: &UnitFacts<'_>) -> Option<OwnFoodPass> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FoodClaim {
     pub unit_id: String,
-    /// Food items still held once this unit has paid what it could of its own upkeep.
-    pub spare_food: i64,
+    /// Food items still held once this unit has paid what it could of its own upkeep, as a stock
+    /// so a hex whose foods carry different maintenance values pools them exactly.
+    pub spare_food: Vec<FoodAmount>,
     /// Upkeep still owed after step 1, in silver.
     pub owed_after_own_food: i64,
     /// Whether the unit carries the `consuming faction's food` flag.
@@ -1734,12 +1843,12 @@ pub struct FoodClaim {
 /// A unit whose headcount is a guess brings nothing and claims nothing: what it ate of its own
 /// food is unknown, so counting its holding into the pool would overstate what is spare.
 #[must_use]
-pub fn food_claim(facts: &UnitFacts<'_>) -> FoodClaim {
-    let pass = own_food_pass(facts);
+pub fn food_claim(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> FoodClaim {
+    let pass = own_food_pass(facts, ruleset);
     FoodClaim {
         unit_id: facts.unit_id.to_string(),
-        spare_food: pass.as_ref().map_or(0, |pass| pass.spare_food),
         owed_after_own_food: pass.as_ref().map_or(0, |pass| pass.owed_after_own_food),
+        spare_food: pass.map_or_else(Vec::new, |pass| pass.spare_food),
         draws_on_pool: facts
             .flags
             .iter()
@@ -1754,9 +1863,10 @@ pub struct FactionFoodPass {
     /// several contending for a pool too small for them all. Absent for a unit that does not draw
     /// on the pool.
     pub settled: BTreeMap<String, Option<i64>>,
-    /// Food items the hex still holds once step 2 has run, for steps 5 and 6 to draw on. `None`
-    /// when step 2 was contended: what it ate cannot be told, so what is left cannot be either.
-    pub pool_left: Option<i64>,
+    /// Food the hex still holds once step 2 has run, as a stock for steps 5 and 6 to draw on.
+    /// `None` when step 2 was contended: what it ate cannot be told, so what is left cannot be
+    /// either.
+    pub pool_left: Option<Vec<FoodAmount>>,
 }
 
 /// Step 2 of the maintenance payment order, across one hex.
@@ -1765,78 +1875,98 @@ pub struct FactionFoodPass {
 /// of *several* contending for a pool too small to feed them all, where which unit eats is
 /// genuinely undeterminable and no number is invented. Two cases that look short are not
 /// ambiguous at all and are answered exactly: an empty pool, where nobody eats, and a lone
-/// claimant, which simply eats every item there is. A unit that does not draw on the pool is
+/// claimant, which simply eats every item it can use. A unit that does not draw on the pool is
 /// absent from the result and keeps whatever step 1 left it.
 #[must_use]
 pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
-    // Every own unit in the hex contributes, drawing on the pool or not: a quartermaster paying its
-    // own upkeep in silver still hands its grain to its faction-mates.
-    let pool = claims.iter().fold(0i64, |pool, claim| {
-        pool.saturating_add(claim.spare_food.max(0))
-    });
+    // Every own unit in the hex contributes its spare food, drawing on the pool or not: a
+    // quartermaster paying its own upkeep in silver still hands its grain to its faction-mates.
+    // Foods are pooled by tag so a mixed hex is one stock the consume helper can sort and spend.
+    let mut pool: Vec<FoodAmount> = Vec::new();
+    for claim in claims {
+        for food in &claim.spare_food {
+            if food.amount <= 0 || food.maintenance_value <= 0 {
+                continue;
+            }
+            match pool.iter_mut().find(|entry| entry.tag == food.tag) {
+                Some(entry) => entry.amount = entry.amount.saturating_add(food.amount),
+                None => pool.push(food.clone()),
+            }
+        }
+    }
 
-    let claimants = claims
+    let claimants: Vec<&FoodClaim> = claims
         .iter()
-        .filter(|claim| claim.draws_on_pool && claim.owed_after_own_food > 0);
+        .filter(|claim| claim.draws_on_pool && claim.owed_after_own_food > 0)
+        .collect();
 
-    let total_needed = claimants.clone().fold(0i64, |total, claim| {
-        // A fractional maintenance cost still consumes a whole unit of food, so this rounds up -
-        // in integers, never floats, and saturating so an absurd headcount cannot overflow it.
-        let needed = claim
-            .owed_after_own_food
-            .saturating_add(SILVER_PER_FOOD - 1)
-            / SILVER_PER_FOOD;
-        total.saturating_add(needed)
-    });
+    let pool_total: i64 = pool.iter().map(|entry| entry.amount).sum();
 
     // A hex with no food at all is not ambiguous: nobody eats, so every claimant keeps exactly
-    // what step 1 left it. `?` is for a pool that holds food but not enough - the case where which
-    // unit eats genuinely cannot be told, and the navigator settled it that way on 2026-08-23
-    // after the committed turn showed eleven exactly-known figures being doubted by an empty hex.
-    if pool == 0 {
+    // what step 1 left it. `None` is reserved for a pool that holds food but not enough - the case
+    // where which unit eats genuinely cannot be told, and the navigator settled it that way on
+    // 2026-08-23 after the committed turn showed exactly-known figures being doubted by an empty
+    // hex.
+    if pool_total == 0 {
         return FactionFoodPass {
             settled: BTreeMap::new(),
-            pool_left: Some(0),
+            pool_left: Some(Vec::new()),
         };
     }
 
-    if total_needed <= pool {
-        // The pool feeds everybody, and a unit it feeds at all it feeds entirely: one item is
-        // worth a whole 50, so a unit owing 60 takes 2 and 2 cover 100.
+    if claimants.is_empty() {
         return FactionFoodPass {
-            settled: claimants
-                .map(|claim| (claim.unit_id.clone(), Some(0)))
-                .collect(),
-            pool_left: Some(pool - total_needed),
+            settled: BTreeMap::new(),
+            pool_left: Some(pool),
         };
     }
 
-    // Short, and contention needs two contenders: a lone claimant eats every item there is and
-    // owes the rest, with nothing to decide. Settled with the navigator on 2026-08-23, by the same
+    // Contention needs two contenders: a lone claimant eats every item it can use and owes the
+    // rest, with nothing to decide. Settled with the navigator on 2026-08-23, by the same
     // reasoning that made an empty pool exact.
-    if let (Some(only), 1) = (claimants.clone().next(), claimants.clone().count()) {
-        let covered = pool
-            .saturating_mul(SILVER_PER_FOOD)
-            .min(only.owed_after_own_food);
-        // A lone claimant eats every item it can use, which is the whole pool unless its debt
-        // needs less: `covered` is capped at the debt, but the items it ate are not.
-        let needed = only.owed_after_own_food.saturating_add(SILVER_PER_FOOD - 1) / SILVER_PER_FOOD;
-        let used = pool.min(needed);
+    if let [only] = claimants.as_slice() {
+        let mut stock = pool;
+        let use_ = consume_food(&mut stock, only.owed_after_own_food);
         return FactionFoodPass {
             settled: [(
                 only.unit_id.clone(),
-                Some(only.owed_after_own_food - covered),
+                Some(only.owed_after_own_food - use_.covered),
             )]
             .into(),
-            pool_left: Some(pool - used),
+            pool_left: Some(stock),
         };
     }
 
-    // All or nothing among the rest: the rules waste food, so the total genuinely differs by who
-    // eats - two units owing 60 and 80 against a pool of 3 total 30 or 10 depending on which one
-    // is fed - and there is no correct number to share out.
+    // Several claimants: dry-run them in document order against one cloned stock. Each takes the
+    // cheapest food first, so the order is what makes the outcome deterministic. If the pool feeds
+    // them all, commit that stock and those settlements.
+    let mut stock = pool;
+    let mut settlements: Vec<(String, i64)> = Vec::with_capacity(claimants.len());
+    let mut all_fed = true;
+    for claim in &claimants {
+        let use_ = consume_food(&mut stock, claim.owed_after_own_food);
+        let left = claim.owed_after_own_food - use_.covered;
+        if left > 0 {
+            all_fed = false;
+        }
+        settlements.push((claim.unit_id.clone(), left));
+    }
+    if all_fed {
+        return FactionFoodPass {
+            settled: settlements
+                .into_iter()
+                .map(|(id, left)| (id, Some(left)))
+                .collect(),
+            pool_left: Some(stock),
+        };
+    }
+
+    // Short, with several contending: the rules waste food, so the total genuinely differs by who
+    // eats and there is no correct number to share out. Every contender is doubted and the
+    // remainder cannot be told.
     FactionFoodPass {
         settled: claimants
+            .iter()
             .map(|claim| (claim.unit_id.clone(), None))
             .collect(),
         pool_left: None,
@@ -1997,19 +2127,40 @@ mod split_pool_tests {
 mod late_food_tests {
     use super::*;
 
+    fn food(tag: &str, amount: i64, value: i64) -> FoodAmount {
+        FoodAmount {
+            tag: tag.to_string(),
+            amount,
+            maintenance_value: value,
+        }
+    }
+
+    /// A claim whose own remaining food is `own_food` grain of `tag`, each worth 30 silver.
     fn claim(id: &str, short: i64, own_food: i64, tag: Option<&str>) -> LateFoodClaim {
+        let own = match (own_food > 0, tag) {
+            (true, Some(tag)) => vec![food(tag, own_food, 30)],
+            _ => Vec::new(),
+        };
         LateFoodClaim {
             unit_id: id.to_string(),
             short,
-            own_food,
-            own_food_tag: tag.map(str::to_string),
+            own_food: own,
         }
+    }
+
+    /// A hex remainder of `n` grain, each worth 30 silver.
+    fn pool(n: i64) -> Option<Vec<FoodAmount>> {
+        Some(if n > 0 {
+            vec![food("GRAI", n, 30)]
+        } else {
+            Vec::new()
+        })
     }
 
     #[test]
     fn a_unit_with_no_flag_eats_its_own_food_when_silver_runs_out() {
         let claims = [claim("a", 60, 2, Some("GRAI"))];
-        let relief = feed_after_silver(&claims, Some(2));
+        let relief = feed_after_silver(&claims, pool(2));
         let a = relief.get("a").expect("a is fed");
         assert_eq!(a.own_covered, 60);
         assert_eq!(a.own_items, 2);
@@ -2021,9 +2172,10 @@ mod late_food_tests {
     #[test]
     fn food_runs_out_and_the_rest_is_still_owed() {
         let claims = [claim("a", 200, 1, Some("GRAI"))];
-        let relief = feed_after_silver(&claims, Some(1));
+        let relief = feed_after_silver(&claims, pool(1));
         let a = relief.get("a").expect("a is fed");
-        assert_eq!(a.own_covered, 50);
+        // One grain worth 30 against 200 owed leaves 170.
+        assert_eq!(a.own_covered, 30);
         assert_eq!(a.own_items, 1);
         assert_eq!(a.faction_covered, 0);
     }
@@ -2031,7 +2183,7 @@ mod late_food_tests {
     #[test]
     fn a_unit_that_owes_nothing_eats_nothing() {
         let claims = [claim("a", 0, 3, Some("GRAI"))];
-        let relief = feed_after_silver(&claims, Some(3));
+        let relief = feed_after_silver(&claims, pool(3));
         assert!(relief
             .get("a")
             .is_none_or(|r| r == &LateFoodRelief::default()));
@@ -2040,11 +2192,12 @@ mod late_food_tests {
     #[test]
     fn the_remaining_pool_feeds_every_claimant_it_can() {
         let claims = [claim("a", 40, 0, None), claim("b", 40, 0, None)];
-        let relief = feed_after_silver(&claims, Some(2));
+        // Four grain at 30 feed two units owing 40 apiece, two items each.
+        let relief = feed_after_silver(&claims, pool(4));
         for id in ["a", "b"] {
             let unit = relief.get(id).expect("fed");
             assert_eq!(unit.faction_covered, 40);
-            assert_eq!(unit.faction_items, 1);
+            assert_eq!(unit.faction_items, 2);
             assert!(!unit.contended);
         }
     }
@@ -2052,16 +2205,17 @@ mod late_food_tests {
     #[test]
     fn a_lone_claimant_eats_the_whole_remainder() {
         let claims = [claim("a", 200, 0, None)];
-        let relief = feed_after_silver(&claims, Some(1));
+        let relief = feed_after_silver(&claims, pool(1));
         let a = relief.get("a").expect("fed");
-        assert_eq!(a.faction_covered, 50);
+        // One grain worth 30.
+        assert_eq!(a.faction_covered, 30);
         assert_eq!(a.faction_items, 1);
     }
 
     #[test]
     fn a_short_remainder_among_several_feeds_nobody_and_warns_nobody() {
         let claims = [claim("a", 60, 0, None), claim("b", 80, 0, None)];
-        let relief = feed_after_silver(&claims, Some(1));
+        let relief = feed_after_silver(&claims, pool(1));
         for id in ["a", "b"] {
             let unit = relief.get(id).expect("claimant");
             assert_eq!(unit.faction_covered, 0);
@@ -2072,12 +2226,31 @@ mod late_food_tests {
     #[test]
     fn an_empty_remainder_is_not_contention() {
         let claims = [claim("a", 60, 0, None), claim("b", 80, 0, None)];
-        let relief = feed_after_silver(&claims, Some(0));
+        let relief = feed_after_silver(&claims, pool(0));
         for id in ["a", "b"] {
             let unit = relief.get(id).cloned().unwrap_or_default();
             assert_eq!(unit.faction_covered, 0);
             assert!(!unit.contended);
         }
+    }
+
+    /// Step 5 spends the least valuable food first and the item count comes from the entries eaten,
+    /// not from a silver total divided by a constant: a unit owing 60 with a 20-silver meal and two
+    /// 30-silver grain eats the meal and two grain (covering 60 with three items).
+    #[test]
+    fn own_food_is_spent_least_valuable_first_and_counted_by_entry() {
+        let claims = [LateFoodClaim {
+            unit_id: "a".to_string(),
+            short: 60,
+            own_food: vec![food("GRAI", 2, 30), food("MEAL", 1, 20)],
+        }];
+        let pool_left = Some(vec![food("GRAI", 2, 30), food("MEAL", 1, 20)]);
+        let relief = feed_after_silver(&claims, pool_left);
+        let a = relief.get("a").expect("a is fed");
+        assert_eq!(a.own_covered, 60);
+        assert_eq!(a.own_items, 3);
+        // Two kinds were eaten, so the hover cannot name a single food.
+        assert_eq!(a.own_tag, None);
     }
 
     #[test]
@@ -2093,17 +2266,78 @@ mod late_food_tests {
     }
 }
 
+#[cfg(test)]
+mod consume_food_tests {
+    use super::*;
+
+    fn food(tag: &str, amount: i64, value: i64) -> FoodAmount {
+        FoodAmount {
+            tag: tag.to_string(),
+            amount,
+            maintenance_value: value,
+        }
+    }
+
+    /// The core of the whole bead: food is eaten least valuable first, each entry rounds its need
+    /// up, and covered silver is capped at the debt. A unit owing 50 with a 20-silver stock and a
+    /// 40-silver stock eats the 20s first - two of them cover 40, and a single 40 covers the last
+    /// 10, capped. Three items eaten, 50 covered.
+    #[test]
+    fn spends_the_least_valuable_food_first() {
+        let mut stock = vec![food("BIG", 5, 40), food("SML", 2, 20)];
+        let use_ = consume_food(&mut stock, 50);
+        assert_eq!(use_.covered, 50);
+        assert_eq!(use_.items(), 3);
+        assert_eq!(
+            use_.consumed,
+            vec![food("SML", 2, 20), food("BIG", 1, 40)],
+            "two cheap then one dear"
+        );
+        // The stock is drawn down by exactly what was eaten.
+        assert_eq!(stock, vec![food("BIG", 4, 40)]);
+    }
+
+    /// A stock too small pays what it can and no more; the debt survives.
+    #[test]
+    fn covers_only_what_the_stock_can() {
+        let mut stock = vec![food("GRAI", 1, 30)];
+        let use_ = consume_food(&mut stock, 200);
+        assert_eq!(use_.covered, 30);
+        assert_eq!(use_.items(), 1);
+        assert!(stock.is_empty());
+    }
+
+    /// Zero-value and non-positive stock is not food and pays nothing, whatever its count.
+    #[test]
+    fn worthless_stock_pays_nothing() {
+        let mut stock = vec![food("ZERO", 9, 0)];
+        let use_ = consume_food(&mut stock, 100);
+        assert_eq!(use_, FoodUse::default());
+    }
+
+    /// One kind eaten names itself; several kinds cannot.
+    #[test]
+    fn the_lone_tag_is_the_eaten_food_when_it_is_one_kind() {
+        let mut one = vec![food("GRAI", 3, 30)];
+        assert_eq!(
+            consume_food(&mut one, 60).lone_tag().as_deref(),
+            Some("GRAI")
+        );
+
+        let mut several = vec![food("GRAI", 1, 30), food("FISH", 1, 30)];
+        assert_eq!(consume_food(&mut several, 60).lone_tag(), None);
+    }
+}
+
 /// One unit's unpayable maintenance and its remaining larder, for steps 5 and 6.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LateFoodClaim {
     pub unit_id: String,
     /// Maintenance this unit's silver cannot cover, after steps 1-4. Exactly `UpkeepClaim.short`.
     pub short: i64,
-    /// Food items this unit still holds itself, after step 1 - `OwnFoodPass::spare_food`.
-    pub own_food: i64,
-    /// The tag of that food when the unit's larder holds one kind of food and only one; `None`
-    /// when it holds several. Decided by the caller, which has the unit's `items`.
-    pub own_food_tag: Option<String>,
+    /// Food this unit still holds itself, after step 1 - `OwnFoodPass::spare_food`. A stock, so
+    /// step 5 spends it at each food's own value and the hover can name what was eaten.
+    pub own_food: Vec<FoodAmount>,
 }
 
 /// What steps 5 and 6 pay for one unit.
@@ -2134,13 +2368,13 @@ pub struct LateFoodRelief {
 #[must_use]
 pub fn feed_after_silver(
     claims: &[LateFoodClaim],
-    pool_left: Option<i64>,
+    pool_left: Option<Vec<FoodAmount>>,
 ) -> BTreeMap<String, LateFoodRelief> {
     let mut relief: BTreeMap<String, LateFoodRelief> = BTreeMap::new();
 
     // Step 2 was contended, so what it ate cannot be told and neither can what is left. Nothing is
     // claimed and nobody is warned - the pool might yet have fed any of them.
-    let Some(pool_left) = pool_left else {
+    let Some(mut remaining) = pool_left else {
         for claim in claims.iter().filter(|claim| claim.short > 0) {
             relief.insert(
                 claim.unit_id.clone(),
@@ -2153,36 +2387,31 @@ pub fn feed_after_silver(
         return relief;
     };
 
-    let mut remaining = pool_left.max(0);
     let mut owed: BTreeMap<String, i64> = BTreeMap::new();
 
-    // Step 5, in document order. `own_food` is capped by the hex remainder on purpose: step 2's
-    // pool is not attributed to owners, so a unit's own spare food may already be gone. The cap can
-    // therefore charge a unit for food it still holds - never the reverse, which is the safe
-    // direction for a column whose false warnings are the defect this bead removes.
+    // Step 5, in document order. A unit's own food is capped by what the hex still holds: step 2
+    // pooled every unit's spare food, so a unit's own larder may already have been eaten by the
+    // pool, and it can only spend food still present - per tag, since the pool remainder names
+    // exactly which foods survived. The cap can charge a unit for food it still holds, never the
+    // reverse, which is the safe direction for a column whose false warnings this bead removes.
     for claim in claims.iter().filter(|claim| claim.short > 0) {
-        let supply = claim.own_food.max(0).min(remaining);
-        let needed = claim.short.saturating_add(SILVER_PER_FOOD - 1) / SILVER_PER_FOOD;
-        let used = supply.min(needed);
-        let own_covered = used.saturating_mul(SILVER_PER_FOOD).min(claim.short);
-        remaining -= used;
-        owed.insert(claim.unit_id.clone(), claim.short - own_covered);
+        let mut available = own_available(&claim.own_food, &remaining);
+        let use_ = consume_food(&mut available, claim.short);
+        remove_from_stock(&mut remaining, &use_.consumed);
+        owed.insert(claim.unit_id.clone(), claim.short - use_.covered);
         relief.insert(
             claim.unit_id.clone(),
             LateFoodRelief {
-                own_covered,
-                own_items: used,
-                own_tag: if used > 0 {
-                    claim.own_food_tag.clone()
-                } else {
-                    None
-                },
+                own_covered: use_.covered,
+                own_items: use_.items(),
+                own_tag: use_.lone_tag(),
                 ..LateFoodRelief::default()
             },
         );
     }
 
-    // Step 6, over what is left, mirroring `feed_from_faction_food`'s own case analysis.
+    // Step 6, over what the hex still holds, mirroring `feed_from_faction_food`'s own case
+    // analysis.
     let claimants: Vec<(&String, i64)> = claims
         .iter()
         .filter_map(|claim| {
@@ -2192,29 +2421,39 @@ pub fn feed_after_silver(
         })
         .collect();
 
-    let needed_total = claimants.iter().fold(0i64, |total, (_, left)| {
-        total.saturating_add(left.saturating_add(SILVER_PER_FOOD - 1) / SILVER_PER_FOOD)
-    });
+    let pool_total: i64 = remaining.iter().map(|entry| entry.amount).sum();
 
     // An empty remainder is not contention: with nothing left, nobody could have been fed.
-    if remaining == 0 || claimants.is_empty() {
-        return relief;
-    }
-
-    if needed_total <= remaining {
-        for (id, left) in claimants {
-            let entry = relief.entry(id.clone()).or_default();
-            entry.faction_covered = left;
-            entry.faction_items = left.saturating_add(SILVER_PER_FOOD - 1) / SILVER_PER_FOOD;
-        }
+    if pool_total == 0 || claimants.is_empty() {
         return relief;
     }
 
     if let [(id, left)] = claimants.as_slice() {
-        // Contention needs two contenders: a lone claimant simply eats every item there is.
+        // Contention needs two contenders: a lone claimant simply eats every item it can use.
+        let use_ = consume_food(&mut remaining, *left);
         let entry = relief.entry((*id).clone()).or_default();
-        entry.faction_items = remaining;
-        entry.faction_covered = remaining.saturating_mul(SILVER_PER_FOOD).min(*left);
+        entry.faction_covered = use_.covered;
+        entry.faction_items = use_.items();
+        return relief;
+    }
+
+    // Several claimants: dry-run in document order against one cloned stock, cheapest food first.
+    let mut stock = remaining.clone();
+    let mut uses: Vec<(&String, FoodUse)> = Vec::with_capacity(claimants.len());
+    let mut all_fed = true;
+    for (id, left) in &claimants {
+        let use_ = consume_food(&mut stock, *left);
+        if use_.covered < *left {
+            all_fed = false;
+        }
+        uses.push((id, use_));
+    }
+    if all_fed {
+        for (id, use_) in uses {
+            let entry = relief.entry((*id).clone()).or_default();
+            entry.faction_covered = use_.covered;
+            entry.faction_items = use_.items();
+        }
         return relief;
     }
 
@@ -7393,57 +7632,77 @@ mod tests {
         vec!["Consuming Unit's Food".to_string()]
     }
 
+    /// The committed ruleset prices each food at 30 silver of maintenance, so these tests read the
+    /// data value through the same catalogue production does.
+    fn upkeep(facts: &UnitFacts<'_>) -> Option<i64> {
+        unit_upkeep(facts, Some(&ruleset()))
+    }
+
     #[test]
     fn a_unit_of_ordinary_characters_owes_ten_each() {
         let men = [item(6, "MAN")];
-        assert_eq!(unit_upkeep(&made_of(6, &men, &[], &[])), Some(60));
+        assert_eq!(upkeep(&made_of(6, &men, &[], &[])), Some(60));
     }
 
     #[test]
     fn a_leader_owes_fifty() {
         let men = [item(1, "LEAD")];
-        assert_eq!(unit_upkeep(&made_of(1, &men, &[], &[])), Some(50));
+        assert_eq!(upkeep(&made_of(1, &men, &[], &[])), Some(50));
     }
 
     #[test]
     fn a_mixed_unit_owes_both() {
         let men = [item(2, "LEAD"), item(5, "MAN")];
-        assert_eq!(unit_upkeep(&made_of(7, &men, &[], &[])), Some(150));
+        assert_eq!(upkeep(&made_of(7, &men, &[], &[])), Some(150));
     }
 
     #[test]
     fn a_unit_with_no_breakdown_is_all_ordinary_characters() {
-        assert_eq!(unit_upkeep(&made_of(4, &[], &[], &[])), Some(40));
+        assert_eq!(upkeep(&made_of(4, &[], &[], &[])), Some(40));
     }
 
     #[test]
     fn a_unit_whose_headcount_is_a_guess_has_no_upkeep() {
         let mut facts = made_of(4, &[], &[], &[]);
         facts.men_estimated = true;
-        assert_eq!(unit_upkeep(&facts), None);
+        assert_eq!(upkeep(&facts), None);
     }
 
+    /// The decisive difference from the overturned constant: one grain pays the data page's 30,
+    /// not 50. A leader owing 50 with a single grain is left owing 20, where the old constant left
+    /// it owing nothing (`ah-773o`).
     #[test]
-    fn a_consuming_unit_pays_with_its_own_food_first() {
+    fn one_grain_pays_thirty_not_fifty() {
         let men = [item(1, "LEAD")];
         let food = [item(1, "GRAI")];
         let flags = consuming();
-        assert_eq!(unit_upkeep(&made_of(1, &men, &food, &flags)), Some(0));
+        assert_eq!(upkeep(&made_of(1, &men, &food, &flags)), Some(20));
+    }
+
+    /// The 50-silver leader the report corpus settled on: two 30-silver foods cover it exactly, so
+    /// it owes nothing and eats two items (`data/LIVE`, turn-17 evidence).
+    #[test]
+    fn a_fifty_silver_leader_is_covered_by_two_thirty_silver_foods() {
+        let men = [item(1, "LEAD")];
+        let food = [item(2, "GRAI")];
+        let flags = consuming();
+        assert_eq!(upkeep(&made_of(1, &men, &food, &flags)), Some(0));
     }
 
     #[test]
     fn a_unit_that_is_not_consuming_pays_silver_even_holding_food() {
         let men = [item(1, "LEAD")];
         let food = [item(1, "GRAI")];
-        assert_eq!(unit_upkeep(&made_of(1, &men, &food, &[])), Some(50));
+        assert_eq!(upkeep(&made_of(1, &men, &food, &[])), Some(50));
     }
 
     #[test]
-    fn food_covers_fifty_a_time_rounding_up() {
+    fn food_covers_its_data_value_rounding_up() {
         let men = [item(1, "MAN")];
         let food = [item(1, "GRAI")];
         let flags = consuming();
-        assert_eq!(unit_upkeep(&made_of(1, &men, &food, &flags)), Some(0));
+        // A character owes 10; one grain worth 30 covers the whole of it, the fraction wasted.
+        assert_eq!(upkeep(&made_of(1, &men, &food, &flags)), Some(0));
     }
 
     #[test]
@@ -7451,23 +7710,63 @@ mod tests {
         let men = [item(16, "LEAD")];
         let food = [item(5, "GRAI")];
         let flags = consuming();
-        assert_eq!(unit_upkeep(&made_of(16, &men, &food, &flags)), Some(550));
+        // 16 leaders owe 800; five grain at 30 cover 150, leaving 650.
+        assert_eq!(upkeep(&made_of(16, &men, &food, &flags)), Some(650));
     }
 
     #[test]
-    fn only_the_four_food_items_the_rules_name_count() {
+    fn only_items_the_catalogue_prices_as_food_count() {
         let men = [item(1, "LEAD")];
         let not_food = [item(9, "IRON")];
         let flags = consuming();
-        assert_eq!(unit_upkeep(&made_of(1, &men, &not_food, &flags)), Some(50));
+        assert_eq!(upkeep(&made_of(1, &men, &not_food, &flags)), Some(50));
+    }
+
+    /// A unit whose larder is several kinds of food spends all of them: a leader owing 50 with one
+    /// grain and one fish eats both for 60, capped at the fee, and owes nothing.
+    #[test]
+    fn mixed_food_tags_are_all_counted() {
+        let men = [item(1, "LEAD")];
+        let food = [item(1, "GRAI"), item(1, "FISH")];
+        let flags = consuming();
+        assert_eq!(upkeep(&made_of(1, &men, &food, &flags)), Some(0));
+    }
+
+    /// Unit 1660 of the committed turn-17 report: 32 humans set to consume, holding livestock. The
+    /// server consumed 11 livestock for its maintenance
+    /// (`tests/fixtures/reports/neworigins-3.0.0-g7-f62-t17.rep:473`), which is `ceil(320 / 30)`,
+    /// not `ceil(320 / 50) == 7`. Pinned here on synthetic facts because the post-turn unit has
+    /// already lent its livestock away (`:801`), so only the event line records what it ate.
+    #[test]
+    fn thirty_two_humans_consume_eleven_livestock_as_the_server_did() {
+        let men = [item(32, "HUMN")];
+        let food = [item(11, "LIVE")];
+        let flags = vec!["consuming faction's food".to_string()];
+        // 32 humans owe 320; eleven livestock at 30 cover 330, so nothing is left owing.
+        assert_eq!(upkeep(&made_of(32, &men, &food, &flags)), Some(0));
+        assert_eq!((320 + 30 - 1) / 30, 11, "the data value predicts eleven");
+        assert_eq!((320 + 50 - 1) / 50, 7, "the old constant predicted seven");
+    }
+
+    /// With no ruleset the catalogue cannot price any item as food, so nothing is eaten and the
+    /// full fee is charged - known, never doubted.
+    #[test]
+    fn without_a_ruleset_no_item_is_food() {
+        let men = [item(1, "LEAD")];
+        let food = [item(2, "GRAI")];
+        let flags = consuming();
+        assert_eq!(
+            unit_upkeep(&made_of(1, &men, &food, &flags), None),
+            Some(50)
+        );
     }
 
     #[test]
     fn a_faction_food_consumer_spends_its_own_food_too() {
         let men = [item(1, "LEAD")];
-        let food = [item(1, "MEAL")];
+        let food = [item(2, "MEAL")];
         let flags = vec!["consuming faction's food".to_string()];
-        assert_eq!(unit_upkeep(&made_of(1, &men, &food, &flags)), Some(0));
+        assert_eq!(upkeep(&made_of(1, &men, &food, &flags)), Some(0));
     }
 
     #[test]
@@ -7497,7 +7796,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            None,
+            Some(&ruleset()),
         )
     }
 
@@ -7555,13 +7854,34 @@ mod tests {
 mod faction_food_tests {
     use super::*;
 
+    fn food(tag: &str, amount: i64, value: i64) -> FoodAmount {
+        FoodAmount {
+            tag: tag.to_string(),
+            amount,
+            maintenance_value: value,
+        }
+    }
+
+    /// A claim whose spare food is `spare_food` grain, each worth the data page's 30 silver.
     fn claim(id: &str, spare_food: i64, owed: i64, draws: bool) -> FoodClaim {
+        let spare = if spare_food > 0 {
+            vec![food("GRAI", spare_food, 30)]
+        } else {
+            Vec::new()
+        };
         FoodClaim {
             unit_id: id.to_string(),
-            spare_food,
+            spare_food: spare,
             owed_after_own_food: owed,
             draws_on_pool: draws,
         }
+    }
+
+    /// The total items a pass says the hex still holds, for the assertions that pin the remainder.
+    fn pool_count(pass: &FactionFoodPass) -> Option<i64> {
+        pass.pool_left
+            .as_ref()
+            .map(|stock| stock.iter().map(|entry| entry.amount).sum())
     }
 
     #[test]
@@ -7611,7 +7931,7 @@ mod faction_food_tests {
 
     #[test]
     fn a_unit_owing_nothing_after_its_own_food_claims_nothing() {
-        let claims = [claim("fed", 0, 0, true), claim("a", 1, 50, true)];
+        let claims = [claim("fed", 0, 0, true), claim("a", 1, 30, true)];
         let fed = feed_from_faction_food(&claims).settled;
         assert_eq!(fed.get("fed"), None);
         assert_eq!(fed.get("a"), Some(&Some(0)));
@@ -7619,14 +7939,38 @@ mod faction_food_tests {
 
     #[test]
     fn a_pool_of_exactly_enough_feeds_everybody() {
+        // Four grain at 30 cover two units owing 60 apiece, exactly.
         let claims = [
             claim("quartermaster", 4, 0, false),
             claim("a", 0, 60, true),
-            claim("b", 0, 80, true),
+            claim("b", 0, 60, true),
         ];
-        let fed = feed_from_faction_food(&claims).settled;
-        assert_eq!(fed.get("a"), Some(&Some(0)));
-        assert_eq!(fed.get("b"), Some(&Some(0)));
+        let pass = feed_from_faction_food(&claims);
+        assert_eq!(pass.settled.get("a"), Some(&Some(0)));
+        assert_eq!(pass.settled.get("b"), Some(&Some(0)));
+        assert_eq!(pool_count(&pass), Some(0));
+    }
+
+    /// A hex whose pool is several kinds of food spends the least valuable first: a lone claimant
+    /// owing 40 against one 20-silver meal and two 40-silver grain eats the meal then one grain,
+    /// leaving the dearer grain behind. The values are synthetic (real foods share one value today),
+    /// which is exactly why this must be pinned before a ruleset gives them different ones
+    /// (`ah-773o`).
+    #[test]
+    fn a_mixed_value_pool_is_spent_least_valuable_first() {
+        let quartermaster = FoodClaim {
+            unit_id: "quartermaster".to_string(),
+            spare_food: vec![food("MEAL", 1, 20), food("GRAI", 2, 40)],
+            owed_after_own_food: 0,
+            draws_on_pool: false,
+        };
+        let claims = [quartermaster, claim("a", 0, 40, true)];
+        let pass = feed_from_faction_food(&claims);
+        assert_eq!(pass.settled.get("a"), Some(&Some(0)));
+        // `a` eats the 20 meal (covers 20) then one 40 grain (covers the last 20), so one grain of
+        // the dearer stock is left and the cheap meal is gone.
+        let left = pass.pool_left.expect("a lone claimant is not contended");
+        assert_eq!(left, vec![food("GRAI", 1, 40)]);
     }
 
     /// An empty pool is exact, not doubtful: with no food in the hex nobody eats, so every unit
@@ -7652,14 +7996,15 @@ mod faction_food_tests {
         assert_eq!(fed.get("b"), Some(&None));
     }
 
-    /// Contention needs two contenders. A lone claimant simply eats what there is, so its figure
-    /// is exact however short the hex is - settled with the navigator on 2026-08-23, by the same
+    /// Contention needs two contenders. A lone claimant simply eats what it can, so its figure is
+    /// exact however short the hex is - settled with the navigator on 2026-08-23, by the same
     /// reasoning that made an empty pool exact.
     #[test]
     fn a_lone_claimant_eats_what_there_is_rather_than_being_doubted() {
         let claims = [claim("quartermaster", 1, 0, false), claim("a", 0, 60, true)];
         let fed = feed_from_faction_food(&claims).settled;
-        assert_eq!(fed.get("a"), Some(&Some(10)));
+        // One grain worth 30 leaves the 60 owed at 30.
+        assert_eq!(fed.get("a"), Some(&Some(30)));
     }
 
     /// Steps 5 and 6 draw on the same hex pool, so step 2 must say what it left behind.
@@ -7673,13 +8018,14 @@ mod faction_food_tests {
         let pass = feed_from_faction_food(&claims);
         assert_eq!(pass.settled.get("a"), Some(&Some(0)));
         assert_eq!(pass.settled.get("b"), Some(&Some(0)));
-        assert_eq!(pass.pool_left, Some(2));
+        // `a` eats 2 grain, `b` eats 2 (40 owed rounds up to two 30s), leaving 1 of the 5.
+        assert_eq!(pool_count(&pass), Some(1));
     }
 
     #[test]
     fn an_empty_pool_leaves_nothing() {
         let claims = [claim("a", 0, 60, true)];
-        assert_eq!(feed_from_faction_food(&claims).pool_left, Some(0));
+        assert_eq!(pool_count(&feed_from_faction_food(&claims)), Some(0));
     }
 
     #[test]
@@ -7689,8 +8035,9 @@ mod faction_food_tests {
             claim("a", 0, 200, true),
         ];
         let pass = feed_from_faction_food(&claims);
-        assert_eq!(pass.settled.get("a"), Some(&Some(150)));
-        assert_eq!(pass.pool_left, Some(0));
+        // One grain worth 30 against 200 owed leaves 170.
+        assert_eq!(pass.settled.get("a"), Some(&Some(170)));
+        assert_eq!(pool_count(&pass), Some(0));
     }
 
     #[test]
@@ -7703,7 +8050,7 @@ mod faction_food_tests {
         assert_eq!(feed_from_faction_food(&claims).pool_left, None);
     }
 
-    /// One item is worth a whole 50 even against a smaller debt, and a lone claimant cannot be
+    /// One item is worth a whole 30 even against a smaller debt, and a lone claimant cannot be
     /// left owing less than nothing.
     #[test]
     fn a_lone_claimant_owes_nothing_once_the_pool_covers_it() {

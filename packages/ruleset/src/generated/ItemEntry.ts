@@ -17,6 +17,17 @@ withdrawCost?: number,
  */
 weapon?: Weapon, 
 /**
+ * Silver of maintenance paid by one item. `None` when the data page does not call it food,
+ * and for a ruleset generated before this field existed (`ah-773o`).
+ *
+ * The rules page (`rules/economy_maintenance`) and the data page disagree here: the rules
+ * section says one food substitutes for each 50 silver, while `data/GRAI`, `data/LIVE`,
+ * `data/FISH` and `data/MEAL` each state 30. The committed turn-17 report settles it in
+ * favour of the data value - 22 humans consume 8 livestock, which is `ceil(220 / 30)`, not
+ * `ceil(220 / 50)` - so food eligibility and value are read from this per-item field alone.
+ */
+maintenanceValue?: number,
+/**
  * What the data page says about it, after the preamble of name, tag, weight and capacity the
  * fields above already carry. `None` for an entry that is nothing but that preamble, and for
  * a ruleset cached before ah-3cj4.2, which carried no prose at all.
