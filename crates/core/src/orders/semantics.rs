@@ -19659,6 +19659,31 @@ mod tests {
     }
 
     #[test]
+    fn a_foreign_student_visible_in_another_hex_is_not_here() {
+        let mut foreign = an_ally("700");
+        foreign.region_id = "1:8,53".to_string();
+        assert_eq!(
+            codes(&check(
+                vec![
+                    region_at("1:7,53", 7, 53, vec![unit("500")]),
+                    region_at("1:8,53", 8, 53, vec![foreign]),
+                ],
+                "unit 500\nTEACH 700\n"
+            )),
+            ["taught-not-here"]
+        );
+    }
+
+    #[test]
+    fn a_new_student_is_accepted_on_doubt() {
+        assert!(codes(&check(
+            vec![region(vec![with_skill(unit("500"), "COMB", 3)])],
+            "unit 500\nFORM 1\nSTUDY combat\nEND\nTEACH NEW 1\n"
+        ))
+        .is_empty());
+    }
+
+    #[test]
     fn a_student_leaving_the_hex_cannot_be_taught_there() {
         assert_eq!(
             codes(&check(
@@ -19767,6 +19792,25 @@ mod tests {
             check(vec![region(units)], "unit 700\nSTUDY combat\n"),
             vec![],
             "unit 500 was never asked to teach, so it has no free teaching slots to report"
+        );
+    }
+
+    #[test]
+    fn known_own_students_can_still_prove_oversubscription_beside_a_visible_foreign_student() {
+        let mut foreign = an_ally("800");
+        foreign.men = 2;
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+            with_skill(with_men(with_silver(unit("700"), 1000), 20), "COMB", 2),
+            foreign,
+        ];
+
+        assert_eq!(
+            codes(&check(
+                vec![region(units)],
+                "unit 500\nTEACH 700 800\nunit 700\nSTUDY combat\n"
+            )),
+            ["teaching-oversubscribed"]
         );
     }
 
