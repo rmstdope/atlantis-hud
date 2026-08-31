@@ -161,7 +161,7 @@ describe("the Warnings settings tab", () => {
       "Pillaging without the men",
       "Taxing without combat-ready men",
       "Promised more than the region has",
-      "Taxing a hex someone else guards"
+      "Taxing or pillaging a hex someone else guards"
     ];
     for (const title of titles) {
       expect(html).toContain(title);
@@ -199,10 +199,9 @@ describe("the Warnings settings tab", () => {
       "A unit ordered to study a skill that at least one of its races cannot learn any further."
     );
 
-    // A foreign guard may block the order outright, and the description is what says so
-    // (`ah-g7ts`).
+    expect(html).toContain("Taxing or pillaging a hex someone else guards");
     expect(html).toContain(
-      "TAX and PILLAGE orders in a hex where another faction has a unit on guard, which can block them."
+      "TAX and PILLAGE orders in a hex where another faction has a unit on guard. TAX may be blocked; PILLAGE is always blocked."
     );
 
     // A region's pools are shared, and the description is what says which of them this is about

@@ -618,9 +618,9 @@ export const WARNING_GROUPS: readonly {
       },
       {
         code: "taxed-a-guarded-hex",
-        title: "Taxing a hex someone else guards",
+        title: "Taxing or pillaging a hex someone else guards",
         description:
-          "TAX and PILLAGE orders in a hex where another faction has a unit on guard, which can block them."
+          "TAX and PILLAGE orders in a hex where another faction has a unit on guard. TAX may be blocked; PILLAGE is always blocked."
       },
       {
         code: "tax-without-combat-ready-men",
