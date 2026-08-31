@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-8lg6 option B - warning plus consequence</title>
+<style>
+  *{box-sizing:border-box} body{margin:0;background:#0c1015;color:#dbe3ec;font:15px/1.5 Georgia,serif;padding:28px}
+  main{max-width:1080px;margin:auto} h1,h2,h3{margin:0} h1{font-size:26px} h1 span,h2{color:#d9a441}
+  .lead{color:#a3b0c0;max-width:82ch}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0}
+  .card{border:1px solid #2a3442;border-radius:8px;background:#171d26;overflow:hidden}.label{padding:10px 14px;border-bottom:1px solid #2a3442;color:#d9a441;font:12px Arial,sans-serif;text-transform:uppercase;letter-spacing:.08em}
+  .editor{background:#10151c;padding:12px 14px;font:13px/1.6 "SFMono-Regular",Consolas,monospace;color:#aeb9c7}.teach{color:#eebe63}
+  .problems{padding:10px 14px;font:13px/1.45 Arial,sans-serif}.warning{display:flex;gap:8px}.warning+.warning{margin-top:5px}.mark{color:#d9a441}.line{color:#8a97a8;white-space:nowrap}.token{background:#2a3442;border-radius:3px;padding:0 4px;color:#c9d3df}
+  .quiet{color:#8a97a8;font-style:italic}.settings{padding:14px}.setting-title{font:600 14px Arial,sans-serif}.setting-copy{color:#a3b0c0;font:13px Arial,sans-serif;margin-top:3px}
+  .switch{float:right;width:32px;height:18px;border-radius:12px;background:#d9a441;position:relative}.switch:after{content:"";position:absolute;right:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#10151c}
+  .note{border-left:3px solid #d9a441;background:#171d26;padding:12px 15px;color:#a3b0c0}.narrow{max-width:390px;margin-top:18px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}body{padding:16px}}
+</style>
+</head>
+<body><main>
+  <h1>Option B: <span>name the consequence too</span></h1>
+  <p class="lead">The TEACH line explains why the order is refused. A second row at the unit block says the month remains unused when there is no other valid month-long order.</p>
+  <div class="grid">
+    <section class="card"><div class="label">3 humans - rejected and idle</div>
+      <div class="editor">unit 500<br><span class="teach">TEACH</span> 700</div>
+      <div class="problems">
+        <div class="warning"><span class="mark">!</span><span class="line">line 2</span><span class="token">TEACH</span><span>only leaders can teach; this unit has 3 humans</span></div>
+        <div class="warning"><span class="mark">!</span><span class="line">unit 500</span><span>has no order that spends the month</span></div>
+      </div>
+    </section>
+    <section class="card"><div class="label">Mixed unit with STUDY fallback</div>
+      <div class="editor">unit 500<br><span class="teach">TEACH</span> 700<br>STUDY combat</div>
+      <div class="problems"><div class="warning"><span class="mark">!</span><span class="line">line 2</span><span class="token">TEACH</span><span>only leaders can teach; this unit also has 2 humans</span></div></div>
+    </section>
+    <section class="card"><div class="label">3 leaders - accepted</div>
+      <div class="editor">unit 500<br><span class="teach">TEACH</span> 700</div>
+      <div class="problems quiet">No leader-composition warning. Existing student, skill, and capacity checks still apply.</div>
+    </section>
+    <section class="card"><div class="label">Composition unavailable - accept on doubt</div>
+      <div class="editor">unit 500<br><span class="teach">TEACH</span> 700</div>
+      <div class="problems quiet">No leader-composition or idle warning. The report cannot establish whether TEACH succeeds.</div>
+    </section>
+  </div>
+  <section class="card"><div class="label">Warnings settings</div><div class="settings">
+    <span class="switch"></span><div class="setting-title">Teachers unable to teach</div>
+    <div class="setting-copy">A teacher is not all leaders or cannot teach what a student is studying.</div>
+  </div></section>
+  <section class="card narrow"><div class="label">Narrow orders pane</div>
+    <div class="editor">unit 500<br><span class="teach">TEACH</span> 700</div>
+    <div class="problems">
+      <div class="warning"><span class="mark">!</span><span class="line">line 2</span><span class="token">TEACH</span><span>only leaders can teach; this unit also has 2 humans</span></div>
+      <div class="warning"><span class="mark">!</span><span class="line">unit 500</span><span>has no order that spends the month</span></div>
+    </div>
+  </section>
+  <p class="note"><b>Cost:</b> the unused month is explicit and a valid fallback order removes that row, but one bad TEACH can occupy two lines in the fixed-height problem list.</p>
+</main></body>
+</html>
