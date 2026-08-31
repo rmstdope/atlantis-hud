@@ -10,7 +10,7 @@
 
 use crate::movement::fleet::OrderedUnits;
 use crate::movement::graph::KnownHex;
-use crate::movement::rules::{MovementMode, Ruleset};
+use crate::movement::rules::{ItemKind, MovementMode, Ruleset};
 use crate::report::model::{ReportUnit, Structure};
 
 /// The four capacities a report prints, in the order it prints them.
@@ -72,6 +72,10 @@ pub fn mobility(unit: &ReportUnit) -> Mobility {
         return Mobility::Unstated;
     };
 
+    mobility_for_capacities(weight, capacity)
+}
+
+fn mobility_for_capacities(weight: i64, capacity: Capacities) -> Mobility {
     for (mode, allowance) in [
         (MovementMode::Fly, capacity.fly),
         (MovementMode::Ride, capacity.ride),
@@ -125,10 +129,31 @@ pub fn capacities_from_items(items: &[(&str, i64)], ruleset: &Ruleset) -> Option
         swim: 0,
     };
 
+    let mut hitches = items.iter().try_fold(0_i64, |hitches, (tag, count)| {
+        let item = ruleset.find_item(tag)?;
+        Some(
+            hitches
+                + if item.kind == ItemKind::Mount && item.tag.eq_ignore_ascii_case("HORS") {
+                    (*count).max(0)
+                } else {
+                    0
+                },
+        )
+    })?;
+
     for (tag, count) in items {
         let item = ruleset.find_item(tag)?;
+        let matched = if item.capacity_condition.as_deref() == Some("when hitched to a horse") {
+            let matched = (*count).max(0).min(hitches);
+            hitches -= matched;
+            matched
+        } else if item.capacity_condition.is_some() {
+            return None;
+        } else {
+            *count
+        };
         let contribution = |capacity: i64, self_mobile: bool| {
-            count * (capacity + if self_mobile { item.weight } else { 0 })
+            matched * (capacity + if self_mobile { item.weight } else { 0 })
         };
         total.fly += contribution(item.capacity.fly, item.self_mobile.fly);
         total.ride += contribution(item.capacity.ride, item.self_mobile.ride);
@@ -137,6 +162,34 @@ pub fn capacities_from_items(items: &[(&str, i64)], ruleset: &Ruleset) -> Option
     }
 
     Some(total)
+}
+
+/// Derives mobility from a complete inventory, falling back to the report when it is incomplete.
+#[must_use]
+pub fn mobility_with_ruleset(unit: &ReportUnit, ruleset: &Ruleset) -> Mobility {
+    let mut items = Vec::with_capacity(unit.items.len());
+    let mut men = 0_i64;
+    let mut has_conditional_capacity = false;
+    for amount in &unit.items {
+        let Some(item) = ruleset.find_item(&amount.tag) else {
+            return mobility(unit);
+        };
+        has_conditional_capacity |= item.capacity_condition.is_some();
+        if item.kind == ItemKind::Man {
+            men += amount.amount.max(0);
+        }
+        items.push((amount.tag.as_str(), amount.amount));
+    }
+    if !has_conditional_capacity || men < unit.men {
+        return mobility(unit);
+    }
+    let Some(capacities) = capacities_from_items(&items, ruleset) else {
+        return mobility(unit);
+    };
+    let Some(weight) = unit.weight else {
+        return mobility(unit);
+    };
+    mobility_for_capacities(weight, capacities)
 }
 
 // ---------------------------------------------------------------- fleets
@@ -510,6 +563,18 @@ mod tests {
         // an item the catalogue does not carry gives no answer at all, because a partial sum
         // understates capacity and understating it is what produces a false overload warning
         assert!(capacities_from_items(&[("HORS", 1), ("ZZZZ", 1)], &ruleset()).is_none());
+    }
+
+    #[test]
+    fn conditional_wagon_capacity_is_limited_by_horses() {
+        for (horses, wagons, expected) in [(0, 2, 0), (1, 2, 250), (2, 2, 500), (3, 2, 500)] {
+            let capacity = capacities_from_items(
+                &[("LEAD", 1), ("HORS", horses), ("WAGO", wagons)],
+                &ruleset(),
+            )
+            .expect("priced");
+            assert_eq!(capacity.walk, 15 + horses * 70 + expected);
+        }
     }
 
     // ------------------------------------------------------------ fleets
