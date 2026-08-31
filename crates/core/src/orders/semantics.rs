@@ -7260,6 +7260,7 @@ fn check_magic_study_prerequisites(
         return;
     }
 
+    let mut occupied: HashMap<&str, i64> = HashMap::new();
     for ordered in &hex.units {
         let Some((placed, studying)) = ordered.studies_placed() else {
             continue;
@@ -7409,10 +7410,23 @@ fn check_magic_study(
             // Unfinished shelters nobody; a kind the table does not name - a Mine, an Inn, a ship -
             // houses no mages either, and a Tower is named and seats zero.
             Some(Some(structure)) => {
-                structure.needs.is_none()
-                    && ruleset
-                        .mage_capacity(&structure.kind)
-                        .is_some_and(|seats| seats >= 1)
+                if structure.needs.is_some() {
+                    false
+                } else {
+                    match ruleset.mage_capacity(&structure.kind) {
+                        Some(seats)
+                            if occupied
+                                .get(structure.structure_id.as_str())
+                                .copied()
+                                .unwrap_or(0)
+                                < seats =>
+                        {
+                            *occupied.entry(structure.structure_id.as_str()).or_default() += 1;
+                            true
+                        }
+                        Some(_) | None => false,
+                    }
+                }
             }
         };
         if sheltered {
@@ -20971,8 +20985,81 @@ mod tests {
     /// A leader, because `data/HUMN` stops humans at force 2 and the `study-at-maximum` warning
     /// now says so (`ah-9hp7.2`) - which would fire in every one of these fixtures and bury the
     /// finding each is about. `data/LEAD` lets a leader take any skill to 5.
+    fn mage_with_id(id: &str, level: u32) -> ReportUnit {
+        with_race(studying_unit(id, "FORC", level), 1, "leader", "LEAD")
+    }
+
     fn mage(level: u32) -> ReportUnit {
-        with_race(studying_unit("5", "FORC", level), 1, "leader", "LEAD")
+        mage_with_id("5", level)
+    }
+
+    #[test]
+    fn mage_seats_go_to_eligible_mages_in_report_order() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Fort")],
+                ..region(vec![
+                    in_structure(mage_with_id("5", 2), "1"),
+                    in_structure(mage_with_id("6", 2), "1"),
+                    in_structure(mage_with_id("7", 2), "1"),
+                ])
+            }],
+            "unit 7\nSTUDY FORC\nunit 5\nSTUDY FORC\nunit 6\nSTUDY FORC\n",
+        );
+        let mut warned = findings.iter().map(|f| f.unit_id.as_deref()).collect::<Vec<_>>();
+        warned.sort_unstable();
+        assert_eq!(warned, vec![Some("6"), Some("7")]);
+    }
+
+    #[test]
+    fn mage_seats_are_independent_per_structure() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Fort"), finished_of_kind("2", "Fort")],
+                    ..region(vec![
+                        in_structure(mage_with_id("5", 2), "1"),
+                        in_structure(mage_with_id("6", 2), "2"),
+                    ])
+                }],
+                "unit 5\nSTUDY FORC\nunit 6\nSTUDY FORC\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn mage_seats_cover_every_castle_place() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Castle")],
+                    ..region(vec![
+                        in_structure(mage_with_id("5", 2), "1"),
+                        in_structure(mage_with_id("6", 2), "1"),
+                    ])
+                }],
+                "unit 5\nSTUDY FORC\nunit 6\nSTUDY FORC\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_mage_studying_toward_level_two_does_not_take_a_seat() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Fort")],
+                    ..region(vec![
+                        in_structure(mage_with_id("5", 1), "1"),
+                        in_structure(mage_with_id("6", 2), "1"),
+                    ])
+                }],
+                "unit 5\nSTUDY FORC\nunit 6\nSTUDY FORC\n",
+            ),
+            vec![]
+        );
     }
 
     #[test]
