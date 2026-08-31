@@ -1,48 +1,71 @@
 import { describe, expect, it } from "vitest";
+import { aParsedReport, aReportHeaderInfo, aReportRegion } from "@atlantis/core-client";
 import { chooseViewerFaction, planReportBatch, type BatchCandidate } from "./reportBatch";
 import {
   REPORT_HAS_NOTHING_IN_IT,
-  REPORT_NAMES_NO_FACTION,
-  REPORT_NAMES_NO_TURN,
+  judgeReportUsable,
   type ReportUsability
 } from "./reportLoadDecision";
 import {
   MAP_EXPORT_HAS_NO_HEXES,
   MAP_EXPORT_NAMES_NO_FACTION,
   MAP_EXPORT_NAMES_NO_TURN,
-  MAP_EXPORT_NEEDS_A_MAP
+  MAP_EXPORT_NEEDS_A_MAP,
+  type ReportImportSource
 } from "./mapExportImport";
+
+/** The classified source behind a candidate, built the way `classifyReportImport` would. */
+function reportSource(
+  kind: "report" | "mapExport",
+  factionId: string | null,
+  turnNumber: number | null,
+  hasRegions = true
+): ReportImportSource {
+  return {
+    kind,
+    report: aParsedReport({
+      header: aReportHeaderInfo({ month: "January", factionId, turnNumber }),
+      regions: hasRegions ? [aReportRegion()] : []
+    }),
+    text: kind === "mapExport" ? "; Map export from Atlantis HUD" : "Atlantis Report For:"
+  };
+}
 
 /**
  * A candidate, named the way the summary will name it. `usable` is what `judgeReportUsable` would
- * have said about a report with this identity, which is what `prepareBatch` puts there.
+ * have said about a report with this identity - `prepareBatch` computes it unconditionally, map
+ * export or not, so both fixtures below share it.
  */
 const file = (
   fileName: string,
   factionId: string | null,
   turnNumber: number | null,
-  usable: ReportUsability = factionId === null
-    ? { ok: false, reason: REPORT_NAMES_NO_FACTION }
-    : turnNumber === null
-      ? { ok: false, reason: REPORT_NAMES_NO_TURN }
-      : { ok: true }
-): BatchCandidate => ({
-  fileName,
-  factionId,
-  turnNumber,
-  usable,
-  unreadableCount: 0,
-  isMapExport: false,
-  hasRegions: true
-});
+  usable?: ReportUsability
+): BatchCandidate => {
+  const source = reportSource("report", factionId, turnNumber);
+  return {
+    fileName,
+    source,
+    usable: usable ?? judgeReportUsable(source.report),
+    unreadableCount: 0
+  };
+};
 
 /** One of our own map exports, as `prepareBatch` would have marked it. */
 const mapExport = (
   fileName: string,
   factionId: string | null,
   turnNumber: number | null,
-  over: Partial<BatchCandidate> = {}
-): BatchCandidate => ({ ...file(fileName, factionId, turnNumber), isMapExport: true, ...over });
+  over: { hasRegions?: boolean } = {}
+): BatchCandidate => {
+  const source = reportSource("mapExport", factionId, turnNumber, over.hasRegions ?? true);
+  return {
+    fileName,
+    source,
+    usable: judgeReportUsable(source.report),
+    unreadableCount: 0
+  };
+};
 
 const borg = (turnNumber: number | null, name = `f95-t${turnNumber}.rep`) =>
   file(name, "95", turnNumber);
@@ -117,6 +140,17 @@ describe("choosing whose faction a batch belongs to", () => {
     expect(chooseViewerFaction("95", [ally(71), borg(71), ally(2), borg(70)])).toEqual(
       decided("95")
     );
+  });
+
+  /**
+   * A usable map export still names a faction and a turn, so it counts exactly as an ordinary
+   * report would - the classification into a distinct `source.kind` must not change who this batch
+   * is deemed to belong to.
+   */
+  it("counts map exports when choosing a viewer faction", () => {
+    expect(
+      chooseViewerFaction(null, [mapExport("map1.txt", "95", 70), mapExport("map2.txt", "95", 71)])
+    ).toEqual(decided("95"));
   });
 });
 
@@ -411,6 +445,19 @@ describe("planning a batch holding a map export", () => {
     expect(plan.steps).toEqual([]);
     expect(plan.skipped).toEqual([
       { index: 0, fileName: "map.txt", reason: MAP_EXPORT_NEEDS_A_MAP }
+    ]);
+  });
+
+  /**
+   * The viewer's own missing turn is only ever the reason once the export's own three questions
+   * are answered - a defect intrinsic to the file must be named first, or the player is sent
+   * looking for a turn report when what is actually wrong is the file they just chose.
+   */
+  it("keeps an intrinsic map-export refusal ahead of a missing viewer turn", () => {
+    const plan = planReportBatch(viewer("95", null), [mapExport("map.txt", null, 71)]);
+
+    expect(plan.skipped).toEqual([
+      { index: 0, fileName: "map.txt", reason: MAP_EXPORT_NAMES_NO_FACTION }
     ]);
   });
 

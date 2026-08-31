@@ -19,7 +19,8 @@ import {
   MAP_EXPORT_MARKER,
   MAP_EXPORT_NAMES_NO_FACTION,
   MAP_EXPORT_NAMES_NO_TURN,
-  MAP_EXPORT_NEEDS_A_MAP
+  MAP_EXPORT_NEEDS_A_MAP,
+  classifyReportImport
 } from "./mapExportImport";
 import {
   factionLabelOf,
@@ -363,7 +364,7 @@ describe("routeReport, given a map export", () => {
     const viewer = report({ turnNumber: 71 });
     const incoming = report({ turnNumber: 71 });
 
-    const route = routeReport(viewer, incoming, mapExportText(), "map.txt", new Set());
+    const route = routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set());
 
     expect(route.kind).toBe("mapExport");
   });
@@ -375,7 +376,12 @@ describe("routeReport, given a map export", () => {
       aReportRegion({ regionId: "1:5,51", coordinate: { x: 5, y: 51, z: 1 } })
     ]);
 
-    const route = routeReport(viewer, incoming, mapExportText(), "map.txt", new Set(["1:4,50"]));
+    const route = routeReport(
+      viewer,
+      classifyReportImport(incoming, mapExportText()),
+      "map.txt",
+      new Set(["1:4,50"])
+    );
 
     if (route.kind !== "mapExport") {
       throw new Error(`expected a map export route, got ${route.kind}`);
@@ -395,7 +401,7 @@ describe("routeReport, given a map export", () => {
     const viewer = report({ turnNumber: 71 });
     const incoming = report({ factionId: "42", factionName: "The Disinherited Knights", turnNumber: 40 });
 
-    const route = routeReport(viewer, incoming, mapExportText(), "map.txt", new Set());
+    const route = routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set());
 
     if (route.kind !== "mapExport") {
       throw new Error(`expected a map export route, got ${route.kind}`);
@@ -405,7 +411,21 @@ describe("routeReport, given a map export", () => {
   });
 
   it("refuses one when there is no map to add it to", () => {
-    expect(routeReport(null, report(), mapExportText(), "map.txt", new Set())).toEqual({
+    expect(
+      routeReport(null, classifyReportImport(report(), mapExportText()), "map.txt", new Set())
+    ).toEqual({
+      kind: "reject",
+      reason: MAP_EXPORT_NEEDS_A_MAP
+    });
+  });
+
+  /** A viewer that names a faction but has not yet reached any turn is just as incomplete a map. */
+  it("refuses one when the viewer has no turn", () => {
+    const viewer = report({ factionId: "95", turnNumber: null, month: null, year: null });
+
+    expect(
+      routeReport(viewer, classifyReportImport(report(), mapExportText()), "map.txt", new Set())
+    ).toEqual({
       kind: "reject",
       reason: MAP_EXPORT_NEEDS_A_MAP
     });
@@ -415,7 +435,9 @@ describe("routeReport, given a map export", () => {
     const viewer = report({ turnNumber: 71 });
     const incoming = report({ factionId: null, factionName: null });
 
-    expect(routeReport(viewer, incoming, mapExportText(), "map.txt", new Set())).toEqual({
+    expect(
+      routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set())
+    ).toEqual({
       kind: "reject",
       reason: MAP_EXPORT_NAMES_NO_FACTION
     });
@@ -429,7 +451,9 @@ describe("routeReport, given a map export", () => {
     const viewer = report({ turnNumber: 71 });
     const incoming = report({ turnNumber: null, month: null, year: null });
 
-    expect(routeReport(viewer, incoming, mapExportText(), "map.txt", new Set())).toEqual({
+    expect(
+      routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set())
+    ).toEqual({
       kind: "reject",
       reason: MAP_EXPORT_NAMES_NO_TURN
     });
@@ -439,7 +463,9 @@ describe("routeReport, given a map export", () => {
     const viewer = report({ turnNumber: 71 });
     const incoming = report({ turnNumber: 40 }, []);
 
-    expect(routeReport(viewer, incoming, mapExportText(), "map.txt", new Set())).toEqual({
+    expect(
+      routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set())
+    ).toEqual({
       kind: "reject",
       reason: MAP_EXPORT_HAS_NO_HEXES
     });
@@ -448,18 +474,24 @@ describe("routeReport, given a map export", () => {
 
 describe("routeReport", () => {
   it("loads when nothing is on screen", () => {
-    expect(routeReport(null, report(), "text", "turn.rep", new Set())).toEqual({ kind: "load" });
+    expect(routeReport(null, classifyReportImport(report(), "text"), "turn.rep", new Set())).toEqual({
+      kind: "load"
+    });
   });
 
   it("rejects a report with no faction and says why", () => {
     const viewer = report({ turnNumber: 71 });
     const incoming = report({ factionId: null, factionName: null, turnNumber: null });
 
-    expect(routeReport(viewer, incoming, "junk", "junk.rep", new Set())).toEqual({
+    expect(
+      routeReport(viewer, classifyReportImport(incoming, "junk"), "junk.rep", new Set())
+    ).toEqual({
       kind: "reject",
       reason: REPORT_NAMES_NO_FACTION
     });
-    expect(routeReport(null, incoming, "junk", "junk.rep", new Set())).toEqual({
+    expect(
+      routeReport(null, classifyReportImport(incoming, "junk"), "junk.rep", new Set())
+    ).toEqual({
       kind: "reject",
       reason: REPORT_NAMES_NO_FACTION
     });
@@ -468,11 +500,15 @@ describe("routeReport", () => {
   it("refuses an unnumbered report rather than loading it", () => {
     const incoming = report({ turnNumber: null });
 
-    expect(routeReport(null, incoming, "text", "turn.rep", new Set())).toEqual({
+    expect(
+      routeReport(null, classifyReportImport(incoming, "text"), "turn.rep", new Set())
+    ).toEqual({
       kind: "reject",
       reason: REPORT_NAMES_NO_TURN
     });
-    expect(routeReport(report({ turnNumber: 71 }), incoming, "text", "turn.rep", new Set())).toEqual({
+    expect(
+      routeReport(report({ turnNumber: 71 }), classifyReportImport(incoming, "text"), "turn.rep", new Set())
+    ).toEqual({
       kind: "reject",
       reason: REPORT_NAMES_NO_TURN
     });
@@ -481,7 +517,9 @@ describe("routeReport", () => {
   it("refuses an empty report rather than replacing what is on screen", () => {
     const incoming = report({ turnNumber: 72 }, []);
 
-    expect(routeReport(report({ turnNumber: 71 }), incoming, "text", "turn.rep", new Set())).toEqual({
+    expect(
+      routeReport(report({ turnNumber: 71 }), classifyReportImport(incoming, "text"), "turn.rep", new Set())
+    ).toEqual({
       kind: "reject",
       reason: REPORT_HAS_NOTHING_IN_IT
     });
@@ -491,14 +529,18 @@ describe("routeReport", () => {
     const viewer = report({ turnNumber: 70 });
     const incoming = report({ turnNumber: 71 });
 
-    expect(routeReport(viewer, incoming, "text", "turn.rep", new Set())).toEqual({ kind: "load" });
+    expect(
+      routeReport(viewer, classifyReportImport(incoming, "text"), "turn.rep", new Set())
+    ).toEqual({ kind: "load" });
   });
 
   it("stores an older report for history without asking", () => {
     const viewer = report({ turnNumber: 71 });
     const incoming = report({ turnNumber: 70 });
 
-    expect(routeReport(viewer, incoming, "text", "turn.rep", new Set())).toEqual({
+    expect(
+      routeReport(viewer, classifyReportImport(incoming, "text"), "turn.rep", new Set())
+    ).toEqual({
       kind: "storeOnly",
       currentTurn: 71
     });
@@ -508,7 +550,7 @@ describe("routeReport", () => {
     const viewer = report({ factionId: "95", factionName: "Borg TNG", turnNumber: 71 });
     const incoming = report({ factionId: "73", factionName: null, turnNumber: 71 });
 
-    const route = routeReport(viewer, incoming, "text", "ally.rep", new Set());
+    const route = routeReport(viewer, classifyReportImport(incoming, "text"), "ally.rep", new Set());
 
     expect(route).toEqual({
       kind: "ask",
@@ -527,7 +569,7 @@ describe("routeReport", () => {
     const viewer = report({ factionId: "95", turnNumber: 71 });
     const incoming = report({ factionId: "73", turnNumber: 72 });
 
-    const route = routeReport(viewer, incoming, "text", "ally.rep", new Set());
+    const route = routeReport(viewer, classifyReportImport(incoming, "text"), "ally.rep", new Set());
 
     expect(route.kind).toBe("ask");
     expect(route.kind === "ask" && route.pending.canMerge).toBe(false);
