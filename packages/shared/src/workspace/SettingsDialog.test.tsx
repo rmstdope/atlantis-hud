@@ -137,6 +137,7 @@ describe("the Warnings settings tab", () => {
       "Students elsewhere",
       "Overspent silver",
       "Overdrawn items",
+      "Guards that cannot take watch",
       "Dropped guards",
       "Unguarded hexes",
       "Reused FORM numbers",
@@ -165,6 +166,9 @@ describe("the Warnings settings tab", () => {
     }
     expect(html).toContain(
       "A GIVE or TAKE naming items that cannot change hands, or men given to another faction."
+    );
+    expect(html).toContain(
+      "A GUARD 1 order given to a unit that cannot tax and therefore cannot guard."
     );
 
     // Two orders draw on the one fund, and the description is where that detail lives - the row's

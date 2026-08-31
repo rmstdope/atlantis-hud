@@ -540,6 +540,11 @@ export const WARNING_GROUPS: readonly {
         description: "A hex you were guarding no longer is."
       },
       {
+        code: "guard-without-tax-ability",
+        title: "Guards that cannot take watch",
+        description: "A GUARD 1 order given to a unit that cannot tax and therefore cannot guard."
+      },
+      {
         code: "hex-unguarded",
         title: "Unguarded hexes",
         description: "Every hex holding your units with nobody guarding it."
