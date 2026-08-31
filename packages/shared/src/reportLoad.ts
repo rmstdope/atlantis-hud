@@ -37,12 +37,11 @@ import { commitTurn, rememberTurn, type MemoryOutcome } from "./gameMemory";
 import { documentFor, draftKeyFor } from "./orderDraft";
 import { decideReportLoad, judgeReportUsable } from "./reportLoadDecision";
 import {
-  MAP_EXPORT_HAS_NO_HEXES,
-  MAP_EXPORT_NAMES_NO_FACTION,
-  MAP_EXPORT_NAMES_NO_TURN,
   MAP_EXPORT_NEEDS_A_MAP,
   hexesNewToMap,
-  isMapExport
+  judgeMapExportUsable,
+  type MapExportImportSource,
+  type ReportImportSource
 } from "./mapExportImport";
 import { sortUnitsForDisplay } from "./hexMapModel";
 import { countsStatus, noticeStatus, warningStatus } from "./workspace/shellStatus";
@@ -296,19 +295,18 @@ export type ReportRoute =
  */
 export function routeReport(
   viewer: ParsedReport | null,
-  report: ParsedReport,
-  text: string,
+  source: ReportImportSource,
   fileName: string,
   knownRegionIds: ReadonlySet<string>
 ): ReportRoute {
   // Before `judgeReportUsable`, so a map export never collects one of the generic report refusals:
   // they name the wrong thing to go looking for, and one of them ("the report does not name its
   // faction") is the very message our own broken exports used to produce.
-  const mapExport = routeMapExport(viewer, report, text, fileName, knownRegionIds);
-  if (mapExport !== null) {
-    return mapExport;
+  if (source.kind === "mapExport") {
+    return routeMapExport(viewer, source, fileName, knownRegionIds);
   }
 
+  const { report, text } = source;
   const usable = judgeReportUsable(report);
   if (!usable.ok) {
     return { kind: "reject", reason: usable.reason };
@@ -348,38 +346,35 @@ export function routeReport(
 }
 
 /**
- * The map-export route, or `null` when the file is not one.
+ * The map-export route.
  *
  * A map export is written in the game's own syntax, so it parses as a report and would otherwise
  * take the report path - which for the player's own faction and turn means replacing the turn on
  * screen with a file that has no orders template, no faction status and no events.
+ *
+ * The complete-viewer precondition is checked here, first, because it is the one refusal that is
+ * not intrinsic to the file: whether there is a map to add to depends on what is already on screen,
+ * which is this route's business and not `judgeMapExportUsable`'s.
  */
 function routeMapExport(
   viewer: ParsedReport | null,
-  report: ParsedReport,
-  text: string,
+  source: MapExportImportSource,
   fileName: string,
   knownRegionIds: ReadonlySet<string>
-): ReportRoute | null {
-  if (!isMapExport(text)) {
-    return null;
-  }
-
+): ReportRoute {
   // A map export adds to a map. There is nothing to file its hexes under without one, and a game
   // started from one would have no units and no orders template.
   if (viewer === null || viewer.header.factionId === null || viewer.header.turnNumber === null) {
     return { kind: "reject", reason: MAP_EXPORT_NEEDS_A_MAP };
   }
-  if (report.header.factionId === null) {
-    return { kind: "reject", reason: MAP_EXPORT_NAMES_NO_FACTION };
+
+  const usability = judgeMapExportUsable(source);
+  if (!usability.ok) {
+    return { kind: "reject", reason: usability.reason };
   }
-  if (report.header.turnNumber === null) {
-    return { kind: "reject", reason: MAP_EXPORT_NAMES_NO_TURN };
-  }
-  const first = report.regions[0];
-  if (first === undefined) {
-    return { kind: "reject", reason: MAP_EXPORT_HAS_NO_HEXES };
-  }
+
+  const { report, text } = source;
+  const { factionId, turnNumber, firstRegion } = usability.value;
 
   return {
     kind: "mapExport",
@@ -387,12 +382,12 @@ function routeMapExport(
       report,
       text,
       fileName,
-      ownFaction: viewer.header.factionId === report.header.factionId,
+      ownFaction: viewer.header.factionId === factionId,
       incomingFactionLabel: factionLabelOf(report) ?? "an unnamed faction",
-      incomingTurn: report.header.turnNumber,
+      incomingTurn: turnNumber,
       totalHexes: report.regions.length,
       newHexes: hexesNewToMap(report, knownRegionIds),
-      level: first.coordinate.z,
+      level: firstRegion.coordinate.z,
       viewer: {
         factionId: viewer.header.factionId,
         factionLabel: factionLabelOf(viewer) ?? "an unnamed faction",

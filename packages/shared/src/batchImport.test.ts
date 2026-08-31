@@ -3,25 +3,21 @@ import { aParsedReport, aReportHeaderInfo, aReportRegion } from "@atlantis/core-
 import { describe, expect, it, vi } from "vitest";
 import { batchSummary, prepareBatch, viewerFactionOptions, walkBatch, type ChosenFile } from "./batchImport";
 import type { BatchCandidate } from "./reportBatch";
-import { REPORT_NAMES_NO_FACTION, REPORT_NAMES_NO_TURN } from "./reportLoadDecision";
-import { MAP_EXPORT_MARKER } from "./mapExportImport";
+import { REPORT_HAS_NOTHING_IN_IT, judgeReportUsable } from "./reportLoadDecision";
+import { MAP_EXPORT_MARKER, classifyReportImport, type ReportImportSource } from "./mapExportImport";
 
 /**
- * A candidate as `prepareBatch` builds one: `usable` is what `judgeReportUsable` said about the
- * report behind it, derived here from the identity so a fixture cannot forget the judgement.
+ * A candidate as `prepareBatch` builds one from a successfully parsed file: `usable` is what
+ * `judgeReportUsable` says about the report behind the classified `source`, derived here so a
+ * fixture cannot forget the judgement.
  */
-function candidate(
-  fields: Omit<BatchCandidate, "usable" | "unreadableCount" | "isMapExport" | "hasRegions"> &
-    Partial<Pick<BatchCandidate, "usable" | "unreadableCount" | "isMapExport" | "hasRegions">>
-): BatchCandidate {
-  const usable: BatchCandidate["usable"] =
-    fields.usable ??
-    (fields.factionId === null
-      ? { ok: false, reason: REPORT_NAMES_NO_FACTION }
-      : fields.turnNumber === null
-        ? { ok: false, reason: REPORT_NAMES_NO_TURN }
-        : { ok: true });
-  return { unreadableCount: 0, isMapExport: false, hasRegions: true, ...fields, usable };
+function candidateFor(fileName: string, source: ReportImportSource, unreadableCount = 0): BatchCandidate {
+  return { fileName, source, usable: judgeReportUsable(source.report), unreadableCount };
+}
+
+/** A candidate as `prepareBatch` builds one for a file that could not be read or parsed at all. */
+function unreadableCandidate(fileName: string, reason: string): BatchCandidate {
+  return { fileName, source: null, usable: { ok: false, reason }, unreadableCount: 0 };
 }
 
 // One region, because a report with nothing in it is refused outright (ah-sgn.1) and these fixtures
@@ -77,15 +73,10 @@ describe("prepareBatch", () => {
 
     const batch = await prepareBatch([file("a.rep", "95"), file("b.rep", "73")], parse);
 
-    expect(batch.read).toEqual([
-      { text: "95", report: report({ factionId: "95" }) },
-      { text: "73", report: report({ factionId: "73" }) }
-    ]);
     expect(batch.candidates).toEqual([
-      candidate({ fileName: "a.rep", factionId: "95", turnNumber: 71 }),
-      candidate({ fileName: "b.rep", factionId: "73", turnNumber: 71 })
+      candidateFor("a.rep", classifyReportImport(report({ factionId: "95" }), "95")),
+      candidateFor("b.rep", classifyReportImport(report({ factionId: "73" }), "73"))
     ]);
-    expect(batch.unreadable).toEqual([]);
   });
 
   it("costs a file its slot rather than the whole batch when it will not read", async () => {
@@ -94,21 +85,13 @@ describe("prepareBatch", () => {
 
     const batch = await prepareBatch([file("a.rep", "text"), unreadable], parse);
 
-    expect(batch.read).toEqual([{ text: "text", report: report() }, null]);
     expect(batch.candidates).toEqual([
-      candidate({ fileName: "a.rep", factionId: "95", turnNumber: 71 }),
-      candidate({
-        fileName: "bad.rep",
-        factionId: null,
-        turnNumber: null,
-        // A file nothing could be read from carries the read failure as its verdict too, so the plan
-        // never reports a faction-shaped reason for a parse failure.
-        usable: { ok: false, reason: "could not be read: gone" },
-        // Nothing of it parsed, so it describes no hex either.
-        hasRegions: false
-      })
+      candidateFor("a.rep", classifyReportImport(report(), "text")),
+      // A file nothing could be read from carries the read failure as its verdict too, so the plan
+      // never reports a faction-shaped reason for a parse failure - and it carries no classified
+      // source at all, since nothing about it could be classified.
+      unreadableCandidate("bad.rep", "could not be read: gone")
     ]);
-    expect(batch.unreadable).toEqual([{ index: 1, fileName: "bad.rep", reason: "could not be read: gone" }]);
   });
 
   it("costs a file its slot rather than the whole batch when it will not parse", async () => {
@@ -116,29 +99,16 @@ describe("prepareBatch", () => {
 
     const batch = await prepareBatch([file("bad.rep", "garbage")], parse);
 
-    expect(batch.read).toEqual([null]);
-    expect(batch.candidates).toEqual([
-      candidate({
-        fileName: "bad.rep",
-        factionId: null,
-        turnNumber: null,
-        usable: { ok: false, reason: "could not be read: not a report" },
-        hasRegions: false
-      })
-    ]);
-    expect(batch.unreadable).toEqual([
-      { index: 0, fileName: "bad.rep", reason: "could not be read: not a report" }
-    ]);
+    expect(batch.candidates).toEqual([unreadableCandidate("bad.rep", "could not be read: not a report")]);
   });
 });
 
 /**
  * A map export parses as a report, so nothing downstream can tell one apart unless the read says
- * so. `isMapExport` is that answer, and `hasRegions` is the same fact `judgeReportUsable` knows in
- * words meant for a report - a map export needs its own sentence for it.
+ * so - `classifyReportImport` is that answer, carried on the candidate's `source` from here on.
  */
 describe("prepareBatch and our own map exports", () => {
-  it("marks a map export, and leaves an ordinary report unmarked", async () => {
+  it("stores the shared classified source for every parsed file", async () => {
     const parse = vi.fn().mockResolvedValue(report());
 
     const batch = await prepareBatch(
@@ -146,11 +116,11 @@ describe("prepareBatch and our own map exports", () => {
       parse
     );
 
-    expect(batch.candidates[0].isMapExport).toBe(false);
-    expect(batch.candidates[1].isMapExport).toBe(true);
+    expect(batch.candidates[0].source?.kind).toBe("report");
+    expect(batch.candidates[1].source?.kind).toBe("mapExport");
   });
 
-  it("says whether the file describes any hex at all", async () => {
+  it("says whether the file describes any hex at all, through the shared usability judgement", async () => {
     const parse = vi
       .fn()
       .mockResolvedValueOnce(report())
@@ -158,18 +128,17 @@ describe("prepareBatch and our own map exports", () => {
 
     const batch = await prepareBatch([file("a.rep", "one"), file("b.rep", "two")], parse);
 
-    expect(batch.candidates[0].hasRegions).toBe(true);
-    expect(batch.candidates[1].hasRegions).toBe(false);
+    expect(batch.candidates[0].usable).toEqual({ ok: true });
+    expect(batch.candidates[1].usable).toEqual({ ok: false, reason: REPORT_HAS_NOTHING_IN_IT });
   });
 
-  /** Nothing of an unreadable file parsed, so neither question has an answer worth acting on. */
-  it("marks a file that would not parse as neither", async () => {
+  /** Nothing of an unreadable file parsed, so it carries no classified source at all. */
+  it("leaves a file that would not parse with no classified source", async () => {
     const parse = vi.fn().mockRejectedValue(new Error("not a report"));
 
     const batch = await prepareBatch([file("bad.rep", "garbage")], parse);
 
-    expect(batch.candidates[0].isMapExport).toBe(false);
-    expect(batch.candidates[0].hasRegions).toBe(false);
+    expect(batch.candidates[0].source).toBeNull();
   });
 });
 
@@ -197,15 +166,10 @@ describe("walkBatch", () => {
   it("commits the viewer's own step and merges an ally's, in the plan's order", async () => {
     const core = client();
     const batch = {
-      read: [
-        { text: "own", report: report({ factionId: "95", turnNumber: 71 }) },
-        { text: "ally", report: report({ factionId: "73", turnNumber: 71 }) }
-      ],
       candidates: [
-        candidate({ fileName: "own.rep", factionId: "95", turnNumber: 71 }),
-        candidate({ fileName: "ally.rep", factionId: "73", turnNumber: 71 })
-      ],
-      unreadable: []
+        candidateFor("own.rep", classifyReportImport(report({ factionId: "95", turnNumber: 71 }), "own")),
+        candidateFor("ally.rep", classifyReportImport(report({ factionId: "73", turnNumber: 71 }), "ally"))
+      ]
     };
     const progress: [number, number][] = [];
 
@@ -249,15 +213,10 @@ describe("walkBatch", () => {
   it("does not read the map back after each merged step", async () => {
     const core = client({ knownMap: vi.fn().mockResolvedValue({ hexes: [], levels: [], currentTurn: 71 }) });
     const batch = {
-      read: [
-        { text: "ally", report: report({ factionId: "73", turnNumber: 71 }) },
-        { text: "other", report: report({ factionId: "12", turnNumber: 71 }) }
-      ],
       candidates: [
-        candidate({ fileName: "ally.rep", factionId: "73", turnNumber: 71 }),
-        candidate({ fileName: "other.rep", factionId: "12", turnNumber: 71 })
-      ],
-      unreadable: []
+        candidateFor("ally.rep", classifyReportImport(report({ factionId: "73", turnNumber: 71 }), "ally")),
+        candidateFor("other.rep", classifyReportImport(report({ factionId: "12", turnNumber: 71 }), "other"))
+      ]
     };
 
     const walk = await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
@@ -274,9 +233,7 @@ describe("walkBatch", () => {
       commitReportImport: vi.fn().mockRejectedValue(new Error("disk is full"))
     });
     const batch = {
-      read: [{ text: "own", report: report({ factionId: "95", turnNumber: 71 }) }],
-      candidates: [candidate({ fileName: "own.rep", factionId: "95", turnNumber: 71 })],
-      unreadable: []
+      candidates: [candidateFor("own.rep", classifyReportImport(report({ factionId: "95", turnNumber: 71 }), "own"))]
     };
 
     const walk = await walkBatch(core, OPEN_GAME, batch, "95", null, RULESET, NOW, () => {});
@@ -291,9 +248,7 @@ describe("walkBatch", () => {
   it("demotes a rejecting merge to a skip with describeError's reason", async () => {
     const core = client({ mergeReport: vi.fn().mockRejectedValue(new Error("no such turn")) });
     const batch = {
-      read: [{ text: "ally", report: report({ factionId: "73", turnNumber: 71 }) }],
-      candidates: [candidate({ fileName: "ally.rep", factionId: "73", turnNumber: 71 })],
-      unreadable: []
+      candidates: [candidateFor("ally.rep", classifyReportImport(report({ factionId: "73", turnNumber: 71 }), "ally"))]
     };
 
     const walk = await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
@@ -305,15 +260,10 @@ describe("walkBatch", () => {
   it("finishes on the last landed own import of the plan's final turn", async () => {
     const core = client();
     const batch = {
-      read: [
-        { text: "first", report: report({ factionId: "95", turnNumber: 71 }) },
-        { text: "second", report: report({ factionId: "95", turnNumber: 71 }) }
-      ],
       candidates: [
-        candidate({ fileName: "first.rep", factionId: "95", turnNumber: 71 }),
-        candidate({ fileName: "second.rep", factionId: "95", turnNumber: 71 })
-      ],
-      unreadable: []
+        candidateFor("first.rep", classifyReportImport(report({ factionId: "95", turnNumber: 71 }), "first")),
+        candidateFor("second.rep", classifyReportImport(report({ factionId: "95", turnNumber: 71 }), "second"))
+      ]
     };
 
     const walk = await walkBatch(core, OPEN_GAME, batch, "95", null, RULESET, NOW, () => {});
@@ -325,9 +275,7 @@ describe("walkBatch", () => {
   it("finishes null when only ally reports land", async () => {
     const core = client();
     const batch = {
-      read: [{ text: "ally", report: report({ factionId: "73", turnNumber: 71 }) }],
-      candidates: [candidate({ fileName: "ally.rep", factionId: "73", turnNumber: 71 })],
-      unreadable: []
+      candidates: [candidateFor("ally.rep", classifyReportImport(report({ factionId: "73", turnNumber: 71 }), "ally"))]
     };
 
     const walk = await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
@@ -338,9 +286,9 @@ describe("walkBatch", () => {
   it("still returns every file as skipped, rather than doing nothing, when the batch cannot say whose it is", async () => {
     const core = client();
     const batch = {
-      read: [{ text: "mystery", report: report({ factionId: null, turnNumber: null }) }],
-      candidates: [candidate({ fileName: "mystery.rep", factionId: null, turnNumber: null })],
-      unreadable: []
+      candidates: [
+        candidateFor("mystery.rep", classifyReportImport(report({ factionId: null, turnNumber: null }), "mystery"))
+      ]
     };
 
     const walk = await walkBatch(core, OPEN_GAME, batch, null, null, RULESET, NOW, () => {});
@@ -365,11 +313,9 @@ describe("walkBatch and a map export", () => {
   it("merges a map export, counts its hexes and never commits it as a turn", async () => {
     const core = client({ mergeReport: vi.fn().mockResolvedValue({ ...MERGE_RESULT, newRegionCount: 8 }) });
     const batch = {
-      read: [{ text: MAP_TEXT, report: report({ factionId: "95", turnNumber: 71 }) }],
       candidates: [
-        candidate({ fileName: "map.txt", factionId: "95", turnNumber: 71, isMapExport: true })
-      ],
-      unreadable: []
+        candidateFor("map.txt", classifyReportImport(report({ factionId: "95", turnNumber: 71 }), MAP_TEXT))
+      ]
     };
 
     const walk = await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
@@ -391,15 +337,10 @@ describe("walkBatch and a map export", () => {
   it("merges a map export under the turn the batch ends on", async () => {
     const core = client();
     const batch = {
-      read: [
-        { text: "own", report: report({ factionId: "95", turnNumber: 71 }) },
-        { text: MAP_TEXT, report: report({ factionId: "73", turnNumber: 40 }) }
-      ],
       candidates: [
-        candidate({ fileName: "own.rep", factionId: "95", turnNumber: 71 }),
-        candidate({ fileName: "map.txt", factionId: "73", turnNumber: 40, isMapExport: true })
-      ],
-      unreadable: []
+        candidateFor("own.rep", classifyReportImport(report({ factionId: "95", turnNumber: 71 }), "own")),
+        candidateFor("map.txt", classifyReportImport(report({ factionId: "73", turnNumber: 40 }), MAP_TEXT))
+      ]
     };
 
     await walkBatch(core, OPEN_GAME, batch, "95", null, RULESET, NOW, () => {});
@@ -419,11 +360,9 @@ describe("walkBatch and a map export", () => {
   it("falls back to the turn already on screen when the batch imports none", async () => {
     const core = client();
     const batch = {
-      read: [{ text: MAP_TEXT, report: report({ factionId: "73", turnNumber: 40 }) }],
       candidates: [
-        candidate({ fileName: "map.txt", factionId: "73", turnNumber: 40, isMapExport: true })
-      ],
-      unreadable: []
+        candidateFor("map.txt", classifyReportImport(report({ factionId: "73", turnNumber: 40 }), MAP_TEXT))
+      ]
     };
 
     await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
@@ -442,11 +381,9 @@ describe("walkBatch and a map export", () => {
   it("demotes a map export the core refuses to a skip, and keeps it out of the landed steps", async () => {
     const core = client({ mergeReport: vi.fn().mockRejectedValue(new Error("disk is full")) });
     const batch = {
-      read: [{ text: MAP_TEXT, report: report({ factionId: "95", turnNumber: 71 }) }],
       candidates: [
-        candidate({ fileName: "map.txt", factionId: "95", turnNumber: 71, isMapExport: true })
-      ],
-      unreadable: []
+        candidateFor("map.txt", classifyReportImport(report({ factionId: "95", turnNumber: 71 }), MAP_TEXT))
+      ]
     };
 
     const walk = await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
@@ -460,9 +397,7 @@ describe("batchSummary", () => {
   it("names the turn on screen and the viewer's label from the finishing report", async () => {
     const core = client();
     const batch = {
-      read: [{ text: "own", report: report({ factionId: "95", turnNumber: 71 }) }],
-      candidates: [candidate({ fileName: "own.rep", factionId: "95", turnNumber: 71 })],
-      unreadable: []
+      candidates: [candidateFor("own.rep", classifyReportImport(report({ factionId: "95", turnNumber: 71 }), "own"))]
     };
     const walk = await walkBatch(core, OPEN_GAME, batch, "95", null, RULESET, NOW, () => {});
 
@@ -476,7 +411,7 @@ describe("batchSummary", () => {
 
   it("falls back to the viewer report and then 'an unnamed faction' when nothing finished", async () => {
     const core = client();
-    const batch = { read: [], candidates: [], unreadable: [] };
+    const batch = { candidates: [] };
     const walk = await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
 
     expect(batchSummary(walk, report({ factionName: "Borg TNG" })).viewerFactionLabel).toBe(
