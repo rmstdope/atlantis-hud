@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAP_EXPORT_HAS_NO_HEXES,
   MAP_EXPORT_MARKER,
+  MAP_EXPORT_NAMES_NO_FACTION,
+  MAP_EXPORT_NAMES_NO_TURN,
+  classifyReportImport,
   hexesNewToMap,
-  isMapExport
+  isMapExport,
+  judgeMapExportUsable
 } from "./mapExportImport";
-import type { ParsedReport } from "@atlantis/core-client";
-import { aParsedReport, aReportRegion } from "@atlantis/core-client";
+import type { ParsedReport, ReportHeaderInfo, ReportRegion } from "@atlantis/core-client";
+import { aParsedReport, aReportHeaderInfo, aReportRegion } from "@atlantis/core-client";
 
 /** A map export as the exporter actually writes one, marker and staleness comments included. */
 const MAP_EXPORT = [
@@ -76,5 +81,62 @@ describe("hexesNewToMap", () => {
 
   it("counts none when the map already holds them all", () => {
     expect(hexesNewToMap(reportWith(["1:4,50"]), new Set(["1:4,50"]))).toBe(0);
+  });
+});
+
+describe("classifyReportImport", () => {
+  it("classifies an ordinary report and a map export into distinct import sources", () => {
+    const ordinaryReport = reportWith(["1:4,50"]);
+    const ordinaryText = TREASURY_REPORT;
+    const exportReport = reportWith(["1:4,50"]);
+    const exportText = MAP_EXPORT;
+
+    const ordinarySource = classifyReportImport(ordinaryReport, ordinaryText);
+    const exportSource = classifyReportImport(exportReport, exportText);
+
+    expect(ordinarySource).toEqual({ kind: "report", report: ordinaryReport, text: ordinaryText });
+    expect(exportSource).toEqual({ kind: "mapExport", report: exportReport, text: exportText });
+  });
+});
+
+describe("judgeMapExportUsable", () => {
+  function mapExportSource(overrides: Partial<ReportHeaderInfo> = {}, regions: ReportRegion[] = [aReportRegion()]) {
+    const report = aParsedReport({ header: aReportHeaderInfo({ month: "December", ...overrides }), regions });
+    return { kind: "mapExport" as const, report, text: MAP_EXPORT };
+  }
+
+  it("refuses one that names no faction", () => {
+    const source = mapExportSource({ factionId: null, factionName: null });
+
+    expect(judgeMapExportUsable(source)).toEqual({ ok: false, reason: MAP_EXPORT_NAMES_NO_FACTION });
+  });
+
+  it("refuses one that names no turn, once it names a faction", () => {
+    const source = mapExportSource({ turnNumber: null, month: null, year: null });
+
+    expect(judgeMapExportUsable(source)).toEqual({ ok: false, reason: MAP_EXPORT_NAMES_NO_TURN });
+  });
+
+  it("refuses one with no hexes in it, once it names a faction and a turn", () => {
+    const source = mapExportSource({}, []);
+
+    expect(judgeMapExportUsable(source)).toEqual({ ok: false, reason: MAP_EXPORT_HAS_NO_HEXES });
+  });
+
+  it("narrows a usable map export to its faction, turn and first region", () => {
+    const region = aReportRegion({ regionId: "1:4,50", coordinate: { x: 4, y: 50, z: 1 } });
+    const source = mapExportSource({}, [region]);
+
+    const result = judgeMapExportUsable(source);
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        source,
+        factionId: source.report.header.factionId,
+        turnNumber: source.report.header.turnNumber,
+        firstRegion: region
+      }
+    });
   });
 });

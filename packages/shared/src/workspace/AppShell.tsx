@@ -57,6 +57,7 @@ import {
   type MemoryOutcome
 } from "../gameMemory";
 import { isOlderTurn } from "../reportLoadDecision";
+import { classifyReportImport } from "../mapExportImport";
 import {
   factionLabelOf,
   firstUnitIn,
@@ -1410,8 +1411,7 @@ export function AppShell({
           // file is worth adding before the player commits, with no second call into the core.
           const route = routeReport(
             parsed,
-            report,
-            text,
+            classifyReportImport(report, text),
             fileName,
             new Set(model.hexes.map((hex) => hex.regionId))
           );

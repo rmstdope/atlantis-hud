@@ -12,32 +12,28 @@
  */
 
 import {
-  MAP_EXPORT_HAS_NO_HEXES,
-  MAP_EXPORT_NAMES_NO_FACTION,
-  MAP_EXPORT_NAMES_NO_TURN,
-  MAP_EXPORT_NEEDS_A_MAP
+  MAP_EXPORT_NEEDS_A_MAP,
+  judgeMapExportUsable,
+  type ReportImportSource
 } from "./mapExportImport";
 import type { ReportUsability } from "./reportLoadDecision";
 
 /** As much of a report as planning a batch needs, plus the name the summary will use for it. */
 export type BatchCandidate = {
   fileName: string;
-  factionId: string | null;
-  turnNumber: number | null;
-  /** `judgeReportUsable`'s answer for this file. `{ ok: false }` for one that would not even parse. */
+  /**
+   * The classified file behind this candidate - `report` or `mapExport`, whichever
+   * `classifyReportImport` said - or `null` for a file `prepareBatch` could not read or parse at
+   * all, whose own refusal lives in `usable` instead.
+   */
+  source: ReportImportSource | null;
+  /**
+   * `judgeReportUsable`'s answer for this file, computed whether or not it is a map export.
+   * `{ ok: false }` for one that would not even parse.
+   */
   usable: ReportUsability;
   /** How many lines of this report the parser could not read. Zero for one it never parsed. */
   unreadableCount: number;
-  /**
-   * Whether this file is one of our own map exports (`mapExportImport.isMapExport`). Such a file
-   * is never committed as a turn, whoever wrote it.
-   */
-  isMapExport: boolean;
-  /**
-   * Whether the file describes any hex at all. `judgeReportUsable` answers this too, but in words
-   * meant for a report; a map export needs its own sentence for the same fact.
-   */
-  hasRegions: boolean;
 };
 
 /** One report the batch will act on, and how. */
@@ -127,16 +123,21 @@ export function chooseViewerFaction(
   // Only reports the plan below would actually act on. Counting a report whose turn cannot be read
   // decides the viewer on the strength of a file that is then thrown away - three undated reports
   // from an ally would outvote two good turns of the player's own, and the player would end up
-  // merged into their ally's map as the visitor.
+  // merged into their ally's map as the visitor. A usable map export counts here exactly as an
+  // ordinary report would - it names a faction and a turn just the same, and the source's `kind`
+  // is not a reason to filter it out.
   const counts = new Map<string, { count: number; newestTurn: number }>();
   for (const candidate of candidates) {
-    if (candidate.factionId === null || candidate.turnNumber === null) {
+    const header = candidate.source?.report.header;
+    const factionId = header?.factionId ?? null;
+    const turnNumber = header?.turnNumber ?? null;
+    if (factionId === null || turnNumber === null) {
       continue;
     }
-    const seen = counts.get(candidate.factionId) ?? { count: 0, newestTurn: -Infinity };
-    counts.set(candidate.factionId, {
+    const seen = counts.get(factionId) ?? { count: 0, newestTurn: -Infinity };
+    counts.set(factionId, {
       count: seen.count + 1,
-      newestTurn: Math.max(seen.newestTurn, candidate.turnNumber)
+      newestTurn: Math.max(seen.newestTurn, turnNumber)
     });
   }
 
@@ -194,24 +195,19 @@ export function planReportBatch(
   for (const [index, candidate] of candidates.entries()) {
     // A map export takes its own branch *before* `judgeReportUsable`'s verdict is read: those
     // sentences are about reports, and a player told "the report does not name its faction" about
-    // a map export goes looking for the wrong thing. The refusals below are the single-file path's
-    // own constants, so both paths say one thing about the same file.
-    if (candidate.isMapExport) {
-      const refusal =
-        viewer.factionId === null
-          ? MAP_EXPORT_NEEDS_A_MAP
-          : candidate.factionId === null
-            ? MAP_EXPORT_NAMES_NO_FACTION
-            : candidate.turnNumber === null
-              ? MAP_EXPORT_NAMES_NO_TURN
-              : !candidate.hasRegions
-                ? MAP_EXPORT_HAS_NO_HEXES
-                : null;
-      if (refusal !== null) {
-        skipped.push({ index, fileName: candidate.fileName, reason: refusal });
-      } else {
-        mapExports.push({ index, candidate, turnNumber: candidate.turnNumber as number });
+    // a map export goes looking for the wrong thing. `judgeMapExportUsable`'s refusals are the
+    // single-file path's own constants, so both paths say one thing about the same file.
+    if (candidate.source !== null && candidate.source.kind === "mapExport") {
+      if (viewer.factionId === null) {
+        skipped.push({ index, fileName: candidate.fileName, reason: MAP_EXPORT_NEEDS_A_MAP });
+        continue;
       }
+      const usability = judgeMapExportUsable(candidate.source);
+      if (!usability.ok) {
+        skipped.push({ index, fileName: candidate.fileName, reason: usability.reason });
+        continue;
+      }
+      mapExports.push({ index, candidate, turnNumber: usability.value.turnNumber });
       continue;
     }
     // Whether a report can be imported at all is one rule, shared with the single-file path -
@@ -235,12 +231,17 @@ export function planReportBatch(
       continue;
     }
 
+    // `candidate.usable.ok` is true only for a candidate `prepareBatch` actually parsed, which
+    // always carries a "report" source - a read/parse failure's `usable` is always `{ ok: false }`,
+    // already sent to the branch above.
+    const header = (candidate.source as Extract<ReportImportSource, { kind: "report" }>).report
+      .header;
     usable.push({
       index,
       candidate,
       // `judgeReportUsable` has already refused a report naming no turn, so this is a number.
-      turnNumber: candidate.turnNumber as number,
-      own: candidate.factionId === viewer.factionId
+      turnNumber: header.turnNumber as number,
+      own: header.factionId === viewer.factionId
     });
   }
 

@@ -14,7 +14,7 @@
 
 import type { CoreClient, OpenedGame, ParsedReport } from "@atlantis/core-client";
 import { commitMerge, commitTurn } from "./gameMemory";
-import { isMapExport } from "./mapExportImport";
+import { classifyReportImport, type ReportImportSource } from "./mapExportImport";
 import {
   planReportBatch,
   type BatchCandidate,
@@ -30,14 +30,14 @@ import { describeError } from "./workspace/shellAction";
 /**
  * Every file of a batch, read and parsed, before a word of it has been written.
  *
- * The three lists are parallel and indexed by the chosen file, which is what lets a step name the
- * file it means by position rather than by name - two folders dragged at once can hand over two
- * files called `turn.rep`. `read` holds `null` exactly where `unreadable` holds a reason.
+ * Each candidate owns its own classified source - `report` or `mapExport`, whichever
+ * `classifyReportImport` said - or `null` for a file that would not read or parse at all, whose
+ * refusal lives in its `usable` field instead. Indexed by the chosen file, which is what lets a
+ * step name the file it means by position rather than by name - two folders dragged at once can
+ * hand over two files called `turn.rep`.
  */
 export type PreparedBatch = {
-  read: ({ text: string; report: ParsedReport } | null)[];
   candidates: BatchCandidate[];
-  unreadable: BatchSkip[];
 };
 
 /** As much of a `File` as reading a batch needs - the tests hand in object literals. */
@@ -47,7 +47,7 @@ export type ChosenFile = { name: string; text: () => Promise<string> };
  * Reads and parses every chosen file before a word of the batch is written.
  *
  * A file that will not read or parse costs the batch that file: it stays a candidate (so indices
- * stay the chosen files' indices), with `read[i] === null` and an `unreadable` entry whose reason is
+ * stay the chosen files' indices), with `source: null` and a `usable` reason of
  * `could not be read: <error>`. Never rejects for a per-file failure - only the batch as a whole
  * failing to start (the caller's business, not this function's) does that.
  */
@@ -55,47 +55,34 @@ export async function prepareBatch(
   files: ChosenFile[],
   parse: (text: string) => Promise<ParsedReport>
 ): Promise<PreparedBatch> {
-  const read: ({ text: string; report: ParsedReport } | null)[] = [];
   const candidates: BatchCandidate[] = [];
-  const unreadable: BatchSkip[] = [];
 
-  for (const [index, chosen] of files.entries()) {
+  for (const chosen of files) {
     try {
       const text = await chosen.text();
       const report = await parse(text);
-      read.push({ text, report });
       candidates.push({
         fileName: chosen.name,
-        factionId: report.header.factionId,
-        turnNumber: report.header.turnNumber,
+        source: classifyReportImport(report, text),
         usable: judgeReportUsable(report),
-        unreadableCount: report.unreadableLines.length,
-        isMapExport: isMapExport(text),
-        hasRegions: report.regions.length > 0
+        unreadableCount: report.unreadableLines.length
       });
     } catch (error) {
-      read.push(null);
-      // Still a candidate, so the plan's indices stay the indices of the chosen files. Nothing about
-      // it could be read, so the plan skips it - and its verdict carries the same reason the
-      // `unreadable` entry does, because "could not be read: ..." says what actually went wrong.
-      // The player is shown the `unreadable` entry; the verdict is only how the plan knows to skip.
+      // Still a candidate, so the plan's indices stay the indices of the chosen files. Nothing
+      // about it could be read, so there is nothing to classify - the plan skips it on `usable`'s
+      // reason alone, which is why this candidate carries the same "could not be read: ..." string
+      // rather than a second, parallel record of the same failure.
       const reason = `could not be read: ${describeError(error)}`;
       candidates.push({
         fileName: chosen.name,
-        factionId: null,
-        turnNumber: null,
+        source: null,
         usable: { ok: false, reason },
-        // Nothing of it parsed, so there are no individual lines to count.
-        unreadableCount: 0,
-        // Nothing of it could be read, so it is skipped as unreadable before either is looked at.
-        isMapExport: false,
-        hasRegions: false
+        unreadableCount: 0
       });
-      unreadable.push({ index, fileName: chosen.name, reason });
     }
   }
 
-  return { read, candidates, unreadable };
+  return { candidates };
 }
 
 /**
@@ -110,7 +97,8 @@ export function viewerFactionOptions(
     factionId,
     label:
       factionLabelOf(
-        batch.read.find((entry) => entry?.report.header.factionId === factionId)?.report ?? null
+        batch.candidates.find((candidate) => candidate.source?.report.header.factionId === factionId)
+          ?.source?.report ?? null
       ) ?? `faction ${factionId}`
   }));
 }
@@ -124,11 +112,12 @@ export type BatchWalk = {
   skipped: BatchSkip[];
   /**
    * The step whose report goes on screen - the last landed own import of the plan's final turn -
-   * and its source. `null` when none of the viewer's own turns landed.
+   * and its source. `null` when none of the viewer's own turns landed. An `import` step can only
+   * point to the "report" arm of {@link ReportImportSource}: a map export never becomes one.
    */
   finish: {
     step: BatchStep & { kind: "import" };
-    source: { text: string; report: ParsedReport };
+    source: Extract<ReportImportSource, { kind: "report" }>;
   } | null;
 };
 
@@ -159,12 +148,8 @@ export async function walkBatch(
   now: () => string,
   onProgress: (done: number, total: number) => void
 ): Promise<BatchWalk> {
-  const { read, candidates, unreadable } = batch;
+  const { candidates } = batch;
   const plan = planReportBatch({ factionId: viewerFactionId, turnNumber: workingTurn }, candidates);
-  // The real reason beats the plan's guess for a file that never parsed at all.
-  const skipped = plan.skipped.map(
-    (skip) => unreadable.find((entry) => entry.index === skip.index) ?? skip
-  );
 
   // Counted over the steps rather than the chosen files: a batch of ten with four skipped would
   // otherwise stop at "6/10" and read like a run that gave up.
@@ -182,11 +167,12 @@ export async function walkBatch(
   const failures: BatchSkip[] = [];
   let done = 0;
   for (const step of plan.steps) {
-    const source = read[step.index];
+    const source = candidates[step.index]?.source ?? null;
     if (!source) {
-      // Unreachable - a file that would not parse never becomes a step. Recorded rather than
-      // skipped silently anyway: a summary that counted this as imported would be claiming a turn
-      // nobody has.
+      // Unreachable - a candidate with no classified source never becomes a step, since its
+      // `usable` is always `{ ok: false }` and `planReportBatch` skips on that first. Recorded
+      // rather than skipped silently anyway: a summary that counted this as imported would be
+      // claiming a turn nobody has.
       failures.push({
         index: step.index,
         fileName: step.fileName,
@@ -274,13 +260,18 @@ export async function walkBatch(
       (step): step is BatchStep & { kind: "import" } =>
         step.kind === "import" && step.turnNumber === plan.finalTurn
     );
-  const finishSource = finishStep ? read[finishStep.index] : null;
-  const finish = finishStep && finishSource ? { step: finishStep, source: finishSource } : null;
+  const finishSource = finishStep ? (candidates[finishStep.index]?.source ?? null) : null;
+  // The discriminator, rather than a cast: an `import` step's source is always the "report" arm,
+  // but this reaches for the fact rather than asserting it.
+  const finish =
+    finishStep && finishSource && finishSource.kind === "report"
+      ? { step: finishStep, source: finishSource }
+      : null;
 
   return {
     plan,
     landed,
-    skipped: [...skipped, ...failures].sort((left, right) => left.index - right.index),
+    skipped: [...plan.skipped, ...failures].sort((left, right) => left.index - right.index),
     finish
   };
 }
