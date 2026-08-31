@@ -6437,7 +6437,7 @@ fn check_one_teacher(
         findings.push(teacher.finding(
             hex,
             codes::TEACHING_OVERSUBSCRIBED,
-            format!("{taught_men} students on {slots} slots, so each gets less than a full month",),
+            format!("{taught_men} students on {slots} slots, so the teaching bonus is diluted"),
             Some(placed),
         ));
     }
@@ -20275,10 +20275,9 @@ mod tests {
             "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
         ));
         assert_eq!(finding.code.as_str(), "teaching-oversubscribed");
-        assert!(
-            finding.message.contains("20") && finding.message.contains("10"),
-            "it names the students and the slots: {}",
-            finding.message
+        assert_eq!(
+            finding.message,
+            "20 students on 10 slots, so the teaching bonus is diluted"
         );
     }
 
