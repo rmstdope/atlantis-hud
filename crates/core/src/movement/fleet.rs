@@ -49,14 +49,25 @@ impl OrderedUnits {
             Event::Order { line, depth } if depth == Depth::default() => {
                 if let (Some(unit_id), Some(steps)) = (
                     current.as_ref(),
-                    crate::movement::orders::parse_move(line.text),
+                    crate::movement::orders::parse_move(
+                        &std::iter::once(line.command.text.as_str())
+                            .chain(line.arguments.iter().map(|token| token.text.as_str()))
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    ),
                 ) {
                     by_unit.insert(unit_id.clone(), steps);
                 }
                 if let Some(unit_id) = current.as_ref() {
                     if line.command.is("sail")
                         && (line.arguments.is_empty()
-                            || crate::movement::orders::parse_move(line.text).is_some())
+                            || crate::movement::orders::parse_move(
+                                &std::iter::once(line.command.text.as_str())
+                                    .chain(line.arguments.iter().map(|token| token.text.as_str()))
+                                    .collect::<Vec<_>>()
+                                    .join(" "),
+                            )
+                            .is_some())
                     {
                         sailers.insert(unit_id.clone());
                     }
