@@ -45,7 +45,6 @@ use crate::orders::silver::{
     MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts,
     RegionShare, RegionWages, SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts,
     UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
->>>>>>> e0b4c3b (fix(ah-dta3): warn on unready taxers)
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{give_reach, give_refusal, party_unit_id, GiveReach, GiveRefusal};
