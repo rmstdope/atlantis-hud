@@ -122,6 +122,9 @@ describe("the Warnings settings tab", () => {
     const html = renderToStaticMarkup(<WarningSettings />);
 
     expect(html).toContain("Studying/Teaching");
+    expect(html).toContain(
+      "A teacher is not all leaders or cannot teach what a student is studying."
+    );
     expect(html).toContain("Resources");
     expect(html).toContain("Guarding");
     expect(html).toContain("Orders");
@@ -132,7 +135,7 @@ describe("the Warnings settings tab", () => {
     const titles = [
       "Teachers with free slots",
       "Oversubscribed teachers",
-      "Teachers lacking the skill",
+      "Teachers unable to teach",
       "Students not studying",
       "Students elsewhere",
       "Overspent silver",
