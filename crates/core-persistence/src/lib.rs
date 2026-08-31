@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 /// The snapshot a membership carries. The core owns it because the backup carries it too.
 pub use atlantis_hud_core::backup::ArmyMember;
 use atlantis_hud_core::backup::{
-    apply_manifest_edit, encode_game_backup, GameBackupArmy, GameBackupContent, GameBackupHexNote,
+    apply_manifest_edit, encode_game_backup, DecodedGameBackupCollections,
+    EncodedGameBackupCollections, GameBackupArmy, GameBackupContent, GameBackupHexNote,
     GameBackupImportedTurn, GameBackupMergedReport, GameBackupOrderDraft, GameBackupRegionSighting,
     ManifestEdit,
 };
@@ -16,7 +17,7 @@ use atlantis_hud_core::movement::graph::MapGeometry;
 use atlantis_hud_core::reopen::{latest_turn, TurnRef};
 pub use atlantis_hud_core::report::merge::MergedReportRecord;
 use atlantis_hud_core::{diff_imported_turn_fields, ImportedTurnSnapshotRef};
-use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
+use rusqlite::{params, Connection, ErrorCode, OptionalExtension, Transaction};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -580,28 +581,10 @@ pub fn reset_game(
 }
 
 /// Exports one whole game to one JSON document.
-pub fn export_game(
-    games_root: &Path,
+fn read_backup_collections(
+    connection: &Connection,
     game_id: &str,
-    exported_at: &str,
-) -> Result<String, PersistenceError> {
-    let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
-    if !game_file_path.exists() {
-        return Err(PersistenceError::GameNotFound(game_id.to_string()));
-    }
-
-    let manifest = load_game_manifest(&game_file_path)?;
-    ensure_supported_manifest_version(manifest.manifest_version)?;
-    let database_path = sidecar_database_path(&game_file_path);
-    if !database_path.exists() {
-        return Err(PersistenceError::DatabaseFileMissing(
-            database_path.to_string_lossy().to_string(),
-        ));
-    }
-
-    let mut connection = open_database(&database_path)?;
-    apply_migrations(&mut connection)?;
-
+) -> Result<EncodedGameBackupCollections, PersistenceError> {
     let mut turns = connection.prepare(
         "SELECT faction_id,
                 turn_number,
@@ -723,15 +706,41 @@ pub fn export_game(
         })
         .collect::<Result<Vec<_>, serde_json::Error>>()?;
 
+    Ok(EncodedGameBackupCollections {
+        imported_turns,
+        order_drafts,
+        region_sightings,
+        merged_reports,
+        hex_notes,
+        armies,
+    })
+}
+
+/// Exports one whole game to one JSON document.
+pub fn export_game(
+    games_root: &Path,
+    game_id: &str,
+    exported_at: &str,
+) -> Result<String, PersistenceError> {
+    let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
+    if !game_file_path.exists() {
+        return Err(PersistenceError::GameNotFound(game_id.to_string()));
+    }
+    let manifest = load_game_manifest(&game_file_path)?;
+    ensure_supported_manifest_version(manifest.manifest_version)?;
+    let database_path = sidecar_database_path(&game_file_path);
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+    let mut connection = open_database(&database_path)?;
+    apply_migrations(&mut connection)?;
+    let collections = read_backup_collections(&connection, game_id)?;
     encode_game_backup(
         GameBackupContent {
             manifest,
-            imported_turns,
-            order_drafts,
-            region_sightings,
-            merged_reports,
-            hex_notes,
-            armies,
+            collections,
         },
         exported_at,
     )
@@ -754,9 +763,37 @@ pub fn import_game(
         apply_migrations(&mut connection)?;
         let transaction = connection.transaction()?;
 
-        for turn in &decoded.imported_turns {
-            transaction.execute(
-                "INSERT INTO imported_turns (
+        write_backup_collections(&transaction, &game_id, decoded.collections)?;
+
+        transaction.commit()?;
+        Ok(())
+    })();
+
+    if let Err(error) = import_result {
+        let _ = delete_game(games_root, &game_id);
+        return Err(error);
+    }
+
+    Ok(opened)
+}
+
+fn write_backup_collections(
+    transaction: &Transaction<'_>,
+    game_id: &str,
+    collections: DecodedGameBackupCollections,
+) -> Result<(), PersistenceError> {
+    let DecodedGameBackupCollections {
+        imported_turns,
+        order_drafts,
+        region_sightings,
+        merged_reports,
+        hex_notes,
+        armies,
+    } = collections;
+
+    for turn in &imported_turns {
+        transaction.execute(
+            "INSERT INTO imported_turns (
                     game_id,
                     faction_id,
                     turn_number,
@@ -766,42 +803,42 @@ pub fn import_game(
                     imported_at,
                     updated_at
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                params![
-                    game_id.as_str(),
-                    turn.faction_id.as_str(),
-                    turn.turn_number,
-                    turn.raw_report.as_str(),
-                    turn.parsed_payload_json.as_str(),
-                    turn.warnings_payload_json.as_str(),
-                    turn.imported_at.as_str(),
-                    turn.updated_at.as_str(),
-                ],
-            )?;
-        }
+            params![
+                game_id,
+                turn.faction_id.as_str(),
+                turn.turn_number,
+                turn.raw_report.as_str(),
+                turn.parsed_payload_json.as_str(),
+                turn.warnings_payload_json.as_str(),
+                turn.imported_at.as_str(),
+                turn.updated_at.as_str(),
+            ],
+        )?;
+    }
 
-        for draft in &decoded.order_drafts {
-            transaction.execute(
-                "INSERT INTO order_drafts (
+    for draft in &order_drafts {
+        transaction.execute(
+            "INSERT INTO order_drafts (
                     game_id,
                     faction_id,
                     turn_number,
                     order_text,
                     updated_at
                  ) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![
-                    game_id.as_str(),
-                    draft.faction_id.as_str(),
-                    draft.turn_number,
-                    draft.order_text.as_str(),
-                    draft.updated_at.as_str(),
-                ],
-            )?;
-        }
+            params![
+                game_id,
+                draft.faction_id.as_str(),
+                draft.turn_number,
+                draft.order_text.as_str(),
+                draft.updated_at.as_str(),
+            ],
+        )?;
+    }
 
-        for sighting in &decoded.region_sightings {
-            let s = &sighting.sighting;
-            transaction.execute(
-                "INSERT INTO region_sightings (
+    for sighting in &region_sightings {
+        let s = &sighting.sighting;
+        transaction.execute(
+            "INSERT INTO region_sightings (
                     game_id,
                     faction_id,
                     region_id,
@@ -814,25 +851,25 @@ pub fn import_game(
                     last_seen_turn,
                     payload_json
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                params![
-                    game_id.as_str(),
-                    sighting.faction_id.as_str(),
-                    s.region_id.as_str(),
-                    s.x,
-                    s.y,
-                    s.z,
-                    s.terrain.as_str(),
-                    s.province.as_str(),
-                    s.label.as_str(),
-                    s.last_seen_turn,
-                    s.payload_json.as_str(),
-                ],
-            )?;
-        }
+            params![
+                game_id,
+                sighting.faction_id.as_str(),
+                s.region_id.as_str(),
+                s.x,
+                s.y,
+                s.z,
+                s.terrain.as_str(),
+                s.province.as_str(),
+                s.label.as_str(),
+                s.last_seen_turn,
+                s.payload_json.as_str(),
+            ],
+        )?;
+    }
 
-        for record in &decoded.merged_reports {
-            transaction.execute(
-                "INSERT INTO merged_reports (
+    for record in &merged_reports {
+        transaction.execute(
+            "INSERT INTO merged_reports (
                     game_id,
                     faction_id,
                     turn_number,
@@ -840,20 +877,20 @@ pub fn import_game(
                     merged_faction_name,
                     merged_at
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    game_id.as_str(),
-                    record.faction_id.as_str(),
-                    record.turn_number,
-                    record.merged_faction_id.as_str(),
-                    record.merged_faction_name.as_str(),
-                    record.merged_at.as_str(),
-                ],
-            )?;
-        }
+            params![
+                game_id,
+                record.faction_id.as_str(),
+                record.turn_number,
+                record.merged_faction_id.as_str(),
+                record.merged_faction_name.as_str(),
+                record.merged_at.as_str(),
+            ],
+        )?;
+    }
 
-        for note in &decoded.hex_notes {
-            transaction.execute(
-                "INSERT INTO hex_notes (
+    for note in &hex_notes {
+        transaction.execute(
+            "INSERT INTO hex_notes (
                     id,
                     game_id,
                     region_id,
@@ -863,22 +900,22 @@ pub fn import_game(
                     created_at,
                     updated_at
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                params![
-                    note.id.as_str(),
-                    game_id.as_str(),
-                    note.region_id.as_str(),
-                    note.text.as_str(),
-                    i64::from(note.on_map),
-                    note.turn,
-                    note.created_at.as_str(),
-                    note.updated_at.as_str(),
-                ],
-            )?;
-        }
+            params![
+                note.id.as_str(),
+                game_id,
+                note.region_id.as_str(),
+                note.text.as_str(),
+                i64::from(note.on_map),
+                note.turn,
+                note.created_at.as_str(),
+                note.updated_at.as_str(),
+            ],
+        )?;
+    }
 
-        for army in &decoded.armies {
-            transaction.execute(
-                "INSERT INTO armies (
+    for army in &armies {
+        transaction.execute(
+            "INSERT INTO armies (
                     id,
                     game_id,
                     name,
@@ -886,27 +923,17 @@ pub fn import_game(
                     created_at,
                     updated_at
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    army.id.as_str(),
-                    game_id.as_str(),
-                    army.name.as_str(),
-                    serde_json::to_string(&army.members)?.as_str(),
-                    army.created_at.as_str(),
-                    army.updated_at.as_str(),
-                ],
-            )?;
-        }
-
-        transaction.commit()?;
-        Ok(())
-    })();
-
-    if let Err(error) = import_result {
-        let _ = delete_game(games_root, &game_id);
-        return Err(error);
+            params![
+                army.id.as_str(),
+                game_id,
+                army.name.as_str(),
+                serde_json::to_string(&army.members)?.as_str(),
+                army.created_at.as_str(),
+                army.updated_at.as_str(),
+            ],
+        )?;
     }
-
-    Ok(opened)
+    Ok(())
 }
 
 /// Reads schema version from an existing database file.
@@ -3841,12 +3868,14 @@ mod region_sighting_tests {
             version: CURRENT_GAME_BACKUP_VERSION,
             exported_at: "2026-08-01T09:00:00Z".to_string(),
             manifest,
-            imported_turns: Vec::new(),
-            order_drafts: Vec::new(),
-            region_sightings: Vec::new(),
-            merged_reports: Vec::new(),
-            hex_notes: Vec::new(),
-            armies: Vec::new(),
+            collections: atlantis_hud_core::backup::EncodedGameBackupCollections {
+                imported_turns: Vec::new(),
+                order_drafts: Vec::new(),
+                region_sightings: Vec::new(),
+                merged_reports: Vec::new(),
+                hex_notes: Vec::new(),
+                armies: Vec::new(),
+            },
         })
         .expect("serialize backup");
         backup_json
@@ -3884,12 +3913,14 @@ mod region_sighting_tests {
                 created_at: "2026-08-01T09:00:00Z".to_string(),
                 last_opened_at: "2026-08-01T09:00:00Z".to_string(),
             },
-            imported_turns: Vec::new(),
-            order_drafts: Vec::new(),
-            region_sightings: Vec::new(),
-            merged_reports: Vec::new(),
-            hex_notes: Vec::new(),
-            armies: Vec::new(),
+            collections: atlantis_hud_core::backup::EncodedGameBackupCollections {
+                imported_turns: Vec::new(),
+                order_drafts: Vec::new(),
+                region_sightings: Vec::new(),
+                merged_reports: Vec::new(),
+                hex_notes: Vec::new(),
+                armies: Vec::new(),
+            },
         })
         .expect("serialize backup");
 
