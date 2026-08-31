@@ -20155,7 +20155,12 @@ mod tests {
                         "1:7,53",
                         7,
                         53,
-                        vec![with_race(unit("500"), 3, "leaders", "LEAD")],
+                        vec![with_race(
+                            with_silver(unit("500"), 1000),
+                            3,
+                            "leaders",
+                            "LEAD",
+                        )],
                     ),
                     region_at("1:8,53", 8, 53, vec![foreign]),
                 ],
@@ -20169,7 +20174,7 @@ mod tests {
     fn a_new_student_is_accepted_on_doubt() {
         assert!(codes(&check(
             vec![region(vec![with_race(
-                with_skill(with_men(unit("500"), 3), "COMB", 3),
+                with_skill(with_men(with_silver(unit("500"), 3_000), 3), "COMB", 3),
                 3,
                 "leaders",
                 "LEAD",
