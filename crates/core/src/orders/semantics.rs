@@ -19201,6 +19201,80 @@ mod tests {
         );
     }
 
+    #[test]
+    fn an_unready_guard_is_rejected_on_its_final_order() {
+        let mut leaving = unit("5");
+        leaving.on_guard = true;
+        let findings = check(
+            vec![region(vec![leaving, unit("7")])],
+            "unit 5\nMOVE N\nunit 7\nGUARD 1\n",
+        );
+        assert!(codes(&findings).contains(&codes::GUARD_DROPPED.as_str()));
+        let warning = findings
+            .iter()
+            .find(|finding| finding.code == codes::GUARD_WITHOUT_TAX_ABILITY)
+            .expect("ineligible final guard should be explained");
+        assert_eq!(warning.unit_id.as_deref(), Some("7"));
+        assert_eq!(warning.line, Some(4));
+        assert_eq!(
+            warning.message,
+            "cannot guard: this unit cannot tax — it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
+        );
+    }
+
+    #[test]
+    fn only_the_final_guard_order_is_judged() {
+        let first = check(vec![region(vec![unit("7")])], "unit 7\nGUARD 1\nGUARD 0\n");
+        assert!(!codes(&first).contains(&codes::GUARD_WITHOUT_TAX_ABILITY.as_str()));
+        let second = check(vec![region(vec![unit("7")])], "unit 7\nGUARD 0\nGUARD 1\n");
+        assert_eq!(
+            second
+                .iter()
+                .filter(|finding| finding.code == codes::GUARD_WITHOUT_TAX_ABILITY)
+                .count(),
+            1
+        );
+        assert_eq!(
+            second
+                .iter()
+                .find(|finding| finding.code == codes::GUARD_WITHOUT_TAX_ABILITY)
+                .and_then(|finding| finding.line),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn disabling_guard_eligibility_keeps_guard_dropped() {
+        let mut leaving = unit("5");
+        leaving.on_guard = true;
+        let mut options = disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]);
+        options
+            .disabled
+            .insert(codes::GUARD_WITHOUT_TAX_ABILITY.to_string());
+        let findings = check_turn(
+            &report(vec![region(vec![leaving, unit("7")])]),
+            "unit 5\nMOVE N\nunit 7\nGUARD 1\n",
+            Some(&ruleset()),
+            options,
+        );
+        assert!(!codes(&findings).contains(&codes::GUARD_WITHOUT_TAX_ABILITY.as_str()));
+        assert!(codes(&findings).contains(&codes::GUARD_DROPPED.as_str()));
+    }
+
+    #[test]
+    fn unknown_guard_readiness_is_accepted() {
+        let mut leaving = unit("5");
+        leaving.on_guard = true;
+        let findings = check_turn(
+            &report(vec![region(vec![leaving, unit("7")])]),
+            "unit 5\nMOVE N\nunit 7\nGUARD 1\n",
+            None,
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        );
+        assert!(!codes(&findings).contains(&codes::GUARD_DROPPED.as_str()));
+        assert!(!codes(&findings).contains(&codes::GUARD_WITHOUT_TAX_ABILITY.as_str()));
+    }
+
     /// The one code disabled by default is `hex-unguarded`; every other advisory code still fires.
     #[test]
     fn default_options_disable_only_the_broad_guard_check() {
