@@ -567,6 +567,12 @@ export const WARNING_GROUPS: readonly {
           "A GIVE or TAKE naming a unit the report does not show in that hex, or a NEW number no FORM order there creates."
       },
       {
+        code: "take-from-another-faction",
+        title: "Taking from another faction",
+        description:
+          "A TAKE naming a visible unit from another faction, which the game will refuse."
+      },
+      {
         code: "arrivals-lower-a-skill",
         title: "Arrivals that lower a skill",
         description:

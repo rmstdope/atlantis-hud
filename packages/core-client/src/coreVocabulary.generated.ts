@@ -16,6 +16,7 @@ export const ADVISORY_CHECK_CODES = [
   "fleet-overloaded",
   "fleet-undercrewed",
   "give-target-not-here",
+  "take-from-another-faction",
   "not-traded-here",
   "unit-overloaded",
   "too-many-quartermasters",
