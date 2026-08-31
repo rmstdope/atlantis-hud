@@ -142,6 +142,7 @@ describe("the Warnings settings tab", () => {
       "Unguarded hexes",
       "Reused FORM numbers",
       "Gifts to units that are not here",
+      "Taking from another faction",
       "Overloaded units",
       "Units that do nothing",
       "Building what is built",
@@ -170,6 +171,9 @@ describe("the Warnings settings tab", () => {
     );
     expect(html).toContain(
       "A GUARD 1 order given to a unit that cannot tax and therefore cannot guard."
+    );
+    expect(html).toContain(
+      "A TAKE naming a visible unit from another faction, which the game will refuse."
     );
 
     // Two orders draw on the one fund, and the description is where that detail lives - the row's

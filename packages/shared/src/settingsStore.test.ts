@@ -167,6 +167,7 @@ describe("settings store", () => {
     applyPersistedSettings();
 
     expect(store().advisoryChecks["upkeep-exceeds-unclaimed"]).toBe(true);
+    expect(store().advisoryChecks["take-from-another-faction"]).toBe(true);
   });
 
   /**

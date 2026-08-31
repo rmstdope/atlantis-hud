@@ -22127,6 +22127,30 @@ mod tests {
     }
 
     #[test]
+    fn a_take_from_a_visible_foreign_unit_names_the_faction_rule() {
+        let mut foreign = unit("900");
+        foreign.own = false;
+        let finding = only(check(
+            vec![region(vec![unit("4426"), foreign])],
+            "unit 4426\nTAKE FROM 900 50 SILV\n",
+        ));
+        assert_eq!(finding.code, Code("take-from-another-faction"));
+        assert_eq!(finding.message, "unit 900 belongs to another faction, so this TAKE moves nothing");
+    }
+
+    #[test]
+    fn a_take_from_a_concealed_foreign_unit_names_the_faction_rule() {
+        let mut foreign = unit("900");
+        foreign.own = false;
+        foreign.faction_id = None;
+        let finding = only(check(
+            vec![region(vec![unit("4426"), foreign])],
+            "unit 4426\nTAKE FROM 900 50 SILV\n",
+        ));
+        assert_eq!(finding.code, Code("take-from-another-faction"));
+    }
+
+    #[test]
     fn a_take_from_a_unit_in_no_region_says_so() {
         let finding = only(check(
             vec![region(vec![unit("4426")])],
