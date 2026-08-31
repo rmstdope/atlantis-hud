@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ah-2etj guard warning</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: #101417; color: #ddd6c8; }
+    main { max-width: 940px; margin: 30px auto; padding: 0 16px; }
+    h1 { margin-bottom: 4px; color: #d5b56a; font-size: 22px; }
+    .intro { margin-top: 0; color: #aaa397; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card { border: 1px solid #554b39; border-radius: 6px; background: #171c20; overflow: hidden; }
+    .head { padding: 7px 10px; border-bottom: 1px solid #554b39; color: #d5b56a; background: #211e18; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    .body { padding: 10px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #eee4d1; }
+    .finding { display: flex; gap: 7px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #332f28; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .warn { color: #e2b94c; }
+    .who { color: #d5b56a; }
+    .quiet { color: #9f998d; font-size: 13px; }
+    .setting { display: flex; align-items: start; gap: 10px; }
+    .toggle { position: relative; width: 36px; height: 20px; border-radius: 20px; background: #b38b31; flex: none; }
+    .toggle::after { content: ""; position: absolute; top: 3px; right: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff7e7; }
+    .title { font-weight: 650; }
+    .desc { color: #aaa397; font-size: 13px; line-height: 1.4; }
+    .narrow { width: 310px; max-width: 100%; margin-top: 12px; }
+    .narrow .finding { padding: 10px; margin: 0; border: 0; }
+    @media (max-width: 650px) {
+      main { margin: 16px auto; padding: 0 10px; }
+      .grid { grid-template-columns: 1fr; }
+      h1 { font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>GUARD eligibility warning — chosen design</h1>
+  <p class="intro">The line-level warning is independent from the hex-level dropped-guard warning. It appears only when failure is certain.</p>
+  <div class="grid">
+    <section class="card">
+      <div class="head">Definitely ineligible</div>
+      <div class="body"><code>unit 7<br>GUARD 1</code>
+        <div class="finding"><span class="warn">⚠</span><span class="who">7</span><span>cannot guard: this unit cannot tax — it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell</span></div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="head">Specific near miss</div>
+      <div class="body"><code>unit 8<br>GUARD 1</code>
+        <div class="finding"><span class="warn">⚠</span><span class="who">8</span><span>cannot guard: this unit cannot tax — its 3 horses need riding 1, and it has no riding</span></div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="head">Eligible</div>
+      <div class="body"><code>unit 9<br>GUARD 1</code>
+        <p class="quiet">No eligibility warning. The unit counts as the next guard.</p>
+      </div>
+    </section>
+    <section class="card">
+      <div class="head">Facts unavailable</div>
+      <div class="body"><code>unit 10<br>GIVE 11 ALL WEAPONS<br>GUARD 1</code>
+        <p class="quiet">No eligibility warning. The unit conservatively counts as the next guard because its final equipment cannot be known.</p>
+      </div>
+    </section>
+  </div>
+  <section class="card" style="margin-top:12px">
+    <div class="head">Settings › Guarding</div>
+    <div class="body setting">
+      <span class="toggle" aria-hidden="true"></span>
+      <div><div class="title">Guards that cannot take watch</div><div class="desc">A GUARD 1 order given to a unit that cannot tax and therefore cannot guard.</div></div>
+    </div>
+  </section>
+  <section class="card narrow">
+    <div class="head">310 px problems pane</div>
+    <div class="finding"><span class="warn">⚠</span><span class="who">8</span><span>cannot guard: this unit cannot tax — its 3 horses need riding 1, and it has no riding</span></div>
+  </section>
+</main>
+</body>
+</html>
