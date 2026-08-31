@@ -15617,7 +15617,7 @@ mod tests {
     fn a_teaching_unit_is_still_weighed_for_spare_capacity() {
         let findings = check(
             vec![region(vec![
-                with_skill(unit("1"), "COMB", 2),
+                with_leaders(with_skill(unit("1"), "COMB", 2), 1),
                 unit("2"),
                 unit("3"),
             ])],
@@ -19503,7 +19503,10 @@ mod tests {
 
     fn teaching_hex() -> Vec<ReportUnit> {
         vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
         ]
     }
@@ -19562,7 +19565,10 @@ mod tests {
     #[test]
     fn a_teacher_who_is_not_above_the_student_is_warned_about() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 2),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 2),
+                3,
+            ),
             with_skill(with_men(with_silver(unit("700"), 1000), 2), "COMB", 2),
         ];
 
@@ -19596,7 +19602,10 @@ mod tests {
     #[test]
     fn a_teacher_with_free_slots_beside_an_untaught_student_is_pointed_out() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
             with_men(with_silver(unit("900"), 1000), 2),
         ];
@@ -19618,7 +19627,10 @@ mod tests {
     #[test]
     fn a_unit_that_is_not_teaching_is_not_offered_as_a_teacher() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
         ];
 
@@ -19634,7 +19646,10 @@ mod tests {
     #[test]
     fn a_unit_that_gives_but_does_not_teach_is_not_offered() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
         ];
 
@@ -19653,7 +19668,10 @@ mod tests {
     #[test]
     fn a_teacher_whose_only_student_is_not_here_is_not_told_about_free_slots() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
         ];
 
@@ -19671,7 +19689,10 @@ mod tests {
     #[test]
     fn slots_held_by_a_student_that_leaves_the_hex_are_still_free() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+                1,
+            ),
             with_men(with_silver(unit("700"), 1000), 8),
             with_men(with_silver(unit("800"), 1000), 2),
             with_men(with_silver(unit("900"), 1000), 2),
@@ -19696,7 +19717,10 @@ mod tests {
     #[test]
     fn a_teacher_whose_only_student_leaves_the_hex_is_not_told_about_free_slots() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
             with_men(with_silver(unit("900"), 1000), 2),
         ];
@@ -19715,7 +19739,10 @@ mod tests {
     #[test]
     fn a_teacher_with_one_absent_student_and_one_real_one_is_still_told_about_free_slots() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
             with_men(with_silver(unit("900"), 1000), 2),
         ];
@@ -19734,7 +19761,10 @@ mod tests {
     #[test]
     fn a_teacher_naming_only_a_new_unit_is_not_told_about_free_slots() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
         ];
 
@@ -19754,7 +19784,10 @@ mod tests {
     #[test]
     fn a_mage_that_casts_and_teaches_is_offered_its_free_slots() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
             with_men(with_silver(unit("900"), 1000), 2),
         ];
@@ -19771,7 +19804,10 @@ mod tests {
     #[test]
     fn a_teacher_with_every_slot_taken_is_silent() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+                1,
+            ),
             with_men(with_silver(unit("700"), 1000), 10),
             with_men(with_silver(unit("900"), 1000), 2),
         ];
@@ -19790,8 +19826,14 @@ mod tests {
     #[test]
     fn a_teacher_whose_students_are_all_taught_by_others_is_silent() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
-            with_skill(with_men(with_silver(unit("600"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("600"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
             with_men(with_silver(unit("900"), 1000), 2),
         ];
@@ -19814,7 +19856,10 @@ mod tests {
     #[test]
     fn a_unit_spending_its_own_month_is_not_offered_as_a_teacher() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
         ];
 
@@ -19834,7 +19879,10 @@ mod tests {
     #[test]
     fn a_unit_building_is_not_offered_as_a_spare_teacher() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
         ];
 
@@ -19852,7 +19900,10 @@ mod tests {
     #[test]
     fn a_teacher_who_could_take_several_students_is_reported_once() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_men(with_silver(unit("700"), 1000), 2),
             with_men(with_silver(unit("800"), 1000), 2),
             with_men(with_silver(unit("900"), 1000), 2),
@@ -19873,7 +19924,10 @@ mod tests {
     #[test]
     fn a_student_already_being_taught_is_not_offered_a_second_teacher() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
             with_skill(with_men(with_silver(unit("600"), 1000), 3), "COMB", 3),
             with_men(with_silver(unit("700"), 1000), 2),
         ];
@@ -19892,7 +19946,7 @@ mod tests {
     #[test]
     fn more_students_than_slots_dilutes_the_teaching() {
         let units = vec![
-            with_skill(with_silver(unit("500"), 1000), "COMB", 3),
+            with_leaders(with_skill(with_silver(unit("500"), 1000), "COMB", 3), 1),
             with_men(with_silver(unit("700"), 1000), 20),
         ];
 
@@ -19913,7 +19967,10 @@ mod tests {
     #[test]
     fn without_a_ruleset_teaching_levels_are_not_judged() {
         let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 1),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 1),
+                3,
+            ),
             with_skill(with_men(with_silver(unit("700"), 1000), 2), "COMB", 5),
         ];
         let regions = vec![region(units)];
@@ -21687,7 +21744,10 @@ mod tests {
     fn a_unit_that_teaches_is_silent() {
         let findings = check_idle(
             vec![region(vec![
-                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 2),
+                with_leaders(
+                    with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 2),
+                    3,
+                ),
                 with_skill(with_silver(unit("700"), 1000), "COMB", 1),
             ])],
             "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
@@ -22129,11 +22189,14 @@ mod tests {
         let mut guard_dropping = unit("5");
         guard_dropping.on_guard = true;
         let teacher_below_student = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 2),
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 2),
+                3,
+            ),
             with_skill(with_men(with_silver(unit("700"), 1000), 2), "COMB", 2),
         ];
         let oversubscribed = vec![
-            with_skill(with_silver(unit("500"), 1000), "COMB", 3),
+            with_leaders(with_skill(with_silver(unit("500"), 1000), "COMB", 3), 1),
             with_men(with_silver(unit("700"), 1000), 20),
         ];
 
@@ -22225,7 +22288,10 @@ mod tests {
             Case {
                 code: codes::TEACHER_HAS_FREE_SLOTS,
                 regions: vec![region(vec![
-                    with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                    with_leaders(
+                        with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                        3,
+                    ),
                     with_men(with_silver(unit("700"), 1000), 2),
                     with_men(with_silver(unit("900"), 1000), 2),
                 ])],
@@ -25537,10 +25603,10 @@ mod tests {
 
     #[test]
     fn a_teacher_given_the_skill_can_now_teach_it() {
-        let teacher = with_men(with_silver(unit("500"), 1000), 1);
+        let teacher = with_leaders(with_men(with_silver(unit("500"), 1000), 1), 1);
         let pupil = with_men(with_silver(unit("700"), 1000), 2);
-        let giver = with_skill_pts(men_holder("1010", 5), "COMB", 300);
-        let orders = "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 1010\nGIVE 500 5 HUMN\n";
+        let giver = with_leaders(with_skill_pts(men_holder("1010", 5), "COMB", 300), 5);
+        let orders = "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 1010\nGIVE 500 5 LEAD\n";
 
         let findings = check(vec![region(vec![teacher, pupil, giver])], orders);
 
@@ -25552,12 +25618,12 @@ mod tests {
 
     #[test]
     fn a_teacher_given_the_skill_is_offered_the_free_slots_it_now_has() {
-        let teacher = with_men(with_silver(unit("500"), 1000), 1);
+        let teacher = with_leaders(with_men(with_silver(unit("500"), 1000), 1), 1);
         let taught = with_men(with_silver(unit("700"), 1000), 2);
         let untaught = with_men(with_silver(unit("900"), 1000), 2);
-        let giver = with_skill_pts(men_holder("1010", 5), "COMB", 300);
+        let giver = with_leaders(with_skill_pts(men_holder("1010", 5), "COMB", 300), 5);
         let orders = "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n\
-                      unit 1010\nGIVE 500 5 HUMN\n";
+                      unit 1010\nGIVE 500 5 LEAD\n";
 
         let findings = check(vec![region(vec![teacher, taught, untaught, giver])], orders);
 
