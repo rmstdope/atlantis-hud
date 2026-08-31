@@ -35,7 +35,7 @@ use std::collections::{BTreeMap, BinaryHeap};
 use serde::{Deserialize, Serialize};
 
 use crate::movement::graph::{Direction, KnownHex, MapKnowledge};
-use crate::movement::mode::{fleet_of, fleet_sailing, mobility, Mobility};
+use crate::movement::mode::{fleet_of, fleet_sailing, mobility_with_ruleset, Mobility};
 use crate::movement::orders::{render_move, render_sail, MoveStep};
 use crate::movement::rules::{MovementMode, Ruleset};
 use crate::report::model::{Coordinate, ReportUnit};
@@ -142,7 +142,7 @@ pub fn plan_route(
     // aboard at all, rather than guessing a ship's speed.
     let (mode, points_per_month) = match sail_mode(ruleset, unit, origin_hex)? {
         Some(resolved) => resolved,
-        None => match mobility(unit) {
+        None => match mobility_with_ruleset(unit, ruleset) {
             Mobility::Moves(mode) => (mode, ruleset.movement_points(mode)),
             Mobility::Overloaded => return Err(RouteProblem::Overloaded),
             Mobility::Unstated => return Err(RouteProblem::MobilityUnstated),
