@@ -584,6 +584,11 @@ export const WARNING_GROUPS: readonly {
         description: "PRODUCE orders in more regions than the faction's allowance permits."
       },
       {
+        code: "withdraw-in-nexus",
+        title: "Withdrawing in the Nexus",
+        description: "WITHDRAW orders in the Nexus, where the order cannot be used."
+      },
+      {
         code: "unit-overloaded",
         title: "Overloaded units",
         description: "A unit ordered to move carrying more than it can move with."
