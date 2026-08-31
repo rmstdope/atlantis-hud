@@ -3888,9 +3888,10 @@ fn check_pillaged_tax(
 
 /// Our units taxing or pillaging a hex a foreign unit is guarding.
 ///
-/// One finding per affected order line, like its sibling `check_pillaged_tax`. It says **may**
-/// rather than **will**: whether the guard actually blocks us turns on that faction's declared
-/// attitude toward ours, which our report does not state (`ah-g7ts`).
+/// One finding per affected order line, like its sibling `check_pillaged_tax`. TAX says **may**
+/// because whether the guard blocks it turns on that faction's declared attitude toward ours,
+/// which our report does not state (`ah-g7ts`). PILLAGE says **will**, because a foreign guard
+/// always blocks it (`rules/economy_taxingpillaging`).
 ///
 /// On a `TAX` line in a hex one of our own units is also pillaging, `taxed-a-pillaged-hex` already
 /// says the money is certainly gone - so this weaker restatement is suppressed there. On a
@@ -3898,7 +3899,7 @@ fn check_pillaged_tax(
 /// may.
 ///
 /// A unit that taxes by its flag has no `TAX` line to hang the mark on, so it is marked on its
-/// block instead, in the same words - but only when it has no `TAX` line of its own, so one unit
+/// block instead, with the TAX wording - but only when it has no `TAX` line of its own, so one unit
 /// never reads the same sentence twice, and only in a hex nobody is pillaging, for the same reason
 /// a `TAX` line is spared there (`ah-leeg`).
 fn check_guarded_tax(
@@ -3926,7 +3927,10 @@ fn check_guarded_tax(
             findings.push(ordered.finding(
                 hex,
                 codes::TAXED_A_GUARDED_HEX,
-                format!("a foreign unit is guarding this hex, so this {order} may collect nothing"),
+                format!(
+                    "a foreign unit is guarding this hex, so this {order} {} collect nothing",
+                    if order == "PILLAGE" { "will" } else { "may" }
+                ),
                 Some(placed),
             ));
         }
@@ -7816,7 +7820,7 @@ fn check_forms(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding
                     hex,
                     codes::FORM_ALIAS_REUSED,
                     format!(
-                        "FORM {alias} again: {where_} already forms NEW {alias} in this hex, so this block is refused"
+                        "FORM {alias} again: {where_} already forms NEW {alias} in this hex; the rules say not to reuse an alias here"
                     ),
                     Some(placed),
                 ));
@@ -12894,7 +12898,7 @@ mod tests {
         assert_eq!(told.len(), 1, "one, on the PILLAGE line: {told:?}");
         assert_eq!(
             told[0].message,
-            "a foreign unit is guarding this hex, so this PILLAGE may collect nothing"
+            "a foreign unit is guarding this hex, so this PILLAGE will collect nothing"
         );
     }
 
@@ -12943,7 +12947,7 @@ mod tests {
                 .iter()
                 .any(|finding| finding.code == codes::TAXED_A_GUARDED_HEX
                     && finding.unit_id.as_deref() == Some("1")),
-            "our own pillage does not stop our pillager, but the guard may: {:?}",
+            "our own pillage does not stop our pillager, but the foreign guard does: {:?}",
             codes(&review.findings)
         );
     }
@@ -21991,7 +21995,7 @@ mod tests {
         assert_eq!(finding.line, Some(5));
         assert_eq!(
             finding.message,
-            "FORM 1 again: line 2 already forms NEW 1 in this hex, so this block is refused"
+            "FORM 1 again: line 2 already forms NEW 1 in this hex; the rules say not to reuse an alias here"
         );
     }
 
@@ -22026,7 +22030,7 @@ mod tests {
         assert_eq!(finding.line, Some(5));
         assert_eq!(
             finding.message,
-            "FORM 1 again: unit 5 (line 2) already forms NEW 1 in this hex, so this block is refused"
+            "FORM 1 again: unit 5 (line 2) already forms NEW 1 in this hex; the rules say not to reuse an alias here"
         );
     }
 
