@@ -2651,9 +2651,25 @@ fn level_in(skills: &[Skill], tag: &str) -> u32 {
         .map_or(0, |skill| skill.level)
 }
 
+fn sailing_level_phrase(levels: i64, noun: &str) -> String {
+    format!(
+        "{levels} {}",
+        if levels == 1 {
+            noun.strip_suffix('s').unwrap_or(noun)
+        } else {
+            noun
+        }
+    )
+}
+
 impl Ordered<'_> {
     fn intents(&self) -> impl Iterator<Item = &Intent> {
         self.intents.iter().map(|placed| &placed.intent)
+    }
+
+    fn issues_sail(&self) -> bool {
+        self.intents()
+            .any(|intent| matches!(intent, Intent::Sail { .. }))
     }
 
     /// Whether the unit's orders take it out of the hex. Entering or leaving a structure moves it
@@ -8184,9 +8200,26 @@ fn check_sailing(
                     .map(move |skill| i64::from(skill.level) * men)
             })
             .sum();
+        let helping: Vec<&Ordered<'_>> = aboard
+            .iter()
+            .copied()
+            .filter(|ordered| ordered.issues_sail())
+            .collect();
+        let helping_levels: i64 = helping
+            .iter()
+            .flat_map(|ordered| {
+                let men = ordered.unit.men;
+                ordered
+                    .unit
+                    .skills
+                    .iter()
+                    .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
+                    .map(move |skill| i64::from(skill.level) * men)
+            })
+            .sum();
         // The same after this month's transfers of men. `None` from any unit aboard silences the
         // crew check for the whole fleet - one unknowable unit makes the fleet's total unknowable.
-        let crews: Option<Vec<CrewAfterOrders>> = aboard
+        let crews: Option<Vec<CrewAfterOrders>> = helping
             .iter()
             .map(|ordered| sailing_levels_after_orders(ordered, ruleset))
             .collect();
@@ -8195,7 +8228,7 @@ fn check_sailing(
         // bead's own PR. A unit whose sums the ledger could not follow is the same kind of doubt,
         // and both guard the crew finding alone: the load half has never consulted `doubted`, and
         // silencing overload warnings here would be a regression.
-        let headcount_is_doubtful = aboard.iter().any(|ordered| {
+        let headcount_is_doubtful = helping.iter().any(|ordered| {
             ordered.unit.men_estimated || ledger.doubted.contains(&ordered.unit.unit_id)
         });
         if let (Some(crews), Some(required)) = (crews, sailing_requirement(fleet, ruleset)) {
@@ -8205,24 +8238,50 @@ fn check_sailing(
                 && levels < required
                 && options.emits(codes::FLEET_UNDERCREWED)
             {
-                let crew = if men_joined && levels != reported_levels {
+                let crew = if helping_levels < reported_levels {
+                    let participation = format!(
+                        "{} aboard, but {} {} helping with SAIL",
+                        sailing_level_phrase(reported_levels, "sailing levels"),
+                        helping_levels,
+                        if helping_levels == 1 { "is" } else { "are" }
+                    );
+                    if men_joined {
+                        format!(
+                            "{participation}, and {levels} once the men joining the crew this \
+                             month are counted; it needs {required}"
+                        )
+                    } else if levels < helping_levels {
+                        format!(
+                            "{participation}, less {} given away this month; it needs {required}",
+                            helping_levels - levels
+                        )
+                    } else {
+                        format!("{participation}; it needs {required}")
+                    }
+                } else if men_joined && levels != helping_levels {
                     // Men joining the crew this month, whatever else moved - shown first so a
                     // fleet where men both joined and left still gets the joining clause rather
                     // than "given away" (the navigator's decision, `ah-z73s3-wording-2.html`).
                     format!(
-                        "{reported_levels} sailing levels aboard, {levels} once the men joining \
-                         the crew this month are counted, it needs {required}"
+                        "{} aboard and helping with SAIL, {} once the men joining the crew this \
+                         month are counted; it needs {required}",
+                        sailing_level_phrase(helping_levels, "sailing levels"),
+                        levels
                     )
-                } else if levels < reported_levels {
+                } else if levels < helping_levels {
                     format!(
-                        "{reported_levels} sailing levels aboard less {} given away this month, \
-                         it needs {required}",
-                        reported_levels - levels
+                        "all {} aboard are helping with SAIL, less {} given away this month; it \
+                         needs {required}",
+                        sailing_level_phrase(helping_levels, "sailing levels"),
+                        helping_levels - levels
                     )
                 } else {
                     // Unchanged, and the sentence `ah-j0e` already shipped: the crew did not move
                     // this month, so there is no before-and-after to draw.
-                    format!("{levels} sailing levels aboard, it needs {required}")
+                    format!(
+                        "all {} aboard are helping with SAIL; it needs {required}",
+                        sailing_level_phrase(levels, "sailing levels")
+                    )
                 };
                 findings.push(captain.finding(
                     hex,
@@ -23064,8 +23123,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             crew.message,
-            "Longship [329] is short of sailors: 4 sailing levels aboard, 0 once the men joining \
-             the crew this month are counted, it needs 4, so it will not sail"
+            "Longship [329] is short of sailors: 4 sailing levels aboard and helping with SAIL, 0 \
+             once the men joining the crew this month are counted; it needs 4, so it will not sail"
         );
     }
 
@@ -23152,7 +23211,10 @@ mod tests {
         };
 
         assert_eq!(
-            codes(&check(vec![region], "unit 11125\nSAIL N\n")),
+            codes(&check(
+                vec![region],
+                "unit 11125\nSAIL N\nunit 12590\nSAIL N\n",
+            )),
             Vec::<&str>::new()
         );
     }
@@ -23167,7 +23229,10 @@ mod tests {
             ])
         };
 
-        let finding = only(check(vec![region], "unit 11125\nSAIL N\n"));
+        let finding = only(check(
+            vec![region],
+            "unit 11125\nSAIL N\nunit 12590\nSAIL N\n",
+        ));
         assert_eq!(finding.code.as_str(), "fleet-overloaded");
         assert_eq!(finding.unit_id, Some("11125".to_string()));
         assert_eq!(finding.line, Some(2));
@@ -23191,7 +23256,7 @@ mod tests {
         assert_eq!(finding.code.as_str(), "fleet-undercrewed");
         assert_eq!(
             finding.message,
-            "Longship [329] is short of sailors: 2 sailing levels aboard, it needs 4, so it will not sail"
+            "Longship [329] is short of sailors: all 2 sailing levels aboard are helping with SAIL; it needs 4, so it will not sail"
         );
     }
 
@@ -23254,8 +23319,8 @@ mod tests {
         assert_eq!(found.unit_id.as_deref(), Some("9508"));
         assert_eq!(
             found.message,
-            "Raft [218] is short of sailors: 2 sailing levels aboard less 1 given away this \
-             month, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: all 2 sailing levels aboard are helping with SAIL, \
+             less 1 given away this month; it needs 2, so it will not sail"
         );
     }
 
@@ -23272,8 +23337,8 @@ mod tests {
         assert_eq!(found.code, codes::FLEET_UNDERCREWED);
         assert_eq!(
             found.message,
-            "Raft [218] is short of sailors: 2 sailing levels aboard less 1 given away this \
-             month, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: all 2 sailing levels aboard are helping with SAIL, \
+             less 1 given away this month; it needs 2, so it will not sail"
         );
     }
 
@@ -23319,8 +23384,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             crew.message,
-            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
-             crew this month are counted, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: 1 sailing level aboard and helping with SAIL, 0 once \
+             the men joining the crew this month are counted; it needs 2, so it will not sail"
         );
     }
 
@@ -23350,8 +23415,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             crew.message,
-            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
-             crew this month are counted, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: 1 sailing level aboard and helping with SAIL, 0 once \
+             the men joining the crew this month are counted; it needs 2, so it will not sail"
         );
     }
 
@@ -23461,8 +23526,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             crew.message,
-            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
-             crew this month are counted, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: 1 sailing level aboard and helping with SAIL, 0 once \
+             the men joining the crew this month are counted; it needs 2, so it will not sail"
         );
     }
 
@@ -23478,8 +23543,8 @@ mod tests {
         assert_eq!(found.code, codes::FLEET_UNDERCREWED);
         assert_eq!(
             found.message,
-            "Raft [218] is short of sailors: 2 sailing levels aboard less 2 given away this \
-             month, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: all 2 sailing levels aboard are helping with SAIL, \
+             less 2 given away this month; it needs 2, so it will not sail"
         );
     }
 
@@ -23503,8 +23568,8 @@ mod tests {
         // (1*30 + 1*30)/2 = 30, level 1, two men, so 2 levels against 4.
         assert_eq!(
             found.message,
-            "Longship [329] is short of sailors: 1 sailing levels aboard, 2 once the men joining \
-             the crew this month are counted, it needs 4, so it will not sail"
+            "Longship [329] is short of sailors: 1 sailing level aboard and helping with SAIL, 2 \
+             once the men joining the crew this month are counted; it needs 4, so it will not sail"
         );
     }
 
@@ -23534,8 +23599,8 @@ mod tests {
         // (1*30 + 4*0)/5 = 6 points, level 0, five men, so 0 levels against the raft's 2.
         assert_eq!(
             found.message,
-            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
-             crew this month are counted, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: 1 sailing level aboard and helping with SAIL, 0 once \
+             the men joining the crew this month are counted; it needs 2, so it will not sail"
         );
     }
 
