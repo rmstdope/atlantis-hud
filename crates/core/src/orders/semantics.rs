@@ -85,6 +85,10 @@ impl Code {
     }
 }
 
+fn withdrawal_refused(region: &ReportRegion) -> bool {
+    region.terrain.eq_ignore_ascii_case("nexus")
+}
+
 impl std::fmt::Display for Code {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.0)
@@ -138,6 +142,7 @@ pub mod codes {
     pub const ITEMS_CANNOT_BE_GIVEN: Code = Code("items-cannot-be-given");
     pub const NOTHING_LEFT_TO_BUY: Code = Code("nothing-left-to-buy");
     pub const TWO_MONTH_LONG_ORDERS: Code = Code("two-month-long-orders");
+    pub const WITHDRAW_IN_NEXUS: Code = Code("withdraw-in-nexus");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -187,6 +192,7 @@ pub mod codes {
         TWO_MONTH_LONG_ORDERS,
         MAGIC_STUDY_CAPPED_BY_PREREQUISITES,
         GUARD_WITHOUT_TAX_ABILITY,
+        WITHDRAW_IN_NEXUS,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -512,6 +518,7 @@ pub fn review_turn(
         check_transfer_targets(hex, &located, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
         check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
+        check_withdraw_in_nexus(hex, &options, &mut findings);
         check_sailing(hex, ledger, ruleset, &options, &mut findings);
         check_movement(hex, ledger, ruleset, &options, &mut findings);
 
@@ -4143,6 +4150,9 @@ fn apply(
         // bead was not asked to touch. Recording the movement without the credit gives the ITEMS
         // column its projection and leaves every warning exactly as it is.
         Intent::Withdraw { count, item } => {
+            if withdrawal_refused(hex.region) {
+                return;
+            }
             if let Some(tag) = resolve_item(item, hex, actor, ruleset) {
                 ledger.movements.push(ItemMovement {
                     unit_id: who.clone(),
@@ -8666,20 +8676,42 @@ fn total_drawn_from_fund(
     ordered: &OrderedUnits,
     ruleset: Option<&Ruleset>,
 ) -> Option<i64> {
-    report
-        .regions
-        .iter()
-        .flat_map(|region| region.units.iter())
-        .filter(|unit| unit.own)
-        .flat_map(|unit| ordered.intents_of(&unit.unit_id).iter())
-        .try_fold(0i64, |total, placed| match &placed.intent {
-            Intent::Claim(amount) => Some(total.saturating_add(*amount)),
-            Intent::Withdraw { count, item } => {
-                let cost = withdrawal_cost(item, ruleset)?;
-                Some(total.saturating_add(count.saturating_mul(cost)))
+    report.regions.iter().try_fold(0i64, |total, region| {
+        region
+            .units
+            .iter()
+            .filter(|unit| unit.own)
+            .flat_map(|unit| ordered.intents_of(&unit.unit_id).iter())
+            .try_fold(total, |total, placed| match &placed.intent {
+                Intent::Claim(amount) => Some(total.saturating_add(*amount)),
+                Intent::Withdraw { count, item } => {
+                    if withdrawal_refused(region) {
+                        return Some(total);
+                    }
+                    let cost = withdrawal_cost(item, ruleset)?;
+                    Some(total.saturating_add(count.saturating_mul(cost)))
+                }
+                _ => Some(total),
+            })
+    })
+}
+
+fn check_withdraw_in_nexus(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !withdrawal_refused(hex.region) || !options.emits(codes::WITHDRAW_IN_NEXUS) {
+        return;
+    }
+    for ordered in &hex.units {
+        for placed in ordered.intents {
+            if matches!(placed.intent, Intent::Withdraw { .. }) {
+                findings.push(ordered.finding(
+                    hex,
+                    codes::WITHDRAW_IN_NEXUS,
+                    "cannot withdraw in the Nexus".to_string(),
+                    Some(placed),
+                ));
             }
-            _ => Some(total),
-        })
+        }
+    }
 }
 
 /// What the ruleset says one of `item` costs to withdraw, or `None` where it says nothing.
@@ -8833,12 +8865,25 @@ fn check_claims(
             ordered
                 .intents_of(&unit.unit_id)
                 .iter()
-                .filter(|placed| {
-                    matches!(placed.intent, Intent::Claim(_) | Intent::Withdraw { .. })
-                })
+                .filter(|placed| matches!(placed.intent, Intent::Claim(_)))
                 .map(move |placed| (unit, placed))
         })
         .collect();
+    let withdrawals: Vec<(&ReportUnit, &PlacedIntent)> = report
+        .regions
+        .iter()
+        .filter(|region| !withdrawal_refused(region))
+        .flat_map(|region| region.units.iter())
+        .filter(|unit| unit.own)
+        .flat_map(|unit| {
+            ordered
+                .intents_of(&unit.unit_id)
+                .iter()
+                .filter(|placed| matches!(placed.intent, Intent::Withdraw { .. }))
+                .map(move |placed| (unit, placed))
+        })
+        .collect();
+    let claims = claims.into_iter().chain(withdrawals).collect::<Vec<_>>();
 
     let Some(total) = total_drawn_from_fund(report, ordered, ruleset) else {
         return;
@@ -22508,6 +22553,16 @@ mod tests {
                 code: codes::TWO_MONTH_LONG_ORDERS,
                 regions: vec![region(vec![unit("683")])],
                 orders: "unit 683\nMOVE N\nSTUDY Combat\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::WITHDRAW_IN_NEXUS,
+                regions: vec![ReportRegion {
+                    terrain: "nexus".to_string(),
+                    ..region(vec![unit("683")])
+                }],
+                orders: "unit 683\nWITHDRAW 1 sword\n",
                 allowance: None,
                 unclaimed: None,
             },

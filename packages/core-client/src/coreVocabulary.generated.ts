@@ -42,7 +42,7 @@ export const ADVISORY_CHECK_CODES = [
   "nothing-left-to-buy",
   "two-month-long-orders",
   "magic-study-capped-by-prerequisites",
-  "guard-without-tax-ability"
+  "withdraw-in-nexus"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
