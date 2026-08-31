@@ -4868,13 +4868,7 @@ fn build(
     // 3. An unfinished ship beats everything a bare BUILD could mean (`rules/build`) - but only
     // for the bare form; a founding BUILD falls out at step 5 instead, because no ship is in the
     // buildings table.
-    if founding_kind.is_none()
-        && task_owner.unit.items.iter().any(|item| {
-            item.name
-                .get(.."unfinished ".len())
-                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("unfinished "))
-        })
-    {
+    if founding_kind.is_none() && carries_unfinished_ship(task_owner) {
         mark_uncounted_and_return!();
     }
 
@@ -6606,6 +6600,14 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>) -> i64 {
 
 // --- building on what is already finished ---------------------------------------------------------
 
+fn carries_unfinished_ship(ordered: &Ordered<'_>) -> bool {
+    ordered.unit.items.iter().any(|item| {
+        item.name
+            .get(.."unfinished ".len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("unfinished "))
+    })
+}
+
 /// A `BUILD` (bare, `COMPLETE`, or `HELP [unit]`) that carries on with a structure the report
 /// already shows as finished (`needs: None`) spends the unit's month for nothing. `BUILD [name]`
 /// founds something that does not exist yet and is never this case.
@@ -6626,6 +6628,9 @@ fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
             continue;
         };
         if founding.is_some() {
+            continue;
+        }
+        if helping.is_none() && carries_unfinished_ship(ordered) {
             continue;
         }
 
@@ -6696,6 +6701,9 @@ fn check_building_outside(hex: &Hex<'_>, options: &CheckOptions, findings: &mut 
         // `BUILD [name]` founds something that needs no structure to stand in, and the HELP forms
         // name whose structure to work on - that is `check_build_help`'s business, not this one's.
         if founding.is_some() || helping.is_some() {
+            continue;
+        }
+        if carries_unfinished_ship(ordered) {
             continue;
         }
         // Where the unit stands once its own ENTER/LEAVE have run, never `unit.structure_id`: an
@@ -6854,7 +6862,9 @@ fn check_build_skill(
             }
             // `HELP 0`, another faction's unit, or a unit formed this month with no number yet.
             (None, Some(_)) => continue,
-            // A bare `BUILD` or `BUILD COMPLETE`: the unit works on the structure it stands in.
+            // A bare `BUILD` or `BUILD COMPLETE` targeting a carried unfinished ship needs no
+            // structure skill check; otherwise the unit works on the structure it stands in.
+            (None, None) if carries_unfinished_ship(ordered) => continue,
             (None, None) => match kind_standing_in(hex, ordered) {
                 Some(kind) => (kind, false),
                 None => continue,
@@ -20388,6 +20398,74 @@ mod tests {
         assert_eq!(finding.unit_id.as_deref(), Some("4021"));
         assert_eq!(finding.line, Some(2));
         assert_eq!(finding.message, "Soggy Saw Mill is already finished");
+    }
+
+    #[test]
+    fn a_bare_build_for_a_carried_unfinished_ship_is_not_warned_as_outside() {
+        let carrier = with_skill(
+            with_item(unit("4021"), 1, "unfinished Cog", "COG"),
+            "SHIP",
+            2,
+        );
+
+        assert_eq!(
+            check(vec![region(vec![carrier])], "unit 4021\nBUILD\n"),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_bare_build_for_a_carried_unfinished_ship_ignores_a_finished_structure() {
+        let carrier = with_skill(
+            in_structure(with_item(unit("4021"), 1, "unfinished Cog", "COG"), "1"),
+            "SHIP",
+            2,
+        );
+
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_mill("1")],
+                    ..region(vec![carrier])
+                }],
+                "unit 4021\nBUILD\n"
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_ship_carrier_explicitly_building_a_mine_is_still_checked() {
+        let carrier = with_skill(
+            with_item(unit("4021"), 1, "unfinished Cog", "COG"),
+            "SHIP",
+            2,
+        );
+        let finding = only(check(
+            vec![region(vec![carrier])],
+            "unit 4021\nBUILD Mine\n",
+        ));
+
+        assert_eq!(finding.code, codes::BUILD_WITHOUT_SKILL);
+    }
+
+    #[test]
+    fn a_ship_carrier_helping_a_finished_structure_is_still_checked() {
+        let carrier = with_skill(
+            in_structure(with_item(unit("4021"), 1, "unfinished Cog", "COG"), "1"),
+            "SHIP",
+            2,
+        );
+
+        let findings = check_ignoring_build_skill(
+            vec![ReportRegion {
+                structures: vec![finished_mill("1")],
+                ..region(vec![carrier, unit("5")])
+            }],
+            "unit 5\nBUILD HELP 4021\n",
+        );
+
+        assert!(codes(&findings).contains(&"already-built"));
     }
 
     #[test]
