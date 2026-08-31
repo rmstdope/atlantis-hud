@@ -1067,6 +1067,29 @@ mod tests {
         assert_eq!(crew_sailing_levels(&units, "329", Some(&ordered)), 2);
     }
 
+    #[test]
+    fn only_units_issuing_sail_contribute_when_orders_are_available() {
+        let captain = sample_unit("11125", Some("329"));
+        let mut passenger = sample_unit("12590", Some("329"));
+        passenger.skills = vec![crate::report::model::Skill {
+            name: "sailing".to_string(),
+            tag: "SAIL".to_string(),
+            level: 4,
+            points: 90,
+        }];
+        let units = vec![captain, passenger];
+
+        let work = crate::movement::fleet::OrderedUnits::from_document(
+            "unit 11125\nSAIL N\nunit 12590\nWORK\n",
+        );
+        assert_eq!(crew_sailing_levels(&units, "329", Some(&work)), 0);
+
+        let sail = crate::movement::fleet::OrderedUnits::from_document(
+            "unit 11125\nSAIL N\nunit 12590\nSAIL\n",
+        );
+        assert_eq!(crew_sailing_levels(&units, "329", Some(&sail)), 4);
+    }
+
     /// The planner passes `None` on purpose and must keep reading the report alone; this test
     /// exists so making the parameter a plain reference fails.
     #[test]
