@@ -19446,6 +19446,7 @@ mod tests {
         vec![
             with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
             with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
         ]
     }
 
@@ -19561,6 +19562,7 @@ mod tests {
         let units = vec![
             with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
             with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
         ];
 
         assert_eq!(
@@ -19676,21 +19678,17 @@ mod tests {
         let units = vec![
             with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
             with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
         ];
 
         let findings = check(
             vec![region(units)],
-            "unit 500\nFORM 1\nSTUDY combat\nEND\nTEACH NEW 1\nunit 700\nSTUDY combat\n",
+            "unit 500\nFORM 1\nSTUDY combat\nEND\nTEACH NEW 1\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n",
         );
-        assert!(
-            !codes(&findings).iter().any(|code| matches!(
-                *code,
-                "taught-not-here"
-                    | "taught-not-studying"
-                    | "teacher-cannot-teach"
-                    | "teaching-oversubscribed"
-            )),
-            "formed student should be treated as an ordinary pupil: {findings:?}"
+        assert_eq!(codes(&findings), ["teacher-has-free-slots"]);
+        assert_eq!(
+            findings[0].message,
+            "has 30 teaching slots still free and could also teach unit 700 and 1 other"
         );
     }
 
