@@ -256,19 +256,31 @@ pub struct GameBackupArmy {
     pub updated_at: String,
 }
 
-/// The rows of one game, without the envelope: what a store hands over to be encoded.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GameBackupContent {
-    pub manifest: GameManifest,
-    pub imported_turns: Vec<GameBackupImportedTurn>,
+pub struct GameBackupCollections<ImportedTurn, RegionSighting> {
+    pub imported_turns: Vec<ImportedTurn>,
     pub order_drafts: Vec<GameBackupOrderDraft>,
-    pub region_sightings: Vec<GameBackupRegionSighting>,
+    pub region_sightings: Vec<RegionSighting>,
     pub merged_reports: Vec<GameBackupMergedReport>,
     #[serde(default)]
     pub hex_notes: Vec<GameBackupHexNote>,
     #[serde(default)]
     pub armies: Vec<GameBackupArmy>,
+}
+
+pub type EncodedGameBackupCollections =
+    GameBackupCollections<GameBackupImportedTurn, GameBackupRegionSighting>;
+pub type DecodedGameBackupCollections =
+    GameBackupCollections<DecodedImportedTurn, DecodedRegionSighting>;
+
+/// The rows of one game, without the envelope: what a store hands over to be encoded.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameBackupContent {
+    pub manifest: GameManifest,
+    #[serde(flatten)]
+    pub collections: EncodedGameBackupCollections,
 }
 
 /// The document as written: the envelope around the content. `#[serde(default)]` on
@@ -283,14 +295,8 @@ pub struct GameBackup {
     #[serde(default)]
     pub exported_at: String,
     pub manifest: GameManifest,
-    pub imported_turns: Vec<GameBackupImportedTurn>,
-    pub order_drafts: Vec<GameBackupOrderDraft>,
-    pub region_sightings: Vec<GameBackupRegionSighting>,
-    pub merged_reports: Vec<GameBackupMergedReport>,
-    #[serde(default)]
-    pub hex_notes: Vec<GameBackupHexNote>,
-    #[serde(default)]
-    pub armies: Vec<GameBackupArmy>,
+    #[serde(flatten)]
+    pub collections: EncodedGameBackupCollections,
 }
 
 /// One imported turn as a store writes it after a decode: both stamps resolved, never optional.
@@ -324,12 +330,8 @@ pub struct DecodedRegionSighting {
 #[serde(rename_all = "camelCase")]
 pub struct DecodedGameBackup {
     pub manifest: GameManifest,
-    pub imported_turns: Vec<DecodedImportedTurn>,
-    pub order_drafts: Vec<GameBackupOrderDraft>,
-    pub region_sightings: Vec<DecodedRegionSighting>,
-    pub merged_reports: Vec<GameBackupMergedReport>,
-    pub hex_notes: Vec<GameBackupHexNote>,
-    pub armies: Vec<GameBackupArmy>,
+    #[serde(flatten)]
+    pub collections: DecodedGameBackupCollections,
 }
 
 #[derive(Debug)]
@@ -434,13 +436,16 @@ pub fn encode_game_backup(
 ) -> Result<String, BackupError> {
     let GameBackupContent {
         manifest,
+        collections,
+    } = content;
+    let GameBackupCollections {
         mut imported_turns,
         mut order_drafts,
         mut region_sightings,
         mut merged_reports,
         mut hex_notes,
         mut armies,
-    } = content;
+    } = collections;
 
     imported_turns.sort_by_key(sort_key_turn);
     order_drafts.sort_by_key(sort_key_draft);
@@ -454,12 +459,14 @@ pub fn encode_game_backup(
         version: CURRENT_GAME_BACKUP_VERSION,
         exported_at: exported_at.to_string(),
         manifest,
-        imported_turns,
-        order_drafts,
-        region_sightings,
-        merged_reports,
-        hex_notes,
-        armies,
+        collections: GameBackupCollections {
+            imported_turns,
+            order_drafts,
+            region_sightings,
+            merged_reports,
+            hex_notes,
+            armies,
+        },
     };
 
     serde_json::to_string_pretty(&backup)
@@ -524,12 +531,24 @@ pub fn decode_game_backup(
         });
     }
 
-    let mut manifest = backup.manifest;
+    let GameBackup {
+        format: _,
+        version: _,
+        exported_at: _,
+        mut manifest,
+        collections,
+    } = backup;
     let created_at = manifest.created_at.clone();
     manifest.last_opened_at = opened_at.to_string();
-
-    let imported_turns = backup
-        .imported_turns
+    let GameBackupCollections {
+        imported_turns: encoded_imported_turns,
+        order_drafts,
+        region_sightings: encoded_region_sightings,
+        merged_reports,
+        hex_notes,
+        armies,
+    } = collections;
+    let imported_turns = encoded_imported_turns
         .into_iter()
         .map(|turn| {
             let imported_at = turn
@@ -552,8 +571,7 @@ pub fn decode_game_backup(
         })
         .collect();
 
-    let region_sightings = backup
-        .region_sightings
+    let region_sightings = encoded_region_sightings
         .into_iter()
         .map(|sighting| {
             let rebuilt = sighting_from_payload(
@@ -571,12 +589,14 @@ pub fn decode_game_backup(
 
     Ok(DecodedGameBackup {
         manifest,
-        imported_turns,
-        order_drafts: backup.order_drafts,
-        region_sightings,
-        merged_reports: backup.merged_reports,
-        hex_notes: backup.hex_notes,
-        armies: backup.armies,
+        collections: GameBackupCollections {
+            imported_turns,
+            order_drafts,
+            region_sightings,
+            merged_reports,
+            hex_notes,
+            armies,
+        },
     })
 }
 
@@ -784,12 +804,14 @@ mod tests {
     ) -> GameBackupContent {
         GameBackupContent {
             manifest: manifest(),
-            imported_turns: turns,
-            order_drafts: drafts,
-            region_sightings: sightings,
-            merged_reports: merges,
-            hex_notes: notes,
-            armies: vec![],
+            collections: EncodedGameBackupCollections {
+                imported_turns: turns,
+                order_drafts: drafts,
+                region_sightings: sightings,
+                merged_reports: merges,
+                hex_notes: notes,
+                armies: vec![],
+            },
         }
     }
 
@@ -838,6 +860,39 @@ mod tests {
             .find("\"factionId\": \"2\"")
             .expect("faction 2 present");
         assert!(a_pos < b_pos, "turns should be sorted by faction id");
+    }
+
+    #[test]
+    fn backup_collections_stay_flattened_in_the_version_one_document() {
+        let content = content_with(vec![], vec![], vec![], vec![], vec![]);
+        let encoded = encode_game_backup(content, "2026-01-06T00:00:00Z").expect("encodes");
+        let value: serde_json::Value = serde_json::from_str(&encoded).expect("valid JSON");
+        let object = value.as_object().expect("object");
+
+        for key in [
+            "importedTurns",
+            "orderDrafts",
+            "regionSightings",
+            "mergedReports",
+            "hexNotes",
+            "armies",
+        ] {
+            assert!(object.contains_key(key), "missing flattened key {key}");
+        }
+        assert!(!object.contains_key("collections"));
+        assert_eq!(object.get("version"), Some(&serde_json::json!(1)));
+
+        let mut old_value = value;
+        let old_object = old_value.as_object_mut().expect("object");
+        old_object.remove("hexNotes");
+        old_object.remove("armies");
+        let decoded = decode_game_backup(
+            &serde_json::to_string(&old_value).expect("serializes"),
+            "2026-01-07T00:00:00Z",
+        )
+        .expect("old backup decodes");
+        assert!(decoded.collections.hex_notes.is_empty());
+        assert!(decoded.collections.armies.is_empty());
     }
 
     #[test]
@@ -944,7 +999,7 @@ mod tests {
 
         let decoded = decode_game_backup(&json, "2026-01-01T00:00:00Z").expect("decodes");
 
-        assert!(decoded.hex_notes.is_empty());
+        assert!(decoded.collections.hex_notes.is_empty());
     }
 
     #[test]
@@ -964,7 +1019,7 @@ mod tests {
 
         let decoded = decode_game_backup(&json, "2026-01-01T00:00:00Z").expect("decodes");
 
-        assert!(decoded.armies.is_empty());
+        assert!(decoded.collections.armies.is_empty());
     }
 
     #[test]
@@ -1028,16 +1083,14 @@ mod tests {
             created_at: "2026-01-05T00:00:00Z".to_string(),
             updated_at: "2026-01-05T00:00:00Z".to_string(),
         };
-        let content = GameBackupContent {
-            armies: vec![army.clone()],
-            ..content_with(vec![], vec![], vec![], vec![], vec![])
-        };
+        let mut content = content_with(vec![], vec![], vec![], vec![], vec![]);
+        content.collections.armies = vec![army.clone()];
         let encoded = encode_game_backup(content, "2026-01-06T00:00:00Z").expect("encodes");
 
         let decoded = decode_game_backup(&encoded, "2026-02-01T00:00:00Z").expect("decodes");
 
         assert_eq!(
-            decoded.armies,
+            decoded.collections.armies,
             vec![army],
             "a concealed faction stays None, and items and skills come back whole"
         );
@@ -1100,8 +1153,14 @@ mod tests {
 
         let decoded = decode_game_backup(&encoded, "2026-02-01T00:00:00Z").expect("decodes");
 
-        assert_eq!(decoded.imported_turns[0].imported_at, manifest().created_at);
-        assert_eq!(decoded.imported_turns[0].updated_at, manifest().created_at);
+        assert_eq!(
+            decoded.collections.imported_turns[0].imported_at,
+            manifest().created_at
+        );
+        assert_eq!(
+            decoded.collections.imported_turns[0].updated_at,
+            manifest().created_at
+        );
     }
 
     #[test]
@@ -1121,10 +1180,13 @@ mod tests {
         let decoded = decode_game_backup(&encoded, "2026-02-01T00:00:00Z").expect("decodes");
 
         assert_eq!(
-            decoded.imported_turns[0].imported_at,
+            decoded.collections.imported_turns[0].imported_at,
             "2026-01-05T00:00:00Z"
         );
-        assert_eq!(decoded.imported_turns[0].updated_at, "2026-01-05T00:00:00Z");
+        assert_eq!(
+            decoded.collections.imported_turns[0].updated_at,
+            "2026-01-05T00:00:00Z"
+        );
     }
 
     #[test]
@@ -1139,7 +1201,7 @@ mod tests {
         let encoded = encode_game_backup(content, "2026-01-03T00:00:00Z").expect("encodes");
 
         let decoded = decode_game_backup(&encoded, "2026-02-01T00:00:00Z").expect("decodes");
-        let rebuilt = &decoded.region_sightings[0];
+        let rebuilt = &decoded.collections.region_sightings[0];
 
         assert_eq!(rebuilt.faction_id, "1");
         assert_eq!(rebuilt.sighting.region_id, "1:7,53");
@@ -1181,12 +1243,14 @@ mod tests {
         m.manifest_version = 2;
         let content = GameBackupContent {
             manifest: m,
-            imported_turns: vec![],
-            order_drafts: vec![],
-            region_sightings: vec![],
-            merged_reports: vec![],
-            hex_notes: vec![],
-            armies: vec![],
+            collections: EncodedGameBackupCollections {
+                imported_turns: vec![],
+                order_drafts: vec![],
+                region_sightings: vec![],
+                merged_reports: vec![],
+                hex_notes: vec![],
+                armies: vec![],
+            },
         };
         let encoded = encode_game_backup(content, "2026-01-03T00:00:00Z").expect("encodes");
 
@@ -1252,13 +1316,13 @@ mod tests {
 
         let decoded = decode_game_backup(&encoded, "2026-02-01T00:00:00Z").expect("decodes");
 
-        assert_eq!(decoded.imported_turns[0].faction_id, "1");
+        assert_eq!(decoded.collections.imported_turns[0].faction_id, "1");
         assert_eq!(
-            decoded.imported_turns[0].imported_at,
+            decoded.collections.imported_turns[0].imported_at,
             "2026-01-05T00:00:00Z"
         );
-        assert_eq!(decoded.order_drafts[0], draft);
-        assert_eq!(decoded.merged_reports[0], merge);
-        assert_eq!(decoded.hex_notes[0], note);
+        assert_eq!(decoded.collections.order_drafts[0], draft);
+        assert_eq!(decoded.collections.merged_reports[0], merge);
+        assert_eq!(decoded.collections.hex_notes[0], note);
     }
 }
