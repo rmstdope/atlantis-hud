@@ -214,8 +214,9 @@ fn the_committed_turn_has_no_semantic_problems_either() {
         .unwrap_or_else(|| panic!("no study-at-maximum finding: {findings:?}"));
     assert_eq!(study.unit_id.as_deref(), Some("13402"));
     assert_eq!(
-        study.message,
-        "this unit is already at combat 5, the highest the ruleset has"
+        study.message, "combat stops at level 5 and this unit is already there",
+        "the unit is a leader, and `data/LEAD` lets a leader take any skill to 5 - so combat's \
+         own maximum is what stops it, not its race (`ah-9hp7.2`)"
     );
 }
 

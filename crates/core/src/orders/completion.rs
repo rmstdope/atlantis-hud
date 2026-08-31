@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use super::grammar::{self, arguments_at_caret, caret_at, Arg, CaretShape, Order};
 use super::lexer::utf16_column;
+use super::study;
 use crate::movement::rules::{Ruleset, SkillEntry};
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit};
 use crate::report::ParsedReport;
@@ -359,9 +360,10 @@ fn catalogue_completions(ruleset: &Ruleset) -> Vec<OrderCompletion> {
 ///
 /// - a skill the data page prices nowhere cannot be studied by ordinary means (`SkillEntry::cost`
 ///   says so in its own doc), so it is never an answer to `STUDY`;
-/// - a skill the unit has already taken to the ruleset's maximum cannot be studied further - the
-///   same comparison `check_studying` makes for the `study-at-maximum` warning (`semantics.rs`), so
-///   the completion and the warning agree by construction.
+/// - a skill the unit has already taken as far as it may go cannot be studied further - the same
+///   comparison `check_studying` makes for the `study-at-maximum` warning (`semantics.rs`), through
+///   the same [`study::study_ceiling`], so the completion and the warning agree by construction.
+///   That ceiling is the ruleset's maximum or the lower one the unit's races impose (`ah-9hp7.2`).
 ///
 /// Deliberately **not** filtered, because the ruleset carries neither: what a skill depends on, and
 /// which kinds of unit may learn it. Both are scraper work, filed as ah-6qp. Until then this list is
@@ -386,7 +388,11 @@ fn skill_completions(
         .skills
         .values()
         .filter(|skill| !studying || skill.cost.is_some())
-        .filter(|skill| level_of(unit, &skill.tag).is_none_or(|level| level < skill.max_level))
+        .filter(|skill| {
+            level_of(unit, &skill.tag).is_none_or(|level| {
+                level < study::study_ceiling(ruleset, races_of(unit), skill).level()
+            })
+        })
         .filter(|skill| meets_requirements(unit, skill))
         .map(|skill| OrderCompletion {
             value: skill.tag.clone(),
@@ -394,6 +400,20 @@ fn skill_completions(
             detail: detail_for(skill, level_of(unit, &skill.tag)),
         })
         .collect()
+}
+
+/// The unit's people by race, for the race ceiling - and nothing at all where the report has not
+/// classified them.
+///
+/// An estimated headcount is the size of the leading item group rather than a composition, so it
+/// names no race that could be limited by; `study_ceiling` then keeps the skill's own maximum.
+/// Unlike semantic validation, completion sees one line prefix rather than the orders document, so
+/// it cannot forecast a GIVE or TAKE and judges the report's own composition.
+fn races_of(unit: Option<&ReportUnit>) -> &[ItemAmount] {
+    match unit {
+        Some(unit) if !unit.men_estimated => &unit.men_by_race,
+        _ => &[],
+    }
 }
 
 /// The unit's level in a skill, matched case-insensitively as `check_studying` matches it
@@ -614,18 +634,51 @@ mod tests {
 
     // --- ah-3ej: STUDY narrows to what the unit can actually study ---------------------------
 
-    /// A one-unit report whose unit carries exactly these skills, so a test can put the unit at any
-    /// level in any skill without the fixture's own units getting in the way.
-    fn studier(skills: Vec<Skill>) -> ParsedReport {
+    /// A one-unit report whose unit carries exactly these skills and these people, so a test can
+    /// put the unit at any level in any skill, of any race, without the fixture's own units
+    /// getting in the way.
+    ///
+    /// The people are classified (`men_estimated: false`), which is what lets the race ceilings
+    /// apply at all - `estimated_studier` is the other case.
+    fn studier(skills: Vec<Skill>, people: Vec<ItemAmount>) -> ParsedReport {
         let mut region = inholm_region();
         region.units = vec![ReportUnit {
             unit_id: "1".to_string(),
             region_id: region.region_id.clone(),
             own: true,
             skills,
+            men: people.iter().map(|person| person.amount).sum(),
+            men_estimated: false,
+            men_by_race: people.clone(),
+            items: people,
             ..Default::default()
         }];
         report(vec![region])
+    }
+
+    /// A studier whose people nothing has classified: it holds men, but which races is unknown,
+    /// so no race ceiling can be claimed (`ah-9hp7.2`).
+    fn estimated_studier(skills: Vec<Skill>) -> ParsedReport {
+        let mut report = studier(skills, race("HUMN", 5));
+        let unit = &mut report.regions[0].units[0];
+        unit.men_estimated = true;
+        unit.men_by_race = Vec::new();
+        report
+    }
+
+    /// `men` people of one race, as a classified unit lists them.
+    fn race(tag: &str, men: i64) -> Vec<ItemAmount> {
+        vec![ItemAmount {
+            amount: men,
+            name: String::new(),
+            tag: tag.to_string(),
+        }]
+    }
+
+    /// `data/LEAD` lets a leader study every skill to 5, which is every skill's own maximum - so a
+    /// fixture that is not about race ceilings uses leaders and reads as it always did.
+    fn leaders(men: i64) -> Vec<ItemAmount> {
+        race("LEAD", men)
     }
 
     fn skill_at(tag: &str, level: u32) -> Skill {
@@ -644,7 +697,7 @@ mod tests {
     #[test]
     fn study_offers_only_skills_that_can_be_studied() {
         let ruleset = ruleset();
-        let report = studier(Vec::new());
+        let report = studier(Vec::new(), leaders(1));
 
         for offered in [
             study_offer(&report, &ruleset),
@@ -666,7 +719,7 @@ mod tests {
     fn study_drops_a_skill_the_unit_has_maxed() {
         let ruleset = ruleset();
         let combat = ruleset.skills.get("COMB").expect("combat is a skill");
-        let report = studier(vec![skill_at("COMB", combat.max_level)]);
+        let report = studier(vec![skill_at("COMB", combat.max_level)], leaders(1));
 
         assert!(!study_offer(&report, &ruleset)
             .iter()
@@ -677,7 +730,7 @@ mod tests {
     fn study_keeps_a_skill_the_unit_can_still_advance() {
         let ruleset = ruleset();
         let combat = ruleset.skills.get("COMB").expect("combat is a skill");
-        let report = studier(vec![skill_at("COMB", combat.max_level - 1)]);
+        let report = studier(vec![skill_at("COMB", combat.max_level - 1)], leaders(1));
 
         assert!(study_offer(&report, &ruleset)
             .iter()
@@ -687,7 +740,7 @@ mod tests {
     #[test]
     fn study_keeps_a_skill_the_unit_has_never_studied() {
         let ruleset = ruleset();
-        let report = studier(Vec::new());
+        let report = studier(Vec::new(), leaders(1));
 
         assert!(study_offer(&report, &ruleset)
             .iter()
@@ -699,7 +752,7 @@ mod tests {
         let ruleset = ruleset();
         let combat = ruleset.skills.get("COMB").expect("combat is a skill");
         let cost = combat.cost.expect("combat is priced");
-        let report = studier(vec![skill_at("COMB", 3)]);
+        let report = studier(vec![skill_at("COMB", 3)], leaders(1));
 
         let entry = study_offer(&report, &ruleset)
             .into_iter()
@@ -713,7 +766,7 @@ mod tests {
         let ruleset = ruleset();
         let combat = ruleset.skills.get("COMB").expect("combat is a skill");
         let cost = combat.cost.expect("combat is priced");
-        let report = studier(Vec::new());
+        let report = studier(Vec::new(), leaders(1));
 
         let entry = study_offer(&report, &ruleset)
             .into_iter()
@@ -726,7 +779,7 @@ mod tests {
     fn study_matches_the_unit_skill_tag_whatever_its_case() {
         let ruleset = ruleset();
         let combat = ruleset.skills.get("COMB").expect("combat is a skill");
-        let report = studier(vec![skill_at("comb", combat.max_level)]);
+        let report = studier(vec![skill_at("comb", combat.max_level)], leaders(1));
 
         assert!(
             !study_offer(&report, &ruleset)
@@ -742,7 +795,7 @@ mod tests {
         // about what can be learned. Forgetting a maxed skill is what FORGET is for.
         let ruleset = ruleset();
         let combat = ruleset.skills.get("COMB").expect("combat is a skill");
-        let report = studier(vec![skill_at("COMB", combat.max_level)]);
+        let report = studier(vec![skill_at("COMB", combat.max_level)], leaders(1));
         let whole_list = ruleset.skills.len();
 
         for prefix in ["FORGET ", "CAST ", "COMBAT ", "SHOW SKILL "] {
@@ -785,7 +838,7 @@ mod tests {
             !fire.requires.is_empty(),
             "fire requires force, which is what this test is about"
         );
-        let report = studier(Vec::new());
+        let report = studier(Vec::new(), leaders(1));
 
         assert!(!study_offer(&report, &ruleset)
             .iter()
@@ -795,7 +848,7 @@ mod tests {
     #[test]
     fn study_offers_a_skill_whose_requirement_the_unit_meets() {
         let ruleset = ruleset();
-        let report = studier(vec![skill_at("FORC", 2)]);
+        let report = studier(vec![skill_at("FORC", 2)], leaders(1));
 
         assert!(study_offer(&report, &ruleset)
             .iter()
@@ -805,7 +858,7 @@ mod tests {
     #[test]
     fn study_offers_a_skill_with_no_requirements() {
         let ruleset = ruleset();
-        let report = studier(Vec::new());
+        let report = studier(Vec::new(), leaders(1));
 
         assert!(study_offer(&report, &ruleset)
             .iter()
@@ -820,6 +873,154 @@ mod tests {
         let offered = order_argument_completions("STUDY ", Some(&ruleset), None, None);
 
         assert!(offered.iter().any(|entry| entry.value == "FIRE"));
+    }
+
+    // --- ah-9hp7.2: STUDY narrows to what the unit's races may learn -------------------------
+    //
+    // The same ceiling `check_studying` warns about, so what the editor offers and what the
+    // warning says cannot disagree about one unit.
+
+    fn offers(report: &ParsedReport, ruleset: &Ruleset, tag: &str) -> bool {
+        study_offer(report, ruleset)
+            .iter()
+            .any(|entry| entry.value == tag)
+    }
+
+    #[test]
+    fn study_drops_a_skill_at_its_race_ceiling() {
+        let ruleset = ruleset();
+
+        // `data/HUMN`: combat is a human specialization, capped at 4; observation is not, so 2.
+        assert!(offers(
+            &studier(vec![skill_at("COMB", 3)], race("HUMN", 5)),
+            &ruleset,
+            "COMB"
+        ));
+        assert!(!offers(
+            &studier(vec![skill_at("COMB", 4)], race("HUMN", 5)),
+            &ruleset,
+            "COMB"
+        ));
+        assert!(offers(
+            &studier(vec![skill_at("OBSE", 1)], race("HUMN", 5)),
+            &ruleset,
+            "OBSE"
+        ));
+        assert!(!offers(
+            &studier(vec![skill_at("OBSE", 2)], race("HUMN", 5)),
+            &ruleset,
+            "OBSE"
+        ));
+    }
+
+    #[test]
+    fn study_drops_a_skill_the_unit_is_already_past() {
+        let ruleset = ruleset();
+
+        assert!(!offers(
+            &studier(vec![skill_at("OBSE", 3)], race("HUMN", 5)),
+            &ruleset,
+            "OBSE"
+        ));
+    }
+
+    #[test]
+    fn study_judges_another_race_by_its_own_specializations() {
+        let ruleset = ruleset();
+
+        // `data/WELF`: entertainment is a wood elf specialization, and combat is not.
+        assert!(offers(
+            &studier(vec![skill_at("ENTE", 4)], race("WELF", 5)),
+            &ruleset,
+            "ENTE"
+        ));
+        assert!(!offers(
+            &studier(vec![skill_at("COMB", 2)], race("WELF", 5)),
+            &ruleset,
+            "COMB"
+        ));
+    }
+
+    #[test]
+    fn study_uses_the_least_ceiling_of_a_mixed_unit() {
+        let ruleset = ruleset();
+        let mixed = vec![
+            ItemAmount {
+                amount: 4,
+                name: String::new(),
+                tag: "HUMN".to_string(),
+            },
+            ItemAmount {
+                amount: 2,
+                name: String::new(),
+                tag: "WELF".to_string(),
+            },
+        ];
+
+        assert!(
+            offers(
+                &studier(vec![skill_at("COMB", 3)], race("HUMN", 4)),
+                &ruleset,
+                "COMB"
+            ),
+            "humans alone may take combat to 4"
+        );
+        assert!(
+            !offers(&studier(vec![skill_at("COMB", 2)], mixed), &ruleset, "COMB"),
+            "the wood elves in the unit stop it at 2"
+        );
+    }
+
+    #[test]
+    fn study_keeps_the_skills_own_maximum_where_the_race_does_not_lower_it() {
+        let ruleset = ruleset();
+
+        assert!(offers(
+            &studier(vec![skill_at("OBSE", 4)], leaders(2)),
+            &ruleset,
+            "OBSE"
+        ));
+        assert!(!offers(
+            &studier(vec![skill_at("OBSE", 5)], leaders(2)),
+            &ruleset,
+            "OBSE"
+        ));
+    }
+
+    #[test]
+    fn study_keeps_the_global_ceiling_for_an_estimated_composition() {
+        let ruleset = ruleset();
+
+        assert!(
+            offers(
+                &estimated_studier(vec![skill_at("OBSE", 4)]),
+                &ruleset,
+                "OBSE"
+            ),
+            "a composition nothing has classified names no race to be limited by"
+        );
+        assert!(!offers(
+            &estimated_studier(vec![skill_at("OBSE", 5)]),
+            &ruleset,
+            "OBSE"
+        ));
+    }
+
+    #[test]
+    fn study_keeps_the_global_ceiling_where_the_ruleset_states_no_race_limits() {
+        // A ruleset cached before `ah-9hp7.1` carries none at all.
+        let mut ruleset = ruleset();
+        ruleset
+            .items
+            .get_mut("HUMN")
+            .expect("humans are an item")
+            .skill_limits = None;
+
+        assert!(offers(
+            &studier(vec![skill_at("OBSE", 4)], race("HUMN", 5)),
+            &ruleset,
+            "OBSE"
+        ));
     }
 
     // --- increment 3: BUY and SELL narrow to the hex ----------------------------------------
