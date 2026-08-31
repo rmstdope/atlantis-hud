@@ -47,6 +47,8 @@ pub enum Intent {
     },
     /// `GUARD 1` or `GUARD 0`.
     Guard(bool),
+    /// `AVOID 1` or `AVOID 0`.
+    Avoid(bool),
     /// `CLAIM`, which draws on the faction's unclaimed silver.
     Claim(i64),
     Tax,
@@ -447,7 +449,7 @@ impl FormReader<'_> {
 /// the navigator on 2026-08-19: TRANSPORT and its synonym DISTRIBUTE are free; ANNIHILATE is
 /// month-long and is given an intent below.
 ///
-/// Keywords that already yield an intent (BUY, SELL, GIVE, TAKE, ENTER, LEAVE, GUARD, CLAIM,
+/// Keywords that already yield an intent (BUY, SELL, GIVE, TAKE, ENTER, LEAVE, GUARD, AVOID, CLAIM,
 /// WITHDRAW, FORM, CAST) never reach this list at runtime. They are listed anyway so that the
 /// classification of every order lives in one readable place.
 const FREE_ORDERS: &[&str] = &[
@@ -577,6 +579,10 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         "GUARD" => {
             let arguments = super::grammar::consumed_arguments(command, arguments)?;
             Some(Intent::Guard(forms::read_flag(arguments)?))
+        }
+        "AVOID" => {
+            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            Some(Intent::Avoid(forms::read_flag(arguments)?))
         }
         "CLAIM" => {
             let arguments = super::grammar::consumed_arguments(command, arguments)?;
@@ -734,6 +740,7 @@ pub fn spends_the_month(intent: &Intent) -> bool {
         | Intent::Buy { .. }
         | Intent::Sell { .. }
         | Intent::Guard(_)
+        | Intent::Avoid(_)
         | Intent::Claim(_)
         | Intent::Withdraw { .. }
         | Intent::Form { .. }
@@ -943,10 +950,7 @@ mod tests {
     /// Orders nobody checks are not modelled, and must not be mistaken for ones that are.
     #[test]
     fn an_order_no_check_reads_yields_no_intent() {
-        assert_eq!(
-            intents("unit 5\nAVOID 1\nBEHIND 0\nNAME UNIT \"Guards\"\n"),
-            vec![]
-        );
+        assert_eq!(intents("unit 5\nBEHIND 0\nNAME UNIT \"Guards\"\n"), vec![]);
     }
 
     // --- transfers --------------------------------------------------------------------------
@@ -1134,6 +1138,12 @@ mod tests {
     fn guard_carries_which_way_it_was_set() {
         assert_eq!(intents("unit 5\nGUARD 1\n"), vec![Intent::Guard(true)]);
         assert_eq!(intents("unit 5\nGUARD 0\n"), vec![Intent::Guard(false)]);
+    }
+
+    #[test]
+    fn avoid_carries_which_way_it_was_set() {
+        assert_eq!(intents("unit 5\nAVOID 1\n"), vec![Intent::Avoid(true)]);
+        assert_eq!(intents("unit 5\nAVOID 0\n"), vec![Intent::Avoid(false)]);
     }
 
     #[test]

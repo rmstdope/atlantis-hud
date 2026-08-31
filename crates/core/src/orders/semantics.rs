@@ -2679,12 +2679,18 @@ impl Ordered<'_> {
             .next_back()
     }
 
+    /// Whether the unit will be guarding at the end of the turn. GUARD and AVOID flags are
+    /// reduced in document order; a unit that walks away guards nothing.
     fn will_guard(&self, eligible: Option<bool>) -> bool {
-        let guarding = match self.final_guard_order() {
-            Some((_, on)) => on && eligible != Some(false),
-            None => self.unit.on_guard,
-        };
-        guarding && !self.leaves_the_hex()
+        let guarding = self
+            .intents()
+            .fold(self.unit.on_guard, |guarding, intent| match intent {
+                Intent::Guard(on) => *on,
+                Intent::Avoid(true) => false,
+                Intent::Avoid(false) => guarding,
+                _ => guarding,
+            });
+        guarding && eligible != Some(false) && !self.leaves_the_hex()
     }
 
     /// Whether the unit's month is already spoken for by something other than teaching.
@@ -4157,6 +4163,7 @@ fn apply(
                 .push(placed.line);
         }
         Intent::Guard(_)
+        | Intent::Avoid(_)
         | Intent::Teach { .. }
         | Intent::Move { .. }
         | Intent::MonthLong(_)
