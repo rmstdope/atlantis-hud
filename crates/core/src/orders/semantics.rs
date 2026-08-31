@@ -23959,6 +23959,28 @@ mod tests {
     }
 
     #[test]
+    fn a_zero_skill_captain_warns_when_only_passenger_has_sailing_skill() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 50, 0),
+                aboard("12590", "329", 50, 4),
+            ])
+        };
+
+        let finding = only(check(
+            vec![region],
+            "unit 11125\nSAIL N\nunit 12590\nWORK\n",
+        ));
+        assert_eq!(finding.code, codes::FLEET_UNDERCREWED);
+        assert_eq!(
+            finding.message,
+            "Longship [329] is short of sailors: 4 sailing levels aboard, but 0 are helping with \
+             SAIL; it needs 4, so it will not sail"
+        );
+    }
+
+    #[test]
     fn a_fleet_loaded_this_month_says_how_much_was_loaded() {
         let region = ReportRegion {
             structures: vec![longship("329")],
