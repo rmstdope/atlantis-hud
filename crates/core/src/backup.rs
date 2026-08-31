@@ -863,6 +863,39 @@ mod tests {
     }
 
     #[test]
+    fn backup_collections_stay_flattened_in_the_version_one_document() {
+        let content = content_with(vec![], vec![], vec![], vec![], vec![]);
+        let encoded = encode_game_backup(content, "2026-01-06T00:00:00Z").expect("encodes");
+        let value: serde_json::Value = serde_json::from_str(&encoded).expect("valid JSON");
+        let object = value.as_object().expect("object");
+
+        for key in [
+            "importedTurns",
+            "orderDrafts",
+            "regionSightings",
+            "mergedReports",
+            "hexNotes",
+            "armies",
+        ] {
+            assert!(object.contains_key(key), "missing flattened key {key}");
+        }
+        assert!(!object.contains_key("collections"));
+        assert_eq!(object.get("version"), Some(&serde_json::json!(1)));
+
+        let mut old_value = value;
+        let old_object = old_value.as_object_mut().expect("object");
+        old_object.remove("hexNotes");
+        old_object.remove("armies");
+        let decoded = decode_game_backup(
+            &serde_json::to_string(&old_value).expect("serializes"),
+            "2026-01-07T00:00:00Z",
+        )
+        .expect("old backup decodes");
+        assert!(decoded.collections.hex_notes.is_empty());
+        assert!(decoded.collections.armies.is_empty());
+    }
+
+    #[test]
     fn encode_from_json_ignores_keys_a_store_keeps_beside_the_wire_fields() {
         let content_json = serde_json::json!({
             "manifest": manifest(),
