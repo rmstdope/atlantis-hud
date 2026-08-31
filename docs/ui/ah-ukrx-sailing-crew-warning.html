@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ah-ukrx — focused wording states</title>
+<style>
+:root{--g:#10151c;--p:#171d26;--e:#26303d;--i:#dbe3ec;--s:#a3b0c0;--b:#d9a441;--w:#d9a441;--o:#4fb783}*{box-sizing:border-box}body{margin:0;background:var(--g);color:var(--i);font:15px/1.5 Georgia,serif;padding:30px 22px}main{max-width:1100px;margin:auto}h1{margin:0;font-size:25px}h1 span,h2{color:var(--b)}p{color:var(--s)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.card{background:var(--p);border:1px solid var(--e);border-radius:9px;padding:16px}.card h2{font-size:16px;margin:0 0 8px}.orders,.msg{font:12px/1.55 "SF Mono",Menlo,monospace;background:#0d1218;border:1px solid var(--e);border-radius:6px;padding:10px;white-space:pre-wrap}.msg{margin-top:9px}.warn{color:var(--w)}.ok{color:var(--o)}.wide{grid-column:1/-1}@media(max-width:700px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}}
+</style></head><body><main>
+<h1>Option B1 — <span>focused sentence for each cause</span></h1>
+<p>Recommended follow-through. Contrast all levels aboard with active levels when participation is the problem. Preserve the existing before/after transfer sentence when the active crew changes. When both happen, show all three figures once.</p>
+<div class="grid">
+<section class="card"><h2>Passenger does not SAIL</h2><div class="orders">captain: SAIL N — sailing 0
+passenger: WORK — sailing 4</div><div class="msg"><span class="warn">⚠</span> Longship [329] is short of sailors: 4 sailing levels aboard, but 0 are helping with SAIL; it needs 4, so it will not sail</div></section>
+<section class="card"><h2>Every sailor helps, but still too few</h2><div class="orders">captain: SAIL N — sailing 2</div><div class="msg"><span class="warn">⚠</span> Longship [329] is short of sailors: all 2 sailing levels aboard are helping with SAIL; it needs 4, so it will not sail</div></section>
+<section class="card"><h2>Active sailor is diluted by arrivals</h2><div class="orders">captain: SAIL N — sailing 1
+2 unskilled men join captain</div><div class="msg"><span class="warn">⚠</span> Raft [218] is short of sailors: 1 sailing level aboard and helping with SAIL, 0 once the men joining the crew this month are counted; it needs 2, so it will not sail</div></section>
+<section class="card"><h2>Passenger plus active-crew transfer</h2><div class="orders">captain: SAIL N — sailing 1
+passenger: WORK — sailing 2
+2 unskilled men join captain</div><div class="msg"><span class="warn">⚠</span> Raft [218] is short of sailors: 3 sailing levels aboard, 1 helping with SAIL, and 0 once the men joining the crew this month are counted; it needs 2, so it will not sail</div></section>
+<section class="card wide"><h2>Silent states</h2><p><span class="ok">No warning</span> when active SAIL issuers meet the requirement, including a bare <code>SAIL</code> helper. A passenger's <code>WORK</code>, <code>STUDY</code>, or absent order never contributes. Every passenger still contributes load. Unknown or doubtful totals remain silent as today.</p></section>
+</div></main></body></html>
