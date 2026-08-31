@@ -446,7 +446,13 @@ pub fn review_turn(
     let mut hexes: Vec<(Hex<'_>, Ledger<'_>)> = hexes
         .into_iter()
         .map(|mut hex| {
-            let ledger = ledger_for_with_production(&hex, ruleset, &receipts, &production);
+            let ledger = ledger_for_with_production(
+                &hex,
+                ruleset,
+                &receipts,
+                &production,
+                &foreign_unit_ids,
+            );
             apply_recruits(&mut hex.units, &ledger, ruleset);
             (hex, ledger)
         })
@@ -3143,7 +3149,14 @@ fn ledger_for<'a>(
     receipts: &'a BTreeMap<String, Receipts>,
 ) -> Ledger<'a> {
     let production = production_shares_for(std::slice::from_ref(hex), ruleset);
-    ledger_for_with_production(hex, ruleset, receipts, &production)
+    let foreign_unit_ids = hex
+        .region
+        .units
+        .iter()
+        .filter(|unit| !unit.own)
+        .map(|unit| unit.unit_id.clone())
+        .collect();
+    ledger_for_with_production(hex, ruleset, receipts, &production, &foreign_unit_ids)
 }
 
 /// Everything the hex's units hold, with this month's orders applied.
@@ -3161,6 +3174,7 @@ fn ledger_for_with_production<'a>(
     ruleset: Option<&'a Ruleset>,
     receipts: &'a BTreeMap<String, Receipts>,
     production: &ProductionShares,
+    foreign_unit_ids: &BTreeSet<String>,
 ) -> Ledger<'a> {
     let mut ledger = Ledger {
         ruleset,
@@ -3222,6 +3236,7 @@ fn ledger_for_with_production<'a>(
                     production,
                     actor_index: index,
                 },
+                foreign_unit_ids,
             );
         }
         credit_tax(&mut ledger, hex, ordered, &facts, ruleset, pillaged);
@@ -3269,7 +3284,8 @@ pub(crate) fn item_effects(
     let production = production_shares_for(&hexes, ruleset);
 
     for hex in &hexes {
-        let ledger = ledger_for_with_production(hex, ruleset, &no_receipts, &production);
+        let ledger =
+            ledger_for_with_production(hex, ruleset, &no_receipts, &production, &foreign_unit_ids);
 
         for movement in ledger.movements {
             result
@@ -4045,6 +4061,7 @@ fn credit_tax(
 }
 
 /// Applies one order to the ledger.
+#[allow(clippy::too_many_arguments)]
 fn apply(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
@@ -4059,6 +4076,7 @@ fn apply(
     // How the hex's market lines are split between the faction's own units, and which of them
     // this actor is - the same settlement the Silver column reads (`ah-lu0f.2`).
     standing: HexStanding<'_>,
+    foreign_unit_ids: &BTreeSet<String>,
 ) {
     let who = &actor.unit.unit_id;
 
@@ -4121,6 +4139,9 @@ fn apply(
             }
         }
         Intent::Take { from, what, amount } => {
+            if matches!(from, Party::Unit(id) if foreign_unit_ids.contains(id)) {
+                return;
+            }
             let source = party_id(from, hex);
             // "TAKE FROM 999 ALL SILV" where 999 is not in this hex takes an amount only that unit
             // knows. Crediting nothing would be a shortfall of our own invention the moment the

@@ -3508,13 +3508,10 @@ mod tests {
         #[test]
         fn a_take_from_a_visible_foreign_unit_changes_no_previewed_items() {
             let response = two_hex_preview("unit 6857\nTAKE FROM 7001 1 LEAD\n");
-            let unit = response
-                .regions
-                .iter()
-                .flat_map(|region| &region.units)
-                .find(|unit| unit.unit.unit_id == "6857")
-                .expect("the taker is previewed");
-            assert_eq!(unit.unit.unit_id, "6857");
+            assert!(
+                response.regions.is_empty(),
+                "a refused TAKE must not create an item preview: {response:?}"
+            );
         }
 
         #[test]
