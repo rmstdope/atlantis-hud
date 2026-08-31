@@ -184,6 +184,13 @@ describe("the Warnings settings tab", () => {
       "TAX orders in a hex where one of your own units is ordered to PILLAGE, which collects the region&#x27;s money first."
     );
 
+    // A race may stop a unit short of the skill's own maximum, and the description is what says so
+    // (`ah-9hp7.2`). The title stays what a returning user looks for.
+    expect(html).toContain("Study with nothing to learn");
+    expect(html).toContain(
+      "A unit ordered to study a skill that at least one of its races cannot learn any further."
+    );
+
     // A foreign guard may block the order outright, and the description is what says so
     // (`ah-g7ts`).
     expect(html).toContain(

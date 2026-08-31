@@ -22,6 +22,8 @@ pub mod silver;
 pub mod standing;
 #[cfg(test)]
 mod standing_agreement;
+/// Core-internal: the one race-aware study ceiling both `semantics` and `completion` read.
+mod study;
 pub mod targets;
 pub mod vocabulary;
 pub mod walk;

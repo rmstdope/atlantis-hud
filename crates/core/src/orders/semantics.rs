@@ -32,7 +32,7 @@ use crate::movement::mode::{
     sailing_requirement, Capacities,
 };
 use crate::movement::orders::MoveStep;
-use crate::movement::rules::{item_spellings, ItemKind, Ruleset};
+use crate::movement::rules::{item_spellings, ItemEntry, ItemKind, Ruleset, SkillEntry};
 use crate::orders::items::item_named;
 use crate::orders::silver::{
     because_clause, feed_after_silver, feed_from_faction_food, flagged_to_tax, food_claim,
@@ -46,6 +46,7 @@ use crate::orders::silver::{
     SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
     UpkeepSettlement, Workforce,
 };
+use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{give_reach, give_refusal, party_unit_id, GiveReach, GiveRefusal};
 use crate::report::composition;
 use crate::report::model::{
@@ -502,7 +503,7 @@ pub fn review_turn(
         check_build_help(hex, &options, &mut findings);
         check_build_skill(hex, ruleset, &options, &mut findings);
         check_production(hex, &by_coordinate, ruleset, &options, &mut findings);
-        check_studying(hex, ruleset, &options, &mut findings);
+        check_studying(hex, ruleset, &plurals, &options, &mut findings);
         check_magic_study(hex, ruleset, &options, &mut findings);
         check_magic_study_prerequisites(hex, ruleset, &options, &mut findings);
         check_forms(hex, &options, &mut findings);
@@ -7117,10 +7118,12 @@ fn structure_label(structure: &Structure) -> String {
 
 // --- studying at the ceiling ----------------------------------------------------------------------
 
-/// Every own unit whose STUDY order names a skill it has already taken to the ruleset's maximum.
+/// Every own unit whose STUDY order names a skill it can take no further - the ruleset's own
+/// maximum, or the lower ceiling its races impose (`ah-9hp7.2`).
 fn check_studying(
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
@@ -7152,17 +7155,74 @@ fn check_studying(
             continue;
         };
 
-        if level >= skill.max_level {
+        // The composition the study month has, which `rules/sequenceofevents` puts after this
+        // month's GIVE and TAKE - the same view `skills()` above was merged from.
+        let ceiling = study::study_ceiling(ruleset, ordered.early_men_by_race(), skill);
+        if level >= ceiling.level() {
             findings.push(ordered.finding(
                 hex,
                 codes::STUDY_AT_MAXIMUM,
-                format!(
-                    "this unit is already at {} {}, the highest the ruleset has",
-                    skill.name, level
-                ),
+                ceiling_message(&ceiling, skill, level, plurals),
                 Some(placed),
             ));
         }
+    }
+}
+
+/// What stops the unit, in the words the navigator agreed (`ah-9hp7.2`): the skill's own maximum
+/// names the skill, and a race limit below it names every race that imposes it.
+fn ceiling_message(
+    ceiling: &StudyCeiling<'_>,
+    skill: &SkillEntry,
+    level: u32,
+    plurals: &Plurals,
+) -> String {
+    let standing = |cap: u32| {
+        if level == cap {
+            "already there".to_string()
+        } else {
+            format!("already at level {level}")
+        }
+    };
+    match ceiling {
+        StudyCeiling::Global { level: cap } => format!(
+            "{} stops at level {cap} and this unit is {}",
+            skill.name,
+            standing(*cap)
+        ),
+        StudyCeiling::Race {
+            level: cap,
+            limiting_races,
+        } => format!(
+            "{} cannot learn {} past level {cap}, and this unit is {}",
+            race_subjects(limiting_races, plurals),
+            skill.name,
+            standing(*cap)
+        ),
+    }
+}
+
+/// The races a message is about, as a sentence subject: `humans`, `humans and wood elves`,
+/// `humans, wood elves, and high elves`.
+///
+/// The report is the plural dictionary, exactly as it is for items (`ah-rsdz`) - no `-s` is ever
+/// invented. Where the report never showed more than one of a race, the catalogue's singular is
+/// named as a race instead: `the human race`.
+fn race_subjects(races: &[&ItemEntry], plurals: &Plurals) -> String {
+    let named: Vec<String> = races
+        .iter()
+        .map(|race| {
+            plurals
+                .get(&race.tag.to_ascii_uppercase())
+                .cloned()
+                .unwrap_or_else(|| format!("the {} race", race.name))
+        })
+        .collect();
+    match named.as_slice() {
+        [] => String::new(),
+        [one] => one.clone(),
+        [first, second] => format!("{first} and {second}"),
+        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
     }
 }
 
@@ -15325,6 +15385,17 @@ mod tests {
         )
     }
 
+    /// `check`, against a ruleset the test has altered - the only way to stand up a catalogue that
+    /// states no race limits, since the committed one states them for every race (`ah-9hp7.2`).
+    fn check_against(ruleset: &Ruleset, regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
+        check_turn(
+            &report(regions),
+            orders,
+            Some(ruleset),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        )
+    }
+
     /// `check`, with `give-target-not-here` also disabled.
     ///
     /// A raft of resource-ledger fixtures below give or take from unit numbers ("7", "999", ...)
@@ -20482,26 +20553,71 @@ mod tests {
     // --- studying -------------------------------------------------------------------------
 
     /// A unit fully funded for a month of study, so the silver check stays out of these tests.
+    ///
+    /// It holds one human, which `unit` gives it - so a test about a race ceiling that is not the
+    /// human one replaces its people with [`with_race`] or [`with_people`].
     fn studying_unit(id: &str, tag: &str, level: u32) -> ReportUnit {
         with_skill(with_silver(unit(id), 1000), tag, level)
     }
 
+    /// `studying_unit`, peopled by one race - the shape most of the ceiling tests below want.
+    fn studying_race(
+        id: &str,
+        men: i64,
+        name: &str,
+        race: &str,
+        tag: &str,
+        level: u32,
+    ) -> ReportUnit {
+        with_race(studying_unit(id, tag, level), men, name, race)
+    }
+
+    /// `studying_unit`, peopled by several races, in the order the report would write them.
+    fn studying_races(
+        id: &str,
+        races: Vec<(i64, &str, &str)>,
+        tag: &str,
+        level: u32,
+    ) -> ReportUnit {
+        let men = races.iter().map(|(amount, _, _)| *amount).sum();
+        let people = races
+            .into_iter()
+            .map(|(amount, name, race)| ItemAmount {
+                amount,
+                name: name.to_string(),
+                tag: race.to_string(),
+            })
+            .collect();
+        with_men_grain(with_people(studying_unit(id, tag, level), people), men)
+    }
+
+    /// The `study-at-maximum` message, for a test that only cares what the sentence says.
+    fn study_message(findings: Vec<Finding>) -> String {
+        findings
+            .into_iter()
+            .find(|finding| finding.code == codes::STUDY_AT_MAXIMUM)
+            .unwrap_or_else(|| panic!("no study-at-maximum finding"))
+            .message
+    }
+
     #[test]
     fn a_unit_at_the_ruleset_maximum_is_warned() {
-        let units = vec![studying_unit("5", "OBSE", 5)];
+        // Leaders, because `data/LEAD` lets them study everything to 5 - which is observation's own
+        // maximum, so the skill rather than the race is what stops this unit.
+        let units = vec![studying_race("5", 2, "leaders", "LEAD", "OBSE", 5)];
         let finding = only(check(vec![region(units)], "unit 5\nSTUDY OBSE\n"));
 
         assert_eq!(finding.code.as_str(), "study-at-maximum");
         assert_eq!(
             finding.message,
-            "this unit is already at observation 5, the highest the ruleset has"
+            "observation stops at level 5 and this unit is already there"
         );
     }
 
     #[test]
     fn the_skill_may_be_named_or_tagged_for_study_at_maximum() {
         for order in ["STUDY observation", "STUDY obse"] {
-            let units = vec![studying_unit("5", "OBSE", 5)];
+            let units = vec![studying_race("5", 2, "leaders", "LEAD", "OBSE", 5)];
             assert_eq!(
                 codes(&check(vec![region(units)], &format!("unit 5\n{order}\n"))),
                 ["study-at-maximum"],
@@ -20512,7 +20628,7 @@ mod tests {
 
     #[test]
     fn a_skill_below_its_maximum_is_silent() {
-        let units = vec![studying_unit("5", "OBSE", 3)];
+        let units = vec![studying_race("5", 2, "leaders", "LEAD", "OBSE", 3)];
         assert_eq!(check(vec![region(units)], "unit 5\nSTUDY OBSE\n"), vec![]);
     }
 
@@ -20546,19 +20662,220 @@ mod tests {
 
     #[test]
     fn a_level_above_the_maximum_still_warns() {
-        let units = vec![studying_unit("5", "OBSE", 6)];
+        let units = vec![studying_race("5", 2, "leaders", "LEAD", "OBSE", 6)];
+        let finding = only(check(vec![region(units)], "unit 5\nSTUDY OBSE\n"));
+
+        assert_eq!(finding.code.as_str(), "study-at-maximum");
         assert_eq!(
-            codes(&check(vec![region(units)], "unit 5\nSTUDY OBSE\n")),
-            ["study-at-maximum"]
+            finding.message,
+            "observation stops at level 5 and this unit is already at level 6"
         );
     }
 
     #[test]
     fn the_finding_sits_on_the_study_line_for_study_at_maximum() {
-        let units = vec![studying_unit("5", "OBSE", 5)];
+        let units = vec![studying_race("5", 2, "leaders", "LEAD", "OBSE", 5)];
         let finding = only(check(vec![region(units)], "unit 5\nWORK\n\nSTUDY OBSE\n"));
 
         assert_eq!(finding.line, Some(4), "the STUDY line, not the block's");
+    }
+
+    // --- ah-9hp7.2: what the unit's races let it learn ---------------------------------------
+    //
+    // `rules/skills_limitations`: a unit of several races may study a skill only as far as the
+    // least of them allows. `data/HUMN` puts humans at 4 in their six specializations and 2 in
+    // everything else; `data/WELF` puts wood elves at 5 in theirs and 2 elsewhere; `data/LEAD`
+    // puts leaders at 5 in everything.
+
+    #[test]
+    fn a_race_that_cannot_learn_a_skill_further_is_named() {
+        // Observation is nobody's specialization, so humans stop at `data/HUMN`'s fallback of 2.
+        let units = vec![studying_race("5", 5, "humans", "HUMN", "OBSE", 2)];
+
+        assert_eq!(
+            study_message(check(vec![region(units)], "unit 5\nSTUDY OBSE\n")),
+            "humans cannot learn observation past level 2, and this unit is already there"
+        );
+    }
+
+    #[test]
+    fn a_specialized_skill_goes_further_for_the_same_race() {
+        // `data/HUMN` names combat among the human specializations, so 3 is still short of 4.
+        let below = vec![studying_race("5", 5, "humans", "HUMN", "COMB", 3)];
+        assert_eq!(check(vec![region(below)], "unit 5\nSTUDY COMB\n"), vec![]);
+
+        let at = vec![studying_race("5", 5, "humans", "HUMN", "COMB", 4)];
+        assert_eq!(
+            study_message(check(vec![region(at)], "unit 5\nSTUDY COMB\n")),
+            "humans cannot learn combat past level 4, and this unit is already there"
+        );
+    }
+
+    #[test]
+    fn another_race_is_judged_by_its_own_specializations() {
+        // `data/WELF`: entertainment is a wood elf specialization and combat is not.
+        let specialized = vec![studying_race("5", 5, "wood elves", "WELF", "ENTE", 4)];
+        assert_eq!(
+            check(vec![region(specialized)], "unit 5\nSTUDY ENTE\n"),
+            vec![]
+        );
+
+        let fallback = vec![studying_race("5", 5, "wood elves", "WELF", "COMB", 2)];
+        assert_eq!(
+            study_message(check(vec![region(fallback)], "unit 5\nSTUDY COMB\n")),
+            "wood elves cannot learn combat past level 2, and this unit is already there"
+        );
+    }
+
+    #[test]
+    fn a_mixed_unit_is_stopped_by_the_least_of_its_races() {
+        let units = vec![studying_races(
+            "5",
+            vec![(4, "humans", "HUMN"), (2, "wood elves", "WELF")],
+            "COMB",
+            2,
+        )];
+
+        assert_eq!(
+            study_message(check(vec![region(units)], "unit 5\nSTUDY COMB\n")),
+            "wood elves cannot learn combat past level 2, and this unit is already there",
+            "combat is a human specialization and not a wood elf one"
+        );
+    }
+
+    #[test]
+    fn every_race_tied_at_the_least_ceiling_is_named() {
+        let two = vec![studying_races(
+            "5",
+            vec![(4, "humans", "HUMN"), (2, "wood elves", "WELF")],
+            "OBSE",
+            2,
+        )];
+        assert_eq!(
+            study_message(check(vec![region(two)], "unit 5\nSTUDY OBSE\n")),
+            "humans and wood elves cannot learn observation past level 2, and this unit is \
+             already there"
+        );
+
+        let three = vec![studying_races(
+            "5",
+            vec![
+                (4, "humans", "HUMN"),
+                (2, "wood elves", "WELF"),
+                (3, "high elves", "HELF"),
+            ],
+            "OBSE",
+            2,
+        )];
+        assert_eq!(
+            study_message(check(vec![region(three)], "unit 5\nSTUDY OBSE\n")),
+            "humans, wood elves, and high elves cannot learn observation past level 2, and this \
+             unit is already there"
+        );
+    }
+
+    #[test]
+    fn a_race_the_report_never_pluralised_is_named_by_the_catalogue() {
+        // One man, so no line in the whole report shows the plural - and `Plurals` never invents
+        // one (`ah-rsdz`).
+        let units = vec![studying_race("5", 1, "human", "HUMN", "OBSE", 2)];
+
+        assert_eq!(
+            study_message(check(vec![region(units)], "unit 5\nSTUDY OBSE\n")),
+            "the human race cannot learn observation past level 2, and this unit is already there"
+        );
+    }
+
+    #[test]
+    fn a_unit_past_its_race_ceiling_is_told_the_level_it_has() {
+        let units = vec![studying_race("5", 5, "humans", "HUMN", "OBSE", 3)];
+
+        assert_eq!(
+            study_message(check(vec![region(units)], "unit 5\nSTUDY OBSE\n")),
+            "humans cannot learn observation past level 2, and this unit is already at level 3"
+        );
+    }
+
+    #[test]
+    fn race_and_skill_tags_are_matched_whatever_their_case() {
+        let mut unit = studying_race("5", 5, "humans", "HUMN", "OBSE", 2);
+        for person in &mut unit.men_by_race {
+            person.tag = person.tag.to_lowercase();
+        }
+
+        assert_eq!(
+            study_message(check(vec![region(vec![unit])], "unit 5\nSTUDY obse\n")),
+            "humans cannot learn observation past level 2, and this unit is already there"
+        );
+    }
+
+    #[test]
+    fn an_unclassified_composition_keeps_the_global_comparison() {
+        let unclassified = |level: u32| {
+            let mut unit = studying_unit("5", "OBSE", level);
+            unit.men_estimated = true;
+            unit.men_by_race = Vec::new();
+            vec![region(vec![unit])]
+        };
+
+        assert_eq!(
+            check(unclassified(3), "unit 5\nSTUDY OBSE\n"),
+            vec![],
+            "a composition nothing has classified says nothing about any race ceiling"
+        );
+        assert_eq!(
+            study_message(check(unclassified(5), "unit 5\nSTUDY OBSE\n")),
+            "observation stops at level 5 and this unit is already there"
+        );
+    }
+
+    #[test]
+    fn a_race_the_ruleset_states_no_limits_for_keeps_the_global_comparison() {
+        // A ruleset cached before `ah-9hp7.1` carries no race limits at all, and half a mixed
+        // unit's limits could claim a ceiling higher than the true one.
+        let mut rules = ruleset();
+        rules
+            .items
+            .get_mut("HUMN")
+            .expect("humans are an item")
+            .skill_limits = None;
+        let units = vec![studying_race("5", 5, "humans", "HUMN", "OBSE", 3)];
+
+        assert_eq!(
+            check_against(&rules, vec![region(units)], "unit 5\nSTUDY OBSE\n"),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_gift_before_study_changes_which_race_limits_it() {
+        // `rules/sequenceofevents` runs GIVE before STUDY, so the composition judged is the one
+        // the study month actually has.
+        let leader = || {
+            with_race(
+                with_skill_pts(with_silver(unit("5"), 1000), "OBSE", 450),
+                1,
+                "leader",
+                "LEAD",
+            )
+        };
+        let alone = vec![region(vec![leader()])];
+        assert_eq!(
+            study_message(check(alone, "unit 5\nSTUDY OBSE\n")),
+            "observation stops at level 5 and this unit is already there",
+            "a leader alone is stopped by observation's own maximum"
+        );
+
+        let giver = with_race(unit("1010"), 3, "wood elves", "WELF");
+        let after = vec![region(vec![leader(), giver])];
+        assert_eq!(
+            study_message(check(
+                after,
+                "unit 5\nSTUDY OBSE\nunit 1010\nGIVE 5 2 WELF\n"
+            )),
+            "wood elves cannot learn observation past level 2, and this unit is already there",
+            "two wood elves arrive, and they cannot learn observation past 2"
+        );
     }
 
     // --- magic studied outside a building that houses mages ---------------------------------
@@ -20584,8 +20901,12 @@ mod tests {
     }
 
     /// A funded mage holding `level` in force, ordered to study it.
+    ///
+    /// A leader, because `data/HUMN` stops humans at force 2 and the `study-at-maximum` warning
+    /// now says so (`ah-9hp7.2`) - which would fire in every one of these fixtures and bury the
+    /// finding each is about. `data/LEAD` lets a leader take any skill to 5.
     fn mage(level: u32) -> ReportUnit {
-        studying_unit("5", "FORC", level)
+        with_race(studying_unit("5", "FORC", level), 1, "leader", "LEAD")
     }
 
     #[test]
@@ -20789,7 +21110,9 @@ mod tests {
 
     #[test]
     fn a_mundane_skill_is_not_this_checks_business() {
-        let units = vec![studying_unit("5", "COMB", 4)];
+        // A leader, so `data/HUMN`'s combat ceiling of 4 does not add a `study-at-maximum` finding
+        // to a test about the magic check saying nothing (`ah-9hp7.2`).
+        let units = vec![studying_race("5", 1, "leader", "LEAD", "COMB", 4)];
         assert_eq!(check(vec![region(units)], "unit 5\nSTUDY COMB\n"), vec![]);
     }
 
@@ -25170,9 +25493,16 @@ mod tests {
 
     #[test]
     fn a_unit_diluted_below_the_maximum_is_no_longer_warned() {
-        let receiver = with_skill_pts(with_silver(unit("5"), 1000), "OBSE", 450);
-        let giver = men_holder("1010", 4);
-        let orders = "unit 5\nSTUDY OBSE\nunit 1010\nGIVE 5 4 HUMN\n";
+        // Leaders throughout: `data/LEAD` lets them study anything to 5, so the only ceiling in
+        // play is observation's own and the dilution is what this test is about (`ah-9hp7.2`).
+        let receiver = with_race(
+            with_skill_pts(with_silver(unit("5"), 1000), "OBSE", 450),
+            1,
+            "leader",
+            "LEAD",
+        );
+        let giver = with_race(unit("1010"), 4, "leaders", "LEAD");
+        let orders = "unit 5\nSTUDY OBSE\nunit 1010\nGIVE 5 4 LEAD\n";
 
         let findings = check(vec![region(vec![receiver, giver])], orders);
 
@@ -25184,9 +25514,16 @@ mod tests {
 
     #[test]
     fn a_mage_diluted_up_past_level_two_by_a_gift_is_now_warned() {
-        let receiver = with_skill_pts(with_silver(unit("5"), 1000), "FORC", 30);
-        let giver = with_skill_pts(men_holder("1010", 1), "FORC", 180);
-        let orders = "unit 5\nSTUDY FORC\nunit 1010\nGIVE 5 1 HUMN\n";
+        // Leaders, because `data/HUMN` stops humans at force 2 and this test is about the halved
+        // month rather than about the race ceiling (`ah-9hp7.2`).
+        let receiver = with_race(
+            with_skill_pts(with_silver(unit("5"), 1000), "FORC", 30),
+            1,
+            "leader",
+            "LEAD",
+        );
+        let giver = with_skill_pts(with_race(unit("1010"), 1, "leader", "LEAD"), "FORC", 180);
+        let orders = "unit 5\nSTUDY FORC\nunit 1010\nGIVE 5 1 LEAD\n";
 
         let finding = only(check(vec![region(vec![receiver, giver])], orders));
 

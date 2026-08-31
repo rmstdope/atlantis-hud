@@ -457,7 +457,8 @@ export const WARNING_GROUPS: readonly {
       {
         code: "study-at-maximum",
         title: "Study with nothing to learn",
-        description: "A unit ordered to study a skill it has already taken to the ruleset's maximum."
+        description:
+          "A unit ordered to study a skill that at least one of its races cannot learn any further."
       },
       {
         code: "magic-study-capped-by-prerequisites",
