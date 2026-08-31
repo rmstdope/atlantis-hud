@@ -6255,14 +6255,11 @@ fn check_teaching(
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    let mut taught: BTreeSet<&str> = BTreeSet::new();
+    let mut taught: BTreeSet<String> = BTreeSet::new();
     for ordered in &hex.units {
         for intent in ordered.intents() {
             if let Intent::Teach { students } = intent {
-                taught.extend(students.iter().filter_map(|student| match student {
-                    Party::Unit(id) => Some(id.as_str()),
-                    _ => None,
-                }));
+                taught.extend(students.iter().filter_map(party_unit_id));
             }
         }
     }
@@ -6294,16 +6291,17 @@ fn check_one_teacher(
 
     let mut taught_men = 0;
     for student in students {
-        // A unit formed this turn has no number to look up, and another faction's unit is not in
-        // this report. Neither can be judged.
-        let Party::Unit(id) = student else { continue };
+        let Some(id) = party_unit_id(student) else {
+            continue;
+        };
 
-        let Some(pupil) = hex.find(id).filter(|pupil| !pupil.leaves_the_hex()) else {
+        let label = teaching_target_label(student);
+        let Some(pupil) = hex.find(&id).filter(|pupil| !pupil.leaves_the_hex()) else {
             if options.emits(codes::TAUGHT_NOT_HERE) {
                 findings.push(teacher.finding(
                     hex,
                     codes::TAUGHT_NOT_HERE,
-                    format!("unit {id} is not in this hex to be taught"),
+                    format!("{label} is not in this hex to be taught"),
                     Some(placed),
                 ));
             }
@@ -6315,14 +6313,14 @@ fn check_one_teacher(
                 findings.push(teacher.finding(
                     hex,
                     codes::TAUGHT_NOT_STUDYING,
-                    format!("unit {id} is being taught but has no STUDY order"),
+                    format!("{label} is being taught but has no STUDY order"),
                     Some(placed),
                 ));
             }
             continue;
         };
 
-        taught_men += pupil.unit.men;
+        taught_men += pupil.men_after_orders;
 
         // "In order to teach, the teacher must be at a higher level in the skill than the
         // student." Without a catalogue the skill cannot be turned into a tag, so the two levels
@@ -6340,7 +6338,7 @@ fn check_one_teacher(
                 hex,
                 codes::TEACHER_CANNOT_TEACH,
                 format!(
-                    "this unit is {} in {} and unit {id} is level {theirs}, so it cannot teach it",
+                    "this unit is {} in {} and {label} is level {theirs}, so it cannot teach it",
                     describe_level(mine),
                     tag.name,
                 ),
@@ -6376,7 +6374,7 @@ fn describe_level(level: u32) -> String {
 fn offer_free_slots(
     hex: &Hex<'_>,
     teacher: &Ordered<'_>,
-    taught: &BTreeSet<&str>,
+    taught: &BTreeSet<String>,
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
@@ -6420,7 +6418,7 @@ fn offer_free_slots(
         .iter()
         .filter(|pupil| {
             if pupil.unit.unit_id == teacher.unit.unit_id
-                || taught.contains(pupil.unit.unit_id.as_str())
+                || taught.contains(&pupil.unit.unit_id)
                 || pupil.leaves_the_hex()
             {
                 return false;
@@ -6452,8 +6450,8 @@ fn offer_free_slots(
             hex,
             codes::TEACHER_HAS_FREE_SLOTS,
             format!(
-                "has {free} teaching slots still free and could also teach unit {}{and_others}",
-                first.unit.unit_id,
+                "has {free} teaching slots still free and could also teach {}{and_others}",
+                teaching_ordered_label(first),
             ),
             teacher
                 .intents
@@ -6465,8 +6463,22 @@ fn offer_free_slots(
 
 /// Whether this unit's TEACH orders name at least one unit the hex can resolve.
 ///
-/// `Party::New`, `Party::Foreign` and `Party::Discard` never resolve: a unit formed this month has
-/// no number yet, and another faction's unit is not ours to read. Those are doubt, not students.
+fn teaching_target_label(party: &Party) -> String {
+    match party {
+        Party::Unit(id) => format!("unit {id}"),
+        Party::New(alias) => format!("new unit {alias}"),
+        Party::Foreign { .. } | Party::Discard => String::new(),
+    }
+}
+
+fn teaching_ordered_label(ordered: &Ordered<'_>) -> String {
+    ordered.formed.as_ref().map_or_else(
+        || format!("unit {}", ordered.unit.unit_id),
+        |formed| format!("new unit {}", formed.alias),
+    )
+}
+
+/// `Party::Foreign` and `Party::Discard` never resolve: another faction's unit is not ours to read.
 /// A student that marches out of the hex does not resolve either - `check_one_teacher` reads it
 /// the same way and already reports it as `taught-not-here`.
 fn teaches_somebody_here(teacher: &Ordered<'_>, hex: &Hex<'_>) -> bool {
@@ -6477,9 +6489,10 @@ fn teaches_somebody_here(teacher: &Ordered<'_>, hex: &Hex<'_>) -> bool {
             _ => None,
         })
         .flatten()
-        .any(|student| match student {
-            Party::Unit(id) => hex.find(id).is_some_and(|pupil| !pupil.leaves_the_hex()),
-            _ => false,
+        .any(|student| {
+            party_unit_id(student)
+                .and_then(|id| hex.find(&id))
+                .is_some_and(|pupil| !pupil.leaves_the_hex())
         })
 }
 
@@ -6492,14 +6505,11 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>) -> i64 {
             _ => None,
         })
         .flatten()
-        .filter_map(|student| match student {
-            Party::Unit(id) => hex.find(id),
-            _ => None,
-        })
+        .filter_map(|student| party_unit_id(student).and_then(|id| hex.find(&id)))
         // A student that marches off is taught by nobody, so it holds no slot - the same reading
         // `could_take` and `check_one_teacher` take of a departing pupil.
         .filter(|pupil| !pupil.leaves_the_hex())
-        .map(|pupil| pupil.unit.men)
+        .map(|pupil| pupil.men_after_orders)
         .sum()
 }
 
@@ -19660,22 +19670,27 @@ mod tests {
         assert_eq!(found, ["taught-not-here", "teacher-has-free-slots"]);
     }
 
-    /// A unit formed this month has no number yet, so `TEACH NEW 1` never resolves to a student
-    /// the hex holds.
+    /// A unit formed this month resolves through the same identity as a numbered student.
     #[test]
-    fn a_teacher_naming_only_a_new_unit_is_not_told_about_free_slots() {
+    fn a_teacher_can_teach_a_formed_student() {
         let units = vec![
             with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
             with_men(with_silver(unit("700"), 1000), 2),
         ];
 
+        let findings = check(
+            vec![region(units)],
+            "unit 500\nFORM 1\nSTUDY combat\nEND\nTEACH NEW 1\nunit 700\nSTUDY combat\n",
+        );
         assert!(
-            !codes(&check(
-                vec![region(units)],
-                "unit 500\nFORM 1\nEND\nTEACH NEW 1\nunit 700\nSTUDY combat\n"
-            ))
-            .contains(&"teacher-has-free-slots"),
-            "a NEW unit is doubt, not a student this hex can resolve"
+            !codes(&findings).iter().any(|code| matches!(
+                *code,
+                "taught-not-here"
+                    | "taught-not-studying"
+                    | "teacher-cannot-teach"
+                    | "teaching-oversubscribed"
+            )),
+            "formed student should be treated as an ordinary pupil: {findings:?}"
         );
     }
 
