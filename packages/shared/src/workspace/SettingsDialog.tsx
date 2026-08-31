@@ -567,6 +567,12 @@ export const WARNING_GROUPS: readonly {
           "A GIVE or TAKE naming a unit the report does not show in that hex, or a NEW number no FORM order there creates."
       },
       {
+        code: "take-from-another-faction",
+        title: "Taking from another faction",
+        description:
+          "A TAKE naming a visible unit from another faction, which the game will refuse."
+      },
+      {
         code: "arrivals-lower-a-skill",
         title: "Arrivals that lower a skill",
         description:
@@ -582,6 +588,11 @@ export const WARNING_GROUPS: readonly {
         code: "too-many-trade-regions",
         title: "Producing in too many regions",
         description: "PRODUCE orders in more regions than the faction's allowance permits."
+      },
+      {
+        code: "withdraw-in-nexus",
+        title: "Withdrawing in the Nexus",
+        description: "WITHDRAW orders in the Nexus, where the order cannot be used."
       },
       {
         code: "unit-overloaded",
@@ -610,6 +621,11 @@ export const WARNING_GROUPS: readonly {
         title: "Taxing a hex someone else guards",
         description:
           "TAX and PILLAGE orders in a hex where another faction has a unit on guard, which can block them."
+      },
+      {
+        code: "tax-without-combat-ready-men",
+        title: "Taxing without combat-ready men",
+        description: "A TAX order or taxing flag on a unit with no combat-ready men."
       },
       {
         code: "pillage-without-men",

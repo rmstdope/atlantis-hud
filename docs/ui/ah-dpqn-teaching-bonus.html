@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-dpqn - diluted teaching bonus</title>
+<style>
+  *{box-sizing:border-box}body{margin:0;background:#0c1015;color:#dbe3ec;font:15px/1.5 Georgia,serif;padding:28px}
+  main{max-width:1040px;margin:auto}h1,h2{margin:0}h1{font-size:26px}h1 span,h2{color:#d9a441}
+  .lead{max-width:78ch;color:#a3b0c0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0}
+  .card{overflow:hidden;border:1px solid #2a3442;border-radius:8px;background:#171d26}
+  .label{padding:9px 13px;border-bottom:1px solid #2a3442;color:#d9a441;font:12px Arial,sans-serif;text-transform:uppercase;letter-spacing:.08em}
+  .editor{padding:11px 13px;background:#10151c;color:#aeb9c7;font:13px/1.6 "SFMono-Regular",Consolas,monospace}
+  .teach{color:#eebe63}.problems{padding:10px 13px;font:13px/1.45 Arial,sans-serif}.row{display:flex;gap:7px;align-items:baseline}
+  .mark{color:#d9a441}.who{flex:none;color:#8a97a8;font-variant-numeric:tabular-nums}.token{flex:none;padding:0 4px;border-radius:3px;background:#2a3442;color:#c9d3df}
+  .quiet{color:#8a97a8;font-style:italic}.wide{grid-column:1/-1}.hex{padding:7px 12px;border-bottom:1px solid #2a3442;background:#6a4d1d33;color:#d9a441;font:12px Arial,sans-serif;text-transform:uppercase;letter-spacing:.06em}
+  .narrow{max-width:340px}.note{padding:12px 15px;border-left:3px solid #d9a441;background:#171d26;color:#a3b0c0}
+  @media(max-width:760px){body{padding:16px}.grid{grid-template-columns:1fr}.wide{grid-column:auto}}
+</style>
+</head>
+<body><main>
+  <h1>Chosen wording: <span>name the diluted bonus</span></h1>
+  <p class="lead">Use the rule's own idea: students still study for their normal month, while too many students dilute only the extra training supplied by TEACH.</p>
+  <div class="grid">
+    <section class="card">
+      <div class="label">Orders diagnostics - 20 students, 10 slots</div>
+      <div class="editor">unit 500<br><span class="teach">TEACH</span> 700<br><br>unit 700<br>STUDY combat</div>
+      <div class="problems"><div class="row"><span class="mark">!</span><span class="who">line 2</span><span class="token">TEACH</span><span>20 students on 10 slots, so the teaching bonus is diluted</span></div></div>
+    </section>
+    <section class="card">
+      <div class="label">Boundary - 10 students, 10 slots</div>
+      <div class="editor">unit 500<br><span class="teach">TEACH</span> 700<br><br>unit 700<br>STUDY combat</div>
+      <div class="problems quiet">No oversubscription warning.</div>
+    </section>
+    <section class="card wide">
+      <div class="label">Map-wide Problems list</div>
+      <div class="hex">Plain (7, 53) <span style="float:right;color:#8a97a8">1</span></div>
+      <div class="problems"><div class="row"><span class="mark">!</span><span class="who">500</span><span>20 students on 10 slots, so the teaching bonus is diluted</span></div></div>
+    </section>
+    <section class="card narrow">
+      <div class="label">Narrow orders pane</div>
+      <div class="editor">unit 500<br><span class="teach">TEACH</span> 700</div>
+      <div class="problems"><div class="row"><span class="mark">!</span><span class="who">line 2</span><span class="token">TEACH</span><span>20 students on 10 slots, so the teaching bonus is diluted</span></div></div>
+    </section>
+  </div>
+  <p class="note"><b>Decision:</b> "teaching bonus" makes clear that the students keep their normal study month and follows <code>rules/skills_teaching</code>.</p>
+</main></body>
+</html>

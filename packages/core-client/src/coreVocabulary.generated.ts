@@ -16,6 +16,7 @@ export const ADVISORY_CHECK_CODES = [
   "fleet-overloaded",
   "fleet-undercrewed",
   "give-target-not-here",
+  "take-from-another-faction",
   "not-traded-here",
   "unit-overloaded",
   "too-many-quartermasters",
@@ -42,7 +43,9 @@ export const ADVISORY_CHECK_CODES = [
   "nothing-left-to-buy",
   "two-month-long-orders",
   "magic-study-capped-by-prerequisites",
-  "guard-without-tax-ability"
+  "guard-without-tax-ability",
+  "withdraw-in-nexus",
+  "tax-without-combat-ready-men"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];

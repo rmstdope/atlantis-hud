@@ -467,7 +467,11 @@ pub fn crew_sailing_levels(
 ) -> i64 {
     units_in_hex
         .iter()
-        .filter(|unit| unit.own && aboard_structure(unit, ordered) == Some(structure_id))
+        .filter(|unit| {
+            unit.own
+                && aboard_structure(unit, ordered) == Some(structure_id)
+                && ordered.is_none_or(|orders| orders.issues_sail(&unit.unit_id))
+        })
         .flat_map(|unit| {
             unit.skills
                 .iter()
@@ -1037,8 +1041,9 @@ mod tests {
         boarding.skills = skills;
 
         let units = vec![a, boarding];
-        let ordered =
-            crate::movement::fleet::OrderedUnits::from_document("unit 12590\nENTER 329\n");
+        let ordered = crate::movement::fleet::OrderedUnits::from_document(
+            "unit 11125\nSAIL N\nunit 12590\nENTER 329\nSAIL N\n",
+        );
         assert_eq!(crew_sailing_levels(&units, "329", Some(&ordered)), 4);
     }
 
@@ -1056,7 +1061,9 @@ mod tests {
         leaving.skills = skills;
 
         let units = vec![a, leaving];
-        let ordered = crate::movement::fleet::OrderedUnits::from_document("unit 12590\nLEAVE\n");
+        let ordered = crate::movement::fleet::OrderedUnits::from_document(
+            "unit 11125\nSAIL N\nunit 12590\nSAIL N\nLEAVE\n",
+        );
         assert_eq!(crew_sailing_levels(&units, "329", Some(&ordered)), 2);
     }
 

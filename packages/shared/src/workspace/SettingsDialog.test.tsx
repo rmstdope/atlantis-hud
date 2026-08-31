@@ -145,6 +145,7 @@ describe("the Warnings settings tab", () => {
       "Unguarded hexes",
       "Reused FORM numbers",
       "Gifts to units that are not here",
+      "Taking from another faction",
       "Overloaded units",
       "Units that do nothing",
       "Building what is built",
@@ -161,6 +162,7 @@ describe("the Warnings settings tab", () => {
       "Upkeep the faction cannot pay",
       "Taxing a hex you are pillaging",
       "Pillaging without the men",
+      "Taxing without combat-ready men",
       "Promised more than the region has",
       "Taxing a hex someone else guards"
     ];
@@ -172,6 +174,9 @@ describe("the Warnings settings tab", () => {
     );
     expect(html).toContain(
       "A GUARD 1 order given to a unit that cannot tax and therefore cannot guard."
+    );
+    expect(html).toContain(
+      "A TAKE naming a visible unit from another faction, which the game will refuse."
     );
 
     // Two orders draw on the one fund, and the description is where that detail lives - the row's
@@ -185,6 +190,9 @@ describe("the Warnings settings tab", () => {
     // "region's" - the shipped string itself is the plain one.
     expect(html).toContain(
       "TAX orders in a hex where one of your own units is ordered to PILLAGE, which collects the region&#x27;s money first."
+    );
+    expect(html).toContain(
+      "A TAX order or taxing flag on a unit with no combat-ready men."
     );
 
     // A race may stop a unit short of the skill's own maximum, and the description is what says so

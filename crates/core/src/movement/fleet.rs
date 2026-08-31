@@ -6,7 +6,7 @@
 //! second reader cannot answer it differently - which is exactly the disagreement ah-p1p, ah-l2i
 //! and ah-048 were each filed for.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::movement::orders::MoveStep;
 use crate::orders::standing::{self, standing_after, Boarding, BoardingOrder};
@@ -22,6 +22,7 @@ use crate::report::ParsedReport;
 #[derive(Debug, Default, Clone)]
 pub struct OrderedUnits {
     by_unit: BTreeMap<String, Vec<MoveStep>>,
+    sailers: BTreeSet<String>,
     /// Each unit's ENTER and LEAVE orders, in the order they were written. A unit that wrote
     /// neither is absent, and the report's own answer stands for it.
     ///
@@ -38,6 +39,7 @@ impl OrderedUnits {
 
         let mut by_unit: BTreeMap<String, Vec<MoveStep>> = BTreeMap::new();
         let mut boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>> = BTreeMap::new();
+        let mut sailers = BTreeSet::new();
         let mut current: Option<String> = None;
 
         walk(orders_document, |event| match event {
@@ -47,11 +49,28 @@ impl OrderedUnits {
             Event::Order { line, depth } if depth == Depth::default() => {
                 if let (Some(unit_id), Some(steps)) = (
                     current.as_ref(),
-                    crate::movement::orders::parse_move(line.text),
+                    crate::movement::orders::parse_move(
+                        &std::iter::once(line.command.text.as_str())
+                            .chain(line.arguments.iter().map(|token| token.text.as_str()))
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    ),
                 ) {
                     by_unit.insert(unit_id.clone(), steps);
                 }
                 if let Some(unit_id) = current.as_ref() {
+                    if line.command.is("sail")
+                        && (line.arguments.is_empty()
+                            || crate::movement::orders::parse_move(
+                                &std::iter::once(line.command.text.as_str())
+                                    .chain(line.arguments.iter().map(|token| token.text.as_str()))
+                                    .collect::<Vec<_>>()
+                                    .join(" "),
+                            )
+                            .is_some())
+                    {
+                        sailers.insert(unit_id.clone());
+                    }
                     // Read exactly as `orders::intents` reads them, through the same
                     // `read_only_number`: an ENTER with anything but one numeric argument, or a
                     // LEAVE with any argument at all, is an order the game does not have, and a
@@ -79,6 +98,7 @@ impl OrderedUnits {
 
         Self {
             by_unit,
+            sailers,
             boardings_by_unit,
         }
     }
@@ -87,6 +107,11 @@ impl OrderedUnits {
     #[must_use]
     pub fn steps_for(&self, unit_id: &str) -> Option<&[MoveStep]> {
         self.by_unit.get(unit_id).map(Vec::as_slice)
+    }
+
+    #[must_use]
+    pub(crate) fn issues_sail(&self, unit_id: &str) -> bool {
+        self.sailers.contains(unit_id)
     }
 
     /// The structure this unit is in once this month's ENTER/LEAVE orders have run.

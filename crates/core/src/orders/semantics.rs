@@ -39,12 +39,12 @@ use crate::orders::silver::{
     forecast_unit, late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants,
     price_buy_all, price_cast, price_claim, price_pillage, price_production, price_purchase,
     price_sale_line, price_study, price_tax, producing_skill, quantity_bought, readiness,
-    settle_unclaimed, split_pool, taxes, transfer_shape, transmute_argument, unit_upkeep,
-    workforce_for, BuyAllCap, Caster, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim,
-    LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, Pillagers, PoolOverrun,
-    PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionShare, RegionWages,
-    SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
-    UpkeepSettlement, Workforce,
+    readiness_reason, settle_unclaimed, split_pool, taxes, taxing_men, transfer_shape,
+    transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
+    FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
+    MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts,
+    RegionShare, RegionWages, SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts,
+    UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{give_reach, give_refusal, party_unit_id, GiveReach, GiveRefusal};
@@ -85,6 +85,10 @@ impl Code {
     }
 }
 
+fn withdrawal_refused(region: &ReportRegion) -> bool {
+    region.terrain.eq_ignore_ascii_case("nexus")
+}
+
 impl std::fmt::Display for Code {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.0)
@@ -111,6 +115,7 @@ pub mod codes {
     pub const FLEET_OVERLOADED: Code = Code("fleet-overloaded");
     pub const FLEET_UNDERCREWED: Code = Code("fleet-undercrewed");
     pub const GIVE_TARGET_NOT_HERE: Code = Code("give-target-not-here");
+    pub const TAKE_FROM_ANOTHER_FACTION: Code = Code("take-from-another-faction");
     pub const NOT_TRADED_HERE: Code = Code("not-traded-here");
     pub const UNIT_OVERLOADED: Code = Code("unit-overloaded");
     pub const TOO_MANY_QUARTERMASTERS: Code = Code("too-many-quartermasters");
@@ -138,6 +143,8 @@ pub mod codes {
     pub const ITEMS_CANNOT_BE_GIVEN: Code = Code("items-cannot-be-given");
     pub const NOTHING_LEFT_TO_BUY: Code = Code("nothing-left-to-buy");
     pub const TWO_MONTH_LONG_ORDERS: Code = Code("two-month-long-orders");
+    pub const WITHDRAW_IN_NEXUS: Code = Code("withdraw-in-nexus");
+    pub const TAX_WITHOUT_COMBAT_READY_MEN: Code = Code("tax-without-combat-ready-men");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -146,7 +153,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 40] = [
+    pub const ALL: [Code; 43] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -160,6 +167,7 @@ pub mod codes {
         FLEET_OVERLOADED,
         FLEET_UNDERCREWED,
         GIVE_TARGET_NOT_HERE,
+        TAKE_FROM_ANOTHER_FACTION,
         NOT_TRADED_HERE,
         UNIT_OVERLOADED,
         TOO_MANY_QUARTERMASTERS,
@@ -187,6 +195,8 @@ pub mod codes {
         TWO_MONTH_LONG_ORDERS,
         MAGIC_STUDY_CAPPED_BY_PREREQUISITES,
         GUARD_WITHOUT_TAX_ABILITY,
+        WITHDRAW_IN_NEXUS,
+        TAX_WITHOUT_COMBAT_READY_MEN,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -296,6 +306,16 @@ fn units_by_id(report: &ParsedReport) -> BTreeMap<&str, &ReportUnit> {
     units
 }
 
+fn foreign_unit_ids(report: &ParsedReport) -> BTreeSet<String> {
+    report
+        .regions
+        .iter()
+        .flat_map(|region| &region.units)
+        .filter(|unit| !unit.own)
+        .map(|unit| unit.unit_id.clone())
+        .collect()
+}
+
 /// Checks a whole turn's orders against the report they were written for.
 ///
 /// Only the reporting faction's units, in the hexes this turn's report covers. Allied and foreign
@@ -346,6 +366,7 @@ pub fn review_turn(
     // from its parent, and every review has to know which units this month's orders create.
     let unit_regions = where_the_report_shows_each_unit(report);
     let unit_by_id = units_by_id(report);
+    let foreign_unit_ids = foreign_unit_ids(report);
     // Every unit this month's orders create, built once and before `hexes` below so it outlives
     // every `Hex<'_>` that borrows from it (`Ordered` holds a reference into `formed[i].unit`).
     //
@@ -411,7 +432,7 @@ pub fn review_turn(
     let hexes: Vec<Hex<'_>> = report
         .regions
         .iter()
-        .map(|region| hex_with_transfers(region, &ordered, &formed, ruleset))
+        .map(|region| hex_with_transfers(region, &ordered, &formed, ruleset, &foreign_unit_ids))
         .collect();
 
     // A `Products` line is shared by everyone producing against it, and who that is is a
@@ -425,7 +446,13 @@ pub fn review_turn(
     let mut hexes: Vec<(Hex<'_>, Ledger<'_>)> = hexes
         .into_iter()
         .map(|mut hex| {
-            let ledger = ledger_for_with_production(&hex, ruleset, &receipts, &production);
+            let ledger = ledger_for_with_production(
+                &hex,
+                ruleset,
+                &receipts,
+                &production,
+                &foreign_unit_ids,
+            );
             apply_recruits(&mut hex.units, &ledger, ruleset);
             (hex, ledger)
         })
@@ -495,6 +522,7 @@ pub fn review_turn(
             &options,
             &mut findings,
         );
+        check_tax_readiness(hex, ruleset, &plurals, &options, &mut findings);
         check_pillage_men(hex, ruleset, &plurals, &options, &mut findings);
         check_guard(hex, ruleset, &plurals, &options, &mut findings);
         check_teaching(hex, ruleset, &plurals, &options, &mut findings);
@@ -510,8 +538,10 @@ pub fn review_turn(
         check_idle_units(hex, &options, &mut findings);
         check_two_month_long_orders(hex, &options, &mut findings);
         check_transfer_targets(hex, &located, &options, &mut findings);
+        check_take_from_another_faction(hex, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
         check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
+        check_withdraw_in_nexus(hex, &options, &mut findings);
         check_sailing(hex, ledger, ruleset, &options, &mut findings);
         check_movement(hex, ledger, ruleset, &options, &mut findings);
 
@@ -574,6 +604,7 @@ fn pool_shares_for(
     hex: &Hex<'_>,
     region: RegionWages,
     late: Option<&LateHoldings>,
+    ruleset: Option<&Ruleset>,
 ) -> PoolSettlement {
     /// One contended pool, as the loop below reads it: what a unit asks of it, where that unit's
     /// share of it is written, what the region says it holds, and which pool to name in a finding
@@ -588,7 +619,7 @@ fn pool_shares_for(
     let nothing = Receipts::default();
     let wants: Vec<PoolWants> = hex_facts(hex, &nothing, late)
         .iter()
-        .map(|facts| pool_wants(facts, region))
+        .map(|facts| pool_wants(facts, region, ruleset))
         .collect();
 
     let mut shares = vec![PoolShares::default(); hex.units.len()];
@@ -1227,7 +1258,7 @@ fn forecast_hex(
 
     // A region's pools are shared, so who else in this hex draws on them has to be settled before
     // any one unit can be priced against them (`ah-t2pn`).
-    let settled = pool_shares_for(hex, region, Some(&late));
+    let settled = pool_shares_for(hex, region, Some(&late), ruleset);
     let shares = settled.shares;
     overruns.extend(settled.overruns);
 
@@ -1676,6 +1707,9 @@ fn read_take(
     in_this_hex: bool,
     amount: &Amount,
 ) {
+    if source.is_some_and(|source| !source.own) {
+        return;
+    }
     let (Some(source), true) = (source, in_this_hex) else {
         // A source the report does not show here: the ledger credits a stated quantity outright
         // and declines an `ALL`, and the column follows it exactly rather than telling a second
@@ -1943,10 +1977,11 @@ fn hex_with_transfers<'a>(
     ordered: &'a OrderedUnits,
     formed: &'a [Formed],
     ruleset: Option<&Ruleset>,
+    foreign_unit_ids: &BTreeSet<String>,
 ) -> Hex<'a> {
     let mut hex = Hex::read(region, ordered, formed);
     let region = hex.region;
-    apply_transfers(&mut hex.units, region, ruleset);
+    apply_transfers(&mut hex.units, region, ruleset, foreign_unit_ids);
     hex
 }
 
@@ -2206,7 +2241,12 @@ fn holding_items(unit: &ReportUnit, state: &Working) -> Vec<ItemAmount> {
 /// Without a ruleset this returns at once: there is no telling which item tags name people or
 /// which class an item belongs to, and every check that reads the projection already returns
 /// early without a catalogue, so there is nothing to project.
-fn apply_transfers(units: &mut [Ordered<'_>], region: &ReportRegion, ruleset: Option<&Ruleset>) {
+fn apply_transfers(
+    units: &mut [Ordered<'_>],
+    region: &ReportRegion,
+    ruleset: Option<&Ruleset>,
+    foreign_unit_ids: &BTreeSet<String>,
+) {
     let Some(ruleset) = ruleset else { return };
 
     // A FORMed unit's id is `new-{alias}` (`effects::formed_unit`), which is what
@@ -2276,6 +2316,11 @@ fn apply_transfers(units: &mut [Ordered<'_>], region: &ReportRegion, ruleset: Op
     let mut refused_by_position: Vec<(usize, RefusedTransfer)> = Vec::new();
 
     for transfer in &transfers {
+        if !transfer.is_give
+            && matches!(transfer.party, Party::Unit(id) if foreign_unit_ids.contains(id))
+        {
+            continue;
+        }
         if matches!(transfer.what, Selector::WholeUnit) {
             // `rules/give`: it "gives the entire unit to the specified unit's faction" - a change
             // of ownership, and nobody's holdings move.
@@ -2307,7 +2352,7 @@ fn apply_transfers(units: &mut [Ordered<'_>], region: &ReportRegion, ruleset: Op
             // that unit's holdings are not ours to follow. Only a TAKE reaches here - the giver
             // side of a GIVE is always `Unit(position)` - so `ah-agbm`'s bounded optimism is
             // unchanged by this bead.
-            GiveTarget::Nowhere | GiveTarget::Unprojectable => {
+            GiveTarget::Nowhere => {
                 let receiver_position = transfer.position;
                 let resolved = match transfer.what {
                     Selector::Item(text) => ruleset.find_item(text),
@@ -2339,6 +2384,7 @@ fn apply_transfers(units: &mut [Ordered<'_>], region: &ReportRegion, ruleset: Op
                 }
                 continue;
             }
+            GiveTarget::Unprojectable => continue,
         };
         // A GIVE that cannot be resolved is a no-op exactly as `effects::give` returns early for
         // one: the giver never even loses what it named.
@@ -2651,6 +2697,17 @@ fn level_in(skills: &[Skill], tag: &str) -> u32 {
         .map_or(0, |skill| skill.level)
 }
 
+fn sailing_level_phrase(levels: i64, noun: &str) -> String {
+    format!(
+        "{levels} {}",
+        if levels == 1 {
+            noun.strip_suffix('s').unwrap_or(noun)
+        } else {
+            noun
+        }
+    )
+}
+
 impl Ordered<'_> {
     fn teaching_eligibility(&self) -> Option<bool> {
         if self.unit.men_estimated || self.holdings_unknown() {
@@ -2677,6 +2734,11 @@ impl Ordered<'_> {
 
     fn intents(&self) -> impl Iterator<Item = &Intent> {
         self.intents.iter().map(|placed| &placed.intent)
+    }
+
+    fn issues_sail(&self) -> bool {
+        self.intents()
+            .any(|intent| matches!(intent, Intent::Sail { .. }))
     }
 
     /// Whether the unit's orders take it out of the hex. Entering or leaving a structure moves it
@@ -3110,7 +3172,14 @@ fn ledger_for<'a>(
     receipts: &'a BTreeMap<String, Receipts>,
 ) -> Ledger<'a> {
     let production = production_shares_for(std::slice::from_ref(hex), ruleset);
-    ledger_for_with_production(hex, ruleset, receipts, &production)
+    let foreign_unit_ids = hex
+        .region
+        .units
+        .iter()
+        .filter(|unit| !unit.own)
+        .map(|unit| unit.unit_id.clone())
+        .collect();
+    ledger_for_with_production(hex, ruleset, receipts, &production, &foreign_unit_ids)
 }
 
 /// Everything the hex's units hold, with this month's orders applied.
@@ -3128,6 +3197,7 @@ fn ledger_for_with_production<'a>(
     ruleset: Option<&'a Ruleset>,
     receipts: &'a BTreeMap<String, Receipts>,
     production: &ProductionShares,
+    foreign_unit_ids: &BTreeSet<String>,
 ) -> Ledger<'a> {
     let mut ledger = Ledger {
         ruleset,
@@ -3173,7 +3243,9 @@ fn ledger_for_with_production<'a>(
     // keystroke, so a city of forty units would otherwise walk its own units forty times for the
     // combat-ready sum alone (`ah-1ad6.2`, `ah-lu0f.3`).
     let region = region_wages(hex, ruleset);
+    let nothing = Receipts::default();
     for (index, ordered) in hex.units.iter().enumerate() {
+        let facts = unit_facts(hex, ordered, &nothing, None);
         for placed in ordered.intents {
             apply(
                 &mut ledger,
@@ -3187,9 +3259,10 @@ fn ledger_for_with_production<'a>(
                     production,
                     actor_index: index,
                 },
+                foreign_unit_ids,
             );
         }
-        credit_tax(&mut ledger, hex, ordered, pillaged);
+        credit_tax(&mut ledger, hex, ordered, &facts, ruleset, pillaged);
         settle_buy_all(&mut ledger, hex, ordered);
     }
 
@@ -3209,6 +3282,7 @@ pub(crate) fn item_effects(
     ruleset: Option<&Ruleset>,
 ) -> BTreeMap<String, UnitItemEffects> {
     let ordered = OrderedUnits::read(orders_document);
+    let foreign_unit_ids = foreign_unit_ids(report);
     let mut result: BTreeMap<String, UnitItemEffects> = BTreeMap::new();
     let no_receipts = BTreeMap::new();
 
@@ -3223,7 +3297,7 @@ pub(crate) fn item_effects(
     let hexes: Vec<Hex<'_>> = report
         .regions
         .iter()
-        .map(|region| hex_with_transfers(region, &ordered, &[], ruleset))
+        .map(|region| hex_with_transfers(region, &ordered, &[], ruleset, &foreign_unit_ids))
         .collect();
 
     // Every hex before any ledger, and one settlement for all of them: a passenger produces where
@@ -3233,7 +3307,8 @@ pub(crate) fn item_effects(
     let production = production_shares_for(&hexes, ruleset);
 
     for hex in &hexes {
-        let ledger = ledger_for_with_production(hex, ruleset, &no_receipts, &production);
+        let ledger =
+            ledger_for_with_production(hex, ruleset, &no_receipts, &production, &foreign_unit_ids);
 
         for movement in ledger.movements {
             result
@@ -3464,7 +3539,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     // The same settlement `forecast_hex` prices the column from: `WORK` and `ENTERTAIN` reach both
     // surfaces through one `late_income`, so two settlements would be two answers to one question.
     let region = region_wages(hex, ledger.ruleset);
-    let shares = pool_shares_for(hex, region, Some(&late)).shares;
+    let shares = pool_shares_for(hex, region, Some(&late), ledger.ruleset).shares;
 
     // The check and the Silver column read one fact, so they settle the hex's faction-food pool
     // the same way: warning that a unit cannot pay a fee its faction-mates' grain already paid is
@@ -3496,7 +3571,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         // Only what the late earnings cannot cover reaches the balance. `ledger.upkeep` keeps the
         // *full* fee: it is read only to word the finding ("orders and upkeep" against "orders"),
         // and a unit whose wages cover its fee is still a unit with a fee.
-        let charged = (owed - late_income(facts, region, *shares)).max(0);
+        let charged = (owed - late_income(facts, region, *shares, ledger.ruleset)).max(0);
         if charged > 0 {
             *ledger
                 .balance
@@ -3893,6 +3968,58 @@ fn check_guarded_tax(
     }
 }
 
+/// A unit that will TAX but has no combat-ready men, whether by an explicit order or its flag.
+fn check_tax_readiness(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::TAX_WITHOUT_COMBAT_READY_MEN) {
+        return;
+    }
+    let nothing = Receipts::default();
+    let facts = hex_facts(hex, &nothing, None);
+    for (ordered, facts) in hex.units.iter().zip(&facts) {
+        if !taxes(ordered.unit.flags.as_slice(), ordered.intents) {
+            continue;
+        }
+        let Some(readiness) = readiness(facts, ruleset) else {
+            continue;
+        };
+        if readiness.ready > 0 {
+            continue;
+        }
+        let message = if readiness.men <= 0 {
+            "cannot tax: this unit has no men".to_string()
+        } else {
+            readiness_reason(&readiness, ruleset, plurals).map_or_else(
+                || "cannot tax: it has no combat-ready men".to_string(),
+                |reason| format!("cannot tax: {reason}"),
+            )
+        };
+        if let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Tax))
+        {
+            findings.push(ordered.finding(
+                hex,
+                codes::TAX_WITHOUT_COMBAT_READY_MEN,
+                message,
+                Some(placed),
+            ));
+        } else {
+            findings.push(ordered.finding_at_block(
+                hex,
+                codes::TAX_WITHOUT_COMBAT_READY_MEN,
+                message,
+            ));
+        }
+    }
+}
+
 /// A market's own lines, in the report's order and the report's own spelling, joined for a
 /// message: `"perfume, gems and hill dwarves"`, or just `"perfume"` for a single line.
 fn market_list(lines: &[MarketItem]) -> String {
@@ -3918,7 +4045,14 @@ fn market_list(lines: &[MarketItem]) -> String {
 /// surfaces reading one order must not price it two ways (`ah-abwx`, and the reason `ah-ycuj`
 /// exists). "PILLAGE comes before TAX", so a pillage leaves every own taxer with nothing
 /// (`ah-cxxa`), and that rule lives in `price_tax` as well.
-fn credit_tax(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>, pillaged: bool) {
+fn credit_tax(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    actor: &Ordered<'_>,
+    facts: &UnitFacts<'_>,
+    ruleset: Option<&Ruleset>,
+    pillaged: bool,
+) {
     if !taxes(&actor.unit.flags, actor.intents) {
         return;
     }
@@ -3937,7 +4071,7 @@ fn credit_tax(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>, pilla
     // TAX is an early-phase order (`rules/sequenceofevents`): it sees men bought, taken or given
     // this month, not the market that opens after it.
     let priced = price_tax(
-        actor.early_men(),
+        taxing_men(facts, ruleset),
         Some(ceiling),
         pillaged,
         PoolShare::Uncontended,
@@ -3950,6 +4084,7 @@ fn credit_tax(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>, pilla
 }
 
 /// Applies one order to the ledger.
+#[allow(clippy::too_many_arguments)]
 fn apply(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
@@ -3964,6 +4099,7 @@ fn apply(
     // How the hex's market lines are split between the faction's own units, and which of them
     // this actor is - the same settlement the Silver column reads (`ah-lu0f.2`).
     standing: HexStanding<'_>,
+    foreign_unit_ids: &BTreeSet<String>,
 ) {
     let who = &actor.unit.unit_id;
 
@@ -4026,6 +4162,9 @@ fn apply(
             }
         }
         Intent::Take { from, what, amount } => {
+            if matches!(from, Party::Unit(id) if foreign_unit_ids.contains(id)) {
+                return;
+            }
             let source = party_id(from, hex);
             // "TAKE FROM 999 ALL SILV" where 999 is not in this hex takes an amount only that unit
             // knows. Crediting nothing would be a shortfall of our own invention the moment the
@@ -4150,6 +4289,9 @@ fn apply(
         // bead was not asked to touch. Recording the movement without the credit gives the ITEMS
         // column its projection and leaves every warning exactly as it is.
         Intent::Withdraw { count, item } => {
+            if withdrawal_refused(hex.region) {
+                return;
+            }
             if let Some(tag) = resolve_item(item, hex, actor, ruleset) {
                 ledger.movements.push(ItemMovement {
                     unit_id: who.clone(),
@@ -4800,13 +4942,7 @@ fn build(
     // 3. An unfinished ship beats everything a bare BUILD could mean (`rules/build`) - but only
     // for the bare form; a founding BUILD falls out at step 5 instead, because no ship is in the
     // buildings table.
-    if founding_kind.is_none()
-        && task_owner.unit.items.iter().any(|item| {
-            item.name
-                .get(.."unfinished ".len())
-                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("unfinished "))
-        })
-    {
+    if founding_kind.is_none() && carries_unfinished_ship(task_owner) {
         mark_uncounted_and_return!();
     }
 
@@ -6279,14 +6415,11 @@ fn check_teaching(
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    let mut taught: BTreeSet<&str> = BTreeSet::new();
+    let mut taught: BTreeSet<String> = BTreeSet::new();
     for ordered in &hex.units {
         for intent in ordered.intents() {
             if let Intent::Teach { students } = intent {
-                taught.extend(students.iter().filter_map(|student| match student {
-                    Party::Unit(id) => Some(id.as_str()),
-                    _ => None,
-                }));
+                taught.extend(students.iter().filter_map(party_unit_id));
             }
         }
     }
@@ -6298,6 +6431,32 @@ fn check_teaching(
 }
 
 /// Everything wrong with one unit's TEACH order.
+enum StudentPresence<'a> {
+    Own(&'a Ordered<'a>),
+    VisibleForeign,
+    Absent,
+}
+
+fn student_presence<'a>(hex: &'a Hex<'a>, id: &str) -> StudentPresence<'a> {
+    if let Some(pupil) = hex.find(id) {
+        return if pupil.leaves_the_hex() {
+            StudentPresence::Absent
+        } else {
+            StudentPresence::Own(pupil)
+        };
+    }
+    if hex
+        .region
+        .units
+        .iter()
+        .any(|unit| unit.unit_id == id && !unit.own)
+    {
+        StudentPresence::VisibleForeign
+    } else {
+        StudentPresence::Absent
+    }
+}
+
 fn check_one_teacher(
     hex: &Hex<'_>,
     teacher: &Ordered<'_>,
@@ -6357,20 +6516,25 @@ fn check_one_teacher(
 
     let mut taught_men = 0;
     for student in students {
-        // A unit formed this turn has no number to look up, and another faction's unit is not in
-        // this report. Neither can be judged.
-        let Party::Unit(id) = student else { continue };
-
-        let Some(pupil) = hex.find(id).filter(|pupil| !pupil.leaves_the_hex()) else {
-            if options.emits(codes::TAUGHT_NOT_HERE) {
-                findings.push(teacher.finding(
-                    hex,
-                    codes::TAUGHT_NOT_HERE,
-                    format!("unit {id} is not in this hex to be taught"),
-                    Some(placed),
-                ));
-            }
+        let Some(id) = party_unit_id(student) else {
             continue;
+        };
+
+        let label = teaching_target_label(student);
+        let pupil = match student_presence(hex, &id) {
+            StudentPresence::Own(pupil) => pupil,
+            StudentPresence::VisibleForeign => continue,
+            StudentPresence::Absent => {
+                if options.emits(codes::TAUGHT_NOT_HERE) {
+                    findings.push(teacher.finding(
+                        hex,
+                        codes::TAUGHT_NOT_HERE,
+                        format!("{label} is not in this hex to be taught"),
+                        Some(placed),
+                    ));
+                }
+                continue;
+            }
         };
 
         let Some(studying) = pupil.studies() else {
@@ -6378,14 +6542,15 @@ fn check_one_teacher(
                 findings.push(teacher.finding(
                     hex,
                     codes::TAUGHT_NOT_STUDYING,
-                    format!("unit {id} is being taught but has no STUDY order"),
+                    format!("{label} is being taught but has no STUDY order"),
                     Some(placed),
                 ));
             }
+
             continue;
         };
 
-        taught_men += pupil.unit.men;
+        taught_men += pupil.men_after_orders;
 
         // "In order to teach, the teacher must be at a higher level in the skill than the
         // student." Without a catalogue the skill cannot be turned into a tag, so the two levels
@@ -6403,7 +6568,7 @@ fn check_one_teacher(
                 hex,
                 codes::TEACHER_CANNOT_TEACH,
                 format!(
-                    "this unit is {} in {} and unit {id} is level {theirs}, so it cannot teach it",
+                    "this unit is {} in {} and {label} is level {theirs}, so it cannot teach it",
                     describe_level(mine),
                     tag.name,
                 ),
@@ -6417,7 +6582,7 @@ fn check_one_teacher(
         findings.push(teacher.finding(
             hex,
             codes::TEACHING_OVERSUBSCRIBED,
-            format!("{taught_men} students on {slots} slots, so each gets less than a full month",),
+            format!("{taught_men} students on {slots} slots, so the teaching bonus is diluted"),
             Some(placed),
         ));
     }
@@ -6439,7 +6604,7 @@ fn describe_level(level: u32) -> String {
 fn offer_free_slots(
     hex: &Hex<'_>,
     teacher: &Ordered<'_>,
-    taught: &BTreeSet<&str>,
+    taught: &BTreeSet<String>,
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
@@ -6460,6 +6625,21 @@ fn offer_free_slots(
         .intents()
         .any(|intent| matches!(intent, Intent::Teach { .. }))
     {
+        return;
+    }
+
+    // A visible foreign student has unknown headcount and order state (`rules/skills_teaching`),
+    // so spare slots cannot be established from the report.
+    let has_visible_foreign = teacher
+        .intents()
+        .filter_map(|intent| match intent {
+            Intent::Teach { students } => Some(students),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(party_unit_id)
+        .any(|id| matches!(student_presence(hex, &id), StudentPresence::VisibleForeign));
+    if has_visible_foreign {
         return;
     }
 
@@ -6486,7 +6666,7 @@ fn offer_free_slots(
         .iter()
         .filter(|pupil| {
             if pupil.unit.unit_id == teacher.unit.unit_id
-                || taught.contains(pupil.unit.unit_id.as_str())
+                || taught.contains(&pupil.unit.unit_id)
                 || pupil.leaves_the_hex()
             {
                 return false;
@@ -6518,8 +6698,8 @@ fn offer_free_slots(
             hex,
             codes::TEACHER_HAS_FREE_SLOTS,
             format!(
-                "has {free} teaching slots still free and could also teach unit {}{and_others}",
-                first.unit.unit_id,
+                "has {free} teaching slots still free and could also teach {}{and_others}",
+                teaching_ordered_label(first),
             ),
             teacher
                 .intents
@@ -6531,8 +6711,22 @@ fn offer_free_slots(
 
 /// Whether this unit's TEACH orders name at least one unit the hex can resolve.
 ///
-/// `Party::New`, `Party::Foreign` and `Party::Discard` never resolve: a unit formed this month has
-/// no number yet, and another faction's unit is not ours to read. Those are doubt, not students.
+fn teaching_target_label(party: &Party) -> String {
+    match party {
+        Party::Unit(id) => format!("unit {id}"),
+        Party::New(alias) => format!("new unit {alias}"),
+        Party::Foreign { .. } | Party::Discard => String::new(),
+    }
+}
+
+fn teaching_ordered_label(ordered: &Ordered<'_>) -> String {
+    ordered.formed.as_ref().map_or_else(
+        || format!("unit {}", ordered.unit.unit_id),
+        |formed| format!("new unit {}", formed.alias),
+    )
+}
+
+/// `Party::Foreign` and `Party::Discard` never resolve: another faction's unit is not ours to read.
 /// A student that marches out of the hex does not resolve either - `check_one_teacher` reads it
 /// the same way and already reports it as `taught-not-here`.
 fn teaches_somebody_here(teacher: &Ordered<'_>, hex: &Hex<'_>) -> bool {
@@ -6543,9 +6737,10 @@ fn teaches_somebody_here(teacher: &Ordered<'_>, hex: &Hex<'_>) -> bool {
             _ => None,
         })
         .flatten()
-        .any(|student| match student {
-            Party::Unit(id) => hex.find(id).is_some_and(|pupil| !pupil.leaves_the_hex()),
-            _ => false,
+        .any(|student| {
+            party_unit_id(student)
+                .and_then(|id| hex.find(&id))
+                .is_some_and(|pupil| !pupil.leaves_the_hex())
         })
 }
 
@@ -6558,18 +6753,23 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>) -> i64 {
             _ => None,
         })
         .flatten()
-        .filter_map(|student| match student {
-            Party::Unit(id) => hex.find(id),
-            _ => None,
-        })
+        .filter_map(|student| party_unit_id(student).and_then(|id| hex.find(&id)))
         // A student that marches off is taught by nobody, so it holds no slot - the same reading
         // `could_take` and `check_one_teacher` take of a departing pupil.
         .filter(|pupil| !pupil.leaves_the_hex())
-        .map(|pupil| pupil.unit.men)
+        .map(|pupil| pupil.men_after_orders)
         .sum()
 }
 
 // --- building on what is already finished ---------------------------------------------------------
+
+fn carries_unfinished_ship(ordered: &Ordered<'_>) -> bool {
+    ordered.unit.items.iter().any(|item| {
+        item.name
+            .get(.."unfinished ".len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("unfinished "))
+    })
+}
 
 /// A `BUILD` (bare, `COMPLETE`, or `HELP [unit]`) that carries on with a structure the report
 /// already shows as finished (`needs: None`) spends the unit's month for nothing. `BUILD [name]`
@@ -6591,6 +6791,9 @@ fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
             continue;
         };
         if founding.is_some() {
+            continue;
+        }
+        if helping.is_none() && carries_unfinished_ship(ordered) {
             continue;
         }
 
@@ -6661,6 +6864,9 @@ fn check_building_outside(hex: &Hex<'_>, options: &CheckOptions, findings: &mut 
         // `BUILD [name]` founds something that needs no structure to stand in, and the HELP forms
         // name whose structure to work on - that is `check_build_help`'s business, not this one's.
         if founding.is_some() || helping.is_some() {
+            continue;
+        }
+        if carries_unfinished_ship(ordered) {
             continue;
         }
         // Where the unit stands once its own ENTER/LEAVE have run, never `unit.structure_id`: an
@@ -6819,7 +7025,9 @@ fn check_build_skill(
             }
             // `HELP 0`, another faction's unit, or a unit formed this month with no number yet.
             (None, Some(_)) => continue,
-            // A bare `BUILD` or `BUILD COMPLETE`: the unit works on the structure it stands in.
+            // A bare `BUILD` or `BUILD COMPLETE` targeting a carried unfinished ship needs no
+            // structure skill check; otherwise the unit works on the structure it stands in.
+            (None, None) if carries_unfinished_ship(ordered) => continue,
             (None, None) => match kind_standing_in(hex, ordered) {
                 Some(kind) => (kind, false),
                 None => continue,
@@ -7418,6 +7626,7 @@ fn check_magic_study(
         return;
     }
 
+    let mut occupied: HashMap<&str, i64> = HashMap::new();
     for ordered in &hex.units {
         let Some((placed, studying)) = ordered.studies_placed() else {
             continue;
@@ -7459,10 +7668,23 @@ fn check_magic_study(
             // Unfinished shelters nobody; a kind the table does not name - a Mine, an Inn, a ship -
             // houses no mages either, and a Tower is named and seats zero.
             Some(Some(structure)) => {
-                structure.needs.is_none()
-                    && ruleset
-                        .mage_capacity(&structure.kind)
-                        .is_some_and(|seats| seats >= 1)
+                if structure.needs.is_some() {
+                    false
+                } else {
+                    match ruleset.mage_capacity(&structure.kind) {
+                        Some(seats)
+                            if occupied
+                                .get(structure.structure_id.as_str())
+                                .copied()
+                                .unwrap_or(0)
+                                < seats =>
+                        {
+                            *occupied.entry(structure.structure_id.as_str()).or_default() += 1;
+                            true
+                        }
+                        Some(_) | None => false,
+                    }
+                }
             }
         };
         if sheltered {
@@ -7948,6 +8170,40 @@ fn check_transfer_targets(
     }
 }
 
+fn check_take_from_another_faction(
+    hex: &Hex<'_>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::TAKE_FROM_ANOTHER_FACTION) {
+        return;
+    }
+    for ordered in &hex.units {
+        for placed in ordered.intents {
+            let Intent::Take {
+                from: Party::Unit(id),
+                ..
+            } = &placed.intent
+            else {
+                continue;
+            };
+            if hex
+                .region
+                .units
+                .iter()
+                .any(|unit| unit.unit_id == *id && !unit.own)
+            {
+                findings.push(ordered.finding(
+                    hex,
+                    codes::TAKE_FROM_ANOTHER_FACTION,
+                    format!("unit {id} belongs to another faction, so this TAKE moves nothing"),
+                    Some(placed),
+                ));
+            }
+        }
+    }
+}
+
 /// `1 man` or `5 men`.
 ///
 /// The message names people rather than the race the order moved, so no item catalogue and no
@@ -8253,9 +8509,26 @@ fn check_sailing(
                     .map(move |skill| i64::from(skill.level) * men)
             })
             .sum();
+        let helping: Vec<&Ordered<'_>> = aboard
+            .iter()
+            .copied()
+            .filter(|ordered| ordered.issues_sail())
+            .collect();
+        let helping_levels: i64 = helping
+            .iter()
+            .flat_map(|ordered| {
+                let men = ordered.unit.men;
+                ordered
+                    .unit
+                    .skills
+                    .iter()
+                    .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
+                    .map(move |skill| i64::from(skill.level) * men)
+            })
+            .sum();
         // The same after this month's transfers of men. `None` from any unit aboard silences the
         // crew check for the whole fleet - one unknowable unit makes the fleet's total unknowable.
-        let crews: Option<Vec<CrewAfterOrders>> = aboard
+        let crews: Option<Vec<CrewAfterOrders>> = helping
             .iter()
             .map(|ordered| sailing_levels_after_orders(ordered, ruleset))
             .collect();
@@ -8264,7 +8537,7 @@ fn check_sailing(
         // bead's own PR. A unit whose sums the ledger could not follow is the same kind of doubt,
         // and both guard the crew finding alone: the load half has never consulted `doubted`, and
         // silencing overload warnings here would be a regression.
-        let headcount_is_doubtful = aboard.iter().any(|ordered| {
+        let headcount_is_doubtful = helping.iter().any(|ordered| {
             ordered.unit.men_estimated || ledger.doubted.contains(&ordered.unit.unit_id)
         });
         if let (Some(crews), Some(required)) = (crews, sailing_requirement(fleet, ruleset)) {
@@ -8274,24 +8547,50 @@ fn check_sailing(
                 && levels < required
                 && options.emits(codes::FLEET_UNDERCREWED)
             {
-                let crew = if men_joined && levels != reported_levels {
+                let crew = if helping_levels < reported_levels {
+                    let participation = format!(
+                        "{} aboard, but {} {} helping with SAIL",
+                        sailing_level_phrase(reported_levels, "sailing levels"),
+                        helping_levels,
+                        if helping_levels == 1 { "is" } else { "are" }
+                    );
+                    if men_joined {
+                        format!(
+                            "{participation}, and {levels} once the men joining the crew this \
+                             month are counted; it needs {required}"
+                        )
+                    } else if levels < helping_levels {
+                        format!(
+                            "{participation}, less {} given away this month; it needs {required}",
+                            helping_levels - levels
+                        )
+                    } else {
+                        format!("{participation}; it needs {required}")
+                    }
+                } else if men_joined && levels != helping_levels {
                     // Men joining the crew this month, whatever else moved - shown first so a
                     // fleet where men both joined and left still gets the joining clause rather
                     // than "given away" (the navigator's decision, `ah-z73s3-wording-2.html`).
                     format!(
-                        "{reported_levels} sailing levels aboard, {levels} once the men joining \
-                         the crew this month are counted, it needs {required}"
+                        "{} aboard and helping with SAIL, {} once the men joining the crew this \
+                         month are counted; it needs {required}",
+                        sailing_level_phrase(helping_levels, "sailing levels"),
+                        levels
                     )
-                } else if levels < reported_levels {
+                } else if levels < helping_levels {
                     format!(
-                        "{reported_levels} sailing levels aboard less {} given away this month, \
-                         it needs {required}",
-                        reported_levels - levels
+                        "all {} aboard are helping with SAIL, less {} given away this month; it \
+                         needs {required}",
+                        sailing_level_phrase(helping_levels, "sailing levels"),
+                        helping_levels - levels
                     )
                 } else {
                     // Unchanged, and the sentence `ah-j0e` already shipped: the crew did not move
                     // this month, so there is no before-and-after to draw.
-                    format!("{levels} sailing levels aboard, it needs {required}")
+                    format!(
+                        "all {} aboard are helping with SAIL; it needs {required}",
+                        sailing_level_phrase(levels, "sailing levels")
+                    )
                 };
                 findings.push(captain.finding(
                     hex,
@@ -8676,20 +8975,42 @@ fn total_drawn_from_fund(
     ordered: &OrderedUnits,
     ruleset: Option<&Ruleset>,
 ) -> Option<i64> {
-    report
-        .regions
-        .iter()
-        .flat_map(|region| region.units.iter())
-        .filter(|unit| unit.own)
-        .flat_map(|unit| ordered.intents_of(&unit.unit_id).iter())
-        .try_fold(0i64, |total, placed| match &placed.intent {
-            Intent::Claim(amount) => Some(total.saturating_add(*amount)),
-            Intent::Withdraw { count, item } => {
-                let cost = withdrawal_cost(item, ruleset)?;
-                Some(total.saturating_add(count.saturating_mul(cost)))
+    report.regions.iter().try_fold(0i64, |total, region| {
+        region
+            .units
+            .iter()
+            .filter(|unit| unit.own)
+            .flat_map(|unit| ordered.intents_of(&unit.unit_id).iter())
+            .try_fold(total, |total, placed| match &placed.intent {
+                Intent::Claim(amount) => Some(total.saturating_add(*amount)),
+                Intent::Withdraw { count, item } => {
+                    if withdrawal_refused(region) {
+                        return Some(total);
+                    }
+                    let cost = withdrawal_cost(item, ruleset)?;
+                    Some(total.saturating_add(count.saturating_mul(cost)))
+                }
+                _ => Some(total),
+            })
+    })
+}
+
+fn check_withdraw_in_nexus(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !withdrawal_refused(hex.region) || !options.emits(codes::WITHDRAW_IN_NEXUS) {
+        return;
+    }
+    for ordered in &hex.units {
+        for placed in ordered.intents {
+            if matches!(placed.intent, Intent::Withdraw { .. }) {
+                findings.push(ordered.finding(
+                    hex,
+                    codes::WITHDRAW_IN_NEXUS,
+                    "cannot withdraw in the Nexus".to_string(),
+                    Some(placed),
+                ));
             }
-            _ => Some(total),
-        })
+        }
+    }
 }
 
 /// What the ruleset says one of `item` costs to withdraw, or `None` where it says nothing.
@@ -8843,12 +9164,25 @@ fn check_claims(
             ordered
                 .intents_of(&unit.unit_id)
                 .iter()
-                .filter(|placed| {
-                    matches!(placed.intent, Intent::Claim(_) | Intent::Withdraw { .. })
-                })
+                .filter(|placed| matches!(placed.intent, Intent::Claim(_)))
                 .map(move |placed| (unit, placed))
         })
         .collect();
+    let withdrawals: Vec<(&ReportUnit, &PlacedIntent)> = report
+        .regions
+        .iter()
+        .filter(|region| !withdrawal_refused(region))
+        .flat_map(|region| region.units.iter())
+        .filter(|unit| unit.own)
+        .flat_map(|unit| {
+            ordered
+                .intents_of(&unit.unit_id)
+                .iter()
+                .filter(|placed| matches!(placed.intent, Intent::Withdraw { .. }))
+                .map(move |placed| (unit, placed))
+        })
+        .collect();
+    let claims = claims.into_iter().chain(withdrawals).collect::<Vec<_>>();
 
     let Some(total) = total_drawn_from_fund(report, ordered, ruleset) else {
         return;
@@ -9146,7 +9480,7 @@ mod tests {
         fn taxer(id: &str, men: i64) -> ReportUnit {
             let mut unit = unit(id);
             unit.men = men;
-            unit
+            with_skill(unit, "COMB", 1)
         }
 
         fn review(base: Option<i64>, units: Vec<ReportUnit>, orders: &str) -> TurnReview {
@@ -9503,7 +9837,7 @@ mod tests {
         fn taxer(id: &str, men: i64) -> ReportUnit {
             let mut unit = unit(id);
             unit.men = men;
-            unit
+            with_skill(unit, "COMB", 1)
         }
 
         fn silver_of(review: &TurnReview, id: &str) -> UnitSilver {
@@ -9535,7 +9869,7 @@ mod tests {
             };
             let ordered = OrderedUnits::read(orders);
             let hex = Hex::read(&hex_region, &ordered, &[]);
-            pool_shares_for(&hex, region_wages(&hex, None), None).overruns
+            pool_shares_for(&hex, region_wages(&hex, None), None, None).overruns
         }
 
         /// `ah-t2pn.4`. The settlement says what it divided, so the sentence a player reads comes
@@ -9568,6 +9902,28 @@ mod tests {
                 ),
                 vec![]
             );
+        }
+
+        /// A certainly unready claimant contributes no ask, while the ready taxer remains the
+        /// only claimant and receives the whole base.
+        #[test]
+        fn an_unready_taxer_is_excluded_when_paired_with_a_ready_taxer() {
+            let review = tax_review(
+                Some(500),
+                vec![with_men(unit("2390"), 10), taxer("2391", 10)],
+                "unit 2390\nTAX\nunit 2391\nTAX\n",
+            );
+
+            assert!(
+                review
+                    .findings
+                    .iter()
+                    .all(|finding| finding.code != codes::REGION_POOL_OVERSUBSCRIBED),
+                "the unready unit must not make the regional pool look oversubscribed: {:?}",
+                review.findings
+            );
+            assert_eq!(silver_of(&review, "2390").income, Some(0));
+            assert_eq!(silver_of(&review, "2391").income, Some(500));
         }
 
         /// A pool nothing can settle has no total to put in a sentence. The units carry
@@ -10463,7 +10819,8 @@ mod tests {
 
         let ordered = OrderedUnits::read("unit 2390\nGIVE 5512 10 FUR\nSELL ALL FUR\n");
         let rules = ruleset();
-        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let hex_with_transfers =
+            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         assert_eq!(balance_of(&ledger, "2390", "SILV"), 0);
@@ -10513,7 +10870,8 @@ mod tests {
         let ordered =
             OrderedUnits::read("unit 2390\nSELL ALL FUR\nSELL ALL FUR\nunit 2391\nSELL ALL FUR\n");
         let rules = ruleset();
-        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let hex_with_transfers =
+            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         let moved: i64 = ledger
@@ -10567,7 +10925,8 @@ mod tests {
 
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let hex_with_transfers =
+            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         let moved = |id: &str| -> i64 {
@@ -11102,7 +11461,8 @@ mod tests {
 
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let hex_with_transfers =
+            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         assert_eq!(balance_of(&ledger, "2390", "FUR"), 7);
@@ -11144,7 +11504,8 @@ mod tests {
         // The ITEMS column.
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let hex_with_transfers =
+            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         let moved: i64 = ledger
@@ -11371,7 +11732,7 @@ mod tests {
     /// A unit set to tax every turn, with no `TAX` in this month's orders.
     fn taxing_by_flag(mut unit: ReportUnit) -> ReportUnit {
         unit.flags.push("taxing".to_string());
-        unit
+        with_skill(unit, "COMB", 1)
     }
 
     #[test]
@@ -11418,7 +11779,7 @@ mod tests {
         let ordered = OrderedUnits::read("unit 1\nTAX\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let region = region_wages(&hex, None);
-        let settled = pool_shares_for(&hex, region, None);
+        let settled = pool_shares_for(&hex, region, None, None);
 
         assert_eq!(settled.shares.len(), 2);
         for share in &settled.shares {
@@ -11578,7 +11939,10 @@ mod tests {
                 tag: "SWOR".to_string(),
                 price: 100,
             }],
-            ..region(vec![with_men(with_silver(unit("1"), 100), 10)])
+            ..region(vec![with_men(
+                with_skill(with_silver(unit("1"), 100), "COMB", 1),
+                10,
+            )])
         };
         let review = review_turn(
             &report(vec![hex_region]),
@@ -11630,8 +11994,8 @@ mod tests {
                 price: 100,
             }],
             ..region(vec![
-                with_men(with_silver(unit("1"), 100), 10),
-                with_men(with_silver(unit("2"), 100), 10),
+                with_men(with_skill(with_silver(unit("1"), 100), "COMB", 1), 10),
+                with_men(with_skill(with_silver(unit("2"), 100), "COMB", 1), 10),
             ])
         };
         let review = review_turn(
@@ -12192,7 +12556,7 @@ mod tests {
             tax_base: Some(2500),
             ..region(vec![
                 armed_to_pillage(with_silver(unit("1"), 0), 2500),
-                with_silver(unit("2"), 0),
+                with_skill(with_silver(unit("2"), 0), "COMB", 1),
             ])
         };
         let review = review_turn(
@@ -12310,7 +12674,12 @@ mod tests {
         };
         let mut elsewhere = ReportRegion {
             tax_base: Some(2500),
-            ..region_at("1:9,53", 9, 53, vec![with_silver(unit("2"), 0)])
+            ..region_at(
+                "1:9,53",
+                9,
+                53,
+                vec![with_skill(with_silver(unit("2"), 0), "COMB", 1)],
+            )
         };
         for unit in &mut elsewhere.units {
             unit.region_id = "1:9,53".to_string();
@@ -12372,6 +12741,86 @@ mod tests {
             .find(|row| row.unit_id == "1")
             .expect("priced");
         assert_eq!(row.income, Some(5000), "the pillage still pays");
+    }
+
+    #[test]
+    fn an_unready_tax_order_is_reported_on_its_tax_line() {
+        let review = review_turn(
+            &report(vec![region(vec![unit("1")])]),
+            "unit 1\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let finding = review
+            .findings
+            .iter()
+            .find(|finding| finding.code == codes::TAX_WITHOUT_COMBAT_READY_MEN)
+            .expect("an unready TAX should be reported");
+        assert_eq!(finding.unit_id.as_deref(), Some("1"));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "cannot tax: it has no combat skill, no weapon it can wield, no mount it can ride and no damaging spell"
+        );
+    }
+
+    #[test]
+    fn an_unready_taxing_flag_is_reported_on_its_unit_block() {
+        let review = review_turn(
+            &report(vec![region(vec![with_flag(unit("2"), "taxing")])]),
+            "unit 2\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let finding = review
+            .findings
+            .iter()
+            .find(|finding| finding.code == codes::TAX_WITHOUT_COMBAT_READY_MEN)
+            .expect("an unready taxing flag should be reported");
+        assert_eq!(finding.unit_id.as_deref(), Some("2"));
+        assert_eq!(finding.line, Some(1));
+    }
+
+    #[test]
+    fn a_combat_ready_taxer_is_not_reported_as_unready() {
+        let review = review_turn(
+            &report(vec![region(vec![with_skill(unit("3"), "COMB", 1)])]),
+            "unit 3\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TAX_WITHOUT_COMBAT_READY_MEN),
+            "a combat-ready taxer needs no readiness warning: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    #[test]
+    fn an_estimated_taxers_readiness_is_left_unjudged() {
+        let mut taxer = unit("4");
+        taxer.men_estimated = true;
+        let review = review_turn(
+            &report(vec![region(vec![taxer])]),
+            "unit 4\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TAX_WITHOUT_COMBAT_READY_MEN),
+            "an estimated headcount cannot prove unreadiness: {:?}",
+            codes(&review.findings)
+        );
     }
 
     /// A foreign unit on guard, for the `taxed-a-guarded-hex` fixtures (`ah-g7ts`). Ownership is
@@ -12525,7 +12974,7 @@ mod tests {
         let review = review_turn(
             &report(vec![guarded_hex(vec![
                 armed_to_pillage(with_silver(unit("1"), 0), 8963),
-                with_silver(unit("2"), 0),
+                with_skill(with_silver(unit("2"), 0), "COMB", 1),
             ])]),
             "unit 1\nPILLAGE\n\nunit 2\nTAX\n",
             Some(&ruleset()),
@@ -13895,7 +14344,8 @@ mod tests {
         ) -> R {
             let ordered = OrderedUnits::read(orders);
             let rules = ruleset();
-            let hex = hex_with_transfers(&hex_region, &ordered, &[], Some(&rules));
+            let hex =
+                hex_with_transfers(&hex_region, &ordered, &[], Some(&rules), &BTreeSet::new());
             let no_receipts = BTreeMap::new();
             let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
             read(&ledger)
@@ -14161,9 +14611,10 @@ mod tests {
             let hex_region = ReportRegion {
                 tax_base: Some(1000),
                 for_sale: vec![line(30, 18, "grain", "GRAI")],
-                ..region(vec![with_flag(
-                    with_item(unit("2390"), 0, "grain", "GRAI"),
-                    "taxing",
+                ..region(vec![with_skill(
+                    with_flag(with_item(unit("2390"), 0, "grain", "GRAI"), "taxing"),
+                    "COMB",
+                    1,
                 )])
             };
             with_ledger(
@@ -17228,7 +17679,10 @@ mod tests {
     /// $200 purchase is affordable in the best case and goes unremarked.
     #[test]
     fn a_taxing_unit_is_credited_the_most_it_could_possibly_collect() {
-        let mut hex = region(vec![with_men(with_silver(unit("5"), 0), 5)]);
+        let mut hex = region(vec![with_men(
+            with_silver(with_skill(unit("5"), "COMB", 1), 0),
+            5,
+        )]);
         hex.tax_base = Some(500);
         hex.for_sale.push(MarketItem {
             amount: 10,
@@ -17244,7 +17698,10 @@ mod tests {
     /// best is short.
     #[test]
     fn a_taxing_unit_short_even_at_its_best_is_still_warned_about() {
-        let mut hex = region(vec![with_men(with_silver(unit("5"), 0), 5)]);
+        let mut hex = region(vec![with_men(
+            with_silver(with_skill(unit("5"), "COMB", 1), 0),
+            5,
+        )]);
         hex.tax_base = Some(100);
         hex.for_sale.push(MarketItem {
             amount: 10,
@@ -17257,6 +17714,126 @@ mod tests {
             codes(&check(vec![hex], "unit 5\nTAX\nBUY 4 horses\n")),
             ["not-enough-silver"],
             "the whole $100 base could not buy $200 of men"
+        );
+    }
+
+    /// `rules/tax` requires combat-ready men. A known-zero readiness is therefore a certain zero
+    /// on both the Silver column and the ledger, rather than an optimistic full-headcount credit.
+    #[test]
+    fn a_certainly_unready_taxer_is_zero_in_the_review_and_ledger() {
+        let hex = ReportRegion {
+            tax_base: Some(500),
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "sword".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region(vec![with_men(with_silver(unit("5"), 0), 10)])
+        };
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 5\nTAX\nBUY 4 sword\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let taxer = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "5")
+            .expect("the taxer is priced");
+        assert_eq!(taxer.income, Some(0));
+        assert_eq!(taxer.at_month_end, Some(-400));
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("5")),
+            "the ledger must not credit a certainly unready taxer: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// Readiness can be unknowable after an unclassified transfer, but that is not proof that the
+    /// unit cannot tax. The optimistic review and ledger policy keeps the report's headcount.
+    #[test]
+    fn an_uncertain_taxer_keeps_full_headcount_pricing() {
+        let hex = ReportRegion {
+            tax_base: Some(500),
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "sword".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region(vec![with_men(with_silver(unit("5"), 0), 10), unit("7")])
+        };
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 7\nGIVE 5 ALL MAGIC\nunit 5\nTAX\nBUY 4 sword\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let taxer = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "5")
+            .expect("the taxer is priced");
+        assert_eq!(taxer.income, Some(500));
+        assert_eq!(taxer.at_month_end, Some(100));
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("5")),
+            "the optimistic ledger must credit the uncertain taxer: {:?}",
+            codes(&review.findings)
+        );
+    }
+
+    /// A partly-ready unit is still eligible to TAX under the review's optimistic policy: only a
+    /// certainly zero readiness suppresses the full reported headcount.
+    #[test]
+    fn a_partly_ready_taxer_keeps_full_headcount_pricing() {
+        let hex = ReportRegion {
+            tax_base: Some(500),
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "sword".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region(vec![with_men(
+                with_item(with_silver(unit("5"), 0), 3, "sword", "SWOR"),
+                10,
+            )])
+        };
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 5\nTAX\nBUY 4 sword\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let taxer = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "5")
+            .expect("the taxer is priced");
+        assert_eq!(taxer.income, Some(500));
+        assert_eq!(taxer.at_month_end, Some(100));
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("5")),
+            "the ledger must keep the full headcount for a partly-ready taxer: {:?}",
+            codes(&review.findings)
         );
     }
 
@@ -19508,6 +20085,7 @@ mod tests {
                 3,
             ),
             with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
         ]
     }
 
@@ -19537,6 +20115,47 @@ mod tests {
             )),
             ["taught-not-here"]
         );
+    }
+
+    #[test]
+    fn a_visible_foreign_student_is_accepted_on_doubt() {
+        let mut foreign = an_ally("700");
+        foreign.men = 2;
+        assert_eq!(
+            check(
+                vec![region(vec![
+                    with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                    foreign,
+                ])],
+                "unit 500\nTEACH 700\n"
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_foreign_student_visible_in_another_hex_is_not_here() {
+        let mut foreign = an_ally("700");
+        foreign.region_id = "1:8,53".to_string();
+        assert_eq!(
+            codes(&check(
+                vec![
+                    region_at("1:7,53", 7, 53, vec![unit("500")]),
+                    region_at("1:8,53", 8, 53, vec![foreign]),
+                ],
+                "unit 500\nTEACH 700\n"
+            )),
+            ["taught-not-here"]
+        );
+    }
+
+    #[test]
+    fn a_new_student_is_accepted_on_doubt() {
+        assert!(codes(&check(
+            vec![region(vec![with_skill(unit("500"), "COMB", 3)])],
+            "unit 500\nFORM 1\nSTUDY combat\nEND\nTEACH NEW 1\n"
+        ))
+        .is_empty());
     }
 
     #[test]
@@ -19622,6 +20241,24 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_visible_foreign_student_makes_free_slots_unknowable() {
+        let mut foreign = an_ally("800");
+        foreign.men = 2;
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+            foreign,
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        assert!(codes(&check(
+            vec![region(units)],
+            "unit 500\nTEACH 700 800\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n"
+        ))
+        .is_empty());
+    }
+
     /// The reported defect: a unit with no orders at all was told it had teaching slots free.
     /// Being idle is `unit-does-nothing`'s observation, on the same unit and in the same list.
     #[test]
@@ -19632,12 +20269,32 @@ mod tests {
                 3,
             ),
             with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
         ];
 
         assert_eq!(
             check(vec![region(units)], "unit 700\nSTUDY combat\n"),
             vec![],
             "unit 500 was never asked to teach, so it has no free teaching slots to report"
+        );
+    }
+
+    #[test]
+    fn known_own_students_can_still_prove_oversubscription_beside_a_visible_foreign_student() {
+        let mut foreign = an_ally("800");
+        foreign.men = 2;
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+            with_skill(with_men(with_silver(unit("700"), 1000), 20), "COMB", 2),
+            foreign,
+        ];
+
+        assert_eq!(
+            codes(&check(
+                vec![region(units)],
+                "unit 500\nTEACH 700 800\nunit 700\nSTUDY combat\n"
+            )),
+            ["teaching-oversubscribed"]
         );
     }
 
@@ -19756,25 +20413,26 @@ mod tests {
         assert_eq!(found, ["taught-not-here", "teacher-has-free-slots"]);
     }
 
-    /// A unit formed this month has no number yet, so `TEACH NEW 1` never resolves to a student
-    /// the hex holds.
+    /// A unit formed this month resolves through the same identity as a numbered student.
     #[test]
-    fn a_teacher_naming_only_a_new_unit_is_not_told_about_free_slots() {
+    fn a_teacher_can_teach_a_formed_student() {
         let units = vec![
             with_leaders(
                 with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
                 3,
             ),
             with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
         ];
 
-        assert!(
-            !codes(&check(
-                vec![region(units)],
-                "unit 500\nFORM 1\nEND\nTEACH NEW 1\nunit 700\nSTUDY combat\n"
-            ))
-            .contains(&"teacher-has-free-slots"),
-            "a NEW unit is doubt, not a student this hex can resolve"
+        let findings = check(
+            vec![region(units)],
+            "unit 500\nFORM 1\nSTUDY combat\nEND\nTEACH NEW 1\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n",
+        );
+        assert_eq!(codes(&findings), ["teacher-has-free-slots"]);
+        assert_eq!(
+            findings[0].message,
+            "has 30 teaching slots still free and could also teach unit 700 and 1 other"
         );
     }
 
@@ -19955,10 +20613,9 @@ mod tests {
             "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
         ));
         assert_eq!(finding.code.as_str(), "teaching-oversubscribed");
-        assert!(
-            finding.message.contains("20") && finding.message.contains("10"),
-            "it names the students and the slots: {}",
-            finding.message
+        assert_eq!(
+            finding.message,
+            "20 students on 10 slots, so the teaching bonus is diluted"
         );
     }
 
@@ -20081,6 +20738,74 @@ mod tests {
         assert_eq!(finding.unit_id.as_deref(), Some("4021"));
         assert_eq!(finding.line, Some(2));
         assert_eq!(finding.message, "Soggy Saw Mill is already finished");
+    }
+
+    #[test]
+    fn a_bare_build_for_a_carried_unfinished_ship_is_not_warned_as_outside() {
+        let carrier = with_skill(
+            with_item(unit("4021"), 1, "unfinished Cog", "COG"),
+            "SHIP",
+            2,
+        );
+
+        assert_eq!(
+            check(vec![region(vec![carrier])], "unit 4021\nBUILD\n"),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_bare_build_for_a_carried_unfinished_ship_ignores_a_finished_structure() {
+        let carrier = with_skill(
+            in_structure(with_item(unit("4021"), 1, "unfinished Cog", "COG"), "1"),
+            "SHIP",
+            2,
+        );
+
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_mill("1")],
+                    ..region(vec![carrier])
+                }],
+                "unit 4021\nBUILD\n"
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_ship_carrier_explicitly_building_a_mine_is_still_checked() {
+        let carrier = with_skill(
+            with_item(unit("4021"), 1, "unfinished Cog", "COG"),
+            "SHIP",
+            2,
+        );
+        let finding = only(check(
+            vec![region(vec![carrier])],
+            "unit 4021\nBUILD Mine\n",
+        ));
+
+        assert_eq!(finding.code, codes::BUILD_WITHOUT_SKILL);
+    }
+
+    #[test]
+    fn a_ship_carrier_helping_a_finished_structure_is_still_checked() {
+        let carrier = with_skill(
+            in_structure(with_item(unit("4021"), 1, "unfinished Cog", "COG"), "1"),
+            "SHIP",
+            2,
+        );
+
+        let findings = check_ignoring_build_skill(
+            vec![ReportRegion {
+                structures: vec![finished_mill("1")],
+                ..region(vec![carrier, unit("5")])
+            }],
+            "unit 5\nBUILD HELP 4021\n",
+        );
+
+        assert!(codes(&findings).contains(&"already-built"));
     }
 
     #[test]
@@ -21038,8 +21763,84 @@ mod tests {
     /// A leader, because `data/HUMN` stops humans at force 2 and the `study-at-maximum` warning
     /// now says so (`ah-9hp7.2`) - which would fire in every one of these fixtures and bury the
     /// finding each is about. `data/LEAD` lets a leader take any skill to 5.
+    fn mage_with_id(id: &str, level: u32) -> ReportUnit {
+        with_race(studying_unit(id, "FORC", level), 1, "leader", "LEAD")
+    }
+
     fn mage(level: u32) -> ReportUnit {
-        with_race(studying_unit("5", "FORC", level), 1, "leader", "LEAD")
+        mage_with_id("5", level)
+    }
+
+    #[test]
+    fn mage_seats_go_to_eligible_mages_in_report_order() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Fort")],
+                ..region(vec![
+                    in_structure(mage_with_id("5", 2), "1"),
+                    in_structure(mage_with_id("6", 2), "1"),
+                    in_structure(mage_with_id("7", 2), "1"),
+                ])
+            }],
+            "unit 7\nSTUDY FORC\nunit 5\nSTUDY FORC\nunit 6\nSTUDY FORC\n",
+        );
+        let mut warned = findings
+            .iter()
+            .map(|f| f.unit_id.as_deref())
+            .collect::<Vec<_>>();
+        warned.sort_unstable();
+        assert_eq!(warned, vec![Some("6"), Some("7")]);
+    }
+
+    #[test]
+    fn mage_seats_are_independent_per_structure() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Fort"), finished_of_kind("2", "Fort")],
+                    ..region(vec![
+                        in_structure(mage_with_id("5", 2), "1"),
+                        in_structure(mage_with_id("6", 2), "2"),
+                    ])
+                }],
+                "unit 5\nSTUDY FORC\nunit 6\nSTUDY FORC\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn mage_seats_cover_every_castle_place() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Castle")],
+                    ..region(vec![
+                        in_structure(mage_with_id("5", 2), "1"),
+                        in_structure(mage_with_id("6", 2), "1"),
+                    ])
+                }],
+                "unit 5\nSTUDY FORC\nunit 6\nSTUDY FORC\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_mage_studying_toward_level_two_does_not_take_a_seat() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Fort")],
+                    ..region(vec![
+                        in_structure(mage_with_id("5", 1), "1"),
+                        in_structure(mage_with_id("6", 2), "1"),
+                    ])
+                }],
+                "unit 5\nSTUDY FORC\nunit 6\nSTUDY FORC\n",
+            ),
+            vec![]
+        );
     }
 
     #[test]
@@ -21470,6 +22271,33 @@ mod tests {
             finding.message,
             "unit 13304 is not in this hex to be taken from - your report shows it in mountain (8,53) in Inhead"
         );
+    }
+
+    #[test]
+    fn a_take_from_a_visible_foreign_unit_names_the_faction_rule() {
+        let mut foreign = unit("900");
+        foreign.own = false;
+        let finding = only(check(
+            vec![region(vec![unit("4426"), foreign])],
+            "unit 4426\nTAKE FROM 900 50 SILV\n",
+        ));
+        assert_eq!(finding.code, Code("take-from-another-faction"));
+        assert_eq!(
+            finding.message,
+            "unit 900 belongs to another faction, so this TAKE moves nothing"
+        );
+    }
+
+    #[test]
+    fn a_take_from_a_concealed_foreign_unit_names_the_faction_rule() {
+        let mut foreign = unit("900");
+        foreign.own = false;
+        foreign.faction_id = None;
+        let finding = only(check(
+            vec![region(vec![unit("4426"), foreign])],
+            "unit 4426\nTAKE FROM 900 50 SILV\n",
+        ));
+        assert_eq!(finding.code, Code("take-from-another-faction"));
     }
 
     #[test]
@@ -22524,7 +23352,10 @@ mod tests {
                 code: codes::REGION_POOL_OVERSUBSCRIBED,
                 regions: vec![ReportRegion {
                     tax_base: Some(2500),
-                    ..region(vec![with_men(unit("500"), 10), with_men(unit("700"), 50)])
+                    ..region(vec![
+                        with_men(with_skill(unit("500"), "COMB", 1), 10),
+                        with_men(with_skill(unit("700"), "COMB", 1), 50),
+                    ])
                 }],
                 orders: "unit 500\nTAX\nunit 700\nTAX\n",
                 allowance: None,
@@ -22536,6 +23367,13 @@ mod tests {
                     tax_base: Some(8963),
                     ..region(vec![with_silver(unit("683"), 0), foreign_guard("14")])
                 }],
+                orders: "unit 683\nTAX\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::TAX_WITHOUT_COMBAT_READY_MEN,
+                regions: vec![region(vec![unit("683")])],
                 orders: "unit 683\nTAX\n",
                 allowance: None,
                 unclaimed: None,
@@ -22581,9 +23419,26 @@ mod tests {
                 unclaimed: None,
             },
             Case {
+                code: codes::TAKE_FROM_ANOTHER_FACTION,
+                regions: vec![region(vec![unit("5"), foreign_guard("7")])],
+                orders: "unit 5\nTAKE FROM 7 1 HUMN\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
                 code: codes::TWO_MONTH_LONG_ORDERS,
                 regions: vec![region(vec![unit("683")])],
                 orders: "unit 683\nMOVE N\nSTUDY Combat\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::WITHDRAW_IN_NEXUS,
+                regions: vec![ReportRegion {
+                    terrain: "nexus".to_string(),
+                    ..region(vec![unit("683")])
+                }],
+                orders: "unit 683\nWITHDRAW 1 sword\n",
                 allowance: None,
                 unclaimed: None,
             },
@@ -23199,8 +24054,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             crew.message,
-            "Longship [329] is short of sailors: 4 sailing levels aboard, 0 once the men joining \
-             the crew this month are counted, it needs 4, so it will not sail"
+            "Longship [329] is short of sailors: 4 sailing levels aboard and helping with SAIL, 0 \
+             once the men joining the crew this month are counted; it needs 4, so it will not sail"
         );
     }
 
@@ -23287,7 +24142,10 @@ mod tests {
         };
 
         assert_eq!(
-            codes(&check(vec![region], "unit 11125\nSAIL N\n")),
+            codes(&check(
+                vec![region],
+                "unit 11125\nSAIL N\nunit 12590\nSAIL N\n",
+            )),
             Vec::<&str>::new()
         );
     }
@@ -23302,7 +24160,10 @@ mod tests {
             ])
         };
 
-        let finding = only(check(vec![region], "unit 11125\nSAIL N\n"));
+        let finding = only(check(
+            vec![region],
+            "unit 11125\nSAIL N\nunit 12590\nSAIL N\n",
+        ));
         assert_eq!(finding.code.as_str(), "fleet-overloaded");
         assert_eq!(finding.unit_id, Some("11125".to_string()));
         assert_eq!(finding.line, Some(2));
@@ -23326,7 +24187,7 @@ mod tests {
         assert_eq!(finding.code.as_str(), "fleet-undercrewed");
         assert_eq!(
             finding.message,
-            "Longship [329] is short of sailors: 2 sailing levels aboard, it needs 4, so it will not sail"
+            "Longship [329] is short of sailors: all 2 sailing levels aboard are helping with SAIL; it needs 4, so it will not sail"
         );
     }
 
@@ -23389,8 +24250,8 @@ mod tests {
         assert_eq!(found.unit_id.as_deref(), Some("9508"));
         assert_eq!(
             found.message,
-            "Raft [218] is short of sailors: 2 sailing levels aboard less 1 given away this \
-             month, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: all 2 sailing levels aboard are helping with SAIL, \
+             less 1 given away this month; it needs 2, so it will not sail"
         );
     }
 
@@ -23407,8 +24268,8 @@ mod tests {
         assert_eq!(found.code, codes::FLEET_UNDERCREWED);
         assert_eq!(
             found.message,
-            "Raft [218] is short of sailors: 2 sailing levels aboard less 1 given away this \
-             month, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: all 2 sailing levels aboard are helping with SAIL, \
+             less 1 given away this month; it needs 2, so it will not sail"
         );
     }
 
@@ -23454,8 +24315,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             crew.message,
-            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
-             crew this month are counted, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: 1 sailing level aboard and helping with SAIL, 0 once \
+             the men joining the crew this month are counted; it needs 2, so it will not sail"
         );
     }
 
@@ -23485,8 +24346,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             crew.message,
-            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
-             crew this month are counted, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: 1 sailing level aboard and helping with SAIL, 0 once \
+             the men joining the crew this month are counted; it needs 2, so it will not sail"
         );
     }
 
@@ -23596,8 +24457,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             crew.message,
-            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
-             crew this month are counted, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: 1 sailing level aboard and helping with SAIL, 0 once \
+             the men joining the crew this month are counted; it needs 2, so it will not sail"
         );
     }
 
@@ -23613,8 +24474,8 @@ mod tests {
         assert_eq!(found.code, codes::FLEET_UNDERCREWED);
         assert_eq!(
             found.message,
-            "Raft [218] is short of sailors: 2 sailing levels aboard less 2 given away this \
-             month, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: all 2 sailing levels aboard are helping with SAIL, \
+             less 2 given away this month; it needs 2, so it will not sail"
         );
     }
 
@@ -23638,8 +24499,8 @@ mod tests {
         // (1*30 + 1*30)/2 = 30, level 1, two men, so 2 levels against 4.
         assert_eq!(
             found.message,
-            "Longship [329] is short of sailors: 1 sailing levels aboard, 2 once the men joining \
-             the crew this month are counted, it needs 4, so it will not sail"
+            "Longship [329] is short of sailors: 1 sailing level aboard and helping with SAIL, 2 \
+             once the men joining the crew this month are counted; it needs 4, so it will not sail"
         );
     }
 
@@ -23669,8 +24530,8 @@ mod tests {
         // (1*30 + 4*0)/5 = 6 points, level 0, five men, so 0 levels against the raft's 2.
         assert_eq!(
             found.message,
-            "Raft [218] is short of sailors: 1 sailing levels aboard, 0 once the men joining the \
-             crew this month are counted, it needs 2, so it will not sail"
+            "Raft [218] is short of sailors: 1 sailing level aboard and helping with SAIL, 0 once \
+             the men joining the crew this month are counted; it needs 2, so it will not sail"
         );
     }
 
@@ -24446,7 +25307,7 @@ mod tests {
     /// increment 6 exercises instead.
     fn hex_after_gifts<'a>(region: &'a ReportRegion, ordered: &'a OrderedUnits) -> Hex<'a> {
         let mut hex = Hex::read(region, ordered, &[]);
-        apply_transfers(&mut hex.units, region, Some(&ruleset()));
+        apply_transfers(&mut hex.units, region, Some(&ruleset()), &BTreeSet::new());
         hex
     }
 
@@ -24457,7 +25318,7 @@ mod tests {
         // away with it.
         let rules = ruleset();
         let mut hex = Hex::read(region, ordered, &[]);
-        apply_transfers(&mut hex.units, region, Some(&rules));
+        apply_transfers(&mut hex.units, region, Some(&rules), &BTreeSet::new());
         let receipts = BTreeMap::new();
         let ledger = ledger_for(&hex, Some(&rules), &receipts);
         apply_recruits(&mut hex.units, &ledger, Some(&rules));
@@ -24735,7 +25596,7 @@ mod tests {
     /// opens (`rules/sequenceofevents`), so it must not see the same `BUY`.
     #[test]
     fn a_tax_is_still_priced_before_the_market() {
-        let taxer = with_silver(men_holder("900", 10), 400);
+        let taxer = with_skill(with_silver(men_holder("900", 10), 400), "COMB", 1);
         let hex_region = ReportRegion {
             tax_base: Some(100_000),
             for_sale: vec![MarketItem {
@@ -26154,7 +27015,7 @@ mod tests {
         let regions = vec![
             region_at("1:7,53", 7, 53, vec![unit("5")]),
             region_at("1:8,53", 8, 53, vec![unit("6")]),
-            region_at("1:9,53", 9, 53, vec![unit("7")]),
+            region_at("1:9,53", 9, 53, vec![with_skill(unit("7"), "COMB", 1)]),
         ];
         let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nTAX\n";
         let findings = check_trade(regions, orders, "Regions", 2);
@@ -26188,7 +27049,12 @@ mod tests {
     #[test]
     fn a_region_that_both_produces_and_taxes_counts_once_under_the_pooled_schema() {
         let regions = vec![
-            region_at("1:7,53", 7, 53, vec![unit("5"), unit("6")]),
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![unit("5"), with_skill(unit("6"), "COMB", 1)],
+            ),
             region_at("1:8,53", 8, 53, vec![unit("7")]),
         ];
         let orders = "unit 5\nPRODUCE grain\nunit 6\nTAX\nunit 7\nPRODUCE grain\n";
@@ -26230,9 +27096,9 @@ mod tests {
         let regions = vec![
             region_at("1:7,53", 7, 53, vec![unit("5")]),
             region_at("1:8,53", 8, 53, vec![unit("6")]),
-            region_at("1:9,53", 9, 53, vec![unit("7")]),
-            region_at("1:10,53", 10, 53, vec![unit("8")]),
-            region_at("1:11,53", 11, 53, vec![unit("9")]),
+            region_at("1:9,53", 9, 53, vec![with_skill(unit("7"), "COMB", 1)]),
+            region_at("1:10,53", 10, 53, vec![with_skill(unit("8"), "COMB", 1)]),
+            region_at("1:11,53", 11, 53, vec![with_skill(unit("9"), "COMB", 1)]),
         ];
         let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nTAX\nunit 8\nTAX\n\
                       unit 9\nTAX\n";
@@ -26303,9 +27169,9 @@ mod tests {
     #[test]
     fn no_produce_orders_means_nothing_to_warn_about() {
         let regions = vec![
-            region_at("1:7,53", 7, 53, vec![unit("5")]),
-            region_at("1:8,53", 8, 53, vec![unit("6")]),
-            region_at("1:9,53", 9, 53, vec![unit("7")]),
+            region_at("1:7,53", 7, 53, vec![with_skill(unit("5"), "COMB", 1)]),
+            region_at("1:8,53", 8, 53, vec![with_skill(unit("6"), "COMB", 1)]),
+            region_at("1:9,53", 9, 53, vec![with_skill(unit("7"), "COMB", 1)]),
         ];
         let orders = "unit 5\nTAX\nunit 6\nTAX\nunit 7\nTAX\n";
 
