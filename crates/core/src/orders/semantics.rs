@@ -22135,7 +22135,10 @@ mod tests {
             "unit 4426\nTAKE FROM 900 50 SILV\n",
         ));
         assert_eq!(finding.code, Code("take-from-another-faction"));
-        assert_eq!(finding.message, "unit 900 belongs to another faction, so this TAKE moves nothing");
+        assert_eq!(
+            finding.message,
+            "unit 900 belongs to another faction, so this TAKE moves nothing"
+        );
     }
 
     #[test]
