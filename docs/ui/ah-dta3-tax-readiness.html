@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-dta3 - TAX readiness warning</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d;
+    --ink:#dbe3ec; --soft:#a3b0c0; --dim:#8a97a8; --brass:#d9a441;
+    --bright:#eebe63; --warn:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:14px/1.5 system-ui,sans-serif;
+    padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font:26px/1.2 Georgia,serif; } h1 span, code { color:var(--bright); }
+  header p { color:var(--soft); max-width:95ch; margin-top:9px; }
+  h2 { font:18px/1.3 Georgia,serif; margin-bottom:6px; }
+  h2 em { color:var(--brass); font:11px/1 system-ui,sans-serif; letter-spacing:1.5px;
+    text-transform:uppercase; margin-right:8px; }
+  .variants { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:28px; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:9px; padding:16px; }
+  .recommended { border-color:var(--ok); }
+  .cost { color:var(--soft); min-height:4.3em; font-size:12.5px; }
+  .editor { margin-top:13px; background:#0c1118; border:1px solid var(--edge); border-radius:6px;
+    font:12px/1.7 'SF Mono',Menlo,monospace; padding:9px 11px; }
+  .line { display:flex; gap:10px; } .n { color:#465362; width:18px; text-align:right; }
+  .order { color:var(--bright); border-bottom:2px wavy var(--warn); }
+  .warning { margin-top:8px; background:var(--raised); border:1px solid var(--warn);
+    border-left-width:3px; border-radius:4px; padding:7px 9px; font-size:12px; }
+  .warning b { color:var(--warn); font-size:10px; letter-spacing:1px; text-transform:uppercase; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; font-size:12px; }
+  th, td { padding:6px 7px; text-align:left; border-bottom:1px solid var(--edge); }
+  th { color:var(--brass); font-size:10px; letter-spacing:1px; text-transform:uppercase; }
+  td.num { text-align:right; font-family:'SF Mono',Menlo,monospace; }
+  .bad { color:var(--danger); } .good { color:var(--ok); }
+  .section { margin-top:32px; }
+  .states { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:12px; }
+  .state { background:var(--panel); border:1px solid var(--edge); border-radius:7px; padding:12px; }
+  .state h3 { color:var(--brass); font-size:12px; margin-bottom:7px; }
+  .state p { color:var(--soft); font-size:12px; }
+  .settings { width:390px; max-width:100%; background:var(--panel); border:1px solid var(--edge);
+    border-radius:8px; padding:13px; margin-top:12px; }
+  .group { color:var(--dim); border-bottom:1px solid var(--edge); font-size:10px;
+    letter-spacing:1.2px; text-transform:uppercase; padding-bottom:3px; }
+  .toggle { display:flex; justify-content:space-between; gap:12px; padding-top:8px; }
+  .toggle strong { display:block; font-size:13px; } .toggle small { color:var(--dim); display:block; }
+  input { accent-color:var(--brass); }
+  .note { margin-top:10px; color:var(--dim); font-size:12px; }
+  @media (max-width:820px) { .variants,.states { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-dta3</span> - a TAX order the unit cannot perform</h1>
+  <p>The committed <code>rules/tax</code> permits only combat-ready units to TAX.
+    <code>rules/economy_taxingpillaging</code> defines four routes: Combat 1, a weapon the unit
+    can wield, a mount it can ride in combat, or a damaging spell. The checker already knows the
+    answer and the actionable reason for PILLAGE; today TAX stays silent and the Silver column
+    still credits the unit.</p>
+</header>
+<main>
+  <div class="variants">
+    <section class="card recommended">
+      <h2><em>Chosen</em> Warn, and forecast zero</h2>
+      <p class="cost">A known-zero readiness removes this unit from regional tax demand and credits
+        no tax income. Uncertain readiness keeps today's optimistic forecast.</p>
+      <div class="editor">
+        <div class="line"><span class="n">1</span><span>unit 683</span></div>
+        <div class="line"><span class="n">2</span><span class="order">TAX</span></div>
+        <div class="warning"><b>Warning</b><br>cannot tax: it has no combat skill, no weapon it can
+          wield, no mount it can ride and no damaging spell</div>
+      </div>
+      <table><tr><th>Unit</th><th>Income</th><th>End</th></tr>
+        <tr><td>The Lost One (683)</td><td class="num good">0</td><td class="num">0</td></tr>
+      </table>
+    </section>
+    <section class="card">
+      <h2><em>Rejected</em> Warn, keep optimistic Silver</h2>
+      <p class="cost">The same screen would say both "cannot tax" and "+950", so this variant was
+        rejected.</p>
+      <div class="editor">
+        <div class="line"><span class="n">1</span><span>unit 683</span></div>
+        <div class="line"><span class="n">2</span><span class="order">TAX</span></div>
+        <div class="warning"><b>Warning</b><br>cannot tax: it has no combat skill, no weapon it can
+          wield, no mount it can ride and no damaging spell</div>
+      </div>
+      <table><tr><th>Unit</th><th>Income</th><th>End</th></tr>
+        <tr><td>The Lost One (683)</td><td class="num bad">+950</td><td class="num">950</td></tr>
+      </table>
+    </section>
+  </div>
+
+  <section class="section">
+    <h2>The hidden states</h2>
+    <div class="states">
+      <div class="state"><h3>Definitely ready</h3>
+        <p>No warning. TAX income and regional demand are forecast normally.</p></div>
+      <div class="state"><h3>Definitely unready</h3>
+        <p>The warning appears. Income and regional demand are both zero.</p></div>
+      <div class="state"><h3>Cannot determine</h3>
+        <p>No warning. The existing accept-on-doubt forecast remains; uncertainty elsewhere does
+          not become a false TAX warning.</p></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Explicit TAX and the taxing flag</h2>
+    <div class="states">
+      <div class="state"><h3>Explicit order</h3>
+        <p>The finding is attached to the first <code>TAX</code> line, matching existing order
+          diagnostics.</p></div>
+      <div class="state"><h3>AUTOTAX / taxing flag</h3>
+        <p>The same finding is attached to the unit block because there is no TAX line, matching
+          the existing guarded-hex and pillaged-hex warnings.</p></div>
+      <div class="state"><h3>Both</h3>
+        <p>One finding on the explicit TAX line and one tax decision, not duplicate warnings or
+          duplicate income.</p></div>
+    </div>
+    <p class="note">A zero-person unit is marked with the exact message
+      "cannot tax: this unit has no men". Readiness remains visible alongside a pillaged-hex or
+      guarded-hex warning because each names a separate blocker.</p>
+  </section>
+
+  <section class="section">
+    <h2>Warnings setting</h2>
+    <div class="settings">
+      <div class="group">Orders</div>
+      <label class="toggle"><span><strong>Taxing without combat-ready men</strong>
+        <small>A TAX order or taxing flag on a unit with no combat-ready men.</small></span>
+        <input type="checkbox" checked></label>
+    </div>
+    <p class="note">The rejected wording was "Units unable to tax" — "A unit attempting to TAX
+      without any men who meet the game's taxing requirements."</p>
+  </section>
+</main>
+</body>
+</html>
