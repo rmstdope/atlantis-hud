@@ -47,8 +47,14 @@ pub enum Arg {
     Name,
     /// Everything left on the line, whatever it is, including nothing at all.
     Tail,
-    /// One or more of the argument this points at.
+    /// One or more of the argument this points at; every remaining token must match, or the whole
+    /// form does. Used for the movement forms, where a bad route step is a mistake worth naming
+    /// rather than a place to stop reading.
     Rest(&'static Arg),
+    /// One or more of the argument this points at, like [`Arg::Rest`], but stopping at the first
+    /// token that does not match rather than failing the form: `EVICT 415 698 note` reads two
+    /// units and leaves `note` as trailing text. The first value is still required.
+    Repeat(&'static Arg),
 }
 
 /// An order and every form the rules give for it.
@@ -110,7 +116,7 @@ pub const GRAMMAR: &[Order] = &[
     },
     Order {
         name: "ATTACK",
-        forms: &[&[Arg::Rest(&Arg::Unit)]],
+        forms: &[&[Arg::Repeat(&Arg::Unit)]],
     },
     Order {
         name: "AUTOTAX",
@@ -193,7 +199,7 @@ pub const GRAMMAR: &[Order] = &[
     },
     Order {
         name: "EVICT",
-        forms: &[&[Arg::Rest(&Arg::Unit)]],
+        forms: &[&[Arg::Repeat(&Arg::Unit)]],
     },
     Order {
         name: "EXCHANGE",
@@ -205,10 +211,11 @@ pub const GRAMMAR: &[Order] = &[
         forms: &[&[Arg::Name, Arg::Number, Arg::Tail]],
     },
     Order {
-        // FIND is in the engine's sequence of events but has no entry in the Order Summary, so there
-        // is no documented shape to hold it to.
+        // FIND is in the engine's sequence of events but has no entry in the Order Summary, so
+        // there is no documented shape to hold it to. The engine observation on ah-86vk is that it
+        // consumes one faction number and ignores whatever follows.
         name: "FIND",
-        forms: &[&[Arg::Tail]],
+        forms: &[&[Arg::Faction]],
     },
     Order {
         name: "FORGET",
@@ -379,7 +386,7 @@ pub const GRAMMAR: &[Order] = &[
     },
     Order {
         name: "TEACH",
-        forms: &[&[Arg::Rest(&Arg::Unit)]],
+        forms: &[&[Arg::Repeat(&Arg::Unit)]],
     },
     Order {
         name: "TRANSPORT",
@@ -531,8 +538,12 @@ fn next_argument(form: &'static [Arg], arguments: &[Token]) -> Option<&'static A
             Arg::Tail => return None,
             // `inner` binds as `&&'static Arg` - the field is already a reference and the match is
             // through one - so both uses below dereference it. `Arg` is `Copy`, so that is free.
-            Arg::Rest(inner) => {
-                debug_assert_eq!(index, form.len() - 1, "Rest is a form's last argument");
+            Arg::Rest(inner) | Arg::Repeat(inner) => {
+                debug_assert_eq!(
+                    index,
+                    form.len() - 1,
+                    "Rest/Repeat is a form's last argument"
+                );
                 loop {
                     if at == arguments.len() {
                         return Some(*inner);
@@ -584,7 +595,8 @@ pub(super) fn keywords(argument: &Arg) -> Vec<&'static str> {
         | Arg::Skill
         | Arg::Name
         | Arg::Tail
-        | Arg::Rest(_) => Vec::new(),
+        | Arg::Rest(_)
+        | Arg::Repeat(_) => Vec::new(),
     }
 }
 
@@ -607,21 +619,63 @@ pub struct Mismatch {
     pub missing: bool,
 }
 
+/// What a form matched: how far into the arguments it read, and what it noticed along the way.
+///
+/// `consumed` is an index into the arguments, not a count of forms or tokens beyond it - so
+/// `arguments[..consumed]` is exactly what this form read, and anything after it is trailing text
+/// the engine also ignores (`ah-86vk`). Every caller downstream of validation - `intents`,
+/// `effects` - reads that same prefix rather than the whole line, through [`consumed_arguments`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct MatchedOrder {
+    pub unknown_items: Vec<UnknownItem>,
+    pub consumed: usize,
+}
+
+/// The arguments this order actually consumes, trimmed of whatever trailing text the engine would
+/// ignore - the one seam every reader downstream of validation reads through, so a line accepted
+/// here cannot be read differently by a preview or an intent.
+///
+/// `None` for an unknown command or one whose required arguments are missing or malformed; those
+/// stay errors; a caller with nothing to read gets nothing back. No ruleset is passed to
+/// `match_order` here: an item name the catalogue does not recognise is a warning for the syntax
+/// checker to raise, not a reason for a reader to see fewer tokens than it otherwise would.
+#[must_use]
+pub(super) fn consumed_arguments<'a>(
+    command: &Token,
+    arguments: &'a [Token],
+) -> Option<&'a [Token]> {
+    let order = find_order(&command.text)?;
+    let matched = match_order(order, arguments, None).ok()?;
+    Some(&arguments[..matched.consumed])
+}
+
 /// Matches an order's arguments against every form it has.
 ///
-/// `arguments` excludes the command itself. On success, returns the item arguments the catalogue did
-/// not recognise - a warning, not a refusal. On failure, returns the mismatch from the form that got
-/// furthest, because that is the form the player was most plausibly trying to write.
-pub fn match_order(
+/// `arguments` excludes the command itself. Every form is tried, because a fixed form that
+/// consumed only its own arguments and a longer form that read farther before failing must be
+/// compared to decide which is closer to what the player meant: the best success is the form that
+/// consumed the most tokens, and it loses only to a failure that got strictly farther still - a tie
+/// is decided for the success, since a complete reading beats an incomplete one that reached the
+/// same place. This is what lets `STUDY COMB note` succeed through the short `[Skill]` form while
+/// `GIVE 17 ALL SWOR EXCEPT x` still reports what the longer `EXCEPT` form was missing.
+pub(super) fn match_order(
     order: &Order,
     arguments: &[Token],
     ruleset: Option<&Ruleset>,
-) -> Result<Vec<UnknownItem>, Mismatch> {
+) -> Result<MatchedOrder, Mismatch> {
+    let mut best: Option<MatchedOrder> = None;
     let mut furthest: Vec<Mismatch> = Vec::new();
 
     for form in order.forms {
         match match_form(form, arguments, ruleset) {
-            Ok(unknown) => return Ok(unknown),
+            Ok(matched) => {
+                if best
+                    .as_ref()
+                    .is_none_or(|current| matched.consumed > current.consumed)
+                {
+                    best = Some(matched);
+                }
+            }
             Err(mismatch) => {
                 // The forms that consumed the most tokens before failing are the ones the player was
                 // most plausibly writing, so theirs are the complaints worth showing. Several forms
@@ -639,12 +693,21 @@ pub fn match_order(
         }
     }
 
-    Err(merge(furthest))
+    if let Some(mismatch) = furthest.first() {
+        let beaten = best
+            .as_ref()
+            .is_none_or(|matched| mismatch.at > matched.consumed);
+        if beaten {
+            return Err(merge(furthest));
+        }
+    }
+
+    best.ok_or_else(|| merge(furthest))
 }
 
 /// Folds the equally-close mismatches into one complaint naming every way forward.
 fn merge(mismatches: Vec<Mismatch>) -> Mismatch {
-    let mut merged = mismatches
+    mismatches
         .into_iter()
         .reduce(|mut left, right| {
             if !left
@@ -658,29 +721,14 @@ fn merge(mismatches: Vec<Mismatch>) -> Mismatch {
             left.missing = left.missing && right.missing;
             left
         })
-        .expect("every order has at least one form");
-
-    // "no more arguments" is not an alternative to anything; when some other form wanted a real
-    // argument in the same place, that is the useful half of the message.
-    if merged.expected.contains(" or ") {
-        let parts: Vec<&str> = merged
-            .expected
-            .split(" or ")
-            .filter(|part| *part != "no more arguments")
-            .collect();
-        if !parts.is_empty() {
-            merged.expected = parts.join(" or ");
-        }
-    }
-
-    merged
+        .expect("every order has at least one form")
 }
 
 fn match_form(
     form: &[Arg],
     arguments: &[Token],
     ruleset: Option<&Ruleset>,
-) -> Result<Vec<UnknownItem>, Mismatch> {
+) -> Result<MatchedOrder, Mismatch> {
     let mut unknown = Vec::new();
     let mut at = 0;
 
@@ -688,15 +736,12 @@ fn match_form(
         at = match_arg(argument, arguments, at, ruleset, &mut unknown)?;
     }
 
-    if at < arguments.len() {
-        return Err(Mismatch {
-            at,
-            expected: "no more arguments".to_string(),
-            missing: false,
-        });
-    }
-
-    Ok(unknown)
+    // A form that reads its own arguments has matched, whatever tokens are left after it: the
+    // engine stops reading once a form is satisfied, and so does this checker (`ah-86vk`).
+    Ok(MatchedOrder {
+        unknown_items: unknown,
+        consumed: at,
+    })
 }
 
 /// Matches one argument, returning where the next one starts.
@@ -716,6 +761,18 @@ fn match_arg(
         let mut next = match_arg(inner, arguments, at, ruleset, unknown)?;
         while next < arguments.len() {
             next = match_arg(inner, arguments, next, ruleset, unknown)?;
+        }
+        return Ok(next);
+    }
+
+    // Like `Rest`, but a token that stops matching ends the repetition rather than the form: the
+    // first value is still required, and anything after the last one that matched is trailing text
+    // the caller now owns (`ah-86vk`). `EVICT 415 note` reads one unit and leaves `note`; `EVICT
+    // note` still has no first unit to read.
+    if let Arg::Repeat(inner) = argument {
+        let mut next = match_arg(inner, arguments, at, ruleset, unknown)?;
+        while let Ok(after) = match_arg(inner, arguments, next, ruleset, unknown) {
+            next = after;
         }
         return Ok(next);
     }
@@ -760,7 +817,7 @@ fn match_arg(
         // A skill or a name is whatever single token the player wrote; nothing here can tell a real
         // one from a typo, and guessing would reject spells this parser has never heard of.
         Arg::Skill | Arg::Name => 1,
-        Arg::Tail | Arg::Rest(_) => unreachable!("handled above"),
+        Arg::Tail | Arg::Rest(_) | Arg::Repeat(_) => unreachable!("handled above"),
     };
 
     if consumed == 0 {
@@ -806,7 +863,7 @@ fn describe(argument: &Arg) -> String {
         Arg::MoveStep => "a direction, IN, OUT or a structure number".to_string(),
         Arg::Name => "a name".to_string(),
         Arg::Tail => "anything".to_string(),
-        Arg::Rest(inner) => describe(inner),
+        Arg::Rest(inner) | Arg::Repeat(inner) => describe(inner),
     }
 }
 
@@ -863,20 +920,100 @@ mod tests {
     // `None`.
 
     #[test]
-    fn every_form_keeps_its_rest_last() {
+    fn every_form_keeps_its_rest_or_repeat_last() {
         for order in GRAMMAR {
             for form in order.forms {
                 for (index, argument) in form.iter().enumerate() {
-                    if matches!(argument, Arg::Rest(_)) {
+                    if matches!(argument, Arg::Rest(_) | Arg::Repeat(_)) {
                         assert_eq!(
                             index,
                             form.len() - 1,
-                            "{}: Rest is not this form's last argument",
+                            "{}: Rest/Repeat is not this form's last argument",
                             order.name
                         );
                     }
                 }
             }
         }
+    }
+
+    /// One token of a lexed line, for building the argument slices these tests match against.
+    fn arguments(line: &str) -> (Token, Vec<Token>) {
+        let mut tokens = lex_line(line).tokens;
+        let command = tokens.remove(0);
+        (command, tokens)
+    }
+
+    // --- consumed prefixes and the best-success-versus-furthest-failure rule (ah-86vk) --------
+
+    #[test]
+    fn fixed_forms_report_the_consumed_prefix_and_ignore_the_suffix() {
+        // Zero arguments: LEAVE takes none, so the whole line is trailing text.
+        let (command, args) = arguments("LEAVE note");
+        let order = find_order(&command.text).expect("LEAVE is an order");
+        let matched = match_order(order, &args, None).expect("trailing text is not an error");
+        assert_eq!(matched.consumed, 0);
+
+        // One argument: CLAIM takes a number, and stops there.
+        let (command, args) = arguments("CLAIM 100 note");
+        let order = find_order(&command.text).expect("CLAIM is an order");
+        let matched = match_order(order, &args, None).expect("trailing text is not an error");
+        assert_eq!(matched.consumed, 1);
+
+        // Multiple arguments: STEAL takes a unit and an item.
+        let (command, args) = arguments("STEAL 123 SILV note");
+        let order = find_order(&command.text).expect("STEAL is an order");
+        let matched = match_order(order, &args, None).expect("trailing text is not an error");
+        assert_eq!(matched.consumed, 2);
+    }
+
+    #[test]
+    fn a_farther_malformed_form_beats_a_shorter_success() {
+        // GIVE's `[unit] ALL [item]` form is satisfied after three tokens and would ignore
+        // `EXCEPT` as trailing text; the `EXCEPT [number]` form reaches one token farther before
+        // finding nothing where a reserve belongs, so its complaint is the one that must surface.
+        let (command, args) = arguments("GIVE 17 ALL SWOR EXCEPT x");
+        let order = find_order(&command.text).expect("GIVE is an order");
+        let mismatch =
+            match_order(order, &args, None).expect_err("a malformed reserve is still an error");
+        assert_eq!(mismatch.at, 4);
+        assert!(!mismatch.missing, "x is the wrong kind, not a missing one");
+
+        // The complete shorter form still wins when nothing reaches farther than it did.
+        let (command, args) = arguments("STUDY COMB note");
+        let order = find_order(&command.text).expect("STUDY is an order");
+        let matched = match_order(order, &args, None).expect("the short form is complete");
+        assert_eq!(matched.consumed, 1);
+    }
+
+    #[test]
+    fn repeated_unit_forms_stop_after_the_last_unit() {
+        let (command, args) = arguments("EVICT 415 698 note");
+        let order = find_order(&command.text).expect("EVICT is an order");
+        let matched = match_order(order, &args, None).expect("two units, then trailing text");
+        assert_eq!(matched.consumed, 2);
+
+        // The first unit is still required.
+        let (command, args) = arguments("EVICT note");
+        let order = find_order(&command.text).expect("EVICT is an order");
+        let mismatch = match_order(order, &args, None).expect_err("no unit to read at all");
+        assert_eq!(mismatch.at, 0);
+    }
+
+    #[test]
+    fn movement_rest_still_rejects_a_bad_step() {
+        // `Rest` is strict where `Repeat` is not: every remaining token must match, so a bad
+        // route element is still the player's mistake to fix rather than a place to stop reading.
+        let (command, args) = arguments("MOVE N nowhere");
+        let order = find_order(&command.text).expect("MOVE is an order");
+        let mismatch =
+            match_order(order, &args, None).expect_err("a bad route step is still an error");
+        assert_eq!(mismatch.at, 1);
+
+        // `Tail` keeps consuming everything, unaffected by this change.
+        let (command, args) = arguments("CAST Fire_Shield a whole spell line");
+        let order = find_order(&command.text).expect("CAST is an order");
+        let matched = match_order(order, &args, None).expect("Tail accepts anything");
+        assert_eq!(matched.consumed, args.len());
     }
 }

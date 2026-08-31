@@ -153,8 +153,8 @@ impl Document {
         };
 
         match match_order(order, line.arguments, ruleset) {
-            Ok(unknown) => {
-                for item in unknown {
+            Ok(matched) => {
+                for item in matched.unknown_items {
                     self.warning(
                         line.number,
                         item.column_start,
@@ -248,19 +248,13 @@ impl Document {
         }
 
         let found = &arguments[mismatch.at];
-        let (code, message) = if mismatch.expected == "no more arguments" {
-            (
-                "extra-arguments",
-                format!("{name} takes no more arguments, found \"{}\"", found.text),
-            )
-        } else {
-            (
-                "bad-argument",
-                format!("expected {}, found \"{}\"", mismatch.expected, found.text),
-            )
-        };
-
-        self.error(number, found.column_start, found.column_end, code, message);
+        self.error(
+            number,
+            found.column_start,
+            found.column_end,
+            "bad-argument",
+            format!("expected {}, found \"{}\"", mismatch.expected, found.text),
+        );
     }
 
     fn finish(&mut self, source: &str) {
@@ -426,13 +420,16 @@ mod tests {
     /// Counted in bytes this span would be (12, 13), and the panel would quote the empty string.
     #[test]
     fn a_span_on_a_line_with_an_accent_still_covers_the_offending_word() {
-        let line = "STUDY Mörk x";
+        // FACTION has one form only - `[Name] [Number] [Tail]` - so a bad second argument cannot
+        // be out-run by a shorter alternative the way STUDY's second form now is (`ah-86vk`): the
+        // grammar always needs a number right after the name, whatever trails it.
+        let line = "FACTION Mörk x";
         let diagnostic = only(line);
 
         assert_eq!(diagnostic.code, "bad-argument");
         assert_eq!(
             (diagnostic.column_start, diagnostic.column_end),
-            (Some(11), Some(12))
+            (Some(13), Some(14))
         );
 
         // Sliced the way JavaScript slices, which is what these numbers are for.
@@ -457,9 +454,42 @@ mod tests {
     }
 
     #[test]
-    fn arguments_beyond_what_an_order_takes_are_an_error() {
-        let diagnostic = only("WORK hard");
-        assert_eq!(diagnostic.code, "extra-arguments");
+    fn valid_orders_ignore_text_after_the_arguments_the_engine_consumes() {
+        // Zero-, one-, multi- and repeated-argument forms, each with trailing text the engine
+        // reads nothing from. `rules/claim`, `rules/promote`, `rules/enter`,
+        // `rules/assassinate`, `rules/steal`, `rules/consume` and `rules/evict` document the
+        // consumed shape; FIND has no rules-page order section, so its consumed faction number
+        // comes from the engine observation this bead records.
+        clean(concat!(
+            "LEAVE note\n",
+            "CLAIM 100 note\n",
+            "PROMOTE 415 note\n",
+            "ENTER 114 note\n",
+            "ASSASSINATE 177 note\n",
+            "FIND 27 note\n",
+            "CONSUME UNIT note\n",
+            "STEAL 123 SILV note\n",
+            "EVICT 415 698 note\n",
+        ));
+    }
+
+    #[test]
+    fn missing_and_malformed_consumed_arguments_remain_errors() {
+        assert_eq!(codes("CLAIM"), ["missing-arguments"]);
+        assert_eq!(codes("FIND"), ["missing-arguments"]);
+        assert_eq!(codes("EVICT"), ["missing-arguments"]);
+        assert_eq!(codes("ENTER shed"), ["bad-argument"]);
+        assert_eq!(codes("FIND shed"), ["bad-argument"]);
+        // The first element of a repeated list is still required.
+        assert_eq!(codes("EVICT note"), ["bad-argument"]);
+        // A malformed unit target still stops STEAL, whatever trails it.
+        assert_eq!(codes("STEAL shed SILV note"), ["bad-argument"]);
+        // EXCEPT belongs only to the ALL form, so a malformed reserve there still surfaces even
+        // though the shorter `[unit] ALL [item]` form would otherwise ignore it as trailing text.
+        assert_eq!(codes("GIVE 17 ALL SWOR EXCEPT x"), ["bad-argument"]);
+        // MOVE's remainder is strict: a bad route element is still an error, not a place to stop
+        // reading.
+        assert_eq!(codes("MOVE N nowhere"), ["bad-argument"]);
     }
 
     #[test]

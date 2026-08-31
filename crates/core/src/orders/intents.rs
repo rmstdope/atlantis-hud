@@ -512,22 +512,33 @@ fn is_free_order(command: &Token) -> bool {
 
 /// One order line, as an intent - or nothing, for an order no check reads and for one whose shape
 /// is wrong. The two are deliberately indistinguishable here: the syntax checker owns the second.
+///
+/// Every reader below that keys on an exact argument shape reads it through
+/// [`super::grammar::consumed_arguments`] rather than the raw slice, so trailing text the
+/// validator now ignores (`ah-86vk`) cannot make a line unreadable here that the checker accepts.
+/// Three keywords are read from the raw slice instead: `ANNIHILATE`, a bare `CAST` and a
+/// `PRODUCE` whose shape does not read as a priced item already fall back to a `MonthLong` intent
+/// when their own arguments do not parse (documented at each arm below), and gating them on the
+/// grammar's success would turn that deliberate fallback into no intent at all.
 fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
     let name = command.text.to_ascii_uppercase();
 
     match name.as_str() {
         "GIVE" => {
+            let arguments = super::grammar::consumed_arguments(command, arguments)?;
             let (to, rest) = forms::read_party(arguments)?;
             let (what, amount) = forms::read_transfer(rest)?;
             Some(Intent::Give { to, what, amount })
         }
         "TAKE" => {
+            let arguments = super::grammar::consumed_arguments(command, arguments)?;
             let rest = arguments.split_first().filter(|(kw, _)| kw.is("FROM"))?.1;
             let (from, rest) = forms::read_party(rest)?;
             let (what, amount) = forms::read_transfer(rest)?;
             Some(Intent::Take { from, what, amount })
         }
         "BUY" | "SELL" => {
+            let arguments = super::grammar::consumed_arguments(command, arguments)?;
             let (amount, rest) = forms::read_amount(arguments)?;
             let item = rest.first().filter(|_| rest.len() == 1)?.text.clone();
             if name == "BUY" {
@@ -539,6 +550,7 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         // "STUDY [skill]" and "STUDY [skill] [level]". The level says how far to go, not what a
         // month costs, so it changes nothing any check reads.
         "STUDY" => {
+            let arguments = super::grammar::consumed_arguments(command, arguments)?;
             let skill = arguments.first()?;
             let trailing = arguments.get(1);
             if arguments.len() > 2 || trailing.is_some_and(|token| token.kind != TokenKind::Number)
@@ -551,7 +563,7 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         }
         "TEACH" => {
             let mut students = Vec::new();
-            let mut rest = arguments;
+            let mut rest = super::grammar::consumed_arguments(command, arguments)?;
             while !rest.is_empty() {
                 let (student, remaining) = forms::read_party(rest)?;
                 students.push(student);
@@ -562,15 +574,23 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
             }
             Some(Intent::Teach { students })
         }
-        "GUARD" => Some(Intent::Guard(forms::read_flag(arguments)?)),
-        "CLAIM" => Some(Intent::Claim(forms::read_only_number(arguments)?)),
-        "TAX" if arguments.is_empty() => Some(Intent::Tax),
-        "PILLAGE" if arguments.is_empty() => Some(Intent::Pillage),
-        "WORK" if arguments.is_empty() => Some(Intent::Work),
-        "ENTERTAIN" if arguments.is_empty() => Some(Intent::Entertain),
+        "GUARD" => {
+            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            Some(Intent::Guard(forms::read_flag(arguments)?))
+        }
+        "CLAIM" => {
+            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            Some(Intent::Claim(forms::read_only_number(arguments)?))
+        }
+        // These four take no arguments at all, so trailing text is never anything but the
+        // engine-ignored kind (`ah-86vk`): `TAX now`, like `WORK hard`, is still the bare order.
+        "TAX" => Some(Intent::Tax),
+        "PILLAGE" => Some(Intent::Pillage),
+        "WORK" => Some(Intent::Work),
+        "ENTERTAIN" => Some(Intent::Entertain),
         // The grammar gives WITHDRAW no `ALL` form, unlike BUY and SELL: `[number] [item]` or a
         // bare `[item]`, which withdraws one.
-        "WITHDRAW" => match arguments {
+        "WITHDRAW" => match super::grammar::consumed_arguments(command, arguments)? {
             [count, item] if count.kind == TokenKind::Number => Some(Intent::Withdraw {
                 count: count.text.parse().ok()?,
                 item: item.text.clone(),
@@ -584,7 +604,10 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         // A full month order, and the one whose argument is worth keeping: what it makes can cost
         // silver and materials (`ah-19l2.2`). Read in the shape WITHDRAW uses just above. Any
         // other form - no argument, or more than one token - stays a bare month-long order: the
-        // month is still spoken for and nothing can be priced.
+        // month is still spoken for and nothing can be priced. Read from the raw arguments rather
+        // than the grammar's consumed prefix: an argument shape the grammar itself refuses (a
+        // bare `PRODUCE`, say) must still spend the month here, the same reason `ANNIHILATE` and
+        // a bare `CAST` do below.
         "PRODUCE" => match arguments {
             [item] if item.kind != TokenKind::Number => Some(Intent::Produce {
                 item: item.text.clone(),
@@ -593,14 +616,17 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         },
         // The rules' enumerated list omits IDLE, but describes it as "do nothing for the entire
         // month" - so it spends the month, and a unit told to be idle is not a forgotten one.
-        "IDLE" if arguments.is_empty() => Some(Intent::MonthLong("IDLE")),
-        // The rules never place ANNIHILATE; the navigator ruled it month-long (2026-08-19).
+        "IDLE" => Some(Intent::MonthLong("IDLE")),
+        // The rules never place ANNIHILATE; the navigator ruled it month-long (2026-08-19),
+        // whatever its arguments look like - so this reads no shape at all, grammar-validated or
+        // not.
         "ANNIHILATE" => Some(Intent::MonthLong("ANNIHILATE")),
         // The grammar's own forms (`grammar.rs`'s BUILD entry): `HELP [unit] COMPLETE`,
         // `HELP [unit]`, `COMPLETE`, `[name] COMPLETE`, `[name]`, and nothing at all. Read
-        // strictly - a token this reader does not account for makes the order unreadable, the
-        // same as everywhere else in this module, rather than being silently dropped.
-        "BUILD" => match arguments {
+        // strictly - a token the grammar's own consumed prefix does not account for makes the
+        // order unreadable, the same as everywhere else in this module, rather than being
+        // silently dropped; trailing text beyond that prefix is the engine-ignored kind.
+        "BUILD" => match super::grammar::consumed_arguments(command, arguments)? {
             [] => Some(Intent::Build {
                 founding: None,
                 helping: None,
@@ -634,15 +660,20 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
             _ => None,
         },
         // A bare SAIL - the form the turn 71 template uses - spends the month but names no step
-        // this reader can follow. With a route it is read below.
+        // this reader can follow. With a route it is read below. Movement's `Rest` is strict
+        // (`ah-86vk`'s `Arg::Repeat` is not used here), so `read_move_line` already agrees with
+        // the grammar without going through `consumed_arguments`.
         "SAIL" if arguments.is_empty() => Some(Intent::Sail { steps: Vec::new() }),
         "SAIL" => Some(Intent::Sail {
             steps: forms::read_move_line(command, arguments)?,
         }),
-        "ENTER" => Some(Intent::Enter {
-            structure: forms::read_only_number(arguments)?.to_string(),
-        }),
-        "LEAVE" if arguments.is_empty() => Some(Intent::Leave),
+        "ENTER" => {
+            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            Some(Intent::Enter {
+                structure: forms::read_only_number(arguments)?.to_string(),
+            })
+        }
+        "LEAVE" => Some(Intent::Leave),
         // Not every spell takes a month, but the rules make no promise about which, and a mage
         // offered as somebody's spare teacher is worse than one left alone. The arguments are kept
         // rather than discarded like BUILD/PRODUCE's, since transmutation's cost reads them. A
@@ -869,6 +900,36 @@ mod tests {
         assert_eq!(intents("unit 5\nGIVE 42 swords\n"), vec![]);
         assert_eq!(intents("unit 5\nFLY 1 2\n"), vec![]);
         assert_eq!(intents("unit 5\nSTUDY\n"), vec![]);
+    }
+
+    /// The validator's grammar decides what an order consumes, and this reader now shares that
+    /// exact prefix (`ah-86vk`): trailing text a valid order ignores still yields the same intent
+    /// a shorter line would, while a malformed required argument still yields none at all.
+    #[test]
+    fn intents_use_the_same_consumed_prefix_as_validation() {
+        assert_eq!(
+            intents("unit 5\nCLAIM 100 note\n"),
+            vec![Intent::Claim(100)]
+        );
+        assert_eq!(intents("unit 5\nGUARD 1 note\n"), vec![Intent::Guard(true)]);
+        assert_eq!(
+            intents("unit 5\nENTER 114 note\n"),
+            vec![Intent::Enter {
+                structure: "114".to_string()
+            }]
+        );
+        assert_eq!(
+            intents("unit 5\nGIVE 4573 100 SILV note\n"),
+            vec![Intent::Give {
+                to: Party::Unit("4573".to_string()),
+                what: Selector::Item("SILV".to_string()),
+                amount: Amount::Exact(100),
+            }]
+        );
+
+        // A malformed required argument is still unread, trailing text or not.
+        assert_eq!(intents("unit 5\nCLAIM note\n"), vec![]);
+        assert_eq!(intents("unit 5\nENTER shed\n"), vec![]);
     }
 
     #[test]
@@ -1293,13 +1354,32 @@ mod tests {
         );
     }
 
-    /// A token this reader does not account for makes the order unreadable, the same as every
-    /// other order here - a trailing word must not be silently dropped.
+    /// Trailing text beyond the grammar's own consumed prefix is the engine-ignored kind
+    /// (`ah-86vk`), so a complete shorter form still reads through it; only a token this reader's
+    /// own shapes cannot account for makes the order unreadable.
     #[test]
-    fn a_build_with_a_trailing_word_is_unreadable() {
-        assert_eq!(intents("unit 5\nBUILD COMPLETE foo\n"), vec![]);
-        assert_eq!(intents("unit 5\nBUILD HELP 4021 foo\n"), vec![]);
-        assert_eq!(intents("unit 5\nBUILD Tower foo\n"), vec![]);
+    fn a_build_with_trailing_text_still_reads_the_shorter_form() {
+        assert_eq!(
+            intents("unit 5\nBUILD COMPLETE foo\n"),
+            vec![Intent::Build {
+                founding: None,
+                helping: None
+            }]
+        );
+        assert_eq!(
+            intents("unit 5\nBUILD HELP 4021 foo\n"),
+            vec![Intent::Build {
+                founding: None,
+                helping: Some(Party::Unit("4021".to_string()))
+            }]
+        );
+        assert_eq!(
+            intents("unit 5\nBUILD Tower foo\n"),
+            vec![Intent::Build {
+                founding: Some("Tower".to_string()),
+                helping: None
+            }]
+        );
     }
 
     /// A TURN block's contents are next month's orders, not this month's. Reading them as though
