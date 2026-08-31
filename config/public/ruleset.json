@@ -80,6 +80,11 @@
         "fly": false,
         "swim": false
       },
+      "skillLimits": {
+        "specializedSkills": [],
+        "specializedLevel": 5,
+        "defaultLevel": 5
+      },
       "description": "This race may study all skills to level 5.",
       "moves": 2
     },
@@ -99,6 +104,18 @@
         "ride": false,
         "fly": false,
         "swim": false
+      },
+      "skillLimits": {
+        "specializedSkills": [
+          "LUMB",
+          "LBOW",
+          "ENTE",
+          "CARP",
+          "FISH",
+          "COOK"
+        ],
+        "specializedLevel": 5,
+        "defaultLevel": 2
       },
       "description": "This race may study lumberjack [LUMB], longbow [LBOW], entertainment [ENTE], carpenter [CARP], fishing [FISH] and cooking [COOK] to level 5 and all other skills to level 2.",
       "moves": 2
@@ -120,6 +137,17 @@
         "fly": false,
         "swim": false
       },
+      "skillLimits": {
+        "specializedSkills": [
+          "HORS",
+          "FISH",
+          "LBOW",
+          "SHIP",
+          "SAIL"
+        ],
+        "specializedLevel": 5,
+        "defaultLevel": 2
+      },
       "description": "This race may study horse training [HORS], fishing [FISH], longbow [LBOW], shipbuilding [SHIP] and sailing [SAIL] to level 5 and all other skills to level 2.",
       "moves": 2
     },
@@ -139,6 +167,17 @@
         "ride": false,
         "fly": false,
         "swim": false
+      },
+      "skillLimits": {
+        "specializedSkills": [
+          "COMB",
+          "WEAP",
+          "MINI",
+          "FISH",
+          "ARMO"
+        ],
+        "specializedLevel": 5,
+        "defaultLevel": 2
       },
       "description": "This race may study combat [COMB], weaponsmith [WEAP], mining [MINI], fishing [FISH] and armorer [ARMO] to level 5 and all other skills to level 2.",
       "moves": 2
@@ -160,6 +199,17 @@
         "fly": false,
         "swim": false
       },
+      "skillLimits": {
+        "specializedSkills": [
+          "ARMO",
+          "WEAP",
+          "QUAR",
+          "MINI",
+          "BUIL"
+        ],
+        "specializedLevel": 5,
+        "defaultLevel": 2
+      },
       "description": "This race may study armorer [ARMO], weaponsmith [WEAP], quarrying [QUAR], mining [MINI] and building [BUIL] to level 5 and all other skills to level 2.",
       "moves": 2
     },
@@ -179,6 +229,17 @@
         "ride": false,
         "fly": false,
         "swim": false
+      },
+      "skillLimits": {
+        "specializedSkills": [
+          "WEAP",
+          "ARMO",
+          "QUAR",
+          "MINI",
+          "BUIL"
+        ],
+        "specializedLevel": 5,
+        "defaultLevel": 2
       },
       "description": "This race may study weaponsmith [WEAP], armorer [ARMO], quarrying [QUAR], mining [MINI] and building [BUIL] to level 5 and all other skills to level 2.",
       "moves": 2
@@ -200,6 +261,17 @@
         "fly": false,
         "swim": false
       },
+      "skillLimits": {
+        "specializedSkills": [
+          "MINI",
+          "LUMB",
+          "COMB",
+          "BUIL",
+          "SHIP"
+        ],
+        "specializedLevel": 5,
+        "defaultLevel": 2
+      },
       "description": "This race may study mining [MINI], lumberjack [LUMB], combat [COMB], building [BUIL] and shipbuilding [SHIP] to level 5 and all other skills to level 2.",
       "moves": 2
     },
@@ -220,6 +292,17 @@
         "fly": false,
         "swim": false
       },
+      "skillLimits": {
+        "specializedSkills": [
+          "HERB",
+          "QUAR",
+          "ENTE",
+          "XBOW",
+          "HEAL"
+        ],
+        "specializedLevel": 5,
+        "defaultLevel": 2
+      },
       "description": "This race may study herb lore [HERB], quarrying [QUAR], entertainment [ENTE], crossbow [XBOW] and healing [HEAL] to level 5 and all other skills to level 2.",
       "moves": 2
     },
@@ -239,6 +322,17 @@
         "ride": true,
         "fly": false,
         "swim": false
+      },
+      "skillLimits": {
+        "specializedSkills": [
+          "LUMB",
+          "HORS",
+          "RIDI",
+          "HEAL",
+          "FARM"
+        ],
+        "specializedLevel": 5,
+        "defaultLevel": 2
       },
       "description": "This race may study lumberjack [LUMB], horse training [HORS], riding [RIDI], healing [HEAL] and farming [FARM] to level 5 and all other skills to level 2. This is a mount. This mount requires riding [RIDI] of at least level 1 to ride in combat. This mount gives a minimum bonus of +1 when ridden into combat. This mount gives a maximum bonus of +2 when ridden into combat. This bonus is calculated as a RIDING skill divided by 2 (rounded up).",
       "moves": 4
@@ -2954,6 +3048,18 @@
         "fly": false,
         "swim": false
       },
+      "skillLimits": {
+        "specializedSkills": [
+          "BUIL",
+          "RIDI",
+          "COMB",
+          "MINI",
+          "FARM",
+          "COOK"
+        ],
+        "specializedLevel": 4,
+        "defaultLevel": 2
+      },
       "description": "This race may study building [BUIL], riding [RIDI], combat [COMB], mining [MINI], farming [FARM] and cooking [COOK] to level 4 and all other skills to level 2.",
       "moves": 2
     },
@@ -2973,6 +3079,17 @@
         "ride": false,
         "fly": false,
         "swim": true
+      },
+      "skillLimits": {
+        "specializedSkills": [
+          "HUNT",
+          "HERB",
+          "CARP",
+          "SAIL",
+          "HEAL"
+        ],
+        "specializedLevel": 5,
+        "defaultLevel": 2
       },
       "description": "This race may study hunting [HUNT], herb lore [HERB], carpenter [CARP], sailing [SAIL] and healing [HEAL] to level 5 and all other skills to level 2.",
       "moves": 2
@@ -2994,6 +3111,17 @@
         "fly": false,
         "swim": false
       },
+      "skillLimits": {
+        "specializedSkills": [
+          "QUAR",
+          "XBOW",
+          "SHIP",
+          "WEAP",
+          "ENTE"
+        ],
+        "specializedLevel": 5,
+        "defaultLevel": 2
+      },
       "description": "This race may study quarrying [QUAR], crossbow [XBOW], shipbuilding [SHIP], weaponsmith [WEAP] and entertainment [ENTE] to level 5 and all other skills to level 2.",
       "moves": 2
     },
@@ -3014,6 +3142,18 @@
         "fly": false,
         "swim": false
       },
+      "skillLimits": {
+        "specializedSkills": [
+          "HORS",
+          "HUNT",
+          "COMB",
+          "ARMO",
+          "CARP",
+          "COOK"
+        ],
+        "specializedLevel": 5,
+        "defaultLevel": 2
+      },
       "description": "This race may study horse training [HORS], hunting [HUNT], combat [COMB], armorer [ARMO], carpenter [CARP] and cooking [COOK] to level 5 and all other skills to level 2.",
       "moves": 2
     },
@@ -3033,6 +3173,17 @@
         "ride": false,
         "fly": false,
         "swim": false
+      },
+      "skillLimits": {
+        "specializedSkills": [
+          "COMB",
+          "HUNT",
+          "LBOW",
+          "LUMB",
+          "COOK"
+        ],
+        "specializedLevel": 5,
+        "defaultLevel": 2
       },
       "description": "This race may study combat [COMB], hunting [HUNT], longbow [LBOW], lumberjack [LUMB] and cooking [COOK] to level 5 and all other skills to level 2.",
       "moves": 2

@@ -38,6 +38,50 @@ describe("parseItemReference", () => {
     });
   });
 
+  it("reads an all-skills race ceiling", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    // data/LEAD: "This race may study all skills to level 5."
+    expect(items.LEAD.skillLimits).toEqual({
+      specializedSkills: [],
+      specializedLevel: 5,
+      defaultLevel: 5
+    });
+  });
+
+  it("reads specialized and fallback race ceilings", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    // data/HUMN and data/WELF preserve the page's specialized-skill order.
+    expect(items.HUMN.skillLimits).toEqual({
+      specializedSkills: ["BUIL", "RIDI", "COMB", "MINI", "FARM", "COOK"],
+      specializedLevel: 4,
+      defaultLevel: 2
+    });
+    expect(items.WELF.skillLimits).toEqual({
+      specializedSkills: ["LUMB", "LBOW", "ENTE", "CARP", "FISH", "COOK"],
+      specializedLevel: 5,
+      defaultLevel: 2
+    });
+  });
+
+  it("leaves unrecognized race-limit prose absent", () => {
+    const html =
+      "<html><body><pre>mystery folk [MYST], weight 10. This race may study whatever the " +
+      "stars permit.</pre></body></html>";
+
+    const entry = parseItemReference(html).MYST;
+
+    expect(entry.kind).toBe("man");
+    expect(entry).not.toHaveProperty("skillLimits");
+  });
+
+  it("does not add race limits to an ordinary item", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    expect(items.SWOR).not.toHaveProperty("skillLimits");
+  });
+
   it("reads a swimming race's swim capacity", () => {
     const items = parseItemReference(DATA_HTML);
 

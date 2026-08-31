@@ -24,6 +24,7 @@ export type { ItemKind } from "./generated/ItemKind";
 export type { MonsterCombat } from "./generated/MonsterCombat";
 export type { Production } from "./generated/Production";
 export type { ProductionInput } from "./generated/ProductionInput";
+export type { RaceSkillLimits } from "./generated/RaceSkillLimits";
 export type { SelfMobility } from "./generated/SelfMobility";
 export type { Weapon } from "./generated/Weapon";
 
@@ -41,6 +42,7 @@ import type { ItemKind } from "./generated/ItemKind";
 import type { MonsterCombat } from "./generated/MonsterCombat";
 import type { Production } from "./generated/Production";
 import type { ProductionInput } from "./generated/ProductionInput";
+import type { RaceSkillLimits } from "./generated/RaceSkillLimits";
 import type { SelfMobility } from "./generated/SelfMobility";
 import type { Weapon } from "./generated/Weapon";
 import { preformattedText } from "./html";
@@ -176,6 +178,53 @@ function sailingOf(kind: ItemKind, text: string): { sailingSkill?: number } {
   return skill === null ? {} : { sailingSkill: skill };
 }
 
+/**
+ * The specialized and fallback study ceilings stated by race entries such as data/LEAD and
+ * data/HUMN. Unknown wording is deliberately omitted rather than guessed.
+ */
+function skillLimitsOf(
+  kind: ItemKind,
+  paragraph: string
+): { skillLimits?: RaceSkillLimits } {
+  if (kind !== "man") {
+    return {};
+  }
+
+  const allSkills = paragraph.match(/\bThis race may study all skills to level \d+\./i);
+  if (allSkills) {
+    const level = readNumber(allSkills[0], /to level (\d+)/i);
+    return level === null
+      ? {}
+      : {
+          skillLimits: {
+            specializedSkills: [],
+            specializedLevel: level,
+            defaultLevel: level
+          }
+        };
+  }
+
+  const specialized = paragraph.match(
+    /\bThis race may study ([^.]+?) to level \d+ and all other skills to level \d+\./i
+  );
+  if (!specialized) {
+    return {};
+  }
+
+  const specializedLevel = readNumber(specialized[0], /to level (\d+)/i);
+  const defaultLevel = readNumber(specialized[0], /all other skills to level (\d+)/i);
+  const specializedSkills = [...specialized[1].matchAll(/\[([A-Z0-9]{2,6})\]/g)].map(
+    (match) => match[1]
+  );
+  if (specializedLevel === null || defaultLevel === null || specializedSkills.length === 0) {
+    return {};
+  }
+
+  return {
+    skillLimits: { specializedSkills, specializedLevel, defaultLevel }
+  };
+}
+
 /** The withdrawal price, as a spreadable field so an item with none carries no key. */
 function withdrawOf(paragraph: string): { withdrawCost?: number } {
   const cost = readNumber(paragraph, /costs (\d+) silver to withdraw/i);
@@ -275,6 +324,7 @@ export function parseItemReference(html: string): ItemReference {
       ...withdrawOf(paragraph),
       ...cargoOf(kind, paragraph),
       ...sailingOf(kind, paragraph),
+      ...skillLimitsOf(kind, paragraph),
       ...weaponOf(kind, paragraph),
       ...descriptionOf(paragraph),
       moves:

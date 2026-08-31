@@ -7,6 +7,7 @@ export {
   type ItemKind,
   type ItemReference,
   type MonsterCombat,
+  type RaceSkillLimits,
   type SelfMobility,
   type Weapon
 } from "./data";

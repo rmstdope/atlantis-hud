@@ -247,6 +247,23 @@ pub struct Weapon {
     pub needs: Option<String>,
 }
 
+/// The race-dependent study ceilings stated by `data/LEAD` and the other race entries.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(
+        export,
+        export_to = "../../../ruleset/src/generated/RaceSkillLimits.ts"
+    )
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RaceSkillLimits {
+    pub specialized_skills: Vec<String>,
+    pub specialized_level: u32,
+    pub default_level: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     test,
@@ -262,6 +279,11 @@ pub struct ItemEntry {
     pub capacity: ItemCapacity,
     pub self_mobile: SelfMobility,
     pub moves: u32,
+    /// The race's specialized and fallback study ceilings. `None` for non-races, unrecognized
+    /// race prose, and rulesets cached before `ah-9hp7.1`.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub skill_limits: Option<RaceSkillLimits>,
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub combat: Option<MonsterCombat>,
@@ -1296,6 +1318,21 @@ mod tests {
         let entry: ItemEntry = serde_json::from_str(json).expect("an entry with no weapon loads");
 
         assert_eq!(entry.weapon, None);
+    }
+
+    #[test]
+    fn an_item_without_skill_limits_still_loads() {
+        let json = r#"{
+            "tag": "HUMN", "name": "human", "kind": "man", "weight": 10,
+            "capacity": {"walk": 5, "ride": 0, "fly": 0, "swim": 0},
+            "selfMobile": {"walk": true, "ride": false, "fly": false, "swim": false},
+            "moves": 2
+        }"#;
+
+        let entry: ItemEntry =
+            serde_json::from_str(json).expect("an entry with no skill limits loads");
+
+        assert_eq!(entry.skill_limits, None);
     }
 
     #[test]

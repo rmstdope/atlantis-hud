@@ -2,10 +2,16 @@
 import type { ItemCapacity } from "./ItemCapacity";
 import type { ItemKind } from "./ItemKind";
 import type { MonsterCombat } from "./MonsterCombat";
+import type { RaceSkillLimits } from "./RaceSkillLimits";
 import type { SelfMobility } from "./SelfMobility";
 import type { Weapon } from "./Weapon";
 
-export type ItemEntry = { tag: string, name: string, kind: ItemKind, weight: number, capacity: ItemCapacity, selfMobile: SelfMobility, moves: number, combat?: MonsterCombat, cargoCapacity?: number, capacityCondition?: string, sailingSkill?: number, 
+export type ItemEntry = { tag: string, name: string, kind: ItemKind, weight: number, capacity: ItemCapacity, selfMobile: SelfMobility, moves: number, 
+/**
+ * The race's specialized and fallback study ceilings. `None` for non-races, unrecognized
+ * race prose, and rulesets cached before `ah-9hp7.1`.
+ */
+skillLimits?: RaceSkillLimits, combat?: MonsterCombat, cargoCapacity?: number, capacityCondition?: string, sailingSkill?: number, 
 /**
  * What WITHDRAW costs per unit of this item, in silver. `None` for an item the page prices
  * nowhere - anything that is not a basic item - and for a ruleset cached before `ah-1wcw.6`.

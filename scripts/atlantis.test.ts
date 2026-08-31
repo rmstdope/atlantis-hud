@@ -173,6 +173,21 @@ describe("run — verify", () => {
     expect(printed).toContain("pnpm run atlantis refresh");
   });
 
+  it("names race skill limit drift", async () => {
+    const committed = JSON.parse(RULESET_JSON);
+    committed.items.HUMN.skillLimits.defaultLevel = 999;
+    const { io, out } = fakeIo();
+    io.writeFile(RULESET_PATH, JSON.stringify(committed));
+
+    const code = await run(["verify"], io);
+
+    expect(code).toBe(1);
+    const printed = out.join("\n");
+    expect(printed).toContain("items.HUMN");
+    expect(printed).toContain("999");
+    expect(printed).toContain("2");
+  });
+
   it("names the class when itemClasses disagrees", async () => {
     const committed = JSON.parse(RULESET_JSON);
     committed.itemClasses.ARMOR = ["NOTREAL"];
