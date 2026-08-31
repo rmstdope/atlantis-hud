@@ -6297,6 +6297,32 @@ fn check_teaching(
 }
 
 /// Everything wrong with one unit's TEACH order.
+enum StudentPresence<'a> {
+    Own(&'a Ordered<'a>),
+    VisibleForeign,
+    Absent,
+}
+
+fn student_presence<'a>(hex: &'a Hex<'a>, id: &str) -> StudentPresence<'a> {
+    if let Some(pupil) = hex.find(id) {
+        return if pupil.leaves_the_hex() {
+            StudentPresence::Absent
+        } else {
+            StudentPresence::Own(pupil)
+        };
+    }
+    if hex
+        .region
+        .units
+        .iter()
+        .any(|unit| unit.unit_id == id && !unit.own)
+    {
+        StudentPresence::VisibleForeign
+    } else {
+        StudentPresence::Absent
+    }
+}
+
 fn check_one_teacher(
     hex: &Hex<'_>,
     teacher: &Ordered<'_>,
@@ -6322,16 +6348,20 @@ fn check_one_teacher(
         };
 
         let label = teaching_target_label(student);
-        let Some(pupil) = hex.find(&id).filter(|pupil| !pupil.leaves_the_hex()) else {
-            if options.emits(codes::TAUGHT_NOT_HERE) {
-                findings.push(teacher.finding(
-                    hex,
-                    codes::TAUGHT_NOT_HERE,
-                    format!("{label} is not in this hex to be taught"),
-                    Some(placed),
-                ));
+        let pupil = match student_presence(hex, &id) {
+            StudentPresence::Own(pupil) => pupil,
+            StudentPresence::VisibleForeign => continue,
+            StudentPresence::Absent => {
+                if options.emits(codes::TAUGHT_NOT_HERE) {
+                    findings.push(teacher.finding(
+                        hex,
+                        codes::TAUGHT_NOT_HERE,
+                        format!("{label} is not in this hex to be taught"),
+                        Some(placed),
+                    ));
+                }
+                continue;
             }
-            continue;
         };
 
         let Some(studying) = pupil.studies() else {
@@ -6343,6 +6373,7 @@ fn check_one_teacher(
                     Some(placed),
                 ));
             }
+
             continue;
         };
 
@@ -6418,6 +6449,21 @@ fn offer_free_slots(
         .intents()
         .any(|intent| matches!(intent, Intent::Teach { .. }))
     {
+        return;
+    }
+
+    // A visible foreign student has unknown headcount and order state (`rules/skills_teaching`),
+    // so spare slots cannot be established from the report.
+    let has_visible_foreign = teacher
+        .intents()
+        .filter_map(|intent| match intent {
+            Intent::Teach { students } => Some(students),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(party_unit_id)
+        .any(|id| matches!(student_presence(hex, &id), StudentPresence::VisibleForeign));
+    if has_visible_foreign {
         return;
     }
 
@@ -19597,6 +19643,22 @@ mod tests {
     }
 
     #[test]
+    fn a_visible_foreign_student_is_accepted_on_doubt() {
+        let mut foreign = an_ally("700");
+        foreign.men = 2;
+        assert_eq!(
+            check(
+                vec![region(vec![
+                    with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                    foreign,
+                ])],
+                "unit 500\nTEACH 700\n"
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
     fn a_student_leaving_the_hex_cannot_be_taught_there() {
         assert_eq!(
             codes(&check(
@@ -19671,6 +19733,24 @@ mod tests {
             finding.message,
             "has 28 teaching slots still free and could also teach unit 900"
         );
+    }
+
+    #[test]
+    fn a_visible_foreign_student_makes_free_slots_unknowable() {
+        let mut foreign = an_ally("800");
+        foreign.men = 2;
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+            foreign,
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        assert!(codes(&check(
+            vec![region(units)],
+            "unit 500\nTEACH 700 800\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n"
+        ))
+        .is_empty());
     }
 
     /// The reported defect: a unit with no orders at all was told it had teaching slots free.
