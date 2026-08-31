@@ -17,7 +17,7 @@ import type {
 } from "@atlantis/core-client";
 import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   buildHexMapModel,
   levelClause,
@@ -34,7 +34,7 @@ import {
   stripMovementOrderLines,
   writeUnitOrders
 } from "../ordersDocument";
-import { isOrdersFile, routeOrdersImport, type PendingOrdersImport } from "../ordersImport";
+import { isOrdersFile, routeOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
 import { rulesetById } from "../rulesets";
 import { silverKey } from "../unitTable";
@@ -66,8 +66,6 @@ import {
   routeReport,
   storeOlderTurn,
   type LoadedTurn,
-  type PendingMapExport,
-  type PendingReportLoad
 } from "../reportLoad";
 import { chooseViewerFaction } from "../reportBatch";
 import {
@@ -81,6 +79,7 @@ import type { ImportSummary } from "../importSummary";
 import { describeMerge } from "../foreignReport";
 import { mapExportRefusal } from "../mapExport";
 import { describeMapExportAdded } from "../mapExportPrompt";
+import { reduce as reduceFileQuestion, type FileQuestionState } from "./fileQuestionState";
 import {
   AUTOSAVE_CEILING_MS,
   AUTOSAVE_IDLE_MS,
@@ -632,15 +631,10 @@ export function AppShell({
   const [reportTab, setReportTab] = useState<TurnReportTab>("problems");
   // A report from another faction, parsed and waiting for the player to say what to do with it,
   // and whose reports have already been folded into the turn on screen.
-  const [pendingLoad, setPendingLoad] = useState<PendingReportLoad | null>(null);
-  // One of our own map exports, held for the same reason and cleared the same way: it replaces
-  // whichever of the three questions was already up, and is replaced by either of them. It is never
-  // a turn, so unlike `pendingLoad` there is no third answer that opens it.
-  const [pendingMapExport, setPendingMapExport] = useState<PendingMapExport | null>(null);
-  // An orders file, recognised and waiting for the player to confirm the overwrite it names -
-  // `pendingLoad`'s sibling for the other kind of file the Import target takes. The two clear each
-  // other on arrival: only one question is ever on screen at a time.
-  const [pendingOrdersImport, setPendingOrdersImport] = useState<PendingOrdersImport | null>(null);
+  const [fileQuestion, dispatchFileQuestion] = useReducer(reduceFileQuestion, null as FileQuestionState);
+  const pendingLoad = fileQuestion?.kind === "foreign-report" ? fileQuestion.pending : null;
+  const pendingMapExport = fileQuestion?.kind === "map-export" ? fileQuestion.pending : null;
+  const pendingOrdersImport = fileQuestion?.kind === "orders-import" ? fileQuestion.pending : null;
   const [ordersImportSummary, setOrdersImportSummary] = useState<OrdersImportSummary | null>(null);
   const [mergedReports, setMergedReports] = useState<MergedReportRecord[]>([]);
   // A second, read-only turn held beside the working one (ah-jg6.3), and the picker that chooses
@@ -1431,9 +1425,7 @@ export function AppShell({
           if (route.kind === "mapExport") {
             // A map is added, never opened, so the load stops here exactly as `ask` does - and it
             // replaces whichever question was already up, because only one is ever on screen.
-            setPendingLoad(null);
-            setPendingOrdersImport(null);
-            setPendingMapExport(route.pending);
+            dispatchFileQuestion({ type: "opened", question: { kind: "map-export", pending: route.pending } });
             return;
           }
 
@@ -1442,9 +1434,7 @@ export function AppShell({
             // `finally`, because it disables the button that opened this file and a prompt the
             // player cannot answer would be worse than no prompt. A second file dropped while this
             // is up simply replaces the question rather than queueing behind it.
-            setPendingOrdersImport(null);
-            setPendingMapExport(null);
-            setPendingLoad(route.pending);
+            dispatchFileQuestion({ type: "opened", question: { kind: "foreign-report", pending: route.pending } });
             return;
           }
 
@@ -1471,7 +1461,7 @@ export function AppShell({
     if (!pending) {
       return;
     }
-    setPendingLoad(null);
+    dispatchFileQuestion({ type: "closed" });
     void runReported(
       () => applyReport(pending.report, pending.text, pending.fileName),
       (message) => setStatus(failedStatus(message)),
@@ -1493,7 +1483,7 @@ export function AppShell({
     if (!pending || !pending.canMerge || !game || pending.viewer.turnNumber === null) {
       return;
     }
-    setPendingLoad(null);
+    dispatchFileQuestion({ type: "closed" });
     void runReported(
       async () => {
         const outcome = await mergeTurn(
@@ -1531,7 +1521,7 @@ export function AppShell({
     if (!pending || !game) {
       return;
     }
-    setPendingMapExport(null);
+    dispatchFileQuestion({ type: "closed" });
     void runReported(
       async () => {
         const outcome = await mergeTurn(
@@ -1578,9 +1568,7 @@ export function AppShell({
       // The one question a file drop can raise, whichever kind of file it turns out to be - this
       // one replaces a foreign-report or map-export question left open exactly as a second report
       // replaces it.
-      setPendingLoad(null);
-      setPendingMapExport(null);
-      setPendingOrdersImport(route.pending);
+      dispatchFileQuestion({ type: "opened", question: { kind: "orders-import", pending: route.pending } });
     },
     [game, parsed, ordersDocument]
   );
@@ -2104,8 +2092,7 @@ export function AppShell({
       // the prompt holds a faction id and a turn that belong to another database entirely. The
       // batch's question carries a whole selection of parsed reports and would write them into
       // whichever game is open when it is answered; the summary describes a game nobody is in.
-      setPendingLoad(null);
-      setPendingMapExport(null);
+      dispatchFileQuestion({ type: "closed" });
       setPendingBatch(null);
       setImportSummary(null);
       setMergedReports([]);
@@ -2837,7 +2824,7 @@ export function AppShell({
     if (!pending) {
       return;
     }
-    setPendingOrdersImport(null);
+    dispatchFileQuestion({ type: "closed" });
 
     // The game, faction or turn on screen can have moved since the prompt was raised - a report
     // that loaded without asking, a different game or turn picked while this sat open. The counts
@@ -3688,7 +3675,7 @@ export function AppShell({
           busy={busy}
           onMerge={mergeReport}
           onSwitch={switchFaction}
-          onCancel={() => setPendingLoad(null)}
+          onCancel={() => dispatchFileQuestion({ type: "closed" })}
         />
       ) : null}
 
@@ -3701,7 +3688,7 @@ export function AppShell({
           pending={pendingMapExport}
           busy={busy}
           onAdd={addMapExport}
-          onCancel={() => setPendingMapExport(null)}
+          onCancel={() => dispatchFileQuestion({ type: "closed" })}
         />
       ) : null}
 
@@ -3718,7 +3705,7 @@ export function AppShell({
           emptiedCount={pendingOrdersImport.emptiedCount}
           busy={busy}
           onReplace={replaceOrdersImport}
-          onCancel={() => setPendingOrdersImport(null)}
+          onCancel={() => dispatchFileQuestion({ type: "closed" })}
         />
       ) : null}
 
