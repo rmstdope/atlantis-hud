@@ -7503,7 +7503,7 @@ fn check_idle_units(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
         // unwelcome (ah-udff, revising ah-dwk6's "no exemptions"). Only when the count is a count:
         // `men` is 0 on a unit whose items the ruleset could not read, and exempting that one
         // would hide a real unit instead of a husk.
-        if ordered.unit.men == 0 && !ordered.unit.men_estimated {
+        if ordered.early_men() == 0 && !ordered.unit.men_estimated && !ordered.holdings_unknown() {
             continue;
         }
         // A unit set to tax every turn spends its month doing so, with no order in this turn's
