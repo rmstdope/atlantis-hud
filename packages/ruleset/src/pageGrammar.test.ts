@@ -167,6 +167,9 @@ const itemTagsMatching = (marker: RegExp): string[] =>
     )
   ].sort();
 
+/** The page's own race marker, independent of the parser's classification and limit patterns. */
+const MAN = /\bThis race may study\b/iu;
+
 /**
  * The page's own words for each readable class, re-stated independently of `itemClassesOf`'s
  * `CLASS_MARKERS` in `data.ts` - the same discipline `statedBy` above follows for skills, and for
@@ -180,7 +183,7 @@ const ITEM_CLASS_MARKERS: Record<string, RegExp> = {
   BATTLE: /This item is a miscellaneous combat item\./iu,
   TOOL: /This is a tool\./iu,
   FOOD: /This item can be eaten to provide/iu,
-  MAN: /\bThis race may study\b/iu,
+  MAN,
   SHIP: /\bThis is an? (?:flying )?'?ship'?\b/iu,
   WEAPON:
     /No skill is needed to wield this weapon\.|Knowledge of [a-z ]+ \[[A-Z]{2,6}\] is needed to wield this weapon\./iu,
@@ -188,6 +191,14 @@ const ITEM_CLASS_MARKERS: Record<string, RegExp> = {
 };
 
 describe("the item catalogue against the page's own grammar", () => {
+  it("reads skill limits for every race the page marks", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    for (const tag of itemTagsMatching(MAN)) {
+      expect(items[tag].skillLimits, `${tag} has no structured skill limits`).toBeDefined();
+    }
+  });
+
   it("every item class holds exactly the entries the page marks", () => {
     const classes = itemClassesOf(parseItemReference(DATA_HTML));
 

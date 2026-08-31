@@ -11,10 +11,16 @@ Two engine-generated pages, complementary and both required:
 | Page | Provides | Does **not** provide |
 | --- | --- | --- |
 | rules (e.g. `https://atlantis-pbem.com/rules`) | movement points per mode, terrain costs, the road rule, the ocean rule, the sailing rule | item stats, monster stats |
-| data (e.g. `https://atlantis-pbem.com/data`) | item weights, capacities, `moves N hexes per month`, monster combat stats, the sailing skill a ship requires | terrain costs, any Road entry |
+| data (e.g. `https://atlantis-pbem.com/data`) | item weights, capacities, `moves N hexes per month`, monster combat stats, the sailing skill a ship requires, race skill ceilings | terrain costs, any Road entry |
 
 Both are prose. The scraper anchors on the engine's own sentences and records, for every movement
 value, the sentence it was read from.
+
+Race entries also carry the ceilings defined by `rules/skills_limitations` and
+`rules/tableraces`. The data-page forms are represented in each race item's optional `skillLimits`
+block: `specializedSkills` preserves the listed skill tags, `specializedLevel` is their ceiling, and
+`defaultLevel` is the ceiling for every other skill. `data/LEAD` has an empty specialized list and
+uses level 5 for both ceilings; `data/HUMN` lists six level-4 specializations and a level-2 default.
 
 ## Running it
 
@@ -62,6 +68,11 @@ read out of the rule's own sentence rather than assumed to be `ocean`; and `skil
 **null** for a skill the page prices nowhere (annihilation), never zero — zero would say studying it
 is free. `skills` is its own block rather than merged into `items` because ten tags mean one thing
 as a skill and another as an item (`FISH`, `HERB`).
+
+`items.*.skillLimits` is optional for backward compatibility and tolerance. It is absent from old
+cached rulesets, from non-race items, and from a race whose `This race may study` sentence no longer
+matches either complete grammar the scraper understands. One unrecognized race sentence therefore
+does not make the rest of the item catalogue unusable.
 
 **Adding a field** touches exactly: the scraper (`rules.ts` or `data.ts`, and its test), the core
 (`rules.rs`, and `tests/movement_ruleset.rs`), and the file — regenerated, never edited:

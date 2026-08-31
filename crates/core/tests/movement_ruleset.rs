@@ -139,6 +139,41 @@ fn tells_men_from_equipment() {
 }
 
 #[test]
+fn committed_ruleset_carries_race_skill_limits() {
+    let ruleset = ruleset();
+
+    let leaders = ruleset
+        .find_item("LEAD")
+        .and_then(|item| item.skill_limits.as_ref())
+        .expect("data/LEAD should carry its all-skills ceiling");
+    assert!(leaders.specialized_skills.is_empty());
+    assert_eq!(leaders.specialized_level, 5);
+    assert_eq!(leaders.default_level, 5);
+
+    let humans = ruleset
+        .find_item("HUMN")
+        .and_then(|item| item.skill_limits.as_ref())
+        .expect("data/HUMN should carry specialized and fallback ceilings");
+    assert_eq!(
+        humans.specialized_skills,
+        ["BUIL", "RIDI", "COMB", "MINI", "FARM", "COOK"]
+    );
+    assert_eq!(humans.specialized_level, 4);
+    assert_eq!(humans.default_level, 2);
+
+    let wood_elves = ruleset
+        .find_item("WELF")
+        .and_then(|item| item.skill_limits.as_ref())
+        .expect("data/WELF should carry specialized and fallback ceilings");
+    assert_eq!(
+        wood_elves.specialized_skills,
+        ["LUMB", "LBOW", "ENTE", "CARP", "FISH", "COOK"]
+    );
+    assert_eq!(wood_elves.specialized_level, 5);
+    assert_eq!(wood_elves.default_level, 2);
+}
+
+#[test]
 fn the_catalogue_knows_which_items_are_armor() {
     let ruleset = ruleset();
 
