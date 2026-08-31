@@ -3506,6 +3506,15 @@ mod tests {
         }
 
         #[test]
+        fn a_take_from_a_visible_foreign_unit_changes_no_previewed_items() {
+            let response = two_hex_preview("unit 6857\nTAKE FROM 7001 1 LEAD\n");
+            assert!(
+                response.regions.is_empty(),
+                "a refused TAKE must not create an item preview: {response:?}"
+            );
+        }
+
+        #[test]
         fn a_produced_item_reaches_the_previewed_unit() {
             let response = preview_over(&report_with_a_smith(), "unit 900\nPRODUCE sword\n");
             let unit = only_unit(&response);

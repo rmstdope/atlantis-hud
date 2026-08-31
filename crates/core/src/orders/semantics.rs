@@ -115,6 +115,7 @@ pub mod codes {
     pub const FLEET_OVERLOADED: Code = Code("fleet-overloaded");
     pub const FLEET_UNDERCREWED: Code = Code("fleet-undercrewed");
     pub const GIVE_TARGET_NOT_HERE: Code = Code("give-target-not-here");
+    pub const TAKE_FROM_ANOTHER_FACTION: Code = Code("take-from-another-faction");
     pub const NOT_TRADED_HERE: Code = Code("not-traded-here");
     pub const UNIT_OVERLOADED: Code = Code("unit-overloaded");
     pub const TOO_MANY_QUARTERMASTERS: Code = Code("too-many-quartermasters");
@@ -152,7 +153,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 42] = [
+    pub const ALL: [Code; 43] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -166,6 +167,7 @@ pub mod codes {
         FLEET_OVERLOADED,
         FLEET_UNDERCREWED,
         GIVE_TARGET_NOT_HERE,
+        TAKE_FROM_ANOTHER_FACTION,
         NOT_TRADED_HERE,
         UNIT_OVERLOADED,
         TOO_MANY_QUARTERMASTERS,
@@ -304,6 +306,16 @@ fn units_by_id(report: &ParsedReport) -> BTreeMap<&str, &ReportUnit> {
     units
 }
 
+fn foreign_unit_ids(report: &ParsedReport) -> BTreeSet<String> {
+    report
+        .regions
+        .iter()
+        .flat_map(|region| &region.units)
+        .filter(|unit| !unit.own)
+        .map(|unit| unit.unit_id.clone())
+        .collect()
+}
+
 /// Checks a whole turn's orders against the report they were written for.
 ///
 /// Only the reporting faction's units, in the hexes this turn's report covers. Allied and foreign
@@ -354,6 +366,7 @@ pub fn review_turn(
     // from its parent, and every review has to know which units this month's orders create.
     let unit_regions = where_the_report_shows_each_unit(report);
     let unit_by_id = units_by_id(report);
+    let foreign_unit_ids = foreign_unit_ids(report);
     // Every unit this month's orders create, built once and before `hexes` below so it outlives
     // every `Hex<'_>` that borrows from it (`Ordered` holds a reference into `formed[i].unit`).
     //
@@ -419,7 +432,7 @@ pub fn review_turn(
     let hexes: Vec<Hex<'_>> = report
         .regions
         .iter()
-        .map(|region| hex_with_transfers(region, &ordered, &formed, ruleset))
+        .map(|region| hex_with_transfers(region, &ordered, &formed, ruleset, &foreign_unit_ids))
         .collect();
 
     // A `Products` line is shared by everyone producing against it, and who that is is a
@@ -433,7 +446,13 @@ pub fn review_turn(
     let mut hexes: Vec<(Hex<'_>, Ledger<'_>)> = hexes
         .into_iter()
         .map(|mut hex| {
-            let ledger = ledger_for_with_production(&hex, ruleset, &receipts, &production);
+            let ledger = ledger_for_with_production(
+                &hex,
+                ruleset,
+                &receipts,
+                &production,
+                &foreign_unit_ids,
+            );
             apply_recruits(&mut hex.units, &ledger, ruleset);
             (hex, ledger)
         })
@@ -519,6 +538,7 @@ pub fn review_turn(
         check_idle_units(hex, &options, &mut findings);
         check_two_month_long_orders(hex, &options, &mut findings);
         check_transfer_targets(hex, &located, &options, &mut findings);
+        check_take_from_another_faction(hex, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
         check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
         check_withdraw_in_nexus(hex, &options, &mut findings);
@@ -1687,6 +1707,9 @@ fn read_take(
     in_this_hex: bool,
     amount: &Amount,
 ) {
+    if source.is_some_and(|source| !source.own) {
+        return;
+    }
     let (Some(source), true) = (source, in_this_hex) else {
         // A source the report does not show here: the ledger credits a stated quantity outright
         // and declines an `ALL`, and the column follows it exactly rather than telling a second
@@ -1954,10 +1977,11 @@ fn hex_with_transfers<'a>(
     ordered: &'a OrderedUnits,
     formed: &'a [Formed],
     ruleset: Option<&Ruleset>,
+    foreign_unit_ids: &BTreeSet<String>,
 ) -> Hex<'a> {
     let mut hex = Hex::read(region, ordered, formed);
     let region = hex.region;
-    apply_transfers(&mut hex.units, region, ruleset);
+    apply_transfers(&mut hex.units, region, ruleset, foreign_unit_ids);
     hex
 }
 
@@ -2217,7 +2241,12 @@ fn holding_items(unit: &ReportUnit, state: &Working) -> Vec<ItemAmount> {
 /// Without a ruleset this returns at once: there is no telling which item tags name people or
 /// which class an item belongs to, and every check that reads the projection already returns
 /// early without a catalogue, so there is nothing to project.
-fn apply_transfers(units: &mut [Ordered<'_>], region: &ReportRegion, ruleset: Option<&Ruleset>) {
+fn apply_transfers(
+    units: &mut [Ordered<'_>],
+    region: &ReportRegion,
+    ruleset: Option<&Ruleset>,
+    foreign_unit_ids: &BTreeSet<String>,
+) {
     let Some(ruleset) = ruleset else { return };
 
     // A FORMed unit's id is `new-{alias}` (`effects::formed_unit`), which is what
@@ -2287,6 +2316,11 @@ fn apply_transfers(units: &mut [Ordered<'_>], region: &ReportRegion, ruleset: Op
     let mut refused_by_position: Vec<(usize, RefusedTransfer)> = Vec::new();
 
     for transfer in &transfers {
+        if !transfer.is_give
+            && matches!(transfer.party, Party::Unit(id) if foreign_unit_ids.contains(id))
+        {
+            continue;
+        }
         if matches!(transfer.what, Selector::WholeUnit) {
             // `rules/give`: it "gives the entire unit to the specified unit's faction" - a change
             // of ownership, and nobody's holdings move.
@@ -2318,7 +2352,7 @@ fn apply_transfers(units: &mut [Ordered<'_>], region: &ReportRegion, ruleset: Op
             // that unit's holdings are not ours to follow. Only a TAKE reaches here - the giver
             // side of a GIVE is always `Unit(position)` - so `ah-agbm`'s bounded optimism is
             // unchanged by this bead.
-            GiveTarget::Nowhere | GiveTarget::Unprojectable => {
+            GiveTarget::Nowhere => {
                 let receiver_position = transfer.position;
                 let resolved = match transfer.what {
                     Selector::Item(text) => ruleset.find_item(text),
@@ -2350,6 +2384,7 @@ fn apply_transfers(units: &mut [Ordered<'_>], region: &ReportRegion, ruleset: Op
                 }
                 continue;
             }
+            GiveTarget::Unprojectable => continue,
         };
         // A GIVE that cannot be resolved is a no-op exactly as `effects::give` returns early for
         // one: the giver never even loses what it named.
@@ -3114,7 +3149,14 @@ fn ledger_for<'a>(
     receipts: &'a BTreeMap<String, Receipts>,
 ) -> Ledger<'a> {
     let production = production_shares_for(std::slice::from_ref(hex), ruleset);
-    ledger_for_with_production(hex, ruleset, receipts, &production)
+    let foreign_unit_ids = hex
+        .region
+        .units
+        .iter()
+        .filter(|unit| !unit.own)
+        .map(|unit| unit.unit_id.clone())
+        .collect();
+    ledger_for_with_production(hex, ruleset, receipts, &production, &foreign_unit_ids)
 }
 
 /// Everything the hex's units hold, with this month's orders applied.
@@ -3132,6 +3174,7 @@ fn ledger_for_with_production<'a>(
     ruleset: Option<&'a Ruleset>,
     receipts: &'a BTreeMap<String, Receipts>,
     production: &ProductionShares,
+    foreign_unit_ids: &BTreeSet<String>,
 ) -> Ledger<'a> {
     let mut ledger = Ledger {
         ruleset,
@@ -3193,6 +3236,7 @@ fn ledger_for_with_production<'a>(
                     production,
                     actor_index: index,
                 },
+                foreign_unit_ids,
             );
         }
         credit_tax(&mut ledger, hex, ordered, &facts, ruleset, pillaged);
@@ -3215,6 +3259,7 @@ pub(crate) fn item_effects(
     ruleset: Option<&Ruleset>,
 ) -> BTreeMap<String, UnitItemEffects> {
     let ordered = OrderedUnits::read(orders_document);
+    let foreign_unit_ids = foreign_unit_ids(report);
     let mut result: BTreeMap<String, UnitItemEffects> = BTreeMap::new();
     let no_receipts = BTreeMap::new();
 
@@ -3229,7 +3274,7 @@ pub(crate) fn item_effects(
     let hexes: Vec<Hex<'_>> = report
         .regions
         .iter()
-        .map(|region| hex_with_transfers(region, &ordered, &[], ruleset))
+        .map(|region| hex_with_transfers(region, &ordered, &[], ruleset, &foreign_unit_ids))
         .collect();
 
     // Every hex before any ledger, and one settlement for all of them: a passenger produces where
@@ -3239,7 +3284,8 @@ pub(crate) fn item_effects(
     let production = production_shares_for(&hexes, ruleset);
 
     for hex in &hexes {
-        let ledger = ledger_for_with_production(hex, ruleset, &no_receipts, &production);
+        let ledger =
+            ledger_for_with_production(hex, ruleset, &no_receipts, &production, &foreign_unit_ids);
 
         for movement in ledger.movements {
             result
@@ -4015,6 +4061,7 @@ fn credit_tax(
 }
 
 /// Applies one order to the ledger.
+#[allow(clippy::too_many_arguments)]
 fn apply(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
@@ -4029,6 +4076,7 @@ fn apply(
     // How the hex's market lines are split between the faction's own units, and which of them
     // this actor is - the same settlement the Silver column reads (`ah-lu0f.2`).
     standing: HexStanding<'_>,
+    foreign_unit_ids: &BTreeSet<String>,
 ) {
     let who = &actor.unit.unit_id;
 
@@ -4091,6 +4139,9 @@ fn apply(
             }
         }
         Intent::Take { from, what, amount } => {
+            if matches!(from, Party::Unit(id) if foreign_unit_ids.contains(id)) {
+                return;
+            }
             let source = party_id(from, hex);
             // "TAKE FROM 999 ALL SILV" where 999 is not in this hex takes an amount only that unit
             // knows. Crediting nothing would be a shortfall of our own invention the moment the
@@ -8050,6 +8101,40 @@ fn check_transfer_targets(
     }
 }
 
+fn check_take_from_another_faction(
+    hex: &Hex<'_>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::TAKE_FROM_ANOTHER_FACTION) {
+        return;
+    }
+    for ordered in &hex.units {
+        for placed in ordered.intents {
+            let Intent::Take {
+                from: Party::Unit(id),
+                ..
+            } = &placed.intent
+            else {
+                continue;
+            };
+            if hex
+                .region
+                .units
+                .iter()
+                .any(|unit| unit.unit_id == *id && !unit.own)
+            {
+                findings.push(ordered.finding(
+                    hex,
+                    codes::TAKE_FROM_ANOTHER_FACTION,
+                    format!("unit {id} belongs to another faction, so this TAKE moves nothing"),
+                    Some(placed),
+                ));
+            }
+        }
+    }
+}
+
 /// `1 man` or `5 men`.
 ///
 /// The message names people rather than the race the order moved, so no item catalogue and no
@@ -10665,7 +10750,8 @@ mod tests {
 
         let ordered = OrderedUnits::read("unit 2390\nGIVE 5512 10 FUR\nSELL ALL FUR\n");
         let rules = ruleset();
-        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let hex_with_transfers =
+            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         assert_eq!(balance_of(&ledger, "2390", "SILV"), 0);
@@ -10715,7 +10801,8 @@ mod tests {
         let ordered =
             OrderedUnits::read("unit 2390\nSELL ALL FUR\nSELL ALL FUR\nunit 2391\nSELL ALL FUR\n");
         let rules = ruleset();
-        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let hex_with_transfers =
+            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         let moved: i64 = ledger
@@ -10769,7 +10856,8 @@ mod tests {
 
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let hex_with_transfers =
+            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         let moved = |id: &str| -> i64 {
@@ -11304,7 +11392,8 @@ mod tests {
 
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let hex_with_transfers =
+            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         assert_eq!(balance_of(&ledger, "2390", "FUR"), 7);
@@ -11346,7 +11435,8 @@ mod tests {
         // The ITEMS column.
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex_with_transfers = hex_with_transfers(&hex, &ordered, &[], Some(&rules));
+        let hex_with_transfers =
+            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         let moved: i64 = ledger
@@ -14185,7 +14275,8 @@ mod tests {
         ) -> R {
             let ordered = OrderedUnits::read(orders);
             let rules = ruleset();
-            let hex = hex_with_transfers(&hex_region, &ordered, &[], Some(&rules));
+            let hex =
+                hex_with_transfers(&hex_region, &ordered, &[], Some(&rules), &BTreeSet::new());
             let no_receipts = BTreeMap::new();
             let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
             read(&ledger)
@@ -22057,6 +22148,33 @@ mod tests {
     }
 
     #[test]
+    fn a_take_from_a_visible_foreign_unit_names_the_faction_rule() {
+        let mut foreign = unit("900");
+        foreign.own = false;
+        let finding = only(check(
+            vec![region(vec![unit("4426"), foreign])],
+            "unit 4426\nTAKE FROM 900 50 SILV\n",
+        ));
+        assert_eq!(finding.code, Code("take-from-another-faction"));
+        assert_eq!(
+            finding.message,
+            "unit 900 belongs to another faction, so this TAKE moves nothing"
+        );
+    }
+
+    #[test]
+    fn a_take_from_a_concealed_foreign_unit_names_the_faction_rule() {
+        let mut foreign = unit("900");
+        foreign.own = false;
+        foreign.faction_id = None;
+        let finding = only(check(
+            vec![region(vec![unit("4426"), foreign])],
+            "unit 4426\nTAKE FROM 900 50 SILV\n",
+        ));
+        assert_eq!(finding.code, Code("take-from-another-faction"));
+    }
+
+    #[test]
     fn a_take_from_a_unit_in_no_region_says_so() {
         let finding = only(check(
             vec![region(vec![unit("4426")])],
@@ -23162,6 +23280,13 @@ mod tests {
                     unit("7"),
                 ])],
                 orders: "unit 5\nGIVE 7 ALL MONSTERS\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::TAKE_FROM_ANOTHER_FACTION,
+                regions: vec![region(vec![unit("5"), foreign_guard("7")])],
+                orders: "unit 5\nTAKE FROM 7 1 HUMN\n",
                 allowance: None,
                 unclaimed: None,
             },
@@ -25047,7 +25172,7 @@ mod tests {
     /// increment 6 exercises instead.
     fn hex_after_gifts<'a>(region: &'a ReportRegion, ordered: &'a OrderedUnits) -> Hex<'a> {
         let mut hex = Hex::read(region, ordered, &[]);
-        apply_transfers(&mut hex.units, region, Some(&ruleset()));
+        apply_transfers(&mut hex.units, region, Some(&ruleset()), &BTreeSet::new());
         hex
     }
 
@@ -25058,7 +25183,7 @@ mod tests {
         // away with it.
         let rules = ruleset();
         let mut hex = Hex::read(region, ordered, &[]);
-        apply_transfers(&mut hex.units, region, Some(&rules));
+        apply_transfers(&mut hex.units, region, Some(&rules), &BTreeSet::new());
         let receipts = BTreeMap::new();
         let ledger = ledger_for(&hex, Some(&rules), &receipts);
         apply_recruits(&mut hex.units, &ledger, Some(&rules));
