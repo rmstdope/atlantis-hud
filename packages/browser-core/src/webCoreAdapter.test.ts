@@ -14,6 +14,7 @@ import {
   type TradeRoute
 } from "@atlantis/core-client";
 import { createMemoryWebStore, type StoredTurnSnapshot } from "./webStore";
+import { createCoreWasmModuleDouble } from "./testing/coreWasmModuleDouble";
 
 /** A minimal, complete `ReportParseResult` - every fake below merges its own fields over this. */
 const EMPTY_PARSE_RESULT: ReportParseResult = {
@@ -66,7 +67,7 @@ const FAKE_TRADE_ROUTES: TradeRoute[] = [
  * between logic and storage, and about the overwrite rule. Parsing itself is tested in Rust.
  */
 function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
-  return {
+  const stubs: Partial<CoreWasmModule> = {
     get_engine_info: () => ({
       id: "atlantis",
       name: "Atlantis PBEM",
@@ -359,6 +360,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
     },
     ...overrides
   };
+  return createCoreWasmModuleDouble(stubs);
 }
 
 /** An Army with one member, for the tests that are about routing rather than about a snapshot. */
