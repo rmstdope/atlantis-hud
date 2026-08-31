@@ -306,6 +306,17 @@ pub struct ItemEntry {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub weapon: Option<Weapon>,
+    /// Silver of maintenance paid by one item. `None` when the data page does not call it food,
+    /// and for a ruleset generated before this field existed (`ah-773o`).
+    ///
+    /// The rules page (`rules/economy_maintenance`) and the data page disagree here: the rules
+    /// section says one food substitutes for each 50 silver, while `data/GRAI`, `data/LIVE`,
+    /// `data/FISH` and `data/MEAL` each state 30. The committed turn-17 report settles it in
+    /// favour of the data value - 22 humans consume 8 livestock, which is `ceil(220 / 30)`, not
+    /// `ceil(220 / 50)` - so food eligibility and value are read from this per-item field alone.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub maintenance_value: Option<i64>,
     /// What the data page says about it, after the preamble of name, tag, weight and capacity the
     /// fields above already carry. `None` for an entry that is nothing but that preamble, and for
     /// a ruleset cached before ah-3cj4.2, which carried no prose at all.
@@ -1626,6 +1637,49 @@ mod tests {
         let entry: ItemEntry =
             serde_json::from_str(json).expect("an entry missing withdrawCost should still parse");
         assert_eq!(entry.withdraw_cost, None);
+    }
+
+    /// A ruleset cached before `ah-773o` carries no maintenance values at all, and must still load
+    /// with `maintenance_value: None` - which is what `#[serde(default)]` on the field is for. The
+    /// committed ruleset carries 30 for each of the four foods; both directions are pinned here.
+    #[test]
+    fn a_ruleset_without_maintenance_values_still_loads() {
+        let json = r#"{
+            "tag": "GRAI",
+            "name": "grain",
+            "kind": "equipment",
+            "weight": 5,
+            "capacity": { "walk": 0, "ride": 0, "fly": 0, "swim": 0 },
+            "selfMobile": { "walk": false, "ride": false, "fly": false, "swim": false },
+            "moves": 0
+        }"#;
+        let entry: ItemEntry = serde_json::from_str(json)
+            .expect("an entry missing maintenanceValue should still parse");
+        assert_eq!(entry.maintenance_value, None);
+    }
+
+    /// The four committed foods carry 30 silver of maintenance apiece, and an ordinary item none.
+    #[test]
+    fn the_committed_ruleset_prices_food_maintenance() {
+        let ruleset = ruleset();
+        for tag in ["GRAI", "LIVE", "FISH", "MEAL"] {
+            assert_eq!(
+                ruleset
+                    .items
+                    .get(tag)
+                    .and_then(|item| item.maintenance_value),
+                Some(30),
+                "{tag} should be worth 30 silver of maintenance"
+            );
+        }
+        assert_eq!(
+            ruleset
+                .items
+                .get("IRON")
+                .and_then(|item| item.maintenance_value),
+            None,
+            "iron is not food"
+        );
     }
 
     /// A ruleset cached before `ah-19l2.1` carries a bare `{tag, level}` production, and must still

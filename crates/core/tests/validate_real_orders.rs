@@ -5,8 +5,9 @@
 //! written by a person playing the game and accepted by the server, so every line in it is correct
 //! by construction. Anything this parser has to say about it is something the parser got wrong.
 
+use atlantis_hud_core::movement::rules::Ruleset;
 use atlantis_hud_core::orders::semantics::{check_turn, review_turn, CheckOptions, Finding};
-use atlantis_hud_core::orders::silver::{SilverDoubt, FOOD_TAGS};
+use atlantis_hud_core::orders::silver::SilverDoubt;
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full, ParsedReport};
 use atlantis_hud_core::validate_orders;
@@ -705,7 +706,7 @@ fn the_committed_turn_has_faction_food_eaters_but_no_faction_food() {
         let recovered = unit
             .upkeep
             .map(|left| left + unit.unclaimed_covered + unit.shared_silver_covered);
-        if holds_food(&report, id) {
+        if holds_food(&report, &ruleset(), id) {
             assert!(
                 recovered.unwrap_or(0) <= unit_upkeep_of(&report, id),
                 "{id}: food can only ever reduce the fee"
@@ -724,9 +725,10 @@ fn the_committed_turn_has_faction_food_eaters_but_no_faction_food() {
 }
 
 /// What one unit's headcount owes, straight from the rules, for the test above to compare against.
-/// Whether this unit holds any of the food the maintenance rules name - the only units steps 5 and
-/// 6 of the payment order can touch (`ah-eacd`).
-fn holds_food(report: &ParsedReport, unit_id: &str) -> bool {
+/// Whether this unit holds any food the committed catalogue prices for maintenance - the only
+/// units steps 5 and 6 of the payment order can touch. Read from the same `ItemEntry` field
+/// production uses, so eligibility here cannot drift from the forecast (`ah-773o`).
+fn holds_food(report: &ParsedReport, ruleset: &Ruleset, unit_id: &str) -> bool {
     report
         .regions
         .iter()
@@ -735,9 +737,11 @@ fn holds_food(report: &ParsedReport, unit_id: &str) -> bool {
         .any(|unit| {
             unit.items.iter().any(|item| {
                 item.amount > 0
-                    && FOOD_TAGS
-                        .iter()
-                        .any(|tag| item.tag.eq_ignore_ascii_case(tag))
+                    && ruleset
+                        .items
+                        .get(&item.tag.to_ascii_uppercase())
+                        .and_then(|entry| entry.maintenance_value)
+                        .is_some_and(|value| value > 0)
             })
         })
 }

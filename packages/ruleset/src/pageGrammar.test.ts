@@ -240,4 +240,38 @@ describe("the item catalogue against the page's own grammar", () => {
     expect(classes.MAN).toContain("CTAU");
     expect(classes.MOUNT).toContain("CTAU");
   });
+
+  /**
+   * The item catalogue prices exactly the foods the page prices, at exactly the values it states.
+   * The clause regex is re-stated here rather than imported from `data.ts`, following this file's
+   * rule: a check that shares its pattern with the thing it checks checks nothing. `MEAL` is one
+   * of the four despite the rules page's common 50-silver rule, because the data page states 30
+   * for it in the same clause as its three siblings (`ah-773o`).
+   */
+  it("prices maintenance for exactly the foods the page marks, with positive values", () => {
+    const MAINTENANCE =
+      /can be eaten to provide (\d+) silver towards a unit's maintenance cost/iu;
+
+    const pagePriced = new Map<string, number>();
+    for (const entry of ITEM_ENTRIES) {
+      const match = entry.match(MAINTENANCE);
+      if (match) {
+        pagePriced.set(entry.match(ITEM_OPENING)![2], Number(match[1]));
+      }
+    }
+    expect([...pagePriced.keys()].sort()).toEqual(["FISH", "GRAI", "LIVE", "MEAL"]);
+    for (const value of pagePriced.values()) {
+      expect(value).toBeGreaterThan(0);
+    }
+
+    const items = parseItemReference(DATA_HTML);
+    const parserPriced = Object.entries(items)
+      .filter(([, entry]) => entry.maintenanceValue !== undefined)
+      .map(([tag]) => tag)
+      .sort();
+    expect(parserPriced).toEqual([...pagePriced.keys()].sort());
+    for (const [tag, value] of pagePriced) {
+      expect(items[tag]?.maintenanceValue, tag).toBe(value);
+    }
+  });
 });

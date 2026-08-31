@@ -44,7 +44,7 @@ use crate::orders::silver::{
     LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketSide, Pillagers, PoolOverrun,
     PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts, RegionShare, RegionWages,
     SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
-    UpkeepSettlement, Workforce, FOOD_TAGS,
+    UpkeepSettlement, Workforce,
 };
 use crate::orders::targets::{give_reach, give_refusal, party_unit_id, GiveReach, GiveRefusal};
 use crate::report::composition;
@@ -1353,7 +1353,7 @@ fn forecast_hex(
             skills_unknown: ordered.skills_before_the_market().is_none(),
             late: Some(late.of(index)),
         };
-        claims.push(food_claim(&facts));
+        claims.push(food_claim(&facts, ruleset));
 
         into.push(forecast_unit(
             facts,
@@ -3431,7 +3431,10 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     // The check and the Silver column read one fact, so they settle the hex's faction-food pool
     // the same way: warning that a unit cannot pay a fee its faction-mates' grain already paid is
     // two surfaces contradicting each other, which is what `ah-7cdt`'s verification found.
-    let claims: Vec<FoodClaim> = facts.iter().map(food_claim).collect();
+    let claims: Vec<FoodClaim> = facts
+        .iter()
+        .map(|facts| food_claim(facts, ledger.ruleset))
+        .collect();
     let pass = feed_from_faction_food(&claims);
     let settled = pass.settled.clone();
     ledger.faction_food = pass;
@@ -3444,7 +3447,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             // told at all (the column shows `?`). Charging the undiscounted fee would warn about
             // a shortfall that may not exist, and this module does not produce false warnings.
             Some(None) => continue,
-            None => match unit_upkeep(facts) {
+            None => match unit_upkeep(facts, ledger.ruleset) {
                 Some(owed) => owed,
                 None => continue,
             },
@@ -5432,12 +5435,11 @@ fn feed_from_food_after_silver(
                     .get(&ordered.unit.unit_id)
                     .copied()
                     .unwrap_or_default(),
-                own_food: food_claim(facts).spare_food,
-                own_food_tag: lone_food_tag(&ordered.unit.items),
+                own_food: food_claim(facts, ledger.ruleset).spare_food,
             })
             .collect();
 
-        let pool_left = ledger.faction_food.pool_left;
+        let pool_left = ledger.faction_food.pool_left.clone();
         let relief = feed_after_silver(&claims, pool_left);
 
         for claim in &claims {
@@ -5461,22 +5463,6 @@ fn feed_from_food_after_silver(
         all.extend(relief);
     }
     all
-}
-
-/// The tag of a unit's food when it holds one kind of food and only one; `None` when it holds
-/// several, because which items the engine eats then cannot be told.
-fn lone_food_tag(items: &[ItemAmount]) -> Option<String> {
-    let mut tags = items
-        .iter()
-        .filter(|item| {
-            item.amount > 0
-                && FOOD_TAGS
-                    .iter()
-                    .any(|tag| item.tag.eq_ignore_ascii_case(tag))
-        })
-        .map(|item| item.tag.to_ascii_uppercase());
-    let first = tags.next()?;
-    tags.all(|tag| tag == first).then_some(first)
 }
 
 /// Writes what the fund paid into each ledger, so the checks that read a balance see it.
@@ -15143,10 +15129,11 @@ mod tests {
             },
         );
         // More men owe more maintenance, so a fixture that feeds itself has to feed all of them -
-        // one grain for each 50 silver owed, or the fee spills over into silver and warns.
+        // one grain for each 30 silver owed (the data page's food value, `ah-773o`), or the fee
+        // spills over into silver and warns.
         for item in &mut unit.items {
             if item.tag.eq_ignore_ascii_case("GRAI") {
-                item.amount = (men * 10 + 49) / 50;
+                item.amount = (men * 10 + 29) / 30;
             }
         }
         unit
@@ -15171,7 +15158,7 @@ mod tests {
     fn with_men_grain(mut unit: ReportUnit, men: i64) -> ReportUnit {
         for item in &mut unit.items {
             if item.tag.eq_ignore_ascii_case("GRAI") {
-                item.amount = (men * 10 + 49) / 50;
+                item.amount = (men * 10 + 29) / 30;
             }
         }
         unit
@@ -17822,9 +17809,10 @@ mod tests {
         // Unit 5's own $60 fee leaves $60 of its $120 to lend, and unit 7 takes all of it, so
         // units 9 and 11 are the ones step 4 cannot reach - and
         // its own grain is eaten at step 5 exactly as it would be in a hex with nobody to lend.
+        // One grain worth 30 covers 30 of the 40 owed.
         assert_eq!(
             forecast(&review, "11").own_food_covered,
-            40,
+            30,
             "{:?}",
             forecast(&review, "11")
         );
@@ -18061,7 +18049,9 @@ mod tests {
         );
 
         let forecast = &review.silver[0];
-        assert_eq!(forecast.forced_own_food, 3);
+        // Twelve men owe 120; the four items (one grain, three livestock) at 30 apiece cover it
+        // exactly, and the count comes from the entries eaten.
+        assert_eq!(forecast.forced_own_food, 4);
         assert_eq!(forecast.forced_own_food_tag, None);
     }
 
@@ -22352,7 +22342,10 @@ mod tests {
         let mut aboard = ReportUnit {
             structure_id: Some(fleet_id.to_string()),
             weight: Some(weight),
-            ..unit(id)
+            // Silver enough to pay any crew's maintenance, so these fleet fixtures never trip the
+            // not-enough-silver warning when a TAKE or GIVE swells the crew past what its grain
+            // feeds (`ah-773o`). Silver weighs nothing, so the fleet's load is untouched.
+            ..with_silver(unit(id), 10_000)
         };
         if sail_level > 0 {
             aboard.skills.push(sail(sail_level));
@@ -25791,8 +25784,8 @@ mod tests {
         let review = forecast_of(vec![quartermaster, eater]);
 
         assert_eq!(forecast(&review, "2001").upkeep, Some(0));
-        assert_eq!(forecast(&review, "2001").own_food_covered, 50);
-        assert_eq!(forecast(&review, "2001").faction_food_covered, 10);
+        assert_eq!(forecast(&review, "2001").own_food_covered, 30);
+        assert_eq!(forecast(&review, "2001").faction_food_covered, 30);
     }
 
     /// The case the navigator reported: the unit that supplied the grain is fed by its own food
@@ -25828,8 +25821,8 @@ mod tests {
 
         let review = forecast_of(vec![quartermaster, eater]);
 
-        assert_eq!(forecast(&review, "2001").upkeep, Some(10));
-        assert_eq!(forecast(&review, "2001").faction_food_covered, 50);
+        assert_eq!(forecast(&review, "2001").upkeep, Some(30));
+        assert_eq!(forecast(&review, "2001").faction_food_covered, 30);
         assert_eq!(forecast(&review, "2001").doubt, None);
     }
 
@@ -25921,7 +25914,7 @@ mod tests {
             regions: vec![region(units)],
             ..Default::default()
         };
-        review_turn(&report, "", None, CheckOptions::default())
+        review_turn(&report, "", Some(&ruleset()), CheckOptions::default())
     }
 
     fn forecast<'a>(review: &'a TurnReview, id: &str) -> &'a UnitSilver {
