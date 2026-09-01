@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ah-fu6e — Interface size wording A</title>
+  <style>
+    :root { color-scheme: dark; --ground:#10151c; --panel:#171d26; --edge:#344050; --ink:#dbe3ec; --soft:#a3b0c0; --dim:#8290a2; --brass:#d9a441; }
+    * { box-sizing: border-box; }
+    body { margin:0; padding:32px; background:var(--ground); color:var(--ink); font:15px/1.45 system-ui,sans-serif; }
+    main { max-width:1050px; margin:auto; }
+    h1 { margin:0 0 8px; font:26px Georgia,serif; }
+    .intro { color:var(--soft); margin:0 0 24px; }
+    .states { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+    .card { min-width:0; padding:18px; border:1px solid var(--edge); border-radius:10px; background:var(--panel); }
+    .state { margin-bottom:16px; color:var(--brass); font-size:12px; letter-spacing:.12em; text-transform:uppercase; }
+    .label { display:flex; justify-content:space-between; gap:12px; margin-bottom:8px; }
+    .label span:first-child { color:var(--soft); }
+    input { width:100%; accent-color:var(--brass); }
+    .ticks { display:flex; justify-content:space-between; color:var(--dim); font-size:10px; }
+    .hint { margin:12px 0 0; color:var(--dim); font-size:13px; }
+    .narrow { width:300px; max-width:100%; margin-top:20px; }
+    .note { margin-top:24px; padding:14px; border-left:3px solid var(--brass); background:var(--panel); color:var(--soft); }
+    @media (max-width:760px) { body { padding:18px; } .states { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Option A — describe the direction</h1>
+  <p class="intro">The existing control and 25-point steps stay. Only the lower endpoint and now-inaccurate hint change.</p>
+  <div class="states">
+    <section class="card">
+      <div class="state">Minimum</div>
+      <div class="label"><span>Interface size</span><span>50%</span></div>
+      <input aria-label="Interface size at 50%" type="range" min="50" max="200" step="25" value="50">
+      <div class="ticks"><span>50</span><span>100</span><span>150</span><span>200</span></div>
+      <p class="hint">Makes the panes, the header and the dialogs smaller or bigger. The map is not affected.</p>
+    </section>
+    <section class="card">
+      <div class="state">Default</div>
+      <div class="label"><span>Interface size</span><span>100%</span></div>
+      <input aria-label="Interface size at 100%" type="range" min="50" max="200" step="25" value="100">
+      <div class="ticks"><span>50</span><span>100</span><span>150</span><span>200</span></div>
+      <p class="hint">Makes the panes, the header and the dialogs smaller or bigger. The map is not affected.</p>
+    </section>
+    <section class="card">
+      <div class="state">Maximum</div>
+      <div class="label"><span>Interface size</span><span>200%</span></div>
+      <input aria-label="Interface size at 200%" type="range" min="50" max="200" step="25" value="200">
+      <div class="ticks"><span>50</span><span>100</span><span>150</span><span>200</span></div>
+      <p class="hint">Makes the panes, the header and the dialogs smaller or bigger. The map is not affected.</p>
+    </section>
+  </div>
+  <section class="card narrow">
+    <div class="state">Narrow window</div>
+    <div class="label"><span>Interface size</span><span>50%</span></div>
+    <input aria-label="Interface size in a narrow window" type="range" min="50" max="200" step="25" value="50">
+    <p class="hint">Makes the panes, the header and the dialogs smaller or bigger. The map is not affected.</p>
+  </section>
+  <p class="note"><strong>Cost:</strong> plain and direct, but “smaller or bigger” is slightly conversational.</p>
+</main>
+</body>
+</html>
