@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ah-qkca option A - named capacities</title>
+<style>
+:root{--ground:#1b212a;--panel:#222933;--raised:#2a323d;--edge:#46525f;--soft:#a8b4c2;--dim:#99a4b2;--ink:#d4dce6;--brass:#e0b25a;--select:#5aa9de;--ok:#58b98a;--warn:#e0b25a;--danger:#dc7777}
+*{box-sizing:border-box}body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.5 Georgia,serif;padding:28px}main,header{max-width:1260px;margin:auto}h1{font-size:25px;margin:0}h1 span,h2{color:var(--brass)}header p{color:var(--soft);max-width:95ch}.app{font:12px/1.45 Arial,sans-serif;background:#151a21;border:1px solid var(--edge);border-radius:9px;padding:12px;margin:18px 0}.layout{display:grid;grid-template-columns:minmax(600px,1fr) 300px;gap:14px}.pane{background:var(--panel);border:1px solid var(--edge);border-radius:6px;overflow:hidden}.bar{padding:6px 9px;border-bottom:1px solid var(--edge);color:var(--brass);text-transform:uppercase;letter-spacing:.08em;font-size:11px}.hint{float:right;color:var(--dim);text-transform:none;letter-spacing:0}.scroll{overflow-x:auto}table{width:100%;min-width:780px;table-layout:fixed;border-collapse:collapse}th,td{padding:4px 7px;border-bottom:1px solid #333d49;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}th{color:var(--soft);font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:400}.own{color:var(--ok)}.id{color:var(--select)}.move{font-weight:700;text-align:center}.o{color:var(--danger)}.w{color:var(--soft)}.r{color:var(--warn)}.f{color:var(--select)}.u{color:var(--dim)}.body{padding:9px}.faction{color:var(--brass);margin:0 0 7px}.facts{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:0}.facts dt{color:var(--soft)}.facts dd{margin:0}.status{margin:10px 0 5px;padding:7px 9px;border:1px solid var(--edge);border-left:3px solid currentColor;background:var(--raised)}.status b{display:block}.caps{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.cap{padding:6px;border:1px solid var(--edge);border-radius:4px}.cap small{display:block;color:var(--dim);text-transform:uppercase}.cap.on{border-color:currentColor;background:#151a21}.note{color:var(--dim);font-size:11px;margin:7px 0 0}.states{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.state{background:var(--panel);border:1px solid var(--edge);padding:10px;border-radius:6px;font:12px Arial,sans-serif}.state b{display:block}.state .mini{display:flex;gap:5px;margin-top:6px}.state .mini span{border:1px solid var(--edge);padding:2px 5px;border-radius:3px;color:var(--ink)}.state .mini .limit{border-color:var(--danger);color:var(--danger)}.predicted{font-style:italic;text-decoration:underline dotted;text-underline-offset:3px}.decisions{background:var(--panel);border-left:3px solid var(--brass);padding:10px 12px;color:var(--soft)}.cost{color:var(--soft)}@media(max-width:850px){.layout{grid-template-columns:1fr}.states{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body><header><h1>Chosen design - <span>name every capacity</span></h1><p>The table gains a compact <b>Move</b> column after Men. The selected-unit pane replaces the raw capacity string with three named figures and a separate movement sentence. The available tier has both a word and a colour; colour is never the only signal.</p></header><main>
+<p class="decisions"><b>Agreed:</b> O red, W neutral, R brass, F blue; a dim em dash means movement is not disclosed. The column does not sort. Existing saved order and widths survive the upgrade. A changed result uses the existing predicted italic treatment and says <b>“was: Walking”</b> on hover; an order the preview cannot count leaves the reported state unchanged.</p>
+<div class="app"><div class="layout">
+<section class="pane"><div class="bar">Units in hex <span class="hint">6 units</span></div><div class="scroll"><table>
+<colgroup><col style="width:3%"><col style="width:7%"><col style="width:17%"><col style="width:17%"><col style="width:7%"><col style="width:7%"><col style="width:17%"><col style="width:17%"><col style="width:8%"></colgroup>
+<thead><tr><th></th><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Move</th><th>Items</th><th>Long order</th><th>Silver</th></tr></thead>
+<tbody>
+<tr><td class="own">*</td><td class="id">12054</td><td>Builders</td><td>Grey Wolves (12)</td><td>10</td><td class="move o" title="Overloaded">O</td><td>10 HUMN, 34 STON</td><td>MOVE S</td><td>120</td></tr>
+<tr><td class="own">*</td><td class="id">18642</td><td>Seven of Eight</td><td>Grey Wolves (12)</td><td>1</td><td class="move w" title="Walking">W</td><td>1 LEAD</td><td>MOVE N</td><td>20</td></tr>
+<tr><td class="own">*</td><td class="id">13432</td><td>Drone</td><td>Grey Wolves (12)</td><td>1</td><td class="move r" title="Riding">R</td><td>1 HDWA, 1 HORS</td><td>MOVE SE</td><td>22</td></tr>
+<tr><td class="own">*</td><td class="id">881</td><td>Six of Seven</td><td>Grey Wolves (12)</td><td>1</td><td class="move f" title="Flying">F</td><td>1 LEAD, 1 GLID</td><td>MOVE N</td><td>50</td></tr>
+<tr><td>&minus;</td><td class="id">4102</td><td>Ninth Legion</td><td>Emperor (7)</td><td>30</td><td class="move u" title="Movement not disclosed">&mdash;</td><td>30 LEAT</td><td></td><td></td></tr>
+</tbody></table></div></section>
+<aside class="pane"><div class="bar">Unit <span class="hint">- Drone (13432)</span></div><div class="body">
+<p class="faction"><b>Grey Wolves (12)</b> - your faction</p>
+<dl class="facts"><dt>Hex</dt><dd>1:7,53</dd><dt>Men</dt><dd>1</dd><dt>Weight</dt><dd>60</dd></dl>
+<div class="status r"><b>Riding</b>Fastest available movement</div>
+<div class="caps"><div class="cap"><small>Fly</small>0</div><div class="cap on r"><small>Ride</small>70</div><div class="cap"><small>Walk</small>85</div></div>
+<p class="note">The load is 60. Ride and Walk can carry it.</p>
+</div></aside>
+</div></div>
+<h2>States and live-order change</h2><div class="states">
+<div class="state o"><b>Overloaded</b><span>The load is 1,800. No movement capacity can carry it.</span><div class="mini"><span>Fly 0</span><span>Ride 0</span><span class="limit">Walk 150</span></div></div>
+<div class="state w"><b>Walking</b><span>Load 10; Walk 15.</span></div>
+<div class="state r"><b>Riding</b><span>Load 60; Ride 70; Walk 85.</span></div>
+<div class="state f"><b>Flying</b><span>Load 773; Fly 901.</span></div>
+<div class="state u"><b>Movement not disclosed</b><span>No weight or capacity in the report.</span></div>
+<div class="state r"><b class="predicted" title="was: Walking">Riding</b><span>The order preview bought a horse; the column and pane change together. Hover: “was: Walking”.</span></div>
+</div>
+<p class="cost"><b>Trade-off:</b> easiest to read and accessible without a legend, but it replaces the report's familiar <code>fly/ride/walk/swim</code> string and uses more vertical space.</p>
+</main></body></html>
