@@ -246,7 +246,7 @@ function applyPaneTransparency(percent: number) {
 }
 
 /**
- * 100% to 200%, in steps of 25. Rounded to a step rather than merely bounded, so a hand-edited
+ * 50% to 200%, in steps of 25. Rounded to a step rather than merely bounded, so a hand-edited
  * localStorage value or an older payload cannot land the slider between its stops.
  */
 function clampInterfaceSize(percent: number): number {
@@ -255,7 +255,7 @@ function clampInterfaceSize(percent: number): number {
     return DEFAULT_INTERFACE_SIZE;
   }
   const stepped = Math.round(numeric / 25) * 25;
-  return Math.min(200, Math.max(100, stepped));
+  return Math.min(200, Math.max(50, stepped));
 }
 
 /** Stamps the multiplier every rem in the application is expressed against — the root font size

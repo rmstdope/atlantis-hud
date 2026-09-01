@@ -96,11 +96,11 @@ describe("the Interface size setting", () => {
     const html = renderToStaticMarkup(<GlobalSettings />);
 
     const slider = tag(html, "settings-interface-size");
-    expect(slider).toContain('min="100"');
+    expect(slider).toContain('min="50"');
     expect(slider).toContain('max="200"');
     expect(slider).toContain('step="25"');
     expect(slider).toContain('value="100"');
-    expect(html).toContain("Makes the panes, the header and the dialogs bigger. The map is not affected.");
+    expect(html).toContain("Makes the panes, the header and the dialogs smaller or bigger. The map is not affected.");
   });
 
   it("reflects a changed interface size", () => {

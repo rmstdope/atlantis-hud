@@ -441,11 +441,11 @@ describe("settings store", () => {
   });
 
   /**
-   * The slider only offers steps of 25 between 100 and 200, but the store is also fed by whatever
+   * The slider only offers steps of 25 between 50 and 200, but the store is also fed by whatever
    * localStorage holds, and a hand-edited or corrupted value must land on a real step rather than
    * throw or leave the slider between its stops.
    */
-  it("clamps the interface size to a 25-percent step between 100 and 200", () => {
+  it("clamps the interface size to a 25-percent step between 50 and 200", () => {
     store().setInterfaceSize(137);
     expect(store().interfaceSize).toBe(125);
 
@@ -453,7 +453,10 @@ describe("settings store", () => {
     expect(store().interfaceSize).toBe(200);
 
     store().setInterfaceSize(50);
-    expect(store().interfaceSize).toBe(100);
+    expect(store().interfaceSize).toBe(50);
+
+    store().setInterfaceSize(25);
+    expect(store().interfaceSize).toBe(50);
 
     // A garbage value falls back to the default rather than to an extreme.
     store().setInterfaceSize(Number.NaN);
@@ -461,12 +464,13 @@ describe("settings store", () => {
   });
 
   it("applies the persisted interface size at startup", () => {
-    store().setInterfaceSize(150);
+    store().setInterfaceSize(50);
     const stub = installDocumentStub();
 
     applyPersistedSettings();
 
-    expect(stub.documentElement.style.properties["--ui-scale"]).toBe("1.5");
+    expect(store().interfaceSize).toBe(50);
+    expect(stub.documentElement.style.properties["--ui-scale"]).toBe("0.5");
   });
 
   /**

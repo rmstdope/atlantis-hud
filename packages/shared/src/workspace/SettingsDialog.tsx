@@ -338,7 +338,7 @@ export function GlobalSettings() {
           type="range"
           data-testid="settings-interface-size"
           aria-label="interface size"
-          min={100}
+          min={50}
           max={200}
           step={25}
           value={interfaceSize}
@@ -346,7 +346,7 @@ export function GlobalSettings() {
           className="accent-brass"
         />
         <span className="text-pane-sm text-ink-dim">
-          Makes the panes, the header and the dialogs bigger. The map is not affected.
+          Makes the panes, the header and the dialogs smaller or bigger. The map is not affected.
         </span>
       </label>
 
