@@ -258,7 +258,7 @@ async function openReport(page: Page) {
  * height) without ever touching the map - full-page zoom already scales both, and that unhelpful
  * trade is the reason this setting exists.
  */
-test("the panes grow when the interface size does", async ({ page }) => {
+test("the panes shrink and grow when the interface size does", async ({ page }) => {
   await clearGames(page);
   await createGame(page, "Settings game");
   await openReport(page);
@@ -287,8 +287,30 @@ test("the panes grow when the interface size does", async ({ page }) => {
   await page.getByTestId("settings-indicator").click();
   const slider = page.getByTestId("settings-interface-size");
   await expect(slider).toHaveValue("100");
-  await expect(slider).toHaveAttribute("min", "100");
+  await expect(slider).toHaveAttribute("min", "50");
   await expect(slider).toHaveAttribute("max", "200");
+  await slider.fill("50");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("settings-panel")).toHaveCount(0);
+
+  const paneSizeSmall = await pane.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+  const mapSizeSmall = await mapLabel.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+  const rowHeightSmall = (await row.boundingBox())!.height;
+  expect(paneSizeSmall).toBeCloseTo(paneSizeBefore / 2, 1);
+  expect(mapSizeSmall).toBeCloseTo(mapSizeBefore, 1);
+  expect(rowHeightSmall).toBeCloseTo(rowHeightBefore / 2, 0);
+
+  await page.reload();
+  const rowAfterSmallReload = page.locator('[data-testid^="unit-row-"]').first();
+  await expect(rowAfterSmallReload).toBeVisible();
+  expect((await rowAfterSmallReload.boundingBox())!.height).toBeCloseTo(rowHeightBefore / 2, 0);
+
+  await page.getByTestId("settings-indicator").click();
+  await expect(page.getByTestId("settings-interface-size")).toHaveValue("50");
   await slider.fill("200");
   await page.keyboard.press("Escape");
   // Closing is a modal teardown; reading computed styles before it finishes can race the dialog's
