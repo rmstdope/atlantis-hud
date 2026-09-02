@@ -383,6 +383,13 @@ export type TransportSent = {
   to: string;
   toUnshown: boolean;
   refused: boolean;
+  /**
+   * Which of this unit's TRANSPORT/DISTRIBUTE orders wrote this line: its place among the readable
+   * ones in its block, counting from `0` in document order. Shared with
+   * `TransportTargetIssue.orderIndex`, so the two lists read back interleaved as written; one
+   * order selecting several tags writes several lines under one index (`ah-64wm`).
+   */
+  orderIndex: number;
 };
 
 /** One item arriving by another unit's TRANSPORT/DISTRIBUTE this month. */
@@ -416,6 +423,11 @@ export type TransportTargetIssue = {
   /** Empty when the order has no per-tag claim to make and speaks of the order alone. */
   tag: string;
   reason: TransportTargetReason;
+  /**
+   * Which of this unit's TRANSPORT/DISTRIBUTE orders this issue belongs to, on the same counter
+   * `TransportSent.orderIndex` carries (`ah-64wm`).
+   */
+  orderIndex: number;
 };
 
 /** One unit as the orders leave it: the full predicted state, so the row renders like any other. */

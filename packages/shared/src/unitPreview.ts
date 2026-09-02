@@ -300,26 +300,50 @@ export function itemsTooltip(
   if (castCap !== undefined) {
     lines.push(castCap);
   }
-  for (const sent of transportSent) {
-    if (sent.refused) {
-      lines.push(`The game will not transport ${sent.tag}, so they stay with this unit.`);
-    } else if (sent.toUnshown) {
-      lines.push(
-        `Sends ${sent.amount} ${sent.tag} to unit ${sent.to}, which your report does not show.`
-      );
-    } else {
-      lines.push(`Sends ${sent.amount} ${sent.tag} to unit ${sent.to}.`);
-    }
-  }
-  // Beside the sends rather than among them: a mixed order block reads as what left, then what
-  // its target would not take (`ah-64wm`).
-  for (const issue of transportTargetIssues) {
-    lines.push(transportTargetSentence(issue));
+  for (const sentence of transportSentences(transportSent, transportTargetIssues)) {
+    lines.push(sentence);
   }
   for (const order of uncounted) {
     lines.push(`and more that cannot be counted: ${order}`);
   }
   return lines.join("\n");
+}
+
+/** One transported line as the hover states it. */
+function transportSentSentence(sent: TransportSent): string {
+  if (sent.refused) {
+    return `The game will not transport ${sent.tag}, so they stay with this unit.`;
+  }
+  if (sent.toUnshown) {
+    return `Sends ${sent.amount} ${sent.tag} to unit ${sent.to}, which your report does not show.`;
+  }
+  return `Sends ${sent.amount} ${sent.tag} to unit ${sent.to}.`;
+}
+
+/**
+ * This month's TRANSPORT/DISTRIBUTE block as sentences, in the order the orders were written
+ * (`ah-64wm`).
+ *
+ * The core splits one document across two lists - what left, and what a target would not take -
+ * so reading them one after the other would put a refused order written first *after* a
+ * successful one written second. `orderIndex` is what each line carries to be put back in its
+ * place; a stable sort by it keeps every line one order wrote together and in the order the core
+ * pushed them.
+ */
+export function transportSentences(
+  sent: readonly TransportSent[],
+  issues: readonly TransportTargetIssue[]
+): string[] {
+  const lines = [
+    ...sent.map((one) => ({ orderIndex: one.orderIndex, sentence: transportSentSentence(one) })),
+    ...issues.map((one) => ({
+      orderIndex: one.orderIndex,
+      sentence: transportTargetSentence(one)
+    }))
+  ];
+  return lines
+    .sort((left, right) => left.orderIndex - right.orderIndex)
+    .map((line) => line.sentence);
 }
 
 /**

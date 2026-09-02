@@ -112,6 +112,14 @@ pub struct TransportSent {
     pub to_unshown: bool,
     /// The game will not transport this item (`rules/economy_transport`), so it stays put.
     pub refused: bool,
+    /// Which of this unit's `TRANSPORT`/`DISTRIBUTE` orders wrote this line: its place among the
+    /// readable ones in its block, counting from `0` in document order.
+    ///
+    /// A line here and a [`TransportTargetIssue`] are two halves of one document, and neither
+    /// list can say on its own where its lines sat among the other's - so both carry the same
+    /// counter and the interface reads them back interleaved. One order selecting several tags
+    /// writes several lines under one index (`ah-64wm`).
+    pub order_index: i64,
 }
 
 /// One item arriving by another unit's `TRANSPORT`/`DISTRIBUTE` (`ah-bxgs`).
@@ -167,6 +175,10 @@ pub struct TransportTargetIssue {
     /// sentence explains the target and says the order moves nothing.
     pub tag: String,
     pub reason: TransportTargetReason,
+    /// Which of this unit's `TRANSPORT`/`DISTRIBUTE` orders this issue belongs to, on the same
+    /// counter [`TransportSent::order_index`] carries - so a refused order and a successful one
+    /// read back in the order they were written (`ah-64wm`).
+    pub order_index: i64,
 }
 
 /// Goods taken from a unit the report does not show in this hex (`ah-agbm`).
@@ -1481,7 +1493,17 @@ impl Working {
     /// and no per-item refusal is reported beside it (`ah-64wm`).
     fn apply_transports(&mut self) {
         let pending = std::mem::take(&mut self.transports);
+        // How many of its own transports each sender has been given, so every line one order
+        // writes - sent or refused - is stamped with that order's place in the unit's block. The
+        // queue is document-ordered already, so counting it is counting the document (`ah-64wm`).
+        let mut orders_written: BTreeMap<usize, i64> = BTreeMap::new();
         for pending in pending {
+            let order_index = {
+                let next = orders_written.entry(pending.sender).or_insert(0);
+                let index = *next;
+                *next += 1;
+                index
+            };
             // `GiveReach::Discard` bypasses target-specific refusal: `TRANSPORT` has
             // its own permission gate, `can_be_transported`, checked below - the two lists are
             // not the same (`IENT` may not be given but may be transported).
@@ -1513,6 +1535,7 @@ impl Working {
                         amount,
                         tag,
                         reason,
+                        order_index,
                     });
                 continue;
             }
@@ -1526,6 +1549,7 @@ impl Working {
                             to: String::new(),
                             to_unshown: false,
                             refused: true,
+                            order_index,
                         });
                     continue;
                 }
@@ -1546,6 +1570,7 @@ impl Working {
                         to: pending.to.clone(),
                         to_unshown: pending.to_unshown,
                         refused: false,
+                        order_index,
                     });
                 if let Some(receiver) = pending.receiver {
                     add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
@@ -4401,6 +4426,7 @@ mod tests {
                         to: "6857".to_string(),
                         to_unshown: false,
                         refused: false,
+                        order_index: 0,
                     },
                     TransportSent {
                         amount: 0,
@@ -4408,6 +4434,7 @@ mod tests {
                         to: String::new(),
                         to_unshown: false,
                         refused: true,
+                        order_index: 1,
                     },
                 ]
             );
@@ -4433,6 +4460,7 @@ mod tests {
                     to: String::new(),
                     to_unshown: false,
                     refused: true,
+                    order_index: 0,
                 }]
             );
         }
@@ -4512,6 +4540,7 @@ mod tests {
                     to: "6857".to_string(),
                     to_unshown: false,
                     refused: false,
+                    order_index: 0,
                 }]
             );
         }
@@ -4564,6 +4593,7 @@ mod tests {
                     amount: 5,
                     tag: "STON".to_string(),
                     reason: TransportTargetReason::NotQuartermaster,
+                    order_index: 0,
                 }
             );
             // The sender keeps them, so no row of ours gains them either.
@@ -4583,6 +4613,7 @@ mod tests {
                     amount: 5,
                     tag: "STON".to_string(),
                     reason: TransportTargetReason::NotCaravanseraiOwner,
+                    order_index: 0,
                 }
             );
         }
@@ -4610,6 +4641,7 @@ mod tests {
                     amount: 5,
                     tag: "STON".to_string(),
                     reason: TransportTargetReason::EligibilityUnknown,
+                    order_index: 0,
                 }
             );
         }
@@ -4628,6 +4660,7 @@ mod tests {
                     amount: 5,
                     tag: "STON".to_string(),
                     reason: TransportTargetReason::AcceptanceUnknown,
+                    order_index: 0,
                 }
             );
         }
@@ -4660,6 +4693,7 @@ mod tests {
                     amount: 5,
                     tag: "STON".to_string(),
                     reason: TransportTargetReason::NotCaravanseraiOwner,
+                    order_index: 0,
                 }
             );
             // No row of ours gains anything: 7001 is not our unit.
@@ -4677,6 +4711,7 @@ mod tests {
                     amount: 5,
                     tag: "STON".to_string(),
                     reason: TransportTargetReason::NotCaravanseraiOwner,
+                    order_index: 0,
                 }
             );
         }
@@ -4701,6 +4736,7 @@ mod tests {
                     amount: 0,
                     tag: String::new(),
                     reason: TransportTargetReason::NotCaravanseraiOwner,
+                    order_index: 0,
                 }
             );
         }
@@ -4729,6 +4765,7 @@ mod tests {
                     to: "6857".to_string(),
                     to_unshown: false,
                     refused: false,
+                    order_index: 0,
                 }]
             );
             assert_eq!(
@@ -4738,7 +4775,60 @@ mod tests {
                     amount: 5,
                     tag: "FUR".to_string(),
                     reason: TransportTargetReason::NotCaravanseraiOwner,
+                    order_index: 1,
                 }]
+            );
+        }
+
+        // The two lists are halves of one document, so the counter has to survive a block whose
+        // refused order comes *first* - the case a list-after-list hover would put backwards.
+        #[test]
+        fn a_refused_order_written_before_a_sent_one_keeps_its_place() {
+            let response =
+                two_hex_preview("unit 5530\nTRANSPORT 7001 5 FUR\nTRANSPORT 6857 30 STON\n");
+
+            let sender = sender_row(&response);
+            assert_eq!(
+                sender.transport_target_issues,
+                vec![TransportTargetIssue {
+                    to: "7001".to_string(),
+                    amount: 5,
+                    tag: "FUR".to_string(),
+                    reason: TransportTargetReason::NotCaravanseraiOwner,
+                    order_index: 0,
+                }]
+            );
+            assert_eq!(
+                sender.transport_sent,
+                vec![TransportSent {
+                    amount: 30,
+                    tag: "STON".to_string(),
+                    to: "6857".to_string(),
+                    to_unshown: false,
+                    refused: false,
+                    order_index: 1,
+                }]
+            );
+        }
+
+        // One order selecting several tags writes several lines, all under its own index - so an
+        // order after it still sorts after every one of them.
+        #[test]
+        fn every_line_one_order_writes_shares_that_order_s_place() {
+            let response = two_hex_preview(
+                "unit 5530\nTRANSPORT 6857 30 STON\nTRANSPORT 6857 2 HORS\nTRANSPORT 6857 5 FUR\n",
+            );
+
+            let sender = sender_row(&response);
+            let places: Vec<(&str, i64)> = sender
+                .transport_sent
+                .iter()
+                .map(|sent| (sent.tag.as_str(), sent.order_index))
+                .collect();
+            assert_eq!(
+                places,
+                vec![("STON", 0), ("HORS", 1), ("FUR", 2)],
+                "each line carries the place of the order that wrote it"
             );
         }
 
@@ -4827,6 +4917,7 @@ mod tests {
                     to: String::new(),
                     to_unshown: false,
                     refused: true,
+                    order_index: 0,
                 }]
             );
         }

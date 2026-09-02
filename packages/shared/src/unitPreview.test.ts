@@ -14,6 +14,7 @@ import {
   mergePreview,
   mergePreviewAcross,
   originalTooltip,
+  transportSentences,
   transportTargetSentence,
   transportTargetUncertain
 } from "./unitPreview";
@@ -843,9 +844,9 @@ describe("formatItems and itemsTooltip", () => {
       previewChanges: [{ field: "items", original: "88 SILV, 15 STON, 2 HORS, 5 FUR" }],
       transportReceived: [{ amount: 12, tag: "SPEA", from: "5530" }],
       transportSent: [
-        { amount: 30, tag: "STON", to: "16340", toUnshown: false, refused: false },
-        { amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true },
-        { amount: 5, tag: "FUR", to: "4670", toUnshown: true, refused: false }
+        { amount: 30, tag: "STON", to: "16340", toUnshown: false, refused: false, orderIndex: 0 },
+        { amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true, orderIndex: 0 },
+        { amount: 5, tag: "FUR", to: "4670", toUnshown: true, refused: false, orderIndex: 0 }
       ]
     });
 
@@ -880,7 +881,7 @@ describe("formatItems and itemsTooltip", () => {
         }
       ],
       transportReceived: [{ amount: 30, tag: "STON", from: "6857" }],
-      transportSent: [{ amount: 5, tag: "IRON", to: "6857", toUnshown: false, refused: false }]
+      transportSent: [{ amount: 5, tag: "IRON", to: "6857", toUnshown: false, refused: false, orderIndex: 0 }]
     });
     const silver = aUnitSilver({
       produced: 5,
@@ -911,7 +912,7 @@ describe("a transport target the report cannot show receiving", () => {
 
   it("says an own target is no quartermaster and the goods stay", () => {
     expect(
-      transportTargetSentence({ to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster" })
+      transportTargetSentence({ to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0 })
     ).toBe("Unit 7001 is not a quartermaster, so 5 STON stay with this unit.");
   });
 
@@ -921,14 +922,15 @@ describe("a transport target the report cannot show receiving", () => {
         to: "7002",
         amount: 5,
         tag: "STON",
-        reason: "notCaravanseraiOwner"
+        reason: "notCaravanseraiOwner",
+        orderIndex: 0
       })
     ).toBe("Unit 7002 does not own a Caravanserai, so 5 STON stay with this unit.");
   });
 
   it("says the report cannot show whether an unseen target is eligible", () => {
     expect(
-      transportTargetSentence({ to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown" })
+      transportTargetSentence({ to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0 })
     ).toBe(
       "Could not count 5 STON for unit 99999 because your report does not show whether it is an eligible transport target."
     );
@@ -936,7 +938,7 @@ describe("a transport target the report cannot show receiving", () => {
 
   it("says the report cannot show whether a foreign faction accepts transports", () => {
     expect(
-      transportTargetSentence({ to: "7003", amount: 5, tag: "STON", reason: "acceptanceUnknown" })
+      transportTargetSentence({ to: "7003", amount: 5, tag: "STON", reason: "acceptanceUnknown", orderIndex: 0 })
     ).toBe(
       "Could not count 5 STON for unit 7003 because your report does not show whether its faction accepts transports from yours."
     );
@@ -946,13 +948,13 @@ describe("a transport target the report cannot show receiving", () => {
   // the target gate is what stopped the order, and the sentence says only that.
   it("speaks of the order alone when it has no per-tag claim to make", () => {
     expect(
-      transportTargetSentence({ to: "7001", amount: 0, tag: "", reason: "notQuartermaster" })
+      transportTargetSentence({ to: "7001", amount: 0, tag: "", reason: "notQuartermaster", orderIndex: 0 })
     ).toBe("Unit 7001 is not a quartermaster, so this TRANSPORT moves nothing.");
     expect(
-      transportTargetSentence({ to: "7002", amount: 0, tag: "", reason: "notCaravanseraiOwner" })
+      transportTargetSentence({ to: "7002", amount: 0, tag: "", reason: "notCaravanseraiOwner", orderIndex: 0 })
     ).toBe("Unit 7002 does not own a Caravanserai, so this TRANSPORT moves nothing.");
     expect(
-      transportTargetSentence({ to: "99999", amount: 0, tag: "", reason: "eligibilityUnknown" })
+      transportTargetSentence({ to: "99999", amount: 0, tag: "", reason: "eligibilityUnknown", orderIndex: 0 })
     ).toBe(
       "Could not count this TRANSPORT for unit 99999 because your report does not show whether it is an eligible transport target."
     );
@@ -963,7 +965,8 @@ describe("a transport target the report cannot show receiving", () => {
       to: "7001",
       amount: 5,
       tag: "STON",
-      reason
+      reason,
+      orderIndex: 0
     });
 
     expect(transportTargetUncertain(issue("eligibilityUnknown"))).toBe(true);
@@ -977,7 +980,7 @@ describe("a transport target the report cannot show receiving", () => {
       hasUncertainTransportTarget(
         previewedUnit({
           transportTargetIssues: [
-            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster" }
+            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0 }
           ]
         })
       )
@@ -986,8 +989,8 @@ describe("a transport target the report cannot show receiving", () => {
       hasUncertainTransportTarget(
         previewedUnit({
           transportTargetIssues: [
-            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster" },
-            { to: "99999", amount: 5, tag: "FUR", reason: "eligibilityUnknown" }
+            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0 },
+            { to: "99999", amount: 5, tag: "FUR", reason: "eligibilityUnknown", orderIndex: 0 }
           ]
         })
       )
@@ -996,17 +999,19 @@ describe("a transport target the report cannot show receiving", () => {
     expect(hasUncertainTransportTarget(undefined)).toBe(false);
   });
 
-  // The mockup's mixed card: what left, then what its target would not take.
-  it("puts a refused target after the sends of the same block", () => {
+  // The mockup's mixed card: the block reads in the order it was written.
+  it("puts a refused target after a send written before it", () => {
     const row = previewedUnit({
       items: [
         { amount: 10, name: "stone", tag: "STON" },
         { amount: 5, name: "fur", tag: "FUR" }
       ],
       previewChanges: [{ field: "items", original: "40 STON, 5 FUR" }],
-      transportSent: [{ amount: 30, tag: "STON", to: "6857", toUnshown: false, refused: false }],
+      transportSent: [
+        { amount: 30, tag: "STON", to: "6857", toUnshown: false, refused: false, orderIndex: 0 }
+      ],
       transportTargetIssues: [
-        { to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster" }
+        { to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster", orderIndex: 1 }
       ]
     });
 
@@ -1017,13 +1022,55 @@ describe("a transport target the report cannot show receiving", () => {
     );
   });
 
+  // The half the two lists cannot state on their own: the refused order was written *first*, and
+  // reading the sends before the issues would put the block backwards (`ah-64wm`).
+  it("puts a refused target before a send written after it", () => {
+    const row = previewedUnit({
+      items: [
+        { amount: 10, name: "stone", tag: "STON" },
+        { amount: 5, name: "fur", tag: "FUR" }
+      ],
+      previewChanges: [{ field: "items", original: "40 STON, 5 FUR" }],
+      transportSent: [
+        { amount: 30, tag: "STON", to: "6857", toUnshown: false, refused: false, orderIndex: 1 }
+      ],
+      transportTargetIssues: [
+        { to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster", orderIndex: 0 }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 40 STON, 5 FUR\n" +
+        "Unit 7001 is not a quartermaster, so 5 FUR stay with this unit.\n" +
+        "Sends 30 STON to unit 6857."
+    );
+  });
+
+  // Every line one order writes shares that order's place, so the pair stays together and an
+  // order written after them still follows both.
+  it("keeps the lines of one order together and in the order the core wrote them", () => {
+    expect(
+      transportSentences(
+        [
+          { amount: 30, tag: "STON", to: "6857", toUnshown: false, refused: false, orderIndex: 1 },
+          { amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true, orderIndex: 1 }
+        ],
+        [{ to: "99999", amount: 5, tag: "FUR", reason: "eligibilityUnknown", orderIndex: 0 }]
+      )
+    ).toEqual([
+      "Could not count 5 FUR for unit 99999 because your report does not show whether it is an eligible transport target.",
+      "Sends 30 STON to unit 6857.",
+      "The game will not transport HORS, so they stay with this unit."
+    ]);
+  });
+
   // Nothing was projected - the goods never moved - so the hover still opens on the report's own
   // list, exactly as it does for an order that could not be counted.
   it("words the hover for a row whose only transport was refused", () => {
     const row = previewedUnit({
       items: stone,
       transportTargetIssues: [
-        { to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown" }
+        { to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0 }
       ]
     });
 
