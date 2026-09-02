@@ -984,9 +984,7 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
             };
             let sailing = ruleset.and_then(|rules| carried_away(hex, ordered, rules));
             let produces_in = match sailing.map(|placed| &placed.intent) {
-                Some(Intent::Sail { steps }) => {
-                    sail_destination(hex.region, &steps, &by_coordinate)
-                }
+                Some(Intent::Sail { steps }) => sail_destination(hex.region, steps, &by_coordinate),
                 _ => Some(hex.region),
             };
             // The report cannot follow the sail, so there is no yield to settle against and the
@@ -3333,7 +3331,7 @@ fn ledger_for_with_production<'a>(
                 &mut ledger,
                 hex,
                 ordered,
-                &placed,
+                placed,
                 ruleset,
                 region,
                 HexStanding {
@@ -3739,7 +3737,7 @@ fn check_markets(
                 )
             };
 
-            findings.push(ordered.finding(hex, codes::NOT_TRADED_HERE, message, Some(&placed)));
+            findings.push(ordered.finding(hex, codes::NOT_TRADED_HERE, message, Some(placed)));
         }
     }
 }
@@ -3986,7 +3984,7 @@ fn check_pillaged_tax(
                 hex,
                 codes::TAXED_A_PILLAGED_HEX,
                 "a unit is pillaging this hex, so this TAX will collect nothing".to_string(),
-                Some(&placed),
+                Some(placed),
             ));
         }
         // A unit that taxes by its flag collects nothing here either, and has no line to hang the
@@ -4046,7 +4044,7 @@ fn check_guarded_tax(
                     "a foreign unit is guarding this hex, so this {order} {} collect nothing",
                     if order == "PILLAGE" { "will" } else { "may" }
                 ),
-                Some(&placed),
+                Some(placed),
             ));
         }
         // A unit that taxes by its flag collects nothing here either, and has no line to hang the
@@ -4104,7 +4102,7 @@ fn check_tax_readiness(
                 hex,
                 codes::TAX_WITHOUT_COMBAT_READY_MEN,
                 message,
-                Some(&placed),
+                Some(placed),
             ));
         } else {
             findings.push(ordered.finding_at_block(
@@ -7419,7 +7417,7 @@ fn check_production(
             // fact about the unit, not about the region.
             let sailing = carried_away(hex, ordered, ruleset);
             let where_it_produces = match sailing.map(|placed| &placed.intent) {
-                Some(Intent::Sail { steps }) => sail_destination(hex.region, &steps, by_coordinate),
+                Some(Intent::Sail { steps }) => sail_destination(hex.region, steps, by_coordinate),
                 _ => Some(hex.region),
             };
             let Some(region) = where_it_produces else {
@@ -7453,7 +7451,7 @@ fn check_production(
                     hex,
                     codes::PRODUCE_NOT_HERE,
                     sentence,
-                    Some(&placed),
+                    Some(placed),
                 ));
             }
         }
@@ -7543,7 +7541,7 @@ fn check_studying(
                 hex,
                 codes::STUDY_AT_MAXIMUM,
                 ceiling_message(&ceiling, skill, level, plurals),
-                Some(&placed),
+                Some(placed),
             ));
         }
     }
@@ -7692,7 +7690,7 @@ fn check_magic_study_prerequisites(
                 "{} cannot advance past level {} until {}",
                 skill.name, level, joined
             ),
-            Some(&placed),
+            Some(placed),
         ));
     }
 }
@@ -7797,7 +7795,7 @@ fn check_magic_study(
                 "half of this month's study of {} is wasted outside a building that houses mages",
                 skill.name
             ),
-            Some(&placed),
+            Some(placed),
         ));
     }
 }
