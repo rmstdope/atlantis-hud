@@ -52,6 +52,7 @@ import {
 import {
   changeFor,
   formatItems,
+  hasUncertainTransportTarget,
   itemsTooltip,
   mergePreview,
   mergePreviewAcross,
@@ -2087,7 +2088,12 @@ function UnitRow({
         title={itemsTooltip(unit, silver)}
       >
         {items}
-        {unit.uncounted && unit.uncounted.length > 0 ? (
+        {/*
+          A transport whose target the report cannot settle leaves the month partly uncounted just
+          as an unreadable order does, so it earns the same mark. A target refusal the report can
+          prove does not: it is certain, and the hover says so (`ah-64wm`).
+        */}
+        {(unit.uncounted && unit.uncounted.length > 0) || hasUncertainTransportTarget(unit) ? (
           <span className="text-ink-dim"> + ?</span>
         ) : null}
       </Td>

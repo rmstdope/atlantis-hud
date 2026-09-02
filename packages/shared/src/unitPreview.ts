@@ -10,6 +10,7 @@ import type {
   TakenUnshown,
   TransportReceived,
   TransportSent,
+  TransportTargetIssue,
   UnitPreview,
   UnitPreviewStatus,
   UnitSilver
@@ -61,6 +62,11 @@ export type PreviewedUnit = ReportUnit & {
   transportSent?: TransportSent[];
   /** What arrives at this unit by another unit's TRANSPORT/DISTRIBUTE this month (`ah-bxgs`). */
   transportReceived?: TransportReceived[];
+  /**
+   * This unit's TRANSPORT/DISTRIBUTE orders whose target the report cannot show as able to
+   * receive. Those orders move nothing (`ah-64wm`).
+   */
+  transportTargetIssues?: TransportTargetIssue[];
 };
 
 /**
@@ -149,7 +155,8 @@ function rowFor(previewed: UnitPreview): PreviewedUnit {
     built: previewed.built,
     created: previewed.created,
     transportSent: previewed.transportSent,
-    transportReceived: previewed.transportReceived
+    transportReceived: previewed.transportReceived,
+    transportTargetIssues: previewed.transportTargetIssues
   };
 }
 
@@ -212,6 +219,7 @@ export function itemsTooltip(
   const uncounted = unit.uncounted ?? [];
   const transportSent = unit.transportSent ?? [];
   const transportReceived = unit.transportReceived ?? [];
+  const transportTargetIssues = unit.transportTargetIssues ?? [];
   const buyAll = buyAllSentences(silver);
   const capSentence = productionCapSentence(silver);
   const menSentence = productionMenSentence(silver);
@@ -225,6 +233,7 @@ export function itemsTooltip(
     uncounted.length === 0 &&
     transportSent.length === 0 &&
     transportReceived.length === 0 &&
+    transportTargetIssues.length === 0 &&
     buyAll.length === 0 &&
     capSentence === undefined &&
     menSentence === undefined &&
@@ -302,10 +311,55 @@ export function itemsTooltip(
       lines.push(`Sends ${sent.amount} ${sent.tag} to unit ${sent.to}.`);
     }
   }
+  // Beside the sends rather than among them: a mixed order block reads as what left, then what
+  // its target would not take (`ah-64wm`).
+  for (const issue of transportTargetIssues) {
+    lines.push(transportTargetSentence(issue));
+  }
   for (const order of uncounted) {
     lines.push(`and more that cannot be counted: ${order}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * Whether a target issue is a gap in the report rather than a refusal it can prove (`ah-64wm`).
+ *
+ * A definite refusal is a fact the hover states and the cell need say nothing more about; a gap is
+ * what the ` + ?` mark is for - the month could not be fully counted.
+ */
+export function transportTargetUncertain(issue: TransportTargetIssue): boolean {
+  return issue.reason === "eligibilityUnknown" || issue.reason === "acceptanceUnknown";
+}
+
+/** Whether any of this row's transports was aimed at a target the report cannot settle. */
+export function hasUncertainTransportTarget(unit: PreviewedUnit | undefined): boolean {
+  return (unit?.transportTargetIssues ?? []).some(transportTargetUncertain);
+}
+
+/**
+ * One target issue as the hover states it (`ah-64wm`).
+ *
+ * An issue naming a tag makes a claim about those goods - they stay here, or they could not be
+ * counted. One naming none speaks of the order alone: the goods are ones the game would not have
+ * carried anyway, so "they stay with this unit" would imply a move that was never on offer.
+ */
+export function transportTargetSentence(issue: TransportTargetIssue): string {
+  const goods = issue.tag === "" ? null : `${issue.amount} ${issue.tag}`;
+  switch (issue.reason) {
+    case "notQuartermaster":
+      return goods === null
+        ? `Unit ${issue.to} is not a quartermaster, so this TRANSPORT moves nothing.`
+        : `Unit ${issue.to} is not a quartermaster, so ${goods} stay with this unit.`;
+    case "notCaravanseraiOwner":
+      return goods === null
+        ? `Unit ${issue.to} does not own a Caravanserai, so this TRANSPORT moves nothing.`
+        : `Unit ${issue.to} does not own a Caravanserai, so ${goods} stay with this unit.`;
+    case "eligibilityUnknown":
+      return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether it is an eligible transport target.`;
+    case "acceptanceUnknown":
+      return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether its faction accepts transports from yours.`;
+  }
 }
 
 /**

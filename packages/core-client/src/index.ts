@@ -388,6 +388,36 @@ export type TransportSent = {
 /** One item arriving by another unit's TRANSPORT/DISTRIBUTE this month. */
 export type TransportReceived = { amount: number; tag: string; from: string };
 
+/**
+ * Why the report cannot show a TRANSPORT/DISTRIBUTE target receiving what was sent (`ah-64wm`).
+ *
+ * The first two are certain: `rules/transport` wants the quartermaster skill, which our report
+ * prints in full for our own units, and `rules/economy_transport` wants ownership of a
+ * Caravanserai, whose owner `rules/world_structures` makes the first unit listed inside it. The
+ * last two are gaps in the report - a unit it never described, foreign skills it never discloses,
+ * and a foreign faction's attitude toward ours, which is not in our report at all
+ * (`rules/com_attitudes`).
+ */
+export type TransportTargetReason =
+  | "notQuartermaster"
+  | "notCaravanseraiOwner"
+  | "eligibilityUnknown"
+  | "acceptanceUnknown";
+
+/**
+ * One TRANSPORT/DISTRIBUTE the target gate stopped, once for the order rather than once per tag
+ * (`ah-64wm`).
+ */
+export type TransportTargetIssue = {
+  /** The unit number the order named. */
+  to: string;
+  /** What the order would have moved. `0` when the sentence names no amount - see `tag`. */
+  amount: number;
+  /** Empty when the order has no per-tag claim to make and speaks of the order alone. */
+  tag: string;
+  reason: TransportTargetReason;
+};
+
 /** One unit as the orders leave it: the full predicted state, so the row renders like any other. */
 export type UnitPreview = {
   unit: ReportUnit;
@@ -419,6 +449,11 @@ export type UnitPreview = {
   transportSent: TransportSent[];
   /** What arrives at this unit by another unit's TRANSPORT/DISTRIBUTE this month (`ah-bxgs`). */
   transportReceived: TransportReceived[];
+  /**
+   * This unit's TRANSPORT/DISTRIBUTE orders whose target the report cannot show as able to
+   * receive, in document order. Those orders move nothing (`ah-64wm`).
+   */
+  transportTargetIssues: TransportTargetIssue[];
 };
 
 /** Every previewed unit standing in (or bound for) one region. */
