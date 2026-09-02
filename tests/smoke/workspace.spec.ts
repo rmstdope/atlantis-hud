@@ -4379,9 +4379,8 @@ test("All my units shows the coming month too", async ({ page }) => {
 /**
  * ah-bxgs: TRANSPORT now marks the sending row too, exactly as BUY, SELL and the rest already do.
  * Unit 14451 is another own unit, in a different hex ("1:20,40"), which is what makes this a
- * transport rather than a same-hex GIVE. `BUY 2 PERF` buys more than the `TRANSPORT` sends, so the
- * unit's own holding still changes (buying and sending the very same amount nets to nothing, which
- * is the navigator's N1 state deliberately shown upright, not predicted - not this case).
+ * transport rather than a same-hex GIVE. The remembered report does not establish that the target
+ * owns a Caravanserai, so the target gate keeps the goods and explains the refusal.
  */
 test("a transported item marks the ITEMS cell as a projection", async ({ page }) => {
   await loadReport(page);
@@ -4393,7 +4392,7 @@ test("a transported item marks the ITEMS cell as a projection", async ({ page })
 
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toHaveAttribute("title", /^was: /);
-  await expect(itemsCell).toHaveAttribute("title", /Sends 1 PERF to unit 14451/);
+  await expect(itemsCell).toHaveAttribute("title", /Unit 14451 does not own a Caravanserai/);
 });
 
 /**
