@@ -173,6 +173,20 @@ describe("run — verify", () => {
     expect(printed).toContain("pnpm run atlantis refresh");
   });
 
+  it("distinguishes a stale overridden maintenance value", async () => {
+    const committed = JSON.parse(RULESET_JSON);
+    committed.items.GRAI.maintenanceValue = 30;
+    const { io, out } = fakeIo();
+    io.writeFile(RULESET_PATH, JSON.stringify(committed));
+
+    const code = await run(["verify"], io);
+
+    expect(code).toBe(1);
+    expect(out.join("\n")).toContain("items.GRAI");
+    expect(out.join("\n")).toContain('"maintenanceValue":30');
+    expect(out.join("\n")).toContain('"maintenanceValue":50');
+  });
+
   it("names race skill limit drift", async () => {
     const committed = JSON.parse(RULESET_JSON);
     committed.items.HUMN.skillLimits.defaultLevel = 999;

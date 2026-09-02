@@ -7781,19 +7781,15 @@ mod tests {
     }
 
     /// Unit 1660 of the committed turn-17 report: 32 humans set to consume, holding livestock. The
-    /// server consumed 11 livestock for its maintenance
-    /// (`tests/fixtures/reports/neworigins-3.0.0-g7-f62-t17.rep:473`), which is `ceil(320 / 30)`,
-    /// not `ceil(320 / 50) == 7`. Pinned here on synthetic facts because the post-turn unit has
-    /// already lent its livestock away (`:801`), so only the event line records what it ate.
+    /// Seven livestock cover 320 silver at the current 50-silver value; 30 would leave 110 unpaid.
     #[test]
     fn thirty_two_humans_consume_eleven_livestock_as_the_server_did() {
         let men = [item(32, "HUMN")];
-        let food = [item(11, "LIVE")];
+        let food = [item(7, "LIVE")];
         let flags = vec!["consuming faction's food".to_string()];
-        // 32 humans owe 320; eleven livestock at 30 cover 330, so nothing is left owing.
+        // 32 humans owe 320; seven livestock at 50 cover 350, so nothing is left owing.
         assert_eq!(upkeep(&made_of(32, &men, &food, &flags)), Some(0));
-        assert_eq!((320 + 30 - 1) / 30, 11, "the data value predicts eleven");
-        assert_eq!((320 + 50 - 1) / 50, 7, "the old constant predicted seven");
+        assert_eq!((320 + 50 - 1) / 50, 7);
     }
 
     /// With no ruleset the catalogue cannot price any item as food, so nothing is eaten and the

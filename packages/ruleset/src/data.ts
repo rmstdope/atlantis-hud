@@ -236,10 +236,8 @@ function withdrawOf(paragraph: string): { withdrawCost?: number } {
  * carries no key. A positive integer in this exact clause is the sole food discriminator: nothing
  * is inferred from tags, names, item classes, or the bare word "eaten".
  *
- * The rules page (`rules/economy_maintenance`) and the data page disagree - the rules section says
- * one food substitutes for each 50 silver, while `data/GRAI`, `data/LIVE`, `data/FISH` and
- * `data/MEAL` each state 30 here. `ah-773o` resolved it in favour of this per-item value, which the
- * committed turn-17 report corroborates. This scraper reads what the data page states and no more.
+ * The rules page (`rules/economy_maintenance`) and the data page disagree. This parser records the
+ * data page literally; buildRuleset applies the documented current-rules override afterward.
  */
 function maintenanceOf(paragraph: string): { maintenanceValue?: number } {
   const value = readNumber(

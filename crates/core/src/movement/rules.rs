@@ -307,13 +307,11 @@ pub struct ItemEntry {
     #[cfg_attr(test, ts(optional))]
     pub weapon: Option<Weapon>,
     /// Silver of maintenance paid by one item. `None` when the data page does not call it food,
-    /// and for a ruleset generated before this field existed (`ah-773o`).
+    /// and for a ruleset generated before this field existed.
     ///
     /// The rules page (`rules/economy_maintenance`) and the data page disagree here: the rules
-    /// section says one food substitutes for each 50 silver, while `data/GRAI`, `data/LIVE`,
-    /// `data/FISH` and `data/MEAL` each state 30. The committed turn-17 report settles it in
-    /// favour of the data value - 22 humans consume 8 livestock, which is `ceil(220 / 30)`, not
-    /// `ceil(220 / 50)` - so food eligibility and value are read from this per-item field alone.
+    /// section says one food substitutes for each 50 silver, while the data page currently states
+    /// 30 for four foods. Generation applies the documented New Origins override from the rules.
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub maintenance_value: Option<i64>,

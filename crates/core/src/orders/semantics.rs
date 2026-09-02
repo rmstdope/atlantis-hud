@@ -15899,11 +15899,11 @@ mod tests {
             },
         );
         // More men owe more maintenance, so a fixture that feeds itself has to feed all of them -
-        // one grain for each 30 silver owed (the data page's food value, `ah-773o`), or the fee
+        // one grain for each 50 silver owed (`rules/economy_maintenance`), or the fee
         // spills over into silver and warns.
         for item in &mut unit.items {
             if item.tag.eq_ignore_ascii_case("GRAI") {
-                item.amount = (men * 10 + 29) / 30;
+                item.amount = (men * 10 + 49) / 50;
             }
         }
         unit
