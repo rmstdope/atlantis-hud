@@ -264,7 +264,7 @@ pub fn preview_orders_on_map(
     // `rules/form`, and only once the market has settled: a formed unit's own BUY is what decides
     // whether it gained anybody, so nothing can be dissolved before `item_effects` has been
     // applied and the headcounts derived from it (`ah-dhga`).
-    let dissolved = working.dissolve_empty_forms();
+    let dissolved = working.dissolve_empty_forms(&item_effects);
     // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
     // after the market, after movement, after production. A sale takes its goods first, and
     // whatever a PRODUCE made this month is there to be sent.
@@ -854,13 +854,6 @@ impl Working {
         }
     }
 
-    /// Applies what `BUY`, `SELL`, `WITHDRAW` and `TAKE` move into or out of each unit's item
-    /// list, and records what could not be counted at all - `super::semantics::item_effects`'s
-    /// seam onto the ledger the same settlement already prices (`ah-agbm`).
-    ///
-    /// `GIVE` is not read here: the walk that built `self.units` has already applied every gift
-    /// through `Working::give`, and the ledger records no movement for one (`RecordMovement::No`)
-    /// for exactly that reason - applying it again here would move it twice.
     /// Dissolves every formed unit that gained nobody, returning its goods to the first own unit
     /// the report shows in that region (`rules/form`: "If no recruits are gained at all, the empty
     /// unit will be dissolved, and the silver and any other items it was given will revert to the
@@ -870,35 +863,73 @@ impl Working {
     /// and every queued `PendingTransport` store indices into `self.units`, so the entries stay
     /// put and the caller filters them out while rendering. Their items have already been emptied
     /// into the recipient, so a transport authored by a dissolved row has nothing left to send.
-    fn dissolve_empty_forms(&mut self) -> BTreeSet<usize> {
+    fn dissolve_empty_forms(
+        &mut self,
+        effects: &BTreeMap<String, super::semantics::UnitItemEffects>,
+    ) -> BTreeSet<usize> {
         let mut dissolved = BTreeSet::new();
         for index in 0..self.units.len() {
             if !self.units[index].formed || self.units[index].unit.men != 0 {
                 continue;
             }
             let region_id = self.units[index].unit.region_id.clone();
-            // Report order, which `Working::over_own_units` preserves: the first own unit the
-            // report shows in that region, not the unit that formed this one.
-            let recipient = self
+            // Report order, and only the first own unit: a region whose units are all formed has
+            // nobody to revert to, so nothing is taken from the dissolving row either. Taking
+            // first and discarding what could not be handed over would destroy the goods.
+            let Some(recipient) = self
                 .units
                 .iter()
-                .position(|unit| unit.unit.region_id == region_id && unit.original.is_some());
-            let goods = std::mem::take(&mut self.units[index].unit.items);
-            if let Some(recipient) = recipient {
-                for item in goods {
-                    add_item(
-                        &mut self.units[recipient].unit.items,
-                        &item.name,
-                        &item.tag,
-                        item.amount,
-                    );
+                .position(|unit| unit.unit.region_id == region_id && unit.original.is_some())
+            else {
+                dissolved.insert(index);
+                continue;
+            };
+            // A unit that dissolves never existed to trade: `rules/form` reverts "the silver and
+            // any other items it was given", so whatever its own BUY, SELL, WITHDRAW or TAKE moved
+            // is undone before the rest is handed over. Otherwise a BUY the game would never have
+            // executed would hand the recipient goods nobody ordered.
+            if let Some(effect) = effects.get(&self.units[index].unit.unit_id) {
+                for movement in &effect.moved {
+                    let items = &mut self.units[index].unit.items;
+                    match movement.delta.cmp(&0) {
+                        std::cmp::Ordering::Greater => {
+                            if let Some(at) = items
+                                .iter()
+                                .position(|item| item.tag.eq_ignore_ascii_case(&movement.tag))
+                            {
+                                take_item(items, at, movement.delta);
+                            }
+                        }
+                        std::cmp::Ordering::Less => {
+                            add_item(items, &movement.name, &movement.tag, -movement.delta);
+                        }
+                        std::cmp::Ordering::Equal => {}
+                    }
                 }
+            }
+            // `over_own_units` preserves report order, so `position` finds the first unit the
+            // report shows in that region - not the unit that formed this one.
+            let goods = std::mem::take(&mut self.units[index].unit.items);
+            for item in goods {
+                add_item(
+                    &mut self.units[recipient].unit.items,
+                    &item.name,
+                    &item.tag,
+                    item.amount,
+                );
             }
             dissolved.insert(index);
         }
         dissolved
     }
 
+    /// Applies what `BUY`, `SELL`, `WITHDRAW` and `TAKE` move into or out of each unit's item
+    /// list, and records what could not be counted at all - `super::semantics::item_effects`'s
+    /// seam onto the ledger the same settlement already prices (`ah-agbm`).
+    ///
+    /// `GIVE` is not read here: the walk that built `self.units` has already applied every gift
+    /// through `Working::give`, and the ledger records no movement for one (`RecordMovement::No`)
+    /// for exactly that reason - applying it again here would move it twice.
     fn apply_item_effects(
         &mut self,
         effects: &BTreeMap<String, super::semantics::UnitItemEffects>,
@@ -2887,6 +2918,104 @@ mod tests {
         assert_eq!(amount("901", "SILV"), 0);
         assert_eq!(amount("902", "SWOR"), 0, "the former gave them away");
         assert_eq!(amount("902", "SILV"), 0);
+    }
+
+    /// `rules/form` reverts "the silver and any other items it **was given**". A unit that
+    /// dissolves never existed to trade, so what its own `BUY` bought is not a windfall for the
+    /// unit it reverts to.
+    #[test]
+    fn a_dissolved_units_purchases_are_not_handed_on() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 20 grain [GRAI] at $10.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 100 silver [SILV]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 5 grain\nEND\nGIVE NEW 1 100 SILV\n",
+        );
+
+        let receiver = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the first own unit receives what was given");
+        assert_eq!(
+            receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SILV")
+                .map_or(0, |item| item.amount),
+            100,
+            "the silver it was given reverts in full"
+        );
+        assert!(
+            !receiver.unit.items.iter().any(|item| item.tag == "GRAI"),
+            "nobody ordered grain for this unit: {:?}",
+            receiver.unit.items
+        );
+    }
+
+    /// The recipient search is region-scoped: two regions, each forming an empty unit, must revert
+    /// to their own first unit and not to the other region's.
+    #[test]
+    fn each_region_reverts_to_its_own_first_unit() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* North (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* NorthFormer (901), Foo (1), leader [LEAD], 3 swords [SWOR]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+            "plain (3,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* South (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* SouthFormer (903), Foo (1), leader [LEAD], 4 stone [STON]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 901\nFORM 1\nEND\nGIVE NEW 1 3 SWOR\nunit 903\nFORM 1\nEND\nGIVE NEW 1 4 STON\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units
+                .iter()
+                .any(|unit| unit.unit.unit_id.starts_with("new-")),
+            "both empty formed units dissolve: {:?}",
+            units
+                .iter()
+                .map(|unit| &unit.unit.unit_id)
+                .collect::<Vec<_>>()
+        );
+        let held = |id: &str, tag: &str| {
+            units
+                .iter()
+                .find(|unit| unit.unit.unit_id == id)
+                .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == tag))
+                .map_or(0, |item| item.amount)
+        };
+        assert_eq!(held("900", "SWOR"), 3, "its own region's goods come back");
+        assert_eq!(held("900", "STON"), 0, "and the other region's do not");
+        assert_eq!(held("902", "STON"), 4);
+        assert_eq!(held("902", "SWOR"), 0);
     }
 
     /// The rule's condition is the resulting headcount, not whether a `BUY` was written: people
