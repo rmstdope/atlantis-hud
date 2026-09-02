@@ -69,14 +69,14 @@ const HELP_TEXT = [
   "  atlantis rules --search <term>               anchors whose text contains the term",
   "  atlantis data <term>                        full entries for one name, or an index for several",
   "  atlantis data --list skills|items|objects   one line per distinct name in that section",
-  "  atlantis verify                             compares config/public/ruleset.json to the data page",
+  "  atlantis verify                             compares the committed ruleset to generated output",
   "  atlantis check                              fetches both pages, compares bytes to the fixtures",
   "  atlantis refresh                            re-fetches, rewrites the fixtures and the ruleset",
   "  atlantis refresh --json                     same, but prints the outcome as one JSON object",
   "",
   "verify compares only what the scraper models — items, skills, buildings and movement — not prose.",
-  "The data page is the arbiter when the two disagree: regenerate with 'atlantis refresh', never edit",
-  "config/public/ruleset.json by hand. --json is for the scheduled refresh workflow, not a person."
+  "Verification uses committed rules and data pages plus documented overrides: regenerate with",
+  "'atlantis refresh', never edit config/public/ruleset.json by hand. --json is for scheduled refresh."
 ].join("\n");
 
 function printRulesHeader(anchor: string, html: string, io: Io): void {
@@ -260,7 +260,7 @@ function compareCollection(
       agree++;
     } else {
       disagreements.push(
-        `  ${path}.${key}  ruleset ${JSON.stringify(committed[key])}, data page ${JSON.stringify(built[key])}`
+        `  ${path}.${key}  committed ${JSON.stringify(committed[key])}, generated ${JSON.stringify(built[key])}`
       );
     }
   }
@@ -314,7 +314,7 @@ function runVerify(io: Io): number {
   } else {
     io.out("ungiveableItems: DISAGREE");
     disagreements.push(
-      `  ungiveableItems  ruleset ${JSON.stringify(committed.ungiveableItems)}, data page ${JSON.stringify(built.ungiveableItems)}`
+      `  ungiveableItems  committed ${JSON.stringify(committed.ungiveableItems)}, generated ${JSON.stringify(built.ungiveableItems)}`
     );
     anyDisagree = true;
   }
@@ -325,7 +325,7 @@ function runVerify(io: Io): number {
 
   if (anyDisagree) {
     io.out("");
-    io.out("The data page is the arbiter — regenerate with");
+    io.out("Committed rules and data plus documented overrides are the arbiter — regenerate with");
     io.out("pnpm run atlantis refresh, do not edit ruleset.json by hand.");
     return 1;
   }

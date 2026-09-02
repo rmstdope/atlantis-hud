@@ -1658,7 +1658,7 @@ mod tests {
         assert_eq!(entry.maintenance_value, None);
     }
 
-    /// The four committed foods carry 30 silver of maintenance apiece, and an ordinary item none.
+    /// The four committed foods carry 50 silver from rules/economy_maintenance, and an ordinary item none.
     #[test]
     fn the_committed_ruleset_prices_food_maintenance() {
         let ruleset = ruleset();
@@ -1668,8 +1668,8 @@ mod tests {
                     .items
                     .get(tag)
                     .and_then(|item| item.maintenance_value),
-                Some(30),
-                "{tag} should be worth 30 silver of maintenance"
+                Some(50),
+                "{tag} should be worth 50 silver of maintenance"
             );
         }
         assert_eq!(

@@ -18716,10 +18716,10 @@ mod tests {
         // Unit 5's own $60 fee leaves $60 of its $120 to lend, and unit 7 takes all of it, so
         // units 9 and 11 are the ones step 4 cannot reach - and
         // its own grain is eaten at step 5 exactly as it would be in a hex with nobody to lend.
-        // One grain worth 30 covers 30 of the 40 owed.
+        // One grain worth 50 covers the full 40 owed.
         assert_eq!(
             forecast(&review, "11").own_food_covered,
-            30,
+            40,
             "{:?}",
             forecast(&review, "11")
         );
@@ -18956,9 +18956,8 @@ mod tests {
         );
 
         let forecast = &review.silver[0];
-        // Twelve men owe 120; the four items (one grain, three livestock) at 30 apiece cover it
-        // exactly, and the count comes from the entries eaten.
-        assert_eq!(forecast.forced_own_food, 4);
+        // Twelve men owe 120; three items at 50 apiece cover it, and the count comes from entries eaten.
+        assert_eq!(forecast.forced_own_food, 3);
         assert_eq!(forecast.forced_own_food_tag, None);
     }
 
@@ -27547,8 +27546,8 @@ mod tests {
         let review = forecast_of(vec![quartermaster, eater]);
 
         assert_eq!(forecast(&review, "2001").upkeep, Some(0));
-        assert_eq!(forecast(&review, "2001").own_food_covered, 30);
-        assert_eq!(forecast(&review, "2001").faction_food_covered, 30);
+        assert_eq!(forecast(&review, "2001").own_food_covered, 50);
+        assert_eq!(forecast(&review, "2001").faction_food_covered, 10);
     }
 
     /// The case the navigator reported: the unit that supplied the grain is fed by its own food
@@ -27584,8 +27583,8 @@ mod tests {
 
         let review = forecast_of(vec![quartermaster, eater]);
 
-        assert_eq!(forecast(&review, "2001").upkeep, Some(30));
-        assert_eq!(forecast(&review, "2001").faction_food_covered, 30);
+        assert_eq!(forecast(&review, "2001").upkeep, Some(10));
+        assert_eq!(forecast(&review, "2001").faction_food_covered, 50);
         assert_eq!(forecast(&review, "2001").doubt, None);
     }
 

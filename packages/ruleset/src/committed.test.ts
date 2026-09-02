@@ -253,7 +253,7 @@ describe("the committed ruleset", () => {
    */
   it("exposes the structured maintenance value for all four foods", () => {
     for (const tag of ["GRAI", "LIVE", "FISH", "MEAL"]) {
-      expect(COMMITTED.items[tag]?.maintenanceValue, tag).toBe(30);
+      expect(COMMITTED.items[tag]?.maintenanceValue, tag).toBe(50);
     }
     // An ordinary item the page never calls food carries no value at all.
     expect(COMMITTED.items.IRON).not.toHaveProperty("maintenanceValue");
