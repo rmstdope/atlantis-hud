@@ -58,8 +58,8 @@ test("choosing Other factions lists units of other factions", async ({ page }) =
 
   // The source spans the whole report, so it holds strictly more than one hex does.
   await expect.poll(async () => (await counted(page)).total).toBeGreaterThan(inHex);
-  // The Hex column comes with it, exactly as it does for All my units - eleven columns, not ten.
-  await expect(page.getByTestId("panel-units").locator("thead th")).toHaveCount(11);
+  // The Hex column comes with it, exactly as it does for All my units - twelve columns.
+  await expect(page.getByTestId("panel-units").locator("thead th")).toHaveCount(12);
   await expect(page.getByTestId("panel-units").locator("thead")).not.toContainText("Seen");
 
   // Not one of ours: `All my units` and `Other factions` are exact complements.

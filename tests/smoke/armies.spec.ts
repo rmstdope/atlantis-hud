@@ -122,8 +122,8 @@ test("clicking a hex while an Army is the source keeps the Army and lights This 
 test("This hex draws exactly the columns it drew before", async ({ page }) => {
   await workspace(page);
 
-  // The test that the persisted column machinery was left alone: ten columns, as ever.
-  await expect(page.getByTestId("panel-units").locator("thead th")).toHaveCount(10);
+  // The Move column is part of the persisted table layout.
+  await expect(page.getByTestId("panel-units").locator("thead th")).toHaveCount(11);
 });
 
 test("deleting an Army asks first, and Cancel leaves it there", async ({ page }) => {
