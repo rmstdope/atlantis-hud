@@ -2779,17 +2779,15 @@ impl Ordered<'_> {
             .next_back()
     }
 
-    /// Whether the unit will be guarding at the end of the turn. GUARD and AVOID flags are
-    /// reduced in document order; a unit that walks away guards nothing.
+    /// Whether the unit will be guarding at the end of the turn. AVOID is processed before GUARD,
+    /// regardless of document order; a unit that walks away guards nothing.
     fn will_guard(&self, eligible: Option<bool>) -> bool {
         let guarding = self
             .intents()
-            .fold(self.unit.on_guard, |guarding, intent| match intent {
-                Intent::Guard(on) => *on,
-                Intent::Avoid(true) => false,
-                Intent::Avoid(false) => guarding,
-                _ => guarding,
-            });
+            .any(|intent| matches!(intent, Intent::Avoid(true)))
+            .then_some(false)
+            .unwrap_or(self.unit.on_guard);
+        let guarding = self.final_guard_order().map_or(guarding, |(_, on)| on);
         guarding && eligible != Some(false) && !self.leaves_the_hex()
     }
 
@@ -19961,6 +19959,33 @@ mod tests {
             codes(&check(vec![region(vec![guarding])], "unit 5\nGUARD 0\n")),
             ["guard-dropped"]
         );
+    }
+
+    #[test]
+    fn avoid_after_guard_one_does_not_drop_an_existing_guard() {
+        let mut guarding = unit("5");
+        guarding.on_guard = true;
+
+        assert!(!codes(&check(
+            vec![region(vec![with_skill(guarding, "COMB", 1)])],
+            "unit 5\nGUARD 1\nAVOID 1\n",
+        ))
+        .contains(&codes::GUARD_DROPPED.as_str()));
+    }
+
+    #[test]
+    fn avoid_after_guard_one_does_not_report_an_unguarded_hex() {
+        let options = CheckOptions {
+            disabled: BTreeSet::new(),
+        };
+
+        assert!(!codes(&check_turn(
+            &report(vec![region(vec![with_skill(unit("5"), "COMB", 1)])]),
+            "unit 5\nGUARD 1\nAVOID 1\n",
+            Some(&ruleset()),
+            options,
+        ))
+        .contains(&codes::HEX_UNGUARDED.as_str()));
     }
 
     #[test]
