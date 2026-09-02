@@ -2449,8 +2449,6 @@ mod tests {
         }
     }
 
-    /// `GIVE 0` bypasses the catalogue's own un-giveable restrictions, because a discard is not a
-    /// transfer to another unit - but `rules/magic` refuses the mage's men whatever the target.
     /// The other side of `ah-t8ei`'s rule, and the position this application takes: a mage's men
     /// may be **taken** from it, even though the mage may not give them.
     ///
@@ -2499,6 +2497,8 @@ mod tests {
         assert_eq!(mage.unit.men, 0);
     }
 
+    /// `GIVE 0` bypasses the catalogue's own un-giveable restrictions, because a discard is not a
+    /// transfer to another unit - but `rules/magic` refuses the mage's men whatever the target.
     #[test]
     fn a_mage_cannot_discard_men() {
         let orders = "unit 900\nGIVE 0 1 LEAD\n";

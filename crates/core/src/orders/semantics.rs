@@ -25981,10 +25981,10 @@ mod tests {
 
     /// The boundary of the decision pinned by
     /// `a_gift_of_silver_the_giver_does_not_hold_yet_credits_nothing`, raised by the delta round
-    /// of this bead's review: the column is stricter than the ledger, and **only** the column. The warnings read
-    /// the ledger, which still credits the recipient the whole gift, so a unit funded by a gift
-    /// its giver cannot yet cover is *not* told it is short. Nothing about the strict receipt
-    /// reaches the Problems panel.
+    /// of this bead's review: the column is stricter than the ledger, and **only** the column.
+    /// The warnings read the ledger, which still credits the recipient the whole gift, so a unit
+    /// funded by a gift its giver cannot yet cover is *not* told it is short. Nothing about the
+    /// strict receipt reaches the Problems panel.
     #[test]
     fn a_recipient_of_silver_the_giver_does_not_hold_yet_is_not_told_it_is_short() {
         let hex_region = ReportRegion {
