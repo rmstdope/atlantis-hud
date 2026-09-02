@@ -264,7 +264,7 @@ pub fn preview_orders_on_map(
     // `rules/form`, and only once the market has settled: a formed unit's own BUY is what decides
     // whether it gained anybody, so nothing can be dissolved before `item_effects` has been
     // applied and the headcounts derived from it (`ah-dhga`).
-    let dissolved = working.dissolve_empty_forms(&item_effects);
+    let dissolved = working.dissolve_empty_forms();
     // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
     // after the market, after movement, after production. A sale takes its goods first, and
     // whatever a PRODUCE made this month is there to be sent.
@@ -570,6 +570,12 @@ struct WorkingUnit {
     /// after each one, so a FORM later in the block still inherits the structure the unit is
     /// standing in by then - `visit` is a mutating walk and other arms read `structure_id`.
     boardings: Vec<BoardingOrder>,
+    /// What this row was handed by `GIVE` this month, in the order the gifts were read.
+    ///
+    /// Only a formed unit's is read, and only to dissolve it: `rules/form` reverts "the silver and
+    /// any other items it **was given**", which is exactly this list and not whatever the row's
+    /// own month bought or took (`ah-dhga`).
+    given: Vec<crate::report::model::ItemAmount>,
     /// This unit's orders whose effect on its items could not be counted, verbatim, in document
     /// order. Written once by `apply_item_effects`, after the walk that builds every unit here has
     /// finished (`ah-agbm`).
@@ -767,6 +773,7 @@ impl Working {
                 move_steps: None,
                 reported: unit.structure_id.clone(),
                 boardings: Vec::new(),
+                given: Vec::new(),
                 uncounted: Vec::new(),
                 taken_unshown: Vec::new(),
                 produced: Vec::new(),
@@ -863,19 +870,18 @@ impl Working {
     /// and every queued `PendingTransport` store indices into `self.units`, so the entries stay
     /// put and the caller filters them out while rendering. Their items have already been emptied
     /// into the recipient, so a transport authored by a dissolved row has nothing left to send.
-    fn dissolve_empty_forms(
-        &mut self,
-        effects: &BTreeMap<String, super::semantics::UnitItemEffects>,
-    ) -> BTreeSet<usize> {
+    fn dissolve_empty_forms(&mut self) -> BTreeSet<usize> {
         let mut dissolved = BTreeSet::new();
         for index in 0..self.units.len() {
             if !self.units[index].formed || self.units[index].unit.men != 0 {
                 continue;
             }
             let region_id = self.units[index].unit.region_id.clone();
-            // Report order, and only the first own unit: a region whose units are all formed has
-            // nobody to revert to, so nothing is taken from the dissolving row either. Taking
-            // first and discarding what could not be handed over would destroy the goods.
+            // `over_own_units` preserves report order, so `position` finds the first unit the
+            // report shows in that region - not the unit that formed this one. A region with no
+            // own report unit has nobody to revert to, and then nothing is taken from the
+            // dissolving row either: taking first and discarding what could not be handed over
+            // would destroy the goods.
             let Some(recipient) = self
                 .units
                 .iter()
@@ -884,45 +890,36 @@ impl Working {
                 dissolved.insert(index);
                 continue;
             };
-            // A unit that dissolves never existed to trade: `rules/form` reverts "the silver and
-            // any other items it was given", so what its own month moved is undone before the rest
-            // is handed over. Otherwise a BUY the game would never have executed would hand the
-            // recipient goods nobody ordered.
+            // Exactly what it was *given*, which is what `rules/form` reverts - not what its own
+            // month bought, produced or took. A `BUY` the game would never have executed must not
+            // become a windfall for the unit the goods revert to.
             //
-            // Exactly `item_effects`' own movements, which is what `apply_item_effects` applied:
-            // a TAKE from a unit the report *does* show is settled earlier, in
-            // `semantics::hex_with_transfers`, records no movement, and so is not undone here.
-            if let Some(effect) = effects.get(&self.units[index].unit.unit_id) {
-                for movement in &effect.moved {
-                    let items = &mut self.units[index].unit.items;
-                    match movement.delta.cmp(&0) {
-                        std::cmp::Ordering::Greater => {
-                            // Absent already: an earlier movement emptied the stock, and
-                            // `take_item`'s own clamp is what the column needs - the same case
-                            // `apply_item_effects` documents on its negative branch.
-                            if let Some(at) = items
-                                .iter()
-                                .position(|item| item.tag.eq_ignore_ascii_case(&movement.tag))
-                            {
-                                take_item(items, at, movement.delta);
-                            }
-                        }
-                        std::cmp::Ordering::Less => {
-                            add_item(items, &movement.name, &movement.tag, -movement.delta);
-                        }
-                        std::cmp::Ordering::Equal => {}
-                    }
+            // Clamped to what the row still holds: a gift the unit then sold or gave on is not
+            // there to revert, and `take_item` drops a stock at or below zero.
+            for gift in std::mem::take(&mut self.units[index].given) {
+                let held = self.units[index]
+                    .unit
+                    .items
+                    .iter()
+                    .position(|item| item.tag == gift.tag)
+                    .map_or(0, |at| self.units[index].unit.items[at].amount);
+                let moved = gift.amount.min(held);
+                if moved <= 0 {
+                    continue;
                 }
-            }
-            // `over_own_units` preserves report order, so `position` finds the first unit the
-            // report shows in that region - not the unit that formed this one.
-            let goods = std::mem::take(&mut self.units[index].unit.items);
-            for item in goods {
+                if let Some(at) = self.units[index]
+                    .unit
+                    .items
+                    .iter()
+                    .position(|item| item.tag == gift.tag)
+                {
+                    take_item(&mut self.units[index].unit.items, at, moved);
+                }
                 add_item(
                     &mut self.units[recipient].unit.items,
-                    &item.name,
-                    &item.tag,
-                    item.amount,
+                    &gift.name,
+                    &gift.tag,
+                    moved,
                 );
             }
             dissolved.insert(index);
@@ -1044,6 +1041,7 @@ impl Working {
             move_steps: None,
             reported,
             boardings: Vec::new(),
+            given: Vec::new(),
             uncounted: Vec::new(),
             taken_unshown: Vec::new(),
             produced: Vec::new(),
@@ -1236,6 +1234,7 @@ impl Working {
             take_item(&mut self.units[giver].unit.items, held, moved);
             if let Some(receiver) = receiver {
                 add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
+                add_item(&mut self.units[receiver].given, &name, &tag, moved);
             }
 
             // A race is people, so giving one moves men as well as stock.
@@ -2968,6 +2967,51 @@ mod tests {
             !receiver.unit.items.iter().any(|item| item.tag == "GRAI"),
             "nobody ordered grain for this unit: {:?}",
             receiver.unit.items
+        );
+    }
+
+    /// What a dissolving unit `TAKE`s from a unit the report shows is not handed on either - only
+    /// what it was given is. The source keeps the shortfall its own projected `TAKE` left it,
+    /// which is the pre-existing behaviour of that row and not dissolution's to unwind.
+    #[test]
+    fn a_dissolved_units_take_is_not_handed_on() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 5 stone [STON], 2 swords [SWOR]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nTAKE FROM 902 4 STON\nEND\nGIVE NEW 1 2 SWOR\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units.iter().any(|unit| unit.unit.unit_id == "new-1"),
+            "the empty formed unit dissolves"
+        );
+        let held = |id: &str, tag: &str| {
+            units
+                .iter()
+                .find(|unit| unit.unit.unit_id == id)
+                .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == tag))
+                .map_or(0, |item| item.amount)
+        };
+        assert_eq!(held("900", "SWOR"), 2, "the gift reverts");
+        assert_eq!(
+            held("900", "STON"),
+            0,
+            "what the dissolving unit took is not a windfall for the recipient"
         );
     }
 
