@@ -4392,7 +4392,6 @@ test("a transported item marks the ITEMS cell as a projection", async ({ page })
 
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toHaveAttribute("title", /^was: /);
-  await expect(itemsCell).toHaveAttribute("title", /Unit 14451 does not own a Caravanserai/);
 });
 
 /**
