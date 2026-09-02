@@ -321,6 +321,22 @@ fn unit_ids_in(report: &ParsedReport) -> BTreeSet<String> {
         .collect()
 }
 
+/// Whether a `GIVE` this month left any of the food a unit would eat unresolved.
+///
+/// Maintenance is settled from the whole food stock rather than from a tag an order names, so it
+/// asks about every uncertain tag rather than one. A gift of stone answers `false` and the unit's
+/// maintenance is priced exactly as it was (`ah-66yi`).
+fn food_uncertain_after_gifts(ordered: &Ordered<'_>, ruleset: Option<&Ruleset>) -> bool {
+    let Some(ruleset) = ruleset else { return false };
+    ordered.uncertain_after_gifts.keys().any(|tag| {
+        ruleset
+            .items
+            .get(&tag.to_ascii_uppercase())
+            .and_then(|entry| entry.maintenance_value)
+            .is_some_and(|value| value > 0)
+    })
+}
+
 fn foreign_unit_ids(report: &ParsedReport) -> BTreeSet<String> {
     report
         .regions
@@ -655,7 +671,7 @@ fn pool_shares_for(
     }
 
     let nothing = Receipts::default();
-    let wants: Vec<PoolWants> = hex_facts(hex, &nothing, late)
+    let wants: Vec<PoolWants> = hex_facts(hex, &nothing, late, ruleset)
         .iter()
         .map(|facts| pool_wants(facts, region, ruleset))
         .collect();
@@ -1242,7 +1258,7 @@ fn region_wages(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> RegionWages {
 /// exist yet here - see *Known traps*. `readiness` is an early term and never reads one anyway.
 fn pillagers_in(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Pillagers {
     let nothing = Receipts::default();
-    let facts = hex_facts(hex, &nothing, None);
+    let facts = hex_facts(hex, &nothing, None, ruleset);
     let mut pillagers = Pillagers::default();
     for (ordered, facts) in hex.units.iter().zip(&facts) {
         if !orders_a_pillage(ordered) {
@@ -1431,6 +1447,8 @@ fn forecast_hex(
             receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
             formed: ordered.formed.as_ref(),
             after_gifts_unknown: ordered.holdings_unknown(),
+            gifts_uncertain: !ordered.uncertain_after_gifts.is_empty(),
+            food_uncertain: food_uncertain_after_gifts(ordered, ruleset),
             skills_unknown: ordered.skills_before_the_market().is_none(),
             // `ordered.skills()` already carries this month's recruits merged on top of its
             // gifts, since `apply_recruits` runs before this hex is priced (`ah-40c9`).
@@ -3448,7 +3466,7 @@ fn ledger_for_with_production<'a>(
     let region = region_wages(hex, ruleset);
     let nothing = Receipts::default();
     for (index, ordered) in hex.units.iter().enumerate() {
-        let facts = unit_facts(hex, ordered, &nothing, None);
+        let facts = unit_facts(hex, ordered, &nothing, None, ruleset);
         for placed in ordered.intents {
             if matches!(placed.intent, Intent::Build { .. }) {
                 continue;
@@ -3709,11 +3727,20 @@ fn hex_facts<'a>(
     hex: &'a Hex<'_>,
     nothing: &'a Receipts,
     late: Option<&'a LateHoldings>,
+    ruleset: Option<&Ruleset>,
 ) -> Vec<UnitFacts<'a>> {
     hex.units
         .iter()
         .enumerate()
-        .map(|(index, ordered)| unit_facts(hex, ordered, nothing, late.map(|late| late.of(index))))
+        .map(|(index, ordered)| {
+            unit_facts(
+                hex,
+                ordered,
+                nothing,
+                late.map(|late| late.of(index)),
+                ruleset,
+            )
+        })
         .collect()
 }
 
@@ -3727,6 +3754,7 @@ fn unit_facts<'a>(
     ordered: &'a Ordered<'_>,
     nothing: &'a Receipts,
     late: Option<LateFacts<'a>>,
+    ruleset: Option<&Ruleset>,
 ) -> UnitFacts<'a> {
     UnitFacts {
         unit_id: &ordered.unit.unit_id,
@@ -3750,6 +3778,8 @@ fn unit_facts<'a>(
         receipts: nothing,
         formed: ordered.formed.as_ref(),
         after_gifts_unknown: ordered.holdings_unknown(),
+        gifts_uncertain: !ordered.uncertain_after_gifts.is_empty(),
+        food_uncertain: food_uncertain_after_gifts(ordered, ruleset),
         late,
     }
 }
@@ -3777,7 +3807,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     // them, so this is two passes over one set of facts rather than one pass - built once here,
     // because two copies of the same literal are two things to keep in step.
     let nothing = Receipts::default();
-    let facts = hex_facts(hex, &nothing, Some(&late));
+    let facts = hex_facts(hex, &nothing, Some(&late), ledger.ruleset);
 
     // The same settlement `forecast_hex` prices the column from: `WORK` and `ENTERTAIN` reach both
     // surfaces through one `late_income`, so two settlements would be two answers to one question.
@@ -4227,7 +4257,7 @@ fn check_tax_readiness(
         return;
     }
     let nothing = Receipts::default();
-    let facts = hex_facts(hex, &nothing, None);
+    let facts = hex_facts(hex, &nothing, None, ruleset);
     for (ordered, facts) in hex.units.iter().zip(&facts) {
         if !taxes(ordered.unit.flags.as_slice(), ordered.intents) {
             continue;
@@ -4497,8 +4527,8 @@ fn apply(
             // `readiness` is an early term and reads no late picture, so `None` here is the same
             // `None` `pillagers_in` counted with.
             let nothing = Receipts::default();
-            let mine =
-                readiness(&unit_facts(hex, actor, &nothing, None), ruleset).map(|read| read.ready);
+            let mine = readiness(&unit_facts(hex, actor, &nothing, None, ruleset), ruleset)
+                .map(|read| read.ready);
             let priced = price_pillage(hex.region.tax_base, region.pillagers, mine);
             if priced.doubt.is_some() {
                 ledger.doubted.insert(who.clone());
@@ -4765,6 +4795,27 @@ fn transfer(
         GiveOutcome::Refused(_) | GiveOutcome::Moves | GiveOutcome::NoTarget => {}
     }
 
+    // A later line moving a tag an earlier `GIVE` left uncertain cannot be counted whatever its
+    // shape: `ALL` resolves against a holding that is not established, and a stated quantity is
+    // drawn from goods that may already have gone. A receiver of ours inherits the same doubt, so
+    // its row shows `+ ?` rather than a flat arrival off a balance this ledger has marked
+    // unknowable (`ah-66yi`).
+    let known_source = match known_balance_of(ledger, &from, &tag) {
+        Ok(holding) => holding,
+        Err(uncertain) => {
+            let inherited = uncertain.clone();
+            ledger.doubted.insert(actor.unit.unit_id.clone());
+            mark_uncounted(ledger, &actor.unit.unit_id, placed.line);
+            if let Some(to) = to {
+                ledger
+                    .uncertain_balance
+                    .insert((to.clone(), tag.clone()), inherited);
+                mark_uncounted(ledger, &to, placed.line);
+            }
+            return;
+        }
+    };
+
     let quantity = match shape {
         // Unreachable: a `Selector::Item` is never unpriceable. Doubting is what the arm above
         // would have done, so a future variant that lands here loses nothing.
@@ -4774,16 +4825,7 @@ fn transfer(
         }
         TransferShape::Exact(count) => count,
         // Giving all of something can never overdraw it, whatever the reserve.
-        // `ALL` of a tag an earlier `GIVE` left uncertain resolves against a holding that is not
-        // established, so this line cannot be counted either (`ah-66yi`).
-        TransferShape::All { except } => match known_balance_of(ledger, &from, &tag) {
-            Ok(holding) => (holding - except).max(0),
-            Err(_) => {
-                ledger.doubted.insert(actor.unit.unit_id.clone());
-                mark_uncounted(ledger, &actor.unit.unit_id, placed.line);
-                return;
-            }
-        },
+        TransferShape::All { except } => (known_source - except).max(0),
     };
 
     if !from.is_empty() {
@@ -5957,7 +5999,7 @@ fn feed_from_food_after_silver(
         }
 
         let late = LateHoldings::read(hex, &ledger.balance, ledger.ruleset);
-        let facts = hex_facts(hex, &nothing, Some(&late));
+        let facts = hex_facts(hex, &nothing, Some(&late), ledger.ruleset);
         let claims: Vec<LateFoodClaim> = hex
             .units
             .iter()
@@ -6740,7 +6782,7 @@ fn check_guard(
             eligibility.push(None);
             continue;
         };
-        let read = readiness(&unit_facts(hex, ordered, &nothing, None), ruleset);
+        let read = readiness(&unit_facts(hex, ordered, &nothing, None, ruleset), ruleset);
         let eligible = read.as_ref().map(|read| read.ready > 0);
         if eligible == Some(false) && options.emits(codes::GUARD_WITHOUT_TAX_ABILITY) {
             let because = read
@@ -7503,7 +7545,7 @@ fn check_pillage_men(
     // never reads a late picture, so this needs no `LateHoldings` any more than `pillagers_in`
     // does.
     let nothing = Receipts::default();
-    let facts = hex_facts(hex, &nothing, None);
+    let facts = hex_facts(hex, &nothing, None, ruleset);
     for (ordered, facts) in hex.units.iter().zip(&facts) {
         // One warning per unit, on the first PILLAGE in the block, as the BUILD checks do.
         let Some(placed) = ordered
@@ -23197,6 +23239,110 @@ mod tests {
             let silver = silver_for(&review, "2390");
             assert_eq!(silver.doubt, Some(SilverDoubt::GiveTargetUncertain));
             assert_eq!(silver.doubt_subject.as_deref(), Some("unit 9999"));
+        }
+
+        /// A later *exact* transfer of the same tag draws on a balance this ledger has marked
+        /// unknowable, so it moves nothing definite - and a receiver of ours inherits the doubt
+        /// rather than gaining a flat arrival with no `+ ?` on it.
+        #[test]
+        fn a_later_exact_transfer_of_an_uncertain_tag_carries_the_doubt_to_its_receiver() {
+            let hex = ReportRegion {
+                ..region(vec![
+                    with_item(unit("2390"), 15, "stone", "STON"),
+                    unit("2391"),
+                    an_ally("7001"),
+                ])
+            };
+
+            with_a_ledger(
+                hex,
+                "unit 2390\nGIVE 7001 ALL STON\nGIVE 2391 5 STON\n",
+                |ledger| {
+                    assert_eq!(balance_of(ledger, "2390", "STON"), 15);
+                    assert_eq!(
+                        balance_of(ledger, "2391", "STON"),
+                        0,
+                        "no flat arrival off a balance nothing established"
+                    );
+                    assert_eq!(
+                        ledger.uncounted.get("2390").map(Vec::as_slice),
+                        Some([2, 3].as_slice()),
+                        "both lines are admitted: the gift and the transfer that reads it"
+                    );
+                    assert_eq!(
+                        ledger.uncounted.get("2391").map(Vec::as_slice),
+                        Some([3].as_slice()),
+                        "and the receiver's own row says its arrival cannot be counted"
+                    );
+                },
+            );
+        }
+
+        /// Maintenance is settled from the whole food stock rather than from a tag any order names,
+        /// so a gift that may have taken the food charges nothing rather than a guess - the same
+        /// answer an estimated headcount gets.
+        #[test]
+        fn maintenance_does_not_eat_food_an_uncertain_gift_may_have_taken() {
+            let giver = with_item(with_silver(unit("2390"), 0), 5, "grain", "GRAI");
+            let mut giver = giver;
+            giver.flags.push("consuming unit's food".to_string());
+            let review = reviewed(
+                vec![region(vec![giver, an_ally("7001")])],
+                "unit 2390\nGIVE 7001 ALL GRAI\n",
+            );
+
+            let silver = silver_for(&review, "2390");
+            assert_eq!(
+                silver.own_food_covered, 0,
+                "no maintenance is paid out of grain nothing established: {silver:?}"
+            );
+            assert_eq!(silver.upkeep, None, "{silver:?}");
+        }
+
+        /// The control for it: the same unit giving away stone keeps eating its grain, because the
+        /// doubt is tracked per tag.
+        #[test]
+        fn maintenance_is_untouched_by_an_uncertain_gift_of_something_else() {
+            let giver = with_item(
+                with_item(with_silver(unit("2390"), 0), 5, "grain", "GRAI"),
+                15,
+                "stone",
+                "STON",
+            );
+            let mut giver = giver;
+            giver.flags.push("consuming unit's food".to_string());
+            let review = reviewed(
+                vec![region(vec![giver, an_ally("7001")])],
+                "unit 2390\nGIVE 7001 ALL STON\n",
+            );
+
+            let silver = silver_for(&review, "2390");
+            assert!(
+                silver.own_food_covered > 0,
+                "the grain still feeds this unit: {silver:?}"
+            );
+        }
+
+        /// `CAST` prices its materials from the whole of `items` rather than from a tag the order
+        /// names, so any uncertain tag stops it.
+        #[test]
+        fn a_cast_after_an_uncertain_gift_cannot_be_priced() {
+            let mage = with_skill_pts(
+                with_item(with_silver(unit("2390"), 500), 20, "swords", "SWOR"),
+                "ESWO",
+                270,
+            );
+            let review = reviewed(
+                vec![region(vec![mage, an_ally("7001")])],
+                "unit 2390\nGIVE 7001 ALL SWOR\nCAST enchant_swords\n",
+            );
+
+            let silver = silver_for(&review, "2390");
+            assert_eq!(
+                silver.doubt,
+                Some(SilverDoubt::GiveConsequencesUncertain),
+                "{silver:?}"
+            );
         }
 
         /// A later order priced from goods an uncertain gift may have taken cannot be added up

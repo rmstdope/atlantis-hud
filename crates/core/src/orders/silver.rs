@@ -880,6 +880,20 @@ pub struct UnitFacts<'a> {
     pub after_gifts_unknown: bool,
     /// Set when arrivals cannot be merged into the unit's skills.
     pub skills_unknown: bool,
+    /// Whether a `GIVE` this month left any tag this unit holds unresolved (`ah-66yi`).
+    ///
+    /// Read by the `CAST` arm, which prices its materials from the whole of `items` rather than
+    /// from one named tag - so an uncertain tag anywhere in that list is enough to stop it. Every
+    /// other term asks [`Lookups::uncertain_after_gifts`] about the tag it actually reads, which is
+    /// what keeps unrelated earnings and spending exact.
+    pub gifts_uncertain: bool,
+    /// Whether any of that is food this unit could have eaten.
+    ///
+    /// Maintenance is settled from the whole food stock rather than from a tag an order names, so
+    /// [`unit_upkeep`], [`food_claim`] and the column all charge nothing rather than a guess - the
+    /// same answer an estimated headcount gets. Separate from `gifts_uncertain` so an uncertain
+    /// gift of stone leaves this unit's maintenance exactly as it was (`ah-66yi`).
+    pub food_uncertain: bool,
     /// The unit's skills once this month's recruits have merged on top of its gifts - the picture
     /// `rules/buy` says a `BUY` dilutes, read only by the PRODUCE arm below. Every other arm
     /// keeps reading `skills`, the pre-market view, because `rules/sequenceofevents` prices STUDY,
@@ -1438,6 +1452,12 @@ pub fn forecast_unit(
                 }
                 expense_doubt = expense_doubt.or(priced.doubt);
             }
+            // `CAST` prices its materials from the whole of `items`, not from a tag the order
+            // names, so any uncertain tag stops it (`ah-66yi`).
+            Intent::Cast { .. } if facts.gifts_uncertain => {
+                income_doubt = income_doubt.or(Some(SilverDoubt::GiveConsequencesUncertain));
+                expense_doubt = expense_doubt.or(Some(SilverDoubt::GiveConsequencesUncertain));
+            }
             Intent::Cast { spell, arguments } => {
                 // Resolved once: this runs per keystroke, and `find_skill` walks the catalogue.
                 let resolved = ruleset.and_then(|ruleset| ruleset.find_skill(spell));
@@ -1851,7 +1871,9 @@ struct OwnFoodPass {
 ///
 /// `None` for a headcount that is itself a guess: charge nothing rather than a guess.
 fn own_food_pass(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<OwnFoodPass> {
-    if facts.men_estimated {
+    // `food_uncertain`: a `GIVE` this month may or may not have taken the food this unit would eat,
+    // so charge nothing rather than a guess - exactly what an estimated headcount gets (`ah-66yi`).
+    if facts.men_estimated || facts.food_uncertain {
         return None;
     }
     let late = facts.late();
@@ -5135,6 +5157,8 @@ mod tests {
             receipts,
             formed: None,
             after_gifts_unknown: false,
+            gifts_uncertain: false,
+            food_uncertain: false,
             skills_unknown: false,
             production_skills: &[],
             production_skills_unknown: false,
@@ -7731,6 +7755,8 @@ mod tests {
             receipts: no_receipts(),
             formed: None,
             after_gifts_unknown: false,
+            gifts_uncertain: false,
+            food_uncertain: false,
             skills_unknown: false,
             production_skills: &[],
             production_skills_unknown: false,
@@ -8294,6 +8320,8 @@ mod combat_ready_tests {
             receipts,
             formed: None,
             after_gifts_unknown: false,
+            gifts_uncertain: false,
+            food_uncertain: false,
             skills_unknown: false,
             production_skills: skills,
             production_skills_unknown: false,
