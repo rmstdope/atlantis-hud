@@ -67,6 +67,12 @@ const EXPECTED: &[(&str, usize)] = &[
 ];
 
 /// What the committed turn's 27 own units spend between them, all of it on `STUDY`.
+///
+/// Unmoved by `ah-66yi`, and that is the point: four of these units carry a standing
+/// `GIVE 2396 ALL MARM`/`ALL MSWO` to another faction, which that bead leaves unresolved - and all
+/// six of the turn's casts consume swords and plate armour, which no gift here touches. Uncertainty
+/// is tracked per item, so an unresolved gift of one tag leaves a month priced from others exactly
+/// where it was.
 const EXPECTED_SPENDING: i64 = 800;
 
 /// The expectation table as a map, so an assertion can be read as a table.

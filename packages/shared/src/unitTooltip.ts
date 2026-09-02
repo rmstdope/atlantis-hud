@@ -546,6 +546,30 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     })
   },
   {
+    id: "give-target-uncertain",
+    when: ({ silver }) => silver.doubt === "give-target-uncertain",
+    say: ({ silver }) =>
+      `Your report does not show whether ${silver.doubtSubject ?? "the target"} can receive this GIVE, so what this unit spends cannot be said.`,
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "give-target-uncertain", doubtSubject: "unit 9999" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  {
+    id: "give-consequences-uncertain",
+    when: ({ silver }) => silver.doubt === "give-consequences-uncertain",
+    say: () =>
+      "Because this GIVE cannot be predicted, what this unit earns or spends afterwards cannot be said.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "give-consequences-uncertain" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  {
     id: "doubt-unknown-combat-ready",
     when: ({ silver }) => silver.doubt === "unknown-combat-ready",
     say: () =>
