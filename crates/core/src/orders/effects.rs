@@ -10,7 +10,7 @@
 //! The governing policy is the validator's own **accept on doubt**: an order that cannot be read,
 //! or whose target cannot be found, changes nothing rather than changing something wrong.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -261,11 +261,18 @@ pub fn preview_orders_on_map(
         super::semantics::item_effects(&report, orders_document, Some(ruleset.as_ref()));
     working.apply_item_effects(&item_effects);
     settle_headcounts(&mut working.units, &ruleset);
+    // `rules/form`, and only once the market has settled: a formed unit's own BUY is what decides
+    // whether it gained anybody, so nothing can be dissolved before `item_effects` has been
+    // applied and the headcounts derived from it (`ah-dhga`).
+    let dissolved = working.dissolve_empty_forms();
     // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
     // after the market, after movement, after production. A sale takes its goods first, and
     // whatever a PRODUCE made this month is there to be sent.
-    working.apply_transports();
-    for working_unit in &mut working.units {
+    working.apply_transports(&dissolved);
+    for (index, working_unit) in working.units.iter_mut().enumerate() {
+        if dissolved.contains(&index) {
+            continue;
+        }
         working_unit.refresh_movement(&ruleset);
     }
 
@@ -285,7 +292,10 @@ pub fn preview_orders_on_map(
     let mut decided: Vec<Decided> = Vec::new();
     let mut sailing: BTreeMap<(String, String), SailingFleet> = BTreeMap::new();
 
-    for entry in working.units {
+    for (index, entry) in working.units.into_iter().enumerate() {
+        if dissolved.contains(&index) {
+            continue;
+        }
         let mut arrival = None;
         let mut mode = None;
 
@@ -560,6 +570,12 @@ struct WorkingUnit {
     /// after each one, so a FORM later in the block still inherits the structure the unit is
     /// standing in by then - `visit` is a mutating walk and other arms read `structure_id`.
     boardings: Vec<BoardingOrder>,
+    /// What this row was handed by `GIVE` this month, in the order the gifts were read.
+    ///
+    /// Only a formed unit's is read, and only to dissolve it: `rules/form` reverts "the silver and
+    /// any other items it **was given**", which is exactly this list and not whatever the row's
+    /// own month bought or took (`ah-dhga`).
+    given: Vec<crate::report::model::ItemAmount>,
     /// This unit's orders whose effect on its items could not be counted, verbatim, in document
     /// order. Written once by `apply_item_effects`, after the walk that builds every unit here has
     /// finished (`ah-agbm`).
@@ -757,6 +773,7 @@ impl Working {
                 move_steps: None,
                 reported: unit.structure_id.clone(),
                 boardings: Vec::new(),
+                given: Vec::new(),
                 uncounted: Vec::new(),
                 taken_unshown: Vec::new(),
                 produced: Vec::new(),
@@ -842,6 +859,71 @@ impl Working {
             Some(formed) => *formed,
             None => self.current,
         }
+    }
+
+    /// Dissolves every formed unit that gained nobody, returning its goods to the first own unit
+    /// the report shows in that region (`rules/form`: "If no recruits are gained at all, the empty
+    /// unit will be dissolved, and the silver and any other items it was given will revert to the
+    /// first unit you have in that region").
+    ///
+    /// Returns the indices of the dissolved rows rather than removing them: `by_id`, `by_alias`
+    /// and every queued `PendingTransport` store indices into `self.units`, so the entries stay
+    /// put and the caller filters them out while rendering. What the row was not given stays on
+    /// it, unrendered - so `apply_transports` is given the same set and drops what a dissolved row
+    /// had queued.
+    fn dissolve_empty_forms(&mut self) -> BTreeSet<usize> {
+        let mut dissolved = BTreeSet::new();
+        for index in 0..self.units.len() {
+            if !self.units[index].formed || self.units[index].unit.men != 0 {
+                continue;
+            }
+            let region_id = self.units[index].unit.region_id.clone();
+            // `over_own_units` preserves report order, so `position` finds the first unit the
+            // report shows in that region - not the unit that formed this one. A region with no
+            // own report unit has nobody to revert to, and then nothing is taken from the
+            // dissolving row either: taking first and discarding what could not be handed over
+            // would destroy the goods.
+            let Some(recipient) = self
+                .units
+                .iter()
+                .position(|unit| unit.unit.region_id == region_id && unit.original.is_some())
+            else {
+                dissolved.insert(index);
+                continue;
+            };
+            // Exactly what it was *given*, which is what `rules/form` reverts - not what its own
+            // month bought, produced or took. A `BUY` the game would never have executed must not
+            // become a windfall for the unit the goods revert to.
+            //
+            // Clamped to what the row still holds, by the same case-insensitive tag match the
+            // rest of this file uses: a gift the unit then sold or gave on is not there to
+            // revert. The clamp is a bound, not a ledger - it cannot tell gifted stock from stock
+            // the row acquired itself, so a row given 100 silver, giving it on and then earning
+            // 50 reverts that 50. At this layer that is the cheaper wrong answer of the two.
+            for gift in std::mem::take(&mut self.units[index].given) {
+                let Some(at) = self.units[index]
+                    .unit
+                    .items
+                    .iter()
+                    .position(|item| item.tag.eq_ignore_ascii_case(&gift.tag))
+                else {
+                    continue;
+                };
+                let moved = gift.amount.min(self.units[index].unit.items[at].amount);
+                if moved <= 0 {
+                    continue;
+                }
+                take_item(&mut self.units[index].unit.items, at, moved);
+                add_item(
+                    &mut self.units[recipient].unit.items,
+                    &gift.name,
+                    &gift.tag,
+                    moved,
+                );
+            }
+            dissolved.insert(index);
+        }
+        dissolved
     }
 
     /// Applies what `BUY`, `SELL`, `WITHDRAW` and `TAKE` move into or out of each unit's item
@@ -958,6 +1040,7 @@ impl Working {
             move_steps: None,
             reported,
             boardings: Vec::new(),
+            given: Vec::new(),
             uncounted: Vec::new(),
             taken_unshown: Vec::new(),
             produced: Vec::new(),
@@ -1150,6 +1233,7 @@ impl Working {
             take_item(&mut self.units[giver].unit.items, held, moved);
             if let Some(receiver) = receiver {
                 add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
+                add_item(&mut self.units[receiver].given, &name, &tag, moved);
             }
 
             // A race is people, so giving one moves men as well as stock.
@@ -1284,9 +1368,15 @@ impl Working {
     /// Applies every queued `TRANSPORT`/`DISTRIBUTE`, last of all: `rules/sequenceofevents` runs
     /// transport in the month's final phases, after the market, after movement, after production
     /// (`ah-bxgs`).
-    fn apply_transports(&mut self) {
+    fn apply_transports(&mut self, dissolved: &BTreeSet<usize>) {
         let pending = std::mem::take(&mut self.transports);
         for pending in pending {
+            // A unit that dissolved never existed to send anything: its row is not rendered, and
+            // whatever its own month acquired stays on it rather than reaching a recipient by the
+            // one path `dissolve_empty_forms` does not itself cover (`ah-dhga`).
+            if dissolved.contains(&pending.sender) {
+                continue;
+            }
             // `GiveReach::Discard` bypasses target-specific refusal: `TRANSPORT` has
             // its own permission gate, `can_be_transported`, checked below - the two lists are
             // not the same (`IENT` may not be given but may be transported).
@@ -1851,7 +1941,7 @@ mod tests {
     #[test]
     fn a_formed_unit_starts_inside_the_parents_structure() {
         // The game creates the new unit in the same object as the unit forming it.
-        let response = preview("unit 900\nENTER 4\nFORM 1\nEND\n");
+        let response = preview("unit 900\nENTER 4\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n");
 
         let formed = response.regions[0]
             .units
@@ -2022,7 +2112,9 @@ mod tests {
     /// the orders after it still belong to the unit being formed.
     #[test]
     fn endform_closes_nothing_because_the_rules_have_no_such_order() {
-        let response = preview("unit 900\nFORM 1\nENDFORM\nNAME UNIT \"Formed\"\n");
+        let response = preview(
+            "unit 900\nFORM 1\nENDFORM\nNAME UNIT \"Formed\"\nunit 900\nGIVE NEW 1 1 LEAD\n",
+        );
 
         let formed = response.regions[0]
             .units
@@ -2545,7 +2637,7 @@ mod tests {
         // well against a reader that had stopped understanding `NEW` at all - and the arm it
         // guards is the dangerous one, since a foreign target read as a zero would destroy the
         // swords rather than merely fail to move them.
-        let ours = preview("unit 900\nFORM 2\nEND\nGIVE NEW 2 1 SWOR\n");
+        let ours = preview("unit 900\nFORM 2\nEND\nGIVE NEW 2 1 SWOR\nGIVE NEW 2 1 LEAD\n");
         assert!(
             ours.regions[0]
                 .units
@@ -2560,7 +2652,7 @@ mod tests {
     #[test]
     fn a_second_form_with_a_taken_alias_is_swallowed() {
         let response = preview(
-            "unit 900\nFORM 1\nNAME UNIT \"First\"\nEND\nFORM 1\nNAME UNIT \"Second\"\nEND\n",
+            "unit 900\nFORM 1\nNAME UNIT \"First\"\nEND\nFORM 1\nNAME UNIT \"Second\"\nEND\nGIVE NEW 1 1 LEAD\n",
         );
 
         let formed: Vec<_> = response.regions[0]
@@ -2596,7 +2688,7 @@ mod tests {
             RULESET,
             &report,
             "[]",
-            "unit 900\nFORM 1\nEND\nunit 902\nGIVE NEW 1 2 SWOR\n",
+            "unit 900\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\nunit 902\nGIVE NEW 1 2 SWOR\n",
         )
         .expect("the ruleset loads");
 
@@ -2607,7 +2699,7 @@ mod tests {
             .find(|unit| unit.status == UnitPreviewStatus::Formed)
             .expect("the formed unit");
         assert!(
-            formed.unit.items.is_empty(),
+            !formed.unit.items.iter().any(|item| item.tag == "SWOR"),
             "a GIVE from another hex must not reach it: {:?}",
             formed.unit.items
         );
@@ -2727,7 +2819,8 @@ mod tests {
 
     #[test]
     fn form_creates_a_provisional_unit_that_its_block_names() {
-        let response = preview("unit 900\nFORM 1\nNAME UNIT \"Recruits\"\nBEHIND 1\nEND\n");
+        let response =
+            preview("unit 900\nFORM 1\nNAME UNIT \"Recruits\"\nBEHIND 1\nEND\nGIVE NEW 1 1 LEAD\n");
 
         let formed = response.regions[0]
             .units
@@ -2738,7 +2831,400 @@ mod tests {
         assert_eq!(formed.unit.name, "Recruits");
         assert!(formed.unit.own);
         assert!(formed.unit.flags.iter().any(|flag| flag == "behind"));
-        assert_eq!(formed.unit.men, 0, "nobody has been given to it yet");
+        assert_eq!(
+            formed.unit.men, 1,
+            "the leader transferred to it, which is what keeps it from dissolving"
+        );
+    }
+
+    /// A formed unit's own `BUY` has to reach the preview before dissolution can be decided, or
+    /// every unit created through the documented `rules/form` recruitment idiom would be removed
+    /// (`rules/form`: "If a new unit gains at least one recruit, the unit will form possessing any
+    /// unused silver and all the other items it was given").
+    #[test]
+    fn formed_market_purchases_are_projected_before_dissolution() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nFORM 1\nBUY 1 humans\nEND\nGIVE NEW 1 100 silver\n",
+        );
+
+        let formed = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the formed unit survives its successful recruitment");
+        assert_eq!(formed.status, UnitPreviewStatus::Formed);
+        assert_eq!(formed.unit.men, 1, "the recruit was bought");
+        assert_eq!(
+            formed
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "HUMN")
+                .map_or(0, |item| item.amount),
+            1
+        );
+        assert_eq!(
+            formed
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SILV")
+                .map_or(0, |item| item.amount),
+            100,
+            "the silver it was given stays with it, as the ITEMS column shows silver for every \
+             other unit that BUYs - the spend belongs to the SILVER column"
+        );
+    }
+
+    /// `rules/form`: "If the demand for recruits in that region that month is much higher than
+    /// the supply, ... it may not gain any recruits at all. ... If no recruits are gained at all,
+    /// the empty unit will be dissolved, and the silver and any other items it was given will
+    /// revert to the first unit you have in that region." The first unit is the first the *report*
+    /// shows, not the one that formed it - so the market here has nobody left to sell.
+    #[test]
+    fn an_empty_formed_unit_returns_its_goods_to_the_first_own_unit() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 0 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR], 10 silver [SILV]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 1 humans\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 1 10 SILV\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units.iter().any(|unit| unit.unit.unit_id == "new-1"),
+            "the empty formed unit is dissolved: {:?}",
+            units
+                .iter()
+                .map(|unit| &unit.unit.unit_id)
+                .collect::<Vec<_>>()
+        );
+
+        let amount = |id: &str, tag: &str| {
+            units
+                .iter()
+                .find(|unit| unit.unit.unit_id == id)
+                .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == tag))
+                .map_or(0, |item| item.amount)
+        };
+        assert_eq!(amount("900", "SWOR"), 3, "the first own unit receives them");
+        assert_eq!(amount("900", "SILV"), 10);
+        assert_eq!(amount("901", "SWOR"), 0, "the bystander receives nothing");
+        assert_eq!(amount("901", "SILV"), 0);
+        assert_eq!(amount("902", "SWOR"), 0, "the former gave them away");
+        assert_eq!(amount("902", "SILV"), 0);
+    }
+
+    /// `rules/form` reverts "the silver and any other items it **was given**". A unit that
+    /// dissolves never existed to trade, so what its own `BUY` bought is not a windfall for the
+    /// unit it reverts to.
+    #[test]
+    fn a_dissolved_units_purchases_are_not_handed_on() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 20 grain [GRAI] at $10.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 100 silver [SILV]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 5 grain\nEND\nGIVE NEW 1 100 SILV\n",
+        );
+
+        let receiver = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the first own unit receives what was given");
+        assert_eq!(
+            receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SILV")
+                .map_or(0, |item| item.amount),
+            100,
+            "the silver it was given reverts in full"
+        );
+        assert!(
+            !receiver.unit.items.iter().any(|item| item.tag == "GRAI"),
+            "nobody ordered grain for this unit: {:?}",
+            receiver.unit.items
+        );
+    }
+
+    /// A dissolved unit's queued `TRANSPORT` is dropped: what its own month bought must not reach
+    /// a recipient by the one path the revert itself does not cover.
+    #[test]
+    fn a_dissolved_unit_sends_no_transport() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 20 grain [GRAI] at $10.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 100 silver [SILV]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 5 grain\nTRANSPORT 900 5 GRAI\nEND\nGIVE NEW 1 100 SILV\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units.iter().any(|unit| unit.unit.unit_id == "new-1"),
+            "the empty formed unit dissolves"
+        );
+        let receiver = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the first own unit is previewed, having received the silver");
+        assert!(
+            receiver.transport_received.is_empty(),
+            "nothing arrives from a unit that never existed: {:?}",
+            receiver.transport_received
+        );
+        assert!(
+            !receiver.unit.items.iter().any(|item| item.tag == "GRAI"),
+            "and no grain with it: {:?}",
+            receiver.unit.items
+        );
+    }
+
+    /// A formed unit's `BUY` competes for the same limited stock as the report's own units
+    /// (`rules/buy`), which is what wiring `formed_units` into `item_effects` puts back.
+    #[test]
+    fn a_formed_units_buy_competes_for_a_scarce_market() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 2 humans [HUMN] at $38.",
+            "",
+            "* Crew (900), Foo (1), 10 humans [HUMN], 400 silver [SILV]. Weight: 100. \
+             Capacity: 0/0/150/0.",
+            "",
+        ]
+        .join("\n");
+        let alone = preview_over(&report, "unit 900\nBUY 2 HUMN\n");
+        let bought_alone = alone.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == "HUMN"))
+            .map_or(0, |item| item.amount);
+        assert_eq!(bought_alone, 12, "the whole offer, with nobody to share it");
+
+        let shared = preview_over(
+            &report,
+            "unit 900\nBUY 2 HUMN\nFORM 1\nBUY 2 HUMN\nEND\nGIVE NEW 1 100 SILV\n",
+        );
+        let bought_shared = shared.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == "HUMN"))
+            .map_or(0, |item| item.amount);
+        assert_eq!(
+            bought_shared, 11,
+            "one of the two on offer goes to the formed unit"
+        );
+    }
+
+    /// What a dissolving unit `TAKE`s from a unit the report shows is not handed on either - only
+    /// what it was given is. The source keeps the shortfall its own projected `TAKE` left it,
+    /// which is the pre-existing behaviour of that row and not dissolution's to unwind.
+    #[test]
+    fn a_dissolved_units_take_is_not_handed_on() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 5 stone [STON], 2 swords [SWOR]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nTAKE FROM 902 4 STON\nEND\nGIVE NEW 1 2 SWOR\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units.iter().any(|unit| unit.unit.unit_id == "new-1"),
+            "the empty formed unit dissolves"
+        );
+        let held = |id: &str, tag: &str| {
+            units
+                .iter()
+                .find(|unit| unit.unit.unit_id == id)
+                .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == tag))
+                .map_or(0, |item| item.amount)
+        };
+        assert_eq!(held("900", "SWOR"), 2, "the gift reverts");
+        assert_eq!(
+            held("900", "STON"),
+            0,
+            "what the dissolving unit took is not a windfall for the recipient"
+        );
+    }
+
+    /// Two empty formed units in one region: both dissolve, and both revert to the same first own
+    /// unit - a dissolving row can never be another's recipient, because a recipient is always a
+    /// unit the report shows.
+    #[test]
+    fn two_empty_forms_in_one_region_both_revert_to_the_first_unit() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR], 4 stone [STON]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nEND\nFORM 2\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 2 4 STON\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units
+                .iter()
+                .any(|unit| unit.unit.unit_id.starts_with("new-")),
+            "both dissolve: {:?}",
+            units
+                .iter()
+                .map(|unit| &unit.unit.unit_id)
+                .collect::<Vec<_>>()
+        );
+        let receiver = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the first own unit receives both lots");
+        let held = |tag: &str| {
+            receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == tag)
+                .map_or(0, |item| item.amount)
+        };
+        assert_eq!(held("SWOR"), 3);
+        assert_eq!(held("STON"), 4);
+    }
+
+    /// The recipient search is region-scoped: two regions, each forming an empty unit, must revert
+    /// to their own first unit and not to the other region's.
+    #[test]
+    fn each_region_reverts_to_its_own_first_unit() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* North (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* NorthFormer (901), Foo (1), leader [LEAD], 3 swords [SWOR]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+            "plain (3,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* South (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* SouthFormer (903), Foo (1), leader [LEAD], 4 stone [STON]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 901\nFORM 1\nEND\nGIVE NEW 1 3 SWOR\nunit 903\nFORM 1\nEND\nGIVE NEW 1 4 STON\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units
+                .iter()
+                .any(|unit| unit.unit.unit_id.starts_with("new-")),
+            "both empty formed units dissolve: {:?}",
+            units
+                .iter()
+                .map(|unit| &unit.unit.unit_id)
+                .collect::<Vec<_>>()
+        );
+        let held = |id: &str, tag: &str| {
+            units
+                .iter()
+                .find(|unit| unit.unit.unit_id == id)
+                .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == tag))
+                .map_or(0, |item| item.amount)
+        };
+        assert_eq!(held("900", "SWOR"), 3, "its own region's goods come back");
+        assert_eq!(held("900", "STON"), 0, "and the other region's do not");
+        assert_eq!(held("902", "STON"), 4);
+        assert_eq!(held("902", "SWOR"), 0);
+    }
+
+    /// The rule's condition is the resulting headcount, not whether a `BUY` was written: people
+    /// handed over by `GIVE` keep the provisional unit alive.
+    #[test]
+    fn people_given_to_a_formed_unit_keep_it_alive() {
+        let response = preview("unit 900\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n");
+
+        let formed = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("a formed unit holding people survives");
+        assert_eq!(formed.status, UnitPreviewStatus::Formed);
+        assert_eq!(formed.unit.men, 1);
     }
 
     #[test]
@@ -3098,7 +3584,7 @@ mod tests {
             2
         );
 
-        let formed = preview("unit 900\nFORM 1\nEND\nGIVE NEW 1 3 SWOR\n");
+        let formed = preview("unit 900\nFORM 1\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 1 1 LEAD\n");
         let recruit = formed.regions[0]
             .units
             .iter()

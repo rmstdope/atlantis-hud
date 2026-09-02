@@ -308,6 +308,35 @@ fn units_by_id(report: &ParsedReport) -> BTreeMap<&str, &ReportUnit> {
     units
 }
 
+/// Every unit this month's `FORM` orders create, in document order.
+///
+/// One reader for both entry points - `review_turn` and `item_effects` - so the review and the
+/// ITEMS column cannot come to disagree about which units this month creates.
+///
+/// A nested `FORM`'s `formed_by` names the *outer* formed unit's synthetic id, which the report's
+/// own units have never heard of. `read_formed` returns blocks in document order and an outer
+/// block is always pushed before the inner one nested in it (`FormReader::open_form`), so the
+/// fallback map below always has the parent by the time a nested block asks for it - mirroring
+/// `effects::Working::open_form`, which resolves a nested parent from `self.units` for the same
+/// reason. Without this, a nested `FORM`'s unit is silently dropped.
+fn formed_units(report: &ParsedReport, source: &str) -> Vec<Formed> {
+    let unit_regions = where_the_report_shows_each_unit(report);
+    let unit_by_id = units_by_id(report);
+    let mut minted: BTreeMap<String, ReportUnit> = BTreeMap::new();
+    read_formed(source, &unit_regions)
+        .into_iter()
+        .filter_map(|block| {
+            let parent = unit_by_id
+                .get(block.formed_by.as_str())
+                .copied()
+                .or_else(|| minted.get(block.formed_by.as_str()))?;
+            let unit = effects::formed_unit(parent, &block.alias);
+            minted.insert(unit.unit_id.clone(), unit.clone());
+            Some(Formed { unit, block })
+        })
+        .collect()
+}
+
 fn foreign_unit_ids(report: &ParsedReport) -> BTreeSet<String> {
     report
         .regions
@@ -364,34 +393,12 @@ pub fn review_turn(
     } else {
         BTreeMap::new()
     };
-    // Where each *existing* unit stands, needed unconditionally now: a `FORM` block's region comes
-    // from its parent, and every review has to know which units this month's orders create.
-    let unit_regions = where_the_report_shows_each_unit(report);
-    let unit_by_id = units_by_id(report);
     let foreign_unit_ids = foreign_unit_ids(report);
     // Every unit this month's orders create, built once and before `hexes` below so it outlives
     // every `Hex<'_>` that borrows from it (`Ordered` holds a reference into `formed[i].unit`).
-    //
-    // A nested `FORM`'s `formed_by` names the *outer* formed unit's synthetic id, which
-    // `unit_by_id` - the report's own units - has never heard of. `read_formed` returns blocks in
-    // document order and an outer block is always pushed before the inner one nested in it
-    // (`FormReader::open_form`), so the fallback map below always has the parent by the time a
-    // nested block asks for it - mirroring `effects::Working::open_form`, which resolves a nested
-    // parent from `self.units` for the same reason. Without this, a nested `FORM`'s unit is
-    // silently dropped from the review while the preview still shows its row.
-    let mut formed_units: BTreeMap<String, ReportUnit> = BTreeMap::new();
-    let formed: Vec<Formed> = read_formed(source, &unit_regions)
-        .into_iter()
-        .filter_map(|block| {
-            let parent = unit_by_id
-                .get(block.formed_by.as_str())
-                .copied()
-                .or_else(|| formed_units.get(block.formed_by.as_str()))?;
-            let unit = effects::formed_unit(parent, &block.alias);
-            formed_units.insert(unit.unit_id.clone(), unit.clone());
-            Some(Formed { unit, block })
-        })
-        .collect();
+    // `formed_units` is the one reader `item_effects` uses too - see its own doc comment for the
+    // nested-FORM resolution it carries.
+    let formed: Vec<Formed> = formed_units(report, source);
     // Same reasoning as `located` above: `review_turn` runs on every keystroke once typing
     // settles, so the index a sailing passenger's produce check walks is built only when that
     // check is actually enabled (`ah-8myf`).
@@ -3371,18 +3378,19 @@ pub(crate) fn item_effects(
     let mut result: BTreeMap<String, UnitItemEffects> = BTreeMap::new();
     let no_receipts = BTreeMap::new();
 
-    // `&[]`: a unit this month's `FORM` orders create is out of scope here, exactly as it was
-    // before `ah-jw85` gave `Hex::read` a third argument - `ah-agbm`'s own follow-up, not this
-    // bead's, if the ITEMS column is to project a formed unit's BUY or SELL too.
+    // The units this month's `FORM` orders create, built before `hexes` below so they outlive
+    // every `Hex<'_>` that borrows from them. A formed unit's own `BUY` has to be priced here, or
+    // the preview could never see a successful recruitment (`ah-dhga`, `rules/form`).
     //
     // `hex_with_transfers` projects this month's GIVE/TAKE onto the hex's units (`ah-dxfd.2`),
     // exactly as `review_turn` does - one reader for both entry points, so they cannot
     // diverge. `item_effects` only ever reads `ledger.movements` and `ledger.uncounted`,
     // neither of which the projection touches, so this changes no output here.
+    let formed = formed_units(report, orders_document);
     let hexes: Vec<Hex<'_>> = report
         .regions
         .iter()
-        .map(|region| hex_with_transfers(region, &ordered, &[], ruleset, &foreign_unit_ids))
+        .map(|region| hex_with_transfers(region, &ordered, &formed, ruleset, &foreign_unit_ids))
         .collect();
 
     // Recruitment settles before production is ever priced here, exactly as `review_turn` does
