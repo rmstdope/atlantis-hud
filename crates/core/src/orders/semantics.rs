@@ -2782,11 +2782,14 @@ impl Ordered<'_> {
     /// Whether the unit will be guarding at the end of the turn. AVOID is processed before GUARD,
     /// regardless of document order; a unit that walks away guards nothing.
     fn will_guard(&self, eligible: Option<bool>) -> bool {
-        let guarding = self
+        let guarding = if self
             .intents()
             .any(|intent| matches!(intent, Intent::Avoid(true)))
-            .then_some(false)
-            .unwrap_or(self.unit.on_guard);
+        {
+            false
+        } else {
+            self.unit.on_guard
+        };
         let guarding = self.final_guard_order().map_or(guarding, |(_, on)| on);
         guarding && eligible != Some(false) && !self.leaves_the_hex()
     }
