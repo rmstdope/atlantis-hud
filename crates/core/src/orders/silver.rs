@@ -66,11 +66,9 @@ const UPKEEP_PER_LEADER: i64 = 50;
 ///
 /// The rules page (`rules/economy_maintenance`) says one food substitutes for each 50 silver of
 /// maintenance owed, while `data/GRAI`, `data/LIVE`, `data/FISH` and `data/MEAL` each state 30.
-/// `ah-773o` resolved the disagreement in favour of the per-item data value, corroborated by the
-/// committed turn-17 report (22 humans consume 8 livestock, which is `ceil(220 / 30)`, not
-/// `ceil(220 / 50)`). So there is no one food value in this module any more: every food carries its
-/// own, read from `ItemEntry::maintenance_value`, and an item the catalogue does not price is not
-/// food and pays nothing.
+/// Generation resolves the disagreement with the rules/economy_maintenance value of 50 while
+/// preserving each item's source description. Every food carries its generated value from
+/// `ItemEntry::maintenance_value`, and an item the catalogue does not price is not food.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FoodAmount {
     pub tag: String,
@@ -7685,8 +7683,7 @@ mod tests {
         vec!["Consuming Unit's Food".to_string()]
     }
 
-    /// The committed ruleset prices each food at 30 silver of maintenance, so these tests read the
-    /// data value through the same catalogue production does.
+    /// The committed ruleset applies the rules/economy_maintenance New Origins override.
     fn upkeep(facts: &UnitFacts<'_>) -> Option<i64> {
         unit_upkeep(facts, Some(&ruleset()))
     }
@@ -7721,23 +7718,19 @@ mod tests {
         assert_eq!(upkeep(&facts), None);
     }
 
-    /// The decisive difference from the overturned constant: one grain pays the data page's 30,
-    /// not 50. A leader owing 50 with a single grain is left owing 20, where the old constant left
-    /// it owing nothing (`ah-773o`).
     #[test]
-    fn one_grain_pays_thirty_not_fifty() {
+    fn one_grain_pays_a_leaders_fifty_silver_fee() {
         let men = [item(1, "LEAD")];
         let food = [item(1, "GRAI")];
         let flags = consuming();
-        assert_eq!(upkeep(&made_of(1, &men, &food, &flags)), Some(20));
+        assert_eq!(upkeep(&made_of(1, &men, &food, &flags)), Some(0));
     }
 
-    /// The 50-silver leader the report corpus settled on: two 30-silver foods cover it exactly, so
-    /// it owes nothing and eats two items (`data/LIVE`, turn-17 evidence).
+    /// A leader's 50-silver fee is covered by one current-catalogue food.
     #[test]
     fn a_fifty_silver_leader_is_covered_by_two_thirty_silver_foods() {
         let men = [item(1, "LEAD")];
-        let food = [item(2, "GRAI")];
+        let food = [item(1, "GRAI")];
         let flags = consuming();
         assert_eq!(upkeep(&made_of(1, &men, &food, &flags)), Some(0));
     }
@@ -7763,8 +7756,8 @@ mod tests {
         let men = [item(16, "LEAD")];
         let food = [item(5, "GRAI")];
         let flags = consuming();
-        // 16 leaders owe 800; five grain at 30 cover 150, leaving 650.
-        assert_eq!(upkeep(&made_of(16, &men, &food, &flags)), Some(650));
+        // 16 leaders owe 800; five grain at 50 cover 250, leaving 550.
+        assert_eq!(upkeep(&made_of(16, &men, &food, &flags)), Some(550));
     }
 
     #[test]
@@ -7786,19 +7779,15 @@ mod tests {
     }
 
     /// Unit 1660 of the committed turn-17 report: 32 humans set to consume, holding livestock. The
-    /// server consumed 11 livestock for its maintenance
-    /// (`tests/fixtures/reports/neworigins-3.0.0-g7-f62-t17.rep:473`), which is `ceil(320 / 30)`,
-    /// not `ceil(320 / 50) == 7`. Pinned here on synthetic facts because the post-turn unit has
-    /// already lent its livestock away (`:801`), so only the event line records what it ate.
+    /// Seven livestock cover 320 silver at the current 50-silver value; 30 would leave 110 unpaid.
     #[test]
-    fn thirty_two_humans_consume_eleven_livestock_as_the_server_did() {
+    fn thirty_two_humans_consume_seven_livestock_at_fifty_each() {
         let men = [item(32, "HUMN")];
-        let food = [item(11, "LIVE")];
+        let food = [item(7, "LIVE")];
         let flags = vec!["consuming faction's food".to_string()];
-        // 32 humans owe 320; eleven livestock at 30 cover 330, so nothing is left owing.
+        // 32 humans owe 320; seven livestock at 50 cover 350, so nothing is left owing.
         assert_eq!(upkeep(&made_of(32, &men, &food, &flags)), Some(0));
-        assert_eq!((320 + 30 - 1) / 30, 11, "the data value predicts eleven");
-        assert_eq!((320 + 50 - 1) / 50, 7, "the old constant predicted seven");
+        assert_eq!((320 + 50 - 1) / 50, 7);
     }
 
     /// With no ruleset the catalogue cannot price any item as food, so nothing is eaten and the
