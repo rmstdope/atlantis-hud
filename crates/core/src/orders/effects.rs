@@ -268,7 +268,7 @@ pub fn preview_orders_on_map(
     // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
     // after the market, after movement, after production. A sale takes its goods first, and
     // whatever a PRODUCE made this month is there to be sent.
-    working.apply_transports();
+    working.apply_transports(&dissolved);
     for (index, working_unit) in working.units.iter_mut().enumerate() {
         if dissolved.contains(&index) {
             continue;
@@ -868,8 +868,9 @@ impl Working {
     ///
     /// Returns the indices of the dissolved rows rather than removing them: `by_id`, `by_alias`
     /// and every queued `PendingTransport` store indices into `self.units`, so the entries stay
-    /// put and the caller filters them out while rendering. Their items have already been emptied
-    /// into the recipient, so a transport authored by a dissolved row has nothing left to send.
+    /// put and the caller filters them out while rendering. What the row was not given stays on
+    /// it, unrendered - so `apply_transports` is given the same set and drops what a dissolved row
+    /// had queued.
     fn dissolve_empty_forms(&mut self) -> BTreeSet<usize> {
         let mut dissolved = BTreeSet::new();
         for index in 0..self.units.len() {
@@ -894,27 +895,25 @@ impl Working {
             // month bought, produced or took. A `BUY` the game would never have executed must not
             // become a windfall for the unit the goods revert to.
             //
-            // Clamped to what the row still holds: a gift the unit then sold or gave on is not
-            // there to revert, and `take_item` drops a stock at or below zero.
+            // Clamped to what the row still holds, by the same case-insensitive tag match the
+            // rest of this file uses: a gift the unit then sold or gave on is not there to
+            // revert. The clamp is a bound, not a ledger - it cannot tell gifted stock from stock
+            // the row acquired itself, so a row given 100 silver, giving it on and then earning
+            // 50 reverts that 50. At this layer that is the cheaper wrong answer of the two.
             for gift in std::mem::take(&mut self.units[index].given) {
-                let held = self.units[index]
+                let Some(at) = self.units[index]
                     .unit
                     .items
                     .iter()
-                    .position(|item| item.tag == gift.tag)
-                    .map_or(0, |at| self.units[index].unit.items[at].amount);
-                let moved = gift.amount.min(held);
+                    .position(|item| item.tag.eq_ignore_ascii_case(&gift.tag))
+                else {
+                    continue;
+                };
+                let moved = gift.amount.min(self.units[index].unit.items[at].amount);
                 if moved <= 0 {
                     continue;
                 }
-                if let Some(at) = self.units[index]
-                    .unit
-                    .items
-                    .iter()
-                    .position(|item| item.tag == gift.tag)
-                {
-                    take_item(&mut self.units[index].unit.items, at, moved);
-                }
+                take_item(&mut self.units[index].unit.items, at, moved);
                 add_item(
                     &mut self.units[recipient].unit.items,
                     &gift.name,
@@ -1369,9 +1368,15 @@ impl Working {
     /// Applies every queued `TRANSPORT`/`DISTRIBUTE`, last of all: `rules/sequenceofevents` runs
     /// transport in the month's final phases, after the market, after movement, after production
     /// (`ah-bxgs`).
-    fn apply_transports(&mut self) {
+    fn apply_transports(&mut self, dissolved: &BTreeSet<usize>) {
         let pending = std::mem::take(&mut self.transports);
         for pending in pending {
+            // A unit that dissolved never existed to send anything: its row is not rendered, and
+            // whatever its own month acquired stays on it rather than reaching a recipient by the
+            // one path `dissolve_empty_forms` does not itself cover (`ah-dhga`).
+            if dissolved.contains(&pending.sender) {
+                continue;
+            }
             // `GiveReach::Discard` bypasses target-specific refusal: `TRANSPORT` has
             // its own permission gate, `can_be_transported`, checked below - the two lists are
             // not the same (`IENT` may not be given but may be transported).
@@ -2967,6 +2972,92 @@ mod tests {
             !receiver.unit.items.iter().any(|item| item.tag == "GRAI"),
             "nobody ordered grain for this unit: {:?}",
             receiver.unit.items
+        );
+    }
+
+    /// A dissolved unit's queued `TRANSPORT` is dropped: what its own month bought must not reach
+    /// a recipient by the one path the revert itself does not cover.
+    #[test]
+    fn a_dissolved_unit_sends_no_transport() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 20 grain [GRAI] at $10.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 100 silver [SILV]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 5 grain\nTRANSPORT 900 5 GRAI\nEND\nGIVE NEW 1 100 SILV\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units.iter().any(|unit| unit.unit.unit_id == "new-1"),
+            "the empty formed unit dissolves"
+        );
+        let receiver = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the first own unit is previewed, having received the silver");
+        assert!(
+            receiver.transport_received.is_empty(),
+            "nothing arrives from a unit that never existed: {:?}",
+            receiver.transport_received
+        );
+        assert!(
+            !receiver.unit.items.iter().any(|item| item.tag == "GRAI"),
+            "and no grain with it: {:?}",
+            receiver.unit.items
+        );
+    }
+
+    /// A formed unit's `BUY` competes for the same limited stock as the report's own units
+    /// (`rules/buy`), which is what wiring `formed_units` into `item_effects` puts back.
+    #[test]
+    fn a_formed_units_buy_competes_for_a_scarce_market() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 2 humans [HUMN] at $38.",
+            "",
+            "* Crew (900), Foo (1), 10 humans [HUMN], 400 silver [SILV]. Weight: 100. \
+             Capacity: 0/0/150/0.",
+            "",
+        ]
+        .join("\n");
+        let alone = preview_over(&report, "unit 900\nBUY 2 HUMN\n");
+        let bought_alone = alone.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == "HUMN"))
+            .map_or(0, |item| item.amount);
+        assert_eq!(bought_alone, 12, "the whole offer, with nobody to share it");
+
+        let shared = preview_over(
+            &report,
+            "unit 900\nBUY 2 HUMN\nFORM 1\nBUY 2 HUMN\nEND\nGIVE NEW 1 100 SILV\n",
+        );
+        let bought_shared = shared.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == "HUMN"))
+            .map_or(0, |item| item.amount);
+        assert!(
+            bought_shared < 12,
+            "the formed unit takes a share of the two on offer: {bought_shared}"
         );
     }
 
