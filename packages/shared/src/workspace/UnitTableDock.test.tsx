@@ -868,7 +868,7 @@ describe("the items column", () => {
         { unitId: "1", items: [{ amount: 40, name: "stone", tag: "STON" }] },
         {
           transportTargetIssues: [
-            { to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown" }
+            { to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0 }
           ]
         }
       )
@@ -891,7 +891,7 @@ describe("the items column", () => {
         { unitId: "1", items: [{ amount: 40, name: "stone", tag: "STON" }] },
         {
           transportTargetIssues: [
-            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster" }
+            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0 }
           ]
         }
       )
