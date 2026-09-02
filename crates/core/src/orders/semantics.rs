@@ -3294,6 +3294,9 @@ fn ledger_for_with_production<'a>(
     for (index, ordered) in hex.units.iter().enumerate() {
         let facts = unit_facts(hex, ordered, &nothing, None);
         for placed in ordered.intents {
+            if matches!(placed.intent, Intent::Build { .. }) {
+                continue;
+            }
             apply(
                 &mut ledger,
                 hex,
@@ -3311,6 +3314,23 @@ fn ledger_for_with_production<'a>(
         }
         credit_tax(&mut ledger, hex, ordered, &facts, ruleset, pillaged);
         settle_buy_all(&mut ledger, hex, ordered);
+    }
+
+    for ordered in &hex.units {
+        for placed in ordered.intents {
+            let Intent::Build { founding, helping } = &placed.intent else {
+                continue;
+            };
+            build(
+                &mut ledger,
+                hex,
+                ordered,
+                placed,
+                founding,
+                helping,
+                ruleset,
+            );
+        }
     }
 
     charge_upkeep(&mut ledger, hex);
@@ -5063,15 +5083,7 @@ fn build(
     if resolved.is_empty() {
         mark_uncounted_and_return!();
     }
-    let held_of = |tag: &str| -> i64 {
-        actor
-            .unit
-            .items
-            .iter()
-            .filter(|item| item.tag.eq_ignore_ascii_case(tag))
-            .map(|item| item.amount)
-            .sum()
-    };
+    let held_of = |tag: &str| balance_of(ledger, who, tag);
     let material = if resolved.len() == 1 {
         resolved[0]
     } else {
@@ -5092,12 +5104,16 @@ fn build(
 
     // 8. The level. `Ordered::skill_level` cannot answer `None` on this path today (see the
     // module's known traps), but the branch costs one line and is cheaper than a surprise later.
-    let Some(level) = actor.skill_level(skill_tag) else {
+    let Some(_level) = actor.skill_level(skill_tag) else {
         mark_uncounted_and_return!();
     };
 
     // 9. The arithmetic.
-    let plan = plan_build(actor.unit.men, i64::from(level), remaining, held);
+    let Some(skills) = actor.skills() else {
+        mark_uncounted_and_return!();
+    };
+    let level = i64::from(level_in(skills, skill_tag));
+    let plan = plan_build(actor.men_after_orders, level, remaining, held);
     if plan.done == 0 {
         // A zero movement would reorder the item list into a phantom "items changed" row.
         return;
