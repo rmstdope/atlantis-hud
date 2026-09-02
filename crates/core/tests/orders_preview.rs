@@ -31,10 +31,12 @@ fn the_committed_template_previews_exactly_its_one_real_effect() {
     // The template is 27 unit blocks of @claim, @study, @work, taxing and standing @give
     // discards of items nobody holds - none of which may leak into the preview. `GIVE 2396 ALL
     // MARM`/`GIVE 2396 ALL MSWO`, standing in four of those blocks, are the exception: 2396
-    // (Wistful Soldiers) stands in the same ocean hex as these units, so the goods genuinely
-    // leave even though the report cannot say who receives them (`ah-vcp8.2`'s `Unprojectable`).
-    // The one order with any *other* effect is unit 15571's "MOVE SE SE", so the whole answer is
-    // that departure, its arrival, and the four gifts that empty their givers.
+    // (Wistful Soldiers) stands in the same ocean hex as these units, so the goods are within
+    // reach - but 2396 is in another faction, and `rules/give` needs *their* declaration toward us,
+    // which no report carries. So those four rows appear with their counts intact and the order
+    // admitted through the hover (`ah-66yi`, which reversed `ah-vcp8.2`'s answer here). The one
+    // order with any *other* effect is unit 15571's "MOVE SE SE", so the whole answer is that
+    // departure, its arrival, and the four gifts nothing can settle.
     let rows: Vec<_> = response
         .regions
         .iter()
@@ -75,13 +77,14 @@ fn the_committed_template_previews_exactly_its_one_real_effect() {
     assert_eq!(arriving.unit.unit_id, "15571");
     assert_eq!(arriving.arriving_from.as_deref(), Some("1:18,44"));
 
-    // The four units whose `GIVE 2396 ALL ...` empties them of the one item they hold that 2396
-    // can be given: present (they moved nowhere), and the tag is gone from their item list.
-    for (unit_id, tag) in [
-        ("881", "MARM"),
-        ("12878", "MSWO"),
-        ("12879", "MSWO"),
-        ("20", "MARM"),
+    // The four units whose `GIVE 2396 ALL ...` names goods the game may or may not move: present
+    // (they moved nowhere), the tag still carrying the report's own count, and the order itself
+    // named verbatim in `uncounted`, which is what the Units table renders as `+ ?`.
+    for (unit_id, tag, order) in [
+        ("881", "MARM", "GIVE 2396 ALL MARM"),
+        ("12878", "MSWO", "GIVE 2396 ALL MSWO"),
+        ("12879", "MSWO", "GIVE 2396 ALL MSWO"),
+        ("20", "MARM", "GIVE 2396 ALL MARM"),
     ] {
         let (_, given) = rows
             .iter()
@@ -89,9 +92,22 @@ fn the_committed_template_previews_exactly_its_one_real_effect() {
             .unwrap_or_else(|| panic!("unit {unit_id} should have a preview row"));
         assert_eq!(given.status, UnitPreviewStatus::Present);
         assert!(
-            !given.unit.items.iter().any(|item| item.tag == tag),
-            "unit {unit_id} should have given away every {tag}: {:?}",
+            given
+                .unit
+                .items
+                .iter()
+                .any(|item| item.tag == tag && item.amount > 0),
+            "unit {unit_id} keeps its {tag} until the game says otherwise: {:?}",
             given.unit.items
+        );
+        assert!(
+            given
+                .uncounted
+                .iter()
+                // Verbatim, `@` and all: the hover shows the order as the player wrote it.
+                .any(|line| line.trim_start_matches('@').eq_ignore_ascii_case(order)),
+            "unit {unit_id} should admit {order}: {:?}",
+            given.uncounted
         );
     }
 }

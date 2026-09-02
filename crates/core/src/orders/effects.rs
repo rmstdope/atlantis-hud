@@ -1114,12 +1114,18 @@ impl Working {
                     .get(&region)
                     .is_some_and(|shown| shown.contains(id))
             },
+            // Report-wide, and it is what separates a unit we know is in another hex from a number
+            // the report never prints, which may be a hidden Friendly target (`ah-66yi`).
+            |id| self.known_units.contains(id),
         );
         let receiver = match reach {
             // Nothing at all: not even the giver loses what it named (`ah-vcp8.2`).
             GiveReach::Nowhere => return,
-            // The goods leave and no row of ours gains them.
-            GiveReach::Discard | GiveReach::Unprojectable => None,
+            // The goods leave and no row of ours gains them. `Unshown` reaches here too and moves
+            // nothing at all, because `tags_moved` returns no tag for it - `rules/give` may or may
+            // not let the gift through and this column says so with `+ ?` rather than a figure
+            // (`ah-66yi`).
+            GiveReach::Discard | GiveReach::Foreign | GiveReach::Unshown => None,
             // Decided by this same lookup a line ago, so it answers again.
             GiveReach::Ours => party_unit_id(&target).and_then(|id| self.index_in(&region, &id)),
         };
@@ -1345,8 +1351,8 @@ impl Working {
     /// `GIVE target UNIT` hands over the whole unit rather than anything it holds - ownership is
     /// a different question from what a row shows, and is left to a later issue.
     ///
-    /// `GiveReach` preserves the discard exception and rejects men aimed at another faction
-    /// (`rules/give`).
+    /// `give_outcome` preserves the discard exception, rejects men aimed at another faction, and
+    /// holds back a tag whose permission the report cannot establish (`rules/give`, `ah-66yi`).
     fn tags_moved(
         &self,
         holder: usize,
@@ -1418,7 +1424,13 @@ impl Working {
         moving
             .into_iter()
             .filter(|(_, tag, _)| {
-                super::targets::give_refusal(reach, tag, Some(&self.ruleset)).is_none()
+                // Only what definitely moves. A tag the rules refuse and a tag whose permission the
+                // report cannot establish both stay with the giver - the second is admitted through
+                // the ledger's `uncounted`, which the preview renders as `+ ?` (`ah-66yi`).
+                matches!(
+                    super::targets::give_outcome(reach, tag, Some(&self.ruleset)),
+                    super::targets::GiveOutcome::Moves
+                )
             })
             .collect()
     }
@@ -2370,12 +2382,12 @@ mod tests {
         assert!(receiver.unit.items.iter().any(|item| item.tag == "ORC"));
     }
 
-    /// A gift to another faction's new unit is decided without either closure: the game really
+    /// A gift to another faction's new unit is decided without any closure: the game really
     /// creates that unit in this hex, so it is not "named nowhere" however little the report can
-    /// say about it. The goods leave the giver and no row of ours gains them (`ah-vcp8.2`; this
-    /// test held the opposite answer before that bead).
+    /// say about it - and it is another faction's, so `rules/give` wants a declaration no report
+    /// carries. The swords' count stands and the order is admitted (`ah-66yi`).
     #[test]
-    fn giving_to_another_factions_new_unit_empties_the_giver() {
+    fn giving_to_another_factions_new_unit_leaves_the_goods_uncertain() {
         let response = preview("unit 900\nGIVE FACTION 14 NEW 2 1 SWOR\n");
         let giver = only_unit(&response);
         assert_eq!(
@@ -2385,8 +2397,12 @@ mod tests {
                 .iter()
                 .find(|item| item.tag == "SWOR")
                 .map(|item| item.amount),
-            Some(2),
-            "one of the three swords left the giver"
+            Some(3),
+            "the report's own count stands"
+        );
+        assert_eq!(
+            giver.uncounted,
+            vec!["GIVE FACTION 14 NEW 2 1 SWOR".to_string()]
         );
 
         // The control: our own new unit, same order shape. Without it this test would pass just as
@@ -2964,10 +2980,12 @@ mod tests {
     }
 
     /// `7001` is another faction's unit standing in `6857`'s own hex. `rules/give` allows the gift
-    /// once they have declared us Friendly, and the report cannot say whether they have - so the
-    /// goods leave and no row of ours gains them (`ah-vcp8.2`).
+    /// once *their* faction has declared us Friendly, and the report carries only our declarations
+    /// toward them - so the stone neither definitely leaves nor definitely stays, and the column
+    /// keeps the report's count and admits the order instead (`ah-66yi`, which reversed
+    /// `ah-vcp8.2`'s answer here).
     #[test]
-    fn a_gift_to_another_factions_unit_in_this_hex_empties_the_giver() {
+    fn a_gift_to_a_visible_foreign_unit_leaves_the_goods_uncertain() {
         let response = two_hex_preview("unit 6857\nGIVE 7001 10 STON\n");
         let giver = row(&response, "1:2,2", "6857").expect("the giver's row is previewed");
 
@@ -2978,28 +2996,128 @@ mod tests {
                 .iter()
                 .find(|item| item.tag == "STON")
                 .map(|item| item.amount),
-            Some(5),
-            "ten of the fifteen stone left the giver"
+            Some(15),
+            "the report's own count stands: nothing is known to have left"
         );
+        assert_eq!(giver.uncounted, vec!["GIVE 7001 10 STON".to_string()]);
         assert!(
             row(&response, "1:2,2", "7001").is_none(),
-            "no row of ours gains them"
+            "no row of ours gains them either"
         );
     }
 
-    /// A unit number this hex does not show: the order does nothing at all, so the giver's row is
-    /// unchanged - and an unchanged row is dropped from the response entirely (`effects.rs:382`), which is what
-    /// "reads exactly as it would with the order deleted" means here (`ah-vcp8.2`).
+    /// The same target, and silver: `rules/give` exempts silver from the factional rule outright
+    /// ("silver may be given to any unit, regardless of factional affiliation"), so a target we can
+    /// see takes it definitely and nothing is admitted (`ah-66yi`).
     #[test]
-    fn a_gift_to_a_unit_this_hex_does_not_show_moves_nothing() {
+    fn visible_foreign_silver_still_leaves_definitely() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "mountain (2,2) in Nowhere, 5 dwarves (dwarves), $3.",
+            "",
+            "* Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON], 20 silver [SILV]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "- Stranger (7001), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(&report, "unit 6857\nGIVE 7001 20 SILV\n");
+        let giver = only_unit(&response);
+
+        assert!(
+            !giver
+                .unit
+                .items
+                .iter()
+                .any(|item| item.tag == "SILV" && item.amount > 0),
+            "the five silver left: {:?}",
+            giver.unit.items
+        );
+        assert!(giver.uncounted.is_empty(), "{:?}", giver.uncounted);
+    }
+
+    /// A unit number the *whole report* never prints. `rules/give` lets a unit we cannot see
+    /// receive a gift once its faction has declared us Friendly, so this may be a perfectly good
+    /// order - the count stands and the order is admitted rather than silently doing nothing
+    /// (`ah-66yi`).
+    #[test]
+    fn an_unshown_number_is_not_a_definite_missing_target() {
         let response = two_hex_preview("unit 6857\nGIVE 9999 10 STON\n");
+        let giver = row(&response, "1:2,2", "6857").expect("the giver's row is previewed");
+
+        assert_eq!(
+            giver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount),
+            Some(15)
+        );
+        assert_eq!(giver.uncounted, vec!["GIVE 9999 10 STON".to_string()]);
+    }
+
+    /// The control that keeps the case above narrow: `5530` is a unit our own report shows, in the
+    /// *other* hex. Gifts settle in phase 4 and nothing moves until phase 9
+    /// (`rules/sequenceofevents`), so that target really is not here - today's definite no-op, and
+    /// an unchanged row is dropped from the response entirely.
+    #[test]
+    fn a_gift_to_a_unit_the_report_shows_elsewhere_moves_nothing() {
+        let response = two_hex_preview("unit 6857\nGIVE 5530 10 STON\n");
 
         assert!(row(&response, "1:2,2", "6857").is_none());
     }
 
+    /// `ALL ITEMS` across the same visible foreign target: `rules/give` settles the silver and
+    /// cannot settle the stone, so the known half moves and the rest keeps its count with the
+    /// order admitted once (`ah-66yi`).
+    #[test]
+    fn a_mixed_gift_moves_the_silver_and_leaves_the_rest_uncertain() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "mountain (2,2) in Nowhere, 5 dwarves (dwarves), $3.",
+            "",
+            "* Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON], 20 silver [SILV]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "- Stranger (7001), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(&report, "unit 6857\nGIVE 7001 ALL ITEMS\n");
+        let giver = only_unit(&response);
+
+        assert!(
+            !giver
+                .unit
+                .items
+                .iter()
+                .any(|item| item.tag == "SILV" && item.amount > 0),
+            "the silver is definite and goes: {:?}",
+            giver.unit.items
+        );
+        assert_eq!(
+            giver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount),
+            Some(15),
+            "the stone's permission is unresolved, so its count stands"
+        );
+        assert_eq!(
+            giver.uncounted,
+            vec!["GIVE 7001 ALL ITEMS".to_string()],
+            "one order, one line in the hover, however many tags it named"
+        );
+    }
+
     #[test]
     fn give_beyond_the_hex_or_the_stock_changes_nothing_wrong() {
-        // Unit 555 is nowhere in the report, so the whole order is a no-op.
+        // Unit 555 is nowhere in the report at all, so `rules/give` may or may not let the sword
+        // through - the count stands and the order is admitted rather than vanishing (`ah-66yi`).
         let missing = preview_orders_for_remembered_report(
             &mut ReportCache::new(),
             RULESET,
@@ -3008,7 +3126,17 @@ mod tests {
             "unit 900\nGIVE 555 1 SWOR\n",
         )
         .expect("the ruleset loads");
-        assert!(missing.regions.is_empty(), "{:?}", missing.regions);
+        let giver = only_unit(&missing);
+        assert_eq!(
+            giver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .map(|item| item.amount),
+            Some(3)
+        );
+        assert_eq!(giver.uncounted, vec!["GIVE 555 1 SWOR".to_string()]);
 
         // Giving more than the unit holds empties the stock rather than going negative.
         let drained = preview("unit 900\nGIVE 901 99 SWOR\n");

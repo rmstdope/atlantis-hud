@@ -19,6 +19,7 @@ use crate::movement::rules::{CastCost, CastOutput, ItemKind, Production, Ruleset
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::orders::semantics::{counted_with_singular, FormedSubject, Plurals};
+use crate::orders::targets::{give_outcome, give_target_label, GiveOutcome, GiveReach};
 use crate::report::model::{ItemAmount, Skill};
 
 /// "Each taxing character collects $50."
@@ -571,6 +572,13 @@ pub enum SilverDoubt {
     UnknownCombatReady,
     /// This month's arrivals cannot be merged into the unit's skills, so PRODUCE is uncountable.
     UnknownSkillsAfterArrivals,
+    /// `GIVE` of silver to a target the report cannot settle: `rules/give` lets a unit we cannot
+    /// see receive it once its faction has declared us Friendly, and no report carries that
+    /// declaration - so whether the silver leaves cannot be said (`ah-66yi`).
+    GiveTargetUncertain,
+    /// A later order prices goods an earlier `GIVE` may or may not have taken away, so what this
+    /// unit earns or spends afterwards cannot be said (`ah-66yi`).
+    GiveConsequencesUncertain,
 }
 
 /// What one unit may draw from one contended regional pool, once its faction-mates in the same hex
@@ -758,12 +766,18 @@ pub struct Lookups<'a> {
     /// catalogue cannot say which items that class holds. See `semantics::class_carries_silver`,
     /// which is the one implementation - the column and the ledger must not answer this two ways.
     pub class_carries_silver: &'a dyn Fn(&str) -> Option<bool>,
-    /// Whether a `GIVE`'s target is one this order can reach at all. `false` for a unit number
-    /// named nowhere in the hex, a `NEW` alias no `FORM` there creates, and a unit giving to
-    /// itself: the server refuses all three, so the order costs this unit nothing (`ah-vcp8.2`).
-    /// A closure for the same reason `item_tag` is one - resolving a party against a hex is
-    /// `super::semantics`' business, and this module holds no hex types.
-    pub give_lands: &'a dyn Fn(&Party) -> bool,
+    /// Where a `GIVE`'s target stands. A closure for the same reason `item_tag` is one - resolving
+    /// a party against a hex is `super::semantics`' business, and this module holds no hex types.
+    ///
+    /// [`GiveReach::Nowhere`] is a unit number the report shows elsewhere, a `NEW` alias no `FORM`
+    /// here creates, and a unit giving to itself: the server refuses all three, so the order costs
+    /// this unit nothing (`ah-vcp8.2`). The arm applies [`give_outcome`] to the actual silver tag
+    /// for the rest, so a visible foreign gift of silver is still an expense and one aimed at a
+    /// unit the report never prints is a doubt (`rules/give`, `ah-66yi`).
+    pub give_reach: &'a dyn Fn(&Party) -> GiveReach,
+    /// The target a `GIVE` this month left uncertain named, for an upper-case item tag, or `None`
+    /// where this unit's holding of that tag survives its gifts intact (`ah-66yi`).
+    pub uncertain_after_gifts: &'a dyn Fn(&str) -> Option<String>,
 }
 
 /// What this hex's market says about goods a unit is ordered to sell.
@@ -1242,6 +1256,24 @@ pub fn forecast_unit(
     }
 
     for placed in intents {
+        // An earlier `GIVE` may or may not have taken these goods away (`rules/give` wants the
+        // target faction's declaration toward us and no report carries it), so nothing priced from
+        // what the unit still holds of that tag can be stated. The `GIVE` itself is exempt: it is
+        // what raised the doubt, and its own arm below decides whether any *silver* moved
+        // (`ah-66yi`).
+        let reads_a_holding = match &placed.intent {
+            Intent::Sell { item, .. } | Intent::Produce { item } => Some(item.as_str()),
+            _ => None,
+        };
+        if let Some(item) = reads_a_holding {
+            if (lookups.item_tag)(item)
+                .is_some_and(|tag| (lookups.uncertain_after_gifts)(&tag).is_some())
+            {
+                income_doubt = income_doubt.or(Some(SilverDoubt::GiveConsequencesUncertain));
+                expense_doubt = expense_doubt.or(Some(SilverDoubt::GiveConsequencesUncertain));
+                continue;
+            }
+        }
         match &placed.intent {
             Intent::Claim(amount) => {
                 // Capped at what the faction actually holds, and never divided between units that
@@ -1500,9 +1532,16 @@ pub fn forecast_unit(
             Intent::Give { to, what, amount } => {
                 // A target the order cannot reach costs this unit nothing. Before the class branch
                 // below, which defers `GIVE ... ALL ITEMS` against the running total (`ah-vcp8.2`).
-                if !(lookups.give_lands)(to) {
+                let reach = (lookups.give_reach)(to);
+                if reach == GiveReach::Nowhere {
                     continue;
                 }
+                // `rules/give` exempts silver from the factional rule outright, so a target we can
+                // see takes it definitely. A number the report never prints is the other case: it
+                // may be a unit we cannot see whose faction has declared us Friendly, and no report
+                // says which (`ah-66yi`).
+                let silver_uncertain =
+                    give_outcome(reach, SILVER_TAG, None) == GiveOutcome::Uncertain;
                 if let Selector::Class(name) = what {
                     if *amount == (Amount::All { except: 0 }) {
                         match (lookups.class_carries_silver)(name) {
@@ -1512,6 +1551,12 @@ pub fn forecast_unit(
                             // Every one of the unit's coins leaves, exactly as `GIVE ... ALL SILV`
                             // does - and deferred for the same reason, so it spends against the
                             // running total rather than the report's opening figure.
+                            Some(true) if silver_uncertain => {
+                                expense_doubt =
+                                    expense_doubt.or(Some(SilverDoubt::GiveTargetUncertain));
+                                doubt_subject = doubt_subject.or(Some(give_target_label(to)));
+                                continue;
+                            }
                             Some(true) => {
                                 deferred.push(Deferred::GiveAllSilver {
                                     except: 0,
@@ -1542,6 +1587,11 @@ pub fn forecast_unit(
                 };
                 if !(lookups.item_tag)(text).is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER_TAG))
                 {
+                    continue;
+                }
+                if silver_uncertain {
+                    expense_doubt = expense_doubt.or(Some(SilverDoubt::GiveTargetUncertain));
+                    doubt_subject = doubt_subject.or(Some(give_target_label(to)));
                     continue;
                 }
                 let to_nobody = matches!(to, Party::Discard);
@@ -1700,6 +1750,7 @@ pub fn forecast_unit(
                     | Some(SilverDoubt::MarketDoesNotSell)
                     | Some(SilverDoubt::UnpricedProduction)
                     | Some(SilverDoubt::GivesAWholeClass)
+                    | Some(SilverDoubt::GiveTargetUncertain)
             )
         }),
         received: receipts.silver,
@@ -5123,8 +5174,15 @@ mod tests {
 
     /// `true` for every target - what the column did before `ah-vcp8.2`, so no existing assertion
     /// moves for a reason unrelated to what it tests.
-    fn every_target_lands(_party: &Party) -> bool {
-        true
+    /// Every target is one of ours, standing here - the reading these arithmetic tests had before
+    /// `ah-66yi` split reach into five answers, so their expectations are unchanged.
+    fn every_target_is_ours(_party: &Party) -> GiveReach {
+        GiveReach::Ours
+    }
+
+    /// No gift left anything uncertain, so every later order prices exactly as it always did.
+    fn nothing_uncertain(_tag: &str) -> Option<String> {
+        None
     }
 
     /// No region to consult, so no regional pool applies - which is what keeps this module's own
@@ -5151,7 +5209,8 @@ mod tests {
             counted_item: &verbatim_counted,
             counted_or_none: &verbatim_counted_or_none,
             class_carries_silver: &no_class_members,
-            give_lands: &every_target_lands,
+            give_reach: &every_target_is_ours,
+            uncertain_after_gifts: &nothing_uncertain,
         }
     }
 

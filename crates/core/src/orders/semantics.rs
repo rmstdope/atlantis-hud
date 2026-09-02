@@ -47,7 +47,9 @@ use crate::orders::silver::{
     UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
-use crate::orders::targets::{give_reach, give_refusal, party_unit_id, GiveReach, GiveRefusal};
+use crate::orders::targets::{
+    give_outcome, give_reach, give_target_label, party_unit_id, GiveOutcome, GiveReach, GiveRefusal,
+};
 use crate::report::composition;
 use crate::report::model::{
     Coordinate, ItemAmount, MarketItem, ReportRegion, ReportUnit, Skill, Structure,
@@ -306,6 +308,19 @@ fn units_by_id(report: &ParsedReport) -> BTreeMap<&str, &ReportUnit> {
     units
 }
 
+/// Every unit number the whole report prints, ours and everyone else's.
+///
+/// The report-wide half of a `GIVE`'s target question: a number missing from here may be a unit we
+/// cannot see whose faction has declared us Friendly, which `rules/give` allows (`ah-66yi`).
+fn unit_ids_in(report: &ParsedReport) -> BTreeSet<String> {
+    report
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .map(|unit| unit.unit_id.clone())
+        .collect()
+}
+
 fn foreign_unit_ids(report: &ParsedReport) -> BTreeSet<String> {
     report
         .regions
@@ -367,6 +382,7 @@ pub fn review_turn(
     let unit_regions = where_the_report_shows_each_unit(report);
     let unit_by_id = units_by_id(report);
     let foreign_unit_ids = foreign_unit_ids(report);
+    let shown_anywhere = unit_ids_in(report);
     // Every unit this month's orders create, built once and before `hexes` below so it outlives
     // every `Hex<'_>` that borrows from it (`Ordered` holds a reference into `formed[i].unit`).
     //
@@ -432,7 +448,16 @@ pub fn review_turn(
     let hexes: Vec<Hex<'_>> = report
         .regions
         .iter()
-        .map(|region| hex_with_transfers(region, &ordered, &formed, ruleset, &foreign_unit_ids))
+        .map(|region| {
+            hex_with_transfers(
+                region,
+                &ordered,
+                &formed,
+                ruleset,
+                &foreign_unit_ids,
+                &shown_anywhere,
+            )
+        })
         .collect();
 
     // A `Products` line is shared by everyone producing against it, and who that is is a
@@ -1333,16 +1358,23 @@ fn forecast_hex(
         let item_tag = |text: &str| resolve_item(text, hex, ordered, ruleset);
         // Whether a `GIVE`'s target is one the order can reach at all. Resolving a party against a
         // hex is this module's business, exactly as `item_tag` is; `silver` holds no hex types.
-        let give_lands = |party: &Party| {
-            !matches!(
-                give_reach(
-                    party,
-                    &ordered.unit.unit_id,
-                    |id| hex.find(id).is_some(),
-                    |id| hex.region.units.iter().any(|unit| unit.unit_id == id),
-                ),
-                GiveReach::Nowhere
+        let give_reach_of = |party: &Party| {
+            give_reach(
+                party,
+                &ordered.unit.unit_id,
+                |id| hex.find(id).is_some(),
+                |id| hex.region.units.iter().any(|unit| unit.unit_id == id),
+                |id| hex.shown_anywhere.contains(id),
             )
+        };
+        // The target a `GIVE` this month left uncertain named, for an upper-case tag - so a later
+        // order pricing that tag says the month cannot be added up rather than reading the
+        // report's old holding (`ah-66yi`).
+        let uncertain_after_gifts = |tag: &str| {
+            ordered
+                .uncertain_after_gifts
+                .get(&tag.to_ascii_uppercase())
+                .map(|uncertain| uncertain.target.clone())
         };
         // What this unit's own share of the settled market line is. `None` where nothing was
         // settled - untraded goods, goods nothing could identify - and the arm then falls back to
@@ -1425,7 +1457,8 @@ fn forecast_hex(
                 counted_item: &counted_by_name,
                 counted_or_none: &counted_or_none_by_name,
                 class_carries_silver: &|class: &str| class_carries_silver(class, ruleset),
-                give_lands: &give_lands,
+                give_reach: &give_reach_of,
+                uncertain_after_gifts: &uncertain_after_gifts,
             },
             ruleset,
         ));
@@ -1835,6 +1868,15 @@ struct Formed {
 struct Hex<'a> {
     region: &'a ReportRegion,
     units: Vec<Ordered<'a>>,
+    /// Every unit number the *whole* report prints, ours and everyone else's.
+    ///
+    /// `rules/give` lets a unit we cannot see receive a gift when its faction has declared us
+    /// Friendly, so a number this set does not carry is unresolved rather than absent - while one
+    /// it carries that is not in this hex is definitely elsewhere, since gifts settle in phase 4
+    /// before anything moves (`rules/sequenceofevents`, `ah-66yi`). Seeded from this region alone
+    /// by `read` and widened by `hex_with_transfers`, so a hex built for a test still answers for
+    /// its own units.
+    shown_anywhere: BTreeSet<String>,
 }
 
 /// A unit's skills once this month's gifts of men have run.
@@ -1898,6 +1940,11 @@ struct Ordered<'a> {
     /// `apply_transfers` after the hex is read, alongside `skills_after_gifts`; `Unchanged` until
     /// then.
     holdings_after_gifts: HoldingsAfterGifts,
+    /// Tags a `GIVE` this month may or may not have moved out of this unit, by upper-case tag.
+    ///
+    /// Per tag rather than per unit, so an uncertain gift of stone leaves the unit's silver, its
+    /// earnings and its spending exactly as numeric as they were (`ah-66yi`).
+    uncertain_after_gifts: BTreeMap<String, UncertainGive>,
     /// Every transfer line in this unit's own block that named items the game will not move.
     /// Written by `apply_transfers`; empty until then, and empty for the overwhelming majority of
     /// units. Hangs on the **actor** - the unit whose block the order is in - not on the holder,
@@ -1936,6 +1983,7 @@ impl<'a> Hex<'a> {
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     skills_after_recruits: None,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
+                    uncertain_after_gifts: BTreeMap::new(),
                     refused_transfers: Vec::new(),
                     men_after_orders: unit.men,
                     arrivals: Arrivals::default(),
@@ -1958,12 +2006,22 @@ impl<'a> Hex<'a> {
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     skills_after_recruits: None,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
+                    uncertain_after_gifts: BTreeMap::new(),
                     refused_transfers: Vec::new(),
                     men_after_orders: formed.unit.men,
                     arrivals: Arrivals::default(),
                 }),
         );
-        Self { region, units }
+        let shown_anywhere = region
+            .units
+            .iter()
+            .map(|unit| unit.unit_id.clone())
+            .collect();
+        Self {
+            region,
+            units,
+            shown_anywhere,
+        }
     }
 
     fn find(&self, unit_id: &str) -> Option<&Ordered<'a>> {
@@ -1997,10 +2055,22 @@ fn hex_with_transfers<'a>(
     formed: &'a [Formed],
     ruleset: Option<&Ruleset>,
     foreign_unit_ids: &BTreeSet<String>,
+    // Every unit number the whole report prints - see `Hex::shown_anywhere`. Unioned with this
+    // region's own, so a caller with only one region to hand may pass an empty set.
+    shown_anywhere: &BTreeSet<String>,
 ) -> Hex<'a> {
     let mut hex = Hex::read(region, ordered, formed);
+    hex.shown_anywhere.extend(shown_anywhere.iter().cloned());
     let region = hex.region;
-    apply_transfers(&mut hex.units, region, ruleset, foreign_unit_ids);
+    let report_units = std::mem::take(&mut hex.shown_anywhere);
+    apply_transfers(
+        &mut hex.units,
+        region,
+        ruleset,
+        foreign_unit_ids,
+        &report_units,
+    );
+    hex.shown_anywhere = report_units;
     hex
 }
 
@@ -2021,6 +2091,8 @@ struct Working {
     doubted: bool,
     /// Set when a transfer this month cannot be followed for this unit.
     items_unknowable: bool,
+    /// Tags this unit's `GIVE` orders may or may not have moved, by upper-case tag (`ah-66yi`).
+    uncertain_after_gifts: BTreeMap<String, UncertainGive>,
     /// Men that arrived at this unit through a `GIVE` the walk actually followed. Distinct from
     /// `arrived` above, which tracks *tags*, not a headcount.
     men_given: i64,
@@ -2046,6 +2118,7 @@ fn seed_working(units: &[Ordered<'_>], position: usize) -> Working {
         arrived: Vec::new(),
         doubted: false,
         items_unknowable: false,
+        uncertain_after_gifts: BTreeMap::new(),
         men_given: 0,
         men_taken: 0,
         men_clamped: false,
@@ -2140,8 +2213,12 @@ enum GiveTarget {
     /// `GIVE 0 ...`: the giver still loses what it gives, but nobody receives it.
     Discard,
     /// A unit this region's report shows that is not ours - another faction's, or `FACTION n NEW m`.
-    /// The giver loses what it gives and no row of ours gains it (`ah-vcp8.2`).
-    Unprojectable,
+    /// Whether the goods reach it depends on their faction's declaration toward us, which no
+    /// report carries (`ah-66yi`).
+    Foreign,
+    /// A unit number the whole report never prints: it may not exist, and it may be a unit we
+    /// cannot see whose faction has declared us Friendly (`rules/give`, `ah-66yi`).
+    Unshown,
     /// Named nowhere in this region, and giving to itself: the whole transfer is void, exactly as
     /// `effects::give` returns early for these without touching the giver.
     Nowhere,
@@ -2150,6 +2227,7 @@ enum GiveTarget {
 fn resolve_give_target(
     position_of: &BTreeMap<&str, usize>,
     shown_here: &BTreeSet<&str>,
+    shown_anywhere: &BTreeSet<String>,
     giver_id: &str,
     party: &Party,
 ) -> GiveTarget {
@@ -2158,14 +2236,29 @@ fn resolve_give_target(
         giver_id,
         |id| position_of.contains_key(id),
         |id| shown_here.contains(id),
+        |id| shown_anywhere.contains(id),
     ) {
         GiveReach::Discard => GiveTarget::Discard,
-        GiveReach::Unprojectable => GiveTarget::Unprojectable,
+        GiveReach::Foreign => GiveTarget::Foreign,
+        GiveReach::Unshown => GiveTarget::Unshown,
         GiveReach::Nowhere => GiveTarget::Nowhere,
         GiveReach::Ours => party_unit_id(party)
             .and_then(|id| position_of.get(id.as_str()).copied())
             .map_or(GiveTarget::Nowhere, GiveTarget::Unit),
     }
+}
+
+/// One `GIVE` whose permission this report cannot establish, remembered against the tag it named.
+///
+/// `rules/give` needs the target faction's declaration toward us, and the report carries only ours
+/// toward them (`report/header.rs`). So the goods neither definitely move nor definitely stay, and
+/// every later reader of that tag has to say so rather than pick a side (`ah-66yi`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UncertainGive {
+    /// The target as the Silver note names it, e.g. `unit 9999`.
+    target: String,
+    /// The line the `GIVE` sits on, so the order can be marked uncounted exactly once.
+    line: usize,
 }
 
 /// One transfer line that named items the game will not move.
@@ -2265,6 +2358,8 @@ fn apply_transfers(
     region: &ReportRegion,
     ruleset: Option<&Ruleset>,
     foreign_unit_ids: &BTreeSet<String>,
+    // Every unit number the whole report prints - see `Hex::shown_anywhere`.
+    shown_anywhere: &BTreeSet<String>,
 ) {
     let Some(ruleset) = ruleset else { return };
 
@@ -2354,10 +2449,22 @@ fn apply_transfers(
         let source = if transfer.is_give {
             GiveTarget::Unit(transfer.position)
         } else {
-            resolve_give_target(&position_of, &shown_here, giver_id, transfer.party)
+            resolve_give_target(
+                &position_of,
+                &shown_here,
+                shown_anywhere,
+                giver_id,
+                transfer.party,
+            )
         };
         let receiver = if transfer.is_give {
-            resolve_give_target(&position_of, &shown_here, giver_id, transfer.party)
+            resolve_give_target(
+                &position_of,
+                &shown_here,
+                shown_anywhere,
+                giver_id,
+                transfer.party,
+            )
         } else {
             GiveTarget::Unit(transfer.position)
         };
@@ -2371,7 +2478,10 @@ fn apply_transfers(
             // that unit's holdings are not ours to follow. Only a TAKE reaches here - the giver
             // side of a GIVE is always `Unit(position)` - so `ah-agbm`'s bounded optimism is
             // unchanged by this bead.
-            GiveTarget::Nowhere => {
+            // `Unshown` joins `Nowhere` here on purpose: `ah-66yi` changes GIVE, and a TAKE from a
+            // source the report does not show reads exactly as it did - `rules/take` confines a
+            // TAKE to a faction-mate, so no Friendly declaration could ever widen it.
+            GiveTarget::Nowhere | GiveTarget::Unshown => {
                 let receiver_position = transfer.position;
                 let resolved = match transfer.what {
                     Selector::Item(text) => ruleset.find_item(text),
@@ -2403,7 +2513,7 @@ fn apply_transfers(
                 }
                 continue;
             }
-            GiveTarget::Unprojectable => continue,
+            GiveTarget::Foreign => continue,
         };
         // A GIVE that cannot be resolved is a no-op exactly as `effects::give` returns early for
         // one: the giver never even loses what it named.
@@ -2484,20 +2594,50 @@ fn apply_transfers(
                     match receiver {
                         GiveTarget::Unit(_) => GiveReach::Ours,
                         GiveTarget::Discard => GiveReach::Discard,
-                        GiveTarget::Unprojectable => GiveReach::Unprojectable,
+                        GiveTarget::Foreign => GiveReach::Foreign,
+                        GiveTarget::Unshown => GiveReach::Unshown,
                         GiveTarget::Nowhere => GiveReach::Nowhere,
                     }
                 } else {
                     GiveReach::Ours
                 };
-                if let Some(reason) = give_refusal(reach, &tag, Some(ruleset)) {
-                    match reason {
-                        GiveRefusal::CannotChangeHands => refused.push((tag.clone(), moved)),
-                        GiveRefusal::MenToAnotherFaction => {
-                            refused_to_another_faction.push((tag.clone(), moved))
-                        }
+                match give_outcome(reach, &tag, Some(ruleset)) {
+                    GiveOutcome::Refused(GiveRefusal::CannotChangeHands) => {
+                        refused.push((tag.clone(), moved));
+                        continue;
                     }
-                    continue;
+                    GiveOutcome::Refused(GiveRefusal::MenToAnotherFaction) => {
+                        refused_to_another_faction.push((tag.clone(), moved));
+                        continue;
+                    }
+                    // `rules/give` may or may not let these goods through, and no report can say
+                    // which. They stay where the report put them, this unit's holdings stop being
+                    // something any check may reason from, and the tag is remembered so the Silver
+                    // column and every later order that reads it say so too (`ah-66yi`).
+                    GiveOutcome::Uncertain => {
+                        let target = give_target_label(transfer.party);
+                        let source_state = working
+                            .get_mut(&source)
+                            .expect("seeded above this same transfer");
+                        source_state.uncertain_after_gifts.insert(
+                            tag.clone(),
+                            UncertainGive {
+                                target,
+                                line: transfer.line,
+                            },
+                        );
+                        source_state.items_unknowable = true;
+                        if is_man {
+                            // Men that may or may not have left cannot be weighed, so no skill
+                            // reading of this unit survives the gift either.
+                            source_state.doubted = true;
+                        }
+                        continue;
+                    }
+                    // Unreachable for a GIVE: a `Nowhere` receiver returned above. A TAKE always
+                    // reaches here as `Ours`.
+                    GiveOutcome::NoTarget => continue,
+                    GiveOutcome::Moves => {}
                 }
                 moving.push((tag.clone(), moved));
             }
@@ -2602,6 +2742,7 @@ fn apply_transfers(
         } else {
             SkillsAfterGifts::Unchanged
         };
+        ordered.uncertain_after_gifts = state.uncertain_after_gifts;
     }
 }
 
@@ -3033,6 +3174,12 @@ struct Ledger<'a> {
     /// Lines whose effect on a unit's items could not be counted at all, by unit, in document
     /// order (`ah-agbm`).
     pub(crate) uncounted: BTreeMap<String, Vec<usize>>,
+    /// Tags a `GIVE` may or may not have moved out of a unit, keyed exactly as `balance` is.
+    ///
+    /// The balance of such a tag is neither the report's figure nor zero, so every arithmetic that
+    /// would read it stops and says so instead - `known_balance_of` is the one lookup that asks
+    /// (`ah-66yi`).
+    uncertain_balance: BTreeMap<(String, String), UncertainGive>,
     /// What each unit's `BUILD` orders spend, in document order (`ah-ofpb.2`). Keyed by unit id,
     /// exactly as `uncounted` is, because a `BUILD` records more than a movement can carry.
     pub(crate) built: BTreeMap<String, Vec<super::effects::BuildSpend>>,
@@ -3268,6 +3415,7 @@ fn ledger_for_with_production<'a>(
         movements: Vec::new(),
         withdrawn_for_movement: BTreeMap::new(),
         uncounted: BTreeMap::new(),
+        uncertain_balance: BTreeMap::new(),
         built: BTreeMap::new(),
         buy_all: BTreeMap::new(),
         sold: BTreeMap::new(),
@@ -3358,6 +3506,7 @@ pub(crate) fn item_effects(
 ) -> BTreeMap<String, UnitItemEffects> {
     let ordered = OrderedUnits::read(orders_document);
     let foreign_unit_ids = foreign_unit_ids(report);
+    let shown_anywhere = unit_ids_in(report);
     let mut result: BTreeMap<String, UnitItemEffects> = BTreeMap::new();
     let no_receipts = BTreeMap::new();
 
@@ -3372,7 +3521,16 @@ pub(crate) fn item_effects(
     let hexes: Vec<Hex<'_>> = report
         .regions
         .iter()
-        .map(|region| hex_with_transfers(region, &ordered, &[], ruleset, &foreign_unit_ids))
+        .map(|region| {
+            hex_with_transfers(
+                region,
+                &ordered,
+                &[],
+                ruleset,
+                &foreign_unit_ids,
+                &shown_anywhere,
+            )
+        })
         .collect();
 
     // Recruitment settles before production is ever priced here, exactly as `review_turn` does
@@ -4202,6 +4360,7 @@ fn apply(
                 who,
                 |id| hex.find(id).is_some(),
                 |id| hex.region.units.iter().any(|unit| unit.unit_id == id),
+                |id| hex.shown_anywhere.contains(id),
             );
             // Named nowhere in this region: the order does nothing, so the giver is not charged -
             // and nothing is doubted either, because the transfer was followed to the end and its
@@ -4212,9 +4371,15 @@ fn apply(
             }
             let receiver = match reach {
                 GiveReach::Ours => party_id(to, hex),
-                // The goods leave and no row of ours gains them.
-                GiveReach::Discard | GiveReach::Unprojectable | GiveReach::Nowhere => None,
+                // The goods leave, or may leave, and no row of ours gains them either way.
+                GiveReach::Discard
+                | GiveReach::Foreign
+                | GiveReach::Unshown
+                | GiveReach::Nowhere => None,
             };
+            // Only ever read for a tag `give_outcome` calls uncertain, and only ever a unit number
+            // there - but formatted once here rather than per tag of a class.
+            let target_label = give_target_label(to);
             // Unit 0 discards rather than gives, and is not "another unit" - the one shape where
             // the game hands over even the items it otherwise refuses to move (epic decision 9).
             let discarding = matches!(to, Party::Discard);
@@ -4232,6 +4397,7 @@ fn apply(
                         RecordMovement::No,
                         None,
                         reach,
+                        Some(target_label.as_str()),
                     );
                 }
             } else {
@@ -4247,6 +4413,7 @@ fn apply(
                     RecordMovement::No,
                     None,
                     reach,
+                    Some(target_label.as_str()),
                 );
             }
         }
@@ -4292,6 +4459,7 @@ fn apply(
                         RecordMovement::Yes,
                         None,
                         GiveReach::Ours,
+                        None,
                     );
                 }
             } else {
@@ -4307,6 +4475,7 @@ fn apply(
                     RecordMovement::Yes,
                     from_unshown,
                     GiveReach::Ours,
+                    None,
                 );
             }
         }
@@ -4528,6 +4697,9 @@ fn transfer(
     from_unshown: Option<String>,
     // The target reach controls inherent item refusal and the men-to-another-faction rule.
     reach: GiveReach,
+    // How the target reads in the Silver note, for a tag whose permission cannot be established.
+    // `None` for a TAKE, which never reaches that outcome.
+    target_label: Option<&str>,
 ) {
     // The same reading `silver::forecast_unit` gets, so the two surfaces cannot classify one
     // order two ways (`ah-lu0f`). `Unpriceable` is a whole class of items, or the unit itself:
@@ -4553,16 +4725,44 @@ fn transfer(
         return;
     };
 
-    // The item is resolved and the transfer *is* counted - it simply moves nothing, exactly as a
-    // unit holding none of it would. Neither `doubted` nor `uncounted` is touched: those mark a
-    // sum this ledger could not follow, and this one was followed to the end.
-    if give_refusal(reach, &tag, ledger.ruleset).is_some()
-        && ledger
-            .balance
-            .get(&(actor.unit.unit_id.clone(), tag.clone()))
-            .is_some_and(|amount| *amount > 0)
-    {
-        return;
+    match give_outcome(reach, &tag, ledger.ruleset) {
+        // The item is resolved and the transfer *is* counted - it simply moves nothing, exactly as
+        // a unit holding none of it would. Neither `doubted` nor `uncounted` is touched: those
+        // mark a sum this ledger could not follow, and this one was followed to the end.
+        GiveOutcome::Refused(_)
+            if ledger
+                .balance
+                .get(&(actor.unit.unit_id.clone(), tag.clone()))
+                .is_some_and(|amount| *amount > 0) =>
+        {
+            return;
+        }
+        // `rules/give` needs the target faction's declaration toward us and the report carries
+        // only ours toward them, so these goods neither definitely move nor definitely stay. The
+        // balance is left at the report's figure and the tag is marked instead, so the item shows
+        // its count with the established `+ ?` and every later reader of that tag says it cannot
+        // be counted rather than picking a side (`ah-66yi`).
+        // A unit holding none of these goods moves none of them whatever the target's faction has
+        // declared, so there is nothing uncertain about the line - exactly the guard the refusal
+        // arm above uses, and what keeps a standing `GIVE` of goods nobody holds off the table
+        // (`ah-66yi`).
+        GiveOutcome::Uncertain
+            if !ledger
+                .balance
+                .get(&(from.clone(), tag.clone()))
+                .is_some_and(|amount| *amount > 0) => {}
+        GiveOutcome::Uncertain => {
+            ledger.uncertain_balance.insert(
+                (from.clone(), tag.clone()),
+                UncertainGive {
+                    target: target_label.unwrap_or("the target").to_string(),
+                    line: placed.line,
+                },
+            );
+            mark_uncounted(ledger, &actor.unit.unit_id, placed.line);
+            return;
+        }
+        GiveOutcome::Refused(_) | GiveOutcome::Moves | GiveOutcome::NoTarget => {}
     }
 
     let quantity = match shape {
@@ -4574,7 +4774,16 @@ fn transfer(
         }
         TransferShape::Exact(count) => count,
         // Giving all of something can never overdraw it, whatever the reserve.
-        TransferShape::All { except } => (balance_of(ledger, &from, &tag) - except).max(0),
+        // `ALL` of a tag an earlier `GIVE` left uncertain resolves against a holding that is not
+        // established, so this line cannot be counted either (`ah-66yi`).
+        TransferShape::All { except } => match known_balance_of(ledger, &from, &tag) {
+            Ok(holding) => (holding - except).max(0),
+            Err(_) => {
+                ledger.doubted.insert(actor.unit.unit_id.clone());
+                mark_uncounted(ledger, &actor.unit.unit_id, placed.line);
+                return;
+            }
+        },
     };
 
     if !from.is_empty() {
@@ -5101,6 +5310,14 @@ fn build(
     if resolved.is_empty() {
         mark_uncounted_and_return!();
     }
+    // An uncertain tag cannot answer "does this unit hold any of it", so a recipe offering it
+    // among its alternatives cannot be settled (`ah-66yi`).
+    if resolved
+        .iter()
+        .any(|item| known_balance_of(ledger, who, &item.tag.to_ascii_uppercase()).is_err())
+    {
+        mark_uncounted_and_return!();
+    }
     let held_of = |tag: &str| balance_of(ledger, who, tag);
     let material = if resolved.len() == 1 {
         resolved[0]
@@ -5197,7 +5414,19 @@ fn sell(
     // (`rules/sequenceofevents`), so the early holding caps what `ALL` resolves against - and the
     // running ledger balance still caps it too, which is what catches a `GIVE` this month's
     // projection could not follow, and what already nets off this unit's earlier sales (`ah-q7jd`).
-    let remaining_holding = actor.early_holding(&tag).min(balance_of(ledger, who, &tag));
+    // An earlier `GIVE` that may or may not have taken these goods leaves nothing to price
+    // against: what the market would take, what it earns and whether the stock ran out are all
+    // read off a holding that is not established, so the line is admitted as uncounted instead of
+    // being answered from the report's old figure (`ah-66yi`).
+    let known_holding = match known_balance_of(ledger, who, &tag) {
+        Ok(holding) => holding,
+        Err(_) => {
+            ledger.doubted.insert(who.clone());
+            mark_uncounted(ledger, who, placed.line);
+            return;
+        }
+    };
+    let remaining_holding = actor.early_holding(&tag).min(known_holding);
     // What this hex's other own sellers left of the line, or the line itself where nothing was
     // settled (`ah-t2pn.3`), less what this unit's own earlier lines have already taken out of it.
     let allowed = standing
@@ -5490,6 +5719,37 @@ fn names_the_same_item(text: &str, tag: &str, name: &str) -> bool {
         .flatten()
         .any(|spelling| tag.eq_ignore_ascii_case(spelling) || name.eq_ignore_ascii_case(spelling));
     matched
+}
+
+/// Marks one order's line uncounted for one unit, once however many tags it names.
+///
+/// A `GIVE ... ALL ITEMS` may leave several tags uncertain, and the hover shows the order verbatim:
+/// repeating the line would repeat the sentence (`ah-66yi`).
+fn mark_uncounted(ledger: &mut Ledger<'_>, unit_id: &str, line: usize) {
+    let lines = ledger.uncounted.entry(unit_id.to_string()).or_default();
+    if !lines.contains(&line) {
+        lines.push(line);
+    }
+}
+
+/// What a unit holds of one tag, or the `GIVE` that makes the question unanswerable.
+///
+/// [`balance_of`] answers the conservative number and is kept for the paths that deliberately want
+/// one. Every decision that would state a movement, an amount or a warning from a post-`GIVE`
+/// holding asks this instead, so an uncertain tag stops the arithmetic rather than producing a
+/// definite answer from a figure that may already have left (`ah-66yi`).
+fn known_balance_of<'a>(
+    ledger: &'a Ledger<'_>,
+    unit_id: &str,
+    tag: &str,
+) -> Result<i64, &'a UncertainGive> {
+    if let Some(uncertain) = ledger
+        .uncertain_balance
+        .get(&(unit_id.to_string(), tag.to_string()))
+    {
+        return Err(uncertain);
+    }
+    Ok(balance_of(ledger, unit_id, tag))
 }
 
 fn balance_of(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
@@ -8288,6 +8548,16 @@ fn check_transfer_targets(
                     if hex.region.units.iter().any(|unit| &unit.unit_id == id) {
                         continue;
                     }
+                    // A GIVE to a number the whole report never prints is not a mistake we can
+                    // establish: `rules/give` lets a faction that has declared us Friendly receive
+                    // from a unit that cannot see it at all, so this may be a perfectly good order
+                    // aimed at a unit we simply cannot see (`ah-66yi`). A TAKE is unchanged -
+                    // `rules/take` confines it to a faction-mate, whom we would be shown.
+                    if matches!(placed.intent, Intent::Give { .. })
+                        && !located.contains_key(id.as_str())
+                    {
+                        continue;
+                    }
 
                     // The label is only ever formatted here, on the rare path that actually emits a
                     // finding - `located` itself carries just a region reference per unit, so the
@@ -9608,7 +9878,7 @@ mod tests {
             ])];
             let finding = only(check_ignoring_transfer_targets(
                 regions,
-                "unit 5\nGIVE 9 5 swords\n",
+                "unit 5\nGIVE 0 5 swords\n",
             ));
             assert_eq!(
                 finding.message,
@@ -9625,7 +9895,7 @@ mod tests {
             ])];
             let finding = only(check_ignoring_transfer_targets(
                 regions,
-                "unit 5\nGIVE 9 1 sword\n",
+                "unit 5\nGIVE 0 1 sword\n",
             ));
             assert_eq!(
                 finding.message,
@@ -9642,7 +9912,7 @@ mod tests {
             ])];
             let finding = hex_anchored(check_ignoring_transfer_targets(
                 regions,
-                "unit 5\nGIVE 9 30 swords\n",
+                "unit 5\nGIVE 0 30 swords\n",
             ));
             assert_eq!(
                 finding.message,
@@ -11051,8 +11321,14 @@ mod tests {
 
         let ordered = OrderedUnits::read("unit 2390\nGIVE 5512 10 FUR\nSELL ALL FUR\n");
         let rules = ruleset();
-        let hex_with_transfers =
-            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
+        let hex_with_transfers = hex_with_transfers(
+            &hex,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         assert_eq!(balance_of(&ledger, "2390", "SILV"), 0);
@@ -11102,8 +11378,14 @@ mod tests {
         let ordered =
             OrderedUnits::read("unit 2390\nSELL ALL FUR\nSELL ALL FUR\nunit 2391\nSELL ALL FUR\n");
         let rules = ruleset();
-        let hex_with_transfers =
-            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
+        let hex_with_transfers = hex_with_transfers(
+            &hex,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         let moved: i64 = ledger
@@ -11157,8 +11439,14 @@ mod tests {
 
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex_with_transfers =
-            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
+        let hex_with_transfers = hex_with_transfers(
+            &hex,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         let moved = |id: &str| -> i64 {
@@ -11465,7 +11753,7 @@ mod tests {
 
         let review = review_turn(
             &report(vec![hex]),
-            "unit 2390\nGIVE 5512 5 FUR\nSELL ALL FUR\nSELL ALL FUR\n",
+            "unit 2390\nGIVE 0 5 FUR\nSELL ALL FUR\nSELL ALL FUR\n",
             Some(&ruleset()),
             CheckOptions::default(),
         );
@@ -11499,7 +11787,7 @@ mod tests {
 
         let review = review_turn(
             &report(vec![hex]),
-            "unit 2390\nGIVE 5512 9 FUR\nSELL ALL FUR\nSELL ALL FUR\n",
+            "unit 2390\nGIVE 0 9 FUR\nSELL ALL FUR\nSELL ALL FUR\n",
             Some(&ruleset()),
             CheckOptions::default(),
         );
@@ -11693,8 +11981,14 @@ mod tests {
 
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex_with_transfers =
-            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
+        let hex_with_transfers = hex_with_transfers(
+            &hex,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         assert_eq!(balance_of(&ledger, "2390", "FUR"), 7);
@@ -11736,8 +12030,14 @@ mod tests {
         // The ITEMS column.
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex_with_transfers =
-            hex_with_transfers(&hex, &ordered, &[], Some(&rules), &BTreeSet::new());
+        let hex_with_transfers = hex_with_transfers(
+            &hex,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
         let no_receipts = BTreeMap::new();
         let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
         let moved: i64 = ledger
@@ -14576,8 +14876,14 @@ mod tests {
         ) -> R {
             let ordered = OrderedUnits::read(orders);
             let rules = ruleset();
-            let hex =
-                hex_with_transfers(&hex_region, &ordered, &[], Some(&rules), &BTreeSet::new());
+            let hex = hex_with_transfers(
+                &hex_region,
+                &ordered,
+                &[],
+                Some(&rules),
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+            );
             let no_receipts = BTreeMap::new();
             let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
             read(&ledger)
@@ -14916,7 +15222,7 @@ mod tests {
             };
             with_ledger(
                 hex_region,
-                "unit 2390\nBUY ALL grain\nGIVE 902 ALL SILV\n",
+                "unit 2390\nBUY ALL grain\nGIVE 0 ALL SILV\n",
                 |ledger| {
                     assert!(
                         !ledger
@@ -16852,7 +17158,7 @@ mod tests {
                 with_item(unit("7"), 20, "swords", "SWOR"),
                 an_ally("9"),
             ]),
-            "unit 5\nGIVE 9 30 swords\n",
+            "unit 5\nGIVE 0 30 swords\n",
         );
 
         assert_eq!(
@@ -16873,7 +17179,7 @@ mod tests {
                 sharing(with_item(unit("7"), 20, "swords", "SWOR")),
                 an_ally("9"),
             ]),
-            "unit 5\nGIVE 9 30 swords\n",
+            "unit 5\nGIVE 0 30 swords\n",
         );
 
         assert_eq!(
@@ -16901,7 +17207,7 @@ mod tests {
         };
 
         assert_eq!(
-            verdicts(region(units()), "unit 5\nGIVE 9 30 swords\n"),
+            verdicts(region(units()), "unit 5\nGIVE 0 30 swords\n"),
             vec![Verdict::DeferredToPool {
                 unit_id: "5".to_string(),
                 tag: "SWOR".to_string(),
@@ -16912,7 +17218,7 @@ mod tests {
 
         let finding = only(check_ignoring_transfer_targets(
             vec![region(units())],
-            "unit 5\nGIVE 9 30 swords\n",
+            "unit 5\nGIVE 0 30 swords\n",
         ));
         assert_eq!(
             finding.message,
@@ -16937,7 +17243,7 @@ mod tests {
                 unit("7"),
                 an_ally("4"),
             ])],
-            "unit 5\nGIVE 4 30 swords\nunit 7\nGIVE 4 30 swords\n",
+            "unit 5\nGIVE 0 30 swords\nunit 7\nGIVE 0 30 swords\n",
         );
 
         let pointers: Vec<&Finding> = found
@@ -16966,7 +17272,7 @@ mod tests {
                 sharing(with_item(unit("9"), 100, "sword", "SWOR")),
                 unit("5"),
             ])],
-            "unit 5\nGIVE 4 30 swords\n",
+            "unit 5\nGIVE 0 30 swords\n",
         );
 
         assert!(
@@ -16984,7 +17290,7 @@ mod tests {
                 sharing(unit("5")),
                 sharing(with_item(unit("7"), 20, "sword", "SWOR")),
             ])],
-            "unit 5\nGIVE 9 30 swords\n",
+            "unit 5\nGIVE 0 30 swords\n",
         );
 
         assert!(
@@ -17003,7 +17309,7 @@ mod tests {
                 unit("5"),
                 an_ally("4"),
             ])],
-            "unit 5\nGIVE 4 30 swords\n",
+            "unit 5\nGIVE 0 30 swords\n",
         );
         let pointer = items
             .iter()
@@ -17043,7 +17349,7 @@ mod tests {
                 an_ally("4"),
             ])]
         };
-        let orders = "unit 5\nGIVE 4 30 swords\n";
+        let orders = "unit 5\nGIVE 0 30 swords\n";
 
         let without_pointer = check_turn(
             &report(regions()),
@@ -17089,7 +17395,7 @@ mod tests {
             sharing(with_item(unit("7"), 20, "swords", "SWOR")),
             an_ally("9"),
         ]);
-        let ordered = OrderedUnits::read("unit 5\nGIVE 9 30 swords\n");
+        let ordered = OrderedUnits::read("unit 5\nGIVE 0 30 swords\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
         let no_receipts = BTreeMap::new();
@@ -17964,7 +18270,7 @@ mod tests {
     fn produced_goods_do_not_arrive_in_time_to_be_given_away() {
         let findings = check_ignoring_transfer_targets(
             vec![region(vec![carpenters(100_000, 9999), an_ally("1")])],
-            "unit 12881\nPRODUCE catapult\nGIVE 1 1 CATP\n",
+            "unit 12881\nPRODUCE catapult\nGIVE 0 1 CATP\n",
         );
 
         assert_eq!(codes(&findings), ["not-enough-items"]);
@@ -19723,7 +20029,7 @@ mod tests {
 
         let finding = only(check_ignoring_transfer_targets(
             regions,
-            "unit 5\nGIVE 7 10 swords\n",
+            "unit 5\nGIVE 0 10 swords\n",
         ));
         assert_eq!(finding.code.as_str(), "not-enough-items");
         assert!(finding.message.contains("sword"), "{}", finding.message);
@@ -19773,7 +20079,7 @@ mod tests {
         ])];
 
         assert_eq!(
-            check_ignoring_transfer_targets(regions, "unit 5\nGIVE 9 10 swords\n"),
+            check_ignoring_transfer_targets(regions, "unit 5\nGIVE 0 10 swords\n"),
             vec![],
             "unit 7 shares its swords, so unit 5 can give away 10 of them"
         );
@@ -19811,7 +20117,7 @@ mod tests {
 
         let finding = hex_anchored(check_ignoring_transfer_targets(
             regions,
-            "unit 5\nGIVE 9 30 swords\n",
+            "unit 5\nGIVE 0 30 swords\n",
         ));
         assert_eq!(finding.code.as_str(), "not-enough-items");
         assert_eq!(
@@ -19839,7 +20145,7 @@ mod tests {
 
         let finding = hex_anchored(check_ignoring_transfer_targets(
             regions,
-            "unit 7\nGIVE 8 10 swords\n",
+            "unit 7\nGIVE 0 10 swords\n",
         ));
         assert_eq!(finding.code.as_str(), "not-enough-items");
         assert_eq!(
@@ -19865,7 +20171,7 @@ mod tests {
 
         let finding = only(check_ignoring_transfer_targets(
             regions,
-            "unit 5\nGIVE 9 10 HUMN\n",
+            "unit 5\nGIVE 0 10 HUMN\n",
         ));
         assert_eq!(finding.code.as_str(), "not-enough-items");
         assert_eq!(
@@ -19886,7 +20192,7 @@ mod tests {
         assert_eq!(
             check_ignoring_transfer_targets(
                 regions,
-                "unit 5\nGIVE 9 30 swords\nunit 7\nSTUDY basketweaving\n"
+                "unit 5\nGIVE 0 30 swords\nunit 7\nSTUDY basketweaving\n"
             ),
             vec![]
         );
@@ -19902,7 +20208,7 @@ mod tests {
 
         let findings = check_ignoring_transfer_targets(
             regions,
-            "unit 5\nGIVE 9 10 swords\nunit 7\nGIVE 9 10 swords\n",
+            "unit 5\nGIVE 0 10 swords\nunit 7\nGIVE 0 10 swords\n",
         );
         assert_eq!(
             findings.len(),
@@ -22699,17 +23005,214 @@ mod tests {
         );
     }
 
+    /// `rules/give`: a unit may give "to a unit which it is able to see, unless the faction of the
+    /// target unit has declared you Friendly or better". A number the whole report never prints may
+    /// be exactly such a unit, so there is no mistake to report - the Units table admits the order
+    /// through the item hover instead (`ah-66yi`, which reversed this test's answer).
     #[test]
-    fn a_gift_to_a_unit_in_no_region_says_so() {
+    fn a_gift_to_a_unit_in_no_region_says_nothing() {
+        assert_eq!(
+            check(
+                vec![region(vec![with_silver(unit("13303"), 1000)])],
+                "unit 13303\nGIVE 16585 500 SILV\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// The control, and the boundary: a TAKE from the same number keeps today's finding.
+    /// `rules/take` confines a TAKE to "another unit in the same faction", and our own units are
+    /// all in our report - so a number missing from it really is a mistake (`ah-66yi`).
+    #[test]
+    fn a_take_from_a_unit_in_no_region_still_says_so() {
         let finding = only(check(
             vec![region(vec![with_silver(unit("13303"), 1000)])],
-            "unit 13303\nGIVE 16585 500 SILV\n",
+            "unit 13303\nTAKE FROM 16585 500 SILV\n",
         ));
 
         assert_eq!(
             finding.message,
-            "unit 16585 is not in this hex to be given to, and appears nowhere else in your report"
+            "unit 16585 is not in this hex to be taken from, and appears nowhere else in your report"
         );
+    }
+
+    /// `ah-66yi`: what a `GIVE` the report cannot settle does to the ledger, the warnings and the
+    /// Silver column.
+    ///
+    /// `rules/give` needs the *target* faction's declaration toward us for anything but silver, and
+    /// the report carries only ours toward them - so a visible foreign target and a unit number the
+    /// report never prints are both unresolved, and everything downstream has to say so rather than
+    /// pick a side.
+    mod give_uncertainty {
+        use super::*;
+
+        fn silver_for(review: &TurnReview, id: &str) -> UnitSilver {
+            review
+                .silver
+                .iter()
+                .find(|forecast| forecast.unit_id == id)
+                .cloned()
+                .unwrap_or_else(|| panic!("no forecast for {id}: {:?}", review.silver))
+        }
+
+        /// One hex's ledger, built exactly as `ledger_for`'s own tests build one.
+        fn with_a_ledger<R>(
+            hex_region: ReportRegion,
+            orders: &str,
+            read: impl FnOnce(&Ledger<'_>) -> R,
+        ) -> R {
+            let ordered = OrderedUnits::read(orders);
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = ruleset();
+            let no_receipts = BTreeMap::new();
+            let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+            read(&ledger)
+        }
+
+        fn reviewed(regions: Vec<ReportRegion>, orders: &str) -> TurnReview {
+            review_turn(
+                &report(regions),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+        }
+
+        /// A market that wants stone, a giver holding some, and another faction's unit standing
+        /// here to give it to.
+        fn hex_with_a_foreign_neighbour(giver: ReportUnit) -> ReportRegion {
+            ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 100,
+                    name: "stone".to_string(),
+                    tag: "STON".to_string(),
+                    price: 10,
+                }],
+                ..region(vec![giver, an_ally("7001")])
+            }
+        }
+
+        /// The giver keeps its report count and the order is admitted once, so the Units table
+        /// shows `15 stone + ?` with the order in the hover rather than a number nothing supports.
+        #[test]
+        fn an_uncertain_gift_is_not_charged_and_is_admitted_once() {
+            let hex = hex_with_a_foreign_neighbour(with_item(unit("2390"), 15, "stone", "STON"));
+
+            with_a_ledger(hex, "unit 2390\nGIVE 7001 10 STON\n", |ledger| {
+                assert_eq!(balance_of(ledger, "2390", "STON"), 15);
+                assert_eq!(
+                    ledger.uncounted.get("2390").map(Vec::as_slice),
+                    Some([2].as_slice())
+                );
+            });
+        }
+
+        /// One order, one line in the hover, however many tags the class named - and the tag the
+        /// rules do settle still moves (`rules/give`: "silver may be given to any unit, regardless
+        /// of factional affiliation").
+        #[test]
+        fn a_mixed_class_keeps_the_silver_definite_and_records_the_line_once() {
+            let giver = with_item(
+                with_item(with_silver(unit("2390"), 20), 15, "stone", "STON"),
+                4,
+                "furs",
+                "FUR",
+            );
+
+            with_a_ledger(
+                hex_with_a_foreign_neighbour(giver),
+                "unit 2390\nGIVE 7001 ALL ITEMS\n",
+                |ledger| {
+                    assert_eq!(balance_of(ledger, "2390", "SILV"), 0, "the silver goes");
+                    assert_eq!(balance_of(ledger, "2390", "STON"), 15);
+                    assert_eq!(balance_of(ledger, "2390", "FUR"), 4);
+                    assert_eq!(
+                        ledger.uncounted.get("2390").map(Vec::as_slice),
+                        Some([2].as_slice()),
+                        "two uncertain tags, one order, one line"
+                    );
+                },
+            );
+        }
+
+        /// A sale of the same goods reads a holding that is not established, so it is admitted
+        /// rather than answered - and `nothing-left-to-sell`, which is computed from that holding,
+        /// says nothing.
+        #[test]
+        fn a_sale_of_an_uncertain_tag_goes_quiet() {
+            let hex = hex_with_a_foreign_neighbour(with_item(unit("2390"), 15, "stone", "STON"));
+            let review = reviewed(vec![hex], "unit 2390\nGIVE 7001 ALL STON\nSELL ALL stone\n");
+
+            assert!(
+                !review
+                    .findings
+                    .iter()
+                    .any(|finding| finding.code.as_str() == "nothing-left-to-sell"),
+                "{:?}",
+                review.findings
+            );
+        }
+
+        /// An uncertain gift of stone says nothing about this unit's coins: the doubt is tracked
+        /// per tag, so unrelated earnings and spending stay exact.
+        #[test]
+        fn an_uncertain_gift_of_goods_leaves_unrelated_silver_exact() {
+            let giver = with_item(with_silver(unit("2390"), 500), 15, "stone", "STON");
+            let review = reviewed(
+                vec![hex_with_a_foreign_neighbour(giver)],
+                "unit 2390\nGIVE 7001 10 STON\nSTUDY combat\n",
+            );
+
+            let silver = silver_for(&review, "2390");
+            assert_eq!(silver.doubt, None, "{silver:?}");
+            assert!(
+                silver.expense.is_some_and(|spent| spent > 0),
+                "the study is still priced: {silver:?}"
+            );
+        }
+
+        /// `rules/give` exempts silver from the factional rule outright, so a target we can see
+        /// takes it and the column stays a number.
+        #[test]
+        fn visible_foreign_silver_is_still_spent() {
+            let review = reviewed(
+                vec![hex_with_a_foreign_neighbour(with_silver(unit("2390"), 500))],
+                "unit 2390\nGIVE 7001 100 SILV\n",
+            );
+
+            let silver = silver_for(&review, "2390");
+            assert_eq!(silver.doubt, None, "{silver:?}");
+            assert_eq!(silver.expense, Some(100));
+        }
+
+        /// The other case: a number the report never prints. Whether there is a target at all is
+        /// unresolved, so even silver cannot be said to leave - and the note names the unit.
+        #[test]
+        fn silver_to_an_unshown_target_names_the_unit_it_cannot_settle() {
+            let review = reviewed(
+                vec![region(vec![with_silver(unit("2390"), 500)])],
+                "unit 2390\nGIVE 9999 100 SILV\n",
+            );
+
+            let silver = silver_for(&review, "2390");
+            assert_eq!(silver.doubt, Some(SilverDoubt::GiveTargetUncertain));
+            assert_eq!(silver.doubt_subject.as_deref(), Some("unit 9999"));
+        }
+
+        /// A later order priced from goods an uncertain gift may have taken cannot be added up
+        /// either, and says which of the two sentences applies.
+        #[test]
+        fn a_later_sale_of_uncertain_goods_is_a_consequence_doubt() {
+            let hex = hex_with_a_foreign_neighbour(with_item(unit("2390"), 15, "stone", "STON"));
+            let review = reviewed(vec![hex], "unit 2390\nGIVE 7001 ALL STON\nSELL ALL stone\n");
+
+            let silver = silver_for(&review, "2390");
+            assert_eq!(
+                silver.doubt,
+                Some(SilverDoubt::GiveConsequencesUncertain),
+                "{silver:?}"
+            );
+        }
     }
 
     #[test]
@@ -22872,10 +23375,17 @@ mod tests {
     }
 
     #[test]
+    /// One finding, not two: the TAKE from a number the report never prints is still a mistake, and
+    /// the GIVE to one is not (`ah-66yi`). The GIVE to a unit shown *elsewhere* is, which is what
+    /// the second unit here holds onto.
     fn both_a_give_and_a_take_on_one_unit_are_two_findings() {
+        let elsewhere = ReportRegion {
+            region_id: "1:9,53".to_string(),
+            ..region(vec![unit("4427")])
+        };
         let findings = check(
-            vec![region(vec![unit("4426")])],
-            "unit 4426\nGIVE 16585 50 SILV\nTAKE FROM 16586 50 SILV\n",
+            vec![region(vec![unit("4426")]), elsewhere],
+            "unit 4426\nGIVE 4427 50 SILV\nTAKE FROM 16586 50 SILV\n",
         );
 
         assert_eq!(
@@ -23528,7 +24038,7 @@ mod tests {
                     with_item(unit("5"), 3, "sword", "SWOR"),
                     an_ally("7"),
                 ])],
-                orders: "unit 5\nGIVE 7 10 swords\n",
+                orders: "unit 5\nGIVE 0 10 swords\n",
                 allowance: None,
                 unclaimed: None,
             },
@@ -23634,7 +24144,9 @@ mod tests {
             Case {
                 code: codes::GIVE_TARGET_NOT_HERE,
                 regions: vec![region(vec![with_silver(unit("5"), 1000)])],
-                orders: "unit 5\nGIVE 16585 500 SILV\n",
+                // A `NEW` alias no `FORM` here creates: still a definite no-op, where a plain
+                // unit number the report never prints is not (`ah-66yi`).
+                orders: "unit 5\nGIVE NEW 7 500 SILV\n",
                 allowance: None,
                 unclaimed: None,
             },
@@ -25857,7 +26369,15 @@ mod tests {
     /// increment 6 exercises instead.
     fn hex_after_gifts<'a>(region: &'a ReportRegion, ordered: &'a OrderedUnits) -> Hex<'a> {
         let mut hex = Hex::read(region, ordered, &[]);
-        apply_transfers(&mut hex.units, region, Some(&ruleset()), &BTreeSet::new());
+        // One region, so the whole report is this region - `Hex::read` already seeded it.
+        let shown_anywhere = hex.shown_anywhere.clone();
+        apply_transfers(
+            &mut hex.units,
+            region,
+            Some(&ruleset()),
+            &BTreeSet::new(),
+            &shown_anywhere,
+        );
         hex
     }
 
@@ -25868,7 +26388,14 @@ mod tests {
         // away with it.
         let rules = ruleset();
         let mut hex = Hex::read(region, ordered, &[]);
-        apply_transfers(&mut hex.units, region, Some(&rules), &BTreeSet::new());
+        let shown_anywhere = hex.shown_anywhere.clone();
+        apply_transfers(
+            &mut hex.units,
+            region,
+            Some(&rules),
+            &BTreeSet::new(),
+            &shown_anywhere,
+        );
         let receipts = BTreeMap::new();
         let ledger = ledger_for(&hex, Some(&rules), &receipts);
         apply_recruits(&mut hex.units, &ledger, Some(&rules));
