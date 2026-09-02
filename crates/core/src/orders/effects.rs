@@ -4959,8 +4959,12 @@ mod tests {
 
         #[test]
         fn an_item_moves_only_once_in_a_transport_phase() {
+            let report = report_with_transport_chain(true).replace(
+                "* Destination (903), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "* Destination (903), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n  Skills: quartermaster [QUAM] 1 (30).",
+            );
             let response = preview_over(
-                &report_with_transport_chain(true),
+                &report,
                 "unit 901\nTRANSPORT 902 10 STON\nunit 902\nTRANSPORT 903 10 STON\n",
             );
 
@@ -4973,7 +4977,7 @@ mod tests {
                     .map(|received| received.amount),
                 Some(10)
             );
-            assert_eq!(held(only_unit_by_id(&response, "903"), "STON"), 0);
+            assert!(row(&response, "1:1,1", "903").is_none());
         }
 
         #[test]
