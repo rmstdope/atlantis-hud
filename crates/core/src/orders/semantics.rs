@@ -2674,18 +2674,14 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
                 .map(|((_, tag), amount)| (tag.as_str(), *amount))
                 .collect()
         };
-        let recruited: i64 = {
-            let ordered = &units[index];
-            ledger
-                .balance
-                .iter()
-                .filter(|((unit_id, tag), _)| {
-                    unit_id == &ordered.unit.unit_id && ruleset.is_man(tag)
-                })
-                .map(|((_, tag), balance)| (balance - ordered.holding(tag)).max(0))
-                .sum::<i64>()
-                - units[index].arrivals.total()
-        };
+        let recruited: i64 = ledger
+            .bought
+            .iter()
+            .filter(|((unit_id, tag), amount)| {
+                unit_id == &units[index].unit.unit_id && ruleset.is_man(tag) && **amount > 0
+            })
+            .map(|(_, amount)| *amount)
+            .sum();
         let mut remaining = recruited.max(0);
         let bought: Vec<(&str, i64)> = bought
             .into_iter()
