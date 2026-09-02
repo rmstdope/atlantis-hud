@@ -10,7 +10,7 @@
 //! The governing policy is the validator's own **accept on doubt**: an order that cannot be read,
 //! or whose target cannot be found, changes nothing rather than changing something wrong.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -261,11 +261,18 @@ pub fn preview_orders_on_map(
         super::semantics::item_effects(&report, orders_document, Some(ruleset.as_ref()));
     working.apply_item_effects(&item_effects);
     settle_headcounts(&mut working.units, &ruleset);
+    // `rules/form`, and only once the market has settled: a formed unit's own BUY is what decides
+    // whether it gained anybody, so nothing can be dissolved before `item_effects` has been
+    // applied and the headcounts derived from it (`ah-dhga`).
+    let dissolved = working.dissolve_empty_forms();
     // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
     // after the market, after movement, after production. A sale takes its goods first, and
     // whatever a PRODUCE made this month is there to be sent.
     working.apply_transports();
-    for working_unit in &mut working.units {
+    for (index, working_unit) in working.units.iter_mut().enumerate() {
+        if dissolved.contains(&index) {
+            continue;
+        }
         working_unit.refresh_movement(&ruleset);
     }
 
@@ -285,7 +292,10 @@ pub fn preview_orders_on_map(
     let mut decided: Vec<Decided> = Vec::new();
     let mut sailing: BTreeMap<(String, String), SailingFleet> = BTreeMap::new();
 
-    for entry in working.units {
+    for (index, entry) in working.units.into_iter().enumerate() {
+        if dissolved.contains(&index) {
+            continue;
+        }
         let mut arrival = None;
         let mut mode = None;
 
@@ -851,6 +861,44 @@ impl Working {
     /// `GIVE` is not read here: the walk that built `self.units` has already applied every gift
     /// through `Working::give`, and the ledger records no movement for one (`RecordMovement::No`)
     /// for exactly that reason - applying it again here would move it twice.
+    /// Dissolves every formed unit that gained nobody, returning its goods to the first own unit
+    /// the report shows in that region (`rules/form`: "If no recruits are gained at all, the empty
+    /// unit will be dissolved, and the silver and any other items it was given will revert to the
+    /// first unit you have in that region").
+    ///
+    /// Returns the indices of the dissolved rows rather than removing them: `by_id`, `by_alias`
+    /// and every queued `PendingTransport` store indices into `self.units`, so the entries stay
+    /// put and the caller filters them out while rendering. Their items have already been emptied
+    /// into the recipient, so a transport authored by a dissolved row has nothing left to send.
+    fn dissolve_empty_forms(&mut self) -> BTreeSet<usize> {
+        let mut dissolved = BTreeSet::new();
+        for index in 0..self.units.len() {
+            if !self.units[index].formed || self.units[index].unit.men != 0 {
+                continue;
+            }
+            let region_id = self.units[index].unit.region_id.clone();
+            // Report order, which `Working::over_own_units` preserves: the first own unit the
+            // report shows in that region, not the unit that formed this one.
+            let recipient = self
+                .units
+                .iter()
+                .position(|unit| unit.unit.region_id == region_id && unit.original.is_some());
+            let goods = std::mem::take(&mut self.units[index].unit.items);
+            if let Some(recipient) = recipient {
+                for item in goods {
+                    add_item(
+                        &mut self.units[recipient].unit.items,
+                        &item.name,
+                        &item.tag,
+                        item.amount,
+                    );
+                }
+            }
+            dissolved.insert(index);
+        }
+        dissolved
+    }
+
     fn apply_item_effects(
         &mut self,
         effects: &BTreeMap<String, super::semantics::UnitItemEffects>,
@@ -1851,7 +1899,7 @@ mod tests {
     #[test]
     fn a_formed_unit_starts_inside_the_parents_structure() {
         // The game creates the new unit in the same object as the unit forming it.
-        let response = preview("unit 900\nENTER 4\nFORM 1\nEND\n");
+        let response = preview("unit 900\nENTER 4\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n");
 
         let formed = response.regions[0]
             .units
@@ -2022,7 +2070,9 @@ mod tests {
     /// the orders after it still belong to the unit being formed.
     #[test]
     fn endform_closes_nothing_because_the_rules_have_no_such_order() {
-        let response = preview("unit 900\nFORM 1\nENDFORM\nNAME UNIT \"Formed\"\n");
+        let response = preview(
+            "unit 900\nFORM 1\nENDFORM\nNAME UNIT \"Formed\"\nunit 900\nGIVE NEW 1 1 LEAD\n",
+        );
 
         let formed = response.regions[0]
             .units
@@ -2545,7 +2595,7 @@ mod tests {
         // well against a reader that had stopped understanding `NEW` at all - and the arm it
         // guards is the dangerous one, since a foreign target read as a zero would destroy the
         // swords rather than merely fail to move them.
-        let ours = preview("unit 900\nFORM 2\nEND\nGIVE NEW 2 1 SWOR\n");
+        let ours = preview("unit 900\nFORM 2\nEND\nGIVE NEW 2 1 SWOR\nGIVE NEW 2 1 LEAD\n");
         assert!(
             ours.regions[0]
                 .units
@@ -2560,7 +2610,7 @@ mod tests {
     #[test]
     fn a_second_form_with_a_taken_alias_is_swallowed() {
         let response = preview(
-            "unit 900\nFORM 1\nNAME UNIT \"First\"\nEND\nFORM 1\nNAME UNIT \"Second\"\nEND\n",
+            "unit 900\nFORM 1\nNAME UNIT \"First\"\nEND\nFORM 1\nNAME UNIT \"Second\"\nEND\nGIVE NEW 1 1 LEAD\n",
         );
 
         let formed: Vec<_> = response.regions[0]
@@ -2596,7 +2646,7 @@ mod tests {
             RULESET,
             &report,
             "[]",
-            "unit 900\nFORM 1\nEND\nunit 902\nGIVE NEW 1 2 SWOR\n",
+            "unit 900\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\nunit 902\nGIVE NEW 1 2 SWOR\n",
         )
         .expect("the ruleset loads");
 
@@ -2607,7 +2657,7 @@ mod tests {
             .find(|unit| unit.status == UnitPreviewStatus::Formed)
             .expect("the formed unit");
         assert!(
-            formed.unit.items.is_empty(),
+            !formed.unit.items.iter().any(|item| item.tag == "SWOR"),
             "a GIVE from another hex must not reach it: {:?}",
             formed.unit.items
         );
@@ -2727,7 +2777,8 @@ mod tests {
 
     #[test]
     fn form_creates_a_provisional_unit_that_its_block_names() {
-        let response = preview("unit 900\nFORM 1\nNAME UNIT \"Recruits\"\nBEHIND 1\nEND\n");
+        let response =
+            preview("unit 900\nFORM 1\nNAME UNIT \"Recruits\"\nBEHIND 1\nEND\nGIVE NEW 1 1 LEAD\n");
 
         let formed = response.regions[0]
             .units
@@ -2738,7 +2789,119 @@ mod tests {
         assert_eq!(formed.unit.name, "Recruits");
         assert!(formed.unit.own);
         assert!(formed.unit.flags.iter().any(|flag| flag == "behind"));
-        assert_eq!(formed.unit.men, 0, "nobody has been given to it yet");
+        assert_eq!(
+            formed.unit.men, 1,
+            "the leader transferred to it, which is what keeps it from dissolving"
+        );
+    }
+
+    /// A formed unit's own `BUY` has to reach the preview before dissolution can be decided, or
+    /// every unit created through the documented `rules/form` recruitment idiom would be removed
+    /// (`rules/form`: "If a new unit gains at least one recruit, the unit will form possessing any
+    /// unused silver and all the other items it was given").
+    #[test]
+    fn formed_market_purchases_are_projected_before_dissolution() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nFORM 1\nBUY 1 humans\nEND\nGIVE NEW 1 100 silver\n",
+        );
+
+        let formed = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the formed unit survives its successful recruitment");
+        assert_eq!(formed.status, UnitPreviewStatus::Formed);
+        assert_eq!(formed.unit.men, 1, "the recruit was bought");
+        assert_eq!(
+            formed
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "HUMN")
+                .map_or(0, |item| item.amount),
+            1
+        );
+        assert_eq!(
+            formed
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SILV")
+                .map_or(0, |item| item.amount),
+            100,
+            "the silver it was given stays with it, as the ITEMS column shows silver for every \
+             other unit that BUYs - the spend belongs to the SILVER column"
+        );
+    }
+
+    /// `rules/form`: "If the demand for recruits in that region that month is much higher than
+    /// the supply, ... it may not gain any recruits at all. ... If no recruits are gained at all,
+    /// the empty unit will be dissolved, and the silver and any other items it was given will
+    /// revert to the first unit you have in that region." The first unit is the first the *report*
+    /// shows, not the one that formed it - so the market here has nobody left to sell.
+    #[test]
+    fn an_empty_formed_unit_returns_its_goods_to_the_first_own_unit() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 0 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR], 10 silver [SILV]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 1 humans\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 1 10 SILV\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units.iter().any(|unit| unit.unit.unit_id == "new-1"),
+            "the empty formed unit is dissolved: {:?}",
+            units
+                .iter()
+                .map(|unit| &unit.unit.unit_id)
+                .collect::<Vec<_>>()
+        );
+
+        let amount = |id: &str, tag: &str| {
+            units
+                .iter()
+                .find(|unit| unit.unit.unit_id == id)
+                .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == tag))
+                .map_or(0, |item| item.amount)
+        };
+        assert_eq!(amount("900", "SWOR"), 3, "the first own unit receives them");
+        assert_eq!(amount("900", "SILV"), 10);
+        assert_eq!(amount("901", "SWOR"), 0, "the bystander receives nothing");
+        assert_eq!(amount("901", "SILV"), 0);
+        assert_eq!(amount("902", "SWOR"), 0, "the former gave them away");
+        assert_eq!(amount("902", "SILV"), 0);
+    }
+
+    /// The rule's condition is the resulting headcount, not whether a `BUY` was written: people
+    /// handed over by `GIVE` keep the provisional unit alive.
+    #[test]
+    fn people_given_to_a_formed_unit_keep_it_alive() {
+        let response = preview("unit 900\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n");
+
+        let formed = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("a formed unit holding people survives");
+        assert_eq!(formed.status, UnitPreviewStatus::Formed);
+        assert_eq!(formed.unit.men, 1);
     }
 
     #[test]
@@ -3098,7 +3261,7 @@ mod tests {
             2
         );
 
-        let formed = preview("unit 900\nFORM 1\nEND\nGIVE NEW 1 3 SWOR\n");
+        let formed = preview("unit 900\nFORM 1\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 1 1 LEAD\n");
         let recruit = formed.regions[0]
             .units
             .iter()
