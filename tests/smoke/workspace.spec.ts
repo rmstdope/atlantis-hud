@@ -4392,6 +4392,10 @@ test("a transported item marks the ITEMS cell as a projection", async ({ page })
 
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toHaveAttribute("title", /^was: /);
+  await expect(itemsCell).toHaveAttribute(
+    "title",
+    /Unit 14451 is not a quartermaster, so 1 PERF stay with this unit/
+  );
 });
 
 /**
