@@ -1131,6 +1131,18 @@ impl Working {
         };
 
         for (name, tag, moved) in self.tags_moved(giver, &what, &amount, reach) {
+            // `rules/magic`: "mages may not GIVE men at all", whatever the target - a discard
+            // included, since `GIVE 0`'s exception is about *transfer* restrictions and this is
+            // not one. Asked here rather than inside `tags_moved`, which `apply_transports` also
+            // calls: the rule is about GIVE alone. Per tag, so `ALL ITEMS` still hands over the
+            // equipment the mage may give.
+            if super::targets::mage_give_refused(
+                &self.units[giver].unit.skills,
+                &tag,
+                Some(&self.ruleset),
+            ) {
+                continue;
+            }
             // Re-resolved by tag rather than kept from the snapshot: an earlier tag in this same
             // loop may have removed an item ahead of this one and shifted every index after it.
             let Some(held) = self.units[giver]
@@ -2162,6 +2174,146 @@ mod tests {
             "the receiver's own leader plus the one given"
         );
         assert!(!receiver.unit.items.iter().any(|item| item.tag == "SWOR"));
+    }
+
+    /// A mage holding one leader and one sword, with an own unit to give to.
+    ///
+    /// The men must be the *first* item on each own unit's line (`count_men`,
+    /// `report/unit.rs:221`).
+    fn report_with_a_mage_and_a_neighbour(skill: &str) -> String {
+        [
+            "Foo (1) Report".to_string(),
+            String::new(),
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.".to_string(),
+            String::new(),
+            format!(
+                "* Mage (900), Foo (1), leader [LEAD], sword [SWOR]. Weight: 11. \
+                 Capacity: 0/0/15/0. Skills: {skill} 1 (30)."
+            ),
+            "* Hands (901), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.".to_string(),
+            String::new(),
+        ]
+        .join("\n")
+    }
+
+    fn preview_for_mage(skill: &str, orders: &str) -> OrdersPreviewResponse {
+        preview_over(&report_with_a_mage_and_a_neighbour(skill), orders)
+    }
+
+    /// `rules/magic`: "mages may not GIVE men at all". Neither naming the race nor asking for the
+    /// whole class moves a Foundation mage's leader, so no row changes at all.
+    #[test]
+    fn foundation_mages_keep_men_given_by_name_or_class() {
+        for orders in [
+            "unit 900\nGIVE 901 1 LEAD\n",
+            "unit 900\nGIVE 901 ALL MEN\n",
+        ] {
+            for skill in ["force [FORC]", "pattern [PATT]", "spirit [SPIR]"] {
+                let response = preview_for_mage(skill, orders);
+                assert!(
+                    response.regions.is_empty(),
+                    "{skill} / {orders} must move nothing: {:?}",
+                    response.regions
+                );
+            }
+            // The control: the same order from the same helper report under a mundane skill does
+            // change rows, so an empty `regions` above cannot pass for the wrong reason if the
+            // fixture's skill line or the order form should ever stop parsing.
+            let mundane = preview_for_mage("lumberjack [LUMB]", orders);
+            assert!(
+                !mundane.regions.is_empty(),
+                "the control: a mundane unit's {orders} does move its leader"
+            );
+        }
+    }
+
+    /// `GIVE 0` bypasses the catalogue's own un-giveable restrictions, because a discard is not a
+    /// transfer to another unit - but `rules/magic` refuses the mage's men whatever the target.
+    #[test]
+    fn a_mage_cannot_discard_men() {
+        let orders = "unit 900\nGIVE 0 1 LEAD\n";
+        let response = preview_for_mage("force [FORC]", orders);
+        assert!(
+            response.regions.is_empty(),
+            "a mage may not discard its men either: {:?}",
+            response.regions
+        );
+
+        // The control, for the same reason as the test above: the discard itself works.
+        let mundane = preview_for_mage("lumberjack [LUMB]", orders);
+        assert!(
+            !mundane.regions.is_empty(),
+            "a mundane unit does discard its leader"
+        );
+    }
+
+    /// The refusal is per tag, not per order: `ALL ITEMS` still hands over the equipment the mage
+    /// may give while its men stay behind.
+    #[test]
+    fn a_mage_giving_all_items_keeps_men_and_moves_equipment() {
+        let response = preview_for_mage("force [FORC]", "unit 900\nGIVE 901 ALL ITEMS\n");
+        let region = &response.regions[0];
+        let giver = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the giver changed");
+        let receiver = region
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "901")
+            .expect("the receiver changed");
+
+        assert_eq!(
+            giver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "LEAD")
+                .map(|item| item.amount),
+            Some(1),
+            "the mage keeps its leader: {:?}",
+            giver.unit.items
+        );
+        assert_eq!(giver.unit.men, 1, "and keeps the headcount that leader is");
+        assert!(
+            !giver.unit.items.iter().any(|item| item.tag == "SWOR"),
+            "the sword is equipment and still moves: {:?}",
+            giver.unit.items
+        );
+        assert_eq!(
+            receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .map(|item| item.amount),
+            Some(1)
+        );
+        assert!(
+            !receiver.unit.items.iter().any(|item| item.tag == "LEAD"),
+            "and no leader arrives: {:?}",
+            receiver.unit.items
+        );
+    }
+
+    /// `rules/magic`'s own exception: "The mage may be given to another faction using the GIVE UNIT
+    /// order." That is ownership rather than item movement, and the preview leaves it unmodelled
+    /// exactly as it does for any other unit (`effects.rs:1294`) - the new refusal must not turn it
+    /// into a refused man-item transfer.
+    #[test]
+    fn give_unit_remains_a_whole_unit_order_for_a_mage() {
+        let response = preview_for_mage("force [FORC]", "unit 900\nGIVE 901 UNIT\n");
+        let region = &response.regions[0];
+        assert_eq!(region.units.len(), 1, "only the giver's row is annotated");
+        let unit = &region.units[0];
+        assert!(
+            !unit.changes.iter().any(|change| change.field == "items"),
+            "handing over the unit itself moves no items: {:?}",
+            unit.changes
+        );
+        assert_eq!(unit.unit.men, 1, "and no headcount changes");
+        assert_eq!(unit.uncounted, vec!["GIVE 901 UNIT".to_string()]);
     }
 
     /// `ah-3sp7.1` taught the catalogue `MOUNT`'s five tags, so `tags_moved` can now resolve a

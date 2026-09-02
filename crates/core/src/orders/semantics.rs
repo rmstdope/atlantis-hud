@@ -48,7 +48,8 @@ use crate::orders::silver::{
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
-    give_outcome, give_reach, give_target_label, party_unit_id, GiveOutcome, GiveReach, GiveRefusal,
+    give_outcome, give_reach, give_target_label, mage_give_refused, party_unit_id, GiveOutcome,
+    GiveReach, GiveRefusal,
 };
 use crate::report::composition;
 use crate::report::model::{
@@ -2588,6 +2589,14 @@ fn apply_transfers(
             let source_doubted = source_state.doubted;
             let source_skills = source_state.skills.clone();
 
+            // `rules/magic`: "mages may not GIVE men at all". Asked against the source's *current*
+            // skills, so a later order in this same document still sees the men, the skills and
+            // the holdings the mage keeps. Deliberately not recorded as a `RefusedTransfer`: this
+            // bead adds no diagnostic, and `check_refused_transfers` must say nothing new.
+            if transfer.is_give && mage_give_refused(&source_skills, &tag, Some(ruleset)) {
+                continue;
+            }
+
             // A gift the source cannot cover is clamped here and is *not* clamped by the ledger,
             // so the difference would reach `apply_recruits` looking exactly like recruiting -
             // for a man tag only, since that is the only thing `apply_recruits` sums.
@@ -4426,6 +4435,7 @@ fn apply(
                         None,
                         reach,
                         Some(target_label.as_str()),
+                        true,
                     );
                 }
             } else {
@@ -4442,6 +4452,7 @@ fn apply(
                     None,
                     reach,
                     Some(target_label.as_str()),
+                    true,
                 );
             }
         }
@@ -4488,6 +4499,7 @@ fn apply(
                         None,
                         GiveReach::Ours,
                         None,
+                        false,
                     );
                 }
             } else {
@@ -4504,6 +4516,7 @@ fn apply(
                     from_unshown,
                     GiveReach::Ours,
                     None,
+                    false,
                 );
             }
         }
@@ -4728,6 +4741,9 @@ fn transfer(
     // How the target reads in the Silver note, for a tag whose permission cannot be established.
     // `None` for a TAKE, which never reaches that outcome.
     target_label: Option<&str>,
+    // Whether this is a GIVE rather than a TAKE. `rules/magic` refuses a mage's men on a GIVE
+    // alone; `rules/take` is a different order and is untouched by that rule.
+    is_give: bool,
 ) {
     // The same reading `silver::forecast_unit` gets, so the two surfaces cannot classify one
     // order two ways (`ah-lu0f`). `Unpriceable` is a whole class of items, or the unit itself:
@@ -4752,6 +4768,32 @@ fn transfer(
             .push(placed.line);
         return;
     };
+
+    // `rules/magic`: "mages may not GIVE men at all". Counted and followed to the end exactly as
+    // the outcome table below is - it simply moves nothing, so no balance is touched and neither
+    // `doubted` nor `uncounted` is.
+    //
+    // Asked against `skills_before_the_market` - the list `apply_transfers` projected for this
+    // hex, available because `hex_with_transfers` runs before any ledger is built - rather than
+    // against the report's own `actor.unit.skills`, which would let the ledger move men that
+    // `effects::Working::give` and `apply_transfers` both retain for a unit that took a mage's
+    // men. `None` means the merge was unfollowable, and the reported list is the most that can
+    // then be said.
+    //
+    // **It is the end-of-hex list, not a running one** (`skills_after_gifts` is assigned once,
+    // after `apply_transfers`' whole loop), where the other two surfaces ask per order. So one
+    // ordering still differs: a `GIVE` of men written *before* the `TAKE FROM <mage>` that brings
+    // the magic skill in is moved by `apply_transfers`, which had not seen the skill yet, and
+    // refused here, which has. Left as it is deliberately - the ledger is the stricter of the two,
+    // and no surface reads its man-item balance, since upkeep, the arrival warnings and
+    // `men_after_orders` all come from `apply_transfers`. Closing it means threading a running
+    // skills list into the ledger, which is a larger change than this bead's rule.
+    let holder_skills = actor
+        .skills_before_the_market()
+        .unwrap_or(&actor.unit.skills);
+    if is_give && mage_give_refused(holder_skills, &tag, ledger.ruleset) {
+        return;
+    }
 
     match give_outcome(reach, &tag, ledger.ruleset) {
         // The item is resolved and the transfer *is* counted - it simply moves nothing, exactly as
@@ -26960,6 +27002,50 @@ mod tests {
         assert_eq!(hex.find("1010").unwrap().skill_level("LUMB"), Some(1));
     }
 
+    /// `rules/magic`: "mages may not GIVE men at all". The semantic projection must retain them
+    /// too, or the units table, maintenance, production and the warnings disagree about one order.
+    ///
+    /// It deliberately records no `RefusedTransfer`: this bead adds no diagnostic, so
+    /// `check_refused_transfers` says nothing new about the invalid order.
+    #[test]
+    fn a_mage_gift_keeps_men_and_skills_in_the_semantic_projection() {
+        let giver = with_skill_pts(with_leaders(unit("1010"), 2), "FORC", 30);
+        let receiver = men_holder("2200", 1);
+        let orders = "unit 1010\nGIVE 2200 2 LEAD\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver, receiver]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        let mage = hex.find("1010").expect("the mage is in this hex");
+        assert_eq!(mage.men_after_orders, 2, "the mage keeps its two leaders");
+        assert!(
+            matches!(mage.holdings_after_gifts, HoldingsAfterGifts::Unchanged),
+            "nothing left the mage: {:?}",
+            mage.holdings_after_gifts
+        );
+        assert!(
+            matches!(mage.skills_after_gifts, SkillsAfterGifts::Unchanged),
+            "and its own skills are untouched: {:?}",
+            mage.skills_after_gifts
+        );
+        assert!(
+            mage.refused_transfers.is_empty(),
+            "the refusal is silent - this bead adds no diagnostic: {:?}",
+            mage.refused_transfers
+        );
+
+        let receiver = hex.find("2200").expect("the receiver is in this hex");
+        assert_eq!(receiver.men_after_orders, 1, "and nobody arrived");
+        assert!(matches!(
+            receiver.holdings_after_gifts,
+            HoldingsAfterGifts::Unchanged
+        ));
+        assert!(matches!(
+            receiver.skills_after_gifts,
+            SkillsAfterGifts::Unchanged
+        ));
+    }
+
     #[test]
     fn a_gift_of_goods_is_not_a_gift_of_men() {
         let giver = with_item(
@@ -27396,6 +27482,26 @@ mod tests {
         );
     }
 
+    /// The pair to `a_gift_of_every_man_is_followed_and_reported` above: the same order from a
+    /// mage moves nobody (`rules/magic`), so the receiver's skill never falls and no warning is
+    /// invented for a transfer that will not happen.
+    #[test]
+    fn a_mage_attempting_to_give_men_creates_no_arrival_warning() {
+        let region = region(vec![
+            with_skill_pts(with_leaders(unit("1010"), 5), "FORC", 30),
+            with_named_skill_pts(men_holder("3100", 10), "lumberjack", "LUMB", 180),
+        ]);
+        let orders = "unit 1010\nGIVE 3100 ALL MEN\n";
+
+        let findings = check(vec![region], orders);
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == codes::ARRIVALS_LOWER_A_SKILL),
+            "no men arrive, so no arrival warning: {findings:?}"
+        );
+    }
+
     #[test]
     fn two_skills_falling_at_once_are_two_findings() {
         let giver = men_holder("1010", 5);
@@ -27736,10 +27842,35 @@ mod tests {
         );
     }
 
+    /// The study check reads a mage's level 2 and warns about the building it is not in.
+    ///
+    /// This once arrived at level 2 by a gift of skilled leaders, which `rules/magic` refuses
+    /// (`ah-t8ei`): the only unit that can supply force-skilled men is itself a mage, and a mage
+    /// "may not GIVE men at all". So the level is now reported rather than merged - the check
+    /// under test is unchanged, and the route to it that the game does not allow is gone.
+    /// Renamed from `a_mage_diluted_up_past_level_two_by_a_gift_is_now_warned`.
     #[test]
-    fn a_mage_diluted_up_past_level_two_by_a_gift_is_now_warned() {
-        // Leaders, because `data/HUMN` stops humans at force 2 and this test is about the halved
-        // month rather than about the race ceiling (`ah-9hp7.2`).
+    fn a_mage_at_level_two_is_warned_about_the_building_it_studies_in() {
+        // Leaders, because `data/HUMN` stops humans at force 2 and this test is about the
+        // building rather than about the race ceiling (`ah-9hp7.2`).
+        let mage = with_race(
+            with_skill_pts(with_silver(unit("5"), 1000), "FORC", 105),
+            1,
+            "leader",
+            "LEAD",
+        );
+        let orders = "unit 5\nSTUDY FORC\n";
+
+        let finding = only(check(vec![region(vec![mage])], orders));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+    }
+
+    /// The rule that removed the gift above, pinned where it was lost: a mage giving its skilled
+    /// leaders to another mage moves nobody, so the receiver's own level never changes
+    /// (`rules/magic`).
+    #[test]
+    fn a_mage_cannot_raise_another_mages_level_by_giving_it_men() {
         let receiver = with_race(
             with_skill_pts(with_silver(unit("5"), 1000), "FORC", 30),
             1,
@@ -27749,9 +27880,16 @@ mod tests {
         let giver = with_skill_pts(with_race(unit("1010"), 1, "leader", "LEAD"), "FORC", 180);
         let orders = "unit 5\nSTUDY FORC\nunit 1010\nGIVE 5 1 LEAD\n";
 
-        let finding = only(check(vec![region(vec![receiver, giver])], orders));
+        let findings = check(vec![region(vec![receiver, giver])], orders);
 
-        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+        // Level 1 after the refused gift, and `rules/magic` only requires a building from level 3
+        // - so the warning the merged level 2 would have raised is absent.
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == codes::MAGIC_STUDY_OUTSIDE_BUILDING),
+            "{findings:?}"
+        );
     }
 
     // --- PRODUCE aboard a vessel that is sailing away (`ah-jk9h`, `gh-679`) ---------------------

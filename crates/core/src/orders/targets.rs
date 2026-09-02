@@ -15,6 +15,7 @@
 
 use super::forms::Party;
 use crate::movement::rules::Ruleset;
+use crate::report::model::Skill;
 
 /// Silver's tag, the one item `rules/give` exempts from the factional rule.
 const SILVER_TAG: &str = "SILV";
@@ -23,6 +24,26 @@ const SILVER_TAG: &str = "SILV";
 pub enum GiveRefusal {
     CannotChangeHands,
     MenToAnotherFaction,
+}
+
+/// Whether `rules/magic` refuses this `GIVE` of `tag` because the giver is a mage.
+///
+/// `rules/magic`: "mages may not GIVE men at all; once a unit becomes a mage (by studying one of
+/// the Foundations), the unit number is fixed. (The mage may be given to another faction using the
+/// GIVE UNIT order.)" So the refusal is about **men**, and about the item forms of `GIVE` only -
+/// `GIVE UNIT` is the rule's own exception, and TAKE, TRANSPORT and DISTRIBUTE are other orders.
+/// Callers must not put a `Selector::WholeUnit` through here.
+///
+/// A unit holding any catalogue-marked magic skill is already a mage: the derived skills all
+/// require a Foundation to begin, so accepting every magic skill also covers a report that lists a
+/// derived skill without its prerequisites. Without a ruleset nothing can be said, and the answer
+/// is `false` - the same "cannot say is not a refusal" reading [`give_outcome`] takes.
+#[must_use]
+pub fn mage_give_refused(skills: &[Skill], tag: &str, ruleset: Option<&Ruleset>) -> bool {
+    let Some(ruleset) = ruleset else {
+        return false;
+    };
+    ruleset.is_man(tag) && skills.iter().any(|skill| ruleset.is_magic(&skill.tag))
 }
 
 /// What a `GIVE`'s target is, as far as the whole report can tell.
@@ -185,6 +206,64 @@ pub fn give_outcome(reach: GiveReach, tag: &str, ruleset: Option<&Ruleset>) -> G
 mod tests {
     use super::*;
 
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
+
+    fn ruleset() -> Ruleset {
+        Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
+    }
+
+    /// A skill as a report prints it - only the tag matters to `mage_give_refused`, but the whole
+    /// value is built so the test cannot drift from the report model.
+    fn skill(name: &str, tag: &str) -> Skill {
+        Skill {
+            name: name.to_string(),
+            tag: tag.to_string(),
+            level: 1,
+            points: 30,
+        }
+    }
+
+    /// `rules/magic`: "mages may not GIVE men at all". The three Foundations, and a derived magic
+    /// skill whose holder is necessarily already a mage.
+    #[test]
+    fn a_mage_cannot_give_a_man_tag() {
+        let ruleset = ruleset();
+        for (name, tag) in [
+            ("force", "FORC"),
+            ("pattern", "PATT"),
+            ("spirit", "SPIR"),
+            ("enchant swords", "ESWO"),
+        ] {
+            assert!(
+                mage_give_refused(&[skill(name, tag)], "LEAD", Some(&ruleset)),
+                "{tag} should refuse to give men"
+            );
+        }
+    }
+
+    /// The refusal is about men and about mages, and says nothing at all without a catalogue.
+    #[test]
+    fn mage_give_refusal_is_only_for_men() {
+        let ruleset = ruleset();
+        let mage = [skill("force", "FORC")];
+        assert!(
+            !mage_give_refused(&mage, "SWOR", Some(&ruleset)),
+            "a mage may still give equipment"
+        );
+        assert!(
+            !mage_give_refused(&[skill("lumberjack", "LUMB")], "LEAD", Some(&ruleset)),
+            "a mundane unit may give men"
+        );
+        assert!(
+            !mage_give_refused(&[], "LEAD", Some(&ruleset)),
+            "a unit with no skills is no mage"
+        );
+        assert!(
+            !mage_give_refused(&mage, "LEAD", None),
+            "without a ruleset nothing can be said"
+        );
+    }
+
     /// A hex holding two of our own units, one unit we formed here this month, and an ally.
     /// `4573` is in the report and not ours; `new-1` is ours and in no report at all. `8000` is a
     /// unit the report shows in some *other* hex, and `999` is a number it never prints.
@@ -199,11 +278,6 @@ mod tests {
             |id| shown.contains(&id),
             |id| anywhere.contains(&id),
         )
-    }
-
-    fn ruleset() -> Ruleset {
-        Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
-            .expect("the committed ruleset should be usable")
     }
 
     #[test]
