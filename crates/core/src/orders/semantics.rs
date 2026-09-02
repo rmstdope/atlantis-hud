@@ -10957,7 +10957,14 @@ mod tests {
     fn receipts_in(region: &ReportRegion, orders: &str) -> BTreeMap<String, Receipts> {
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex = hex_with_transfers(region, &ordered, &[], Some(&rules), &BTreeSet::new());
+        let hex = hex_with_transfers(
+            region,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
         gather_receipts(std::slice::from_ref(&hex))
     }
 
