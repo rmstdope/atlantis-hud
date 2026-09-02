@@ -415,11 +415,6 @@ pub fn review_turn(
     let mut findings = Vec::new();
     let mut silver = Vec::new();
 
-    // Gifts of silver live in the *giver's* block, which may be anywhere in the document, so they
-    // are gathered once for the whole turn before any hex is priced. Per unit this would be
-    // quadratic in the size of a faction, on a path that runs on every keystroke.
-    let receipts = gather_receipts(report, &ordered, ruleset, &formed);
-
     // Read once for the whole report rather than per hex or per message: the unit a shortfall is
     // said of is often the one holding none of the thing, so the evidence for its plural is
     // usually somewhere else entirely (`ah-rsdz`).
@@ -443,6 +438,12 @@ pub fn review_turn(
         .iter()
         .map(|region| hex_with_transfers(region, &ordered, &formed, ruleset, &foreign_unit_ids))
         .collect();
+
+    // Silver receipts come from the settlement those hexes just ran, so every hex has to exist
+    // before any of them can be priced - the same reason the ledgers below are built in two
+    // passes. Gathered once for the whole turn rather than per unit: per unit this would be
+    // quadratic in the size of a faction, on a path that runs on every keystroke.
+    let receipts = gather_receipts(&hexes);
 
     // A `Products` line is shared by everyone producing against it, and who that is is a
     // report-wide question: a unit a vessel carries away produces where the vessel arrives, in
@@ -1573,214 +1574,46 @@ fn class_carries_silver(class: &str, ruleset: Option<&Ruleset>) -> Option<bool> 
     Some(tags.iter().any(|tag| tag == SILVER))
 }
 
-/// Every gift of silver in the document, credited to the unit it names.
+/// Every silver receipt this month's settled transfers produced, by the unit they reached.
 ///
-/// Only a gift this pass can both read and place is counted: the giver must be a unit the report
-/// shows, in the same hex as the recipient, and an `ALL` amount needs the giver's own holding to
-/// price. Anything else is silently absent rather than doubted - understating a unit's income shows
-/// red where the truth may be black and never the reverse, and it agrees exactly with what the
-/// `not-enough-silver` finding already counts.
-fn gather_receipts(
-    report: &ParsedReport,
-    ordered: &OrderedUnits,
-    ruleset: Option<&Ruleset>,
-    formed: &[Formed],
-) -> BTreeMap<String, Receipts> {
-    let located = where_the_report_shows_each_unit(report);
-    let units = units_by_id(report);
-    // Keyed exactly as `read_formed` keys its own alias table: an alias is per-hex, so the same
-    // `NEW 1` names a different unit - or none - depending on which region the giver stands in.
-    let formed_by_key: BTreeMap<(&str, &str), &Formed> = formed
-        .iter()
-        .map(|formed| {
-            (
-                (formed.unit.region_id.as_str(), formed.block.alias.as_str()),
-                formed,
-            )
-        })
-        .collect();
-
-    // Document order, so a recipient's givers read in the order the orders were written.
-    let mut givers: Vec<(&String, &UnitOrders)> = ordered.by_unit.iter().collect();
-    givers.sort_by_key(|(id, orders)| (orders.block_line, id.as_str()));
-
-    let mut receipts: BTreeMap<String, Receipts> = BTreeMap::new();
-    for (giver_id, orders) in givers {
-        let (Some(giver), Some(from)) = (
-            units.get(giver_id.as_str()),
-            located
-                .get(giver_id.as_str())
-                .map(|region| &region.region_id),
-        ) else {
-            continue;
-        };
-
-        for placed in &orders.intents {
-            if let Intent::Take {
-                from: Party::Unit(source_id),
-                what,
-                amount,
-            } = &placed.intent
-            {
-                // A named item is silver by the catalogue's own tag; a class carries it out only
-                // when it is `ALL <class>` (`rules/give` gives `EXCEPT` to the named-item forms
-                // alone) of a class the catalogue says includes silver.
-                let carries_silver = match what {
-                    Selector::Item(text) => names_silver(text, ruleset),
-                    Selector::Class(name) => {
-                        *amount == (Amount::All { except: 0 })
-                            && class_carries_silver(name, ruleset) == Some(true)
-                    }
-                    Selector::WholeUnit => false,
-                };
-                if carries_silver {
-                    read_take(
-                        receipts_of(&mut receipts, giver_id),
-                        units.get(source_id.as_str()).copied(),
-                        source_id,
-                        located
-                            .get(source_id.as_str())
-                            .map(|region| &region.region_id)
-                            == Some(from),
-                        amount,
-                    );
-                }
-                continue;
-            }
-            let Intent::Give { to, what, amount } = &placed.intent else {
-                continue;
-            };
-            // `GIVE 0` discards to nobody and a foreign unit is not ours; a class the catalogue
-            // cannot resolve, or one that does not carry silver, moves an amount that depends on
-            // classifying everything the unit holds.
-            let carries_silver = match what {
-                Selector::Item(text) => names_silver(text, ruleset),
-                Selector::Class(name) => {
-                    *amount == (Amount::All { except: 0 })
-                        && class_carries_silver(name, ruleset) == Some(true)
-                }
-                Selector::WholeUnit => false,
-            };
-            if !carries_silver {
-                continue;
-            }
-            let recipient: String = match to {
-                Party::Unit(recipient) => {
-                    // A gift from another hex is one this pass cannot see the far side of.
-                    if located
-                        .get(recipient.as_str())
-                        .map(|region| &region.region_id)
-                        != Some(from)
-                    {
-                        continue;
-                    }
-                    recipient.clone()
-                }
-                Party::New(alias) => {
-                    // The alias is per-hex, exactly as `read_formed` keys it - a gift to a
-                    // formed unit standing in another hex is skipped, just as a gift to a
-                    // reported unit elsewhere is above.
-                    if !formed_by_key.contains_key(&(from.as_str(), alias.as_str())) {
-                        continue;
-                    }
-                    format!("new-{alias}")
-                }
-                // Another faction's new unit is not a row of ours, and a discard has nobody to
-                // credit.
-                Party::Foreign { .. } | Party::Discard => continue,
-            };
-
-            let held = giver
-                .items
-                .iter()
-                .find(|item| item.tag.eq_ignore_ascii_case(SILVER))
-                .map_or(0, |item| item.amount);
-            let quantity = match amount {
-                Amount::Exact(count) => *count,
-                Amount::All { except } => (held - except).max(0),
-            };
-            if quantity <= 0 {
-                continue;
-            }
-
-            let entry = receipts_of(&mut receipts, &recipient);
-            entry.silver = entry.silver.saturating_add(quantity);
-            let label = format!("{} ({})", giver.name, giver.unit_id);
-            if !entry.givers.contains(&label) {
-                entry.givers.push(label);
-            }
-        }
-    }
-
-    receipts
-}
-
-/// One unit's entry in the receipts, created empty the first time it is named.
-fn receipts_of<'a>(
-    receipts: &'a mut BTreeMap<String, Receipts>,
-    unit_id: &str,
-) -> &'a mut Receipts {
-    receipts.entry(unit_id.to_string()).or_default()
-}
-
-/// Credits one `TAKE ... SILV` to the taker, or records why it could not be counted.
+/// Collected from `Ordered::transfer_receipts`, which `apply_transfers` wrote while settling each
+/// hex's Give phase in report order (`ah-3mwm`). Reading the settlement rather than the document a
+/// second time is what makes the column show the quantity that actually moved: a `GIVE` and a
+/// `TAKE` competing for one finite holding used both to be credited in full.
 ///
-/// A source the report does not show in this hex is counted too, onto `taken_unshown`, so that the
-/// column tells the same story as the ledger it displays figures from (`ah-awcm`). Its own sentence
-/// says the source is unverifiable.
-fn read_take(
-    entry: &mut Receipts,
-    source: Option<&ReportUnit>,
-    source_id: &str,
-    in_this_hex: bool,
-    amount: &Amount,
-) {
-    if source.is_some_and(|source| !source.own) {
-        return;
-    }
-    let (Some(source), true) = (source, in_this_hex) else {
-        // A source the report does not show here: the ledger credits a stated quantity outright
-        // and declines an `ALL`, and the column follows it exactly rather than telling a second
-        // story about figures the ledger settles (`ah-awcm`).
-        if let TransferShape::Exact(quantity) =
-            transfer_shape(&Selector::Item(SILVER.to_string()), amount)
-        {
-            if quantity > 0 {
-                entry.taken_unshown = entry.taken_unshown.saturating_add(quantity);
-                let label = format!("unit {source_id}");
-                if !entry.taken_unshown_from.contains(&label) {
-                    entry.taken_unshown_from.push(label);
+/// A receipt this pass cannot count - from another hex, from a foreign unit, or of an `ALL` amount
+/// whose source it cannot price - is silently absent rather than doubted, which understates income
+/// and never overstates it.
+fn gather_receipts(hexes: &[Hex<'_>]) -> BTreeMap<String, Receipts> {
+    let mut result: BTreeMap<String, Receipts> = BTreeMap::new();
+    for hex in hexes {
+        for ordered in &hex.units {
+            let receipts = &ordered.transfer_receipts;
+            if receipts == &Receipts::default() {
+                continue;
+            }
+            // Merged rather than inserted: a formed unit's id is the synthetic `new-{alias}`,
+            // which is per-hex, so two regions can each hold a unit of that name. Replacing the
+            // entry would silently drop one region's receipts.
+            let entry = result.entry(ordered.unit.unit_id.clone()).or_default();
+            entry.silver = entry.silver.saturating_add(receipts.silver);
+            entry.taken = entry.taken.saturating_add(receipts.taken);
+            entry.taken_unshown = entry.taken_unshown.saturating_add(receipts.taken_unshown);
+            entry.take_all_unpriceable |= receipts.take_all_unpriceable;
+            for (into, from) in [
+                (&mut entry.givers, &receipts.givers),
+                (&mut entry.taken_from, &receipts.taken_from),
+                (&mut entry.taken_unshown_from, &receipts.taken_unshown_from),
+            ] {
+                for label in from {
+                    if !into.contains(label) {
+                        into.push(label.clone());
+                    }
                 }
             }
         }
-        return;
-    };
-    match transfer_shape(&Selector::Item(SILVER.to_string()), amount) {
-        // What the source will have left to give depends on its own month, which this pass has
-        // not run.
-        TransferShape::All { .. } => entry.take_all_unpriceable = true,
-        TransferShape::Exact(quantity) => {
-            if quantity <= 0 {
-                return;
-            }
-            entry.taken = entry.taken.saturating_add(quantity);
-            let label = format!("{} ({})", source.name, source.unit_id);
-            if !entry.taken_from.contains(&label) {
-                entry.taken_from.push(label);
-            }
-        }
-        // `Selector::Item` above never reads as a whole class.
-        TransferShape::Unpriceable => {}
     }
-}
-
-/// Whether an order's item argument names silver, by the catalogue where there is one and by the
-/// item's own tag and name where there is not.
-fn names_silver(text: &str, ruleset: Option<&Ruleset>) -> bool {
-    match ruleset.and_then(|ruleset| ruleset.find_item(text)) {
-        Some(item) => item.tag.eq_ignore_ascii_case(SILVER),
-        None => names_the_same_item(text, SILVER, "silver"),
-    }
+    result
 }
 
 /// Every unit block in the document, by unit number.
@@ -1922,6 +1755,10 @@ struct Ordered<'a> {
     men_after_orders: i64,
     /// How many men joined this unit this month, by each route. See `Arrivals`.
     arrivals: Arrivals,
+    /// The silver this unit's own settled transfers moved into it, written by `apply_transfers`
+    /// from the quantities it actually moved rather than from the quantities the orders asked for
+    /// (`ah-3mwm`). `gather_receipts` collects these into the map the SILVER column reads.
+    transfer_receipts: Receipts,
 }
 
 impl<'a> Hex<'a> {
@@ -1948,6 +1785,7 @@ impl<'a> Hex<'a> {
                     refused_transfers: Vec::new(),
                     men_after_orders: unit.men,
                     arrivals: Arrivals::default(),
+                    transfer_receipts: Receipts::default(),
                 }
             })
             .collect();
@@ -1970,6 +1808,7 @@ impl<'a> Hex<'a> {
                     refused_transfers: Vec::new(),
                     men_after_orders: formed.unit.men,
                     arrivals: Arrivals::default(),
+                    transfer_receipts: Receipts::default(),
                 }),
         );
         Self { region, units }
@@ -2262,9 +2101,10 @@ fn holding_items(unit: &ReportUnit, state: &Working) -> Vec<ItemAmount> {
 
 /// Merges this month's `GIVE` and `TAKE` orders into the units of one hex.
 ///
-/// Walks the hex's orders in document order and rewrites each affected unit's
-/// `skills_after_gifts` and `holdings_after_gifts`. Document order rather than the game's own -
-/// see *Known traps* in `ah-z73s.2`'s plan.
+/// Walks the hex's orders in the game's own order - `rules/sequenceofevents` processes units
+/// "in the order they appear on the report" within the Give phase, and each actor's own lines in
+/// the order they were written - and rewrites each affected unit's `skills_after_gifts` and
+/// `holdings_after_gifts` (`ah-3mwm`).
 ///
 /// Without a ruleset this returns at once: there is no telling which item tags name people or
 /// which class an item belongs to, and every check that reads the projection already returns
@@ -2334,14 +2174,23 @@ fn apply_transfers(
         // Nothing moves in this hex, so nothing is allocated for it.
         return;
     }
-    // Ties cannot occur: one order per line.
-    transfers.sort_by_key(|transfer| transfer.line);
+    // `rules/sequenceofevents`: GIVE and TAKE are one Give phase, and where nothing else orders
+    // units within it "units will be processed in the order they appear on the report" -
+    // `transfer.position` is exactly that order, since `Hex::read` fills `units` from
+    // `region.units` and appends this month's formed units after them. The line is the secondary
+    // key alone: it still settles several transfers written by one actor in the order they were
+    // written. Ties cannot occur: one order per line.
+    transfers.sort_by_key(|transfer| (transfer.position, transfer.line));
 
     let mut working: BTreeMap<usize, Working> = BTreeMap::new();
     // Accumulated rather than written straight onto `units[position].refused_transfers`: the loop
     // below borrows `units` immutably through `seed_working(units, position)` while it runs, so a
     // second, mutable borrow through `units[position]` cannot live alongside it.
     let mut refused_by_position: Vec<(usize, RefusedTransfer)> = Vec::new();
+    // Silver credited by the settlement itself, for the same reason `refused_by_position` is
+    // accumulated rather than written straight onto `units`: the loop below holds `units`
+    // immutably. Published onto `Ordered::transfer_receipts` alongside the rest (`ah-3mwm`).
+    let mut receipts_by_position: BTreeMap<usize, Receipts> = BTreeMap::new();
 
     for transfer in &transfers {
         if !transfer.is_give
@@ -2391,6 +2240,22 @@ fn apply_transfers(
                     (Some(entry), Amount::Exact(count)) if *count > 0 => {
                         let tag = entry.tag.to_ascii_uppercase();
                         let is_man = ruleset.is_man(&tag);
+                        if tag.eq_ignore_ascii_case(SILVER) {
+                            // `ah-awcm`: the ledger credits a stated take from a source it cannot
+                            // see, and the column follows it rather than telling a second story.
+                            // The report gives no name for a unit it does not show, so the label
+                            // is the number alone; an alias that was never formed names nothing
+                            // at all and is left uncredited.
+                            if let Party::Unit(id) = transfer.party {
+                                let entry =
+                                    receipts_by_position.entry(receiver_position).or_default();
+                                entry.taken_unshown = entry.taken_unshown.saturating_add(*count);
+                                let label = format!("unit {id}");
+                                if !entry.taken_unshown_from.contains(&label) {
+                                    entry.taken_unshown_from.push(label);
+                                }
+                            }
+                        }
                         let receiver_state = working
                             .entry(receiver_position)
                             .or_insert_with(|| seed_working(units, receiver_position));
@@ -2489,6 +2354,41 @@ fn apply_transfers(
                         .men_clamped = true;
                 }
             }
+            // The SILVER column's receipts, taken from this settlement rather than from a second
+            // walk of the document, so the figure it shows is the quantity that actually moved
+            // once report order had chosen between competing transfers (`ah-3mwm`).
+            if tag.eq_ignore_ascii_case(SILVER) {
+                let source_label = {
+                    let source = units[source].unit;
+                    format!("{} ({})", source.name, source.unit_id)
+                };
+                if transfer.is_give {
+                    if let GiveTarget::Unit(receiver_position) = receiver {
+                        if moved > 0 {
+                            let entry = receipts_by_position.entry(receiver_position).or_default();
+                            entry.silver = entry.silver.saturating_add(moved);
+                            if !entry.givers.contains(&source_label) {
+                                entry.givers.push(source_label);
+                            }
+                        }
+                    }
+                } else if matches!(transfer.amount, Amount::All { .. }) {
+                    // `ah-awcm`: what the source will have left to give depends on its own month,
+                    // which this pass has not run - so an `ALL` take silences the figure rather
+                    // than promising the report's own holding.
+                    receipts_by_position
+                        .entry(transfer.position)
+                        .or_default()
+                        .take_all_unpriceable = true;
+                } else if moved > 0 {
+                    let entry = receipts_by_position.entry(transfer.position).or_default();
+                    entry.taken = entry.taken.saturating_add(moved);
+                    if !entry.taken_from.contains(&source_label) {
+                        entry.taken_from.push(source_label);
+                    }
+                }
+            }
+
             if moved == 0 {
                 continue;
             }
@@ -2586,6 +2486,10 @@ fn apply_transfers(
 
     for (position, refused) in refused_by_position {
         units[position].refused_transfers.push(refused);
+    }
+
+    for (position, receipts) in receipts_by_position {
+        units[position].transfer_receipts = receipts;
     }
 
     for (position, state) in working {
@@ -3033,10 +2937,11 @@ struct Ledger<'a> {
     /// it already makes. Steps 5 and 6 draw on the same food, and a third call to
     /// `feed_from_faction_food` would be a third answer to one question.
     faction_food: FactionFoodPass,
-    /// What this month's `TAKE`, `BUY`, `SELL` and `WITHDRAW` move into or out of each unit's item
-    /// list. Deliberately **not** `GIVE`: the orders preview applies gifts itself, with the
-    /// receiver and men handling this ledger cannot express, and recording them here would
-    /// double-apply them (`ah-agbm`).
+    /// What this month's `BUY`, `SELL` and `WITHDRAW` move into or out of each unit's item list.
+    /// Deliberately **not** `GIVE` or `TAKE`: the orders preview settles the whole Give phase
+    /// itself, in the report order `rules/sequenceofevents` gives it and with the receiver and men
+    /// handling this ledger cannot express, so recording either here would double-apply it
+    /// (`ah-agbm`, `ah-3mwm`).
     pub(crate) movements: Vec<ItemMovement>,
     /// Goods a resolvable, non-Nexus `WITHDRAW` order credited this month, keyed by unit and
     /// normalized item tag exactly as `credit` normalizes them. Movement-phase state only
@@ -3135,9 +3040,6 @@ pub(crate) struct ItemMovement {
     pub name: String,
     /// Signed: positive into the unit, negative out of it.
     pub delta: i64,
-    /// For a `TAKE` from a unit the report does not show in this hex, that unit's number - so the
-    /// hover can say the source is unverifiable. `None` for everything else.
-    pub from_unshown: Option<String>,
     /// Set on the movement carrying what a `PRODUCE` order makes, so the hover can say the goods
     /// arrive in the month's last phase and cannot be spent this month. `false` on every other
     /// movement, the materials that same order consumes included.
@@ -3155,15 +3057,6 @@ pub(crate) struct Created {
     pub fewest: i64,
     /// Whether the skill calls this a summoning, which decides the hover's verb.
     pub summoned: bool,
-}
-
-/// Whether a call to [`transfer`] should be recorded as a movement for the orders preview. `GIVE`
-/// is applied by the preview's own token walk, so recording it here would move the goods twice
-/// (`ah-agbm`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RecordMovement {
-    Yes,
-    No,
 }
 
 /// Whether any *foreign* unit in this hex is on guard.
@@ -3363,7 +3256,9 @@ fn ledger_for_with_production<'a>(
     ledger
 }
 
-/// What this month's `TAKE`, `BUY`, `SELL` and `WITHDRAW` do to each unit's item list.
+/// What this month's `BUY`, `SELL` and `WITHDRAW` do to each unit's item list. `GIVE` and `TAKE`
+/// are the preview's own, settled in report order by `effects::Working::apply_transfers`
+/// (`ah-3mwm`).
 ///
 /// Built from the same per-hex `Ledger` the warnings and the Silver column read, so the ITEMS
 /// column cannot settle an oversubscribed market line differently from the SILVER column beside it
@@ -3437,7 +3332,8 @@ pub(crate) fn item_effects(
     result
 }
 
-/// One unit's share of [`item_effects`]'s answer (`ah-agbm`).
+/// One unit's share of [`item_effects`]'s answer - what its `BUY`, `SELL`, `WITHDRAW`, `PRODUCE`,
+/// `BUILD` and `CAST` orders move (`ah-agbm`). Its `GIVE` and `TAKE` are not here (`ah-3mwm`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct UnitItemEffects {
     pub moved: Vec<ItemMovement>,
@@ -4247,8 +4143,6 @@ fn apply(
                         &Amount::All { except: 0 },
                         who.clone(),
                         receiver.clone(),
-                        RecordMovement::No,
-                        None,
                         reach,
                         true,
                     );
@@ -4263,8 +4157,6 @@ fn apply(
                     amount,
                     who.clone(),
                     receiver,
-                    RecordMovement::No,
-                    None,
                     reach,
                     true,
                 );
@@ -4288,13 +4180,6 @@ fn apply(
                     .push(placed.line);
                 return;
             }
-            // Named only when the order pointed at a real unit number the report does not show
-            // here (`ah-agbm`) - not for `NEW`, `FACTION`'s new unit, or `0`, none of which are
-            // "a source the report does not show".
-            let from_unshown = match (from, &source) {
-                (Party::Unit(id), None) => Some(id.clone()),
-                _ => None,
-            };
             let source = source.unwrap_or_default();
             // A TAKE has no discard target - the source is always a live unit, so the game's
             // refusal always applies.
@@ -4309,8 +4194,6 @@ fn apply(
                         &Amount::All { except: 0 },
                         source.clone(),
                         Some(who.clone()),
-                        RecordMovement::Yes,
-                        None,
                         GiveReach::Ours,
                         false,
                     );
@@ -4325,8 +4208,6 @@ fn apply(
                     amount,
                     source,
                     Some(who.clone()),
-                    RecordMovement::Yes,
-                    from_unshown,
                     GiveReach::Ours,
                     false,
                 );
@@ -4414,7 +4295,6 @@ fn apply(
                     tag: tag.clone(),
                     name: item_name(&tag, hex, ruleset),
                     delta: *count,
-                    from_unshown: None,
                     produced: false,
                     created: None,
                 });
@@ -4544,10 +4424,6 @@ fn transfer(
     amount: &Amount,
     from: String,
     to: Option<String>,
-    record: RecordMovement,
-    // For `TAKE` from a unit the report does not show here: that unit's number, carried onto the
-    // `to` end's movement so the hover can say the source is unverifiable (`ah-agbm`).
-    from_unshown: Option<String>,
     // The target reach controls inherent item refusal and the men-to-another-faction rule.
     reach: GiveReach,
     // Whether this is a GIVE rather than a TAKE. `rules/magic` refuses a mage's men on a GIVE
@@ -4630,31 +4506,9 @@ fn transfer(
 
     if !from.is_empty() {
         charge(ledger, &from, &tag, quantity, placed);
-        if record == RecordMovement::Yes && quantity != 0 {
-            ledger.movements.push(ItemMovement {
-                unit_id: from.clone(),
-                tag: tag.clone(),
-                name: item_name(&tag, hex, ledger.ruleset),
-                delta: -quantity,
-                from_unshown: None,
-                produced: false,
-                created: None,
-            });
-        }
     }
     if let Some(to) = to {
         credit(ledger, &to, &tag, quantity);
-        if record == RecordMovement::Yes && quantity != 0 {
-            ledger.movements.push(ItemMovement {
-                unit_id: to,
-                tag: tag.clone(),
-                name: item_name(&tag, hex, ledger.ruleset),
-                delta: quantity,
-                from_unshown,
-                produced: false,
-                created: None,
-            });
-        }
     }
 }
 
@@ -4737,7 +4591,6 @@ fn buy(
             tag: tag.clone(),
             name: item_name(&tag, hex, ledger.ruleset),
             delta: bought,
-            from_unshown: None,
             produced: false,
             created: None,
         });
@@ -4818,7 +4671,6 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
                 tag: deferred.tag.clone(),
                 name: item_name(&deferred.tag, hex, ledger.ruleset),
                 delta: plan.bought,
-                from_unshown: None,
                 produced: false,
                 created: None,
             });
@@ -4961,7 +4813,6 @@ fn produce(
                 tag: material.tag.to_ascii_uppercase(),
                 name: item_name(&material.tag, hex, ruleset),
                 delta: -material.amount,
-                from_unshown: None,
                 produced: false,
                 created: None,
             });
@@ -4973,7 +4824,6 @@ fn produce(
             name: item_name(&tag, hex, ruleset),
             tag,
             delta: plan.made,
-            from_unshown: None,
             produced: true,
             created: None,
         });
@@ -5197,7 +5047,6 @@ fn build(
         tag: tag.clone(),
         name: name.clone(),
         delta: -plan.done,
-        from_unshown: None,
         produced: false,
         created: None,
     });
@@ -5283,7 +5132,6 @@ fn sell(
             tag: tag.clone(),
             name: item_name(&tag, hex, ledger.ruleset),
             delta: -line.quantity,
-            from_unshown: None,
             produced: false,
             created: None,
         });
@@ -5421,7 +5269,6 @@ fn cast(
                 // number (`ah-ofpb.5`, round 1 Q4). `plan.materials` is already `charged` times the
                 // per-item amount.
                 delta: -material.amount,
-                from_unshown: None,
                 produced: false,
                 created: None,
             });
@@ -5435,7 +5282,6 @@ fn cast(
             name: item_name(&tag, hex, ruleset),
             tag,
             delta: plan.made,
-            from_unshown: None,
             produced: false,
             created: Some(Created {
                 fewest: plan.made_certain,
@@ -10797,17 +10643,23 @@ mod tests {
         assert_eq!(forecast("4001").doubt, None);
     }
 
+    /// The receipts one hex's settled transfers produce - `gather_receipts` reading exactly what
+    /// `apply_transfers` moved, which is how `review_turn` reaches them too.
+    fn receipts_in(region: &ReportRegion, orders: &str) -> BTreeMap<String, Receipts> {
+        let ordered = OrderedUnits::read(orders);
+        let rules = ruleset();
+        let hex = hex_with_transfers(region, &ordered, &[], Some(&rules), &BTreeSet::new());
+        gather_receipts(std::slice::from_ref(&hex))
+    }
+
     /// `ah-awcm`: a `TAKE` of a stated quantity from a unit the report shows in this hex is the
     /// taker's income, exactly as a gift written from the other end would be.
     #[test]
     fn a_take_from_a_unit_in_this_hex_is_counted() {
-        let report = ParsedReport {
-            regions: vec![region(vec![with_silver(unit("2390"), 500), unit("2391")])],
-            ..Default::default()
-        };
+        let region = region(vec![with_silver(unit("2390"), 500), unit("2391")]);
         let source = "unit 2391\nTAKE FROM 2390 100 SILV\n";
 
-        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()), &[]);
+        let receipts = receipts_in(&region, source);
 
         let taker = receipts.get("2391").expect("the taker has receipts");
         assert_eq!(taker.taken, 100);
@@ -10821,13 +10673,10 @@ mod tests {
     /// take the column ignored still moved the figures it displays.
     #[test]
     fn a_take_from_a_unit_the_report_does_not_show_here_is_counted() {
-        let report = ParsedReport {
-            regions: vec![region(vec![unit("2391")])],
-            ..Default::default()
-        };
+        let region = region(vec![unit("2391")]);
         let source = "unit 2391\nTAKE FROM 999 100 SILV\n";
 
-        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()), &[]);
+        let receipts = receipts_in(&region, source);
 
         let taker = receipts.get("2391").expect("the taker has receipts");
         assert_eq!(taker.taken_unshown, 100);
@@ -10844,13 +10693,10 @@ mod tests {
     /// knows, and the ledger declines to credit it. The column declines with it.
     #[test]
     fn a_take_of_all_silver_from_an_unshown_source_is_not_counted() {
-        let report = ParsedReport {
-            regions: vec![region(vec![unit("2391")])],
-            ..Default::default()
-        };
+        let region = region(vec![unit("2391")]);
         let source = "unit 2391\nTAKE FROM 999 ALL SILV\n";
 
-        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()), &[]);
+        let receipts = receipts_in(&region, source);
 
         let taker = receipts.get("2391").cloned().unwrap_or_default();
         assert_eq!(taker.taken_unshown, 0);
@@ -10861,13 +10707,10 @@ mod tests {
     /// `ah-awcm`: what another unit will have left to give depends on its own month.
     #[test]
     fn a_take_of_all_silver_cannot_be_priced() {
-        let report = ParsedReport {
-            regions: vec![region(vec![with_silver(unit("2390"), 500), unit("2391")])],
-            ..Default::default()
-        };
+        let region = region(vec![with_silver(unit("2390"), 500), unit("2391")]);
         let source = "unit 2391\nTAKE FROM 2390 ALL SILV\n";
 
-        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()), &[]);
+        let receipts = receipts_in(&region, source);
 
         let taker = receipts.get("2391").expect("the taker has receipts");
         assert!(taker.take_all_unpriceable);
@@ -10878,13 +10721,10 @@ mod tests {
     /// of goods is.
     #[test]
     fn a_take_of_goods_is_not_silver() {
-        let report = ParsedReport {
-            regions: vec![region(vec![with_silver(unit("2390"), 500), unit("2391")])],
-            ..Default::default()
-        };
+        let region = region(vec![with_silver(unit("2390"), 500), unit("2391")]);
         let source = "unit 2391\nTAKE FROM 2390 10 GRAI\n";
 
-        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()), &[]);
+        let receipts = receipts_in(&region, source);
 
         let taker = receipts.get("2391").cloned().unwrap_or_default();
         assert_eq!(taker.taken, 0);
@@ -10942,13 +10782,10 @@ mod tests {
     /// its own month, which this pass has not run.
     #[test]
     fn a_take_of_all_normal_is_unpriceable_like_a_named_take_of_all_silver() {
-        let report = ParsedReport {
-            regions: vec![region(vec![with_silver(unit("2390"), 500), unit("2391")])],
-            ..Default::default()
-        };
+        let region = region(vec![with_silver(unit("2390"), 500), unit("2391")]);
         let source = "unit 2391\nTAKE FROM 2390 ALL NORMAL\n";
 
-        let receipts = gather_receipts(&report, &OrderedUnits::read(source), Some(&ruleset()), &[]);
+        let receipts = receipts_in(&region, source);
 
         let taker = receipts.get("2391").expect("the taker has receipts");
         assert!(taker.take_all_unpriceable);
@@ -14743,8 +14580,12 @@ mod tests {
             });
         }
 
+        /// A `TAKE` moves the ledger's balance and records **no** movement: the preview settles
+        /// the whole Give phase itself now, in report order, so a movement recorded here would
+        /// move the same goods a second time (`ah-3mwm`). The items reaching the taker's row are
+        /// pinned by `effects::tests::report_ordered_transfers` instead.
         #[test]
-        fn a_take_records_the_movement_it_makes() {
+        fn a_take_moves_the_balance_and_records_no_movement() {
             let hex_region = region(vec![
                 with_item(unit("6567"), 500, "grain", "GRAI"),
                 unit("2391"),
@@ -14753,17 +14594,17 @@ mod tests {
                 hex_region,
                 "unit 2391\nTAKE FROM 6567 100 GRAI\n",
                 |ledger| {
+                    // The taker's 101 is the one grain every fixture unit holds to pay its
+                    // upkeep, plus the hundred that moved; the source's 500 is what `with_item`
+                    // set in place of that grain, less the same hundred.
+                    assert_eq!(balance_of(ledger, "2391", "GRAI"), 101, "the taker gains");
+                    assert_eq!(balance_of(ledger, "6567", "GRAI"), 400, "the source parts");
                     assert!(
-                        ledger.movements.contains(&ItemMovement {
-                            unit_id: "2391".to_string(),
-                            tag: "GRAI".to_string(),
-                            name: "grain".to_string(),
-                            delta: 100,
-                            from_unshown: None,
-                            produced: false,
-                            created: None,
-                        }),
-                        "the taker's own gain should be among the recorded movements: {:?}",
+                        !ledger
+                            .movements
+                            .iter()
+                            .any(|movement| movement.tag == "GRAI"),
+                        "the preview owns this transfer: {:?}",
                         ledger.movements
                     );
                 },
@@ -14794,7 +14635,6 @@ mod tests {
                             tag: "HORS".to_string(),
                             name: "horse".to_string(),
                             delta: 8,
-                            from_unshown: None,
                             produced: false,
                             created: None,
                         })
@@ -14806,7 +14646,6 @@ mod tests {
                             tag: "HORS".to_string(),
                             name: "horse".to_string(),
                             delta: 4,
-                            from_unshown: None,
                             produced: false,
                             created: None,
                         })
@@ -14863,7 +14702,6 @@ mod tests {
                         tag: "FUR".to_string(),
                         name: "fur".to_string(),
                         delta: -15,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }]
@@ -15131,7 +14969,6 @@ mod tests {
                         tag: "GRAI".to_string(),
                         name: "grain".to_string(),
                         delta: 8,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }]
@@ -15183,7 +15020,6 @@ mod tests {
                         tag: "WSHD".to_string(),
                         name: "wooden shield".to_string(),
                         delta: 6,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }],
@@ -15207,7 +15043,6 @@ mod tests {
                         tag: "IRON".to_string(),
                         name: "iron".to_string(),
                         delta: -8,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15244,7 +15079,6 @@ mod tests {
                         tag: "SWOR".to_string(),
                         name: "sword".to_string(),
                         delta: 8,
-                        from_unshown: None,
                         produced: true,
                         created: None,
                     }),
@@ -15271,7 +15105,6 @@ mod tests {
                             tag: "IRON".to_string(),
                             name: "iron".to_string(),
                             delta: -5,
-                            from_unshown: None,
                             produced: false,
                             created: None,
                         },
@@ -15280,7 +15113,6 @@ mod tests {
                             tag: "SWOR".to_string(),
                             name: "sword".to_string(),
                             delta: 5,
-                            from_unshown: None,
                             produced: true,
                             created: None,
                         },
@@ -15322,7 +15154,6 @@ mod tests {
                         tag: "SWOR".to_string(),
                         name: "sword".to_string(),
                         delta: -15,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15562,7 +15393,6 @@ mod tests {
                         tag: "WOOD".to_string(),
                         name: "wood".to_string(),
                         delta: -30,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15633,7 +15463,6 @@ mod tests {
                         tag: "WOOD".to_string(),
                         name: "wood".to_string(),
                         delta: -30,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }],
@@ -15653,7 +15482,6 @@ mod tests {
                         tag: "WOOD".to_string(),
                         name: "wood".to_string(),
                         delta: -15,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15678,7 +15506,6 @@ mod tests {
                         tag: "WOOD".to_string(),
                         name: "wood".to_string(),
                         delta: -6,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15770,7 +15597,6 @@ mod tests {
                         tag: "WOOD".to_string(),
                         name: "wood".to_string(),
                         delta: -10,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15857,7 +15683,6 @@ mod tests {
                         tag: "STON".to_string(),
                         name: "stone".to_string(),
                         delta: -10,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15910,7 +15735,6 @@ mod tests {
                             tag: "WOOD".to_string(),
                             name: "wood".to_string(),
                             delta: -30,
-                            from_unshown: None,
                             produced: false,
                             created: None,
                         }),
@@ -25926,6 +25750,273 @@ mod tests {
         hex
     }
 
+    /// `rules/sequenceofevents`: GIVE and TAKE are one Give phase, and where nothing else orders
+    /// units within a phase "units will be processed in the order they appear on the report". So a
+    /// finite holding contested by a GIVE from the unit the report lists first and a TAKE written
+    /// earlier in the document is settled for the reported unit, and reversing the document's
+    /// blocks changes nothing.
+    #[test]
+    fn competing_give_and_take_transfers_follow_report_order_in_checks() {
+        // A is listed first and holds everything the other two want: ten swords and five orcs.
+        fn source() -> ReportUnit {
+            with_item(
+                with_race(unit("1234"), 5, "orcs", "ORC"),
+                10,
+                "swords",
+                "SWOR",
+            )
+        }
+        let taker_block = "unit 2200\nTAKE FROM 1234 10 SWOR\nTAKE FROM 1234 5 ORC\n";
+        let giver_block = "unit 1234\nGIVE 3300 10 SWOR\nGIVE 3300 5 ORC\n";
+
+        for (label, orders) in [
+            (
+                "the take written first",
+                format!("{taker_block}{giver_block}"),
+            ),
+            (
+                "the give written first",
+                format!("{giver_block}{taker_block}"),
+            ),
+        ] {
+            let region = region(vec![
+                source(),
+                with_race(unit("2200"), 5, "orcs", "ORC"),
+                // The recipient knows lumberjack 3, so the five unskilled men it wins dilute it.
+                with_skill_pts(with_race(unit("3300"), 5, "orcs", "ORC"), "LUMB", 180),
+            ]);
+            let ordered = OrderedUnits::read(&orders);
+            let hex = hex_after_gifts(&region, &ordered);
+
+            let recipient = hex.find("3300").unwrap();
+            let holdings = recipient
+                .after_gifts()
+                .unwrap_or_else(|| panic!("{label}: the recipient's holdings moved"));
+            assert_eq!(item_amount(&holdings.items, "SWOR"), Some(10), "{label}");
+            assert_eq!(item_amount(&holdings.items, "ORC"), Some(10), "{label}");
+            assert_eq!(recipient.men_after_orders, 10, "{label}");
+            assert_eq!(
+                recipient.skill_level("LUMB"),
+                Some(2),
+                "{label}: five unskilled arrivals halve 180 points"
+            );
+
+            let taker = hex.find("2200").unwrap();
+            assert_eq!(
+                taker
+                    .after_gifts()
+                    .and_then(|h| item_amount(&h.items, "SWOR")),
+                None,
+                "{label}: the losing TAKE moved nothing"
+            );
+            assert_eq!(taker.men_after_orders, 5, "{label}");
+            assert_eq!(taker.skill_level("LUMB"), None, "{label}");
+
+            // And a warning that reads that projection agrees: the diluted unit is the recipient
+            // the report order chose, not the taker that wrote its line first.
+            let review = review_turn(
+                &report(vec![region.clone()]),
+                &orders,
+                Some(&ruleset()),
+                disabling_all(&[codes::UNIT_DOES_NOTHING, codes::NOT_ENOUGH_ITEMS]),
+            );
+            let told: Vec<&Finding> = review
+                .findings
+                .iter()
+                .filter(|finding| finding.code == codes::ARRIVALS_LOWER_A_SKILL)
+                .collect();
+            assert_eq!(told.len(), 1, "{label}: {:?}", codes(&review.findings));
+            assert_eq!(told[0].unit_id.as_deref(), Some("3300"), "{label}");
+        }
+    }
+
+    /// The SILVER column's receipts come from the same settlement, so it agrees with the report
+    /// order the projection now follows: the giver's 100 silver reaches the recipient, and the
+    /// TAKE written first gets nothing rather than being credited the same coins a second time.
+    #[test]
+    fn competing_give_and_take_transfers_follow_report_order_in_silver() {
+        let taker_block = "unit 2200\nTAKE FROM 1234 100 SILV\n";
+        let giver_block = "unit 1234\nGIVE 3300 100 SILV\n";
+
+        for (label, orders) in [
+            (
+                "the take written first",
+                format!("{taker_block}{giver_block}"),
+            ),
+            (
+                "the give written first",
+                format!("{giver_block}{taker_block}"),
+            ),
+        ] {
+            let region = region(vec![
+                with_item(unit("1234"), 100, "silver", "SILV"),
+                unit("2200"),
+                unit("3300"),
+            ]);
+            let review = review_turn(
+                &report(vec![region]),
+                &orders,
+                Some(&ruleset()),
+                disabling_all(&[codes::UNIT_DOES_NOTHING, codes::NOT_ENOUGH_ITEMS]),
+            );
+            let forecast = |id: &str| {
+                review
+                    .silver
+                    .iter()
+                    .find(|forecast| forecast.unit_id == id)
+                    .cloned()
+                    .unwrap_or_else(|| panic!("{label}: no forecast for {id}"))
+            };
+
+            let recipient = forecast("3300");
+            assert_eq!(recipient.received, 100, "{label}");
+            assert_eq!(
+                recipient.givers,
+                ["Unit 1234 (1234)".to_string()],
+                "{label}"
+            );
+
+            let taker = forecast("2200");
+            assert_eq!(taker.received, 0, "{label}");
+            assert_eq!(
+                taker.taken, 0,
+                "{label}: the source had nothing left by the time the TAKE ran"
+            );
+            assert!(taker.taken_from.is_empty(), "{label}");
+        }
+    }
+
+    /// Finding 1 of this bead's review, and the navigator's decision on it (2026-09-02): the
+    /// strict answer ships.
+    ///
+    /// `rules/sequenceofevents` runs *Give orders* before *Tax orders*, so a unit cannot hand over
+    /// silver it will only earn from `TAX` later this month. Receipts are read from what the Give
+    /// phase actually moved, so the recipient is credited nothing. Before `ah-3mwm` the column
+    /// credited the stated $100, because it summed what the orders asked for rather than what the
+    /// settlement moved - which is the same reading that credited one finite holding twice.
+    ///
+    /// The ledger still charges and credits the full amount, so the column is deliberately
+    /// stricter than the ledger here. That is the cost the navigator accepted for settling a
+    /// contested transfer once.
+    #[test]
+    fn a_gift_of_silver_the_giver_does_not_hold_yet_credits_nothing() {
+        let hex_region = ReportRegion {
+            tax_base: Some(1000),
+            ..region(vec![
+                with_men(with_skill(unit("1922"), "COMB", 1), 5),
+                unit("1923"),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1922\n@TAX\nGIVE 1923 100 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let recipient = review
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "1923")
+            .expect("the recipient is forecast");
+        assert_eq!(
+            recipient.received, 0,
+            "the giver holds nothing until the Tax phase, which is after the Give phase"
+        );
+        assert!(recipient.givers.is_empty());
+    }
+
+    /// Finding 2 of the same review. `TAKE ... ALL <class>` silences the taker's figure because
+    /// what the source has left depends on its own month - but a source the report shows holding
+    /// no silver at all parts with none of it in the Give phase, so there is nothing to be unsure
+    /// about and nothing to credit. The flag is set from the settlement, not from the class.
+    #[test]
+    fn a_take_of_all_of_a_class_from_a_source_holding_no_silver_says_nothing_about_silver() {
+        let region = region(vec![unit("2390"), unit("2391")]);
+        let receipts = receipts_in(&region, "unit 2391\nTAKE FROM 2390 ALL NORMAL\n");
+
+        let taker = receipts.get("2391").cloned().unwrap_or_default();
+        assert!(
+            !taker.take_all_unpriceable,
+            "nothing the source holds is silver, so no figure is in doubt"
+        );
+        assert_eq!(taker.taken, 0);
+    }
+
+    /// Finding 4 of the same review, and the plan's own trap: a unit this month's `FORM` orders
+    /// create has no position on the report, and `Hex::read` appends it after every reported unit.
+    /// So a reported unit's transfer settles before a formed one's however the document is
+    /// written - here the FORM block comes first and still loses.
+    #[test]
+    fn a_reported_unit_takes_before_a_unit_formed_this_month() {
+        let hex_region = region(vec![
+            with_item(unit("1234"), 100, "silver", "SILV"),
+            unit("2200"),
+        ]);
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1234\nFORM 1\nTAKE FROM 1234 100 SILV\nEND\nunit 2200\nTAKE FROM 1234 100 SILV\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::NOT_ENOUGH_ITEMS]),
+        );
+        let forecast = |id: &str| {
+            review
+                .silver
+                .iter()
+                .find(|forecast| forecast.unit_id == id)
+                .unwrap_or_else(|| panic!("no forecast for {id}"))
+        };
+
+        assert_eq!(
+            forecast("2200").taken,
+            100,
+            "the reported unit settles first"
+        );
+        assert_eq!(
+            forecast("new-1").taken,
+            0,
+            "the unit formed this month has no place on the report, so it settles last"
+        );
+    }
+
+    /// The boundary of the decision pinned by
+    /// `a_gift_of_silver_the_giver_does_not_hold_yet_credits_nothing`, raised by the delta round
+    /// of this bead's review: the column is stricter than the ledger, and **only** the column.
+    /// The warnings read the ledger, which still credits the recipient the whole gift, so a unit
+    /// funded by a gift its giver cannot yet cover is *not* told it is short. Nothing about the
+    /// strict receipt reaches the Problems panel.
+    #[test]
+    fn a_recipient_of_silver_the_giver_does_not_hold_yet_is_not_told_it_is_short() {
+        let hex_region = ReportRegion {
+            tax_base: Some(1000),
+            for_sale: vec![MarketItem {
+                amount: 100,
+                name: "plainsmen".to_string(),
+                tag: "PLAI".to_string(),
+                price: 40,
+            }],
+            ..region(vec![
+                with_men(with_skill(unit("1922"), "COMB", 1), 5),
+                unit("1923"),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1922\n@TAX\nGIVE 1923 100 SILV\nunit 1923\nBUY 2 PLAI\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review.findings.iter().any(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("1923")
+            }),
+            "the ledger funds the buyer even though the column declines to show it: {:?}",
+            codes(&review.findings)
+        );
+    }
+
     // --- holdings after this month's transfers (ah-dxfd.2) ----------------------------------
 
     fn item_amount(items: &[ItemAmount], tag: &str) -> Option<i64> {
@@ -28103,7 +28194,9 @@ mod tests {
                 tag: "PLAI".to_string(),
                 price: 40,
             }],
-            ..region(vec![unit("1922"), unit("1923")])
+            // The giver has to hold the silver it gives: receipts are read from the settlement
+            // now, which moves what the source actually has (`ah-3mwm`).
+            ..region(vec![with_silver(unit("1922"), 100), unit("1923")])
         };
 
         let review = review_turn(
@@ -28155,7 +28248,7 @@ mod tests {
                     tag: "PLAI".to_string(),
                     price: 40,
                 }],
-                ..region(vec![unit("1922")])
+                ..region(vec![with_silver(unit("1922"), 500)])
             };
 
             let review = review_turn(
@@ -28172,8 +28265,8 @@ mod tests {
 
             let giver = forecast(&review, "1922");
             assert_eq!(
-                giver.held, 0,
-                "unit 1922's own figure is unaffected by this test's fixture"
+                giver.held, 500,
+                "what the report shows it holding, and every coin of what it gives away"
             );
         }
 
@@ -28204,7 +28297,7 @@ mod tests {
                     tag: "PLAI".to_string(),
                     price: 40,
                 }],
-                ..region(vec![unit("1922")])
+                ..region(vec![with_silver(unit("1922"), 100)])
             };
 
             let review = review_turn(
