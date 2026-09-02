@@ -15348,6 +15348,37 @@ mod tests {
         }
 
         #[test]
+        fn a_build_uses_material_after_give_orders() {
+            let mut hex_region = report_with_a_builder();
+            hex_region.units.push(unit("901"));
+            with_ledger_after_transfers(
+                hex_region,
+                "unit 900\nBUILD\nGIVE 901 ALL WOOD\n",
+                |ledger| {
+                    assert!(!ledger.built.contains_key("900"));
+                    assert_eq!(balance_of(ledger, "900", "WOOD"), 0);
+                },
+            );
+        }
+
+        #[test]
+        fn a_build_uses_material_received_before_build_phase() {
+            let mut hex_region = report_with_a_builder();
+            hex_region.units[0] = hex_region.units[0].clone();
+            hex_region
+                .units
+                .push(with_item(unit("901"), 30, "wood", "WOOD"));
+            with_ledger_after_transfers(
+                hex_region,
+                "unit 900\nBUILD\nGIVE 900 30 WOOD\nunit 901\nGIVE 900 30 WOOD\n",
+                |ledger| {
+                    assert_eq!(ledger.built["900"][0].amount, 30);
+                    assert_eq!(balance_of(ledger, "900", "WOOD"), 120);
+                },
+            );
+        }
+
+        #[test]
         fn a_build_credits_the_unit_nothing() {
             with_ledger(report_with_a_builder(), "unit 900\nBUILD\n", |ledger| {
                 let for_900: Vec<&ItemMovement> = ledger
