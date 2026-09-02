@@ -4952,8 +4952,9 @@ test("the silver column forecasts our own units and sorts on the figure", async 
 
   // A unit this month's own FORM orders create gets a figure too (`ah-jw85`): it is not in the
   // report at all, so a blank cell here would be the defect the bead exists to fix, not a foreign
-  // unit's ordinary blank.
-  await fillOrders(page, "@study obse\nFORM 1\nEND\n");
+  // unit's ordinary blank. The leader is handed over because `rules/form` dissolves a formed unit
+  // that gains nobody, and a dissolved unit has no row to carry a figure (`ah-dhga`).
+  await fillOrders(page, "@study obse\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n");
   const formedRow = page.getByTestId("unit-row-new-1");
   await expect(formedRow).toBeVisible();
   await expect(formedRow.locator("td").last()).toHaveText(/^-?\d+$/);
