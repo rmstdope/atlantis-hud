@@ -2192,11 +2192,11 @@ mod tests {
     /// whole class moves a Foundation mage's leader, so no row changes at all.
     #[test]
     fn foundation_mages_keep_men_given_by_name_or_class() {
-        for skill in ["force [FORC]", "pattern [PATT]", "spirit [SPIR]"] {
-            for orders in [
-                "unit 900\nGIVE 901 1 LEAD\n",
-                "unit 900\nGIVE 901 ALL MEN\n",
-            ] {
+        for orders in [
+            "unit 900\nGIVE 901 1 LEAD\n",
+            "unit 900\nGIVE 901 ALL MEN\n",
+        ] {
+            for skill in ["force [FORC]", "pattern [PATT]", "spirit [SPIR]"] {
                 let response = preview_for_mage(skill, orders);
                 assert!(
                     response.regions.is_empty(),
@@ -2204,6 +2204,14 @@ mod tests {
                     response.regions
                 );
             }
+            // The control: the same order from the same helper report under a mundane skill does
+            // change rows, so an empty `regions` above cannot pass for the wrong reason if the
+            // fixture's skill line or the order form should ever stop parsing.
+            let mundane = preview_for_mage("lumberjack [LUMB]", orders);
+            assert!(
+                !mundane.regions.is_empty(),
+                "the control: a mundane unit's {orders} does move its leader"
+            );
         }
     }
 
@@ -2211,11 +2219,19 @@ mod tests {
     /// transfer to another unit - but `rules/magic` refuses the mage's men whatever the target.
     #[test]
     fn a_mage_cannot_discard_men() {
-        let response = preview_for_mage("force [FORC]", "unit 900\nGIVE 0 1 LEAD\n");
+        let orders = "unit 900\nGIVE 0 1 LEAD\n";
+        let response = preview_for_mage("force [FORC]", orders);
         assert!(
             response.regions.is_empty(),
             "a mage may not discard its men either: {:?}",
             response.regions
+        );
+
+        // The control, for the same reason as the test above: the discard itself works.
+        let mundane = preview_for_mage("lumberjack [LUMB]", orders);
+        assert!(
+            !mundane.regions.is_empty(),
+            "a mundane unit does discard its leader"
         );
     }
 

@@ -4573,7 +4573,18 @@ fn transfer(
     // `rules/magic`: "mages may not GIVE men at all". Counted and followed to the end exactly as
     // the refusal below is - it simply moves nothing, so no balance is touched and neither
     // `doubted` nor `uncounted` is.
-    if is_give && mage_give_refused(&actor.unit.skills, &tag, ledger.ruleset) {
+    //
+    // Asked against `skills_before_the_market` - the list `apply_transfers` has already projected
+    // for this hex, since `hex_with_transfers` runs before any ledger is built - rather than
+    // against the report's own `actor.unit.skills`. The two differ for a unit that took a mage's
+    // men earlier in the same document: `effects::Working::give` and `apply_transfers` both read
+    // their running lists, so reading the reported one here would let the ledger move men the
+    // other two surfaces retain, which is the very disagreement this bead exists to remove.
+    // `None` means the merge was unfollowable, and the reported list is the most that can be said.
+    let holder_skills = actor
+        .skills_before_the_market()
+        .unwrap_or(&actor.unit.skills);
+    if is_give && mage_give_refused(holder_skills, &tag, ledger.ruleset) {
         return;
     }
 
