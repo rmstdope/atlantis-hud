@@ -2977,6 +2977,8 @@ struct Ledger<'a> {
     receipts: &'a BTreeMap<String, Receipts>,
     /// What each unit would hold once its orders had run, keyed by unit and item tag.
     balance: BTreeMap<(String, String), i64>,
+    /// Materials consumed by manufacturing after movement, keyed like `balance`.
+    manufacturing_spent: BTreeMap<(String, String), i64>,
     /// Units whose sums cannot be trusted, and which are therefore not judged at all.
     ///
     /// A unit lands here the moment its orders touch something the report cannot price: a
@@ -3250,6 +3252,7 @@ fn ledger_for_with_production<'a>(
         ruleset,
         receipts,
         balance: BTreeMap::new(),
+        manufacturing_spent: BTreeMap::new(),
         doubted: BTreeSet::new(),
         charged_at: BTreeMap::new(),
         upkeep: BTreeMap::new(),
@@ -4865,7 +4868,7 @@ fn produce(
 
     charge(ledger, who, SILVER, priced.spends, placed);
     for material in &plan.materials {
-        charge(ledger, who, &material.tag, material.amount, placed);
+        charge_manufacturing_material(ledger, who, &material.tag, material.amount, placed);
         if material.amount != 0 {
             ledger.movements.push(ItemMovement {
                 unit_id: who.clone(),
@@ -5744,6 +5747,22 @@ fn charge(ledger: &mut Ledger<'_>, unit_id: &str, tag: &str, amount: i64, placed
             .charged_at
             .entry(key)
             .or_insert_with(|| placed.clone());
+    }
+}
+
+fn charge_manufacturing_material(
+    ledger: &mut Ledger<'_>,
+    unit_id: &str,
+    tag: &str,
+    amount: i64,
+    placed: &PlacedIntent,
+) {
+    charge(ledger, unit_id, tag, amount, placed);
+    if amount > 0 {
+        *ledger
+            .manufacturing_spent
+            .entry((unit_id.to_string(), tag.to_ascii_uppercase()))
+            .or_insert(0) += amount;
     }
 }
 
@@ -8010,8 +8029,9 @@ fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 ///
 /// The ledger is read whole rather than filtered, because every order that changes an item balance
 /// runs before the fleet does: GIVE and TAKE in phase 4, SELL and BUY in phase 7, movement in
-/// phase 9. TAX, CLAIM, PILLAGE and STUDY move silver, which the ruleset weighs at 0; PRODUCE,
-/// BUILD and WORK are phase 10, after the fleet has gone, and touch no balance here anyway.
+/// phase 9. TAX, CLAIM, PILLAGE and STUDY move silver, which the ruleset weighs at 0. Per
+/// `rules/sequenceofevents`, manufacturing PRODUCE, BUILD and WORK are phase 10, after the fleet
+/// has gone; manufacturing material spend is added back below when reconstructing movement load.
 ///
 /// An order the ledger could not price changed no balance at all - `transfer`, `buy` and the
 /// WITHDRAW arm (for an item the ruleset prices nowhere) record their doubt and return before
@@ -8029,7 +8049,14 @@ fn weight_after_orders(
         if unit_id != &ordered.unit.unit_id {
             continue;
         }
-        let moved = balance - ordered.holding(tag);
+        let manufacturing_spent = ledger
+            .manufacturing_spent
+            .get(&(unit_id.clone(), tag.clone()))
+            .copied()
+            .unwrap_or_default();
+        let moved = balance
+            .saturating_add(manufacturing_spent)
+            .saturating_sub(ordered.holding(tag));
         if moved == 0 {
             continue;
         }
@@ -24009,6 +24036,30 @@ mod tests {
         ));
         assert_eq!(finding.code.as_str(), "fleet-overloaded");
         assert_eq!(finding.unit_id, Some("11125".to_string()));
+    }
+
+    #[test]
+    fn manufacturing_after_sailing_does_not_lighten_an_overloaded_raft() {
+        let region = ReportRegion {
+            structures: vec![raft("218")],
+            ..region(vec![with_item(
+                with_skill(
+                    with_skill(with_men(aboard("11125", "218", 500, 2), 20), "WEAP", 1),
+                    "SAIL",
+                    2,
+                ),
+                20,
+                "iron",
+                "IRON",
+            )])
+        };
+
+        let finding = only(check(vec![region], "unit 11125\nPRODUCE sword\nSAIL N\n"));
+        assert_eq!(finding.code.as_str(), "fleet-overloaded");
+        assert_eq!(
+            finding.message,
+            "Raft [218] is overloaded: 500 aboard on a capacity of 450, so it will not sail"
+        );
     }
 
     #[test]
