@@ -25979,6 +25979,43 @@ mod tests {
         );
     }
 
+    /// The boundary of the decision the test above pins, raised by the delta round of this bead's
+    /// review: the column is stricter than the ledger, and **only** the column. The warnings read
+    /// the ledger, which still credits the recipient the whole gift, so a unit funded by a gift
+    /// its giver cannot yet cover is *not* told it is short. Nothing about the strict receipt
+    /// reaches the Problems panel.
+    #[test]
+    fn a_recipient_of_silver_the_giver_does_not_hold_yet_is_not_told_it_is_short() {
+        let hex_region = ReportRegion {
+            tax_base: Some(1000),
+            for_sale: vec![MarketItem {
+                amount: 100,
+                name: "plainsmen".to_string(),
+                tag: "PLAI".to_string(),
+                price: 40,
+            }],
+            ..region(vec![
+                with_men(with_skill(unit("1922"), "COMB", 1), 5),
+                unit("1923"),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1922\n@TAX\nGIVE 1923 100 SILV\nunit 1923\nBUY 2 PLAI\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !review.findings.iter().any(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("1923")
+            }),
+            "the ledger funds the buyer even though the column declines to show it: {:?}",
+            codes(&review.findings)
+        );
+    }
+
     // --- holdings after this month's transfers (ah-dxfd.2) ----------------------------------
 
     fn item_amount(items: &[ItemAmount], tag: &str) -> Option<i64> {
