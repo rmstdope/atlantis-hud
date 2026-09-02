@@ -2020,7 +2020,11 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
     // none - and the difference decides whether somebody else in this hex eats. There is no correct
     // number to share out, so every contender is doubted and the remainder cannot be told, exactly
     // as a pool too short for several contenders already is (`ah-66yi`).
-    if !claimants.is_empty() && claims.iter().any(|claim| claim.spare_food_uncertain) {
+    // Whether anyone claims at step 2 or not: `pool_left` is read again by `feed_after_silver` for
+    // steps 5 and 6, and a definite remainder there would deny a hex-mate relief from food that may
+    // still be there. With no claimant the `settled` map below is empty anyway, so this is the
+    // remainder alone.
+    if claims.iter().any(|claim| claim.spare_food_uncertain) {
         return FactionFoodPass {
             settled: claimants
                 .iter()
@@ -8058,13 +8062,19 @@ mod faction_food_tests {
         let fed = feed_from_faction_food(&[claim("2390", 50, 0, false), hungry.clone()]);
         assert_eq!(fed.settled.get("2391"), Some(&Some(0)));
 
-        let told = feed_from_faction_food(&[giver, hungry]);
+        let told = feed_from_faction_food(&[giver.clone(), hungry]);
         assert_eq!(
             told.settled.get("2391"),
             Some(&None),
             "the claimant's own shortfall cannot be told: {told:?}"
         );
         assert_eq!(pool_count(&told), None);
+
+        // And with nobody claiming at step 2 either: `pool_left` is read again for steps 5 and 6,
+        // where a definite remainder would deny a hex-mate relief from food that may still be
+        // there - the same wrong warning, one pass later.
+        let nobody_claiming = feed_from_faction_food(&[giver, claim("2391", 0, 200, false)]);
+        assert_eq!(pool_count(&nobody_claiming), None, "{nobody_claiming:?}");
     }
 
     /// The total items a pass says the hex still holds, for the assertions that pin the remainder.
