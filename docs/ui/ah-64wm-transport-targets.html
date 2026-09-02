@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-64wm - transport target outcomes</title>
+<style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d;
+    --ink:#dbe3ec; --soft:#a3b0c0; --dim:#8a97a8; --brass:#d9a441;
+    --blue:#4a9fd8; --ok:#4fb783; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:28px; background:var(--page); color:var(--ink);
+    font:14px/1.5 system-ui,sans-serif; }
+  header,main,footer { max-width:1180px; margin:auto; }
+  h1 { margin:0 0 8px; font:25px/1.2 Georgia,serif; }
+  h1 span,h2 { color:var(--brass); }
+  header p,footer,.note { color:var(--soft); max-width:100ch; }
+  code,.mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  h2 { margin:30px 0 10px; font-size:13px; text-transform:uppercase; letter-spacing:1px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px; }
+  h3 { margin:0 0 8px; font-size:14px; }
+  .order { padding:7px 9px; background:#0c1117; border:1px solid var(--edge); color:var(--soft);
+    white-space:pre-line; }
+  table { width:100%; margin-top:10px; border-collapse:collapse; table-layout:fixed; font-size:12px; }
+  th,td { text-align:left; padding:5px 7px; border-bottom:1px solid var(--edge); overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; }
+  th { color:var(--dim); font-size:10px; text-transform:uppercase; }
+  .id { color:var(--blue); } .pred { color:var(--brass); font-style:italic; }
+  .unknown { color:var(--dim); }
+  .tip { display:block; margin-top:9px; padding:9px 11px; background:var(--raised);
+    border:1px solid var(--edge); border-radius:5px; white-space:pre-line; font-size:12px; }
+  .tip b { color:var(--brass); display:block; margin-bottom:4px; }
+  .note { margin:10px 0 0; font-size:12px; }
+  .narrow { width:300px; }
+  footer { margin-top:32px; font-size:12px; }
+  @media(max-width:520px) { body{padding:16px} .grid{grid-template-columns:1fr} .narrow{width:auto} }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-64wm - <span>transport target outcomes</span></h1>
+  <p>Chosen with the navigator on 2 September 2026. The sender keeps goods whenever the report
+  cannot prove that the target can receive them. A definite target refusal is certain and gets no
+  <code>+ ?</code>; missing eligibility evidence is uncertain and does.</p>
+  <p><code>rules/transport</code> requires the target to have Quartermaster, own a transport
+  structure, and be at least Friendly to the issuer. <code>rules/economy_transport</code> identifies
+  Caravanserai as that structure. <code>rules/world_structures</code> identifies its owner as the
+  first unit listed inside it.</p>
+</header>
+<main>
+  <h2>Successful target</h2>
+  <section class="card">
+    <h3>Eligible own quartermaster owning a Caravanserai</h3>
+    <div class="order mono">TRANSPORT 6857 30 STON</div>
+    <table><tr><th>Unit</th><th>Items</th></tr>
+      <tr><td class="id">5530</td><td class="pred">10 STON</td></tr></table>
+    <span class="tip"><b>hover</b>was: 40 STON
+Sends 30 STON to unit 6857.</span>
+  </section>
+
+  <h2>Definite refusals</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>Own target lacks Quartermaster</h3>
+      <div class="order mono">TRANSPORT 7001 5 STON</div>
+      <table><tr><th>Unit</th><th>Items</th></tr>
+        <tr><td class="id">5530</td><td>40 STON</td></tr></table>
+      <span class="tip"><b>hover</b>was: 40 STON
+Unit 7001 is not a quartermaster, so 5 STON stay with this unit.</span>
+    </section>
+    <section class="card">
+      <h3>Quartermaster does not own a Caravanserai</h3>
+      <div class="order mono">TRANSPORT 7002 5 STON</div>
+      <table><tr><th>Unit</th><th>Items</th></tr>
+        <tr><td class="id">5530</td><td>40 STON</td></tr></table>
+      <span class="tip"><b>hover</b>was: 40 STON
+Unit 7002 does not own a Caravanserai, so 5 STON stay with this unit.</span>
+    </section>
+    <section class="card">
+      <h3>Target and item are both invalid</h3>
+      <div class="order mono">TRANSPORT 7001 2 HORS</div>
+      <span class="tip"><b>hover</b>Unit 7001 is not a quartermaster, so this TRANSPORT moves nothing.</span>
+      <p class="note">The order-level target gate wins over the item refusal. If one target failure
+      applies to several selected tags, explain the target once rather than repeating it per tag.</p>
+    </section>
+  </div>
+
+  <h2>Uncertain targets</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>Unit is absent from the report</h3>
+      <div class="order mono">TRANSPORT 99999 5 STON</div>
+      <table><tr><th>Unit</th><th>Items</th></tr>
+        <tr><td class="id">5530</td><td>40 STON <span class="unknown">+ ?</span></td></tr></table>
+      <span class="tip"><b>hover</b>was: 40 STON
+Could not count 5 STON for unit 99999 because your report does not show whether it is an eligible transport target.</span>
+    </section>
+    <section class="card">
+      <h3>Visible foreign quartermaster</h3>
+      <div class="order mono">TRANSPORT 7003 5 STON</div>
+      <table><tr><th>Unit</th><th>Items</th></tr>
+        <tr><td class="id">5530</td><td>40 STON <span class="unknown">+ ?</span></td></tr></table>
+      <span class="tip"><b>hover</b>was: 40 STON
+Could not count 5 STON for unit 7003 because your report does not show whether its faction accepts transports from yours.</span>
+      <p class="note">Our report carries our attitude toward that faction, not its attitude toward us.</p>
+    </section>
+    <section class="card">
+      <h3>Foreign Caravanserai owner with undisclosed skills</h3>
+      <div class="order mono">TRANSPORT 7004 5 STON</div>
+      <table><tr><th>Unit</th><th>Items</th></tr>
+        <tr><td class="id">5530</td><td>40 STON <span class="unknown">+ ?</span></td></tr></table>
+      <span class="tip"><b>hover</b>was: 40 STON
+Could not count 5 STON for unit 7004 because your report does not show whether it is an eligible transport target.</span>
+      <p class="note">An empty foreign skill list is missing evidence, not proof that the unit lacks Quartermaster.</p>
+    </section>
+  </div>
+
+  <h2>Mixed, empty, and narrow states</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>One valid and one refused order</h3>
+      <div class="order mono">TRANSPORT 6857 30 STON
+TRANSPORT 7001 5 FUR</div>
+      <table><tr><th>Unit</th><th>Items</th></tr>
+        <tr><td class="id">5530</td><td class="pred">10 STON, 5 FUR</td></tr></table>
+      <span class="tip"><b>hover</b>was: 40 STON, 5 FUR
+Sends 30 STON to unit 6857.
+Unit 7001 is not a quartermaster, so 5 FUR stay with this unit.</span>
+    </section>
+    <section class="card">
+      <h3>Sender holds none of the selected item</h3>
+      <div class="order mono">TRANSPORT 7001 5 FUR</div>
+      <table><tr><th>Unit</th><th>Items</th></tr>
+        <tr><td class="id">5530</td><td>40 STON</td></tr></table>
+      <p class="note">No row or hover is added: there is nothing to retain or explain.</p>
+    </section>
+    <section class="card narrow">
+      <h3>Narrow cell</h3>
+      <table><tr><th>Unit</th><th>Items</th></tr>
+        <tr><td class="id">5530</td><td>40 STON, 12 IRON, 5 FUR <span class="unknown">+ ?</span></td></tr></table>
+      <span class="tip"><b>hover</b>The uncertainty remains in the full hover even when the cell truncates.</span>
+    </section>
+  </div>
+</main>
+<footer>No control, focus, loading, persistence, or error state is introduced. These outcomes are
+derived from the remembered report and current orders and appear only in the existing ITEMS cell hover.</footer>
+</body>
+</html>
