@@ -538,6 +538,18 @@ describe("columnSharesFromStorage", () => {
     }
   });
 
+  it("fills the new Move share while preserving saved old-column proportions", () => {
+    const legacy = Object.fromEntries(
+      UNIT_COLUMNS.filter((column) => column !== "movement").map((column) => [column, 0.1])
+    );
+    const shares = columnSharesFromStorage(legacy);
+    expect(shares.movement! / shares.name!).toBeCloseTo(
+      DEFAULT_COLUMN_SHARES.movement / 0.1,
+      12
+    );
+    expect(shares.name).toBe(shares.skills);
+  });
+
   it("has a floor expressed in pixels, for the splitter to convert against a live table", () => {
     expect(COLUMN_MIN_PX).toBeGreaterThan(0);
   });
@@ -562,6 +574,23 @@ describe("columnOrderFromStorage", () => {
     const swapped = [...UNIT_COLUMNS] as UnitColumn[];
     [swapped[2], swapped[3]] = [swapped[3], swapped[2]];
     expect(columnOrderFromStorage(swapped)).toEqual(swapped);
+  });
+
+  it("migrates a pre-Move permutation by inserting Move after Men", () => {
+    const legacy = UNIT_COLUMNS.filter((column) => column !== "movement");
+    expect(columnOrderFromStorage(legacy)).toEqual([
+      "own",
+      "unitId",
+      "name",
+      "faction",
+      "men",
+      "movement",
+      "skills",
+      "items",
+      "structure",
+      "longOrder",
+      "silver"
+    ]);
   });
 
   it("falls back to the shipped order when nothing is stored, or when what is does not fit", () => {
@@ -590,6 +619,7 @@ describe("dragColumnOrder", () => {
       "faction",
       "name",
       "men",
+      "movement",
       "skills",
       "items",
       "structure",
@@ -602,6 +632,7 @@ describe("dragColumnOrder", () => {
       "faction",
       "men",
       "name",
+      "movement",
       "skills",
       "items",
       "structure",
@@ -617,6 +648,7 @@ describe("dragColumnOrder", () => {
       "unitId",
       "faction",
       "men",
+      "movement",
       "skills",
       "items",
       "structure",

@@ -1,4 +1,4 @@
-import type { ReportUnit, UnitPreview } from "@atlantis/core-client";
+import type { FieldChange, ReportUnit, UnitPreview } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { originalTooltip } from "../unitPreview";
 import { describeMen } from "../unitComposition";
@@ -8,6 +8,7 @@ import { highestMagicSkill, type MagicTree } from "../magicTree";
 import type { MageStanding } from "../magicStanding";
 import { battleSkillGroups, battleSkillSource } from "../battleSkillPresentation";
 import type { DerivedSkill } from "../battleSkills";
+import { presentUnitMovement } from "../unitMovement";
 import {
   Absent,
   Field,
@@ -80,6 +81,7 @@ export function UnitPanelBody({
 
   const items = [...unit.items].sort((left, right) => right.amount - left.amount);
   const mage = magicTree === null ? null : highestMagicSkill(unit.skills, magicTree);
+  const movement = preview ? preview.unit.movement : unit.movement;
 
   // What the orders make of the unit, where they touch what this panel shows. The predicted *name*
   // belongs to the title bar rather than the body, so `unitPanelHint` derives it instead.
@@ -109,10 +111,27 @@ export function UnitPanelBody({
           as a count.
         */}
         <Field label="Men" value={describeMen(unit)} />
-        {unit.weight === null ? null : <Field label="Weight" value={unit.weight} />}
-        {unit.capacity === null ? null : <Field label="Capacity" value={unit.capacity} />}
+        {movement == null ? (
+          <>
+            {unit.weight === null ? null : <Field label="Weight" value={unit.weight} />}
+            {unit.capacity === null ? null : <Field label="Capacity" value={unit.capacity} />}
+          </>
+        ) : (
+          <Field label="Weight" value={movement.load.toLocaleString()} />
+        )}
         {unit.structureId === null ? null : <Field label="Structure" value={unit.structureId} />}
       </dl>
+
+      {movement == null ? (
+        <Section title="Movement">
+          <p className="m-0 text-ink-dim">Movement not disclosed</p>
+        </Section>
+      ) : (
+        <MovementSection
+          movement={movement}
+          change={preview?.changes.find((item) => item.field === "movement") ?? null}
+        />
+      )}
 
       <Section title="Flags">
         {predictedFlags ? (
@@ -175,6 +194,7 @@ export function UnitPanelBody({
                     {skill.tag}
                   </>
                 }
+
                 value={`${skill.level} (${skill.points})`}
               />
             ))
@@ -223,6 +243,70 @@ export function UnitPanelBody({
         )}
       </Section>
     </>
+  );
+}
+
+function MovementSection({
+  movement,
+  change
+}: {
+  movement: NonNullable<ReportUnit["movement"]>;
+  change: FieldChange | null;
+}) {
+  const presentation = presentUnitMovement(movement);
+  const tone =
+    presentation.tone === "danger"
+      ? "text-danger"
+      : presentation.tone === "brass"
+        ? "text-brass"
+        : presentation.tone === "select"
+          ? "text-select"
+          : "text-ink-soft";
+  const capacities = [
+    ["Fly", "fly", movement.fly],
+    ["Ride", "ride", movement.ride],
+    ["Walk", "walk", movement.walk]
+  ] as const;
+  const usable = capacities
+    .filter(([, , capacity]) => capacity >= movement.load)
+    .map(([label]) => label);
+  const explanation =
+    movement.status === "overloaded"
+      ? `The load is ${movement.load.toLocaleString()}. No movement capacity can carry it.`
+      : `The load is ${movement.load.toLocaleString()}. ${usable.join(" and ")} can carry it.`;
+
+  return (
+    <Section title="Movement">
+      <div className="mb-2">
+        <strong
+          className={`block font-medium ${change ? "italic text-brass" : tone}`}
+          data-predicted={change ? "true" : undefined}
+          title={change ? originalTooltip(change) : presentation.label}
+        >
+          {presentation.label}
+        </strong>
+        {movement.status === "overloaded" ? null : (
+          <span className="text-ink-soft">Fastest available movement</span>
+        )}
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {capacities.map(([label, mode, capacity]) => {
+          const active = movement.capacityMode === mode;
+          return (
+            <div
+              key={mode}
+              className={`rounded border border-edge px-2 py-1 ${
+                active ? `${tone} font-medium` : "text-ink-soft"
+              }`}
+            >
+              <div>{label}</div>
+              <div className="tabular-nums">{capacity.toLocaleString()}</div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="m-0 mt-2 text-ink-soft">{explanation}</p>
+    </Section>
   );
 }
 

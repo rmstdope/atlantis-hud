@@ -4303,6 +4303,40 @@ test("orders change the units table to show the coming month", async ({ page }) 
   await expect(row).not.toHaveAttribute("data-preview-status", /.+/);
 });
 
+test("movement capacity updates in the unit list and detail", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  const panel = page.getByTestId("panel-unit");
+  await expect(row).toContainText("Walking");
+  await expect(panel).toContainText("Walking");
+  const moveHeader = page.locator("th").filter({ has: page.getByTestId("column-reorder-movement") });
+  await expect(moveHeader).toBeVisible();
+
+  await fillOrders(page, "WITHDRAW 1 HORS");
+  await expect(row).toContainText("Riding");
+  await expect(panel).toContainText("Riding");
+  await expect(row.locator('td[title="was: Walking"]')).toBeVisible();
+
+  await fillOrders(page, "");
+  await expect(row).toContainText("Walking");
+  await expect(panel).toContainText("Walking");
+  await expect(row).not.toHaveAttribute("data-preview-status", /.+/);
+
+  await page.setViewportSize({ width: 700, height: 800 });
+  const table = page.getByRole("grid");
+  const before = await row.boundingBox();
+  const tableBox = await table.boundingBox();
+  const moveBox = await moveHeader.boundingBox();
+  expect(before?.height).toBe(ROW_HEIGHT);
+  expect((moveBox?.x ?? 0) + (moveBox?.width ?? 0)).toBeLessThanOrEqual(
+    (tableBox?.x ?? 0) + (tableBox?.width ?? 0) + 1
+  );
+  expect(moveBox?.x ?? 0).toBeGreaterThanOrEqual((tableBox?.x ?? 0) - 1);
+});
+
 /**
  * ah-agbm: the ITEMS column already showed a pending GIVE in italic; BUY, SELL, WITHDRAW and TAKE
  * now get the same treatment. Hex 1:7,53 carries a "For Sale: ... perfume [PERF] ..." line, so a

@@ -93,6 +93,7 @@ function rebuilt(member: ArmyMemberRecord): ReportUnit {
     menByRace: [],
     weight: null,
     capacity: null,
+    movement: null,
     structureId: null
   };
 }
