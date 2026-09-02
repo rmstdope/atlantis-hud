@@ -96,8 +96,8 @@ test("choosing an Army shows its units, and the pane says so", async ({ page }) 
   const headers = page.getByTestId("panel-units").locator("thead th");
   await expect(headers).toContainText(["Hex"]);
   await expect(headers).toContainText(["Seen"]);
-  // The trailing action column: an extra header cell beyond the ten the table always draws.
-  await expect(headers).toHaveCount(13);
+  // The trailing action column: an extra header cell beyond the eleven the table always draws.
+  await expect(headers).toHaveCount(14);
 });
 
 test("clicking a hex while an Army is the source keeps the Army and lights This hex", async ({

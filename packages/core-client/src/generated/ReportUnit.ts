@@ -47,7 +47,7 @@ menEstimated: boolean,
 /**
  * The unit's people, by race, once it has been classified. Empty while estimated.
  */
-menByRace: Array<ItemAmount>, weight: number | null, capacity: string | null, movement: UnitMovement | null,
+menByRace: Array<ItemAmount>, weight: number | null, capacity: string | null, movement: UnitMovement | null, 
 /**
  * Set when the unit sits inside a structure.
  */
