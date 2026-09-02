@@ -2262,9 +2262,10 @@ fn holding_items(unit: &ReportUnit, state: &Working) -> Vec<ItemAmount> {
 
 /// Merges this month's `GIVE` and `TAKE` orders into the units of one hex.
 ///
-/// Walks the hex's orders in document order and rewrites each affected unit's
-/// `skills_after_gifts` and `holdings_after_gifts`. Document order rather than the game's own -
-/// see *Known traps* in `ah-z73s.2`'s plan.
+/// Walks the hex's orders in the game's own order - `rules/sequenceofevents` processes units
+/// "in the order they appear on the report" within the Give phase, and each actor's own lines in
+/// the order they were written - and rewrites each affected unit's `skills_after_gifts` and
+/// `holdings_after_gifts` (`ah-3mwm`).
 ///
 /// Without a ruleset this returns at once: there is no telling which item tags name people or
 /// which class an item belongs to, and every check that reads the projection already returns
@@ -2334,8 +2335,13 @@ fn apply_transfers(
         // Nothing moves in this hex, so nothing is allocated for it.
         return;
     }
-    // Ties cannot occur: one order per line.
-    transfers.sort_by_key(|transfer| transfer.line);
+    // `rules/sequenceofevents`: GIVE and TAKE are one Give phase, and where nothing else orders
+    // units within it "units will be processed in the order they appear on the report" -
+    // `transfer.position` is exactly that order, since `Hex::read` fills `units` from
+    // `region.units` and appends this month's formed units after them. The line is the secondary
+    // key alone: it still settles several transfers written by one actor in the order they were
+    // written. Ties cannot occur: one order per line.
+    transfers.sort_by_key(|transfer| (transfer.position, transfer.line));
 
     let mut working: BTreeMap<usize, Working> = BTreeMap::new();
     // Accumulated rather than written straight onto `units[position].refused_transfers`: the loop
@@ -25924,6 +25930,79 @@ mod tests {
         let ledger = ledger_for(&hex, Some(&rules), &receipts);
         apply_recruits(&mut hex.units, &ledger, Some(&rules));
         hex
+    }
+
+
+    /// `rules/sequenceofevents`: GIVE and TAKE are one Give phase, and where nothing else orders
+    /// units within a phase "units will be processed in the order they appear on the report". So a
+    /// finite holding contested by a GIVE from the unit the report lists first and a TAKE written
+    /// earlier in the document is settled for the reported unit, and reversing the document's
+    /// blocks changes nothing.
+    #[test]
+    fn competing_give_and_take_transfers_follow_report_order_in_checks() {
+        // A is listed first and holds everything the other two want: ten swords and five orcs.
+        fn source() -> ReportUnit {
+            with_item(
+                with_race(unit("1234"), 5, "orcs", "ORC"),
+                10,
+                "swords",
+                "SWOR",
+            )
+        }
+        let taker_block = "unit 2200\nTAKE FROM 1234 10 SWOR\nTAKE FROM 1234 5 ORC\n";
+        let giver_block = "unit 1234\nGIVE 3300 10 SWOR\nGIVE 3300 5 ORC\n";
+
+        for (label, orders) in [
+            ("the take written first", format!("{taker_block}{giver_block}")),
+            ("the give written first", format!("{giver_block}{taker_block}")),
+        ] {
+            let region = region(vec![
+                source(),
+                with_race(unit("2200"), 5, "orcs", "ORC"),
+                // The recipient knows lumberjack 3, so the five unskilled men it wins dilute it.
+                with_skill_pts(with_race(unit("3300"), 5, "orcs", "ORC"), "LUMB", 180),
+            ]);
+            let ordered = OrderedUnits::read(&orders);
+            let hex = hex_after_gifts(&region, &ordered);
+
+            let recipient = hex.find("3300").unwrap();
+            let holdings = recipient
+                .after_gifts()
+                .unwrap_or_else(|| panic!("{label}: the recipient's holdings moved"));
+            assert_eq!(item_amount(&holdings.items, "SWOR"), Some(10), "{label}");
+            assert_eq!(item_amount(&holdings.items, "ORC"), Some(10), "{label}");
+            assert_eq!(recipient.men_after_orders, 10, "{label}");
+            assert_eq!(
+                recipient.skill_level("LUMB"),
+                Some(2),
+                "{label}: five unskilled arrivals halve 180 points"
+            );
+
+            let taker = hex.find("2200").unwrap();
+            assert_eq!(
+                taker.after_gifts().and_then(|h| item_amount(&h.items, "SWOR")),
+                None,
+                "{label}: the losing TAKE moved nothing"
+            );
+            assert_eq!(taker.men_after_orders, 5, "{label}");
+            assert_eq!(taker.skill_level("LUMB"), None, "{label}");
+
+            // And a warning that reads that projection agrees: the diluted unit is the recipient
+            // the report order chose, not the taker that wrote its line first.
+            let review = review_turn(
+                &report(vec![region.clone()]),
+                &orders,
+                Some(&ruleset()),
+                disabling_all(&[codes::UNIT_DOES_NOTHING, codes::NOT_ENOUGH_ITEMS]),
+            );
+            let told: Vec<&Finding> = review
+                .findings
+                .iter()
+                .filter(|finding| finding.code == codes::ARRIVALS_LOWER_A_SKILL)
+                .collect();
+            assert_eq!(told.len(), 1, "{label}: {:?}", codes(&review.findings));
+            assert_eq!(told[0].unit_id.as_deref(), Some("3300"), "{label}");
+        }
     }
 
     // --- holdings after this month's transfers (ah-dxfd.2) ----------------------------------
