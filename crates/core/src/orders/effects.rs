@@ -4911,6 +4911,89 @@ mod tests {
             row(response, "1:2,2", "6857")
         }
 
+        fn report_with_transport_chain(stock_a: bool) -> String {
+            [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "",
+                "* Source (900), Foo (1), 1 orc [ORC], 10 stone [STON]. Weight: 100. Capacity: 0/0/15/0.",
+                if stock_a {
+                    "* Quartermaster A (901), Foo (1), leader [LEAD], 10 stone [STON]. Weight: 100. Capacity: 0/0/15/0."
+                } else {
+                    "* Quartermaster A (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0."
+                },
+                "  Skills: quartermaster [QUAM] 1 (30).",
+                "* Quartermaster B (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "  Skills: quartermaster [QUAM] 1 (30).",
+                "* Destination (903), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "",
+            ]
+            .join("\n")
+        }
+
+        fn chain_preview(orders: &str) -> OrdersPreviewResponse {
+            preview_over(&report_with_transport_chain(false), orders)
+        }
+
+        fn held(unit: &UnitPreview, tag: &str) -> i64 {
+            unit.unit
+                .items
+                .iter()
+                .find(|item| item.tag == tag)
+                .map_or(0, |item| item.amount)
+        }
+
+        #[test]
+        fn transports_run_in_three_global_phases() {
+            let response = chain_preview(
+                "unit 902\nTRANSPORT 903 10 STON\nunit 901\nTRANSPORT 902 10 STON\nunit 900\nTRANSPORT 901 10 STON\n",
+            );
+
+            assert_eq!(held(&row(&response, "1:1,1", "903").unwrap(), "STON"), 10);
+            assert_eq!(held(&row(&response, "1:1,1", "901").unwrap(), "STON"), 0);
+            assert_eq!(held(&row(&response, "1:1,1", "902").unwrap(), "STON"), 0);
+        }
+
+        #[test]
+        fn an_item_moves_only_once_in_a_transport_phase() {
+            let response = preview_over(
+                &report_with_transport_chain(true),
+                "unit 901\nTRANSPORT 902 10 STON\nunit 902\nTRANSPORT 903 10 STON\n",
+            );
+
+            let middle = only_unit_by_id(&response, "902");
+            assert_eq!(
+                middle
+                    .transport_received
+                    .iter()
+                    .find(|received| received.tag == "STON")
+                    .map(|received| received.amount),
+                Some(10)
+            );
+            assert_eq!(held(only_unit_by_id(&response, "903"), "STON"), 0);
+        }
+
+        #[test]
+        fn transport_annotations_remain_in_document_order() {
+            let response = preview_over(
+                &report_with_transport_chain(true),
+                "unit 901\nTRANSPORT 903 3 STON\nTRANSPORT 902 4 STON\n",
+            );
+            let sender = only_unit_by_id(&response, "901");
+
+            assert_eq!(
+                sender
+                    .transport_sent
+                    .iter()
+                    .map(|sent| (sent.to.as_str(), sent.amount))
+                    .collect::<Vec<_>>(),
+                vec![("903", 3), ("902", 4)]
+            );
+        }
+
         #[test]
         fn a_transport_moves_goods_across_hexes() {
             let response = two_hex_preview("unit 5530\nTRANSPORT 6857 30 STON\n");
