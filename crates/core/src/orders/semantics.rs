@@ -23318,6 +23318,52 @@ mod tests {
             );
         }
 
+        /// Where this bead meets `ah-t8ei`: `rules/magic` refuses a mage's gift of men outright
+        /// ("mages may not GIVE men at all"), whatever the target, so that *known* refusal wins over
+        /// this bead's "cannot be told". The mage check sits ahead of the outcome table on all three
+        /// surfaces; put it below and this unit would quietly acquire an uncertain tag, unknowable
+        /// holdings and a `+ ?` for an order the game will simply refuse.
+        #[test]
+        fn a_mages_gift_of_men_is_refused_rather_than_left_uncertain() {
+            let mage = with_skill(
+                with_race(unit("2390"), 10, "orcs", "ORC"),
+                // A Foundation, so the catalogue reads this unit as a mage.
+                "FORC",
+                1,
+            );
+
+            with_a_ledger(
+                region(vec![mage]),
+                "unit 2390\nGIVE 9999 ALL ORC\n",
+                |ledger| {
+                    assert_eq!(balance_of(ledger, "2390", "ORC"), 10);
+                    assert!(
+                        ledger.uncertain_balance.is_empty(),
+                        "the refusal is known, so nothing is left unresolved: {:?}",
+                        ledger.uncertain_balance
+                    );
+                    assert!(
+                        !ledger.uncounted.contains_key("2390"),
+                        "and the order is followed to its end rather than admitted: {:?}",
+                        ledger.uncounted
+                    );
+                },
+            );
+
+            // The control: the same target and the same men from a unit that is not a mage, where
+            // the gift really is unresolved and this bead's `+ ?` is what the row shows.
+            with_a_ledger(
+                region(vec![with_race(unit("2390"), 10, "orcs", "ORC")]),
+                "unit 2390\nGIVE 9999 ALL ORC\n",
+                |ledger| {
+                    assert_eq!(
+                        ledger.uncounted.get("2390").map(Vec::as_slice),
+                        Some([2].as_slice())
+                    );
+                },
+            );
+        }
+
         /// Maintenance is settled from the whole food stock rather than from a tag any order names,
         /// so a gift that may have taken the food charges nothing rather than a guess - the same
         /// answer an estimated headcount gets.
