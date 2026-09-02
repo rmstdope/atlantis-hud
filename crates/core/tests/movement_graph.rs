@@ -4,9 +4,11 @@
 //! with the report rather than with an earlier run.
 
 use atlantis_hud_core::movement::graph::{Direction, MapKnowledge};
-use atlantis_hud_core::movement::mode::{mobility, Mobility};
+use atlantis_hud_core::movement::mode::{mobility, unit_movement, Mobility};
 use atlantis_hud_core::movement::rules::MovementMode;
-use atlantis_hud_core::report::model::Coordinate;
+use atlantis_hud_core::report::model::{
+    Coordinate, ReportUnit, UnitMovementMode, UnitMovementStatus,
+};
 use atlantis_hud_core::report::parse_report_full;
 
 const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
@@ -215,6 +217,58 @@ fn a_unit_heavier_than_all_its_capacities_cannot_move() {
 
     // "Thirteen of Eight (13972) ... Weight: 17. Capacity: 0/0/15/0."
     assert_eq!(mobility(unit), Mobility::Overloaded);
+}
+
+#[test]
+fn report_units_expose_the_complete_movement_presentation() {
+    let report = parse_report_full(TURN_71);
+    let movement = |id: &str| {
+        report
+            .units()
+            .find(|unit| unit.unit_id == id)
+            .and_then(unit_movement)
+            .expect("the report states movement")
+    };
+
+    let overloaded = movement("13972");
+    assert_eq!(overloaded.status, UnitMovementStatus::Overloaded);
+    assert_eq!(overloaded.capacity_mode, UnitMovementMode::Walk);
+    assert_eq!((overloaded.load, overloaded.walk), (17, 15));
+
+    let walking = movement("14451");
+    assert_eq!(walking.status, UnitMovementStatus::Walk);
+    assert_eq!(walking.capacity_mode, UnitMovementMode::Walk);
+    assert_eq!((walking.load, walking.walk), (500, 750));
+
+    let riding = movement("13432");
+    assert_eq!(riding.status, UnitMovementStatus::Ride);
+    assert_eq!(riding.capacity_mode, UnitMovementMode::Ride);
+    assert_eq!((riding.load, riding.ride, riding.walk), (60, 70, 85));
+
+    let flying = movement("881");
+    assert_eq!(flying.status, UnitMovementStatus::Fly);
+    assert_eq!(flying.capacity_mode, UnitMovementMode::Fly);
+    assert_eq!((flying.load, flying.fly), (773, 901));
+}
+
+#[test]
+fn exact_capacity_is_mobile_and_foreign_units_without_it_are_unstated() {
+    let exact = ReportUnit {
+        weight: Some(15),
+        capacity: Some("0/0/15/0".to_string()),
+        ..Default::default()
+    };
+    assert_eq!(
+        unit_movement(&exact).map(|movement| movement.status),
+        Some(UnitMovementStatus::Walk)
+    );
+
+    let report = parse_report_full(TURN_71);
+    let foreign = report
+        .units()
+        .find(|unit| !unit.own && unit.weight.is_none())
+        .expect("the report has foreign units");
+    assert_eq!(foreign.movement, None);
 }
 
 /// A report prints weight and capacity only for your own units, so a foreign unit's mobility is not

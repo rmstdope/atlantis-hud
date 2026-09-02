@@ -7,6 +7,7 @@ import type {
   RegionPreview,
   ReportRegion,
   ReportUnit,
+  UnitMovement,
   UnitSilver
 } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit, aUnitSilver } from "@atlantis/core-client";
@@ -52,6 +53,15 @@ function draw(node: HexNode | null, preview: RegionPreview | null = null): strin
 
 const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit =>
   aReportUnit({ unitId: "1", name: "Scout", regionId: "1:6,52", factionId: "1", factionName: "My Faction", ...overrides });
+
+const WALKING: UnitMovement = {
+  status: "walk",
+  load: 10,
+  fly: 0,
+  ride: 0,
+  walk: 15,
+  capacityMode: "walk"
+};
 
 describe("the units pane on an empty hex", () => {
   it("a stale hex explains its empty list instead of claiming an empty hex", () => {
@@ -1208,6 +1218,21 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     { status: "arriving", arrivingFrom: "1:6,52" }
   );
 
+  it("renders movement as an accessible letter with prediction history", () => {
+    const preview = previewed(
+      { movement: { ...WALKING, status: "ride", capacityMode: "ride", ride: 70 } },
+      { changes: [{ field: "movement", original: "Walking" }] }
+    );
+    const markup = drawOwn([unit({ movement: WALKING })], {
+      regions: [{ regionId: "1:6,52", units: [preview] }]
+    });
+    const row = /<tr data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+
+    expect(row).toContain(">R</span>");
+    expect(row).toContain('<span class="sr-only">Riding</span>');
+    expect(row).toContain('title="was: Walking"');
+  });
+
   it("marks a changed ITEMS cell in a list spanning hexes", () => {
     const markup = drawOwn(
       [unit({ unitId: "1" }), unit({ unitId: "2", regionId: "1:9,55" })],
@@ -1381,7 +1406,7 @@ describe("the Other factions source (ah-1mpx.5)", () => {
       { gameId: "aug-2026", status: "ready", armies: [] }
     );
 
-    expect(markup).not.toContain("not disclosed");
+    expect(markup).not.toContain('<span class="italic text-ink-dim">not disclosed</span>');
   });
 
   it("a foreign unit that discloses a skill prints it rather than the notice", () => {
@@ -1390,7 +1415,7 @@ describe("the Other factions source (ah-1mpx.5)", () => {
     ]);
 
     expect(markup).toContain("COMB 3 (180)");
-    expect(markup).not.toContain("not disclosed");
+    expect(markup).not.toContain('<span class="italic text-ink-dim">not disclosed</span>');
   });
 
   it("a foreign unit's recovered skills replace not disclosed", () => {
@@ -1404,7 +1429,7 @@ describe("the Other factions source (ah-1mpx.5)", () => {
     const row2 = /<tr data-testid="unit-row-2"[\s\S]*?<\/tr>/.exec(markup)?.[0];
 
     expect(row2).toContain("RIDI 5 (turn 71)");
-    expect(row2).not.toContain("not disclosed");
+    expect(row2).not.toContain('<span class="italic text-ink-dim">not disclosed</span>');
   });
 
   it("a real skill still wins over recovered skills", () => {

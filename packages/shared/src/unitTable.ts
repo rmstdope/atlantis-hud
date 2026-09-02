@@ -54,6 +54,7 @@ export const UNIT_COLUMNS = [
   "name",
   "faction",
   "men",
+  "movement",
   "skills",
   "items",
   "structure",
@@ -75,6 +76,7 @@ export const COLUMN_LABELS: Partial<Record<UnitColumn, string>> = {
   name: "Unit",
   faction: "Faction",
   men: "Men",
+  movement: "Move",
   skills: "Skills",
   items: "Items",
   structure: "Structure",
@@ -337,9 +339,9 @@ export type ColumnShares = Partial<Record<UnitColumn, number>>;
  * structure 208, longOrder 144, silver 96. A player who never drags must see no difference at all,
  * so these are a restatement of the Tailwind width classes they replace rather than a new choice -
  * and `silver` (ah-1wcw.1) widened the nominal table by its own 96 rather than taking width from
- * any of the nine that were here before it.
+ * any of the ten that were here before it.
  */
-const NOMINAL_TABLE_PX = 1440;
+const NOMINAL_TABLE_PX = 1504;
 
 /**
  * The silver figure the column shows: the forecast, less upkeep when the setting says so.
@@ -374,6 +376,7 @@ export const DEFAULT_COLUMN_SHARES: Record<UnitColumn, number> = {
   name: 208 / NOMINAL_TABLE_PX,
   faction: 192 / NOMINAL_TABLE_PX,
   men: 64 / NOMINAL_TABLE_PX,
+  movement: 64 / NOMINAL_TABLE_PX,
   skills: 220 / NOMINAL_TABLE_PX,
   items: 220 / NOMINAL_TABLE_PX,
   structure: 208 / NOMINAL_TABLE_PX,
@@ -539,16 +542,29 @@ export function orderOf(order: ColumnOrder | null): ColumnOrder {
  * order missing a column that a later build added is exactly the case that tempts a patch.
  */
 export function columnOrderFromStorage(stored: unknown): ColumnOrder | null {
-  if (!Array.isArray(stored) || stored.length !== UNIT_COLUMNS.length) {
+  if (!Array.isArray(stored)) {
     return null;
   }
   const known = new Set<string>(UNIT_COLUMNS);
+  const isLegacy = stored.length === UNIT_COLUMNS.length - 1;
+  if (stored.length !== UNIT_COLUMNS.length && !isLegacy) {
+    return null;
+  }
+  if (isLegacy) {
+    known.delete("movement");
+  }
   const seen = new Set<string>();
   for (const entry of stored) {
     if (typeof entry !== "string" || !known.has(entry) || seen.has(entry)) {
       return null;
     }
     seen.add(entry);
+  }
+  if (isLegacy) {
+    const order = [...stored] as UnitColumn[];
+    const menIndex = order.indexOf("men");
+    order.splice(menIndex + 1, 0, "movement");
+    return order;
   }
   return stored as ColumnOrder;
 }

@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { aReportUnit } from "@atlantis/core-client";
+import type { UnitMovement, UnitPreview } from "@atlantis/core-client";
 import { readRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataEntry, type GameDataIndex } from "../gameData";
 import { buildMagicTree } from "../magicTree";
@@ -41,6 +42,15 @@ const UNIT = aReportUnit({
 
 const draw = (props: Partial<Parameters<typeof UnitPanel>[0]> = {}) =>
   renderToStaticMarkup(<UnitPanel unit={UNIT} hex={HEX} {...props} />);
+
+const RIDING: UnitMovement = {
+  status: "ride",
+  load: 60,
+  fly: 0,
+  ride: 70,
+  walk: 85,
+  capacityMode: "ride"
+};
 
 describe("naming game data in the unit pane", () => {
   it("opens a skill's game data entry from its name", () => {
@@ -218,5 +228,40 @@ describe("battle-derived skills in the unit pane (ah-1mpx.6.3)", () => {
     );
 
     expect(html).not.toContain("Skills from battle reports");
+  });
+
+  it("shows named movement capacities and the active mode", () => {
+    const html = draw({ unit: aReportUnit({ movement: RIDING }) });
+
+    expect(html).toContain("Riding");
+    expect(html).toContain("Fastest available movement");
+    expect(html).toContain("Fly");
+    expect(html).toContain("70");
+    expect(html).toContain("85");
+    expect(html).toContain("The load is 60. Ride and Walk can carry it.");
+  });
+
+  it("uses the preview movement rather than the reported movement", () => {
+    const preview: UnitPreview = {
+      unit: aReportUnit({
+        movement: { ...RIDING, status: "walk", capacityMode: "walk" }
+      }),
+      status: "present",
+      changes: [{ field: "movement", original: "Riding" }],
+      arrivingFrom: null,
+      departingTo: null,
+      aboard: null,
+      uncounted: [],
+      takenUnshown: [],
+      produced: [],
+      built: [],
+      created: [],
+      transportSent: [],
+      transportReceived: []
+    };
+    const html = draw({ unit: aReportUnit({ movement: RIDING }), preview });
+
+    expect(html).toContain("Walking");
+    expect(html).toContain("was: Riding");
   });
 });

@@ -225,8 +225,41 @@ pub struct ReportUnit {
     pub men_by_race: Vec<ItemAmount>,
     pub weight: Option<i64>,
     pub capacity: Option<String>,
+    #[serde(default)]
+    pub movement: Option<UnitMovement>,
     /// Set when the unit sits inside a structure.
     pub structure_id: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub enum UnitMovementMode {
+    Fly,
+    Ride,
+    Walk,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub enum UnitMovementStatus {
+    Overloaded,
+    Fly,
+    Ride,
+    Walk,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct UnitMovement {
+    pub status: UnitMovementStatus,
+    pub load: i64,
+    pub fly: i64,
+    pub ride: i64,
+    pub walk: i64,
+    pub capacity_mode: UnitMovementMode,
 }
 
 /// A unit that has not been through classification carries an estimate, so that is the default a
@@ -257,6 +290,7 @@ impl Default for ReportUnit {
             men_by_race: Vec::new(),
             weight: None,
             capacity: None,
+            movement: None,
             structure_id: None,
         }
     }

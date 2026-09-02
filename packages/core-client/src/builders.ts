@@ -52,6 +52,7 @@ export function aReportUnit(overrides: Partial<ReportUnit> = {}): ReportUnit {
     menByRace: [],
     weight: null,
     capacity: null,
+    movement: null,
     structureId: null,
     ...overrides
   };

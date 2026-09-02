@@ -23,6 +23,7 @@ export * from "./rulesets";
 export * from "./turnDiff";
 export * from "./turnMessages";
 export * from "./unitComposition";
+export * from "./unitMovement";
 export * from "./unitTable";
 export * from "./unitTooltip";
 

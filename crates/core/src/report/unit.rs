@@ -144,6 +144,7 @@ pub fn parse_unit(
         men_by_race: Vec::new(),
         weight: None,
         capacity: None,
+        movement: None,
         structure_id: structure_id.map(str::to_string),
     };
 
@@ -194,6 +195,7 @@ pub fn parse_unit(
     }
 
     unit.men = count_men(&unit.items);
+    unit.movement = crate::movement::mode::unit_movement(&unit);
     Some(unit)
 }
 

@@ -1,9 +1,9 @@
 //! How a unit gets about.
 //!
-//! Nothing here is derived. A turn report prints, for every unit of your own, the weight it is
-//! carrying and the four capacities the *server* worked out - `Weight: 60. Capacity: 0/70/85/0` -
-//! in the order fly, ride, walk, swim. So the question "can this unit ride?" is read rather than
-//! recomputed from item weights, which is both exact and immune to a drifting catalogue.
+//! A turn report prints, for every unit of your own, the weight it is carrying and the four
+//! capacities the *server* worked out - `Weight: 60. Capacity: 0/70/85/0` - in the order fly,
+//! ride, walk, swim. The report classification reads those values directly; order previews can
+//! instead derive the same presentation from a complete inventory and ruleset.
 //!
 //! A report states these for your own units only. A foreign unit's mobility is therefore not
 //! unknown by oversight; it is genuinely absent, and saying so beats assuming it walks.
@@ -11,7 +11,9 @@
 use crate::movement::fleet::OrderedUnits;
 use crate::movement::graph::KnownHex;
 use crate::movement::rules::{ItemKind, MovementMode, Ruleset};
-use crate::report::model::{ReportUnit, Structure};
+use crate::report::model::{
+    ReportUnit, Structure, UnitMovement, UnitMovementMode, UnitMovementStatus,
+};
 
 /// The four capacities a report prints, in the order it prints them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,14 +67,53 @@ pub fn parse_capacities(text: &str) -> Option<Capacities> {
 /// goes, and this ruleset gives it no allowance of its own.
 #[must_use]
 pub fn mobility(unit: &ReportUnit) -> Mobility {
-    let (Some(weight), Some(capacity)) = (
-        unit.weight,
-        unit.capacity.as_deref().and_then(parse_capacities),
-    ) else {
-        return Mobility::Unstated;
-    };
+    unit_movement(unit).map_or(Mobility::Unstated, |movement| match movement.status {
+        UnitMovementStatus::Overloaded => Mobility::Overloaded,
+        UnitMovementStatus::Fly => Mobility::Moves(MovementMode::Fly),
+        UnitMovementStatus::Ride => Mobility::Moves(MovementMode::Ride),
+        UnitMovementStatus::Walk => Mobility::Moves(MovementMode::Walk),
+    })
+}
 
-    mobility_for_capacities(weight, capacity)
+/// Classifies a unit using the weight and capacities stated by its report.
+#[must_use]
+pub fn unit_movement(unit: &ReportUnit) -> Option<UnitMovement> {
+    let weight = unit.weight?;
+    let capacity = unit.capacity.as_deref().and_then(parse_capacities)?;
+    Some(movement_for_capacities(weight, capacity))
+}
+
+fn movement_for_capacities(weight: i64, capacity: Capacities) -> UnitMovement {
+    let status = mobility_for_capacities(weight, capacity);
+    let status = match status {
+        Mobility::Overloaded => UnitMovementStatus::Overloaded,
+        Mobility::Moves(MovementMode::Fly) => UnitMovementStatus::Fly,
+        Mobility::Moves(MovementMode::Ride) => UnitMovementStatus::Ride,
+        Mobility::Moves(MovementMode::Walk) => UnitMovementStatus::Walk,
+        Mobility::Unstated | Mobility::Moves(MovementMode::Sail) => unreachable!(),
+    };
+    let capacity_mode = match status {
+        UnitMovementStatus::Fly => UnitMovementMode::Fly,
+        UnitMovementStatus::Ride => UnitMovementMode::Ride,
+        UnitMovementStatus::Walk => UnitMovementMode::Walk,
+        UnitMovementStatus::Overloaded => {
+            if capacity.fly >= capacity.ride && capacity.fly >= capacity.walk {
+                UnitMovementMode::Fly
+            } else if capacity.ride >= capacity.walk {
+                UnitMovementMode::Ride
+            } else {
+                UnitMovementMode::Walk
+            }
+        }
+    };
+    UnitMovement {
+        status,
+        load: weight,
+        fly: capacity.fly,
+        ride: capacity.ride,
+        walk: capacity.walk,
+        capacity_mode,
+    }
 }
 
 fn mobility_for_capacities(weight: i64, capacity: Capacities) -> Mobility {
@@ -150,7 +191,7 @@ pub fn capacities_from_items(items: &[(&str, i64)], ruleset: &Ruleset) -> Option
         } else if item.capacity_condition.is_some() {
             return None;
         } else {
-            *count
+            (*count).max(0)
         };
         let contribution = |capacity: i64, self_mobile: bool| {
             matched * (capacity + if self_mobile { item.weight } else { 0 })
@@ -162,6 +203,28 @@ pub fn capacities_from_items(items: &[(&str, i64)], ruleset: &Ruleset) -> Option
     }
 
     Some(total)
+}
+
+/// Classifies a unit from its complete current inventory and the supplied ruleset.
+#[must_use]
+pub fn unit_movement_from_items(unit: &ReportUnit, ruleset: &Ruleset) -> Option<UnitMovement> {
+    let mut items = Vec::with_capacity(unit.items.len());
+    let mut men = 0_i64;
+    let mut load = 0_i64;
+    for amount in &unit.items {
+        let item = ruleset.find_item(&amount.tag)?;
+        let count = amount.amount.max(0);
+        if item.kind == ItemKind::Man {
+            men = men.saturating_add(count);
+        }
+        load = load.saturating_add(count.saturating_mul(item.weight));
+        items.push((amount.tag.as_str(), count));
+    }
+    if men == 0 || men < unit.men {
+        return None;
+    }
+    let capacities = capacities_from_items(&items, ruleset)?;
+    Some(movement_for_capacities(load, capacities))
 }
 
 /// Derives mobility from a complete inventory, falling back to the report when it is incomplete.
@@ -180,7 +243,7 @@ pub fn mobility_with_ruleset(unit: &ReportUnit, ruleset: &Ruleset) -> Mobility {
         }
         items.push((amount.tag.as_str(), amount.amount));
     }
-    if !has_conditional_capacity || men < unit.men {
+    if men == 0 || (!has_conditional_capacity || men < unit.men) {
         return mobility(unit);
     }
     let Some(capacities) = capacities_from_items(&items, ruleset) else {
@@ -547,6 +610,65 @@ mod tests {
     #[test]
     fn a_unit_with_no_stated_capacity_is_not_judged() {
         assert_eq!(best_allowance(&ReportUnit::default()), None);
+    }
+
+    #[test]
+    fn movement_uses_fastest_available_mode_and_active_capacity() {
+        let movement = unit_movement(&ReportUnit {
+            weight: Some(60),
+            capacity: Some("0/70/85/0".to_string()),
+            ..Default::default()
+        })
+        .expect("stated movement");
+        assert_eq!(movement.status, UnitMovementStatus::Ride);
+        assert_eq!(movement.capacity_mode, UnitMovementMode::Ride);
+        assert_eq!((movement.load, movement.ride, movement.walk), (60, 70, 85));
+    }
+
+    #[test]
+    fn overloaded_capacity_mode_uses_fastest_first_tie_breaking() {
+        let movement = unit_movement(&ReportUnit {
+            weight: Some(100),
+            capacity: Some("90/90/90/0".to_string()),
+            ..Default::default()
+        })
+        .expect("stated movement");
+        assert_eq!(movement.status, UnitMovementStatus::Overloaded);
+        assert_eq!(movement.capacity_mode, UnitMovementMode::Fly);
+    }
+
+    #[test]
+    fn item_movement_requires_a_complete_inventory_and_enough_people() {
+        let unit = ReportUnit {
+            men: 1,
+            items: vec![crate::report::model::ItemAmount {
+                amount: 1,
+                name: "horse".to_string(),
+                tag: "HORS".to_string(),
+            }],
+            ..Default::default()
+        };
+        assert!(unit_movement_from_items(&unit, &ruleset()).is_none());
+        let unknown = ReportUnit {
+            men: 0,
+            items: vec![crate::report::model::ItemAmount {
+                amount: 1,
+                name: "unknown".to_string(),
+                tag: "ZZZZ".to_string(),
+            }],
+            ..Default::default()
+        };
+        assert!(unit_movement_from_items(&unknown, &ruleset()).is_none());
+    }
+
+    #[test]
+    fn empty_inventory_does_not_fabricate_flying_movement() {
+        let unit = ReportUnit {
+            men: 0,
+            items: Vec::new(),
+            ..Default::default()
+        };
+        assert!(unit_movement_from_items(&unit, &ruleset()).is_none());
     }
 
     // ------------------------------------------------------------ capacities_from_items

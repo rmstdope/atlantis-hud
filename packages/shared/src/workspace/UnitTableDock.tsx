@@ -29,6 +29,7 @@ import { unitStructureLabel } from "../structureLabel";
 import { describeMenBriefly, whyEstimated } from "../unitComposition";
 import { derivedSkillsFor, NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
 import { unitSkillsCell } from "../battleSkillPresentation";
+import { presentUnitMovement } from "../unitMovement";
 import {
   DEFAULT_SORT,
   EXTRA_COLUMN_SHARES,
@@ -1890,6 +1891,7 @@ function UnitRow({
   const itemsChange = changeFor(unit, "items");
   const skillsChange = changeFor(unit, "skills");
   const structureChange = changeFor(unit, "structureId");
+  const movementChange = changeFor(unit, "movement");
   // The cell truncates, so the whole label belongs in the tooltip whether or not it also changed;
   // when it did change, what the report said goes on a line beneath it.
   const structureTitle =
@@ -2031,6 +2033,37 @@ function UnitRow({
         {describeMenBriefly(unit)}
       </Td>
     ),
+    movement: (() => {
+      if (unit.movement == null) {
+        return (
+          <Td title="Movement not disclosed">
+            <span className="sr-only">Movement not disclosed</span>
+            <span aria-hidden className="text-ink-dim">
+              —
+            </span>
+          </Td>
+        );
+      }
+      const presentation = presentUnitMovement(unit.movement);
+      const toneClass =
+        presentation.tone === "danger"
+          ? "text-danger"
+          : presentation.tone === "brass"
+            ? "text-brass"
+            : presentation.tone === "select"
+              ? "text-select"
+              : "text-ink-soft";
+      return (
+        <Td
+          className={movementChange ? PREDICTED : toneClass}
+          predicted={Boolean(movementChange)}
+          title={originalTooltip(movementChange) ?? presentation.label}
+        >
+          <span className="sr-only">{presentation.label}</span>
+          <span aria-hidden>{presentation.code}</span>
+        </Td>
+      );
+    })(),
     // A report discloses a foreign unit's large items and never its skills (`rules/reportformat`),
     // so an empty cell there would be indistinguishable from a unit that genuinely has none - which
     // for one of ours it does mean, since our own report prints `Skills: none.` (Q3).

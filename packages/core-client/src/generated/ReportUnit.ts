@@ -2,6 +2,7 @@
 import type { CombatSpell } from "./CombatSpell";
 import type { ItemAmount } from "./ItemAmount";
 import type { SkillInfo } from "./SkillInfo";
+import type { UnitMovement } from "./UnitMovement";
 
 /**
  * A unit as the report describes it.
@@ -46,7 +47,7 @@ menEstimated: boolean,
 /**
  * The unit's people, by race, once it has been classified. Empty while estimated.
  */
-menByRace: Array<ItemAmount>, weight: number | null, capacity: string | null, 
+menByRace: Array<ItemAmount>, weight: number | null, capacity: string | null, movement: UnitMovement | null, 
 /**
  * Set when the unit sits inside a structure.
  */

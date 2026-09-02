@@ -19,7 +19,7 @@ use crate::movement::rules::Ruleset;
 use crate::orders::items::item_named;
 use crate::orders::standing::{standing_after, BoardingOrder};
 use crate::report::composition;
-use crate::report::model::{level_for_points, ReportUnit, Skill};
+use crate::report::model::{level_for_points, ReportUnit, Skill, UnitMovementStatus};
 
 /// How a previewed unit relates to the hex its row sits in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,7 +44,7 @@ pub enum UnitPreviewStatus {
 #[serde(rename_all = "camelCase")]
 pub struct FieldChange {
     /// The `ReportUnit` field, in its wire spelling: `name`, `onGuard`, `flags`, `items`, `skills`,
-    /// `men`, `structureId`.
+    /// `men`, `structureId`, `movement`.
     pub field: String,
     pub original: String,
 }
@@ -265,6 +265,9 @@ pub fn preview_orders_on_map(
     // after the market, after movement, after production. A sale takes its goods first, and
     // whatever a PRODUCE made this month is there to be sent.
     working.apply_transports();
+    for working_unit in &mut working.units {
+        working_unit.refresh_movement(&ruleset);
+    }
 
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
@@ -535,6 +538,7 @@ pub(crate) fn formed_unit(parent: &ReportUnit, alias: &str) -> ReportUnit {
         men_by_race: Vec::new(),
         weight: None,
         capacity: None,
+        movement: None,
         // The game creates the new unit in the same object as the unit forming it.
         structure_id: parent.structure_id.clone(),
     }
@@ -644,7 +648,48 @@ impl WorkingUnit {
             self.unit.structure_id != original.structure_id,
             original.structure_id.clone().unwrap_or_default(),
         );
+        let original_status = original.movement.map(|movement| movement.status);
+        let current_status = self.unit.movement.map(|movement| movement.status);
+        if original_status != current_status {
+            if let Some(status) = original_status {
+                changes.push(FieldChange {
+                    field: "movement".to_string(),
+                    original: movement_status_label(status).to_string(),
+                });
+            }
+        }
         changes
+    }
+
+    fn refresh_movement(&mut self, ruleset: &Ruleset) {
+        if !self.formed
+            && self
+                .original
+                .as_ref()
+                .is_some_and(|original| self.unit.items == original.items)
+        {
+            return;
+        }
+        if !self.uncounted.is_empty()
+            || self
+                .created
+                .iter()
+                .any(|created| created.fewest != created.most)
+        {
+            self.unit.movement = self.original.as_ref().and_then(|unit| unit.movement);
+            return;
+        }
+        self.unit.movement = crate::movement::mode::unit_movement_from_items(&self.unit, ruleset)
+            .or_else(|| self.original.as_ref().and_then(|unit| unit.movement));
+    }
+}
+
+fn movement_status_label(status: UnitMovementStatus) -> &'static str {
+    match status {
+        UnitMovementStatus::Overloaded => "Overloaded",
+        UnitMovementStatus::Fly => "Flying",
+        UnitMovementStatus::Ride => "Riding",
+        UnitMovementStatus::Walk => "Walking",
     }
 }
 
