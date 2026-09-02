@@ -23360,6 +23360,16 @@ mod tests {
                         ledger.uncounted.get("2390").map(Vec::as_slice),
                         Some([2].as_slice())
                     );
+                    // Asserted here and not only above: without it, an uncertain path that stopped
+                    // recording `uncertain_balance` at all would leave the mage assertion vacuous
+                    // and this test green while pinning nothing.
+                    assert!(
+                        ledger
+                            .uncertain_balance
+                            .contains_key(&("2390".to_string(), "ORC".to_string())),
+                        "{:?}",
+                        ledger.uncertain_balance
+                    );
                 },
             );
         }
