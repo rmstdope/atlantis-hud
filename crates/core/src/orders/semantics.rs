@@ -2938,10 +2938,11 @@ struct Ledger<'a> {
     /// it already makes. Steps 5 and 6 draw on the same food, and a third call to
     /// `feed_from_faction_food` would be a third answer to one question.
     faction_food: FactionFoodPass,
-    /// What this month's `TAKE`, `BUY`, `SELL` and `WITHDRAW` move into or out of each unit's item
-    /// list. Deliberately **not** `GIVE`: the orders preview applies gifts itself, with the
-    /// receiver and men handling this ledger cannot express, and recording them here would
-    /// double-apply them (`ah-agbm`).
+    /// What this month's `BUY`, `SELL` and `WITHDRAW` move into or out of each unit's item list.
+    /// Deliberately **not** `GIVE` or `TAKE`: the orders preview settles the whole Give phase
+    /// itself, in the report order `rules/sequenceofevents` gives it and with the receiver and men
+    /// handling this ledger cannot express, so recording either here would double-apply it
+    /// (`ah-agbm`, `ah-3mwm`).
     pub(crate) movements: Vec<ItemMovement>,
     /// Goods a resolvable, non-Nexus `WITHDRAW` order credited this month, keyed by unit and
     /// normalized item tag exactly as `credit` normalizes them. Movement-phase state only
@@ -3040,9 +3041,6 @@ pub(crate) struct ItemMovement {
     pub name: String,
     /// Signed: positive into the unit, negative out of it.
     pub delta: i64,
-    /// For a `TAKE` from a unit the report does not show in this hex, that unit's number - so the
-    /// hover can say the source is unverifiable. `None` for everything else.
-    pub from_unshown: Option<String>,
     /// Set on the movement carrying what a `PRODUCE` order makes, so the hover can say the goods
     /// arrive in the month's last phase and cannot be spent this month. `false` on every other
     /// movement, the materials that same order consumes included.
@@ -3060,15 +3058,6 @@ pub(crate) struct Created {
     pub fewest: i64,
     /// Whether the skill calls this a summoning, which decides the hover's verb.
     pub summoned: bool,
-}
-
-/// Whether a call to [`transfer`] should be recorded as a movement for the orders preview. `GIVE`
-/// is applied by the preview's own token walk, so recording it here would move the goods twice
-/// (`ah-agbm`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RecordMovement {
-    Yes,
-    No,
 }
 
 /// Whether any *foreign* unit in this hex is on guard.
@@ -3268,7 +3257,9 @@ fn ledger_for_with_production<'a>(
     ledger
 }
 
-/// What this month's `TAKE`, `BUY`, `SELL` and `WITHDRAW` do to each unit's item list.
+/// What this month's `BUY`, `SELL` and `WITHDRAW` do to each unit's item list. `GIVE` and `TAKE`
+/// are the preview's own, settled in report order by `effects::Working::apply_transfers`
+/// (`ah-3mwm`).
 ///
 /// Built from the same per-hex `Ledger` the warnings and the Silver column read, so the ITEMS
 /// column cannot settle an oversubscribed market line differently from the SILVER column beside it
@@ -3342,7 +3333,8 @@ pub(crate) fn item_effects(
     result
 }
 
-/// One unit's share of [`item_effects`]'s answer (`ah-agbm`).
+/// One unit's share of [`item_effects`]'s answer - what its `BUY`, `SELL`, `WITHDRAW`, `PRODUCE`,
+/// `BUILD` and `CAST` orders move (`ah-agbm`). Its `GIVE` and `TAKE` are not here (`ah-3mwm`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct UnitItemEffects {
     pub moved: Vec<ItemMovement>,
@@ -4152,8 +4144,6 @@ fn apply(
                         &Amount::All { except: 0 },
                         who.clone(),
                         receiver.clone(),
-                        RecordMovement::No,
-                        None,
                         reach,
                         true,
                     );
@@ -4168,8 +4158,6 @@ fn apply(
                     amount,
                     who.clone(),
                     receiver,
-                    RecordMovement::No,
-                    None,
                     reach,
                     true,
                 );
@@ -4193,13 +4181,6 @@ fn apply(
                     .push(placed.line);
                 return;
             }
-            // Named only when the order pointed at a real unit number the report does not show
-            // here (`ah-agbm`) - not for `NEW`, `FACTION`'s new unit, or `0`, none of which are
-            // "a source the report does not show".
-            let from_unshown = match (from, &source) {
-                (Party::Unit(id), None) => Some(id.clone()),
-                _ => None,
-            };
             let source = source.unwrap_or_default();
             // A TAKE has no discard target - the source is always a live unit, so the game's
             // refusal always applies.
@@ -4214,8 +4195,6 @@ fn apply(
                         &Amount::All { except: 0 },
                         source.clone(),
                         Some(who.clone()),
-                        RecordMovement::Yes,
-                        None,
                         GiveReach::Ours,
                         false,
                     );
@@ -4230,8 +4209,6 @@ fn apply(
                     amount,
                     source,
                     Some(who.clone()),
-                    RecordMovement::Yes,
-                    from_unshown,
                     GiveReach::Ours,
                     false,
                 );
@@ -4319,7 +4296,6 @@ fn apply(
                     tag: tag.clone(),
                     name: item_name(&tag, hex, ruleset),
                     delta: *count,
-                    from_unshown: None,
                     produced: false,
                     created: None,
                 });
@@ -4449,10 +4425,6 @@ fn transfer(
     amount: &Amount,
     from: String,
     to: Option<String>,
-    record: RecordMovement,
-    // For `TAKE` from a unit the report does not show here: that unit's number, carried onto the
-    // `to` end's movement so the hover can say the source is unverifiable (`ah-agbm`).
-    from_unshown: Option<String>,
     // The target reach controls inherent item refusal and the men-to-another-faction rule.
     reach: GiveReach,
     // Whether this is a GIVE rather than a TAKE. `rules/magic` refuses a mage's men on a GIVE
@@ -4535,31 +4507,9 @@ fn transfer(
 
     if !from.is_empty() {
         charge(ledger, &from, &tag, quantity, placed);
-        if record == RecordMovement::Yes && quantity != 0 {
-            ledger.movements.push(ItemMovement {
-                unit_id: from.clone(),
-                tag: tag.clone(),
-                name: item_name(&tag, hex, ledger.ruleset),
-                delta: -quantity,
-                from_unshown: None,
-                produced: false,
-                created: None,
-            });
-        }
     }
     if let Some(to) = to {
         credit(ledger, &to, &tag, quantity);
-        if record == RecordMovement::Yes && quantity != 0 {
-            ledger.movements.push(ItemMovement {
-                unit_id: to,
-                tag: tag.clone(),
-                name: item_name(&tag, hex, ledger.ruleset),
-                delta: quantity,
-                from_unshown,
-                produced: false,
-                created: None,
-            });
-        }
     }
 }
 
@@ -4642,7 +4592,6 @@ fn buy(
             tag: tag.clone(),
             name: item_name(&tag, hex, ledger.ruleset),
             delta: bought,
-            from_unshown: None,
             produced: false,
             created: None,
         });
@@ -4723,7 +4672,6 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
                 tag: deferred.tag.clone(),
                 name: item_name(&deferred.tag, hex, ledger.ruleset),
                 delta: plan.bought,
-                from_unshown: None,
                 produced: false,
                 created: None,
             });
@@ -4866,7 +4814,6 @@ fn produce(
                 tag: material.tag.to_ascii_uppercase(),
                 name: item_name(&material.tag, hex, ruleset),
                 delta: -material.amount,
-                from_unshown: None,
                 produced: false,
                 created: None,
             });
@@ -4878,7 +4825,6 @@ fn produce(
             name: item_name(&tag, hex, ruleset),
             tag,
             delta: plan.made,
-            from_unshown: None,
             produced: true,
             created: None,
         });
@@ -5102,7 +5048,6 @@ fn build(
         tag: tag.clone(),
         name: name.clone(),
         delta: -plan.done,
-        from_unshown: None,
         produced: false,
         created: None,
     });
@@ -5188,7 +5133,6 @@ fn sell(
             tag: tag.clone(),
             name: item_name(&tag, hex, ledger.ruleset),
             delta: -line.quantity,
-            from_unshown: None,
             produced: false,
             created: None,
         });
@@ -5326,7 +5270,6 @@ fn cast(
                 // number (`ah-ofpb.5`, round 1 Q4). `plan.materials` is already `charged` times the
                 // per-item amount.
                 delta: -material.amount,
-                from_unshown: None,
                 produced: false,
                 created: None,
             });
@@ -5340,7 +5283,6 @@ fn cast(
             name: item_name(&tag, hex, ruleset),
             tag,
             delta: plan.made,
-            from_unshown: None,
             produced: false,
             created: Some(Created {
                 fewest: plan.made_certain,
@@ -14639,8 +14581,12 @@ mod tests {
             });
         }
 
+        /// A `TAKE` moves the ledger's balance and records **no** movement: the preview settles
+        /// the whole Give phase itself now, in report order, so a movement recorded here would
+        /// move the same goods a second time (`ah-3mwm`). The items reaching the taker's row are
+        /// pinned by `effects::tests::report_ordered_transfers` instead.
         #[test]
-        fn a_take_records_the_movement_it_makes() {
+        fn a_take_moves_the_balance_and_records_no_movement() {
             let hex_region = region(vec![
                 with_item(unit("6567"), 500, "grain", "GRAI"),
                 unit("2391"),
@@ -14649,17 +14595,17 @@ mod tests {
                 hex_region,
                 "unit 2391\nTAKE FROM 6567 100 GRAI\n",
                 |ledger| {
+                    // The taker's 101 is the one grain every fixture unit holds to pay its
+                    // upkeep, plus the hundred that moved; the source's 500 is what `with_item`
+                    // set in place of that grain, less the same hundred.
+                    assert_eq!(balance_of(ledger, "2391", "GRAI"), 101, "the taker gains");
+                    assert_eq!(balance_of(ledger, "6567", "GRAI"), 400, "the source parts");
                     assert!(
-                        ledger.movements.contains(&ItemMovement {
-                            unit_id: "2391".to_string(),
-                            tag: "GRAI".to_string(),
-                            name: "grain".to_string(),
-                            delta: 100,
-                            from_unshown: None,
-                            produced: false,
-                            created: None,
-                        }),
-                        "the taker's own gain should be among the recorded movements: {:?}",
+                        !ledger
+                            .movements
+                            .iter()
+                            .any(|movement| movement.tag == "GRAI"),
+                        "the preview owns this transfer: {:?}",
                         ledger.movements
                     );
                 },
@@ -14690,7 +14636,6 @@ mod tests {
                             tag: "HORS".to_string(),
                             name: "horse".to_string(),
                             delta: 8,
-                            from_unshown: None,
                             produced: false,
                             created: None,
                         })
@@ -14702,7 +14647,6 @@ mod tests {
                             tag: "HORS".to_string(),
                             name: "horse".to_string(),
                             delta: 4,
-                            from_unshown: None,
                             produced: false,
                             created: None,
                         })
@@ -14759,7 +14703,6 @@ mod tests {
                         tag: "FUR".to_string(),
                         name: "fur".to_string(),
                         delta: -15,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }]
@@ -15027,7 +14970,6 @@ mod tests {
                         tag: "GRAI".to_string(),
                         name: "grain".to_string(),
                         delta: 8,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }]
@@ -15079,7 +15021,6 @@ mod tests {
                         tag: "WSHD".to_string(),
                         name: "wooden shield".to_string(),
                         delta: 6,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }],
@@ -15103,7 +15044,6 @@ mod tests {
                         tag: "IRON".to_string(),
                         name: "iron".to_string(),
                         delta: -8,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15140,7 +15080,6 @@ mod tests {
                         tag: "SWOR".to_string(),
                         name: "sword".to_string(),
                         delta: 8,
-                        from_unshown: None,
                         produced: true,
                         created: None,
                     }),
@@ -15167,7 +15106,6 @@ mod tests {
                             tag: "IRON".to_string(),
                             name: "iron".to_string(),
                             delta: -5,
-                            from_unshown: None,
                             produced: false,
                             created: None,
                         },
@@ -15176,7 +15114,6 @@ mod tests {
                             tag: "SWOR".to_string(),
                             name: "sword".to_string(),
                             delta: 5,
-                            from_unshown: None,
                             produced: true,
                             created: None,
                         },
@@ -15218,7 +15155,6 @@ mod tests {
                         tag: "SWOR".to_string(),
                         name: "sword".to_string(),
                         delta: -15,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15458,7 +15394,6 @@ mod tests {
                         tag: "WOOD".to_string(),
                         name: "wood".to_string(),
                         delta: -30,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15529,7 +15464,6 @@ mod tests {
                         tag: "WOOD".to_string(),
                         name: "wood".to_string(),
                         delta: -30,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }],
@@ -15549,7 +15483,6 @@ mod tests {
                         tag: "WOOD".to_string(),
                         name: "wood".to_string(),
                         delta: -15,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15574,7 +15507,6 @@ mod tests {
                         tag: "WOOD".to_string(),
                         name: "wood".to_string(),
                         delta: -6,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15666,7 +15598,6 @@ mod tests {
                         tag: "WOOD".to_string(),
                         name: "wood".to_string(),
                         delta: -10,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15753,7 +15684,6 @@ mod tests {
                         tag: "STON".to_string(),
                         name: "stone".to_string(),
                         delta: -10,
-                        from_unshown: None,
                         produced: false,
                         created: None,
                     }),
@@ -15806,7 +15736,6 @@ mod tests {
                             tag: "WOOD".to_string(),
                             name: "wood".to_string(),
                             delta: -30,
-                            from_unshown: None,
                             produced: false,
                             created: None,
                         }),
