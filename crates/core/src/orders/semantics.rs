@@ -2365,8 +2365,7 @@ fn apply_transfers(
                 if transfer.is_give {
                     if let GiveTarget::Unit(receiver_position) = receiver {
                         if moved > 0 {
-                            let entry =
-                                receipts_by_position.entry(receiver_position).or_default();
+                            let entry = receipts_by_position.entry(receiver_position).or_default();
                             entry.silver = entry.silver.saturating_add(moved);
                             if !entry.givers.contains(&source_label) {
                                 entry.givers.push(source_label);
@@ -25751,7 +25750,6 @@ mod tests {
         hex
     }
 
-
     /// `rules/sequenceofevents`: GIVE and TAKE are one Give phase, and where nothing else orders
     /// units within a phase "units will be processed in the order they appear on the report". So a
     /// finite holding contested by a GIVE from the unit the report lists first and a TAKE written
@@ -25772,8 +25770,14 @@ mod tests {
         let giver_block = "unit 1234\nGIVE 3300 10 SWOR\nGIVE 3300 5 ORC\n";
 
         for (label, orders) in [
-            ("the take written first", format!("{taker_block}{giver_block}")),
-            ("the give written first", format!("{giver_block}{taker_block}")),
+            (
+                "the take written first",
+                format!("{taker_block}{giver_block}"),
+            ),
+            (
+                "the give written first",
+                format!("{giver_block}{taker_block}"),
+            ),
         ] {
             let region = region(vec![
                 source(),
@@ -25799,7 +25803,9 @@ mod tests {
 
             let taker = hex.find("2200").unwrap();
             assert_eq!(
-                taker.after_gifts().and_then(|h| item_amount(&h.items, "SWOR")),
+                taker
+                    .after_gifts()
+                    .and_then(|h| item_amount(&h.items, "SWOR")),
                 None,
                 "{label}: the losing TAKE moved nothing"
             );
@@ -25824,7 +25830,6 @@ mod tests {
         }
     }
 
-
     /// The SILVER column's receipts come from the same settlement, so it agrees with the report
     /// order the projection now follows: the giver's 100 silver reaches the recipient, and the
     /// TAKE written first gets nothing rather than being credited the same coins a second time.
@@ -25834,8 +25839,14 @@ mod tests {
         let giver_block = "unit 1234\nGIVE 3300 100 SILV\n";
 
         for (label, orders) in [
-            ("the take written first", format!("{taker_block}{giver_block}")),
-            ("the give written first", format!("{giver_block}{taker_block}")),
+            (
+                "the take written first",
+                format!("{taker_block}{giver_block}"),
+            ),
+            (
+                "the give written first",
+                format!("{giver_block}{taker_block}"),
+            ),
         ] {
             let region = region(vec![
                 with_item(unit("1234"), 100, "silver", "SILV"),

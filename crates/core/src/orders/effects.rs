@@ -1255,9 +1255,19 @@ impl Working {
         pending.sort_by_key(|transfer| (transfer.actor, transfer.line));
         for transfer in pending {
             if transfer.is_give {
-                self.give(transfer.actor, &transfer.party, &transfer.what, &transfer.amount);
+                self.give(
+                    transfer.actor,
+                    &transfer.party,
+                    &transfer.what,
+                    &transfer.amount,
+                );
             } else {
-                self.take(transfer.actor, &transfer.party, &transfer.what, &transfer.amount);
+                self.take(
+                    transfer.actor,
+                    &transfer.party,
+                    &transfer.what,
+                    &transfer.amount,
+                );
             }
         }
     }
@@ -5042,8 +5052,14 @@ mod tests {
             let giver_block = "unit 900\nGIVE 902 10 SWOR\nGIVE 902 10 HUMN\n";
 
             for (label, orders) in [
-                ("the take written first", format!("{taker_block}{giver_block}")),
-                ("the give written first", format!("{giver_block}{taker_block}")),
+                (
+                    "the take written first",
+                    format!("{taker_block}{giver_block}"),
+                ),
+                (
+                    "the give written first",
+                    format!("{giver_block}{taker_block}"),
+                ),
             ] {
                 let response = preview_over(&report_with_three(), &orders);
                 let of = |id: &str| {
@@ -5058,7 +5074,10 @@ mod tests {
                 let recipient = of("902");
                 assert_eq!(amount_of(recipient, "SWOR"), 10, "{label}");
                 assert_eq!(amount_of(recipient, "HUMN"), 10, "{label}");
-                assert_eq!(recipient.unit.men, 11, "{label}: its own leader and the ten arrivals");
+                assert_eq!(
+                    recipient.unit.men, 11,
+                    "{label}: its own leader and the ten arrivals"
+                );
                 assert_eq!(
                     recipient
                         .unit
@@ -5076,8 +5095,9 @@ mod tests {
                     .flat_map(|region| region.units.iter())
                     .find(|unit| unit.unit.unit_id == "901");
                 assert!(
-                    taker.is_none_or(|taker| amount_of(taker, "SWOR") == 0
-                        && amount_of(taker, "HUMN") == 0),
+                    taker.is_none_or(
+                        |taker| amount_of(taker, "SWOR") == 0 && amount_of(taker, "HUMN") == 0
+                    ),
                     "{label}: the losing TAKE moved nothing"
                 );
             }
