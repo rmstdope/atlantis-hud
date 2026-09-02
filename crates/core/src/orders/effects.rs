@@ -885,14 +885,21 @@ impl Working {
                 continue;
             };
             // A unit that dissolves never existed to trade: `rules/form` reverts "the silver and
-            // any other items it was given", so whatever its own BUY, SELL, WITHDRAW or TAKE moved
-            // is undone before the rest is handed over. Otherwise a BUY the game would never have
-            // executed would hand the recipient goods nobody ordered.
+            // any other items it was given", so what its own month moved is undone before the rest
+            // is handed over. Otherwise a BUY the game would never have executed would hand the
+            // recipient goods nobody ordered.
+            //
+            // Exactly `item_effects`' own movements, which is what `apply_item_effects` applied:
+            // a TAKE from a unit the report *does* show is settled earlier, in
+            // `semantics::hex_with_transfers`, records no movement, and so is not undone here.
             if let Some(effect) = effects.get(&self.units[index].unit.unit_id) {
                 for movement in &effect.moved {
                     let items = &mut self.units[index].unit.items;
                     match movement.delta.cmp(&0) {
                         std::cmp::Ordering::Greater => {
+                            // Absent already: an earlier movement emptied the stock, and
+                            // `take_item`'s own clamp is what the column needs - the same case
+                            // `apply_item_effects` documents on its negative branch.
                             if let Some(at) = items
                                 .iter()
                                 .position(|item| item.tag.eq_ignore_ascii_case(&movement.tag))
@@ -2962,6 +2969,58 @@ mod tests {
             "nobody ordered grain for this unit: {:?}",
             receiver.unit.items
         );
+    }
+
+    /// Two empty formed units in one region: both dissolve, and both revert to the same first own
+    /// unit - a dissolving row can never be another's recipient, because a recipient is always a
+    /// unit the report shows.
+    #[test]
+    fn two_empty_forms_in_one_region_both_revert_to_the_first_unit() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR], 4 stone [STON]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nEND\nFORM 2\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 2 4 STON\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units
+                .iter()
+                .any(|unit| unit.unit.unit_id.starts_with("new-")),
+            "both dissolve: {:?}",
+            units
+                .iter()
+                .map(|unit| &unit.unit.unit_id)
+                .collect::<Vec<_>>()
+        );
+        let receiver = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the first own unit receives both lots");
+        let held = |tag: &str| {
+            receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == tag)
+                .map_or(0, |item| item.amount)
+        };
+        assert_eq!(held("SWOR"), 3);
+        assert_eq!(held("STON"), 4);
     }
 
     /// The recipient search is region-scoped: two regions, each forming an empty unit, must revert
