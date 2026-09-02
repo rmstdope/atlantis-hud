@@ -15364,7 +15364,9 @@ mod tests {
         #[test]
         fn a_build_uses_material_received_before_build_phase() {
             let mut hex_region = report_with_a_builder();
-            hex_region.units[0] = hex_region.units[0].clone();
+            hex_region.units[0]
+                .items
+                .retain(|item| !item.tag.eq_ignore_ascii_case("WOOD"));
             hex_region
                 .units
                 .push(with_item(unit("901"), 30, "wood", "WOOD"));
@@ -15373,7 +15375,7 @@ mod tests {
                 "unit 900\nBUILD\nGIVE 900 30 WOOD\nunit 901\nGIVE 900 30 WOOD\n",
                 |ledger| {
                     assert_eq!(ledger.built["900"][0].amount, 30);
-                    assert_eq!(balance_of(ledger, "900", "WOOD"), 120);
+                    assert_eq!(balance_of(ledger, "900", "WOOD"), 0);
                 },
             );
         }
