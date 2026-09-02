@@ -8073,7 +8073,14 @@ mod faction_food_tests {
         // And with nobody claiming at step 2 either: `pool_left` is read again for steps 5 and 6,
         // where a definite remainder would deny a hex-mate relief from food that may still be
         // there - the same wrong warning, one pass later.
-        let nobody_claiming = feed_from_faction_food(&[giver, claim("2391", 0, 200, false)]);
+        // A third unit definitely brings food, so this is the `claimants.is_empty()` return rather
+        // than the empty-pool one: the remainder would otherwise read as a definite 50 grain, when
+        // the giver may still be holding its own on top of that.
+        let nobody_claiming = feed_from_faction_food(&[
+            giver,
+            claim("2391", 0, 200, false),
+            claim("2392", 50, 0, false),
+        ]);
         assert_eq!(pool_count(&nobody_claiming), None, "{nobody_claiming:?}");
     }
 
