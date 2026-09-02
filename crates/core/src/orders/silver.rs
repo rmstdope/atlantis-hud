@@ -790,18 +790,21 @@ pub enum SaleAnswer {
 ///
 /// Gathered once per turn by [`super::semantics::review_turn`] rather than per unit: the giving
 /// orders live all over the document, and re-scanning it per unit would be quadratic in the size
-/// of a faction. A gift this pass cannot count - from another hex, from a foreign unit, or of an
-/// `ALL` amount whose giver it cannot price - is silently absent rather than doubted, which
-/// understates income and never overstates it.
+/// of a faction. Every figure below is what the hex's own transfer settlement actually moved, in
+/// the report order `rules/sequenceofevents` gives the Give phase (`ah-3mwm`) - never a quantity
+/// an order merely asked for. A gift this pass cannot count - from another hex, from a foreign
+/// unit, or of an `ALL` amount whose giver it cannot price - is silently absent rather than
+/// doubted, which understates income and never overstates it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Receipts {
     /// Silver given by units whose orders we can read and whose hex matches. Already summed.
     pub silver: i64,
-    /// The givers, as `<name> (<id>)`, for the hover to name them. In document order.
+    /// The givers, as `<name> (<id>)`, for the hover to name them. In settlement order: report
+    /// order between units, and written order within one unit's block.
     pub givers: Vec<String>,
     /// Silver this unit's own `TAKE` orders pull from units the report shows in this hex.
     pub taken: i64,
-    /// Those sources, as `<name> (<id>)`, so the hover can name them. In document order.
+    /// Those sources, as `<name> (<id>)`, so the hover can name them. In settlement order.
     pub taken_from: Vec<String>,
     /// Silver this unit's own `TAKE` orders pull from units the report does **not** show in this
     /// hex. Counted, because the ledger counts it: `shared_silver_covered` and `upkeep` are
@@ -809,7 +812,7 @@ pub struct Receipts {
     /// (`ah-awcm`).
     pub taken_unshown: i64,
     /// Those sources, as `unit <id>` - the report gives no name for a unit it does not show. In
-    /// document order.
+    /// settlement order.
     pub taken_unshown_from: Vec<String>,
     /// Whether a `TAKE ... ALL SILV` could not be priced, which silences the unit's whole figure.
     ///
