@@ -733,6 +733,7 @@ struct Working {
     /// phases, after the market and after production, so a sale written below a transport still
     /// takes its goods first (`ah-bxgs`).
     transports: Vec<PendingTransport>,
+    quartermasters: std::collections::BTreeSet<String>,
     /// Every unit id the report names, ours and everyone else's. A target in here but not in
     /// `by_id` is a unit we can see and cannot project; one in neither is what the hover calls
     /// "which your report does not show" (`ah-bxgs`).
@@ -774,7 +775,9 @@ struct PendingTransfer {
 
 /// One `TRANSPORT`/`DISTRIBUTE` order, held until the month's other orders have been worked out
 /// (`ah-bxgs`).
+#[derive(Clone)]
 struct PendingTransport {
+    sequence: usize,
     sender: usize,
     /// The receiving row, when the target is one of ours. `None` for an ally's quartermaster or a
     /// unit number the report does not carry - the goods still leave.
@@ -785,6 +788,13 @@ struct PendingTransport {
     to_unshown: bool,
     what: super::forms::Selector,
     amount: super::forms::Amount,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum TransportPhase {
+    ToQuartermaster,
+    BetweenQuartermasters,
+    FromQuartermaster,
 }
 
 impl Working {
@@ -814,6 +824,20 @@ impl Working {
             });
         }
         let known_units = report.units().map(|unit| unit.unit_id.clone()).collect();
+        let quartermaster_tag = ruleset
+            .find_skill("quartermaster")
+            .map(|skill| skill.tag.clone());
+        let quartermasters = report
+            .own_units()
+            .filter(|unit| {
+                quartermaster_tag.as_ref().is_some_and(|tag| {
+                    unit.skills
+                        .iter()
+                        .any(|skill| skill.tag.eq_ignore_ascii_case(tag))
+                })
+            })
+            .map(|unit| unit.unit_id.clone())
+            .collect();
         let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
             BTreeMap::new();
         for region in &report.regions {
@@ -830,6 +854,7 @@ impl Working {
             forming: Vec::new(),
             ruleset,
             transports: Vec::new(),
+            quartermasters,
             known_units,
             shown_in_region,
             foreign_units: report
@@ -1504,6 +1529,7 @@ impl Working {
         let to_unshown = !self.known_units.contains(&id);
 
         self.transports.push(PendingTransport {
+            sequence: self.transports.len(),
             sender,
             receiver,
             to: id,
@@ -1518,64 +1544,112 @@ impl Working {
     /// (`ah-bxgs`).
     fn apply_transports(&mut self, dissolved: &BTreeSet<usize>) {
         let pending = std::mem::take(&mut self.transports);
-        for pending in pending {
-            // A unit that dissolved never existed to send anything: its row is not rendered, and
-            // whatever its own month acquired stays on it rather than reaching a recipient by the
-            // one path `dissolve_empty_forms` does not itself cover (`ah-dhga`).
-            if dissolved.contains(&pending.sender) {
-                continue;
-            }
-            // `GiveReach::Discard` bypasses target-specific refusal: `TRANSPORT` has
-            // its own permission gate, `can_be_transported`, checked below - the two lists are
-            // not the same (`IENT` may not be given but may be transported).
-            for (name, tag, moved) in self.tags_moved(
-                pending.sender,
-                &pending.what,
-                &pending.amount,
-                super::targets::GiveReach::Discard,
-            ) {
-                if !self.ruleset.can_be_transported(&tag) {
-                    self.units[pending.sender]
-                        .transport_sent
-                        .push(TransportSent {
-                            amount: 0,
-                            tag,
-                            to: String::new(),
-                            to_unshown: false,
-                            refused: true,
-                        });
+        let mut sent: Vec<Vec<(usize, TransportSent)>> =
+            (0..self.units.len()).map(|_| Vec::new()).collect();
+        let mut received: Vec<Vec<(usize, TransportReceived)>> =
+            (0..self.units.len()).map(|_| Vec::new()).collect();
+        for phase in [
+            TransportPhase::ToQuartermaster,
+            TransportPhase::BetweenQuartermasters,
+            TransportPhase::FromQuartermaster,
+        ] {
+            let mut allowance: Vec<Vec<crate::report::model::ItemAmount>> = self
+                .units
+                .iter()
+                .map(|unit| unit.unit.items.clone())
+                .collect();
+            let phase_pending: Vec<PendingTransport> = pending
+                .iter()
+                .filter(|pending| self.transport_phase(pending) == phase)
+                .cloned()
+                .collect();
+            for pending in phase_pending {
+                if dissolved.contains(&pending.sender) {
                     continue;
                 }
-                // Re-resolved by tag rather than kept from the snapshot, exactly as `give` does:
-                // an earlier transport in this same document may have emptied a stock ahead of
-                // this one and shifted every index after it.
-                let Some(held) =
-                    find_item(&self.ruleset, &self.units[pending.sender].unit.items, &tag)
-                else {
-                    continue;
+                // `GiveReach::Discard` bypasses target-specific refusal: `TRANSPORT` has
+                // its own permission gate, `can_be_transported`, checked below - the two lists are
+                // not the same (`IENT` may not be given but may be transported).
+                let held = allowance[pending.sender].clone();
                 };
-                take_item(&mut self.units[pending.sender].unit.items, held, moved);
-                self.units[pending.sender]
-                    .transport_sent
-                    .push(TransportSent {
-                        amount: moved,
-                        tag: tag.clone(),
-                        to: pending.to.clone(),
-                        to_unshown: pending.to_unshown,
-                        refused: false,
-                    });
-                if let Some(receiver) = pending.receiver {
-                    add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
-                    let from = self.units[pending.sender].unit.unit_id.clone();
-                    self.units[receiver]
-                        .transport_received
-                        .push(TransportReceived {
+                for (name, tag, moved) in self.tags_moved_from(
+                    &held,
+                    &pending.what,
+                    &pending.amount,
+                    super::targets::GiveReach::Discard,
+                ) {
+                    if !self.ruleset.can_be_transported(&tag) {
+                        sent[pending.sender].push((
+                            pending.sequence,
+                            TransportSent {
+                                amount: 0,
+                                tag,
+                                to: String::new(),
+                                to_unshown: false,
+                                refused: true,
+                            },
+                        ));
+                        continue;
+                    }
+                    // Re-resolved by tag rather than kept from the snapshot, exactly as `give` does:
+                    // an earlier transport in this same document may have emptied a stock ahead of
+                    // this one and shifted every index after it.
+                    let Some(held) =
+                        find_item(&self.ruleset, &self.units[pending.sender].unit.items, &tag)
+                    else {
+                        continue;
+                    };
+                    take_item(&mut self.units[pending.sender].unit.items, held, moved);
+                    sent[pending.sender].push((
+                        pending.sequence,
+                        TransportSent {
                             amount: moved,
-                            tag,
-                            from,
-                        });
+                            tag: tag.clone(),
+                            to: pending.to.clone(),
+                            to_unshown: pending.to_unshown,
+                            refused: false,
+                        },
+                    ));
+                    if let Some(item) = allowance[pending.sender]
+                        .iter_mut()
+                        .find(|item| item.tag == tag)
+                    {
+                        item.amount -= moved;
+                    }
+                    if let Some(receiver) = pending.receiver {
+                        add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
+                        let from = self.units[pending.sender].unit.unit_id.clone();
+                        received[receiver].push((
+                            pending.sequence,
+                            TransportReceived {
+                                amount: moved,
+                                tag,
+                                from,
+                            },
+                        ));
+                    }
                 }
             }
+        }
+        for (index, unit) in self.units.iter_mut().enumerate() {
+            sent[index].sort_by_key(|(sequence, _)| *sequence);
+            received[index].sort_by_key(|(sequence, _)| *sequence);
+            unit.transport_sent = sent[index].drain(..).map(|(_, value)| value).collect();
+            unit.transport_received = received[index].drain(..).map(|(_, value)| value).collect();
+        }
+    }
+
+    fn transport_phase(&self, pending: &PendingTransport) -> TransportPhase {
+        let sender = &self.units[pending.sender].unit.unit_id;
+        if !self.quartermasters.contains(sender) {
+            TransportPhase::ToQuartermaster
+        } else if pending.receiver.is_some_and(|receiver| {
+            self.quartermasters
+                .contains(&self.units[receiver].unit.unit_id)
+        }) {
+            TransportPhase::BetweenQuartermasters
+        } else {
+            TransportPhase::FromQuartermaster
         }
     }
 
@@ -1604,16 +1678,25 @@ impl Working {
         amount: &super::forms::Amount,
         reach: super::targets::GiveReach,
     ) -> Vec<(String, String, i64)> {
+        self.tags_moved_from(&self.units[holder].unit.items, what, amount, reach)
+    }
+
+    fn tags_moved_from(
+        &self,
+        held: &[crate::report::model::ItemAmount],
+        what: &super::forms::Selector,
+        amount: &super::forms::Amount,
+        reach: super::targets::GiveReach,
+    ) -> Vec<(String, String, i64)> {
         use super::forms::{Amount, Selector};
 
         let moving: Vec<(String, String, i64)> = match what {
             Selector::Item(item) => {
-                let Some(held) = find_item(&self.ruleset, &self.units[holder].unit.items, item)
-                else {
+                let Some(index) = find_item(&self.ruleset, held, item) else {
                     return Vec::new();
                 };
                 let (name, tag, held_amount) = {
-                    let held = &self.units[holder].unit.items[held];
+                    let held = &held[index];
                     (held.name.clone(), held.tag.clone(), held.amount)
                 };
                 let requested = match amount {
@@ -1634,10 +1717,7 @@ impl Working {
             Selector::Class(name)
                 if name.eq_ignore_ascii_case("MAN") || name.eq_ignore_ascii_case("MEN") =>
             {
-                self.units[holder]
-                    .unit
-                    .items
-                    .iter()
+                held.iter()
                     .filter(|item| self.ruleset.is_man(&item.tag))
                     .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
                     .collect()
@@ -1645,17 +1725,12 @@ impl Working {
             Selector::Class(name)
                 if name.eq_ignore_ascii_case("ITEM") || name.eq_ignore_ascii_case("ITEMS") =>
             {
-                self.units[holder]
-                    .unit
-                    .items
-                    .iter()
+                held.iter()
                     .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
                     .collect()
             }
             Selector::Class(name) => match self.ruleset.class_members(name) {
-                Some(tags) => self.units[holder]
-                    .unit
-                    .items
+                Some(tags) => held
                     .iter()
                     .filter(|item| tags.iter().any(|tag| tag == &item.tag))
                     .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
