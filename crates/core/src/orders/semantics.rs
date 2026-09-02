@@ -509,6 +509,10 @@ pub fn review_turn(
         }
 
         let start = findings.len();
+        // Computed once per hex, immediately before the per-hex checks that read it, so
+        // `check_guard` and `check_teaching` agree with `check_movement` about which MOVE will
+        // actually happen (`ah-0wpn`).
+        let departed = departures_after_load_checks(hex, ledger, ruleset);
         check_region_pools(hex, &overruns, ruleset, &plurals, &options, &mut findings);
         check_resources(
             hex,
@@ -533,8 +537,8 @@ pub fn review_turn(
         );
         check_tax_readiness(hex, ruleset, &plurals, &options, &mut findings);
         check_pillage_men(hex, ruleset, &plurals, &options, &mut findings);
-        check_guard(hex, ruleset, &plurals, &options, &mut findings);
-        check_teaching(hex, ruleset, &plurals, &options, &mut findings);
+        check_guard(hex, ruleset, &plurals, &options, &departed, &mut findings);
+        check_teaching(hex, ruleset, &plurals, &options, &departed, &mut findings);
         check_building(hex, &options, &mut findings);
         check_building_outside(hex, &options, &mut findings);
         check_build_help(hex, &options, &mut findings);
@@ -2756,17 +2760,6 @@ impl Ordered<'_> {
             .any(|intent| matches!(intent, Intent::Sail { .. }))
     }
 
-    /// Whether the unit's orders take it out of the hex. Entering or leaving a structure moves it
-    /// within the hex, so those steps leave it standing where it was.
-    fn leaves_the_hex(&self) -> bool {
-        self.intents().any(|intent| match intent {
-            Intent::Move { steps } | Intent::Sail { steps } => {
-                steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
-            }
-            _ => false,
-        })
-    }
-
     /// Whether the unit will be guarding at the end of the turn. The last GUARD order wins, as it
     /// would on the server; a unit that walks away guards nothing.
     fn final_guard_order(&self) -> Option<(&PlacedIntent, bool)> {
@@ -2780,8 +2773,10 @@ impl Ordered<'_> {
     }
 
     /// Whether the unit will be guarding at the end of the turn. AVOID is processed before GUARD,
-    /// regardless of document order; a unit that walks away guards nothing.
-    fn will_guard(&self, eligible: Option<bool>) -> bool {
+    /// regardless of document order; a unit that walks away - and whose walking away
+    /// `leaves_hex_after_load_check` confirms, rather than an overload proving it stays put -
+    /// guards nothing (`ah-0wpn`).
+    fn will_guard(&self, eligible: Option<bool>, departed: &BTreeSet<String>) -> bool {
         let guarding = if self
             .intents()
             .any(|intent| matches!(intent, Intent::Avoid(true)))
@@ -2791,7 +2786,7 @@ impl Ordered<'_> {
             self.unit.on_guard
         };
         let guarding = self.final_guard_order().map_or(guarding, |(_, on)| on);
-        guarding && eligible != Some(false) && !self.leaves_the_hex()
+        guarding && eligible != Some(false) && !departed.contains(&self.unit.unit_id)
     }
 
     /// Whether the unit's month is already spoken for by something other than teaching.
@@ -3026,6 +3021,15 @@ struct Ledger<'a> {
     /// receiver and men handling this ledger cannot express, and recording them here would
     /// double-apply them (`ah-agbm`).
     pub(crate) movements: Vec<ItemMovement>,
+    /// Goods a resolvable, non-Nexus `WITHDRAW` order credited this month, keyed by unit and
+    /// normalized item tag exactly as `credit` normalizes them. Movement-phase state only
+    /// (`ah-0wpn`): `rules/withdraw` acquires the goods before movement, but `Ledger.balance` has
+    /// many readers outside movement - `LateHoldings::read`, `judge_shortfalls`, recruitment,
+    /// production, study, maintenance and the Silver forecast all intentionally read that map as
+    /// their own phase model, and crediting it here would change every one of those. Read only by
+    /// `holdings_at_movement`, which is the sole inventory source for `weight_after_orders` and
+    /// `capacity_after_orders`.
+    pub(crate) withdrawn_for_movement: BTreeMap<(String, String), i64>,
     /// Lines whose effect on a unit's items could not be counted at all, by unit, in document
     /// order (`ah-agbm`).
     pub(crate) uncounted: BTreeMap<String, Vec<usize>>,
@@ -3262,6 +3266,7 @@ fn ledger_for_with_production<'a>(
         maintenance_pooled: false,
         faction_food: FactionFoodPass::default(),
         movements: Vec::new(),
+        withdrawn_for_movement: BTreeMap::new(),
         uncounted: BTreeMap::new(),
         built: BTreeMap::new(),
         buy_all: BTreeMap::new(),
@@ -4372,6 +4377,11 @@ fn apply(
         // goods here would change which units `not-enough-items` fires on, a shipped warning this
         // bead was not asked to touch. Recording the movement without the credit gives the ITEMS
         // column its projection and leaves every warning exactly as it is.
+        //
+        // `rules/sequenceofevents` places WITHDRAW before movement, and `rules/withdraw` says a
+        // successful withdrawal acquires the goods - so the movement-only holdings map is
+        // credited here, distinct from `balance`, purely so `holdings_at_movement` can see what
+        // this unit is carrying by the time MOVE is checked (`ah-0wpn`).
         Intent::Withdraw { count, item } => {
             if withdrawal_refused(hex.region) {
                 return;
@@ -4386,6 +4396,11 @@ fn apply(
                     produced: false,
                     created: None,
                 });
+                let entry = ledger
+                    .withdrawn_for_movement
+                    .entry((who.clone(), tag.to_ascii_uppercase()))
+                    .or_insert(0);
+                *entry = entry.saturating_add(*count);
             }
         }
         // Wages and takings from entertaining are paid in the last phase of the turn, after study
@@ -6454,6 +6469,7 @@ fn check_guard(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
+    departed: &BTreeSet<String>,
     findings: &mut Vec<Finding>,
 ) {
     let guarded_now = hex.units.iter().any(|ordered| ordered.unit.on_guard);
@@ -6484,7 +6500,7 @@ fn check_guard(
         .units
         .iter()
         .zip(eligibility)
-        .any(|(ordered, eligible)| ordered.will_guard(eligible));
+        .any(|(ordered, eligible)| ordered.will_guard(eligible, departed));
 
     if guarded_next {
         return;
@@ -6512,6 +6528,7 @@ fn check_teaching(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
+    departed: &BTreeSet<String>,
     findings: &mut Vec<Finding>,
 ) {
     let mut taught: BTreeSet<String> = BTreeSet::new();
@@ -6524,8 +6541,8 @@ fn check_teaching(
     }
 
     for ordered in &hex.units {
-        check_one_teacher(hex, ordered, ruleset, plurals, options, findings);
-        offer_free_slots(hex, ordered, &taught, ruleset, options, findings);
+        check_one_teacher(hex, ordered, ruleset, plurals, options, departed, findings);
+        offer_free_slots(hex, ordered, &taught, ruleset, options, departed, findings);
     }
 }
 
@@ -6536,9 +6553,13 @@ enum StudentPresence<'a> {
     Absent,
 }
 
-fn student_presence<'a>(hex: &'a Hex<'a>, id: &str) -> StudentPresence<'a> {
+fn student_presence<'a>(
+    hex: &'a Hex<'a>,
+    id: &str,
+    departed: &BTreeSet<String>,
+) -> StudentPresence<'a> {
     if let Some(pupil) = hex.find(id) {
-        return if pupil.leaves_the_hex() {
+        return if departed.contains(id) {
             StudentPresence::Absent
         } else {
             StudentPresence::Own(pupil)
@@ -6562,6 +6583,7 @@ fn check_one_teacher(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
+    departed: &BTreeSet<String>,
     findings: &mut Vec<Finding>,
 ) {
     let Some(placed) = teacher
@@ -6620,7 +6642,7 @@ fn check_one_teacher(
         };
 
         let label = teaching_target_label(student);
-        let pupil = match student_presence(hex, &id) {
+        let pupil = match student_presence(hex, &id, departed) {
             StudentPresence::Own(pupil) => pupil,
             StudentPresence::VisibleForeign => continue,
             StudentPresence::Absent => {
@@ -6706,6 +6728,7 @@ fn offer_free_slots(
     taught: &BTreeSet<String>,
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
+    departed: &BTreeSet<String>,
     findings: &mut Vec<Finding>,
 ) {
     if !options.emits(codes::TEACHER_HAS_FREE_SLOTS) {
@@ -6737,14 +6760,19 @@ fn offer_free_slots(
         })
         .flatten()
         .filter_map(party_unit_id)
-        .any(|id| matches!(student_presence(hex, &id), StudentPresence::VisibleForeign));
+        .any(|id| {
+            matches!(
+                student_presence(hex, &id, departed),
+                StudentPresence::VisibleForeign
+            )
+        });
     if has_visible_foreign {
         return;
     }
 
     // A TEACH naming nobody this hex holds is already reported as `taught-not-here`, and its slots
     // are free only as a consequence of that mistake. One mistake, marked once.
-    if !teaches_somebody_here(teacher, hex) {
+    if !teaches_somebody_here(teacher, hex, departed) {
         return;
     }
 
@@ -6755,7 +6783,8 @@ fn offer_free_slots(
         return;
     }
 
-    let free = teacher.unit.men.saturating_mul(STUDENTS_PER_TEACHER) - taught_by(teacher, hex);
+    let free =
+        teacher.unit.men.saturating_mul(STUDENTS_PER_TEACHER) - taught_by(teacher, hex, departed);
     if free <= 0 {
         return;
     }
@@ -6766,7 +6795,7 @@ fn offer_free_slots(
         .filter(|pupil| {
             if pupil.unit.unit_id == teacher.unit.unit_id
                 || taught.contains(&pupil.unit.unit_id)
-                || pupil.leaves_the_hex()
+                || departed.contains(&pupil.unit.unit_id)
             {
                 return false;
             }
@@ -6828,7 +6857,11 @@ fn teaching_ordered_label(ordered: &Ordered<'_>) -> String {
 /// `Party::Foreign` and `Party::Discard` never resolve: another faction's unit is not ours to read.
 /// A student that marches out of the hex does not resolve either - `check_one_teacher` reads it
 /// the same way and already reports it as `taught-not-here`.
-fn teaches_somebody_here(teacher: &Ordered<'_>, hex: &Hex<'_>) -> bool {
+fn teaches_somebody_here(
+    teacher: &Ordered<'_>,
+    hex: &Hex<'_>,
+    departed: &BTreeSet<String>,
+) -> bool {
     teacher
         .intents()
         .filter_map(|intent| match intent {
@@ -6839,12 +6872,12 @@ fn teaches_somebody_here(teacher: &Ordered<'_>, hex: &Hex<'_>) -> bool {
         .any(|student| {
             party_unit_id(student)
                 .and_then(|id| hex.find(&id))
-                .is_some_and(|pupil| !pupil.leaves_the_hex())
+                .is_some_and(|pupil| !departed.contains(&pupil.unit.unit_id))
         })
 }
 
 /// How many student-men a teacher has already taken on.
-fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>) -> i64 {
+fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>, departed: &BTreeSet<String>) -> i64 {
     teacher
         .intents()
         .filter_map(|intent| match intent {
@@ -6855,7 +6888,7 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>) -> i64 {
         .filter_map(|student| party_unit_id(student).and_then(|id| hex.find(&id)))
         // A student that marches off is taught by nobody, so it holds no slot - the same reading
         // `could_take` and `check_one_teacher` take of a departing pupil.
-        .filter(|pupil| !pupil.leaves_the_hex())
+        .filter(|pupil| !departed.contains(&pupil.unit.unit_id))
         .map(|pupil| pupil.men_after_orders)
         .sum()
 }
@@ -8040,6 +8073,37 @@ fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
     )
 }
 
+/// This unit's item holdings once this month's orders have run, by normalized tag - the sole
+/// inventory source for `weight_after_orders` and `capacity_after_orders`, so load and allowance
+/// are always priced from the same set of items (`ah-0wpn`).
+///
+/// Starts from this unit's settled `Ledger.balance` entries (moved by GIVE/TAKE in phase 4 and
+/// BUY/SELL in phase 7) and adds `Ledger.withdrawn_for_movement`'s movement-only WITHDRAW credits.
+/// Deliberately not `Ledger.balance` itself, which many other readers use as their own phase model
+/// and which WITHDRAW must not disturb. A tag WITHDRAW adds that the unit did not already hold
+/// starts from the unit's reported (zero) holding of it.
+fn holdings_at_movement(ordered: &Ordered<'_>, ledger: &Ledger<'_>) -> BTreeMap<String, i64> {
+    let mut holdings: BTreeMap<String, i64> = BTreeMap::new();
+
+    for ((unit_id, tag), balance) in &ledger.balance {
+        if unit_id == &ordered.unit.unit_id {
+            holdings.insert(tag.clone(), *balance);
+        }
+    }
+
+    for ((unit_id, tag), withdrawn) in &ledger.withdrawn_for_movement {
+        if unit_id != &ordered.unit.unit_id || *withdrawn == 0 {
+            continue;
+        }
+        let held = holdings
+            .entry(tag.clone())
+            .or_insert_with(|| ordered.holding(tag));
+        *held = held.saturating_add(*withdrawn);
+    }
+
+    holdings
+}
+
 /// What one unit weighs once this month's orders have run: the weight the report gave it, plus
 /// everything those orders move into or out of it that the ruleset can price.
 ///
@@ -8061,22 +8125,19 @@ fn weight_after_orders(
 ) -> Option<i64> {
     let mut weight = ordered.unit.weight?;
 
-    for ((unit_id, tag), balance) in &ledger.balance {
-        if unit_id != &ordered.unit.unit_id {
-            continue;
-        }
+    for (tag, holding) in holdings_at_movement(ordered, ledger) {
         let manufacturing_spent = ledger
             .manufacturing_spent
-            .get(&(unit_id.clone(), tag.clone()))
+            .get(&(ordered.unit.unit_id.clone(), tag.clone()))
             .copied()
             .unwrap_or_default();
-        let moved = balance
+        let moved = holding
             .saturating_add(manufacturing_spent)
-            .saturating_sub(ordered.holding(tag));
+            .saturating_sub(ordered.holding(&tag));
         if moved == 0 {
             continue;
         }
-        if let Some(item) = ruleset.and_then(|ruleset| ruleset.find_item(tag)) {
+        if let Some(item) = ruleset.and_then(|ruleset| ruleset.find_item(&tag)) {
             weight = weight.saturating_add(moved.saturating_mul(item.weight));
         }
     }
@@ -8117,19 +8178,15 @@ fn capacity_after_orders(
         .map(|item| (item.tag.to_ascii_uppercase(), item.amount))
         .collect();
 
-    for ((unit_id, tag), balance) in &ledger.balance {
-        if unit_id != &ordered.unit.unit_id {
-            continue;
-        }
-        let moved = balance - ordered.holding(tag);
+    for (tag, holding) in holdings_at_movement(ordered, ledger) {
+        let moved = holding - ordered.holding(&tag);
         if moved == 0 {
             continue;
         }
-        let key = tag.to_ascii_uppercase();
-        if let Some(entry) = counts.iter_mut().find(|(held, _)| held == &key) {
+        if let Some(entry) = counts.iter_mut().find(|(held, _)| held == &tag) {
             entry.1 = entry.1.saturating_add(moved);
         } else {
-            counts.push((key, moved));
+            counts.push((tag, moved));
         }
     }
 
@@ -8712,6 +8769,81 @@ fn check_sailing(
     }
 }
 
+/// This unit's known load and allowance, the moment `check_movement` renders as `unit-overloaded`.
+/// Shared so guard and teaching can ask the same question about a MOVE that will not happen
+/// (`ah-0wpn`), without rebuilding load and capacity a second time or searching the findings
+/// vector for an answer that has not been computed yet (`check_guard` and `check_teaching` both
+/// run before `check_movement`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MovementOverload {
+    weight: i64,
+    allowance: i64,
+}
+
+/// `Some` only when both the derived-or-printed allowance and `weight_after_orders` are known and
+/// the weight exceeds it. Unknown load or allowance - no ruleset, an unpriceable item, an
+/// incomplete item list - returns `None`, which callers must read as "cannot say", never as "not
+/// overloaded".
+fn movement_overload(
+    ordered: &Ordered<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+) -> Option<MovementOverload> {
+    let allowance = capacity_after_orders(ordered, ledger, ruleset)
+        .map(|capacity| capacity.fly.max(capacity.ride).max(capacity.walk))
+        .or_else(|| best_allowance(ordered.unit));
+
+    let (Some(allowance), Some(weight)) =
+        (allowance, weight_after_orders(ordered, ledger, ruleset))
+    else {
+        return None;
+    };
+
+    (weight > allowance).then_some(MovementOverload { weight, allowance })
+}
+
+/// Whether `ordered` actually leaves the hex, replacing the old unconditional
+/// `Ordered::leaves_the_hex` reading everywhere it mattered to guard and teaching (`ah-0wpn`):
+/// entering or leaving a structure moves a unit within the hex, so those steps never count.
+///
+/// A directional `SAIL` is still an unconditional departure: fleet overload and under-crewing are
+/// separate, multi-unit checks and out of scope here. A directional `MOVE` is a departure unless
+/// `movement_overload` proves it will fail. Unknown load or allowance preserves the existing
+/// optimistic departure behavior - lack of evidence for overload does not cancel an ordered
+/// departure.
+fn leaves_hex_after_load_check(
+    ordered: &Ordered<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+) -> bool {
+    ordered.intents().any(|intent| match intent {
+        Intent::Move { steps } => {
+            steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
+                && movement_overload(ordered, ledger, ruleset).is_none()
+        }
+        Intent::Sail { steps } => steps.iter().any(|step| matches!(step, MoveStep::Go(_))),
+        _ => false,
+    })
+}
+
+/// Every unit in the hex that actually departs once `leaves_hex_after_load_check` is accounted
+/// for, keyed by unit id.
+///
+/// Computed once per hex, immediately before the per-hex checks, and shared by `check_guard` and
+/// `check_teaching` - both are departure consumers, and each rebuilding load and capacity for the
+/// same unit would risk them disagreeing about one turn (`ah-0wpn`).
+fn departures_after_load_checks(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+) -> BTreeSet<String> {
+    hex.units
+        .iter()
+        .filter(|ordered| leaves_hex_after_load_check(ordered, ledger, ruleset))
+        .map(|ordered| ordered.unit.unit_id.clone())
+        .collect()
+}
+
 /// Every unit of ours that orders a MOVE: is what it will be carrying when it steps off more than
 /// it can move with at all? "A unit can walk provided that the carrying capacity of its people,
 /// horses and wagons is at least as great as the weight of all its other items... Otherwise the
@@ -8753,26 +8885,17 @@ fn check_movement(
             continue;
         };
 
-        let allowance = capacity_after_orders(ordered, ledger, ruleset)
-            .map(|capacity| capacity.fly.max(capacity.ride).max(capacity.walk))
-            .or_else(|| best_allowance(ordered.unit));
-
-        let (Some(allowance), Some(weight)) =
-            (allowance, weight_after_orders(ordered, ledger, ruleset))
-        else {
+        let Some(overload) = movement_overload(ordered, ledger, ruleset) else {
             continue;
         };
-
-        if weight <= allowance {
-            continue;
-        }
 
         findings.push(ordered.finding(
             hex,
             codes::UNIT_OVERLOADED,
             format!(
-                "this unit is overloaded: it carries {weight} and the most it can move with is \
-                 {allowance}, so it will not move"
+                "this unit is overloaded: it carries {} and the most it can move with is {}, so \
+                 it will not move",
+                overload.weight, overload.allowance
             ),
             Some(placed),
         ));
@@ -14981,6 +15104,43 @@ mod tests {
             });
         }
 
+        /// `ah-0wpn`. `rules/sequenceofevents` places WITHDRAW before movement, and
+        /// `rules/withdraw` acquires the goods on a success - but the shared resource `balance`
+        /// deliberately stays untouched (see `a_withdrawal_still_charges_the_unit_nothing`), so
+        /// the withdrawn goods must land somewhere else for `holdings_at_movement` to find them
+        /// before MOVE is checked.
+        #[test]
+        fn withdrawn_goods_stay_out_of_the_resource_balance_but_enter_movement_holdings() {
+            let hex_region = region(vec![unit("2390")]);
+            with_ledger(hex_region, "unit 2390\nWITHDRAW 6 WSHD\n", |ledger| {
+                assert_eq!(
+                    balance_of(ledger, "2390", "WSHD"),
+                    0,
+                    "the resource balance must be unchanged by a movement-phase withdrawal"
+                );
+                assert_eq!(
+                    ledger
+                        .withdrawn_for_movement
+                        .get(&("2390".to_string(), "WSHD".to_string())),
+                    Some(&6),
+                    "the movement-phase holdings must contain the six withdrawn shields"
+                );
+                assert_eq!(
+                    ledger.movements,
+                    vec![ItemMovement {
+                        unit_id: "2390".to_string(),
+                        tag: "WSHD".to_string(),
+                        name: "wooden shield".to_string(),
+                        delta: 6,
+                        from_unshown: None,
+                        produced: false,
+                        created: None,
+                    }],
+                    "the existing ItemMovement preview must remain present"
+                );
+            });
+        }
+
         #[test]
         fn a_produce_records_the_materials_it_consumes() {
             let hex_region = region(vec![with_item(
@@ -20021,7 +20181,8 @@ mod tests {
     }
 
     /// A guard that sails away drops the guard exactly as one that marches - SAIL with a route is
-    /// a move to the intents reader, so `leaves_the_hex` agrees with the order tracer.
+    /// an unconditional departure for `leaves_hex_after_load_check`, so it agrees with the order
+    /// tracer.
     #[test]
     fn a_guard_that_sails_away_drops_the_guard_like_one_that_marches() {
         let mut guarding = unit("5");
@@ -20029,6 +20190,38 @@ mod tests {
 
         let finding = only(check(vec![region(vec![guarding])], "unit 5\nSAIL N\n"));
         assert_eq!(finding.code.as_str(), "guard-dropped");
+    }
+
+    /// `ah-0wpn`. A MOVE that `movement_overload` proves will fail does not actually take the
+    /// unit anywhere, so a guard that orders one keeps guarding - `unit-overloaded` is the whole
+    /// warning here, and a `guard-dropped` alongside it would tell the player about a departure
+    /// that will not happen.
+    #[test]
+    fn an_overloaded_guard_stays_to_guard_the_hex() {
+        let mut guarding = one_human("12054");
+        guarding.on_guard = true;
+
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![guarding])],
+                "unit 12054\nWITHDRAW 6 WSHD\nMOVE N\n",
+            )),
+            ["unit-overloaded"]
+        );
+    }
+
+    /// `ah-0wpn`. Lack of evidence for overload must not cancel an ordered departure: a guard with
+    /// no usable weight or capacity information still drops the guard when it orders a directional
+    /// MOVE, exactly as before this bead.
+    #[test]
+    fn an_unpriceable_move_still_counts_as_a_departure() {
+        let mut guarding = unit("5");
+        guarding.on_guard = true;
+
+        assert_eq!(
+            codes(&check(vec![region(vec![guarding])], "unit 5\nMOVE N\n")),
+            ["guard-dropped"]
+        );
     }
 
     #[test]
@@ -20384,6 +20577,35 @@ mod tests {
                 "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nMOVE N\n"
             )),
             ["taught-not-here"]
+        );
+    }
+
+    /// `ah-0wpn`. A MOVE that `movement_overload` proves will fail does not actually take the
+    /// student anywhere, so a teacher naming it must not be told the student left - `taught-not-here`
+    /// would be a false warning about a departure the load check says will not happen.
+    /// `unit-overloaded` is the whole warning here; the independently correct
+    /// `two-month-long-orders` finding for STUDY-and-MOVE is disabled by `check`, exactly as it is
+    /// for every other fixture in this module.
+    #[test]
+    fn an_overloaded_student_remains_here_to_be_taught() {
+        let teacher = with_skill(
+            with_race(with_silver(unit("500"), 1000), 3, "leaders", "LEAD"),
+            "COMB",
+            3,
+        );
+        let student = one_human("700");
+
+        let findings = check(
+            vec![region(vec![teacher, student])],
+            "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nWITHDRAW 6 WSHD\nMOVE N\n",
+        );
+        assert!(
+            !codes(&findings).contains(&"taught-not-here"),
+            "{findings:?}"
+        );
+        assert!(
+            codes(&findings).contains(&"unit-overloaded"),
+            "{findings:?}"
         );
     }
 
@@ -25129,6 +25351,42 @@ mod tests {
             finding.message,
             "this unit is overloaded: it carries 1800 and the most it can move with is 150, so \
              it will not move"
+        );
+    }
+
+    /// A unit holding one human - `data/HUMN`'s weight (10) and walking capacity (5, plus its own
+    /// weight as a self-mobile carrier: 15) - light enough to move on foot until something adds
+    /// to its load (`ah-0wpn`). Unlike `carrying`, this fixture's allowance and weight come from
+    /// the real `HUMN` item `capacity_after_orders` derives from, not a printed fallback line.
+    fn one_human(id: &str) -> ReportUnit {
+        ReportUnit {
+            weight: Some(10),
+            capacity: Some("0/0/15/0".to_string()),
+            ..unit(id)
+        }
+    }
+
+    /// `ah-0wpn`. `rules/sequenceofevents` places WITHDRAW before movement, and
+    /// `rules/movement_normal` says an overloaded unit cannot move - so goods a WITHDRAW
+    /// acquires must count toward the load a MOVE is judged against, even though WITHDRAW
+    /// deliberately never credits the shared resource balance.
+    #[test]
+    fn withdrawn_shields_can_overload_a_unit_before_move() {
+        let finding = only(check(
+            vec![region(vec![one_human("12054")])],
+            "unit 12054\nWITHDRAW 6 WSHD\nMOVE N\n",
+        ));
+        assert_eq!(finding.code.as_str(), "unit-overloaded");
+        assert_eq!(finding.unit_id.as_deref(), Some("12054"));
+        assert_eq!(
+            finding.line,
+            Some(3),
+            "the MOVE line, not the WITHDRAW line"
+        );
+        assert_eq!(
+            finding.message,
+            "this unit is overloaded: it carries 16 and the most it can move with is 15, so it \
+             will not move"
         );
     }
 
