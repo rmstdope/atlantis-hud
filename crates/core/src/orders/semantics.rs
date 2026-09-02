@@ -4574,13 +4574,21 @@ fn transfer(
     // the refusal below is - it simply moves nothing, so no balance is touched and neither
     // `doubted` nor `uncounted` is.
     //
-    // Asked against `skills_before_the_market` - the list `apply_transfers` has already projected
-    // for this hex, since `hex_with_transfers` runs before any ledger is built - rather than
-    // against the report's own `actor.unit.skills`. The two differ for a unit that took a mage's
-    // men earlier in the same document: `effects::Working::give` and `apply_transfers` both read
-    // their running lists, so reading the reported one here would let the ledger move men the
-    // other two surfaces retain, which is the very disagreement this bead exists to remove.
-    // `None` means the merge was unfollowable, and the reported list is the most that can be said.
+    // Asked against `skills_before_the_market` - the list `apply_transfers` projected for this
+    // hex, available because `hex_with_transfers` runs before any ledger is built - rather than
+    // against the report's own `actor.unit.skills`, which would let the ledger move men that
+    // `effects::Working::give` and `apply_transfers` both retain for a unit that took a mage's
+    // men. `None` means the merge was unfollowable, and the reported list is the most that can
+    // then be said.
+    //
+    // **It is the end-of-hex list, not a running one** (`skills_after_gifts` is assigned once,
+    // after `apply_transfers`' whole loop), where the other two surfaces ask per order. So one
+    // ordering still differs: a `GIVE` of men written *before* the `TAKE FROM <mage>` that brings
+    // the magic skill in is moved by `apply_transfers`, which had not seen the skill yet, and
+    // refused here, which has. Left as it is deliberately - the ledger is the stricter of the two,
+    // and no surface reads its man-item balance, since upkeep, the arrival warnings and
+    // `men_after_orders` all come from `apply_transfers`. Closing it means threading a running
+    // skills list into the ledger, which is a larger change than this bead's rule.
     let holder_skills = actor
         .skills_before_the_market()
         .unwrap_or(&actor.unit.skills);
