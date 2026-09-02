@@ -243,10 +243,9 @@ describe("the committed ruleset", () => {
   });
 
   /**
-   * The data page states each food item pays 30 silver of maintenance, and `ah-773o` resolved the
-   * forecast in favour of that value over the rules page's common 50-silver rule, corroborated by
-   * the committed turn-17 report. This holds the four structured values in the committed ruleset
-   * so a regeneration that dropped or changed them is caught here.
+   * The data page's 30-silver descriptions are source evidence; generation applies the
+   * rules/economy_maintenance override of 50. This holds the four structured values in the
+   * committed ruleset so a regeneration that dropped or changed them is caught here.
    *
    * The four tags are the foods the data page prices; `pageGrammar.test.ts` independently proves
    * that set equals the page's own accepting set.

@@ -66,11 +66,9 @@ const UPKEEP_PER_LEADER: i64 = 50;
 ///
 /// The rules page (`rules/economy_maintenance`) says one food substitutes for each 50 silver of
 /// maintenance owed, while `data/GRAI`, `data/LIVE`, `data/FISH` and `data/MEAL` each state 30.
-/// `ah-773o` resolved the disagreement in favour of the per-item data value, corroborated by the
-/// committed turn-17 report (22 humans consume 8 livestock, which is `ceil(220 / 30)`, not
-/// `ceil(220 / 50)`). So there is no one food value in this module any more: every food carries its
-/// own, read from `ItemEntry::maintenance_value`, and an item the catalogue does not price is not
-/// food and pays nothing.
+/// Generation resolves the disagreement with the rules/economy_maintenance value of 50 while
+/// preserving each item's source description. Every food carries its generated value from
+/// `ItemEntry::maintenance_value`, and an item the catalogue does not price is not food.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FoodAmount {
     pub tag: String,
@@ -7783,7 +7781,7 @@ mod tests {
     /// Unit 1660 of the committed turn-17 report: 32 humans set to consume, holding livestock. The
     /// Seven livestock cover 320 silver at the current 50-silver value; 30 would leave 110 unpaid.
     #[test]
-    fn thirty_two_humans_consume_eleven_livestock_as_the_server_did() {
+    fn thirty_two_humans_consume_seven_livestock_at_fifty_each() {
         let men = [item(32, "HUMN")];
         let food = [item(7, "LIVE")];
         let flags = vec!["consuming faction's food".to_string()];
