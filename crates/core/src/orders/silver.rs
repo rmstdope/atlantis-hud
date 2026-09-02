@@ -880,19 +880,13 @@ pub struct UnitFacts<'a> {
     pub after_gifts_unknown: bool,
     /// Set when arrivals cannot be merged into the unit's skills.
     pub skills_unknown: bool,
-    /// Whether a `GIVE` this month left any tag this unit holds unresolved (`ah-66yi`).
-    ///
-    /// Read by the `CAST` arm, which prices its materials from the whole of `items` rather than
-    /// from one named tag - so an uncertain tag anywhere in that list is enough to stop it. Every
-    /// other term asks [`Lookups::uncertain_after_gifts`] about the tag it actually reads, which is
-    /// what keeps unrelated earnings and spending exact.
-    pub gifts_uncertain: bool,
-    /// Whether any of that is food this unit could have eaten.
+    /// Whether a `GIVE` this month left food this unit could have eaten unresolved.
     ///
     /// Maintenance is settled from the whole food stock rather than from a tag an order names, so
     /// [`unit_upkeep`], [`food_claim`] and the column all charge nothing rather than a guess - the
-    /// same answer an estimated headcount gets. Separate from `gifts_uncertain` so an uncertain
-    /// gift of stone leaves this unit's maintenance exactly as it was (`ah-66yi`).
+    /// same answer an estimated headcount gets. Per food tag, so an uncertain gift of stone leaves
+    /// this unit's maintenance exactly as it was; every other term asks
+    /// [`Lookups::uncertain_after_gifts`] about the tag it actually reads (`ah-66yi`).
     pub food_uncertain: bool,
     /// The unit's skills once this month's recruits have merged on top of its gifts - the picture
     /// `rules/buy` says a `BUY` dilutes, read only by the PRODUCE arm below. Every other arm
@@ -1452,12 +1446,6 @@ pub fn forecast_unit(
                 }
                 expense_doubt = expense_doubt.or(priced.doubt);
             }
-            // `CAST` prices its materials from the whole of `items`, not from a tag the order
-            // names, so any uncertain tag stops it (`ah-66yi`).
-            Intent::Cast { .. } if facts.gifts_uncertain => {
-                income_doubt = income_doubt.or(Some(SilverDoubt::GiveConsequencesUncertain));
-                expense_doubt = expense_doubt.or(Some(SilverDoubt::GiveConsequencesUncertain));
-            }
             Intent::Cast { spell, arguments } => {
                 // Resolved once: this runs per keystroke, and `find_skill` walks the catalogue.
                 let resolved = ruleset.and_then(|ruleset| ruleset.find_skill(spell));
@@ -1477,6 +1465,32 @@ pub fn forecast_unit(
                     output_tag: tag.as_str(),
                     number: *number,
                 });
+
+                // A cast whose own reagents a `GIVE` may or may not have taken cannot be priced.
+                // Per reagent rather than per unit: an uncertain gift of stone leaves a spell that
+                // consumes swords exactly as numeric as it was (`ah-66yi`). Both sides of
+                // `transmute` are asked because the map's material and its output are both item
+                // tags, and asking about a tag no gift touched costs one lookup that answers `None`.
+                let uncertain_input =
+                    resolved
+                        .and_then(|skill| skill.cast.as_ref())
+                        .is_some_and(|cost| {
+                            cost.costs
+                                .iter()
+                                .any(|input| (lookups.uncertain_after_gifts)(&input.tag).is_some())
+                                || cost.transmute.iter().any(|(from, to)| {
+                                    (lookups.uncertain_after_gifts)(from).is_some()
+                                        || (lookups.uncertain_after_gifts)(to).is_some()
+                                })
+                        })
+                        || transmute_tag
+                            .as_ref()
+                            .is_some_and(|(_, tag)| (lookups.uncertain_after_gifts)(tag).is_some());
+                if uncertain_input {
+                    income_doubt = income_doubt.or(Some(SilverDoubt::GiveConsequencesUncertain));
+                    expense_doubt = expense_doubt.or(Some(SilverDoubt::GiveConsequencesUncertain));
+                    continue;
+                }
 
                 let caster = Caster {
                     skills: facts.skills,
@@ -1929,6 +1943,14 @@ pub struct FoodClaim {
     pub owed_after_own_food: i64,
     /// Whether the unit carries the `consuming faction's food` flag.
     pub draws_on_pool: bool,
+    /// Whether a `GIVE` this month may or may not have taken the food this unit would have brought
+    /// to the pool (`ah-66yi`).
+    ///
+    /// `spare_food` is empty for such a unit, and an empty stock would otherwise read as "brought
+    /// nothing" - a definite answer that makes a *hex-mate* go short and warn, on the strength of
+    /// an order that unit did not write. [`feed_from_faction_food`] reads this and takes its
+    /// "cannot be told" path instead.
+    pub spare_food_uncertain: bool,
 }
 
 /// What one unit brings to, and takes from, the pool, once it has fed itself at step 1.
@@ -1940,6 +1962,7 @@ pub fn food_claim(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> FoodClaim
     let pass = own_food_pass(facts, ruleset);
     FoodClaim {
         unit_id: facts.unit_id.to_string(),
+        spare_food_uncertain: facts.food_uncertain,
         owed_after_own_food: pass.as_ref().map_or(0, |pass| pass.owed_after_own_food),
         spare_food: pass.map_or_else(Vec::new, |pass| pass.spare_food),
         draws_on_pool: facts
@@ -1992,6 +2015,20 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
         .iter()
         .filter(|claim| claim.draws_on_pool && claim.owed_after_own_food > 0)
         .collect();
+
+    // A contributor whose food a `GIVE` may or may not have taken brings an *unknown* amount, not
+    // none - and the difference decides whether somebody else in this hex eats. There is no correct
+    // number to share out, so every contender is doubted and the remainder cannot be told, exactly
+    // as a pool too short for several contenders already is (`ah-66yi`).
+    if !claimants.is_empty() && claims.iter().any(|claim| claim.spare_food_uncertain) {
+        return FactionFoodPass {
+            settled: claimants
+                .iter()
+                .map(|claim| (claim.unit_id.clone(), None))
+                .collect(),
+            pool_left: None,
+        };
+    }
 
     let pool_total: i64 = pool.iter().map(|entry| entry.amount).sum();
 
@@ -5157,7 +5194,6 @@ mod tests {
             receipts,
             formed: None,
             after_gifts_unknown: false,
-            gifts_uncertain: false,
             food_uncertain: false,
             skills_unknown: false,
             production_skills: &[],
@@ -7755,7 +7791,6 @@ mod tests {
             receipts: no_receipts(),
             formed: None,
             after_gifts_unknown: false,
-            gifts_uncertain: false,
             food_uncertain: false,
             skills_unknown: false,
             production_skills: &[],
@@ -7997,11 +8032,39 @@ mod faction_food_tests {
             Vec::new()
         };
         FoodClaim {
+            spare_food_uncertain: false,
             unit_id: id.to_string(),
             spare_food: spare,
             owed_after_own_food: owed,
             draws_on_pool: draws,
         }
+    }
+
+    /// `ah-66yi`: a contributor whose food a `GIVE` may or may not have taken brings an *unknown*
+    /// amount, not none - and the difference decides whether somebody else in this hex eats.
+    ///
+    /// Without this, `own_food_pass` returning `None` for the giver empties its `spare_food`, an
+    /// empty stock reads as "brought nothing", and a hex-mate that the pool used to feed goes
+    /// definitely short on the strength of an order it never wrote.
+    #[test]
+    fn an_uncertain_contributor_leaves_the_pool_untellable() {
+        // `spare_food` empty and the flag set is exactly what `food_claim` builds for such a unit:
+        // its own pass could not be run, so it has no stock to publish.
+        let mut giver = claim("2390", 0, 0, false);
+        giver.spare_food_uncertain = true;
+        let hungry = claim("2391", 0, 200, true);
+
+        // The control: the same pool, definitely brought, feeds the claimant outright.
+        let fed = feed_from_faction_food(&[claim("2390", 50, 0, false), hungry.clone()]);
+        assert_eq!(fed.settled.get("2391"), Some(&Some(0)));
+
+        let told = feed_from_faction_food(&[giver, hungry]);
+        assert_eq!(
+            told.settled.get("2391"),
+            Some(&None),
+            "the claimant's own shortfall cannot be told: {told:?}"
+        );
+        assert_eq!(pool_count(&told), None);
     }
 
     /// The total items a pass says the hex still holds, for the assertions that pin the remainder.
@@ -8086,6 +8149,7 @@ mod faction_food_tests {
     #[test]
     fn a_mixed_value_pool_is_spent_least_valuable_first() {
         let quartermaster = FoodClaim {
+            spare_food_uncertain: false,
             unit_id: "quartermaster".to_string(),
             spare_food: vec![food("MEAL", 1, 20), food("GRAI", 2, 40)],
             owed_after_own_food: 0,
@@ -8320,7 +8384,6 @@ mod combat_ready_tests {
             receipts,
             formed: None,
             after_gifts_unknown: false,
-            gifts_uncertain: false,
             food_uncertain: false,
             skills_unknown: false,
             production_skills: skills,

@@ -68,12 +68,12 @@ const EXPECTED: &[(&str, usize)] = &[
 
 /// What the committed turn's 27 own units spend between them, all of it on `STUDY`.
 ///
-/// Halved by `ah-66yi`, and by exactly one mechanism: four of these units carry a standing
-/// `GIVE 2396 ALL MARM`/`ALL MSWO`, and 2396 is another faction's. `rules/give` needs *their*
-/// declaration toward us for anything but silver and no report carries it, so those units may or
-/// may not still hold the armour their `CAST` consumes - and a month that cannot be added up
-/// publishes no expense at all. What is left is what the units carrying no such gift study.
-const EXPECTED_SPENDING: i64 = 400;
+/// Unmoved by `ah-66yi`, and that is the point: four of these units carry a standing
+/// `GIVE 2396 ALL MARM`/`ALL MSWO` to another faction, which that bead leaves unresolved - and all
+/// six of the turn's casts consume swords and plate armour, which no gift here touches. Uncertainty
+/// is tracked per item, so an unresolved gift of one tag leaves a month priced from others exactly
+/// where it was.
+const EXPECTED_SPENDING: i64 = 800;
 
 /// The expectation table as a map, so an assertion can be read as a table.
 fn expected_counts() -> BTreeMap<&'static str, usize> {

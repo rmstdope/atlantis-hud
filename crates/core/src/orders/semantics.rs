@@ -1447,7 +1447,6 @@ fn forecast_hex(
             receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
             formed: ordered.formed.as_ref(),
             after_gifts_unknown: ordered.holdings_unknown(),
-            gifts_uncertain: !ordered.uncertain_after_gifts.is_empty(),
             food_uncertain: food_uncertain_after_gifts(ordered, ruleset),
             skills_unknown: ordered.skills_before_the_market().is_none(),
             // `ordered.skills()` already carries this month's recruits merged on top of its
@@ -3778,7 +3777,6 @@ fn unit_facts<'a>(
         receipts: nothing,
         formed: ordered.formed.as_ref(),
         after_gifts_unknown: ordered.holdings_unknown(),
-        gifts_uncertain: !ordered.uncertain_after_gifts.is_empty(),
         food_uncertain: food_uncertain_after_gifts(ordered, ruleset),
         late,
     }
