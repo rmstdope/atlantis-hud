@@ -3055,9 +3055,9 @@ mod tests {
             .find(|unit| unit.unit.unit_id == "900")
             .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == "HUMN"))
             .map_or(0, |item| item.amount);
-        assert!(
-            bought_shared < 12,
-            "the formed unit takes a share of the two on offer: {bought_shared}"
+        assert_eq!(
+            bought_shared, 11,
+            "one of the two on offer goes to the formed unit"
         );
     }
 
