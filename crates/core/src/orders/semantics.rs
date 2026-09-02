@@ -1849,6 +1849,13 @@ enum SkillsAfterGifts {
     Unknowable,
 }
 
+#[derive(Debug)]
+enum RacesAfterRecruits {
+    Unchanged,
+    Merged(Vec<ItemAmount>),
+    Unknowable,
+}
+
 /// How many men joined a unit this month, by each route that can bring them.
 ///
 /// Never netted against men who left: a unit that receives three and gives two away has
@@ -1890,6 +1897,7 @@ struct Ordered<'a> {
     skills_after_gifts: SkillsAfterGifts,
     /// The unit's skills after this month's recruits have merged on top of gifts.
     skills_after_recruits: Option<SkillsAfterGifts>,
+    races_after_recruits: RacesAfterRecruits,
     /// The unit's people and goods once this month's GIVE and TAKE orders have run. Written by
     /// `apply_transfers` after the hex is read, alongside `skills_after_gifts`; `Unchanged` until
     /// then.
@@ -1931,6 +1939,7 @@ impl<'a> Hex<'a> {
                     formed: None,
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     skills_after_recruits: None,
+                    races_after_recruits: RacesAfterRecruits::Unchanged,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
                     refused_transfers: Vec::new(),
                     men_after_orders: unit.men,
@@ -1953,6 +1962,7 @@ impl<'a> Hex<'a> {
                     }),
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     skills_after_recruits: None,
+                    races_after_recruits: RacesAfterRecruits::Unchanged,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
                     refused_transfers: Vec::new(),
                     men_after_orders: formed.unit.men,
@@ -2626,6 +2636,7 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
             SkillsAfterGifts::Unknowable
         ) {
             units[index].skills_after_recruits = Some(SkillsAfterGifts::Unknowable);
+            units[index].races_after_recruits = RacesAfterRecruits::Unknowable;
             continue;
         }
 
@@ -2645,13 +2656,25 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
             // `PEASANTS` names no catalogue item at all - so the test is on the amount, not the
             // item. `ah-jown` makes this arm deletable.
             units[index].skills_after_recruits = Some(SkillsAfterGifts::Unknowable);
+            units[index].races_after_recruits = RacesAfterRecruits::Unknowable;
             continue;
         }
 
         // Arrivals the ledger saw, per man tag, positive parts only - never the net, so a unit
         // that takes gnolls in and gives centaurs away has recruited nobody rather than netting to
         // a number that looks like it by accident.
-        let arrived: i64 = {
+        let bought: Vec<(&str, i64)> = {
+            let ordered = &units[index];
+            ledger
+                .bought
+                .iter()
+                .filter(|((unit_id, tag), amount)| {
+                    unit_id == &ordered.unit.unit_id && ruleset.is_man(tag) && **amount > 0
+                })
+                .map(|((_, tag), amount)| (tag.as_str(), *amount))
+                .collect()
+        };
+        let recruited: i64 = {
             let ordered = &units[index];
             ledger
                 .balance
@@ -2660,15 +2683,25 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
                     unit_id == &ordered.unit.unit_id && ruleset.is_man(tag)
                 })
                 .map(|((_, tag), balance)| (balance - ordered.holding(tag)).max(0))
-                .sum()
+                .sum::<i64>()
+                - units[index].arrivals.total()
         };
-
-        let recruited = arrived - units[index].arrivals.total();
+        let mut remaining = recruited.max(0);
+        let bought: Vec<(&str, i64)> = bought
+            .into_iter()
+            .map(|(tag, amount)| {
+                let amount = amount.min(remaining);
+                remaining -= amount;
+                (tag, amount)
+            })
+            .filter(|(_, amount)| *amount > 0)
+            .collect();
         if recruited < 0 {
             // The two walks disagree about one unit. Step 2 above and the `clamped` flag on
             // `apply_transfers` cover the routes known to diverge, so nothing should reach here
             // - this is a backstop, and silence is the right shape for one.
             units[index].skills_after_recruits = Some(SkillsAfterGifts::Unknowable);
+            units[index].races_after_recruits = RacesAfterRecruits::Unknowable;
             continue;
         }
         if recruited == 0 {
@@ -2678,6 +2711,7 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
             // The merge is weighted by the receiver's headcount, and `settle_headcounts` skips
             // such a unit for the same reason.
             units[index].skills_after_recruits = Some(SkillsAfterGifts::Unknowable);
+            units[index].races_after_recruits = RacesAfterRecruits::Unknowable;
             continue;
         }
 
@@ -2695,6 +2729,30 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
         let merged = effects::merge_skills(&current, before, &[], recruited);
         ordered.men_after_orders = before + recruited;
         ordered.arrivals.bought += recruited;
+        let mut races = ordered.early_men_by_race().to_vec();
+        for (tag, amount) in bought {
+            let Some(item) = ruleset.find_item(tag) else {
+                ordered.races_after_recruits = RacesAfterRecruits::Unknowable;
+                continue;
+            };
+            if let Some(existing) = races
+                .iter_mut()
+                .find(|race| race.tag.eq_ignore_ascii_case(&item.tag))
+            {
+                existing.amount += amount;
+            } else {
+                races.push(ItemAmount {
+                    amount,
+                    name: item.name.clone(),
+                    tag: item.tag.clone(),
+                });
+            }
+        }
+        if races.iter().map(|race| race.amount).sum::<i64>() == before + recruited {
+            ordered.races_after_recruits = RacesAfterRecruits::Merged(races);
+        } else {
+            ordered.races_after_recruits = RacesAfterRecruits::Unknowable;
+        }
         ordered.skills_after_recruits = Some(if merged == ordered.unit.skills {
             SkillsAfterGifts::Unchanged
         } else {
@@ -2728,12 +2786,12 @@ impl Ordered<'_> {
         if self.unit.men_estimated || self.holdings_unknown() {
             return None;
         }
-        let races = self.early_men_by_race();
-        if races.iter().map(|item| item.amount).sum::<i64>() != self.early_men() {
+        let races = self.men_by_race_after_orders()?;
+        if races.iter().map(|item| item.amount).sum::<i64>() != self.men_after_orders {
             return None;
         }
         Some(
-            self.early_men() > 0
+            self.men_after_orders > 0
                 && races
                     .iter()
                     .all(|item| item.tag.eq_ignore_ascii_case("LEAD")),
@@ -2863,6 +2921,14 @@ impl Ordered<'_> {
             .map_or(&self.unit.men_by_race[..], |holdings| {
                 &holdings.men_by_race[..]
             })
+    }
+
+    fn men_by_race_after_orders(&self) -> Option<&[ItemAmount]> {
+        match &self.races_after_recruits {
+            RacesAfterRecruits::Unchanged => Some(self.early_men_by_race()),
+            RacesAfterRecruits::Merged(races) => Some(races),
+            RacesAfterRecruits::Unknowable => None,
+        }
     }
 
     /// The unit's full item list as the early phases see it - see `early_men`.
@@ -6542,8 +6608,8 @@ fn check_one_teacher(
     match teacher.teaching_eligibility() {
         Some(false) => {
             if options.emits(codes::TEACHER_CANNOT_TEACH) {
-                let non_leaders: Vec<String> = teacher
-                    .early_men_by_race()
+                let races = teacher.men_by_race_after_orders().unwrap_or(&[]);
+                let non_leaders: Vec<String> = races
                     .iter()
                     .filter(|item| !item.tag.eq_ignore_ascii_case("LEAD"))
                     .map(|item| counted_item(item.amount, &item.tag, hex, ruleset, plurals))
@@ -6551,8 +6617,7 @@ fn check_one_teacher(
                 let message = if non_leaders.is_empty() {
                     "only leaders can teach; this unit has no people".to_string()
                 } else {
-                    let prefix = if teacher
-                        .early_men_by_race()
+                    let prefix = if races
                         .iter()
                         .any(|item| item.tag.eq_ignore_ascii_case("LEAD"))
                     {
@@ -6641,7 +6706,9 @@ fn check_one_teacher(
         }
     }
 
-    let slots = teacher.unit.men.saturating_mul(STUDENTS_PER_TEACHER);
+    let slots = teacher
+        .men_after_orders
+        .saturating_mul(STUDENTS_PER_TEACHER);
     if taught_men > slots && options.emits(codes::TEACHING_OVERSUBSCRIBED) {
         findings.push(teacher.finding(
             hex,
@@ -6720,7 +6787,10 @@ fn offer_free_slots(
         return;
     }
 
-    let free = teacher.unit.men.saturating_mul(STUDENTS_PER_TEACHER) - taught_by(teacher, hex);
+    let free = teacher
+        .men_after_orders
+        .saturating_mul(STUDENTS_PER_TEACHER)
+        - taught_by(teacher, hex);
     if free <= 0 {
         return;
     }
