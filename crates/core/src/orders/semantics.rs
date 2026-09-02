@@ -540,7 +540,7 @@ pub fn review_turn(
         check_build_help(hex, &options, &mut findings);
         check_build_skill(hex, ruleset, &options, &mut findings);
         check_production(hex, &by_coordinate, ruleset, &options, &mut findings);
-        check_studying(hex, ruleset, &plurals, &options, &mut findings);
+        check_studying(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_magic_study(hex, ruleset, &options, &mut findings);
         check_magic_study_prerequisites(hex, ruleset, &options, &mut findings);
         check_forms(hex, &options, &mut findings);
@@ -7466,6 +7466,7 @@ fn structure_label(structure: &Structure) -> String {
 /// maximum, or the lower ceiling its races impose (`ah-9hp7.2`).
 fn check_studying(
     hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
@@ -7477,7 +7478,8 @@ fn check_studying(
         return;
     }
 
-    for ordered in &hex.units {
+    let late = LateHoldings::read(hex, &ledger.balance, Some(ruleset));
+    for (index, ordered) in hex.units.iter().enumerate() {
         let Some((placed, studying)) = ordered.studies_placed() else {
             continue;
         };
@@ -7501,7 +7503,7 @@ fn check_studying(
 
         // The composition the study month has, which `rules/sequenceofevents` puts after this
         // month's GIVE and TAKE - the same view `skills()` above was merged from.
-        let ceiling = study::study_ceiling(ruleset, ordered.early_men_by_race(), skill);
+        let ceiling = study::study_ceiling(ruleset, late.of(index).men_by_race, skill);
         if level >= ceiling.level() {
             findings.push(ordered.finding(
                 hex,
@@ -21574,6 +21576,29 @@ mod tests {
             .find(|finding| finding.code == codes::STUDY_AT_MAXIMUM)
             .unwrap_or_else(|| panic!("no study-at-maximum finding"))
             .message
+    }
+
+    #[test]
+    fn a_recruited_race_limits_study_after_the_market_phase() {
+        let leader = with_skill_pts(
+            with_silver(with_race(unit("5"), 1, "leaders", "LEAD"), 1000),
+            "FORC",
+            180,
+        );
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 1,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![leader])
+        };
+
+        assert_eq!(
+            study_message(check(vec![region], "unit 5\nBUY 1 HUMN\nSTUDY FORC\n")),
+            "the human race cannot learn force past level 2, and this unit is already there"
+        );
     }
 
     #[test]
