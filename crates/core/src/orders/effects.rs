@@ -2451,6 +2451,54 @@ mod tests {
 
     /// `GIVE 0` bypasses the catalogue's own un-giveable restrictions, because a discard is not a
     /// transfer to another unit - but `rules/magic` refuses the mage's men whatever the target.
+    /// The other side of `ah-t8ei`'s rule, and the position this application takes: a mage's men
+    /// may be **taken** from it, even though the mage may not give them.
+    ///
+    /// `rules/magic` says "mages may not GIVE men at all", and `ah-t8ei` (#877) read that as
+    /// binding `GIVE` alone — its own summary says "GIVE UNIT, TAKE, TRANSPORT and DISTRIBUTE are
+    /// untouched" — so all three surfaces gate the refusal on the order being a GIVE. Nothing
+    /// asserted it until this test: the delta round on `ah-3mwm` found that removing the `is_give`
+    /// gate left the whole suite green, so the position was carried only by the code.
+    ///
+    /// It is worth knowing that `rules/take` says the TAKE order "works just like the GIVE order,
+    /// except that the direction of transfer is reversed", which is an argument the other way.
+    /// Whether that should extend the prohibition is not `ah-3mwm`'s question — this test pins
+    /// what the application does today, so that changing it has to be deliberate.
+    #[test]
+    fn a_mages_men_may_still_be_taken_from_it() {
+        let response = preview_for_mage("force [FORC]", "unit 901\nTAKE FROM 900 1 LEAD\n");
+
+        let of = |id: &str| {
+            response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == id)
+                .unwrap_or_else(|| panic!("unit {id} is previewed"))
+        };
+
+        let taker = of("901");
+        assert_eq!(
+            taker
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "LEAD")
+                .map(|item| item.amount),
+            Some(1),
+            "the leader reaches the taker"
+        );
+        assert_eq!(taker.unit.men, 2, "its own orc, and the leader it took");
+
+        let mage = of("900");
+        assert!(
+            !mage.unit.items.iter().any(|item| item.tag == "LEAD"),
+            "and leaves the mage: {:?}",
+            mage.unit.items
+        );
+        assert_eq!(mage.unit.men, 0);
+    }
+
     #[test]
     fn a_mage_cannot_discard_men() {
         let orders = "unit 900\nGIVE 0 1 LEAD\n";
