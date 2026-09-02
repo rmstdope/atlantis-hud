@@ -25886,6 +25886,99 @@ mod tests {
         }
     }
 
+    /// Finding 1 of this bead's review, and the navigator's decision on it (2026-09-02): the
+    /// strict answer ships.
+    ///
+    /// `rules/sequenceofevents` runs *Give orders* before *Tax orders*, so a unit cannot hand over
+    /// silver it will only earn from `TAX` later this month. Receipts are read from what the Give
+    /// phase actually moved, so the recipient is credited nothing. Before `ah-3mwm` the column
+    /// credited the stated $100, because it summed what the orders asked for rather than what the
+    /// settlement moved - which is the same reading that credited one finite holding twice.
+    ///
+    /// The ledger still charges and credits the full amount, so the column is deliberately
+    /// stricter than the ledger here. That is the cost the navigator accepted for settling a
+    /// contested transfer once.
+    #[test]
+    fn a_gift_of_silver_the_giver_does_not_hold_yet_credits_nothing() {
+        let hex_region = ReportRegion {
+            tax_base: Some(1000),
+            ..region(vec![
+                with_men(with_skill(unit("1922"), "COMB", 1), 5),
+                unit("1923"),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1922\n@TAX\nGIVE 1923 100 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let recipient = review
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "1923")
+            .expect("the recipient is forecast");
+        assert_eq!(
+            recipient.received, 0,
+            "the giver holds nothing until the Tax phase, which is after the Give phase"
+        );
+        assert!(recipient.givers.is_empty());
+    }
+
+    /// Finding 2 of the same review. `TAKE ... ALL <class>` silences the taker's figure because
+    /// what the source has left depends on its own month - but a source the report shows holding
+    /// no silver at all parts with none of it in the Give phase, so there is nothing to be unsure
+    /// about and nothing to credit. The flag is set from the settlement, not from the class.
+    #[test]
+    fn a_take_of_all_of_a_class_from_a_source_holding_no_silver_says_nothing_about_silver() {
+        let region = region(vec![unit("2390"), unit("2391")]);
+        let receipts = receipts_in(&region, "unit 2391\nTAKE FROM 2390 ALL NORMAL\n");
+
+        let taker = receipts.get("2391").cloned().unwrap_or_default();
+        assert!(
+            !taker.take_all_unpriceable,
+            "nothing the source holds is silver, so no figure is in doubt"
+        );
+        assert_eq!(taker.taken, 0);
+    }
+
+    /// Finding 4 of the same review, and the plan's own trap: a unit this month's `FORM` orders
+    /// create has no position on the report, and `Hex::read` appends it after every reported unit.
+    /// So a reported unit's transfer settles before a formed one's however the document is
+    /// written - here the FORM block comes first and still loses.
+    #[test]
+    fn a_reported_unit_takes_before_a_unit_formed_this_month() {
+        let hex_region = region(vec![
+            with_item(unit("1234"), 100, "silver", "SILV"),
+            unit("2200"),
+        ]);
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1234\nFORM 1\nTAKE FROM 1234 100 SILV\nEND\nunit 2200\nTAKE FROM 1234 100 SILV\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::NOT_ENOUGH_ITEMS]),
+        );
+        let forecast = |id: &str| {
+            review
+                .silver
+                .iter()
+                .find(|forecast| forecast.unit_id == id)
+                .unwrap_or_else(|| panic!("no forecast for {id}"))
+        };
+
+        assert_eq!(
+            forecast("2200").taken,
+            100,
+            "the reported unit settles first"
+        );
+        assert_eq!(
+            forecast("new-1").taken,
+            0,
+            "the unit formed this month has no place on the report, so it settles last"
+        );
+    }
+
     // --- holdings after this month's transfers (ah-dxfd.2) ----------------------------------
 
     fn item_amount(items: &[ItemAmount], tag: &str) -> Option<i64> {
