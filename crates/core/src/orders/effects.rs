@@ -828,7 +828,7 @@ impl Working {
             .find_skill("quartermaster")
             .map(|skill| skill.tag.clone());
         let quartermasters = report
-            .own_units()
+            .units()
             .filter(|unit| {
                 quartermaster_tag.as_ref().is_some_and(|tag| {
                     unit.skills
@@ -1558,11 +1558,12 @@ impl Working {
                 .iter()
                 .map(|unit| unit.unit.items.clone())
                 .collect();
-            let phase_pending: Vec<PendingTransport> = pending
+            let mut phase_pending: Vec<PendingTransport> = pending
                 .iter()
                 .filter(|pending| self.transport_phase(pending) == phase)
                 .cloned()
                 .collect();
+            phase_pending.sort_by_key(|pending| pending.sender);
             for pending in phase_pending {
                 if dissolved.contains(&pending.sender) {
                     continue;
@@ -1571,7 +1572,6 @@ impl Working {
                 // its own permission gate, `can_be_transported`, checked below - the two lists are
                 // not the same (`IENT` may not be given but may be transported).
                 let held = allowance[pending.sender].clone();
-                };
                 for (name, tag, moved) in self.tags_moved_from(
                     &held,
                     &pending.what,
@@ -1643,10 +1643,7 @@ impl Working {
         let sender = &self.units[pending.sender].unit.unit_id;
         if !self.quartermasters.contains(sender) {
             TransportPhase::ToQuartermaster
-        } else if pending.receiver.is_some_and(|receiver| {
-            self.quartermasters
-                .contains(&self.units[receiver].unit.unit_id)
-        }) {
+        } else if self.quartermasters.contains(&pending.to) {
             TransportPhase::BetweenQuartermasters
         } else {
             TransportPhase::FromQuartermaster
@@ -2064,6 +2061,7 @@ mod tests {
             "",
             "* Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON]. Weight: 10. \
              Capacity: 0/0/15/0.",
+            "  Skills: quartermaster [QUAM] 1 (30).",
             "- Stranger (7001), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
             "",
         ]
