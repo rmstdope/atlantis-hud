@@ -4380,7 +4380,7 @@ test("All my units shows the coming month too", async ({ page }) => {
  * ah-bxgs: TRANSPORT now marks the sending row too, exactly as BUY, SELL and the rest already do.
  * Unit 14451 is another own unit, in a different hex ("1:20,40"), which is what makes this a
  * transport rather than a same-hex GIVE. The remembered report does not establish that the target
- * owns a Caravanserai, so the target gate keeps the goods and explains the refusal.
+ * owns a Caravanserai, so the `rules/transport` target gate keeps the goods and explains the refusal.
  */
 test("a transported item marks the ITEMS cell as a projection", async ({ page }) => {
   await loadReport(page);
