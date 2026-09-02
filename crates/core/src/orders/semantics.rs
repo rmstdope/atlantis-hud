@@ -577,7 +577,7 @@ pub fn review_turn(
     // Everything above is about one hex. An allowance is spent across the whole map, so it is
     // counted once, after every hex has been read - and `validate_turn` sorts the whole list by
     // line afterwards, so these findings land beside the per-hex ones rather than after them.
-    check_faction(report, &ordered, ruleset, &options, &mut findings);
+    check_faction(report, &ordered, &hexes, ruleset, &options, &mut findings);
     check_upkeep_fund(report, &settlement, &options, &mut findings);
 
     TurnReview { findings, silver }
@@ -754,7 +754,7 @@ fn market_shares_for(
     let mut unbounded: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
 
     for (index, ordered) in hex.units.iter().enumerate() {
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             let (text, side) = match &placed.intent {
                 Intent::Sell { item, .. } => (item, MarketSide::Selling),
                 Intent::Buy { item, .. } => (item, MarketSide::Buying),
@@ -998,7 +998,9 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
             };
             let sailing = ruleset.and_then(|rules| carried_away(hex, ordered, rules));
             let produces_in = match sailing.map(|placed| &placed.intent) {
-                Some(Intent::Sail { steps }) => sail_destination(hex.region, steps, &by_coordinate),
+                Some(Intent::Sail { steps }) => {
+                    sail_destination(hex.region, &steps, &by_coordinate)
+                }
                 _ => Some(hex.region),
             };
             // The report cannot follow the sail, so there is no yield to settle against and the
@@ -1405,7 +1407,7 @@ fn forecast_hex(
             skills: ordered
                 .skills_before_the_market()
                 .unwrap_or(&ordered.unit.skills),
-            intents: ordered.intents,
+            intents: &ordered.intents,
             receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
             formed: ordered.formed.as_ref(),
             after_gifts_unknown: ordered.holdings_unknown(),
@@ -1725,7 +1727,8 @@ impl Arrivals {
 /// One of our units, and its orders.
 struct Ordered<'a> {
     unit: &'a ReportUnit,
-    intents: &'a [PlacedIntent],
+    intents: Vec<PlacedIntent>,
+    all_intents: &'a [PlacedIntent],
     /// `None` when the document has no block for this unit at all.
     block_line: Option<usize>,
     unread: bool,
@@ -1775,7 +1778,8 @@ impl<'a> Hex<'a> {
                 let orders = ordered.get(&unit.unit_id);
                 Ordered {
                     unit,
-                    intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
+                    intents: orders.map_or_else(Vec::new, |orders| orders.intents.clone()),
+                    all_intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
                     block_line: orders.map(|orders| orders.block_line),
                     unread: orders.is_some_and(|orders| orders.unread),
                     formed: None,
@@ -1795,7 +1799,8 @@ impl<'a> Hex<'a> {
                 .filter(|formed| formed.unit.region_id == region.region_id)
                 .map(|formed| Ordered {
                     unit: &formed.unit,
-                    intents: &formed.block.intents,
+                    intents: formed.block.intents.clone(),
+                    all_intents: &formed.block.intents,
                     block_line: Some(formed.block.block_line),
                     unread: !formed.block.unread.is_empty(),
                     formed: Some(FormedSubject {
@@ -1849,6 +1854,9 @@ fn hex_with_transfers<'a>(
     let mut hex = Hex::read(region, ordered, formed);
     let region = hex.region;
     apply_transfers(&mut hex.units, region, ruleset, foreign_unit_ids);
+    for ordered in &mut hex.units {
+        ordered.retain_effective_month_intents();
+    }
     hex
 }
 
@@ -2666,10 +2674,32 @@ impl Ordered<'_> {
     }
 
     fn intent_spends_the_month(&self, intent: &Intent) -> bool {
+        Self::intent_spends_the_month_with(self.teaching_eligibility(), intent)
+    }
+
+    fn intent_spends_the_month_with(teaching: Option<bool>, intent: &Intent) -> bool {
         match intent {
-            Intent::Teach { .. } => matches!(self.teaching_eligibility(), Some(true) | None),
+            Intent::Teach { .. } => matches!(teaching, Some(true) | None),
             _ => spends_the_month(intent),
         }
+    }
+
+    fn retain_effective_month_intents(&mut self) {
+        let teaching = self.teaching_eligibility();
+        let mut winner = None;
+        self.intents.retain(|placed| {
+            if !Self::intent_spends_the_month_with(teaching, &placed.intent) {
+                return true;
+            }
+            let claim = month_claim(placed);
+            match winner.as_ref() {
+                None => {
+                    winner = Some(claim);
+                    true
+                }
+                Some(existing) => claim == *existing,
+            }
+        });
     }
 
     fn intents(&self) -> impl Iterator<Item = &Intent> {
@@ -3211,7 +3241,7 @@ fn ledger_for_with_production<'a>(
     let nothing = Receipts::default();
     for (index, ordered) in hex.units.iter().enumerate() {
         let facts = unit_facts(hex, ordered, &nothing, None);
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             if matches!(placed.intent, Intent::Build { .. }) {
                 continue;
             }
@@ -3219,7 +3249,7 @@ fn ledger_for_with_production<'a>(
                 &mut ledger,
                 hex,
                 ordered,
-                placed,
+                &placed,
                 ruleset,
                 region,
                 HexStanding {
@@ -3235,7 +3265,7 @@ fn ledger_for_with_production<'a>(
     }
 
     for ordered in &hex.units {
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             let Intent::Build { founding, helping } = &placed.intent else {
                 continue;
             };
@@ -3243,7 +3273,7 @@ fn ledger_for_with_production<'a>(
                 &mut ledger,
                 hex,
                 ordered,
-                placed,
+                &placed,
                 founding,
                 helping,
                 ruleset,
@@ -3502,7 +3532,7 @@ fn unit_facts<'a>(
         // by the SILVER column's PRODUCE arm (`ah-40c9`).
         production_skills: ordered.skills().unwrap_or(&ordered.unit.skills),
         production_skills_unknown: ordered.skills().is_none(),
-        intents: ordered.intents,
+        intents: &ordered.intents,
         receipts: nothing,
         formed: ordered.formed.as_ref(),
         after_gifts_unknown: ordered.holdings_unknown(),
@@ -3613,7 +3643,7 @@ fn check_markets(
     }
 
     for ordered in &hex.units {
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             let (lines, item, verb, empty_message) = match &placed.intent {
                 Intent::Buy { item, .. } => (
                     &hex.region.for_sale,
@@ -3884,7 +3914,7 @@ fn check_pillaged_tax(
 
     for ordered in &hex.units {
         let mut ordered_to_tax = false;
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             if !matches!(placed.intent, Intent::Tax) {
                 continue;
             }
@@ -3898,7 +3928,7 @@ fn check_pillaged_tax(
         }
         // A unit that taxes by its flag collects nothing here either, and has no line to hang the
         // mark on - so it hangs on the block, which is what `finding_at_block` is for (`ah-fvzu`).
-        if !ordered_to_tax && taxes(&ordered.unit.flags, ordered.intents) {
+        if !ordered_to_tax && taxes(&ordered.unit.flags, &ordered.intents) {
             findings.push(ordered.finding_at_block(
                 hex,
                 codes::TAXED_A_PILLAGED_HEX,
@@ -3937,7 +3967,7 @@ fn check_guarded_tax(
 
     for ordered in &hex.units {
         let mut ordered_to_tax = false;
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             let order = match placed.intent {
                 Intent::Tax if !pillaged => "TAX",
                 Intent::Pillage => "PILLAGE",
@@ -3961,7 +3991,7 @@ fn check_guarded_tax(
         // Suppressed in a pillaged hex for the same reason the `TAX` line is: `taxed-a-pillaged-hex`
         // already says the money is certainly gone, and `check_pillaged_tax` marks this same block
         // with it (`ah-cxxa`).
-        if !pillaged && !ordered_to_tax && taxes(&ordered.unit.flags, ordered.intents) {
+        if !pillaged && !ordered_to_tax && taxes(&ordered.unit.flags, &ordered.intents) {
             findings.push(ordered.finding_at_block(
                 hex,
                 codes::TAXED_A_GUARDED_HEX,
@@ -3985,7 +4015,7 @@ fn check_tax_readiness(
     let nothing = Receipts::default();
     let facts = hex_facts(hex, &nothing, None);
     for (ordered, facts) in hex.units.iter().zip(&facts) {
-        if !taxes(ordered.unit.flags.as_slice(), ordered.intents) {
+        if !taxes(ordered.unit.flags.as_slice(), &ordered.intents) {
             continue;
         }
         let Some(readiness) = readiness(facts, ruleset) else {
@@ -4056,7 +4086,7 @@ fn credit_tax(
     ruleset: Option<&Ruleset>,
     pillaged: bool,
 ) {
-    if !taxes(&actor.unit.flags, actor.intents) {
+    if !taxes(&actor.unit.flags, &actor.intents) {
         return;
     }
     // "Each taxing character collects $50", capped by what the region has to give. Both of the
@@ -7198,7 +7228,7 @@ fn check_pillage_men(
 /// ruleset knows. [`hulls_named_in`] is not that test: it reads any non-empty kind as a one-hull
 /// fleet, so a fort would pass it and every unit inside a fort would stop being checked.
 fn carried_away<'a>(
-    hex: &Hex<'a>,
+    hex: &'a Hex<'a>,
     ordered: &Ordered<'_>,
     ruleset: &Ruleset,
 ) -> Option<&'a PlacedIntent> {
@@ -7349,7 +7379,7 @@ fn check_production(
             // fact about the unit, not about the region.
             let sailing = carried_away(hex, ordered, ruleset);
             let where_it_produces = match sailing.map(|placed| &placed.intent) {
-                Some(Intent::Sail { steps }) => sail_destination(hex.region, steps, by_coordinate),
+                Some(Intent::Sail { steps }) => sail_destination(hex.region, &steps, by_coordinate),
                 _ => Some(hex.region),
             };
             let Some(region) = where_it_produces else {
@@ -7764,7 +7794,7 @@ fn check_idle_units(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
         // `TAX` would be redundant (`ah-fvzu`). The same reasoning `ah-udff` used for a unit with
         // no men. `spends_the_month` takes an `&Intent` and a flagged unit has no intent at all,
         // so the exemption belongs here rather than there.
-        if taxes(&ordered.unit.flags, ordered.intents) {
+        if taxes(&ordered.unit.flags, &ordered.intents) {
             continue;
         }
         if ordered
@@ -7825,7 +7855,7 @@ fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: 
     for ordered in &hex.units {
         let mut seen: Vec<MonthClaim> = Vec::new();
         let claimants: Vec<&PlacedIntent> = ordered
-            .intents
+            .all_intents
             .iter()
             .filter(|placed| ordered.intent_spends_the_month(&placed.intent))
             // A keyword `GRAMMAR` does not hold would print as an empty word in the message, so
@@ -7936,8 +7966,8 @@ fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 ///
 /// The rule itself lives in [`super::standing`], which is the one place it is stated; this is the
 /// adapter that reads it out of parsed intents.
-fn structure_after_orders<'a>(ordered: &Ordered<'a>) -> Option<&'a str> {
-    structure_after_intents(ordered.unit.structure_id.as_deref(), ordered.intents)
+fn structure_after_orders<'a>(ordered: &'a Ordered<'a>) -> Option<&'a str> {
+    structure_after_intents(ordered.unit.structure_id.as_deref(), &ordered.intents)
 }
 
 /// [`structure_after_orders`] over the two things it actually reads, so the agreement test can
@@ -8174,7 +8204,7 @@ fn check_transfer_targets(
     }
 
     for ordered in &hex.units {
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             let (party, verb) = match &placed.intent {
                 Intent::Give { to, .. } => (to, "given to"),
                 Intent::Take { from, .. } => (from, "taken from"),
@@ -8242,7 +8272,7 @@ fn check_take_from_another_faction(
         return;
     }
     for ordered in &hex.units {
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             let Intent::Take {
                 from: Party::Unit(id),
                 ..
@@ -8801,6 +8831,18 @@ fn check_movement(
 
 // --- allowances spent across the whole map -------------------------------------------------------
 
+fn effective_intents<'a>(
+    hexes: &'a [(Hex<'_>, Ledger<'_>)],
+    region_id: &str,
+    unit_id: &str,
+) -> Option<&'a [PlacedIntent]> {
+    hexes
+        .iter()
+        .find(|(hex, _)| hex.region.region_id == region_id)
+        .and_then(|(hex, _)| hex.find(unit_id))
+        .map(|ordered| ordered.intents.as_slice())
+}
+
 /// Checks the allowances the faction spends across the whole map rather than in one hex.
 ///
 /// The report states each one as `used (maximum)` in its `Faction Status:` block. `used` is the
@@ -8812,12 +8854,13 @@ fn check_movement(
 fn check_faction(
     report: &ParsedReport,
     ordered: &OrderedUnits,
+    hexes: &[(Hex<'_>, Ledger<'_>)],
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    check_quartermasters(report, ordered, ruleset, options, findings);
-    check_trade_regions(report, ordered, options, findings);
+    check_quartermasters(report, ordered, hexes, ruleset, options, findings);
+    check_trade_regions(report, ordered, hexes, options, findings);
     check_claims(report, ordered, ruleset, options, findings);
 }
 
@@ -8857,6 +8900,7 @@ fn trade_allowance(report: &ParsedReport) -> Option<(i64, bool)> {
 fn check_trade_regions(
     report: &ParsedReport,
     ordered: &OrderedUnits,
+    hexes: &[(Hex<'_>, Ledger<'_>)],
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
@@ -8877,10 +8921,12 @@ fn check_trade_regions(
         for unit in region.units.iter().filter(|unit| unit.own) {
             // A unit taxing by its flag taxes this region with no `TAX` line to find, so the
             // region counts against the allowance like any other (`ah-fvzu`).
-            if taxes(&unit.flags, ordered.intents_of(&unit.unit_id)) {
+            let intents = effective_intents(hexes, region_id, &unit.unit_id)
+                .unwrap_or_else(|| ordered.intents_of(&unit.unit_id));
+            if taxes(&unit.flags, intents) {
                 taxing.insert(region_id);
             }
-            for placed in ordered.intents_of(&unit.unit_id) {
+            for placed in intents {
                 match &placed.intent {
                     // Both shapes a PRODUCE order can take: one naming what it makes
                     // (`ah-19l2.2`) and one that named nothing readable.
@@ -8952,6 +8998,7 @@ fn check_trade_regions(
 fn check_quartermasters(
     report: &ParsedReport,
     ordered: &OrderedUnits,
+    hexes: &[(Hex<'_>, Ledger<'_>)],
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
@@ -8996,14 +9043,13 @@ fn check_quartermasters(
         .filter_map(|unit| {
             // The first STUDY order wins, the same as `Ordered::studies()` reads it - a unit that
             // writes several is not asking to be counted once per line.
-            let placed =
-                ordered
-                    .intents_of(&unit.unit_id)
-                    .iter()
-                    .find_map(|placed| match &placed.intent {
-                        Intent::Study { skill: studied } => Some((placed, studied)),
-                        _ => None,
-                    })?;
+            let placed = effective_intents(hexes, &unit.region_id, &unit.unit_id)
+                .unwrap_or_else(|| ordered.intents_of(&unit.unit_id))
+                .iter()
+                .find_map(|placed| match &placed.intent {
+                    Intent::Study { skill: studied } => Some((placed, studied)),
+                    _ => None,
+                })?;
             Some((unit, placed))
         })
         .filter(|(_, (_, studied))| {
@@ -9129,7 +9175,7 @@ fn check_withdraw_in_nexus(hex: &Hex<'_>, options: &CheckOptions, findings: &mut
         return;
     }
     for ordered in &hex.units {
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             if matches!(placed.intent, Intent::Withdraw { .. }) {
                 findings.push(ordered.finding(
                     hex,
