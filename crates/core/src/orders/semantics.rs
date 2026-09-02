@@ -25979,8 +25979,8 @@ mod tests {
         );
     }
 
-    /// The boundary of the decision the test above pins, raised by the delta round of this bead's
-    /// review: the column is stricter than the ledger, and **only** the column. The warnings read
+    /// The boundary of the decision `a_gift_of_silver_the_giver_does_not_hold_yet_credits_nothing`
+    /// pins, raised by the delta round of this bead's review: the column is stricter than the ledger, and **only** the column. The warnings read
     /// the ledger, which still credits the recipient the whole gift, so a unit funded by a gift
     /// its giver cannot yet cover is *not* told it is short. Nothing about the strict receipt
     /// reaches the Problems panel.
