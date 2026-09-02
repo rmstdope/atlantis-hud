@@ -220,7 +220,7 @@ pub fn unit_movement_from_items(unit: &ReportUnit, ruleset: &Ruleset) -> Option<
         load = load.saturating_add(count.saturating_mul(item.weight));
         items.push((amount.tag.as_str(), count));
     }
-    if men < unit.men {
+    if men == 0 || men < unit.men {
         return None;
     }
     let capacities = capacities_from_items(&items, ruleset)?;
@@ -243,7 +243,7 @@ pub fn mobility_with_ruleset(unit: &ReportUnit, ruleset: &Ruleset) -> Mobility {
         }
         items.push((amount.tag.as_str(), amount.amount));
     }
-    if !has_conditional_capacity || men < unit.men {
+    if men == 0 || (!has_conditional_capacity || men < unit.men) {
         return mobility(unit);
     }
     let Some(capacities) = capacities_from_items(&items, ruleset) else {
@@ -659,6 +659,16 @@ mod tests {
             ..Default::default()
         };
         assert!(unit_movement_from_items(&unknown, &ruleset()).is_none());
+    }
+
+    #[test]
+    fn empty_inventory_does_not_fabricate_flying_movement() {
+        let unit = ReportUnit {
+            men: 0,
+            items: Vec::new(),
+            ..Default::default()
+        };
+        assert!(unit_movement_from_items(&unit, &ruleset()).is_none());
     }
 
     // ------------------------------------------------------------ capacities_from_items
