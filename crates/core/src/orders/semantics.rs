@@ -3322,7 +3322,7 @@ fn settle_recruits_before_production(
 fn ledger_for_with_production<'a>(
     hex: &Hex<'_>,
     ruleset: Option<&'a Ruleset>,
-    receipts: &'a BTreeMap<String, Receipts>,
+    _receipts: &'a BTreeMap<String, Receipts>,
     production: &ProductionShares,
     foreign_unit_ids: &BTreeSet<String>,
 ) -> Ledger<'a> {
