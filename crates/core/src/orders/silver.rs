@@ -1202,6 +1202,7 @@ pub fn forecast_unit(
         .saturating_add(receipts.taken)
         .saturating_add(receipts.taken_unshown);
     let mut expense = 0i64;
+    let mut claim_remaining = purse.unclaimed;
     // A `TAKE ... ALL SILV` is in this unit's own block, but what it will yield depends on the
     // source unit's month, which this per-unit pass has not run (`ah-awcm`).
     let mut income_doubt = receipts
@@ -1287,13 +1288,11 @@ pub fn forecast_unit(
         }
         match &placed.intent {
             Intent::Claim(amount) => {
-                // Capped at what the faction actually holds, and never divided between units that
-                // claim in the same turn - unlike the regional pools, which `ah-t2pn` settles
-                // between own units. The purse is faction-wide and `ah-bumi` settled it
-                // deliberately the other way; `claims-exceed-unclaimed` (`ah-wur4`) is what carries
-                // the overrun. A purse the report does not state leaves only the limit unknown, not
-                // the amount, so the stated figure is counted and nothing is doubted.
-                income = income.saturating_add(price_claim(*amount, purse.unclaimed).earns);
+                let priced = price_claim(*amount, claim_remaining);
+                income = income.saturating_add(priced.earns);
+                if let Some(remaining) = &mut claim_remaining {
+                    *remaining = remaining.saturating_sub(priced.earns).max(0);
+                }
             }
             // Priced once above, as a unit-level term rather than per line: a unit may tax by
             // its flag with no `TAX` order at all, and one with both must be counted once
@@ -5992,16 +5991,16 @@ mod tests {
         assert_eq!(unit.doubt, None);
     }
 
-    /// The accepted overstatement, pinned deliberately: each unit is capped at the whole purse and
-    /// the purse is never divided between them, exactly as `WORK` treats a region's wages. A
-    /// warning about the total belongs to `ah-wur4` - do not "fix" this into contention modelling.
     #[test]
-    fn two_units_claiming_are_each_capped_at_the_whole_purse() {
+    fn one_unit_repeated_claims_share_its_allowance() {
         let region = RegionWages::default();
-        let first = forecast_holding(1, region, purse(Some(4935)), &[placed(Intent::Claim(4000))]);
-        let second = forecast_holding(1, region, purse(Some(4935)), &[placed(Intent::Claim(4000))]);
-        assert_eq!(first.income, Some(4000));
-        assert_eq!(second.income, Some(4000));
+        let unit = forecast_holding(
+            1,
+            region,
+            purse(Some(4935)),
+            &[placed(Intent::Claim(4000)), placed(Intent::Claim(4000))],
+        );
+        assert_eq!(unit.income, Some(4935));
     }
 
     #[test]

@@ -498,7 +498,8 @@ pub fn review_turn(
     // the real, final `ProductionShares` computed below - a per-hex recomputation would restore
     // the cross-hex disagreement `ah-k43x` fixed (`ah-40c9`).
     let mut hexes = hexes;
-    settle_recruits_before_production(&mut hexes, ruleset, &receipts);
+    let claim_allowances = claim_allowances_for(&hexes, purse.unclaimed);
+    settle_recruits_before_production(&mut hexes, ruleset, &receipts, &claim_allowances);
 
     let production = production_shares_for(&hexes, ruleset);
 
@@ -511,6 +512,7 @@ pub fn review_turn(
                 &receipts,
                 &production,
                 &foreign_unit_ids,
+                &claim_allowances,
             );
             apply_recruits(&mut hex.units, &ledger, ruleset);
             (hex, ledger)
@@ -553,6 +555,7 @@ pub fn review_turn(
             &production,
             &mut silver,
             &mut overruns,
+            &claim_allowances,
         );
         if hex.units.is_empty() {
             continue;
@@ -1293,6 +1296,35 @@ fn orders_a_pillage(ordered: &Ordered<'_>) -> bool {
         .any(|placed| matches!(placed.intent, Intent::Pillage))
 }
 
+type ClaimAllowances = Option<BTreeMap<String, i64>>;
+
+fn claim_allowances_for(hexes: &[Hex<'_>], unclaimed: Option<i64>) -> ClaimAllowances {
+    let mut remaining = unclaimed?;
+    let mut allowances = BTreeMap::new();
+    for hex in hexes {
+        for unit in &hex.units {
+            let mut grant: i64 = 0;
+            for placed in unit.intents {
+                if let Intent::Claim(amount) = placed.intent {
+                    let priced = price_claim(amount, Some(remaining.max(0)));
+                    grant = grant.saturating_add(priced.earns);
+                    remaining = remaining.saturating_sub(priced.earns).max(0);
+                }
+            }
+            allowances.insert(unit.unit.unit_id.clone(), grant);
+        }
+    }
+    Some(allowances)
+}
+
+fn claim_purse_for(allowances: &ClaimAllowances, unit_id: &str) -> FactionPurse {
+    FactionPurse {
+        unclaimed: allowances
+            .as_ref()
+            .map(|map| map.get(unit_id).copied().unwrap_or(0)),
+    }
+}
+
 /// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
 /// already filtered them out, so their cell is blank for free.
 #[allow(clippy::too_many_arguments)]
@@ -1301,13 +1333,14 @@ fn forecast_hex(
     // rather than two, which is also what keeps a hex from being priced against another's ledger.
     (hex, ledger): &(Hex<'_>, Ledger<'_>),
     receipts: &BTreeMap<String, Receipts>,
-    purse: FactionPurse,
+    _purse: FactionPurse,
     ruleset: Option<&Ruleset>,
     relief: &Relief<'_>,
     plurals: &Plurals,
     production: &ProductionShares,
     into: &mut Vec<UnitSilver>,
     overruns: &mut Vec<PoolOverrun>,
+    claim_allowances: &ClaimAllowances,
 ) {
     let Relief {
         shared_silver,
@@ -1470,7 +1503,7 @@ fn forecast_hex(
             facts,
             region,
             shares[index],
-            purse,
+            claim_purse_for(claim_allowances, &ordered.unit.unit_id),
             purse_for_orders.lends_to[index],
             Lookups {
                 sale: &sale,
@@ -3274,7 +3307,14 @@ fn ledger_for<'a>(
         .filter(|unit| !unit.own)
         .map(|unit| unit.unit_id.clone())
         .collect();
-    ledger_for_with_production(hex, ruleset, receipts, &production, &foreign_unit_ids)
+    ledger_for_with_production(
+        hex,
+        ruleset,
+        receipts,
+        &production,
+        &foreign_unit_ids,
+        &None,
+    )
 }
 
 /// Everything the hex's units hold, with this month's orders applied.
@@ -3302,6 +3342,7 @@ fn settle_recruits_before_production(
     hexes: &mut [Hex<'_>],
     ruleset: Option<&Ruleset>,
     receipts: &BTreeMap<String, Receipts>,
+    claim_allowances: &ClaimAllowances,
 ) {
     let provisional = production_shares_for(hexes, ruleset);
     for hex in hexes.iter_mut() {
@@ -3312,8 +3353,14 @@ fn settle_recruits_before_production(
             .filter(|unit| !unit.own)
             .map(|unit| unit.unit_id.clone())
             .collect();
-        let ledger =
-            ledger_for_with_production(hex, ruleset, receipts, &provisional, &foreign_unit_ids);
+        let ledger = ledger_for_with_production(
+            hex,
+            ruleset,
+            receipts,
+            &provisional,
+            &foreign_unit_ids,
+            claim_allowances,
+        );
         apply_recruits(&mut hex.units, &ledger, ruleset);
     }
 }
@@ -3324,6 +3371,7 @@ fn ledger_for_with_production<'a>(
     receipts: &'a BTreeMap<String, Receipts>,
     production: &ProductionShares,
     foreign_unit_ids: &BTreeSet<String>,
+    claim_allowances: &ClaimAllowances,
 ) -> Ledger<'a> {
     let mut ledger = Ledger {
         ruleset,
@@ -3375,6 +3423,8 @@ fn ledger_for_with_production<'a>(
     let nothing = Receipts::default();
     for (index, ordered) in hex.units.iter().enumerate() {
         let facts = unit_facts(hex, ordered, &nothing, None, ruleset);
+        let mut claim_remaining =
+            claim_purse_for(claim_allowances, &ordered.unit.unit_id).unclaimed;
         for placed in ordered.intents {
             if matches!(placed.intent, Intent::Build { .. }) {
                 continue;
@@ -3392,6 +3442,7 @@ fn ledger_for_with_production<'a>(
                     actor_index: index,
                 },
                 foreign_unit_ids,
+                &mut claim_remaining,
             );
         }
         credit_tax(&mut ledger, hex, ordered, &facts, ruleset, pillaged);
@@ -3466,7 +3517,8 @@ pub(crate) fn item_effects(
     // through the same shared helper - the seam preventing Problems, SILVER and ITEMS from
     // acquiring separate recruitment settlements (`ah-40c9`).
     let mut hexes = hexes;
-    settle_recruits_before_production(&mut hexes, ruleset, &no_receipts);
+    let claim_allowances = claim_allowances_for(&hexes, report.header.unclaimed_silver);
+    settle_recruits_before_production(&mut hexes, ruleset, &no_receipts, &claim_allowances);
 
     // Every hex before any ledger, and one settlement for all of them: a passenger produces where
     // its vessel arrives, so the pool it draws on is in another hex's `Products` line. Settling
@@ -3475,8 +3527,14 @@ pub(crate) fn item_effects(
     let production = production_shares_for(&hexes, ruleset);
 
     for hex in &hexes {
-        let ledger =
-            ledger_for_with_production(hex, ruleset, &no_receipts, &production, &foreign_unit_ids);
+        let ledger = ledger_for_with_production(
+            hex,
+            ruleset,
+            &no_receipts,
+            &production,
+            &foreign_unit_ids,
+            &claim_allowances,
+        );
 
         for movement in ledger.movements {
             result
@@ -4288,6 +4346,7 @@ fn apply(
     // this actor is - the same settlement the Silver column reads (`ah-lu0f.2`).
     standing: HexStanding<'_>,
     foreign_unit_ids: &BTreeSet<String>,
+    claim_remaining: &mut Option<i64>,
 ) {
     let who = &actor.unit.unit_id;
 
@@ -4414,7 +4473,13 @@ fn apply(
         // faction purse, because the overrun has its own finding, `claims-exceed-unclaimed`
         // (`ah-wur4`), computed faction-wide - and warning twice about one mistake is worse than
         // warning once (`ah-bumi`).
-        Intent::Claim(amount) => credit(ledger, who, SILVER, price_claim(*amount, None).earns),
+        Intent::Claim(amount) => {
+            let priced = price_claim(*amount, *claim_remaining);
+            credit(ledger, who, SILVER, priced.earns);
+            if let Some(remaining) = claim_remaining {
+                *remaining = remaining.saturating_sub(priced.earns).max(0);
+            }
+        }
         // Credited once per unit by `credit_tax` in `ledger_for`, not per line: a unit may tax by
         // its flag with no `TAX` order at all, and one carrying both taxes once (`ah-fvzu`).
         Intent::Tax => {}
@@ -10561,7 +10626,7 @@ mod tests {
         }
 
         #[test]
-        fn claiming_is_still_never_divided() {
+        fn claims_are_allocated_in_report_order_even_when_blocks_are_reversed() {
             let report = ParsedReport {
                 regions: vec![region(vec![taxer("2390", 1), taxer("2391", 1)])],
                 header: crate::report::header::ReportHeader {
@@ -10572,13 +10637,13 @@ mod tests {
             };
             let review = review_turn(
                 &report,
-                "unit 2390\nCLAIM 4000\nunit 2391\nCLAIM 4000\n",
+                "unit 2391\nCLAIM 4000\nunit 2390\nCLAIM 4000\n",
                 Some(&ruleset()),
                 CheckOptions::default(),
             );
 
             assert_eq!(silver_of(&review, "2390").income, Some(4000));
-            assert_eq!(silver_of(&review, "2391").income, Some(4000));
+            assert_eq!(silver_of(&review, "2391").income, Some(935));
         }
     }
 
@@ -10957,7 +11022,14 @@ mod tests {
     fn receipts_in(region: &ReportRegion, orders: &str) -> BTreeMap<String, Receipts> {
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex = hex_with_transfers(region, &ordered, &[], Some(&rules), &BTreeSet::new());
+        let hex = hex_with_transfers(
+            region,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
         gather_receipts(std::slice::from_ref(&hex))
     }
 
