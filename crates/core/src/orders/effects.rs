@@ -1420,6 +1420,13 @@ impl Working {
                         return;
                     };
                     let (name, tag) = (entry.name.clone(), entry.tag.to_ascii_uppercase());
+                    // A mage may take no men from anyone, an unshown source included (`ah-ndp9`).
+                    // Refused before anything is credited or recorded.
+                    if self.ruleset.is_man(&tag)
+                        && super::magic::is_mage(&self.ruleset, &self.units[taker].unit.skills)
+                    {
+                        return;
+                    }
                     add_item(&mut self.units[taker].unit.items, &name, &tag, *count);
                     self.units[taker].taken_unshown.push(TakenUnshown {
                         amount: *count,
@@ -1475,6 +1482,17 @@ impl Working {
                 )
             {
                 continue;
+            }
+            // `rules/magic` fixes a mage's unit number, and the navigator's New Origins ruling
+            // says no man may join one - by GIVE, by TAKE or by BUY (`ah-ndp9`). Per tag, so a
+            // mixed `ALL ITEMS` still hands over the equipment; and `continue` before anything is
+            // debited, so the source keeps the men it could not hand over.
+            if let Some(receiver) = receiver {
+                if self.ruleset.is_man(&tag)
+                    && super::magic::is_mage(&self.ruleset, &self.units[receiver].unit.skills)
+                {
+                    continue;
+                }
             }
             // Re-resolved by tag rather than kept from the snapshot: an earlier tag in this same
             // loop may have removed an item ahead of this one and shifted every index after it.
@@ -2614,6 +2632,132 @@ mod tests {
             String::new(),
         ]
         .join("\n")
+    }
+
+    /// A mage with nothing to hand over, and a neighbour holding both men and equipment, so a
+    /// `GIVE 900 ALL ITEMS` still has something to move once the men are refused (`ah-ndp9`).
+    ///
+    /// Its own literal rather than a widening of `report_with_a_mage_and_a_neighbour`: six tests
+    /// read that one and two assert exact sword counts against it.
+    fn report_with_a_mage_receiving() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Mage (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: force [FORC] 1 (30).",
+            "* Hands (901), Foo (1), 5 orcs [ORC], 3 swords [SWOR]. Weight: 65. \
+             Capacity: 0/0/75/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
+    fn preview_for_receiving_mage(orders: &str) -> OrdersPreviewResponse {
+        preview_over(&report_with_a_mage_receiving(), orders)
+    }
+
+    fn previewed<'a>(response: &'a OrdersPreviewResponse, id: &str) -> &'a UnitPreview {
+        response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .find(|unit| unit.unit.unit_id == id)
+            .unwrap_or_else(|| panic!("unit {id} is previewed: {:?}", response.regions))
+    }
+
+    /// `rules/magic` fixes a mage's unit number, and the navigator's New Origins ruling says no man
+    /// may join one - so the men stay with the giver and the mage's row does not move.
+    #[test]
+    fn a_mage_given_men_keeps_its_people_and_its_skills() {
+        let response = preview_for_receiving_mage("unit 901\nGIVE 900 2 ORC\n");
+        assert!(
+            response.regions.is_empty(),
+            "nothing moves at all: {:?}",
+            response.regions
+        );
+
+        // The control: the same gift into a mundane unit does move rows.
+        let mundane = preview_over(
+            &report_with_a_mage_and_a_neighbour("lumberjack [LUMB]"),
+            "unit 901\nGIVE 900 1 ORC\n",
+        );
+        assert!(!mundane.regions.is_empty(), "the control moves the orc");
+    }
+
+    #[test]
+    fn a_mage_taking_men_takes_none_of_them() {
+        let response = preview_for_receiving_mage("unit 900\nTAKE FROM 901 2 ORC\n");
+        assert!(
+            response.regions.is_empty(),
+            "a mage takes on no men either: {:?}",
+            response.regions
+        );
+    }
+
+    /// X2: the equipment still arrives; only the man tags are refused.
+    #[test]
+    fn a_mage_given_all_items_keeps_its_men_and_gains_the_equipment() {
+        let response = preview_for_receiving_mage("unit 901\nGIVE 900 ALL ITEMS\n");
+
+        let mage = previewed(&response, "900");
+        assert_eq!(mage.unit.men, 1, "the mage gains nobody");
+        assert!(
+            !mage.unit.items.iter().any(|item| item.tag == "ORC"),
+            "no orc arrives: {:?}",
+            mage.unit.items
+        );
+        assert_eq!(
+            mage.unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .map(|item| item.amount),
+            Some(3),
+            "the swords do: {:?}",
+            mage.unit.items
+        );
+        assert!(
+            mage.unit.skills.iter().any(|skill| skill.tag == "FORC"),
+            "and its skills are untouched"
+        );
+
+        let giver = previewed(&response, "901");
+        assert_eq!(
+            giver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "ORC")
+                .map(|item| item.amount),
+            Some(5),
+            "the giver keeps the men it could not hand over: {:?}",
+            giver.unit.items
+        );
+        assert_eq!(giver.unit.men, 5);
+    }
+
+    /// `take`'s unshown-source branch bypasses `move_between` and credits the item directly, so it
+    /// carries the refusal of its own.
+    #[test]
+    fn a_mage_taking_men_from_an_unshown_unit_takes_none_of_them() {
+        let response = preview_for_receiving_mage("unit 900\nTAKE FROM 1234 2 ORC\n");
+        assert!(
+            response.regions.is_empty(),
+            "nothing is credited from an unshown source either: {:?}",
+            response.regions
+        );
+
+        // The control: a mundane taker does get the orcs from an unshown source.
+        let mundane = preview_over(
+            &report_with_a_mage_receiving(),
+            "unit 901\nTAKE FROM 1234 2 ORC\n",
+        );
+        assert!(
+            !mundane.regions.is_empty(),
+            "the control credits the unshown take"
+        );
     }
 
     fn preview_for_mage(skill: &str, orders: &str) -> OrdersPreviewResponse {

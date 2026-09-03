@@ -43,7 +43,7 @@ pub fn mage_give_refused(skills: &[Skill], tag: &str, ruleset: Option<&Ruleset>)
     let Some(ruleset) = ruleset else {
         return false;
     };
-    ruleset.is_man(tag) && skills.iter().any(|skill| ruleset.is_magic(&skill.tag))
+    ruleset.is_man(tag) && super::magic::is_mage(ruleset, skills)
 }
 
 /// What a `GIVE`'s target is, as far as the whole report can tell.
