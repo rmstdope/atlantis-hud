@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-728m.3 — the withdrawal counts only for the move</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .split2 { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px; }
+  pre.file { background:var(--ground); border:1px solid var(--edge-soft); border-radius:6px; padding:10px 12px;
+             font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.6; color:var(--ink-soft);
+             overflow-x:auto; white-space:pre; }
+  pre.file .hdr { color:var(--brass-bright); }
+  .prob { list-style:none; display:grid; gap:8px; margin-top:10px; }
+  .prob li { border:1px solid var(--edge); border-left:3px solid var(--warn); border-radius:6px; background:var(--raised);
+             padding:8px 11px; font:12.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); }
+  .prob li .code { display:block; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:10.5px;
+                   letter-spacing:.06em; color:var(--ink-dim); margin-bottom:3px; }
+  .prob li.none { border-left-color:var(--ok); color:var(--ink-soft); font-style:italic; }
+  .prob li.same { border-left-color:var(--select); }
+  .tag { display:inline-block; font:10px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.1em; text-transform:uppercase;
+         border:1px solid var(--edge); border-radius:4px; padding:4px 7px; color:var(--ink-dim); margin-left:8px; vertical-align:2px; }
+  .tag.diff { border-color:var(--danger); color:var(--danger); }
+  .tag.unch { border-color:var(--ok); color:var(--ok); }
+  table.phases { border-collapse:collapse; font:12px/1.5 'Helvetica Neue',Arial,sans-serif; margin-top:6px; width:100%; }
+  table.phases th, table.phases td { border:1px solid var(--edge); padding:5px 8px; text-align:left; color:var(--ink-soft); }
+  table.phases th { color:var(--brass); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; font-weight:600; }
+  table.phases td.on { color:var(--ok); } table.phases td.off { color:var(--ink-dim); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+</style></head><body>
+<header><h1>Option B &mdash; <span>the withdrawal counts only for the move</span></h1>
+<p>The goods are credited for the movement checks and taken away again afterwards, which is exactly what the reviewer does today. Every warning outside movement keeps the wording and the units it has now; a PRODUCE or BUILD funded by a withdrawal is still called short.</p>
+<p style="margin-top:8px">Three order blocks, each with a <code>WITHDRAW</code> in it. The
+<b>Problems</b> entries are what the order review would say. Only the wording shown here is real
+review output; the phase table below each block says which stored balance the check read.</p></header>
+<main>
+
+<h3 class="sec">1 &nbsp;&middot;&nbsp; A withdrawal that overloads a walker</h3>
+<p>The one case this bead was filed for. <code>rules/sequenceofevents</code> runs WITHDRAW before
+movement, so the six shields are aboard when MOVE is checked.</p>
+<div class="card"><div class="split2">
+  <div><div class="hexlab">Orders</div>
+  <pre class="file"><span class="hdr">unit 12054</span>
+WITHDRAW 6 wooden shield
+MOVE N</pre></div>
+  <div><div class="hexlab">Problems<span class="tag unch">same in both options</span></div>
+  <ul class="prob"><li class="same"><span class="code">unit-overloaded &nbsp;line 3</span>
+  this unit is overloaded: it carries 16 and the most it can move with is 15, so it will not move</li></ul></div>
+</div></div>
+
+<h3 class="sec">2 &nbsp;&middot;&nbsp; A withdrawal that feeds a PRODUCE after the move</h3>
+<p>Five weaponsmiths holding no iron. <code>data/weaponsmith</code>: one sword from one iron per
+man-month. Manufacturing PRODUCE runs after movement, and the withdrawal ran before it.</p>
+<div class="card"><div class="split2">
+  <div><div class="hexlab">Orders</div>
+  <pre class="file"><span class="hdr">unit 2391</span>
+WITHDRAW 5 iron
+PRODUCE sword</pre></div>
+  <div><div class="hexlab">Problems<span class="tag unch">unchanged from today</span></div>
+  <ul class="prob"><li><span class="code">not-enough-items &nbsp;line 3</span>short 5 iron: this unit can have 0 and its orders spend 5</li></ul></div>
+</div></div>
+
+<h3 class="sec">3 &nbsp;&middot;&nbsp; A withdrawal that pays for a BUILD</h3>
+<p>BUILD settles after manufacturing, later still &mdash; and, again, after the withdrawal.</p>
+<div class="card"><div class="split2">
+  <div><div class="hexlab">Orders</div>
+  <pre class="file"><span class="hdr">unit 2392</span>
+WITHDRAW 10 stone
+BUILD Tower</pre></div>
+  <div><div class="hexlab">Problems<span class="tag unch">unchanged from today</span></div>
+  <ul class="prob"><li><span class="code">not-enough-items &nbsp;line 3</span>short 10 stone: this unit can have 0 and its orders spend 10</li></ul></div>
+</div></div>
+
+<h3 class="sec">What each check sees of the six withdrawn shields</h3>
+<p>The reviewer stores one balance per turn phase. This is the row this option writes for a
+<code>WITHDRAW 6 WSHD</code>.</p>
+<div class="card">
+<table class="phases">
+<tr><th>Give</th><th>Market</th><th>Withdraw</th><th>Movement</th><th>Study</th><th>Manufacturing</th><th>Build</th><th>Maintenance</th></tr>
+<tr><td class="off">0</td><td class="off">0</td><td class="on">6</td><td class="on">6</td><td class="off">0</td><td class="off">0</td><td class="off">0</td><td class="off">0</td></tr>
+</table>
+</div>
+
+<h3 class="sec">Unchanged in both options</h3>
+<div class="card"><ul class="prob">
+<li class="same"><span class="code">agreed when the family was split</span>
+Material spent by a manufacturing PRODUCE or a BUILD no longer makes a unit lighter when MOVE is
+checked. Both settle after movement, so neither can lighten the load the mover carries.</li>
+<li class="same"><span class="code">unchanged</span>
+The ITEMS column still previews the withdrawn goods, as it does today.</li>
+<li class="same"><span class="code">unchanged</span>
+A faction that withdraws more than its unclaimed silver covers is still told so, on every CLAIM
+and WITHDRAW line: &ldquo;your units claim and withdraw $X between them and the faction has $Y&rdquo;.</li>
+</ul></div>
+</main>
+<footer>Mockup for bead ah-728m.3. Rules cited: <code>rules/sequenceofevents</code>,
+<code>rules/withdraw</code>, <code>data/weaponsmith</code>, <code>data/wooden shield</code>.</footer>
+</body></html>
