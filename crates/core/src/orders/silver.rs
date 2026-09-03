@@ -920,6 +920,7 @@ pub struct LateFacts<'a> {
     pub men: i64,
     pub men_by_race: &'a [ItemAmount],
     pub items: &'a [ItemAmount],
+    pub before_manufacturing: &'a [ItemAmount],
 }
 
 impl<'a> UnitFacts<'a> {
@@ -931,6 +932,7 @@ impl<'a> UnitFacts<'a> {
             men: self.men,
             men_by_race: self.men_by_race,
             items: self.items,
+            before_manufacturing: self.items,
         })
     }
 }
@@ -1243,6 +1245,7 @@ pub fn forecast_unit(
     // What each `BUY ALL` in `deferred` settled to, for the hover - filled by the deferred pass
     // below, in document order.
     let mut buy_all: Vec<BuyAllShown> = Vec::new();
+    let mut manufacturing_items = facts.late().before_manufacturing.to_vec();
 
     // Whether this unit taxes at all is a property of the unit, not of one line in its block: the
     // taxing flag makes it tax every turn with no `TAX` order, and a unit with both the flag and an
@@ -1398,7 +1401,7 @@ pub fn forecast_unit(
                             tag,
                             facts.late().men,
                             facts.production_skills,
-                            facts.items,
+                            &manufacturing_items,
                         )
                     });
                 let recipe = found.as_ref().map(|(_, _, recipe)| *recipe);
@@ -1406,9 +1409,17 @@ pub fn forecast_unit(
                 // producing the same goods here are settled against it - the same settlement the
                 // ITEMS ledger reads, through the same function (`ah-256d`, `ah-ycuj`).
                 let region = (lookups.region_share)(item);
-                let (priced, plan) = price_production(recipe, work, facts.items, region);
+                let (priced, plan) = price_production(recipe, work, &manufacturing_items, region);
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
+                        for material in &plan.materials {
+                            if let Some(held) = manufacturing_items
+                                .iter_mut()
+                                .find(|held| held.tag.eq_ignore_ascii_case(&material.tag))
+                            {
+                                held.amount -= material.amount;
+                            }
+                        }
                         expense = expense.saturating_add(priced.spends);
                         if priced.spends > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Produce));
@@ -5458,6 +5469,7 @@ mod tests {
                     men: 3,
                     men_by_race: &[],
                     items: &items,
+                    before_manufacturing: &items,
                 }),
                 ..facts(3, &intents, &receipts)
             },
@@ -5496,6 +5508,7 @@ mod tests {
                     men: 8,
                     men_by_race: &[],
                     items: &items,
+                    before_manufacturing: &items,
                 }),
                 ..facts(8, &intents, &receipts)
             },
@@ -5529,6 +5542,7 @@ mod tests {
                     men: 3,
                     men_by_race: &[],
                     items: &items,
+                    before_manufacturing: &items,
                 }),
                 ..facts(3, &[], &receipts)
             },

@@ -1320,6 +1320,7 @@ fn forecast_hex(
     // every hex's ledger before it forecasts any of them - so the late picture is read once here
     // and handed to everything below that needs it.
     let late = LateHoldings::read(hex, &ledger.balance, ruleset);
+    let before_manufacturing = LateHoldings::read(hex, &ledger.before_manufacturing, ruleset);
 
     // A region's pools are shared, so who else in this hex draws on them has to be settled before
     // any one unit can be priced against them (`ah-t2pn`).
@@ -1462,7 +1463,12 @@ fn forecast_hex(
             // gifts, since `apply_recruits` runs before this hex is priced (`ah-40c9`).
             production_skills: ordered.skills().unwrap_or(&ordered.unit.skills),
             production_skills_unknown: ordered.skills().is_none(),
-            late: Some(late.of(index)),
+            late: Some(LateFacts {
+                men: late.of(index).men,
+                men_by_race: late.of(index).men_by_race,
+                items: late.of(index).items,
+                before_manufacturing: before_manufacturing.of(index).items,
+            }),
         };
         claims.push(food_claim(&facts, ruleset));
 
@@ -3050,6 +3056,7 @@ struct Ledger<'a> {
     receipts: &'a BTreeMap<String, Receipts>,
     /// What each unit would hold once its orders had run, keyed by unit and item tag.
     balance: BTreeMap<(String, String), i64>,
+    before_manufacturing: BTreeMap<(String, String), i64>,
     /// Materials consumed by manufacturing after movement, keyed like `balance`.
     manufacturing_spent: BTreeMap<(String, String), i64>,
     /// Units whose sums cannot be trusted, and which are therefore not judged at all.
@@ -3329,6 +3336,7 @@ fn ledger_for_with_production<'a>(
         ruleset,
         receipts,
         balance: BTreeMap::new(),
+        before_manufacturing: BTreeMap::new(),
         manufacturing_spent: BTreeMap::new(),
         doubted: BTreeSet::new(),
         charged_at: BTreeMap::new(),
@@ -3376,7 +3384,7 @@ fn ledger_for_with_production<'a>(
     for (index, ordered) in hex.units.iter().enumerate() {
         let facts = unit_facts(hex, ordered, &nothing, None, ruleset);
         for placed in ordered.intents {
-            if matches!(placed.intent, Intent::Build { .. }) {
+            if matches!(placed.intent, Intent::Build { .. } | Intent::Produce { .. }) {
                 continue;
             }
             apply(
@@ -3396,6 +3404,28 @@ fn ledger_for_with_production<'a>(
         }
         credit_tax(&mut ledger, hex, ordered, &facts, ruleset, pillaged);
         settle_buy_all(&mut ledger, hex, ordered);
+    }
+
+    ledger.before_manufacturing = ledger.balance.clone();
+    for (index, ordered) in hex.units.iter().enumerate() {
+        for placed in ordered.intents {
+            let Intent::Produce { item } = &placed.intent else {
+                continue;
+            };
+            produce(
+                &mut ledger,
+                hex,
+                ordered,
+                placed,
+                item,
+                ruleset,
+                HexStanding {
+                    market: &market_shares,
+                    production,
+                    actor_index: index,
+                },
+            );
+        }
     }
 
     for ordered in &hex.units {
@@ -3603,6 +3633,7 @@ impl LateHoldings {
             men: holdings.men,
             men_by_race: &holdings.men_by_race,
             items: &holdings.items,
+            before_manufacturing: &holdings.items,
         }
     }
 }
@@ -4996,6 +5027,12 @@ fn produce(
     standing: HexStanding<'_>,
 ) {
     let who = &actor.unit.unit_id;
+    let current = LateHoldings::read(hex, &ledger.balance, ruleset);
+    let held = current.of(hex
+        .units
+        .iter()
+        .position(|unit| unit.unit.unit_id == *who)
+        .unwrap_or(0));
     let tag = resolve_item(item, hex, actor, ruleset);
     // The level and the tools enter through `workforce_for`, which the SILVER column also calls -
     // one builder, so the two surfaces cannot be given different workforces (`ah-vtwn`).
@@ -5014,7 +5051,7 @@ fn produce(
             tag.as_deref().unwrap_or_default(),
             actor.men_after_orders,
             actor.skills().unwrap_or(&actor.unit.skills),
-            actor.early_items(),
+            held.items,
         )
     });
     let recipe = found.map(|(_, recipe)| recipe);
@@ -5038,7 +5075,7 @@ fn produce(
         standing.production,
         ruleset,
     );
-    let (priced, plan) = price_production(recipe, work, actor.early_items(), region);
+    let (priced, plan) = price_production(recipe, work, held.items, region);
     let Some(plan) = plan else {
         // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
         // same posture `buy` takes for goods the market does not carry - and the ITEMS column
@@ -10957,7 +10994,14 @@ mod tests {
     fn receipts_in(region: &ReportRegion, orders: &str) -> BTreeMap<String, Receipts> {
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex = hex_with_transfers(region, &ordered, &[], Some(&rules), &BTreeSet::new());
+        let hex = hex_with_transfers(
+            region,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
         gather_receipts(std::slice::from_ref(&hex))
     }
 
