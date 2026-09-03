@@ -4,7 +4,6 @@ import { MOVEMENT_ORDER_COMMANDS } from "@atlantis/core-client";
 import {
   commandsOnly,
   applyUnitOrders,
-  ensureUnitBlock,
   findUnitBlocks,
   hasFactionHeader,
   LONG_ORDER_COMMANDS,
