@@ -55,6 +55,44 @@ pub fn item_named<'a, I: Iterator<Item = &'a ItemAmount>>(
     found
 }
 
+#[must_use]
+pub fn is_unfinished_ship(item: &ItemAmount, ruleset: Option<&Ruleset>) -> bool {
+    let lower = item.name.to_ascii_lowercase();
+    let Some(rest) = lower.strip_prefix("unfinished ") else {
+        return false;
+    };
+    if rest.is_empty() {
+        return false;
+    }
+    ruleset.is_none_or(|rules| {
+        rules.class_members("SHIP").is_some_and(|members| {
+            members
+                .iter()
+                .any(|member| member.eq_ignore_ascii_case(&item.tag))
+        })
+    })
+}
+
+#[must_use]
+pub fn unfinished_ship_named<'a, I: Iterator<Item = &'a ItemAmount>>(
+    ruleset: Option<&Ruleset>,
+    text: &str,
+    seen: impl Fn() -> I,
+) -> Option<String> {
+    let written = text.replace('_', " ");
+    let spellings = item_spellings(&written);
+    seen().find_map(|item| {
+        if !is_unfinished_ship(item, ruleset) {
+            return None;
+        }
+        let base = item.name.get("unfinished ".len()..)?;
+        spellings.iter().flatten().find(|spelling| {
+            base.eq_ignore_ascii_case(spelling) || item.tag.eq_ignore_ascii_case(spelling)
+        })?;
+        Some(item.tag.to_ascii_uppercase())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,6 +173,35 @@ mod tests {
         let orcs = held(&[(8, "orcs", "ORC")]);
         assert_eq!(item_named(Some(&ruleset()), "swordz", || orcs.iter()), None);
         assert_eq!(item_named(Some(&ruleset()), "", || orcs.iter()), None);
+    }
+
+    #[test]
+    fn unfinished_ship_names_resolve_only_unfinished_ship_holdings() {
+        let items = held(&[
+            (1, "unfinished Cog", "COG"),
+            (1, "Cog", "COG"),
+            (1, "unfinished herb", "HERB"),
+        ]);
+        let rules = ruleset();
+        assert_eq!(
+            unfinished_ship_named(Some(&rules), "cog", || items.iter()),
+            Some("COG".to_string())
+        );
+        assert_eq!(
+            unfinished_ship_named(Some(&rules), "herb", || items.iter()),
+            None
+        );
+        assert!(!is_unfinished_ship(&items[1], Some(&rules)));
+    }
+
+    #[test]
+    fn unfinished_ship_prefix_is_authoritative_without_a_ruleset() {
+        let items = held(&[(1, "UNFINISHED mystery", "MYST")]);
+        assert!(is_unfinished_ship(&items[0], None));
+        assert_eq!(
+            unfinished_ship_named(None, "mystery", || items.iter()),
+            Some("MYST".to_string())
+        );
     }
 
     /// Without a ruleset the holdings are the only authority, which is what the ledger already

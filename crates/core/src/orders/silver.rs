@@ -532,6 +532,10 @@ pub enum TransferShape {
 pub fn transfer_shape(what: &Selector, amount: &Amount) -> TransferShape {
     match what {
         Selector::Class(_) | Selector::WholeUnit => TransferShape::Unpriceable,
+        Selector::UnfinishedShip(_) => match amount {
+            Amount::Exact(count) => TransferShape::Exact(*count),
+            Amount::All { except } => TransferShape::All { except: *except },
+        },
         Selector::Item(_) => match amount {
             Amount::Exact(count) => TransferShape::Exact(*count),
             Amount::All { except } => TransferShape::All { except: *except },

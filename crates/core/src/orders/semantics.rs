@@ -33,7 +33,7 @@ use crate::movement::mode::{
 };
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, ItemEntry, ItemKind, Ruleset, SkillEntry};
-use crate::orders::items::item_named;
+use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named};
 use crate::orders::silver::{
     because_clause, feed_after_silver, feed_from_faction_food, flagged_to_tax, food_claim,
     forecast_unit, late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants,
@@ -2118,9 +2118,16 @@ fn moves(
         // the catalogue cannot strip the report's `wood elves` down to its own `wood elf`, and a
         // transfer it could not name fell back to the report's own headcount (`ah-vcp8.1`).
         Selector::Item(text) => match item_named(Some(ruleset), text, || held.values()) {
-            Some(tag) => Moves::Tags(vec![tag]),
+            Some(tag) => held
+                .get(&tag)
+                .filter(|item| !is_unfinished_ship(item, Some(ruleset)))
+                .map_or(Moves::Unknowable, |_| Moves::Tags(vec![tag])),
             None => Moves::Unknowable,
         },
+        Selector::UnfinishedShip(text) => {
+            unfinished_ship_named(Some(ruleset), text, || held.values())
+                .map_or(Moves::Unknowable, |tag| Moves::Tags(vec![tag]))
+        }
         Selector::Class(name) => {
             // `rules/give` gives `EXCEPT` and a stated quantity to the named-item forms alone; the
             // class form is `GIVE [unit] ALL [item class]` and nothing else.
@@ -2132,18 +2139,34 @@ fn moves(
                 Moves::Tags(
                     held.keys()
                         .filter(|tag| ruleset.is_man(tag))
+                        .filter(|tag| {
+                            held.get(*tag)
+                                .is_none_or(|item| !is_unfinished_ship(item, Some(ruleset)))
+                        })
                         .cloned()
                         .collect(),
                 )
             } else if upper == "ITEM" || upper == "ITEMS" {
                 // `rules/give`: "the combination of all of the previous categories" - silver
                 // included.
-                Moves::Tags(held.keys().cloned().collect())
+                Moves::Tags(
+                    held.keys()
+                        .filter(|tag| {
+                            held.get(*tag)
+                                .is_none_or(|item| !is_unfinished_ship(item, Some(ruleset)))
+                        })
+                        .cloned()
+                        .collect(),
+                )
             } else {
                 match ruleset.class_members(&upper) {
                     Some(tags) => Moves::Tags(
                         held.keys()
-                            .filter(|tag| tags.iter().any(|member| member == *tag))
+                            .filter(|tag| {
+                                held.get(*tag)
+                                    .is_none_or(|item| !is_unfinished_ship(item, Some(ruleset)))
+                                    && tags.iter().any(|member| member == *tag)
+                            })
                             .cloned()
                             .collect(),
                     ),
@@ -2443,6 +2466,7 @@ fn apply_transfers(
                 let receiver_position = transfer.position;
                 let resolved = match transfer.what {
                     Selector::Item(text) => ruleset.find_item(text),
+                    Selector::UnfinishedShip(_) => None,
                     Selector::Class(_) => None,
                     Selector::WholeUnit => unreachable!("filtered above"),
                 };
@@ -3667,6 +3691,8 @@ fn ledger_for_with_production<'a>(
         settle_buy_all(&mut ledger, hex, ordered);
     }
 
+    discard_unfinished_ships_after_movement(&mut ledger, hex, ruleset);
+
     for ordered in &hex.units {
         for placed in ordered.intents {
             let Intent::Build { founding, helping } = &placed.intent else {
@@ -3687,6 +3713,46 @@ fn ledger_for_with_production<'a>(
     charge_upkeep(&mut ledger, hex);
 
     ledger
+}
+
+fn discard_unfinished_ships_after_movement(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+) {
+    for ordered in &hex.units {
+        let departs = leaves_hex_after_load_check(ordered, ledger, ruleset)
+            || ruleset.is_some_and(|rules| carried_away(hex, ordered, rules).is_some());
+        if !departs {
+            continue;
+        }
+        for item in &ordered.unit.items {
+            if item.amount <= 0 || !is_unfinished_ship(item, ruleset) {
+                continue;
+            }
+            let amount =
+                ledger
+                    .state
+                    .balance_at(StatePhase::Movement, &ordered.unit.unit_id, &item.tag);
+            if amount <= 0 {
+                continue;
+            }
+            ledger.state.apply(
+                StatePhase::Movement,
+                &ordered.unit.unit_id,
+                &item.tag,
+                -amount,
+            );
+            ledger.movements.push(ItemMovement {
+                unit_id: ordered.unit.unit_id.clone(),
+                tag: item.tag.to_ascii_uppercase(),
+                name: item.name.clone(),
+                delta: -amount,
+                produced: false,
+                created: None,
+            });
+        }
+    }
 }
 
 /// What this month's `BUY`, `SELL` and `WITHDRAW` do to each unit's item list. `GIVE` and `TAKE`
@@ -4168,7 +4234,7 @@ fn emptied_by(
         Intent::Give { what, .. } => match what {
             Selector::Item(text) => resolve_item(text, hex, actor, ruleset)
                 .is_some_and(|resolved| resolved.eq_ignore_ascii_case(tag)),
-            Selector::Class(_) | Selector::WholeUnit => true,
+            Selector::Class(_) | Selector::WholeUnit | Selector::UnfinishedShip(_) => true,
         },
         _ => false,
     });
@@ -4183,7 +4249,9 @@ fn emptied_by(
                     && match what {
                         Selector::Item(text) => resolve_item(text, hex, other, ruleset)
                             .is_some_and(|resolved| resolved.eq_ignore_ascii_case(tag)),
-                        Selector::Class(_) | Selector::WholeUnit => true,
+                        Selector::Class(_) | Selector::WholeUnit | Selector::UnfinishedShip(_) => {
+                            true
+                        }
                     }
             }
             _ => false,
@@ -4956,17 +5024,27 @@ fn transfer(
     // order two ways (`ah-lu0f`). `Unpriceable` is a whole class of items, or the unit itself:
     // either moves an amount that depends on classifying everything the unit holds, which is not
     // modelled.
-    let (shape, Selector::Item(text)) = (transfer_shape(what, amount), what) else {
-        ledger.doubted.insert(actor.unit.unit_id.clone());
-        ledger
-            .uncounted
-            .entry(actor.unit.unit_id.clone())
-            .or_default()
-            .push(placed.line);
-        return;
+    let shape = transfer_shape(what, amount);
+    let text = match what {
+        Selector::Item(text) | Selector::UnfinishedShip(text) => text,
+        _ => {
+            ledger.doubted.insert(actor.unit.unit_id.clone());
+            ledger
+                .uncounted
+                .entry(actor.unit.unit_id.clone())
+                .or_default()
+                .push(placed.line);
+            return;
+        }
     };
-
-    let Some(tag) = resolve_item(text, hex, actor, ledger.ruleset) else {
+    let tag = match what {
+        Selector::UnfinishedShip(_) => unfinished_ship_named(ledger.ruleset, text, || {
+            hex.units.iter().flat_map(|unit| unit.unit.items.iter())
+        }),
+        Selector::Item(_) => resolve_item(text, hex, actor, ledger.ruleset),
+        _ => None,
+    };
+    let Some(tag) = tag else {
         ledger.doubted.insert(actor.unit.unit_id.clone());
         ledger
             .uncounted
