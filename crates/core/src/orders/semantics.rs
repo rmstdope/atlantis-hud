@@ -3588,6 +3588,25 @@ struct Ledger<'a> {
     /// total already lives so `check_emptied_buys` need not compute the same fact a second time
     /// (`ah-lauy`) - which is how this column and a warning drifted apart before (`ah-ycuj`).
     dead_buys: Vec<DeadBuy>,
+    /// How many of one tag a unit's own `BUY` lines have *claimed* out of its settled share -
+    /// what each line attempted, whatever it could pay for. `rules/buy` settles the market line
+    /// *"in proportion to the amount each buyer attempted to buy"*, so a line the unit cannot
+    /// afford still spends its share; `bought` above records what it actually received, which is
+    /// what `apply_recruits` and the item movements read (`ah-omn7`).
+    claimed: BTreeMap<(String, String), i64>,
+    /// Every bounded `BUY` this unit's silver cut down, in the order they were applied
+    /// (`ah-omn7`).
+    reduced_buys: Vec<ReducedBuy>,
+}
+
+/// A bounded `BUY` this unit's silver cut down (`ah-omn7`).
+struct ReducedBuy {
+    unit_id: String,
+    tag: String,
+    /// What the line asked for, as written.
+    ordered: i64,
+    /// What it gets.
+    bought: i64,
 }
 
 /// A `BUY` line with nothing left to buy, and the limit its own earlier lines had emptied.
@@ -3794,6 +3813,8 @@ fn ledger_for_with_production<'a>(
         dead_sales: Vec::new(),
         bought: BTreeMap::new(),
         dead_buys: Vec::new(),
+        claimed: BTreeMap::new(),
+        reduced_buys: Vec::new(),
     };
 
     let pillaged = own_unit_pillages(hex);
@@ -5500,8 +5521,11 @@ fn buy(
         return;
     };
 
+    // What this unit's own earlier lines *claimed*, not what they received: the market line is
+    // settled on what each buyer attempted, so a line it could not pay for still took its share
+    // (`rules/buy`, `ah-omn7`).
     let already = ledger
-        .bought
+        .claimed
         .get(&(who.clone(), tag.clone()))
         .copied()
         .unwrap_or(0);
@@ -5514,20 +5538,46 @@ fn buy(
         Some(share) => (share - already).max(0),
         None => *count,
     };
-    let priced = price_purchase(*count, offer.price, allowed, MarketFunds::Unmeasured);
-    let bought = quantity_bought(*count, allowed);
+    // The purse at the market phase, which is what `rules/sequenceofevents` leaves the market to
+    // spend: TAX, PILLAGE, GIVE/TAKE and CAST have run, WORK and ENTERTAIN have not. **Not**
+    // `balance_of`, which reads at maintenance and would let a later `STUDY` shrink the purchase.
+    // A gift that cannot be priced is `Unmeasured` - this module's accept-on-doubt policy, and the
+    // behaviour before `ah-omn7`. A sharing hex is `Unmeasured` too: the shared purse settles
+    // after the ledger (`ah-szye`).
+    let funds = if Sharing::read(hex).sharers.is_empty() {
+        ledger
+            .state
+            .known_balance_at(StatePhase::Market, who, SILVER)
+            .map_or(MarketFunds::Unmeasured, |silver| {
+                MarketFunds::Silver(silver.max(0))
+            })
+    } else {
+        MarketFunds::Unmeasured
+    };
+    let line = price_purchase(*count, offer.price, allowed, funds);
+    let claimed = quantity_bought(*count, allowed);
+    let bought = line.quantity;
 
-    charge(
-        ledger,
-        StatePhase::Market,
-        who,
-        SILVER,
-        priced.spends,
-        placed,
-    );
+    // The charge is the whole ask, exactly as it was before `ah-omn7`: it is what pushes the
+    // balance below zero, and `not-enough-silver` fires on nothing else.
+    charge(ledger, StatePhase::Market, who, SILVER, line.wanted, placed);
     credit(ledger, StatePhase::Market, who, &tag, bought);
     *ledger.bought.entry((who.clone(), tag.clone())).or_default() += bought;
-    if bought == 0 && already > 0 {
+    *ledger
+        .claimed
+        .entry((who.clone(), tag.clone()))
+        .or_default() += claimed;
+    if line.reduced_by_silver {
+        ledger.reduced_buys.push(ReducedBuy {
+            unit_id: who.clone(),
+            tag: tag.clone(),
+            ordered: claimed,
+            bought,
+        });
+    }
+    // `allowed == 0` as well as `already > 0`: since `ah-omn7` a line can buy nothing because the
+    // unit cannot pay, and `dead_buys` says the *goods* are gone, not the money.
+    if bought == 0 && allowed == 0 && already > 0 {
         if let Some(share) = standing.market_share_of(&tag, MarketSide::Buying) {
             ledger.dead_buys.push(DeadBuy {
                 unit_id: who.clone(),
@@ -5577,7 +5627,7 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
             continue;
         }
         let already = ledger
-            .bought
+            .claimed
             .get(&(who.clone(), deferred.tag.clone()))
             .copied()
             .unwrap_or(0);
@@ -5600,6 +5650,10 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
         credit(ledger, StatePhase::Market, who, &deferred.tag, plan.bought);
         *ledger
             .bought
+            .entry((who.clone(), deferred.tag.clone()))
+            .or_default() += plan.bought;
+        *ledger
+            .claimed
             .entry((who.clone(), deferred.tag.clone()))
             .or_default() += plan.bought;
         // `capped_by`, not merely `already > 0`: a second line can find nothing bought because
@@ -16234,7 +16288,12 @@ mod tests {
         fn a_buy_records_only_what_the_market_settles() {
             let hex = ReportRegion {
                 for_sale: vec![line(12, 10, "horse", "HORS")],
-                ..region(vec![unit("2390"), unit("2391")])
+                // Both buyers can pay for their share: this test is about the market split, and
+                // since `ah-omn7` a buyer with no silver takes nothing at all.
+                ..region(vec![
+                    with_silver(unit("2390"), 200),
+                    with_silver(unit("2391"), 100),
+                ])
             };
             with_ledger(
                 hex,
@@ -16271,6 +16330,58 @@ mod tests {
                     );
                 },
             );
+        }
+
+        /// `rules/buy`: *"If the unit can't afford as many as [quantity], it will attempt to buy
+        /// as many as it can."* The unit is credited what it pays for; the ledger still charges
+        /// the whole ask, which is what keeps `not-enough-silver` firing (`ah-omn7`).
+        #[test]
+        fn a_bounded_buy_credits_only_the_affordable_quantity() {
+            let hex = ReportRegion {
+                for_sale: vec![line(12, 10, "grain", "GRAI")],
+                ..region(vec![with_silver(unit("2390"), 25)])
+            };
+            with_ledger(hex, "unit 2390\nBUY 3 grain\n", |ledger| {
+                assert_eq!(
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "2390" && m.tag == "GRAI")
+                        .map(|m| m.delta),
+                    Some(2)
+                );
+                // three grain at 10 is a charge of 30, the whole ask, so the market phase
+                // leaves 25 - 30 however few the unit could actually pay for
+                assert_eq!(
+                    ledger.state.balance_at(StatePhase::Market, "2390", SILVER),
+                    -5
+                );
+            });
+        }
+
+        /// The purse is read at the market phase, so a tax credited earlier in the month pays for
+        /// the purchase (`ah-omn7`). Reading it at maintenance instead would see a later `STUDY`
+        /// and buy fewer.
+        #[test]
+        fn a_taxing_unit_buys_what_its_tax_will_pay_for() {
+            let hex = ReportRegion {
+                tax_base: Some(500),
+                for_sale: vec![line(100, 10, "sword", "SWOR")],
+                ..region(vec![with_men(
+                    with_skill(with_silver(unit("2390"), 0), "COMB", 1),
+                    10,
+                )])
+            };
+            with_ledger(hex, "unit 2390\nTAX\nBUY 4 sword\n", |ledger| {
+                assert_eq!(
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "2390" && m.tag == "SWOR")
+                        .map(|m| m.delta),
+                    Some(4)
+                );
+            });
         }
 
         /// `ah-lauy`, increment 4. A second `BUY ALL` of the same goods finds nothing left of this
