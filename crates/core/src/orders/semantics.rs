@@ -29789,8 +29789,21 @@ mod tests {
 
         #[test]
         fn an_unstaffed_formed_unit_spends_no_faction_allowance() {
+            let mut report =
+                report_with_status("Quartermasters", 1, 1, vec![region(vec![unit("1922")])]);
+            let trade_status = report_with_status(
+                "Trade Regions",
+                0,
+                0,
+                vec![region(vec![unit("status-placeholder")])],
+            );
+            report
+                .header
+                .faction_status
+                .entries
+                .extend(trade_status.header.faction_status.entries);
             let review = review_turn(
-                &report_with_status("Regions", 2, 2, vec![region(vec![unit("1922")])]),
+                &report,
                 "unit 1922\nFORM 1\nSTUDY QUAM\nPRODUCE grain\nEND\n",
                 Some(&ruleset()),
                 CheckOptions::default(),
