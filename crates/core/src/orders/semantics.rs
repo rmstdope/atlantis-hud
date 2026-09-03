@@ -29134,6 +29134,34 @@ mod tests {
     }
 
     #[test]
+    fn a_sailing_passenger_uses_the_destination_trade_region() {
+        let mut regions = fleet_sailing_north(one_product(50, "fish", "FISH"));
+        regions[0].units.push(unit("5"));
+        let orders = "unit 5\nPRODUCE grain\nunit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n";
+        let findings = check_trade(regions, orders, "Trade Regions", 1);
+
+        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        assert_eq!(
+            findings[0].message,
+            "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production \
+             will be refused"
+        );
+    }
+
+    #[test]
+    fn an_unfollowable_sailing_producer_does_not_guess_a_trade_region() {
+        let mut regions = fleet_sailing_north(one_product(50, "fish", "FISH"));
+        regions.truncate(1);
+        regions[0].units.push(unit("5"));
+        let orders = "unit 5\nPRODUCE grain\nunit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n";
+        let findings = check_trade(regions, orders, "Trade Regions", 1);
+
+        assert!(!findings
+            .iter()
+            .any(|finding| finding.code == codes::TOO_MANY_TRADE_REGIONS));
+    }
+
+    #[test]
     fn the_warning_lands_on_the_first_produce_in_the_document() {
         // The first PRODUCE in the document is unit 6's, in the second region - deliberately not
         // the first region, so the test cannot pass by accident on "the first region" instead of
