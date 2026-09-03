@@ -799,7 +799,7 @@ fn market_shares_for(
     let mut unbounded: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
 
     for (index, ordered) in hex.units.iter().enumerate() {
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             let (text, side) = match &placed.intent {
                 Intent::Sell { item, .. } => (item, MarketSide::Selling),
                 Intent::Buy { item, .. } => (item, MarketSide::Buying),
@@ -1320,7 +1320,7 @@ fn claim_allowances_for(hexes: &[Hex<'_>], unclaimed: Option<i64>) -> ClaimAllow
     for hex in hexes {
         for unit in &hex.units {
             let mut grant: i64 = 0;
-            for placed in unit.intents {
+            for placed in &unit.intents {
                 if let Intent::Claim(amount) = placed.intent {
                     let priced = price_claim(amount, Some(remaining.max(0)));
                     grant = grant.saturating_add(priced.earns);
@@ -1503,7 +1503,7 @@ fn forecast_hex(
             skills: ordered
                 .skills_before_the_market()
                 .unwrap_or(&ordered.unit.skills),
-            intents: ordered.intents,
+            intents: &ordered.intents,
             receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
             formed: ordered.formed.as_ref(),
             after_gifts_unknown: ordered.holdings_unknown(),
@@ -1851,7 +1851,14 @@ impl Arrivals {
 /// One of our units, and its orders.
 struct Ordered<'a> {
     unit: &'a ReportUnit,
-    intents: &'a [PlacedIntent],
+    /// The intents that can actually execute this month: every order that does not spend the
+    /// month, plus the one month claim that wins (`ah-rzkm`). Normalized by
+    /// [`Ordered::retain_effective_month_intents`] at the end of [`hex_with_transfers`], so every
+    /// projection and every specialized check describes the executable month.
+    intents: Vec<PlacedIntent>,
+    /// The document's complete parsed list, retained only so
+    /// [`check_two_month_long_orders`] can report the orders that lost the month.
+    all_intents: &'a [PlacedIntent],
     /// `None` when the document has no block for this unit at all.
     block_line: Option<usize>,
     unread: bool,
@@ -1917,7 +1924,8 @@ impl<'a> Hex<'a> {
                 let orders = ordered.get(&unit.unit_id);
                 Ordered {
                     unit,
-                    intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
+                    intents: orders.map_or_else(Vec::new, |orders| orders.intents.clone()),
+                    all_intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
                     block_line: orders.map(|orders| orders.block_line),
                     unread: orders.is_some_and(|orders| orders.unread),
                     formed: None,
@@ -1940,7 +1948,8 @@ impl<'a> Hex<'a> {
                 .filter(|formed| formed.unit.region_id == region.region_id)
                 .map(|formed| Ordered {
                     unit: &formed.unit,
-                    intents: &formed.block.intents,
+                    intents: formed.block.intents.clone(),
+                    all_intents: &formed.block.intents,
                     block_line: Some(formed.block.block_line),
                     unread: !formed.block.unread.is_empty(),
                     formed: Some(FormedSubject {
@@ -2018,6 +2027,11 @@ fn hex_with_transfers<'a>(
         &report_units,
     );
     hex.shown_anywhere = report_units;
+    // After the transfers, never before: GIVE/TAKE can change whether a unit is all leaders, and
+    // that is the state the TEACH eligibility exception is judged from (`ah-rzkm`).
+    for ordered in &mut hex.units {
+        ordered.retain_effective_month_intents();
+    }
     hex
 }
 
@@ -3001,10 +3015,31 @@ impl Ordered<'_> {
     }
 
     fn intent_spends_the_month(&self, intent: &Intent) -> bool {
-        match intent {
-            Intent::Teach { .. } => matches!(self.teaching_eligibility(), Some(true) | None),
-            _ => spends_the_month(intent),
-        }
+        month_spending_intent(intent, self.teaching_eligibility())
+    }
+
+    /// Drops every month claim after the first, leaving the month exactly one winner (`ah-rzkm`).
+    ///
+    /// Run at the end of [`hex_with_transfers`], after `apply_transfers`: whether a `TEACH`
+    /// claims the month is decided from the post-transfer state, which is what
+    /// [`check_two_month_long_orders`] already judges from, so the filter and the warning cannot
+    /// disagree. `teaching_eligibility` is read once, before the mutable borrow.
+    fn retain_effective_month_intents(&mut self) {
+        let teaching_eligible = self.teaching_eligibility();
+        let mut winner: Option<MonthClaim> = None;
+        self.intents.retain(|placed| {
+            if !month_spending_intent(&placed.intent, teaching_eligible) {
+                return true;
+            }
+            let claim = month_claim(placed);
+            match &winner {
+                Some(first) => *first == claim,
+                None => {
+                    winner = Some(claim);
+                    true
+                }
+            }
+        });
     }
 
     fn intents(&self) -> impl Iterator<Item = &Intent> {
@@ -3667,7 +3702,7 @@ fn ledger_for_with_production<'a>(
         let facts = unit_facts(hex, ordered, &nothing, None, ruleset);
         let mut claim_remaining =
             claim_purse_for(claim_allowances, &ordered.unit.unit_id).unclaimed;
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             if matches!(placed.intent, Intent::Build { .. }) {
                 continue;
             }
@@ -3694,7 +3729,7 @@ fn ledger_for_with_production<'a>(
     discard_unfinished_ships_after_movement(&mut ledger, hex, ruleset);
 
     for ordered in &hex.units {
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             let Intent::Build { founding, helping } = &placed.intent else {
                 continue;
             };
@@ -4049,7 +4084,7 @@ fn unit_facts<'a>(
         // by the SILVER column's PRODUCE arm (`ah-40c9`).
         production_skills: ordered.skills().unwrap_or(&ordered.unit.skills),
         production_skills_unknown: ordered.skills().is_none(),
-        intents: ordered.intents,
+        intents: &ordered.intents,
         receipts: nothing,
         formed: ordered.formed.as_ref(),
         after_gifts_unknown: ordered.holdings_unknown(),
@@ -4165,7 +4200,7 @@ fn check_markets(
     }
 
     for ordered in &hex.units {
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             let (lines, item, verb, empty_message) = match &placed.intent {
                 Intent::Buy { item, .. } => (
                     &hex.region.for_sale,
@@ -4438,7 +4473,7 @@ fn check_pillaged_tax(
 
     for ordered in &hex.units {
         let mut ordered_to_tax = false;
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             if !matches!(placed.intent, Intent::Tax) {
                 continue;
             }
@@ -4452,7 +4487,7 @@ fn check_pillaged_tax(
         }
         // A unit that taxes by its flag collects nothing here either, and has no line to hang the
         // mark on - so it hangs on the block, which is what `finding_at_block` is for (`ah-fvzu`).
-        if !ordered_to_tax && taxes(&ordered.unit.flags, ordered.intents) {
+        if !ordered_to_tax && taxes(&ordered.unit.flags, &ordered.intents) {
             findings.push(ordered.finding_at_block(
                 hex,
                 codes::TAXED_A_PILLAGED_HEX,
@@ -4491,7 +4526,7 @@ fn check_guarded_tax(
 
     for ordered in &hex.units {
         let mut ordered_to_tax = false;
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             let order = match placed.intent {
                 Intent::Tax if !pillaged => "TAX",
                 Intent::Pillage => "PILLAGE",
@@ -4515,7 +4550,7 @@ fn check_guarded_tax(
         // Suppressed in a pillaged hex for the same reason the `TAX` line is: `taxed-a-pillaged-hex`
         // already says the money is certainly gone, and `check_pillaged_tax` marks this same block
         // with it (`ah-cxxa`).
-        if !pillaged && !ordered_to_tax && taxes(&ordered.unit.flags, ordered.intents) {
+        if !pillaged && !ordered_to_tax && taxes(&ordered.unit.flags, &ordered.intents) {
             findings.push(ordered.finding_at_block(
                 hex,
                 codes::TAXED_A_GUARDED_HEX,
@@ -4539,7 +4574,7 @@ fn check_tax_readiness(
     let nothing = Receipts::default();
     let facts = hex_facts(hex, &nothing, None, ruleset);
     for (ordered, facts) in hex.units.iter().zip(&facts) {
-        if !taxes(ordered.unit.flags.as_slice(), ordered.intents) {
+        if !taxes(ordered.unit.flags.as_slice(), &ordered.intents) {
             continue;
         }
         let Some(readiness) = readiness(facts, ruleset) else {
@@ -4610,7 +4645,7 @@ fn credit_tax(
     ruleset: Option<&Ruleset>,
     pillaged: bool,
 ) {
-    if !taxes(&actor.unit.flags, actor.intents) {
+    if !taxes(&actor.unit.flags, &actor.intents) {
         return;
     }
     // "Each taxing character collects $50", capped by what the region has to give. Both of the
@@ -7954,7 +7989,7 @@ fn check_pillage_men(
 /// ruleset knows. [`hulls_named_in`] is not that test: it reads any non-empty kind as a one-hull
 /// fleet, so a fort would pass it and every unit inside a fort would stop being checked.
 fn carried_away<'a>(
-    hex: &Hex<'a>,
+    hex: &'a Hex<'a>,
     ordered: &Ordered<'_>,
     ruleset: &Ruleset,
 ) -> Option<&'a PlacedIntent> {
@@ -8534,7 +8569,7 @@ fn check_idle_units(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
         // `TAX` would be redundant (`ah-fvzu`). The same reasoning `ah-udff` used for a unit with
         // no men. `spends_the_month` takes an `&Intent` and a flagged unit has no intent at all,
         // so the exemption belongs here rather than there.
-        if taxes(&ordered.unit.flags, ordered.intents) {
+        if taxes(&ordered.unit.flags, &ordered.intents) {
             continue;
         }
         if ordered
@@ -8568,6 +8603,18 @@ enum MonthClaim {
     Line(usize),
 }
 
+/// Whether one intent spends the unit's month, given that unit's settled TEACH eligibility.
+///
+/// Shared by [`Ordered::intent_spends_the_month`] and
+/// [`Ordered::retain_effective_month_intents`] so the filter and the `two-month-long-orders`
+/// warning cannot come to disagree about a `TEACH` (`ah-rzkm`).
+fn month_spending_intent(intent: &Intent, teaching_eligible: Option<bool>) -> bool {
+    match intent {
+        Intent::Teach { .. } => matches!(teaching_eligible, Some(true) | None),
+        _ => spends_the_month(intent),
+    }
+}
+
 fn month_claim(placed: &PlacedIntent) -> MonthClaim {
     match placed.intent {
         Intent::Move { .. } => MonthClaim::Travelling,
@@ -8594,8 +8641,10 @@ fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: 
 
     for ordered in &hex.units {
         let mut seen: Vec<MonthClaim> = Vec::new();
+        // The raw document list, not the effective one: the discarded placements are exactly what
+        // this check reports (`ah-rzkm`).
         let claimants: Vec<&PlacedIntent> = ordered
-            .intents
+            .all_intents
             .iter()
             .filter(|placed| ordered.intent_spends_the_month(&placed.intent))
             // A keyword `GRAMMAR` does not hold would print as an empty word in the message, so
@@ -8635,8 +8684,9 @@ fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: 
         // has no line of its own and nothing is wrong with the order that beat it.
         if flagged_to_tax(&ordered.unit.flags)
             && !ordered
-                .intents()
-                .any(|intent| matches!(intent, Intent::Tax))
+                .all_intents
+                .iter()
+                .any(|placed| matches!(placed.intent, Intent::Tax))
         {
             findings.push(ordered.finding_at_block(
                 hex,
@@ -8706,8 +8756,8 @@ fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 ///
 /// The rule itself lives in [`super::standing`], which is the one place it is stated; this is the
 /// adapter that reads it out of parsed intents.
-fn structure_after_orders<'a>(ordered: &Ordered<'a>) -> Option<&'a str> {
-    structure_after_intents(ordered.unit.structure_id.as_deref(), ordered.intents)
+fn structure_after_orders<'a>(ordered: &'a Ordered<'_>) -> Option<&'a str> {
+    structure_after_intents(ordered.unit.structure_id.as_deref(), &ordered.intents)
 }
 
 /// [`structure_after_orders`] over the two things it actually reads, so the agreement test can
@@ -8944,7 +8994,7 @@ fn check_transfer_targets(
     }
 
     for ordered in &hex.units {
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             let (party, verb) = match &placed.intent {
                 Intent::Give { to, .. } => (to, "given to"),
                 Intent::Take { from, .. } => (from, "taken from"),
@@ -9022,7 +9072,7 @@ fn check_take_from_another_faction(
         return;
     }
     for ordered in &hex.units {
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             let Intent::Take {
                 from: Party::Unit(id),
                 ..
@@ -9668,7 +9718,7 @@ fn check_trade_regions(
             let region_id = hex.region.region_id.as_str();
             // A unit taxing by its flag taxes this region with no `TAX` line to find, so the
             // region counts against the allowance like any other (`ah-fvzu`).
-            if taxes(&unit.flags, ordered_unit.intents) {
+            if taxes(&unit.flags, &ordered_unit.intents) {
                 taxing.insert(region_id);
             }
             for placed in ordered_unit.intents.iter() {
@@ -9924,7 +9974,7 @@ fn check_withdraw_in_nexus(hex: &Hex<'_>, options: &CheckOptions, findings: &mut
         return;
     }
     for ordered in &hex.units {
-        for placed in ordered.intents {
+        for placed in &ordered.intents {
             if matches!(placed.intent, Intent::Withdraw { .. }) {
                 findings.push(ordered.finding(
                     hex,
@@ -10702,30 +10752,45 @@ mod tests {
             );
         }
 
-        /// One code, two facts. Nothing here deduplicates by unit.
+        /// One code, two facts. Nothing here deduplicates by pool.
+        ///
+        /// `rules/work` and `rules/tax` each spend the unit's month, so one unit can no longer
+        /// stand in both pools (`ah-rzkm`): the two claims are one unit each, and both findings
+        /// still stand.
         #[test]
-        fn two_pools_in_one_hex_produce_two_findings_per_unit() {
+        fn two_pools_in_one_hex_produce_a_finding_for_each_claiming_unit() {
             let hex = ReportRegion {
                 tax_base: Some(100),
                 wages: Some("13.5".to_string()),
                 max_wages: Some(100),
-                ..region(vec![taxer("2390", 10), taxer("2391", 10)])
+                ..region(vec![
+                    taxer("2390", 10),
+                    taxer("2391", 10),
+                    taxer("2392", 10),
+                    taxer("2393", 10),
+                ])
             };
             let review = review_turn(
                 &report(vec![hex]),
-                "unit 2390\nTAX\nWORK\nunit 2391\nTAX\nWORK\n",
+                "unit 2390\nTAX\nunit 2391\nTAX\nunit 2392\nWORK\nunit 2393\nWORK\n",
                 Some(&ruleset()),
                 CheckOptions::default(),
             );
 
-            let for_2390: Vec<&str> = oversubscriptions(&review)
+            let messages: Vec<&str> = oversubscriptions(&review)
                 .iter()
-                .filter(|finding| finding.unit_id.as_deref() == Some("2390"))
                 .map(|finding| finding.message.as_str())
                 .collect();
-            assert_eq!(for_2390.len(), 2, "{:?}", review.findings);
-            assert!(for_2390.iter().any(|message| message.contains("tax for")));
-            assert!(for_2390.iter().any(|message| message.contains("work for")));
+            assert!(
+                messages.iter().any(|message| message.contains("tax for")),
+                "{:?}",
+                review.findings
+            );
+            assert!(
+                messages.iter().any(|message| message.contains("work for")),
+                "{:?}",
+                review.findings
+            );
         }
 
         /// A market has one pool per item per side, so an oversubscribed one says nothing about
@@ -13753,17 +13818,25 @@ mod tests {
         );
     }
 
-    /// The predicate is about the hex, not about other units, so a unit ordered to do both is
-    /// warned about its own `TAX` line - its pillage is fine, its tax collects nothing.
+    /// The predicate is about the hex, not about other units, so a second unit taxing the hex the
+    /// first pillages is warned about its own `TAX` line - the pillage is fine, the tax collects
+    /// nothing.
+    ///
+    /// `rules/pillage` and `rules/tax` each spend the unit's month, so the *pillager's* own later
+    /// `TAX` never runs and is told so once, by `two-month-long-orders`, rather than warned about
+    /// a collection it will not attempt (`ah-rzkm`).
     #[test]
     fn a_unit_that_pillages_and_is_also_ordered_to_tax_is_still_told() {
         let hex_region = ReportRegion {
             tax_base: Some(2500),
-            ..region(vec![armed_to_pillage(with_silver(unit("1"), 0), 2500)])
+            ..region(vec![
+                armed_to_pillage(with_silver(unit("1"), 0), 2500),
+                with_silver(unit("2"), 0),
+            ])
         };
         let review = review_turn(
             &report(vec![hex_region]),
-            "unit 1\nPILLAGE\nTAX\n",
+            "unit 1\nPILLAGE\nTAX\nunit 2\nTAX\n",
             Some(&ruleset()),
             CheckOptions::default(),
         );
@@ -13773,8 +13846,15 @@ mod tests {
             .iter()
             .filter(|finding| finding.code == codes::TAXED_A_PILLAGED_HEX)
             .collect();
-        assert_eq!(told.len(), 1, "on its TAX line: {told:?}");
-        assert_eq!(told[0].unit_id.as_deref(), Some("1"));
+        assert_eq!(told.len(), 1, "on the taxing unit's line: {told:?}");
+        assert_eq!(told[0].unit_id.as_deref(), Some("2"));
+        assert!(
+            review.findings.iter().any(|finding| finding.code
+                == codes::TWO_MONTH_LONG_ORDERS
+                && finding.unit_id.as_deref() == Some("1")),
+            "the pillager's own TAX is told it will not run: {:?}",
+            codes(&review.findings)
+        );
 
         let row = review
             .silver
@@ -17472,6 +17552,82 @@ mod tests {
         );
     }
 
+    // --- a losing month order has no effects (ah-rzkm) ----------------------------------------
+
+    /// The effective intents of one unit, built the way `review_turn` and `item_effects` both
+    /// build them.
+    fn effective_keywords(region: &ReportRegion, orders: &str, unit_id: &str) -> Vec<&'static str> {
+        let ordered = OrderedUnits::read(orders);
+        let rules = ruleset();
+        let hex = hex_with_transfers(
+            region,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
+        hex.find(unit_id)
+            .expect("the unit is in the hex")
+            .intents
+            .iter()
+            .map(|placed| placed.keyword)
+            .collect()
+    }
+
+    fn all_keywords(region: &ReportRegion, orders: &str, unit_id: &str) -> Vec<&'static str> {
+        let ordered = OrderedUnits::read(orders);
+        let rules = ruleset();
+        let hex = hex_with_transfers(
+            region,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
+        hex.find(unit_id)
+            .expect("the unit is in the hex")
+            .all_intents
+            .iter()
+            .map(|placed| placed.keyword)
+            .collect()
+    }
+
+    /// `rules/study` and `rules/produce`: each spends the unit's month, so only the first claim
+    /// runs. Chained `MOVE` lines are one claim (`rules/move`), so both are retained.
+    #[test]
+    fn later_month_claims_are_removed_but_the_winning_chain_is_retained() {
+        let region = region(vec![unit("683")]);
+        let orders = "unit 683\nMOVE N\nMOVE NE\nSTUDY Combat\nPRODUCE sword\n";
+
+        assert_eq!(
+            effective_keywords(&region, orders, "683"),
+            vec!["MOVE", "MOVE"]
+        );
+        assert_eq!(
+            all_keywords(&region, orders, "683"),
+            vec!["MOVE", "MOVE", "STUDY", "PRODUCE"]
+        );
+    }
+
+    /// `rules/produce`: PRODUCE spends the month, so a PRODUCE after a STUDY never runs - and a
+    /// warning about the skill it would have needed is advice about an order that will not happen.
+    #[test]
+    fn a_losing_produce_emits_only_the_month_conflict_warning() {
+        let findings = check_months(
+            vec![region(vec![with_silver(unit("683"), 100)])],
+            "unit 683\nSTUDY Combat\nPRODUCE sword\n",
+        );
+        assert_eq!(codes(&findings), vec!["two-month-long-orders"], "{findings:?}");
+        let finding = only(findings);
+        assert_eq!(finding.line, Some(3));
+        assert_eq!(
+            finding.message,
+            "STUDY already spends this unit's month, so this PRODUCE will not run"
+        );
+    }
+
     // --- coverage ---------------------------------------------------------------------------
 
     #[test]
@@ -19052,9 +19208,17 @@ mod tests {
         let mut hex = region(vec![with_men(with_silver(unit("5"), 0), 10)]);
         hex.wages = Some("$12.0".to_string());
         hex.max_wages = Some(300);
+        // A `BUY`, not a `STUDY`: `rules/work` and `rules/study` each spend the month, so a
+        // `STUDY` written after the `WORK` never runs and can spend nothing (`ah-rzkm`).
+        hex.for_sale.push(MarketItem {
+            amount: 40,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 12,
+        });
 
         assert_eq!(
-            codes(&check(vec![hex], "unit 5\nWORK\nSTUDY combat\n")),
+            codes(&check(vec![hex], "unit 5\nWORK\nBUY 5 horses\n")),
             ["not-enough-silver"]
         );
     }
@@ -20175,9 +20339,17 @@ mod tests {
         let mut hex = region(vec![with_men(with_silver(unit("5"), 0), 10)]);
         hex.wages = Some("$12.0".to_string());
         hex.max_wages = Some(300);
+        // See `wages_earned_this_month_do_not_pay_for_this_month`: the spend has to be an order
+        // that can run beside the `WORK` (`ah-rzkm`).
+        hex.for_sale.push(MarketItem {
+            amount: 40,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 12,
+        });
 
         assert_eq!(
-            codes(&check(vec![hex], "unit 5\nWORK\nSTUDY combat\n")),
+            codes(&check(vec![hex], "unit 5\nWORK\nBUY 5 horses\n")),
             ["not-enough-silver"]
         );
     }
@@ -21479,7 +21651,7 @@ mod tests {
         assert_eq!(
             codes(&check(
                 vec![region(teaching_hex())],
-                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nMOVE N\n"
+                "unit 500\nTEACH 700\nunit 700\nMOVE N\nSTUDY combat\n"
             )),
             ["taught-not-here"]
         );
@@ -21502,7 +21674,7 @@ mod tests {
 
         let findings = check(
             vec![region(vec![teacher, student])],
-            "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nWITHDRAW 6 WSHD\nMOVE N\n",
+            "unit 500\nTEACH 700\nunit 700\nMOVE N\nWITHDRAW 6 WSHD\nSTUDY combat\n",
         );
         assert!(
             !codes(&findings).contains(&"taught-not-here"),
@@ -21879,7 +22051,7 @@ mod tests {
 
         let findings = check(
             vec![region(units)],
-            "unit 500\nTEACH 700 800\nunit 700\nSTUDY combat\nunit 800\nSTUDY combat\nMOVE N\nunit 900\nSTUDY combat\n",
+            "unit 500\nTEACH 700 800\nunit 700\nSTUDY combat\nunit 800\nMOVE N\nSTUDY combat\nunit 900\nSTUDY combat\n",
         );
         let spare = findings
             .iter()
@@ -21907,7 +22079,7 @@ mod tests {
         assert_eq!(
             codes(&check(
                 vec![region(units)],
-                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nMOVE N\nunit 900\nSTUDY combat\n"
+                "unit 500\nTEACH 700\nunit 700\nMOVE N\nSTUDY combat\nunit 900\nSTUDY combat\n"
             )),
             ["taught-not-here"]
         );
@@ -23078,7 +23250,7 @@ mod tests {
     #[test]
     fn the_finding_sits_on_the_study_line_for_study_at_maximum() {
         let units = vec![studying_race("5", 2, "leaders", "LEAD", "OBSE", 5)];
-        let finding = only(check(vec![region(units)], "unit 5\nWORK\n\nSTUDY OBSE\n"));
+        let finding = only(check(vec![region(units)], "unit 5\nAVOID 1\n\nSTUDY OBSE\n"));
 
         assert_eq!(finding.line, Some(4), "the STUDY line, not the block's");
     }
@@ -25768,7 +25940,7 @@ mod tests {
             )])
         };
 
-        let finding = only(check(vec![region], "unit 11125\nPRODUCE sword\nSAIL N\n"));
+        let finding = only(check(vec![region], "unit 11125\nSAIL N\nPRODUCE sword\n"));
         assert_eq!(finding.code.as_str(), "fleet-overloaded");
         assert_eq!(
             finding.message,
@@ -29383,7 +29555,7 @@ mod tests {
             region_at("1:8,53", 8, 53, vec![unit("6")]),
             region_at("1:9,53", 9, 53, vec![unit("7")]),
         ];
-        let orders = "unit 5\nWORK\nunit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n\
+        let orders = "unit 5\nAVOID 1\nunit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n\
                       unit 5\nPRODUCE grain\n";
         let findings = check_trade(regions, orders, "Trade Regions", 2);
 
