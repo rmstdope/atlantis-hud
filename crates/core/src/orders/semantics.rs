@@ -3805,32 +3805,54 @@ fn ledger_for_with_production<'a>(
     // combat-ready sum alone (`ah-1ad6.2`, `ah-lu0f.3`).
     let region = region_wages(hex, ruleset);
     let nothing = Receipts::default();
-    for (index, ordered) in hex.units.iter().enumerate() {
-        let facts = unit_facts(hex, ordered, &nothing, None, ruleset);
-        let mut claim_remaining =
-            claim_purse_for(claim_allowances, &ordered.unit.unit_id).unclaimed;
-        for placed in &ordered.intents {
-            if matches!(placed.intent, Intent::Build { .. }) {
-                continue;
+    // `rules/sequenceofevents` decides which order runs first, and the document does not. Within
+    // one phase, "units that appear higher on the report get precedence", and within one unit the
+    // lines keep the order they were written in - which is what `ah-3mwm` pinned about competing
+    // transfers.
+    let mut claim_remaining: BTreeMap<String, Option<i64>> = hex
+        .units
+        .iter()
+        .map(|ordered| {
+            (
+                ordered.unit.unit_id.clone(),
+                claim_purse_for(claim_allowances, &ordered.unit.unit_id).unclaimed,
+            )
+        })
+        .collect();
+    for phase in phases::ORDER {
+        for (index, ordered) in hex.units.iter().enumerate() {
+            if phase == StatePhase::Tax {
+                let facts = unit_facts(hex, ordered, &nothing, None, ruleset);
+                credit_tax(&mut ledger, hex, ordered, &facts, ruleset, pillaged);
             }
-            apply(
-                &mut ledger,
-                hex,
-                ordered,
-                placed,
-                ruleset,
-                region,
-                HexStanding {
-                    market: &market_shares,
-                    production,
-                    actor_index: index,
-                },
-                foreign_unit_ids,
-                &mut claim_remaining,
-            );
+            for placed in &ordered.intents {
+                if phases::phase_of(&placed.intent) != phase
+                    || matches!(placed.intent, Intent::Build { .. })
+                {
+                    continue;
+                }
+                apply(
+                    &mut ledger,
+                    hex,
+                    ordered,
+                    placed,
+                    ruleset,
+                    region,
+                    HexStanding {
+                        market: &market_shares,
+                        production,
+                        actor_index: index,
+                    },
+                    foreign_unit_ids,
+                    claim_remaining
+                        .get_mut(&ordered.unit.unit_id)
+                        .expect("every unit of this hex was given a claim purse above"),
+                );
+            }
+            if phase == StatePhase::Market {
+                settle_buy_all(&mut ledger, hex, ordered);
+            }
         }
-        credit_tax(&mut ledger, hex, ordered, &facts, ruleset, pillaged);
-        settle_buy_all(&mut ledger, hex, ordered);
     }
 
     discard_unfinished_ships_after_movement(&mut ledger, hex, ruleset);
@@ -4942,7 +4964,9 @@ fn apply(
         // warning once (`ah-bumi`).
         Intent::Claim(amount) => {
             let priced = price_claim(*amount, *claim_remaining);
-            credit(ledger, StatePhase::Give, who, SILVER, priced.earns);
+            // `rules/sequenceofevents` processes CLAIM in the first batch of instant orders, ahead
+            // of "Give orders. GIVE and TAKE orders are processed" (`ah-gdd3.1`).
+            credit(ledger, StatePhase::Claim, who, SILVER, priced.earns);
             if let Some(remaining) = claim_remaining {
                 *remaining = remaining.saturating_sub(priced.earns).max(0);
             }
@@ -18639,6 +18663,39 @@ mod tests {
             pool_shortfalls(&hex, &ledger, &sharing, &verdicts),
             vec![],
             "one doubted sharer silences the pool"
+        );
+    }
+
+    /// `rules/sequenceofevents` settles CLAIM in the first batch of instant orders and GIVE after
+    /// it, so a `CLAIM` written *under* a `GIVE ... ALL SILV` is still in the purse the gift
+    /// empties (`ah-gdd3.1`).
+    #[test]
+    fn a_claim_written_under_a_gift_of_all_silver_is_still_given_away() {
+        let hex_region = region(vec![with_silver(unit("1234"), 0), with_silver(unit("901"), 0)]);
+        let ordered = OrderedUnits::read("unit 1234\nGIVE 901 ALL SILV\nCLAIM 500\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = ruleset();
+        let no_receipts = BTreeMap::new();
+        let allowances: ClaimAllowances = Some(
+            [("1234".to_string(), 500i64), ("901".to_string(), 0i64)]
+                .into_iter()
+                .collect(),
+        );
+        let production = production_shares_for(std::slice::from_ref(&hex), Some(&rules));
+
+        let ledger = ledger_for_with_production(
+            &hex,
+            Some(&rules),
+            &no_receipts,
+            &production,
+            &BTreeSet::new(),
+            &allowances,
+        );
+
+        assert_eq!(
+            ledger.state.balance_at(StatePhase::Study, "901", "SILV"),
+            500,
+            "the claim reaches the giver before the gift is priced"
         );
     }
 

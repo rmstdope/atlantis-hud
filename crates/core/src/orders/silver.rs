@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::movement::rules::{CastCost, CastOutput, ItemKind, Production, Ruleset, SkillEntry};
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
+use crate::orders::phases;
 use crate::orders::semantics::{counted_with_singular, FormedSubject, Plurals};
 use crate::orders::targets::{give_outcome, give_target_label, GiveOutcome, GiveReach};
 use crate::report::model::{ItemAmount, Skill};
@@ -1291,7 +1292,9 @@ pub fn forecast_unit(
         income_doubt = income_doubt.or(priced.doubt);
     }
 
-    for placed in intents {
+    // `rules/sequenceofevents` fixes the order the turn runs the block in, and the order the
+    // player wrote it in does not change it (`ah-gdd3.1`).
+    for placed in phases::in_phase_order(intents) {
         // An earlier `GIVE` may or may not have taken these goods away (`rules/give` wants the
         // target faction's declaration toward us and no report carries it), so nothing priced from
         // what the unit still holds of that tag can be stated. The `GIVE` itself is exempt: it is
