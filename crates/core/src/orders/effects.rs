@@ -867,6 +867,11 @@ struct TransportTargetFacts {
     /// Ours, whose skills the report prints in full - so an absent skill is an absent skill,
     /// rather than an undisclosed one.
     own: bool,
+    /// Whether the absence of the skill can be read as absence at all. It cannot when the
+    /// catalogue names no quartermaster skill to resolve: nothing about the unit is then known,
+    /// and saying "is not a quartermaster" would state a catalogue fault as a fact about the
+    /// player's report (`ah-64wm`, `ah-d0ku`).
+    quartermaster_disclosed: bool,
     /// The report shows the quartermaster skill on this unit, resolved through the catalogue
     /// rather than by tag spelling (`ah-d0ku`).
     quartermaster: bool,
@@ -894,6 +899,7 @@ fn is_caravanserai(structure: &crate::report::model::Structure) -> bool {
 fn transport_target_facts(
     report: &crate::report::ParsedReport,
     quartermasters: &std::collections::BTreeSet<String>,
+    quartermaster_known: bool,
 ) -> BTreeMap<String, TransportTargetFacts> {
     let mut facts = BTreeMap::new();
     for region in &report.regions {
@@ -917,6 +923,7 @@ fn transport_target_facts(
                 unit.unit_id.clone(),
                 TransportTargetFacts {
                     own: unit.own,
+                    quartermaster_disclosed: quartermaster_known,
                     quartermaster: quartermasters.contains(&unit.unit_id),
                     caravanserai_owner,
                 },
@@ -1011,12 +1018,15 @@ impl Working {
                 .map(|unit| unit.unit_id.clone())
                 .collect(),
             // No catalogue entry for the skill: nothing can be classified, every sender falls to
-            // the first phase, and transport settles in one pass as it did before this bead. The
-            // shipped ruleset states `quartermaster [QUAM]`, so this is a catalogue fault rather
-            // than a report one (`ah-d0ku`).
+            // the first phase, and transport settles in one pass as it did before `ah-d0ku`. No
+            // target can be classified either, so `transport_target` reports every one of them as
+            // eligibility the report cannot establish rather than stating a catalogue fault as a
+            // missing skill (`ah-64wm`). The shipped ruleset states `quartermaster [QUAM]`, so
+            // this is a catalogue fault rather than a report one (`ah-d0ku`).
             None => std::collections::BTreeSet::new(),
         };
-        let transport_targets = transport_target_facts(report, &quartermasters);
+        let transport_targets =
+            transport_target_facts(report, &quartermasters, quartermaster_tag.is_some());
         let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
             BTreeMap::new();
         for region in &report.regions {
@@ -1748,6 +1758,11 @@ impl Working {
             // a fact rather than a gap - and it is the reason worth naming when the unit fails
             // both tests.
             if !facts.quartermaster {
+                if !facts.quartermaster_disclosed {
+                    // The catalogue names no quartermaster skill, so the report was never asked
+                    // the question: missing evidence, not a missing skill.
+                    return TransportTargetOutcome::Refused(EligibilityUnknown);
+                }
                 return TransportTargetOutcome::Refused(NotQuartermaster);
             }
             if !facts.caravanserai_owner {
@@ -1835,6 +1850,10 @@ impl Working {
     /// target the report does not show, or one whose skills are hidden - is the third: the
     /// navigator chose that deterministic fallback over inventing a skill the report never states
     /// (`ah-d0ku`).
+    ///
+    /// Since `ah-64wm` an eligible target is a quartermaster by construction, so the third phase
+    /// carries only orders the target gate refuses. It still has to run - the refusals are what
+    /// the interface explains - and it becomes live again the moment the target rule changes.
     fn transport_phase(&self, pending: &PendingTransport) -> TransportPhase {
         let sender = &self.units[pending.sender].unit.unit_id;
         if !self.quartermasters.contains(sender) {
@@ -5836,6 +5855,36 @@ mod tests {
                 places,
                 vec![("STON", 0), ("HORS", 1), ("FUR", 2)],
                 "each line carries the place of the order that wrote it"
+            );
+        }
+
+        // A quartermaster sender splits its own orders across two phases - the eligible target is
+        // a quartermaster (phase 2), the ineligible one is not (phase 3) - and the places still
+        // read as the document wrote them. A counter kept per phase would call both the first
+        // (`ah-64wm`, `ah-d0ku`).
+        #[test]
+        fn one_sender_s_places_survive_being_split_across_phases() {
+            let response =
+                two_hex_preview("unit 6857\nTRANSPORT 7001 5 STON\nTRANSPORT 5531 10 STON\n");
+
+            let sender = only_unit_by_id(&response, "6857");
+            assert_eq!(
+                sender
+                    .transport_target_issues
+                    .iter()
+                    .map(|issue| (issue.to.as_str(), issue.order_index))
+                    .collect::<Vec<_>>(),
+                vec![("7001", 0)],
+                "the refused order keeps the place it was written in"
+            );
+            assert_eq!(
+                sender
+                    .transport_sent
+                    .iter()
+                    .map(|sent| (sent.to.as_str(), sent.order_index))
+                    .collect::<Vec<_>>(),
+                vec![("5531", 1)],
+                "the order written after it sorts after it, though it settles a phase earlier"
             );
         }
 
