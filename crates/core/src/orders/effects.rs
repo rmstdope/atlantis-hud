@@ -1747,8 +1747,7 @@ impl Working {
 
         let moving: Vec<(String, String, i64)> = match what {
             Selector::Item(item) => {
-                let Some(held) = find_item(&self.ruleset, held_items, item)
-                else {
+                let Some(held) = find_item(&self.ruleset, held_items, item) else {
                     return Vec::new();
                 };
                 let (name, tag, held_amount) = {
@@ -1770,9 +1769,9 @@ impl Working {
                 }
             }
             Selector::UnfinishedShip(text) => {
-                let Some(tag) = unfinished_ship_named(Some(&self.ruleset), text, || {
-                    held_items.iter()
-                }) else {
+                let Some(tag) =
+                    unfinished_ship_named(Some(&self.ruleset), text, || held_items.iter())
+                else {
                     return Vec::new();
                 };
                 let Some(held) = held_items
