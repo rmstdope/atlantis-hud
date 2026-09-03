@@ -152,6 +152,22 @@ fn one_wrong_word_in_that_same_document_is_found() {
     assert!(result.diagnostics[0].message.contains("fifty"));
 }
 
+#[test]
+fn unfinished_ship_transfer_forms_are_accepted_by_the_public_validator() {
+    for orders in [
+        "unit 17\nGIVE 17 ALL UNFINISHED Cog EXCEPT 2\n",
+        "unit 17\nTAKE FROM 17 ALL UNFINISHED Cog EXCEPT 2\n",
+    ] {
+        let result = validate_orders(orders, None);
+        assert_eq!(
+            result.diagnostics,
+            vec![],
+            "{orders:?}: {:?}",
+            result.diagnostics
+        );
+    }
+}
+
 // --- the same bar, for the checks that read the report -------------------------------------
 //
 // A semantic check has more ways to be wrong than a syntax one, because it reasons about state

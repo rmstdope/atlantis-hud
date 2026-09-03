@@ -67,7 +67,9 @@ impl OrderedUnits {
                                     .collect::<Vec<_>>()
                                     .join(" "),
                             )
-                            .is_some())
+                            .is_some_and(|steps| {
+                                steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
+                            }))
                     {
                         sailers.insert(unit_id.clone());
                     }
@@ -274,6 +276,19 @@ mod tests {
             None,
             "a Fort is not a fleet, so its other occupant follows nobody"
         );
+    }
+
+    #[test]
+    fn bare_sail_participates_but_only_directional_sail_departs() {
+        let bare = OrderedUnits::from_document("unit 10575\nSAIL\n");
+        let in_only = OrderedUnits::from_document("unit 10575\nSAIL IN\n");
+        let out_only = OrderedUnits::from_document("unit 10575\nSAIL OUT\n");
+        let directional = OrderedUnits::from_document("unit 10575\nSAIL SE\n");
+
+        assert!(bare.issues_sail("10575"));
+        assert!(!in_only.issues_sail("10575"));
+        assert!(!out_only.issues_sail("10575"));
+        assert!(directional.issues_sail("10575"));
     }
 
     #[test]

@@ -1207,9 +1207,14 @@ mod tests {
         assert_eq!(crew_sailing_levels(&units, "329", Some(&work)), 0);
 
         let sail = crate::movement::fleet::OrderedUnits::from_document(
-            "unit 11125\nSAIL N\nunit 12590\nSAIL\n",
+            "unit 11125\nSAIL N\nunit 12590\nSAIL N\n",
         );
         assert_eq!(crew_sailing_levels(&units, "329", Some(&sail)), 4);
+
+        let bare_sail = crate::movement::fleet::OrderedUnits::from_document(
+            "unit 11125\nSAIL N\nunit 12590\nSAIL\n",
+        );
+        assert_eq!(crew_sailing_levels(&units, "329", Some(&bare_sail)), 4);
     }
 
     /// The planner passes `None` on purpose and must keep reading the report alone; this test

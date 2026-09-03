@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::ReportCache;
 use crate::movement::rules::Ruleset;
-use crate::orders::items::item_named;
+use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named};
 use crate::orders::standing::{standing_after, BoardingOrder};
 use crate::report::composition;
 use crate::report::model::{level_for_points, ReportUnit, Skill, UnitMovementStatus};
@@ -1622,6 +1622,9 @@ impl Working {
                 };
                 let (name, tag, held_amount) = {
                     let held = &self.units[holder].unit.items[held];
+                    if is_unfinished_ship(held, Some(&self.ruleset)) {
+                        return Vec::new();
+                    }
                     (held.name.clone(), held.tag.clone(), held.amount)
                 };
                 let requested = match amount {
@@ -1635,6 +1638,31 @@ impl Working {
                     vec![(name, tag, moved)]
                 }
             }
+            Selector::UnfinishedShip(text) => {
+                let Some(tag) = unfinished_ship_named(Some(&self.ruleset), text, || {
+                    self.units[holder].unit.items.iter()
+                }) else {
+                    return Vec::new();
+                };
+                let Some(held) = self.units[holder]
+                    .unit
+                    .items
+                    .iter()
+                    .find(|item| item.tag.eq_ignore_ascii_case(&tag))
+                else {
+                    return Vec::new();
+                };
+                let requested = match amount {
+                    Amount::All { except } => held.amount.saturating_sub(*except),
+                    Amount::Exact(count) => *count,
+                };
+                let moved = requested.clamp(0, held.amount);
+                if moved > 0 {
+                    vec![(held.name.clone(), held.tag.clone(), moved)]
+                } else {
+                    Vec::new()
+                }
+            }
             // `rules/give` gives `EXCEPT` and a stated amount to the named-item forms alone; the
             // class form is `GIVE [unit] ALL [item class]` and nothing else. A class arriving
             // with either is a shape the rules do not define, so it is left exactly as today.
@@ -1646,7 +1674,11 @@ impl Working {
                     .unit
                     .items
                     .iter()
-                    .filter(|item| self.ruleset.is_man(&item.tag))
+                    .filter(|item| {
+                        !is_unfinished_ship(item, Some(&self.ruleset))
+                            && self.ruleset.is_man(&item.tag)
+                    })
+                    .filter(|item| !is_unfinished_ship(item, Some(&self.ruleset)))
                     .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
                     .collect()
             }
@@ -1657,6 +1689,7 @@ impl Working {
                     .unit
                     .items
                     .iter()
+                    .filter(|item| !is_unfinished_ship(item, Some(&self.ruleset)))
                     .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
                     .collect()
             }
@@ -1665,7 +1698,10 @@ impl Working {
                     .unit
                     .items
                     .iter()
-                    .filter(|item| tags.iter().any(|tag| tag == &item.tag))
+                    .filter(|item| {
+                        !is_unfinished_ship(item, Some(&self.ruleset))
+                            && tags.iter().any(|tag| tag == &item.tag)
+                    })
                     .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
                     .collect(),
                 None => Vec::new(),
@@ -3864,7 +3900,8 @@ mod tests {
             "",
             "mountain (2,2) in Nowhere, 5 dwarves (dwarves), $3.",
             "",
-            "* Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON], 20 silver [SILV]. \
+            "* Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON], 20 silver [SILV], \
+             unfinished Cog [COG] (needs 15), \
              Weight: 10. Capacity: 0/0/15/0.",
             "- Stranger (7001), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
             "",
