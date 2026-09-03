@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ah-728m.2 - deterministic shared phase settlement</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #10151c; color: #e8edf3; }
+    body { margin: 0; padding: 30px; } main { max-width: 980px; margin: auto; }
+    h1 { margin: 0 0 8px; font-size: 24px; } h2 { font-size: 17px; }
+    .lede, .muted { color: #9eabb9; } .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .card { background: #18212b; border: 1px solid #2b3948; border-radius: 12px; padding: 16px; }
+    .phase { color: #79c0ff; font-weight: 700; } .good { color: #7ee2a8; }
+    code { color: #f0bd69; } .warning { margin-top: 18px; border-left: 4px solid #e1a84b; }
+    @media (max-width: 720px) { body { padding: 16px; } .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Option A: settle the shared stock in phase and report order</h1>
+  <p class="lede">The preview follows the phase sequence and uses report order only when two units compete in the same phase.</p>
+  <div class="grid">
+    <section class="card">
+      <h2>Sharing unit</h2>
+      <p><code>20 wood · SHARE 1</code></p>
+      <p class="muted">The common stock starts at 20.</p>
+    </section>
+    <section class="card">
+      <h2><span class="phase">Manufacturing</span></h2>
+      <p>Producer consumes 15 wood.</p>
+      <p class="good">Shared stock: 5</p>
+    </section>
+    <section class="card">
+      <h2><span class="phase">BUILD</span></h2>
+      <p>Builder can complete 5 work.</p>
+      <p class="good">Shared stock: 0</p>
+    </section>
+  </div>
+  <section class="card warning">
+    <h2>When two manufacturers compete</h2>
+    <p>The one higher in the report draws first. The later unit gets the remainder and its preview states that smaller result; no question mark is needed.</p>
+    <p class="muted">Cost: the ledger must settle a real shared item purse per phase, not only pool final shortfalls.</p>
+  </section>
+</main>
+</body>
+</html>
