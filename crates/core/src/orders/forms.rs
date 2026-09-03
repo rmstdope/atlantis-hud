@@ -325,6 +325,13 @@ mod tests {
                 Amount::All { except: 2 }
             ))
         );
+        assert_eq!(
+            read_transfer(&arguments("TAKE FROM 17 ALL UNFINISHED Cog EXCEPT 2")[2..]),
+            Some((
+                Selector::UnfinishedShip("Cog".to_string()),
+                Amount::All { except: 2 }
+            ))
+        );
     }
 
     #[test]

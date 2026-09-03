@@ -1689,6 +1689,7 @@ impl Working {
                     .unit
                     .items
                     .iter()
+                    .filter(|item| !is_unfinished_ship(item, Some(&self.ruleset)))
                     .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
                     .collect()
             }
