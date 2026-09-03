@@ -5725,6 +5725,17 @@ fn produce(
     // writes each delta forward, so this balance is the whole answer. Wages never enter it at all:
     // `charge_upkeep` nets `late_income` against the fee rather than crediting it (`ah-gdd3.2`).
     // `held` stays the material slice `ah-l80z` gave it.
+    //
+    // **Do not simplify this into `held`'s own `SILV` line.** The two coincide *today* and no test
+    // can tell them apart: `BEFORE_MANUFACTURING` is `StatePhase::Study`, which sits immediately
+    // before `Manufacturing` in `PHASES`, so a slice taken there already carries CLAIM, GIVE, CAST
+    // and the market, and nothing between the two phases moves silver. They stop coinciding the
+    // moment anything is charged at `Study` or later that this slice is built before - and the
+    // reading that stays correct through that is the one that names the phase it means. The
+    // SILVER column's twin is pinned by `a_claim_funds_the_months_manufacturing`,
+    // `a_gift_written_under_a_produce_is_still_spent_first` and
+    // `a_cast_lowers_what_a_production_can_afford` in `silver.rs`; this surface is held to it by
+    // `crates/core/tests/silver_for_a_production.rs`, which asserts both columns agree.
     let purse = ledger
         .state
         .balance_at(StatePhase::Manufacturing, who, SILVER)
