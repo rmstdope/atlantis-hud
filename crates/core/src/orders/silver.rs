@@ -1143,6 +1143,7 @@ fn available_silver(held: i64, income: i64, expense: i64) -> i64 {
 /// doubted, `doubt` reports the first match in order of increasing scope - [`SilverDoubt::EstimatedMen`]
 /// first, which short-circuits, because nothing per-man can be multiplied out.
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn forecast_unit(
     facts: UnitFacts<'_>,
     region: RegionWages,
@@ -1244,14 +1245,15 @@ pub fn forecast_unit(
     // the Give phase. `rules/sequenceofevents` puts *Give orders* before *Market orders*, so a
     // `GIVE ... ALL SILV` gives away silver an exact `BUY` on any line will later spend
     // (`ah-npab`).
-    let mut market_expense = 0i64;
+    // Set from `market_demand` once the intent loop has gathered every line, and then again by
+    // the market-phase pricing pass, which is where affordability can be answered (`ah-omn7`).
+    let mut market_expense;
     /// One bounded `BUY`, held until the market phase so it is priced against what the Give phase
     /// leaves (`ah-npab`).
     struct ExactBuy {
         count: i64,
         price: i64,
         allowed: i64,
-        tag: Option<String>,
     }
     let mut exact_buys: Vec<ExactBuy> = Vec::new();
     // What the exact buys asked to spend, whatever the unit could pay for. `short_for_orders` and
@@ -1664,7 +1666,6 @@ pub fn forecast_unit(
                             count: *count,
                             price,
                             allowed,
-                            tag: tag.clone(),
                         });
                         if let Some(tag) = tag {
                             *bought.entry(tag).or_default() += asked;
