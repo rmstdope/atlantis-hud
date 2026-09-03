@@ -1412,8 +1412,10 @@ pub fn forecast_unit(
                 // this same order a second time from the ledger's own balance to build the ITEMS
                 // column, and charges the materials it plans against that balance - so reading the
                 // late picture's `items` here would price this order against a balance its own
-                // ledger twin has already spent, silently halving what the unit can make. Pending
-                // a way to read a mid-month balance rather than the ledger's own end state.
+                // ledger twin has already spent, silently halving what the unit can make. The
+                // *silver* half of that wait is over: since `ah-gdd3.2` both surfaces read their
+                // own manufacturing-phase balance rather than the report's `SILV` line. Materials
+                // bought or sold this month are `ah-l80z`'s.
                 //
                 // The level and the tools enter through `workforce_for`, which the ITEMS ledger
                 // also calls - one builder, so the two surfaces cannot be given different
@@ -1440,16 +1442,17 @@ pub fn forecast_unit(
                 // producing the same goods here are settled against it - the same settlement the
                 // ITEMS ledger reads, through the same function (`ah-256d`, `ah-ycuj`).
                 let region = (lookups.region_share)(item);
-                let silver_in_slice = facts
-                    .items
-                    .iter()
-                    .find(|item| item.tag.eq_ignore_ascii_case(SILVER_TAG))
-                    .map_or(0, |item| item.amount);
+                // `rules/sequenceofevents` runs every earning and spending phase this loop has
+                // already walked - CLAIM, GIVE/TAKE, TAX, CAST, SELL, BUY, WITHDRAW, STUDY -
+                // before "Manufacturing PRODUCE orders ... are processed", and the wages of
+                // ENTERTAIN and WORK arrive after it, which is why `late` is not in `income` yet
+                // at this point in the loop. `market_expense` is carried separately from `expense`
+                // and both are spent before manufacturing, so the cap must see the two together.
                 let (priced, plan) = price_production(
                     recipe,
                     work,
                     facts.items,
-                    silver_in_slice,
+                    available_silver(held, income, expense.saturating_add(market_expense)),
                     *requested,
                     region,
                 );
@@ -3446,7 +3449,9 @@ pub fn price_production(
     requested: Option<i64>,
     region: RegionShare,
 ) -> (Priced, Option<ProductionPlan>) {
-    match recipe.and_then(|recipe| plan_production(recipe, work, held, silver_available, requested, region)) {
+    match recipe
+        .and_then(|recipe| plan_production(recipe, work, held, silver_available, requested, region))
+    {
         Some(plan) => (
             Priced {
                 spends: plan.silver,
@@ -3794,11 +3799,13 @@ pub struct ProductionPlan {
 
 /// What a unit's `PRODUCE` order makes this month, from the recipe and what the unit holds.
 ///
-/// `men` and `held` are the caller's to supply, and the cap is still taken against `held` rather
-/// than against a running balance. `ah-gdd3.1` gave both surfaces the turn's phase order and made
-/// the **cast** cap read the balance at `StatePhase::Cast`; the manufacturing PRODUCE cap is
-/// `ah-gdd3.2`'s and is deliberately untouched here, so that both surfaces keep answering the same
-/// way for one order - which is exactly the drift `ah-ycuj`'s corpus test exists to catch.
+/// `men` and `held` are the caller's to supply, and so is `silver_available`: the silver a
+/// manufacturing run may spend is the balance its unit has when `rules/sequenceofevents` runs
+/// *"Manufacturing PRODUCE orders ... are processed"*, which only the caller can know
+/// (`ah-gdd3.2`). **The `SILV` line of `held`, if there is one, is ignored** - `held` answers for
+/// the materials alone. Both surfaces compute that balance from their own phase-ordered walk, and
+/// that is what now keeps them answering the same way for one order rather than both reading the
+/// report - which is the drift `ah-ycuj`'s corpus test exists to catch.
 ///
 /// **Both callers supply the post-gift picture** (`ah-qct4`): `rules/sequenceofevents` settles
 /// "Give orders. GIVE and TAKE orders are processed." nine phases before either PRODUCE phase, so
@@ -4277,14 +4284,11 @@ mod production_tests {
                 tool_bonus: 0,
                 tools: 0,
             },
-            &held(&[
-                ("WOOD", 9999),
-                ("IRWD", 999),
-                ("FUR", 999),
-            ]),
+            &held(&[("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
             100_000,
             None,
-            RegionShare::Unlimited)
+            RegionShare::Unlimited,
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 10);
         assert_eq!(plan.made, 10);
@@ -4407,7 +4411,8 @@ mod production_tests {
             &held(&[("IRON", 99)]),
             0,
             None,
-            RegionShare::Unlimited)
+            RegionShare::Unlimited,
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 0);
         assert_eq!(plan.made, 0);
@@ -4429,7 +4434,8 @@ mod production_tests {
             &held(&[("IRON", 99)]),
             0,
             None,
-            RegionShare::Unlimited)
+            RegionShare::Unlimited,
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 9);
         assert_eq!(plan.made, 9);
@@ -4465,7 +4471,8 @@ mod production_tests {
             &held(&[]),
             0,
             None,
-            RegionShare::Share(20))
+            RegionShare::Share(20),
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 40);
         assert_eq!(plan.made, 20);
@@ -4487,7 +4494,8 @@ mod production_tests {
             &held(&[]),
             0,
             None,
-            RegionShare::Share(40))
+            RegionShare::Share(40),
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 40);
         assert_eq!(plan.made, 40);
@@ -4511,7 +4519,8 @@ mod production_tests {
             &held(&[]),
             0,
             None,
-            RegionShare::NothingHere)
+            RegionShare::NothingHere,
+        )
         .expect("a priceable recipe");
         assert_eq!(plan, ProductionPlan::default());
         assert_eq!(plan.wanted, 0);
@@ -4531,14 +4540,11 @@ mod production_tests {
                 tool_bonus: 0,
                 tools: 0,
             },
-            &held(&[
-                ("WOOD", 9999),
-                ("IRWD", 999),
-                ("FUR", 999),
-            ]),
+            &held(&[("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
             100_000,
             None,
-            RegionShare::Unlimited)
+            RegionShare::Unlimited,
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 12);
         assert_eq!(plan.made, 12);
@@ -4567,7 +4573,8 @@ mod production_tests {
             &[],
             0,
             None,
-            RegionShare::Unlimited);
+            RegionShare::Unlimited,
+        );
         assert_eq!(
             priced,
             Priced {
@@ -4586,14 +4593,11 @@ mod production_tests {
                 tool_bonus: 0,
                 tools: 0,
             },
-            &held(&[
-                ("WOOD", 9999),
-                ("IRWD", 999),
-                ("FUR", 999),
-            ]),
+            &held(&[("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
             100_000,
             None,
-            RegionShare::Unlimited);
+            RegionShare::Unlimited,
+        );
         assert_eq!(
             priced,
             Priced {
@@ -4620,7 +4624,8 @@ mod production_tests {
             &held(&[("SILV", 100_000)]),
             100_000,
             None,
-            RegionShare::Unlimited)
+            RegionShare::Unlimited,
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 0);
         assert_eq!(plan.made, 0);
@@ -4644,7 +4649,8 @@ mod production_tests {
             &held(&[("SILV", 3000), ("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
             3000,
             None,
-            RegionShare::Unlimited)
+            RegionShare::Unlimited,
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 12);
         assert_eq!(plan.made, 1);
@@ -4652,6 +4658,28 @@ mod production_tests {
         assert_eq!(plan.capped_by, Some(ProductionCap::Silver));
     }
 
+    /// `ah-gdd3.2`. Materials keep reading the item slice: only silver moved to the caller.
+    #[test]
+    fn materials_are_still_read_from_the_item_slice() {
+        let plan = plan_production(
+            &catapult(),
+            Workforce {
+                men: 10,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
+            1_000_000,
+            None,
+            RegionShare::Unlimited,
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.made, 1);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Materials));
+    }
+
+    /// The materials bind when they are the least of the caps.
     #[test]
     fn materials_cap_what_a_unit_produces() {
         let plan = plan_production(
@@ -4662,14 +4690,11 @@ mod production_tests {
                 tool_bonus: 0,
                 tools: 0,
             },
-            &held(&[
-                ("WOOD", 250),
-                ("IRWD", 999),
-                ("FUR", 999),
-            ]),
+            &held(&[("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
             100_000,
             None,
-            RegionShare::Unlimited)
+            RegionShare::Unlimited,
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.made, 1);
         assert_eq!(plan.capped_by, Some(ProductionCap::Materials));
@@ -4688,7 +4713,8 @@ mod production_tests {
             &held(&[("SILV", 3000), ("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
             3000,
             None,
-            RegionShare::Unlimited)
+            RegionShare::Unlimited,
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.made, 1);
         assert_eq!(plan.capped_by, Some(ProductionCap::Silver));
@@ -4715,7 +4741,8 @@ mod production_tests {
             &held(&[("IRON", 2)]),
             0,
             None,
-            RegionShare::Unlimited)
+            RegionShare::Unlimited,
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 5);
         assert_eq!(plan.made, 2);
@@ -4753,7 +4780,8 @@ mod production_tests {
             &held(&[("IRON", 20)]),
             0,
             Some(3),
-            RegionShare::Unlimited)
+            RegionShare::Unlimited,
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 8);
         assert_eq!(plan.made, 3);
@@ -4782,7 +4810,8 @@ mod production_tests {
             &held(&[("IRON", 20)]),
             0,
             Some(10),
-            RegionShare::Unlimited)
+            RegionShare::Unlimited,
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 8);
         assert_eq!(plan.made, 8);
@@ -4804,7 +4833,8 @@ mod production_tests {
             &held(&[("IRON", 5)]),
             0,
             Some(10),
-            RegionShare::Unlimited)
+            RegionShare::Unlimited,
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 8);
         assert_eq!(plan.made, 5);
@@ -4828,7 +4858,8 @@ mod production_tests {
                 &held(&[("IRON", 20)]),
                 0,
                 Some(requested),
-                RegionShare::Unlimited)
+                RegionShare::Unlimited,
+            )
             .expect("a priceable recipe");
             assert_eq!(plan.made, 0);
             assert_eq!(plan.wanted, 8);
@@ -4858,7 +4889,8 @@ mod production_tests {
             &held(&[]),
             0,
             Some(10),
-            RegionShare::Share(6))
+            RegionShare::Share(6),
+        )
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 40);
         assert_eq!(plan.made, 6);
@@ -4889,7 +4921,8 @@ mod production_tests {
                 &held(&[("GRAI", 99)]),
                 0,
                 None,
-                RegionShare::Unlimited),
+                RegionShare::Unlimited
+            ),
             None
         );
     }
@@ -5771,6 +5804,152 @@ mod tests {
 
         assert_eq!(unit.production_men_left, 5);
         assert_eq!(unit.produced, 3);
+    }
+
+    /// `ah-gdd3.2`. Materials in these four are exactly one catapult's, so `by_materials` is 1 and
+    /// only the silver moves.
+    fn catapult_materials() -> [ItemAmount; 3] {
+        [
+            ItemAmount {
+                amount: 250,
+                name: "wood".into(),
+                tag: "WOOD".into(),
+            },
+            ItemAmount {
+                amount: 30,
+                name: "ironwood".into(),
+                tag: "IRWD".into(),
+            },
+            ItemAmount {
+                amount: 80,
+                name: "furs".into(),
+                tag: "FUR".into(),
+            },
+        ]
+    }
+
+    /// `ah-gdd3.2`. `rules/sequenceofevents` runs CLAIM in the first instant batch, long before
+    /// "Manufacturing PRODUCE orders ... are processed", so silver a `CLAIM` brings in funds this
+    /// month's catapult - which the report's own `SILV` line does not show.
+    #[test]
+    fn a_claim_funds_the_months_manufacturing() {
+        let receipts = Receipts::default();
+        let intents = [
+            placed(Intent::Claim(3000)),
+            placed(Intent::Produce {
+                requested: None,
+                item: "CATP".to_string(),
+            }),
+        ];
+        let items = catapult_materials();
+        let carpenters = [skill("CARP", 4)];
+        let unit = forecast_unit(
+            UnitFacts {
+                items: &items,
+                skills: &carpenters,
+                production_skills: &carpenters,
+                late: Some(LateFacts {
+                    men: 4,
+                    men_by_race: &[],
+                    items: &items,
+                }),
+                ..facts(4, &intents, &receipts)
+            },
+            paying("$5.0", None),
+            PoolShares::default(),
+            FactionPurse {
+                unclaimed: Some(3000),
+            },
+            0,
+            no_market(),
+            Some(&ruleset()),
+        );
+
+        assert_eq!(unit.produced, 1);
+    }
+
+    /// `ah-gdd3.2`. GIVE settles before manufacturing whatever order the two are written in, so a
+    /// gift written *under* a `PRODUCE` still empties the purse the run would have spent.
+    #[test]
+    fn a_gift_written_under_a_produce_is_still_spent_first() {
+        let receipts = Receipts::default();
+        let intents = [
+            placed(Intent::Produce {
+                requested: None,
+                item: "CATP".to_string(),
+            }),
+            placed(Intent::Give {
+                to: Party::Unit("1235".to_string()),
+                what: Selector::Item("SILV".to_string()),
+                amount: Amount::Exact(3000),
+            }),
+        ];
+        let items = catapult_materials();
+        let carpenters = [skill("CARP", 4)];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 3000,
+                items: &items,
+                skills: &carpenters,
+                production_skills: &carpenters,
+                late: Some(LateFacts {
+                    men: 4,
+                    men_by_race: &[],
+                    items: &items,
+                }),
+                ..facts(4, &intents, &receipts)
+            },
+            paying("$5.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            Some(&ruleset()),
+        );
+
+        assert_eq!(unit.produced, 0);
+        assert_eq!(unit.production_capped_by, Some(ProductionCap::Silver));
+    }
+
+    /// `ah-gdd3.2`. "Spells are CAST" runs before manufacturing, and the committed ruleset prices
+    /// `CRPA`'s cast at 200 silver - so 3000 held becomes 2800, and a catapult wants 3000.
+    #[test]
+    fn a_cast_lowers_what_a_production_can_afford() {
+        let receipts = Receipts::default();
+        let intents = [
+            placed(Intent::Cast {
+                spell: "create amulet of protection".to_string(),
+                arguments: vec![],
+            }),
+            placed(Intent::Produce {
+                requested: None,
+                item: "CATP".to_string(),
+            }),
+        ];
+        let items = catapult_materials();
+        let carpenters = [skill("CARP", 4), skill("CRPA", 1)];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 3000,
+                items: &items,
+                skills: &carpenters,
+                production_skills: &carpenters,
+                late: Some(LateFacts {
+                    men: 4,
+                    men_by_race: &[],
+                    items: &items,
+                }),
+                ..facts(4, &intents, &receipts)
+            },
+            paying("$5.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            Some(&ruleset()),
+        );
+
+        assert_eq!(unit.produced, 0);
     }
 
     /// Clamped at zero: a unit that *gains* men produces more, which needs no sentence.

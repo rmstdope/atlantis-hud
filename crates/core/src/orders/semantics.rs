@@ -5592,19 +5592,16 @@ fn produce(
         standing.production,
         ruleset,
     );
-    let silver_in_slice = actor
-        .early_items()
-        .iter()
-        .find(|item| item.tag.eq_ignore_ascii_case(SILVER))
-        .map_or(0, |item| item.amount);
-    let (priced, plan) = price_production(
-        recipe,
-        work,
-        actor.early_items(),
-        silver_in_slice,
-        requested,
-        region,
-    );
+    // Every phase `rules/sequenceofevents` runs before "Manufacturing PRODUCE orders ... are
+    // processed" has been applied to this unit by the phase-major dispatch, and `PhaseState::apply`
+    // writes each delta forward, so this balance is the whole answer. Wages never enter it at all:
+    // `charge_upkeep` nets `late_income` against the fee rather than crediting it.
+    let purse = ledger
+        .state
+        .balance_at(StatePhase::Manufacturing, who, SILVER)
+        .max(0);
+    let (priced, plan) =
+        price_production(recipe, work, actor.early_items(), purse, requested, region);
     let Some(plan) = plan else {
         // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
         // same posture `buy` takes for goods the market does not carry - and the ITEMS column
@@ -19538,18 +19535,39 @@ mod tests {
         assert_eq!(forecast.expense, None);
     }
 
-    /// The run is planned against what the unit *holds*, so a production on its own can never
-    /// overdraw - the cap has already seen to that. It bites when something else spends the same
-    /// silver first, which is exactly the imprecision the holdings cap accepts: the figure is the
-    /// one a player can read off the report, and the ledger's running balance catches the rest.
-    ///
-    /// The earlier spend has to be a `BUY` rather than a `GIVE`: since `ah-vcp8.2` a `GIVE`'s
-    /// effect on the giver is exactly what `PRODUCE`'s own cap reads (`early_items`), so a `GIVE`
-    /// that spends the same silver first can no longer create this discrepancy - the cap sees it
-    /// and produces less instead of overdrawing. A `BUY` spends through the ledger alone, invisible
-    /// to `early_items`, which is what still lets the two disagree.
+    /// `ah-gdd3.2`. The ledger settles a `GIVE` at its own phase, and `rules/sequenceofevents`
+    /// runs "Give orders. GIVE and TAKE orders are processed." long before manufacturing - so a
+    /// gift of the whole purse leaves nothing for the catapult whichever order the two are written
+    /// in, and no catapult is created.
     #[test]
-    fn a_unit_that_cannot_afford_its_production_is_warned() {
+    fn a_gift_lowers_what_the_ledger_lets_a_produce_make() {
+        let region = region(vec![carpenters(3000, 9999), unit("12882")]);
+        let report = report(vec![region]);
+        let orders = "unit 12881\nGIVE 12882 3000 SILV\nPRODUCE catapult\n";
+
+        let effects = item_effects(&report, orders, Some(&ruleset()));
+        let moved = effects
+            .get("12881")
+            .map(|unit| unit.moved.clone())
+            .unwrap_or_default();
+        assert!(
+            !moved.iter().any(|movement| movement.tag == "CATP"),
+            "{moved:?}"
+        );
+    }
+
+    /// A `BUY` that empties the purse before manufacturing lowers what the run can afford rather
+    /// than overdrawing it (`ah-gdd3.2`).
+    ///
+    /// `rules/sequenceofevents` opens the market - "Buy orders are processed" - before
+    /// "Manufacturing PRODUCE orders ... are processed", so a unit holding 3000 that spends all of
+    /// it on grain makes no catapult at all, and there is no shortfall to warn about. Before
+    /// `ah-gdd3.2` the cap read the report's own `SILV` line, the run was planned as if the 3000
+    /// were still there, and the phantom spend raised a `not-enough-silver` the player could do
+    /// nothing about. The materials case below is the surviving half of the same pair: `ah-l80z`
+    /// owns what the market does to *materials*, so a `SELL` is still invisible to the cap.
+    #[test]
+    fn a_buy_lowers_what_a_production_can_afford_rather_than_overdrawing() {
         let region = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 30,
@@ -19561,12 +19579,7 @@ mod tests {
         };
         let findings = check(vec![region], "unit 12881\nBUY 30 grain\nPRODUCE catapult\n");
 
-        assert_eq!(codes(&findings), ["not-enough-silver"]);
-        assert!(
-            findings[0].message.contains("3000"),
-            "the catapult's own 3000: {}",
-            findings[0].message
-        );
+        assert_eq!(codes(&findings), [] as [&str; 0]);
     }
 
     /// The same, for the materials: 250 wood sold away leaves the catapult short of the wood the
