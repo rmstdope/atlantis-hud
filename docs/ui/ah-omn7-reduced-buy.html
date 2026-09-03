@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-omn7 — what the HUD says when a BUY is cut down to what the unit can pay</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1400px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:5.4em; }
+  .scene { margin-top:12px; border-top:1px dashed var(--edge); padding-top:10px; }
+  .scene b { display:block; font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase;
+             color:var(--ink-dim); font-weight:normal; margin-bottom:7px; font-family:system-ui,sans-serif; }
+  .dlg { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; padding:10px; }
+  .dlg dl { display:grid; gap:3px; }
+  .dlg dl > div { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .dlg dt { color:var(--ink-soft); } .dlg dd { color:var(--ink); font-variant-numeric:tabular-nums; }
+  .dlg dd.neg { color:var(--danger); } .dlg dd.good { color:var(--ok); }
+  .rule { border-top:1px solid var(--edge); margin:9px 0; }
+  .find { font-family:system-ui,sans-serif; font-size:12px; display:flex; gap:7px; align-items:flex-start; margin-top:6px; }
+  .find .dot { flex:none; width:8px; height:8px; border-radius:50%; margin-top:5px; background:var(--danger); }
+  .find .dot.warn { background:var(--brass); }
+  .find .txt { color:var(--ink-soft); }
+  .find .txt b { color:var(--ink); font-weight:600; display:block; font-size:11px; letter-spacing:.6px; }
+  .quiet { font-family:system-ui,sans-serif; font-size:12px; color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:14px;
+           border-top:1px solid var(--edge); padding-top:10px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  table.q { border-collapse:collapse; font-family:system-ui,sans-serif; font-size:12.5px; margin-top:10px; width:100%; }
+  table.q th, table.q td { border:1px solid var(--edge); padding:6px 9px; text-align:left; vertical-align:top; }
+  table.q th { color:var(--brass); font-weight:600; background:var(--panel); }
+  table.q td { color:var(--ink-soft); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-omn7 — <span>what the HUD says when a BUY is cut down to what the unit can pay</span></h1>
+  <p><code>rules/buy</code>: a unit that cannot afford the quantity it asked for buys as many as it
+  can afford. The HUD currently charges the whole line and then warns that the unit is short. Capping
+  the quantity is the fix — but it removes the only way a purchase can push a unit into the red, and
+  <b>sixteen existing tests</b> use exactly that to prove the SILVER column and the
+  <code>not-enough-silver</code> warning agree with each other.</p>
+  <p>So the question is not whether to cap. It is <b>what the player is told when the cap bites</b>.
+  Three shapes, each shown against the same three orders.</p>
+</header>
+
+<main>
+<h3 class="sec">The three shapes</h3>
+<p>Scene 1 is the plain case: <code>unit 5</code> holds $25, grain sells at $12, orders
+<code>BUY 5 grain</code>. Scene 2 is money that arrives too late: <code>unit 5</code> holds nothing,
+orders <code>WORK</code> then <code>BUY 5 horse</code> at $12 — the $120 of wages is paid after the
+market closes. Scene 3 is money that may not arrive at all: <code>unit 1</code> holds $100 and taxes
+a $500 base that a second taxer also wants, then orders <code>BUY 4 sword</code> at $100.</p>
+
+<div class="cards3">
+
+  <div class="card">
+    <h2><em>A</em>A new warning of its own</h2>
+    <p class="concept">The purchase is cut, and a new finding says so and names the line.
+    <code>not-enough-silver</code> keeps its present meaning exactly — the unit's silver actually goes
+    below zero — which after this change only upkeep and other uncapped spending can do.</p>
+
+    <div class="scene"><b>Scene 1 — $25, five grain at $12</b>
+      <div class="dlg">
+        <dl>
+          <div><dt>Held</dt><dd>$25</dd></div>
+          <div><dt>Spent</dt><dd>$24</dd></div>
+          <div><dt>At month end</dt><dd class="good">$1</dd></div>
+        </dl>
+        <div class="rule"></div>
+        <div class="find"><span class="dot warn"></span><span class="txt"><b>bought-fewer-than-ordered</b>
+          bought 2 grain of the 5 ordered: $25 pays for 2 at $12</span></div>
+      </div>
+      <div class="dlg" style="margin-top:8px"><dl><div><dt>Projected inventory</dt><dd>2 grain</dd></div></dl></div>
+    </div>
+
+    <div class="scene"><b>Scene 2 — wages that arrive too late</b>
+      <div class="dlg">
+        <dl>
+          <div><dt>Income</dt><dd>$120 <span style="color:var(--ink-dim)">(all late)</span></dd></div>
+          <div><dt>Spent</dt><dd>$0</dd></div>
+          <div><dt>At month end</dt><dd class="good">$120</dd></div>
+        </dl>
+        <div class="rule"></div>
+        <div class="find"><span class="dot warn"></span><span class="txt"><b>bought-fewer-than-ordered</b>
+          bought no horse of the 5 ordered: this unit has nothing to spend before the market, and its
+          $120 of wages is paid after it</span></div>
+      </div>
+    </div>
+
+    <div class="scene"><b>Scene 3 — a tax another unit also wants</b>
+      <div class="dlg">
+        <dl>
+          <div><dt>Income</dt><dd>$500 <span style="color:var(--ink-dim)">(contended)</span></dd></div>
+          <div><dt>Spent</dt><dd>$400</dd></div>
+          <div><dt>At month end</dt><dd class="neg">&minus;$50</dd></div>
+        </dl>
+        <div class="rule"></div>
+        <p class="quiet">No warning. The buy is planned on the hopeful reading, and the column keeps
+        showing the settled one — unchanged from today.</p>
+      </div>
+    </div>
+
+    <ul class="notes">
+      <li>Each code means one thing: cut purchase, or real overdraft.</li>
+      <li>The line that was cut can be pointed at.</li>
+      <li class="con">A new code to translate, style and document.</li>
+      <li class="con">Sixteen tests swap which code they expect.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>The same warning, reworded</h2>
+    <p class="concept"><code>not-enough-silver</code> stays the single "this unit hasn't the money"
+    warning and widens to cover a cut purchase. Its message gains a clause saying what was bought
+    instead. No new code anywhere.</p>
+
+    <div class="scene"><b>Scene 1 — $25, five grain at $12</b>
+      <div class="dlg">
+        <dl>
+          <div><dt>Held</dt><dd>$25</dd></div>
+          <div><dt>Spent</dt><dd>$24</dd></div>
+          <div><dt>At month end</dt><dd class="good">$1</dd></div>
+        </dl>
+        <div class="rule"></div>
+        <div class="find"><span class="dot"></span><span class="txt"><b>not-enough-silver</b>
+          short $35: 5 grain cost $60 and this unit can have $25, so 2 are bought</span></div>
+      </div>
+      <div class="dlg" style="margin-top:8px"><dl><div><dt>Projected inventory</dt><dd>2 grain</dd></div></dl></div>
+    </div>
+
+    <div class="scene"><b>Scene 2 — wages that arrive too late</b>
+      <div class="dlg">
+        <dl>
+          <div><dt>Income</dt><dd>$120 <span style="color:var(--ink-dim)">(all late)</span></dd></div>
+          <div><dt>Spent</dt><dd>$0</dd></div>
+          <div><dt>At month end</dt><dd class="good">$120</dd></div>
+        </dl>
+        <div class="rule"></div>
+        <div class="find"><span class="dot"></span><span class="txt"><b>not-enough-silver</b>
+          short $60: 5 horse cost $60 and this unit can have $0 before the market, so none are
+          bought</span></div>
+      </div>
+    </div>
+
+    <div class="scene"><b>Scene 3 — a tax another unit also wants</b>
+      <div class="dlg">
+        <dl>
+          <div><dt>Income</dt><dd>$500 <span style="color:var(--ink-dim)">(contended)</span></dd></div>
+          <div><dt>Spent</dt><dd>$400</dd></div>
+          <div><dt>At month end</dt><dd class="neg">&minus;$50</dd></div>
+        </dl>
+        <div class="rule"></div>
+        <p class="quiet">No warning, as today: the warning reads the hopeful figure, the column the
+        settled one.</p>
+      </div>
+    </div>
+
+    <ul class="notes">
+      <li>Nothing new to name, translate or style.</li>
+      <li>Sixteen tests keep their code and change only figures and wording.</li>
+      <li class="con">One code now means two different things — cut, or overdrawn.</li>
+      <li class="con">A player filtering the warning cannot separate the two.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>C</em>Cut it quietly</h2>
+    <p class="concept">The projection simply shows what Atlantis will do: fewer goods, less silver
+    spent, and no warning at all. This is what the abandoned branch built, and what the sixteen red
+    tests are red against.</p>
+
+    <div class="scene"><b>Scene 1 — $25, five grain at $12</b>
+      <div class="dlg">
+        <dl>
+          <div><dt>Held</dt><dd>$25</dd></div>
+          <div><dt>Spent</dt><dd>$24</dd></div>
+          <div><dt>At month end</dt><dd class="good">$1</dd></div>
+        </dl>
+        <div class="rule"></div>
+        <p class="quiet">No warning.</p>
+      </div>
+      <div class="dlg" style="margin-top:8px"><dl><div><dt>Projected inventory</dt><dd>2 grain</dd></div></dl></div>
+    </div>
+
+    <div class="scene"><b>Scene 2 — wages that arrive too late</b>
+      <div class="dlg">
+        <dl>
+          <div><dt>Income</dt><dd>$120 <span style="color:var(--ink-dim)">(all late)</span></dd></div>
+          <div><dt>Spent</dt><dd>$0</dd></div>
+          <div><dt>At month end</dt><dd class="good">$120</dd></div>
+        </dl>
+        <div class="rule"></div>
+        <p class="quiet">No warning. The order looks obeyed; the player finds out from next month's
+        report that no horse was ever bought.</p>
+      </div>
+    </div>
+
+    <div class="scene"><b>Scene 3 — a tax another unit also wants</b>
+      <div class="dlg">
+        <dl>
+          <div><dt>Income</dt><dd>$500 <span style="color:var(--ink-dim)">(contended)</span></dd></div>
+          <div><dt>Spent</dt><dd>$400</dd></div>
+          <div><dt>At month end</dt><dd class="neg">&minus;$50</dd></div>
+        </dl>
+        <div class="rule"></div>
+        <p class="quiet">No warning.</p>
+      </div>
+    </div>
+
+    <ul class="notes">
+      <li>The smallest change, and the projection is never wrong.</li>
+      <li class="con">A typo'd order — a price misread, a zero dropped — becomes invisible.</li>
+      <li class="con">Sixteen tests lose an assertion rather than gaining one, and the
+        column-and-warning contract they exist to protect stops being testable through BUY.</li>
+    </ul>
+  </div>
+
+</div>
+
+<h3 class="sec">The second question, whichever shape wins</h3>
+<p>The cap needs a purse to measure against, and the ledger already keeps two readings of one.</p>
+<table class="q">
+  <tr><th style="width:16%">Reading</th><th style="width:42%">What it does in Scene 3</th><th>What it costs</th></tr>
+  <tr><td><b>Hopeful</b><br>assume every contended tax and pillage arrives</td>
+      <td>The full $400 of swords is bought, the column still ends at &minus;$50, and today's
+      "column shows the shortfall, warning stays quiet" contract survives untouched.</td>
+      <td>The projected inventory can show goods the unit will not get, if the tax really is split.</td></tr>
+  <tr><td><b>Settled</b><br>only money the unit is sure of</td>
+      <td>Two swords are bought, the column ends at $0, and the shortfall disappears from both
+      surfaces.</td>
+      <td>A unit that will very probably get its tax is shown buying half of what it ordered. The
+      column and warning stop being able to disagree, which is what several of these tests exist to
+      show.</td></tr>
+</table>
+<p style="margin-top:10px;color:var(--ink-soft);font-size:13px">Late money — wages from
+<code>WORK</code> and <code>ENTERTAIN</code> — is outside this question: <code>rules/sequenceofevents</code>
+pays it after the market, so it never funds a purchase under either reading.</p>
+</main>
+</body>
+</html>

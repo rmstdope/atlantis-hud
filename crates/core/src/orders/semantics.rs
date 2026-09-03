@@ -1386,6 +1386,16 @@ fn forecast_hex(
     let late = ledger
         .state
         .late_holdings_at(StatePhase::Maintenance, hex, ruleset);
+    // The second snapshot, for the one term that wants a mid-month balance: what each unit holds
+    // as manufacturing opens (`ah-l80z`). Clamped here, once per hex, so the ITEMS ledger and this
+    // column are handed exactly the same numbers and cannot clamp differently.
+    let before_manufacturing =
+        ledger
+            .state
+            .late_holdings_at(PhaseState::BEFORE_MANUFACTURING, hex, ruleset);
+    let clamped: Vec<Vec<ItemAmount>> = (0..hex.units.len())
+        .map(|index| clamped_holdings(before_manufacturing.items_of(index)))
+        .collect();
 
     // A region's pools are shared, so who else in this hex draws on them has to be settled before
     // any one unit can be priced against them (`ah-t2pn`).
@@ -1528,7 +1538,7 @@ fn forecast_hex(
             // gifts, since `apply_recruits` runs before this hex is priced (`ah-40c9`).
             production_skills: ordered.skills().unwrap_or(&ordered.unit.skills),
             production_skills_unknown: ordered.skills().is_none(),
-            late: Some(late.of(index)),
+            late: Some(late.of_with(index, &clamped[index])),
         };
         claims.push(food_claim(&facts, ruleset));
 
@@ -3385,6 +3395,14 @@ struct PhaseState {
 }
 
 impl PhaseState {
+    /// The phase whose balances are what manufacturing starts from: TAX, the market, WITHDRAW,
+    /// movement and STUDY have all run, and no PRODUCE has been charged yet.
+    ///
+    /// `apply` writes its delta at the named phase and every later one, so this index carries
+    /// every market effect however late in the document the order sat, and carries no
+    /// manufacturing spend (`rules/sequenceofevents`, `ah-l80z`).
+    const BEFORE_MANUFACTURING: StatePhase = StatePhase::Study;
+
     fn from_hex(hex: &Hex<'_>) -> Self {
         let mut state = Self {
             balances: BTreeMap::new(),
@@ -3808,8 +3826,10 @@ fn ledger_for_with_production<'a>(
                 credit_tax(&mut ledger, hex, ordered, &facts, ruleset, pillaged);
             }
             for placed in &ordered.intents {
+                // BUILD and manufacturing PRODUCE are each deferred to a pass of their own
+                // below, after this walk has applied every other order (`ah-l80z`).
                 if phases::phase_of(&placed.intent) != phase
-                    || matches!(placed.intent, Intent::Build { .. })
+                    || matches!(placed.intent, Intent::Build { .. } | Intent::Produce { .. })
                 {
                     continue;
                 }
@@ -3844,6 +3864,46 @@ fn ledger_for_with_production<'a>(
     }
 
     discard_unfinished_ships_after_movement(&mut ledger, hex, ruleset);
+
+    // Manufacturing runs in a pass of its own, after every market order has been applied whatever
+    // its place in the document, and after the deferred `BUY ALL` above has been settled:
+    // `PhaseState::apply` makes a *write* phase-ordered, not a *read*, so an order applied after
+    // `produce` has read the balance is one `produce` never saw, whichever phase it wrote into
+    // (`rules/sequenceofevents`, `ah-l80z`). The walk above is itself phase-ordered since
+    // `ah-gdd3.1`, so this pass is what puts manufacturing after everything deferred *out* of that
+    // walk rather than what puts it after the market. The same treatment BUILD has directly below.
+    //
+    // One walk of the whole hex's balances, not one per PRODUCE order: this path runs on every
+    // keystroke, and `late_holdings_at` reads every unit and every tag (`ah-1ad6.2`, `ah-lu0f.3`).
+    let before_manufacturing =
+        ledger
+            .state
+            .late_holdings_at(PhaseState::BEFORE_MANUFACTURING, hex, ruleset);
+
+    for (index, ordered) in hex.units.iter().enumerate() {
+        // This unit's own running materials, so a second PRODUCE line sees what the first
+        // consumed.
+        let mut held = clamped_holdings(before_manufacturing.items_of(index));
+        for placed in &ordered.intents {
+            let Intent::Produce { requested, item } = &placed.intent else {
+                continue;
+            };
+            produce(
+                &mut ledger,
+                hex,
+                ordered,
+                placed,
+                (*requested, item),
+                &mut held,
+                ruleset,
+                HexStanding {
+                    market: &market_shares,
+                    production,
+                    actor_index: index,
+                },
+            );
+        }
+    }
 
     for ordered in &hex.units {
         for placed in &ordered.intents {
@@ -4110,13 +4170,83 @@ impl LateHoldings {
     }
 
     /// One unit's late picture, by its index in `hex.units`.
+    ///
+    /// **The manufacturing input list falls back to this snapshot's own items, and that fallback
+    /// is only safe for a caller that never prices a `PRODUCE`.** It is *not* the safe fallback
+    /// [`UnitFacts::late`] makes: that one falls back to the *early* picture, while this snapshot
+    /// is usually the `Maintenance` index, which already carries a production's own material
+    /// debit, so pricing from it would apply that debit twice (`ah-l80z`). Today's three callers are
+    /// upkeep, the study ceiling and [`hex_facts`], none of which reach `forecast_unit`. A caller
+    /// that does reach it must hold a `BEFORE_MANUFACTURING` snapshot and use
+    /// [`LateHoldings::of_with`], as `forecast_hex` does.
     fn of(&self, index: usize) -> LateFacts<'_> {
+        self.of_with(index, self.items_of(index))
+    }
+
+    /// [`LateHoldings::of`], with the pre-manufacturing item list supplied from a second snapshot
+    /// of the same hex - the only shape a caller pricing a `PRODUCE` may use (`ah-l80z`).
+    fn of_with<'a>(
+        &'a self,
+        index: usize,
+        before_manufacturing: &'a [ItemAmount],
+    ) -> LateFacts<'a> {
         let holdings = &self.0[index];
         LateFacts {
             men: holdings.men,
             men_by_race: &holdings.men_by_race,
             items: &holdings.items,
+            before_manufacturing,
         }
+    }
+
+    /// One unit's item list, by its index in `hex.units` - the half of `of` a caller wants when it
+    /// holds two snapshots and is filling one field from the other.
+    fn items_of(&self, index: usize) -> &[ItemAmount] {
+        &self.0[index].items
+    }
+}
+
+/// An item list with every negative amount read as zero, which is what production is allowed to
+/// work with: `plan_production` does not clamp its own materials cap, so a negative holding there
+/// would yield a negative run. Overdrawing is `judge_shortfalls`' finding to report, not
+/// production's - the same reading `capacity_after_orders` already documents (`ah-l80z`).
+///
+/// **A guard rather than a live conversion.** Both of today's snapshots come from
+/// [`LateHoldings::read`], which already drops every entry at or below zero, so neither call site
+/// can hand this function a negative amount. It is applied anyway, once per hex, so that the two
+/// surfaces are demonstrably given the same list and a snapshot built some other way cannot
+/// quietly reach `plan_production` unclamped.
+fn clamped_holdings(items: &[ItemAmount]) -> Vec<ItemAmount> {
+    items
+        .iter()
+        .map(|item| ItemAmount {
+            amount: item.amount.max(0),
+            ..item.clone()
+        })
+        .collect()
+}
+
+/// Take `amount` of `tag` off a running holdings list, pushing a negative entry where the list
+/// carries none - so a deficit survives to the next order rather than being silently dropped
+/// (`ah-l80z`). Tags are matched case-insensitively, as `plan_production`'s own `holding` closure
+/// does.
+fn subtract_from_holdings(
+    held: &mut Vec<ItemAmount>,
+    tag: &str,
+    amount: i64,
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+) {
+    match held
+        .iter_mut()
+        .find(|item| item.tag.eq_ignore_ascii_case(tag))
+    {
+        Some(entry) => entry.amount -= amount,
+        None => held.push(ItemAmount {
+            amount: -amount,
+            name: item_name(tag, hex, ruleset),
+            tag: tag.to_ascii_uppercase(),
+        }),
     }
 }
 
@@ -4818,17 +4948,10 @@ fn apply(
     let who = &actor.unit.unit_id;
 
     match &placed.intent {
-        Intent::Produce { requested, item } => {
-            produce(
-                ledger,
-                hex,
-                actor,
-                placed,
-                (*requested, item),
-                ruleset,
-                standing,
-            );
-        }
+        // Manufacturing runs in a pass of its own, after every market order has been applied -
+        // see `ledger_for_with_production`, this function's only caller, which skips `Produce`
+        // here and calls `produce` from that pass (`rules/sequenceofevents`, `ah-l80z`).
+        Intent::Produce { .. } => {}
         Intent::Give { to, what, amount } => {
             let reach = give_reach(
                 to,
@@ -5538,6 +5661,7 @@ impl HexStanding<'_> {
 /// month - and crediting them would silence a `not-enough-items` warning that should fire, because
 /// the engine will refuse a `GIVE` of goods that do not exist yet. The same reading the ledger
 /// already gives wages and takings from entertaining (`ah-uwa3`, `ah-19l2.2`).
+#[allow(clippy::too_many_arguments)]
 fn produce(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
@@ -5546,6 +5670,10 @@ fn produce(
     // What the order names, straight off the intent, the shape `buy` above uses: how many it asks
     // for - `None` for the unbounded form - and of what (`ah-6x5u`).
     (requested, item): (Option<i64>, &str),
+    // What this unit holds as manufacturing opens, less whatever its earlier PRODUCE lines have
+    // already consumed. The caller owns it so that one hex's balances are walked once, and it
+    // arrives clamped at zero (`ah-l80z`).
+    held: &mut Vec<ItemAmount>,
     ruleset: Option<&Ruleset>,
     standing: HexStanding<'_>,
 ) {
@@ -5568,7 +5696,7 @@ fn produce(
             tag.as_deref().unwrap_or_default(),
             actor.men_after_orders,
             actor.skills().unwrap_or(&actor.unit.skills),
-            actor.early_items(),
+            held,
         )
     });
     let recipe = found.map(|(_, recipe)| recipe);
@@ -5576,11 +5704,11 @@ fn produce(
     // BUY before that, so the men who work this month and their diluted skill level are the ones
     // this month's gifts and recruits leave behind - not the ones the report printed.
     // `men_after_orders`/`Ordered::skills()` are exactly that settled picture (`ah-dxfd.2`,
-    // `ah-40c9`). Materials stay the early picture, deliberately: the ledger owns that balance
-    // separately, and reading a late picture here would price this order against a balance
-    // nothing has actually spent from. A transfer this walk could not follow falls back to the
-    // report's own figures, as every other term here does; `holdings_unknown()` is deliberately
-    // not consulted (`ah-qct4`).
+    // `ah-40c9`). The materials and the tools are `held`, the balance as manufacturing opens: the
+    // market settles eleven entries before manufacturing PRODUCE, so iron bought this month is
+    // iron a sword can be made from and iron sold this month is not (`rules/sequenceofevents`,
+    // `ah-l80z`). A transfer this walk could not follow falls back to the report's own figures, as
+    // every other term here does; `holdings_unknown()` is deliberately not consulted (`ah-qct4`).
     // What this hex's `Products` line leaves this unit, once its faction-mates producing the same
     // goods here are settled against it - the same settlement the SILVER column reads, through the
     // same function, so the two surfaces cannot answer it differently (`ah-256d`, `ah-ycuj`).
@@ -5595,13 +5723,13 @@ fn produce(
     // Every phase `rules/sequenceofevents` runs before "Manufacturing PRODUCE orders ... are
     // processed" has been applied to this unit by the phase-major dispatch, and `PhaseState::apply`
     // writes each delta forward, so this balance is the whole answer. Wages never enter it at all:
-    // `charge_upkeep` nets `late_income` against the fee rather than crediting it.
+    // `charge_upkeep` nets `late_income` against the fee rather than crediting it (`ah-gdd3.2`).
+    // `held` stays the material slice `ah-l80z` gave it.
     let purse = ledger
         .state
         .balance_at(StatePhase::Manufacturing, who, SILVER)
         .max(0);
-    let (priced, plan) =
-        price_production(recipe, work, actor.early_items(), purse, requested, region);
+    let (priced, plan) = price_production(recipe, work, held, purse, requested, region);
     let Some(plan) = plan else {
         // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
         // same posture `buy` takes for goods the market does not carry - and the ITEMS column
@@ -5623,8 +5751,17 @@ fn produce(
         priced.spends,
         placed,
     );
+    // The running deduction, silver and materials alike, so a second `PRODUCE` line in the same
+    // block sees what the first consumed. **A guard rather than a live path today**: two
+    // month-long orders in one block raise `two-month-long-orders` and only the first is priced,
+    // so nothing currently reaches a second line. It is kept because it makes the two surfaces
+    // agree by construction rather than by that check happening to hold, and because both do it by
+    // the same rule - a tag the list does not carry is pushed with the negative amount, so a
+    // deficit survives rather than being silently dropped.
+    subtract_from_holdings(held, SILVER, priced.spends, hex, ruleset);
     for material in &plan.materials {
         charge_manufacturing_material(ledger, who, &material.tag, material.amount, placed);
+        subtract_from_holdings(held, &material.tag, material.amount, hex, ruleset);
         if material.amount != 0 {
             ledger.movements.push(ItemMovement {
                 unit_id: who.clone(),
@@ -19568,18 +19705,16 @@ mod tests {
         );
     }
 
-    /// A `BUY` that empties the purse before manufacturing lowers what the run can afford rather
-    /// than overdrawing it (`ah-gdd3.2`).
+    /// Silver spent at market is silver production has not got: `rules/sequenceofevents` settles
+    /// BUY in the market phase, eleven entries before manufacturing PRODUCE, so a catapult whose
+    /// recipe wants the same 3000 the unit has just spent on grain is *capped*, not short
+    /// (`ah-l80z`).
     ///
-    /// `rules/sequenceofevents` opens the market - "Buy orders are processed" - before
-    /// "Manufacturing PRODUCE orders ... are processed", so a unit holding 3000 that spends all of
-    /// it on grain makes no catapult at all, and there is no shortfall to warn about. Before
-    /// `ah-gdd3.2` the cap read the report's own `SILV` line, the run was planned as if the 3000
-    /// were still there, and the phantom spend raised a `not-enough-silver` the player could do
-    /// nothing about. The materials case below is the surviving half of the same pair: `ah-l80z`
-    /// owns what the market does to *materials*, so a `SELL` is still invisible to the cap.
+    /// The cap is what replaces the old `not-enough-silver` warning here, so the absence of the
+    /// warning is asserted beside the cap itself: an emptiness assertion alone would pass for a
+    /// run that made a catapult out of nothing.
     #[test]
-    fn a_buy_lowers_what_a_production_can_afford_rather_than_overdrawing() {
+    fn spending_the_silver_at_market_caps_production_instead_of_warning() {
         let region = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 30,
@@ -19589,19 +19724,26 @@ mod tests {
             }],
             ..region(vec![carpenters(3000, 9999)])
         };
-        let findings = check(vec![region], "unit 12881\nBUY 30 grain\nPRODUCE catapult\n");
+        let findings = check(
+            vec![region.clone()],
+            "unit 12881\nBUY 30 grain\nPRODUCE catapult\n",
+        );
 
         assert_eq!(codes(&findings), [] as [&str; 0]);
+
+        let forecast =
+            forecast_with_ruleset(vec![region], "unit 12881\nBUY 30 grain\nPRODUCE catapult\n");
+        assert_eq!(forecast.produced, 0);
+        assert_eq!(
+            forecast.production_capped_by,
+            Some(crate::orders::silver::ProductionCap::Silver)
+        );
     }
 
-    /// The same, for the materials: 250 wood sold away leaves the catapult short of the wood the
-    /// unit's inventory said it had.
-    ///
-    /// The earlier spend has to be a `SELL` rather than a `GIVE`, for the same reason the silver
-    /// case above does (`ah-vcp8.2`): `SELL` spends through the ledger alone, invisible to
-    /// `early_items`, the same figure `PRODUCE`'s materials cap reads.
+    /// The same, for the materials: 250 wood sold at market is wood the catapult cannot be made
+    /// from, so the run is capped rather than warned about (`ah-l80z`).
     #[test]
-    fn a_unit_without_the_materials_is_warned() {
+    fn selling_the_materials_caps_production_instead_of_warning() {
         let region = ReportRegion {
             wanted: vec![MarketItem {
                 amount: 250,
@@ -19612,15 +19754,20 @@ mod tests {
             ..region(vec![carpenters(100_000, 250)])
         };
         let findings = check(
-            vec![region],
+            vec![region.clone()],
             "unit 12881\nSELL 250 wood\nPRODUCE catapult\n",
         );
 
-        assert_eq!(codes(&findings), ["not-enough-items"]);
-        assert!(
-            findings[0].message.contains("wood"),
-            "the wood is what ran out: {}",
-            findings[0].message
+        assert_eq!(codes(&findings), [] as [&str; 0]);
+
+        let forecast = forecast_with_ruleset(
+            vec![region],
+            "unit 12881\nSELL 250 wood\nPRODUCE catapult\n",
+        );
+        assert_eq!(forecast.produced, 0);
+        assert_eq!(
+            forecast.production_capped_by,
+            Some(crate::orders::silver::ProductionCap::Materials)
         );
     }
 
