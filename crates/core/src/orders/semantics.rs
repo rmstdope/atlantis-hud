@@ -1380,6 +1380,9 @@ fn forecast_hex(
         settlement,
     } = relief;
     let region = region_wages(hex, ruleset);
+    // A shared purse is settled after this pass, so a bounded `BUY` in a sharing hex is not capped
+    // at all (`ah-omn7`, and `ah-szye` owns the settlement).
+    let sharers_in_hex = !Sharing::read(hex).sharers.is_empty();
     let nothing = Receipts::default();
     // The ledger is already complete by the time the column prices a hex - `review_turn` builds
     // every hex's ledger before it forecasts any of them - so the late picture is read once here
@@ -1563,6 +1566,7 @@ fn forecast_hex(
                 give_reach: &give_reach_of,
                 uncertain_after_gifts: &uncertain_after_gifts,
             },
+            sharers_in_hex,
             ruleset,
         ));
     }
@@ -13262,14 +13266,18 @@ mod tests {
             codes(&affordable.findings)
         );
 
-        // Eighty grain at 100 is 8,000, which 5,000 cannot pay for.
+        // Eighty grain at 100 is 8,000, which 5,000 cannot pay for: `rules/buy` buys fifty of
+        // them and spends every silver on it, so the column ends at nought while the shortfall
+        // the warning names is measured against the whole 8,000 (`ah-omn7`).
         let unaffordable = market("unit 2390\nPILLAGE\nBUY 80 grain\n");
+        assert_eq!(unaffordable.silver[0].at_month_end, Some(0));
+        assert_eq!(unaffordable.silver[0].wanted_for_orders, Some(8_000));
         assert!(
             unaffordable.silver[0]
-                .at_month_end
-                .is_some_and(|end| end < 0),
+                .short_for_orders
+                .is_some_and(|short| short > 0),
             "the column shows the shortfall: {:?}",
-            unaffordable.silver[0].at_month_end
+            unaffordable.silver[0].short_for_orders
         );
         assert!(
             unaffordable
@@ -13456,10 +13464,13 @@ mod tests {
             .iter()
             .find(|row| row.unit_id == "2")
             .expect("the taxer is priced");
+        // A pillaged hex leaves the taxer a certain nothing, so it buys no grain at all; the
+        // shortfall is what its orders wanted (`ah-omn7`).
+        assert_eq!(taxer.at_month_end, Some(0));
         assert!(
-            taxer.at_month_end.is_some_and(|end| end < 0),
+            taxer.short_for_orders.is_some_and(|short| short > 0),
             "the column shows the shortfall: {:?}",
-            taxer.at_month_end
+            taxer.short_for_orders
         );
         assert!(
             review
@@ -13979,7 +13990,10 @@ mod tests {
             vec![with_silver(unit("683"), 0)],
             "unit 683\nPILLAGE\nBUY 10 grain\n",
         );
-        assert_eq!(broke.silver[0].at_month_end, Some(-1000));
+        // Nothing is affordable, so nothing is bought; the ask survives as `wanted_for_orders`,
+        // which is what the warning is measured against (`ah-omn7`).
+        assert_eq!(broke.silver[0].at_month_end, Some(0));
+        assert_eq!(broke.silver[0].wanted_for_orders, Some(1000));
         assert!(
             broke
                 .findings
@@ -19906,7 +19920,11 @@ mod tests {
             .find(|row| row.unit_id == "5")
             .expect("the taxer is priced");
         assert_eq!(taxer.income, Some(0));
-        assert_eq!(taxer.at_month_end, Some(-400));
+        // The ledger charges the whole ask, which is what keeps the warning firing; the column
+        // shows the purchase the unit can actually make, which with no income at all is none
+        // (`ah-omn7`).
+        assert_eq!(taxer.at_month_end, Some(0));
+        assert_eq!(taxer.wanted_for_orders, Some(400));
         assert!(
             review
                 .findings
@@ -21183,8 +21201,8 @@ mod tests {
         assert_eq!(unit.late_income, Some(120));
         assert_eq!(
             unit.at_month_end,
-            Some(60),
-            "the month still ends in credit"
+            Some(120),
+            "the wages arrive and nothing is bought with them"
         );
         assert_eq!(
             unit.short_for_orders,

@@ -247,6 +247,10 @@ pub struct UnitSilver {
     pub late_income: Option<i64>,
     /// What this month's orders are expected to spend. `None` when a term could not be priced.
     pub expense: Option<i64>,
+    /// What this month's orders asked to spend, before any bounded `BUY` was cut down to what the
+    /// unit could pay for. Equal to `expense` except on a unit whose purchase was reduced
+    /// (`ah-omn7`). `None` exactly when `expense` is.
+    pub wanted_for_orders: Option<i64>,
     /// `held + income - expense`, or `None` when either side is `None`.
     ///
     /// **Never includes `upkeep`**, deliberately: whether maintenance counts toward the figure a
@@ -255,7 +259,10 @@ pub struct UnitSilver {
     pub at_month_end: Option<i64>,
     /// What this unit's orders spend that no silver reaching it *in time* can cover.
     ///
-    /// `max(0, expense - (held + income + shared_silver_for_orders - late_income))`. `Some(0)`
+    /// `max(0, wanted_for_orders - (held + income + shared_silver_for_orders - late_income))`.
+    /// Measured against what the orders *asked* for rather than what a capped `BUY` actually
+    /// spends, so a purchase the unit cannot pay for is still reported as short (`ah-omn7`).
+    /// `Some(0)`
     /// means its orders are affordable; anything positive means the game will refuse something,
     /// however healthy `at_month_end` looks.
     ///
@@ -1143,6 +1150,9 @@ pub fn forecast_unit(
     purse: FactionPurse,
     shared_for_orders: i64,
     lookups: Lookups<'_>,
+    // Whether any own unit in this hex has `SHARE` set. A shared purse is settled after this
+    // pass, so a bounded `BUY` in such a hex is not capped at all (`ah-szye`).
+    sharers_in_hex: bool,
     ruleset: Option<&Ruleset>,
 ) -> UnitSilver {
     let sale = lookups.sale;
@@ -1179,6 +1189,7 @@ pub fn forecast_unit(
             income: None,
             late_income: None,
             expense: None,
+            wanted_for_orders: None,
             at_month_end: None,
             short_for_orders: None,
             short_on: None,
@@ -1234,6 +1245,18 @@ pub fn forecast_unit(
     // `GIVE ... ALL SILV` gives away silver an exact `BUY` on any line will later spend
     // (`ah-npab`).
     let mut market_expense = 0i64;
+    /// One bounded `BUY`, held until the market phase so it is priced against what the Give phase
+    /// leaves (`ah-npab`).
+    struct ExactBuy {
+        count: i64,
+        price: i64,
+        allowed: i64,
+        tag: Option<String>,
+    }
+    let mut exact_buys: Vec<ExactBuy> = Vec::new();
+    // What the exact buys asked to spend, whatever the unit could pay for. `short_for_orders` and
+    // the shortfall warning are measured against this (`ah-omn7`).
+    let mut market_demand = 0i64;
     let mut claim_remaining = purse.unclaimed;
     // A `TAKE ... ALL SILV` is in this unit's own block, but what it will yield depends on the
     // source unit's month, which this per-unit pass has not run (`ah-awcm`).
@@ -1291,16 +1314,20 @@ pub fn forecast_unit(
     //
     // Placing it before the loop makes a tax doubt win over a later order's, whichever line the
     // player typed first. Deliberate, and tested.
+    // How much more a contended tax would earn if it arrived in full. The bounded `BUY` cap reads
+    // the *hopeful* purse, as the ledger does, while the money columns keep the settled figure
+    // (`ah-omn7`, Q2). `0` for a unit that does not tax, and for one nobody contends with.
+    let mut hopeful_tax = 0i64;
     if taxes(unit_flags, intents) {
+        let men = taxing_men(&facts, ruleset);
         // The settlement is what the column shows: this unit's actual take once its faction-mates
         // in the hex are settled against it. `semantics::credit_tax` passes `Uncontended` instead,
         // and that difference is deliberate - see [`price_tax`].
-        let priced = price_tax(
-            taxing_men(&facts, ruleset),
-            region.tax_base,
-            region.pillaged,
-            shares.tax,
-        );
+        let priced = price_tax(men, region.tax_base, region.pillaged, shares.tax);
+        hopeful_tax = price_tax(men, region.tax_base, region.pillaged, PoolShare::Uncontended)
+            .earns
+            .saturating_sub(priced.earns)
+            .max(0);
         income = income.saturating_add(priced.earns);
         income_doubt = income_doubt.or(priced.doubt);
     }
@@ -1458,13 +1485,17 @@ pub fn forecast_unit(
                 // already walked - CLAIM, GIVE/TAKE, TAX, CAST, SELL, BUY, WITHDRAW, STUDY -
                 // before "Manufacturing PRODUCE orders ... are processed", and the wages of
                 // ENTERTAIN and WORK arrive after it, which is why `late` is not in `income` yet
-                // at this point in the loop. `market_expense` is carried separately from `expense`
-                // and both are spent before manufacturing, so the cap must see the two together.
+                // at this point in the loop. The market's spending is carried separately from
+                // `expense` and both are spent before manufacturing, so the cap must see the two
+                // together. It reads what the buys *asked* for rather than what a bounded `BUY`
+                // will settle at, because the settlement waits on the Give phase and so is not a
+                // number yet here (`ah-npab`); a unit too poor to pay for its shopping is too poor
+                // to fund a recipe either way, so this is the reading before `ah-omn7` unchanged.
                 let (priced, plan) = price_production(
                     recipe,
                     work,
                     &manufacturing_items,
-                    available_silver(held, income, expense.saturating_add(market_expense)),
+                    available_silver(held, income, expense.saturating_add(market_demand)),
                     *requested,
                     region,
                 );
@@ -1619,13 +1650,24 @@ pub fn forecast_unit(
                             Some(share) => (share - already).max(0),
                             None => *count,
                         };
-                        let charged = price_purchase(*count, price, allowed, MarketFunds::Unmeasured).spends;
-                        market_expense = market_expense.saturating_add(charged);
-                        if charged > 0 {
+                        // Priced in the market phase below, against what the Give phase leaves
+                        // (`ah-npab`), because that is where affordability can be answered.
+                        let asked = quantity_bought(*count, allowed);
+                        let wanted = asked.saturating_mul(price);
+                        market_demand = market_demand.saturating_add(wanted);
+                        // From what was *wanted*, not from what was spent: a purchase the unit can
+                        // pay none of is still what its shortfall bites on (`ah-omn7`).
+                        if wanted > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Buy));
                         }
+                        exact_buys.push(ExactBuy {
+                            count: *count,
+                            price,
+                            allowed,
+                            tag: tag.clone(),
+                        });
                         if let Some(tag) = tag {
-                            *bought.entry(tag).or_default() += quantity_bought(*count, allowed);
+                            *bought.entry(tag).or_default() += asked;
                         }
                     }
                     // What a unit can afford depends on everything else this month does, so this
@@ -1769,6 +1811,9 @@ pub fn forecast_unit(
     // Everything that spends what is *left*, by game phase and then in document order, against a
     // running total that already carries every other term. Skipped where a side is doubted: the
     // total it would spend against is not a number, and the side it feeds is `None` either way.
+    // The doubted path skips the block below entirely and charges the full ask, exactly as it did
+    // before `ah-omn7`; the pricing pass overwrites this.
+    market_expense = market_demand;
     if income_doubt.is_none() && expense_doubt.is_none() {
         // What a deferred order can spend is what reaches the unit *in time* - `ah-1wcw.3` settled
         // that `BUY ALL` spends what the unit can afford, and wages it earns this month cannot pay
@@ -1794,9 +1839,29 @@ pub fn forecast_unit(
             running = running.saturating_sub(spent);
         }
 
-        // Market phase: every exact `BUY` priced above is charged here, and each `BUY ALL` then
+        // Market phase: every exact `BUY` gathered above is priced here, and each `BUY ALL` then
         // spends what those leave.
-        running = running.saturating_sub(market_expense);
+        //
+        // `rules/buy` caps a line at what the unit can afford. The tax term is the *uncontended*
+        // one - the ledger's reading, not the column's settled `shares.tax` - so both surfaces
+        // settle one quantity; the money columns keep the settled figure (`ah-omn7`).
+        market_expense = 0;
+        let mut funds = running.saturating_add(hopeful_tax);
+        for buy in &exact_buys {
+            let line = price_purchase(
+                buy.count,
+                buy.price,
+                buy.allowed,
+                if sharers_in_hex {
+                    MarketFunds::Unmeasured
+                } else {
+                    MarketFunds::Silver(funds)
+                },
+            );
+            market_expense = market_expense.saturating_add(line.spends);
+            funds = funds.saturating_sub(line.spends);
+            running = running.saturating_sub(line.spends);
+        }
 
         for spend in &deferred {
             let Deferred::BuyAll {
@@ -1840,15 +1905,21 @@ pub fn forecast_unit(
     // carried it (`ah-npab`).
     expense = expense.saturating_add(market_expense);
 
+    // What the orders asked for, before the bounded `BUY` cap: `expense` with the demand put back
+    // in place of the settled market spend (`ah-omn7`).
+    let wanted = expense
+        .saturating_sub(market_expense)
+        .saturating_add(market_demand);
     let income = income_doubt.is_none().then_some(income);
     let late_income = income.map(|_| late);
     let expense = expense_doubt.is_none().then_some(expense);
+    let wanted_for_orders = expense.map(|_| wanted);
     let doubt = income_doubt.or(expense_doubt);
     // What the hex's `SHARE` purse actually lends this unit: never more than it is short of, so an
     // allowance settled from the ledger cannot inflate a figure here (`ah-moq3`).
-    let short_before_sharing = match (income, expense) {
-        (Some(income), Some(expense)) => Some(
-            expense
+    let short_before_sharing = match (income, wanted_for_orders) {
+        (Some(income), Some(wanted)) => Some(
+            wanted
                 .saturating_sub(held.saturating_add(income).saturating_sub(late))
                 .max(0),
         ),
@@ -1872,6 +1943,7 @@ pub fn forecast_unit(
         income,
         late_income,
         expense,
+        wanted_for_orders,
         at_month_end,
         short_for_orders,
         short_on: spent_on.filter(|_| short_for_orders.is_some_and(|short| short > 0)),
@@ -5822,6 +5894,7 @@ mod tests {
             purse,
             0,
             no_market(),
+            false,
             None,
         )
     }
@@ -5843,6 +5916,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset()),
         );
 
@@ -5903,6 +5977,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset()),
         )
     }
@@ -5962,6 +6037,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset()),
         );
 
@@ -6047,6 +6123,7 @@ mod tests {
             },
             0,
             no_market(),
+            false,
             Some(&ruleset()),
         );
 
@@ -6090,6 +6167,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset()),
         );
 
@@ -6121,6 +6199,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset()),
         );
         assert_eq!(unit.produced, 1);
@@ -6162,6 +6241,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset()),
         );
 
@@ -6201,6 +6281,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset()),
         );
 
@@ -6235,6 +6316,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset()),
         );
 
@@ -6394,6 +6476,7 @@ mod tests {
                 FactionPurse::default(),
                 0,
                 no_market(),
+                false,
                 Some(&ruleset),
             )
         };
@@ -6438,6 +6521,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset),
         );
 
@@ -6517,6 +6601,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             None,
         )
     }
@@ -6600,6 +6685,7 @@ mod tests {
                     sale: &unknown_goods,
                     ..no_market()
                 },
+                false,
                 None,
             )
             .doubt
@@ -6833,6 +6919,7 @@ mod tests {
                 purchase: &sells(12, 40),
                 ..no_market()
             },
+            false,
             Some(&ruleset),
         );
         assert_eq!(unit.income, Some(5000));
@@ -7018,6 +7105,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             None,
         );
         assert_eq!(unit.income, Some(72));
@@ -7043,6 +7131,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             None,
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::EstimatedMen));
@@ -7072,6 +7161,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset),
         );
         assert_eq!(unit.expense, Some(60));
@@ -7096,6 +7186,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset),
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::UnpricedSkill));
@@ -7119,6 +7210,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             None,
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::EstimatedMen));
@@ -7148,6 +7240,7 @@ mod tests {
                 sale,
                 ..no_market()
             },
+            false,
             None,
         )
     }
@@ -7209,6 +7302,7 @@ mod tests {
                 market_share: share,
                 ..no_market()
             },
+            false,
             None,
         )
     }
@@ -7348,6 +7442,7 @@ mod tests {
                 sale: &sale,
                 ..no_market()
             },
+            false,
             None,
         );
         assert_eq!(unit.income, Some(30));
@@ -7392,6 +7487,7 @@ mod tests {
                 sale: &sale,
                 ..no_market()
             },
+            false,
             Some(&ruleset),
         );
 
@@ -7425,6 +7521,7 @@ mod tests {
                 },
                 0,
                 no_market(),
+                false,
                 Some(&ruleset),
             )
             .cast_made
@@ -7467,6 +7564,7 @@ mod tests {
                 purchase: &purchase,
                 ..no_market()
             },
+            false,
             Some(&ruleset),
         );
 
@@ -7489,7 +7587,10 @@ mod tests {
             }),
         ];
         let unit = spending(0, &intents, paying("$120.0", None), &sells(12, 40), None);
-        assert_eq!(unit.at_month_end, Some(60));
+        // Wages arrive after the market closes, so nothing is bought with them: the month ends on
+        // the wages themselves, and the warning still names the 60 the orders wanted (`ah-omn7`).
+        assert_eq!(unit.at_month_end, Some(120));
+        assert_eq!(unit.wanted_for_orders, Some(60));
         assert_eq!(unit.short_for_orders, Some(60));
     }
 
@@ -7587,6 +7688,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             None,
         )
     }
@@ -7641,6 +7743,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset),
         )
     }
@@ -7706,6 +7809,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(ruleset),
         )
     }
@@ -7804,6 +7908,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             None,
         );
         assert_eq!(unit.income, Some(200));
@@ -7828,6 +7933,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             None,
         );
         assert_eq!(unit.income, Some(100));
@@ -7852,6 +7958,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             None,
         );
         assert_eq!(unit.income, Some(100));
@@ -7876,6 +7983,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             None,
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::TakesAllFromAnother));
@@ -7898,6 +8006,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             None,
         );
         assert_eq!(unit.income, Some(600));
@@ -7934,6 +8043,7 @@ mod tests {
                 sale: &wanted(24, 40, 40),
                 ..no_market()
             },
+            false,
             None,
         );
         assert_eq!(unit.income, Some(240));
@@ -7953,6 +8063,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             None,
         );
         assert_eq!(unit.held, 600);
@@ -7993,6 +8104,7 @@ mod tests {
                 purchase,
                 ..no_market()
             },
+            false,
             ruleset,
         )
     }
@@ -8003,9 +8115,70 @@ mod tests {
             amount: Amount::Exact(5),
             item: "grain".to_string(),
         })];
+        // The unit holds nothing, so `rules/buy` gives it nothing; the ask survives as
+        // `wanted_for_orders`, which is what the shortfall warning is measured against (`ah-omn7`).
         let unit = spending(0, &intents, RegionWages::default(), &sells(12, 40), None);
-        assert_eq!(unit.expense, Some(60));
+        assert_eq!(unit.expense, Some(0));
+        assert_eq!(unit.wanted_for_orders, Some(60));
         assert_eq!(unit.doubt, None);
+        let paid = spending(60, &intents, RegionWages::default(), &sells(12, 40), None);
+        assert_eq!(paid.expense, Some(60));
+    }
+
+    /// `rules/buy`: a unit that cannot afford the whole line buys as many as it can. The ledger
+    /// still charges the full ask, so the shortfall warning keeps firing; the column reports the
+    /// ask as `wanted_for_orders` and spends only what the unit has (`ah-omn7`).
+    #[test]
+    fn a_bounded_buy_spends_only_what_the_unit_can_pay() {
+        let intents = vec![placed(Intent::Buy {
+            amount: Amount::Exact(5),
+            item: "grain".to_string(),
+        })];
+        let unit = spending(25, &intents, RegionWages::default(), &sells(12, 40), None);
+        assert_eq!(unit.expense, Some(24));
+        assert_eq!(unit.wanted_for_orders, Some(60));
+        assert_eq!(unit.at_month_end, Some(1));
+        assert_eq!(unit.short_for_orders, Some(35));
+        assert_eq!(unit.short_on, Some(SilverSpender::Buy));
+    }
+
+    /// The quantity is capped against the *hopeful* purse - a contended tax assumed to arrive in
+    /// full - while the money columns keep the settled figure (`ah-omn7`, Q2).
+    #[test]
+    fn a_taxed_bounded_buy_is_funded_by_the_uncontended_tax() {
+        let intents = vec![
+            placed(Intent::Tax),
+            placed(Intent::Buy {
+                amount: Amount::Exact(4),
+                item: "sword".to_string(),
+            }),
+        ];
+        let receipts = Receipts::default();
+        let purchase = sells(100, 40);
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 100,
+                ..facts(10, &intents, &receipts)
+            },
+            taxable(Some(500)),
+            PoolShares {
+                tax: PoolShare::Share(250),
+                ..PoolShares::default()
+            },
+            FactionPurse::default(),
+            0,
+            Lookups {
+                purchase: &purchase,
+                ..no_market()
+            },
+            false,
+            None,
+        );
+        // the column settles the tax at its share
+        assert_eq!(unit.income, Some(250));
+        // but all four swords are bought: the uncontended reading pays for them
+        assert_eq!(unit.expense, Some(400));
+        assert_eq!(unit.wanted_for_orders, Some(400));
     }
 
     #[test]
@@ -8122,6 +8295,7 @@ mod tests {
                 market_share: &market_share,
                 ..no_market()
             },
+            false,
             None,
         )
     }
@@ -8336,8 +8510,12 @@ mod tests {
             vec![buy.clone(), give.clone()],
         ] {
             let unit = spending(100, &intents, RegionWages::default(), &sells(20, 10), None);
-            assert_eq!(unit.expense, Some(120));
-            assert_eq!(unit.at_month_end, Some(-20));
+            // The gift takes the whole purse, so `rules/buy` gives the unit no grain at all: the
+            // column spends only the gift, and the 20 the purchase wanted is what the warning is
+            // measured against (`ah-omn7`).
+            assert_eq!(unit.expense, Some(100));
+            assert_eq!(unit.wanted_for_orders, Some(120));
+            assert_eq!(unit.at_month_end, Some(0));
             assert_eq!(unit.short_for_orders, Some(20));
             assert_eq!(unit.doubt, None);
         }
@@ -8422,6 +8600,7 @@ mod tests {
                 class_carries_silver: &carries_silver,
                 ..no_market()
             },
+            false,
             Some(&rules),
         );
         assert_eq!(unit.doubt, None);
@@ -8455,6 +8634,7 @@ mod tests {
                 class_carries_silver: &carries_silver,
                 ..no_market()
             },
+            false,
             Some(&rules),
         );
         assert_eq!(unit.doubt, None);
@@ -8487,6 +8667,7 @@ mod tests {
                 class_carries_silver: &carries_silver,
                 ..no_market()
             },
+            false,
             Some(&rules),
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::GivesAWholeClass));
@@ -8516,6 +8697,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset),
         );
         assert_eq!(unit.expense, Some(200));
@@ -8849,6 +9031,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             None,
         );
         assert_eq!(unit.upkeep, Some(50));
@@ -8864,6 +9047,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
+            false,
             Some(&ruleset()),
         )
     }

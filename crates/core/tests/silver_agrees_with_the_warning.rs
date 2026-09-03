@@ -236,12 +236,18 @@ fn the_corpus_actually_exercises_the_agreement() {
 
 /// The ledger's balance before maintenance, reconstructed from the column.
 ///
-/// `B = held + income - late_income - expense`. The ledger credits `TAX` but never `WORK` or
-/// `ENTERTAIN` (`semantics.rs`: wages and takings from entertaining are paid in the turn's last
-/// phase, so they can fund nothing this month) - which is exactly what `late_income` names, and
-/// why it is subtracted here.
+/// `B = held + income - late_income - wanted_for_orders`. The ledger credits `TAX` but never
+/// `WORK` or `ENTERTAIN` (`semantics.rs`: wages and takings from entertaining are paid in the
+/// turn's last phase, so they can fund nothing this month) - which is exactly what `late_income`
+/// names, and why it is subtracted here.
+///
+/// It is `wanted_for_orders` rather than `expense` because the two differ on exactly one kind of
+/// unit: one whose bounded `BUY` was cut down to what its silver covers (`ah-omn7`). The column
+/// then spends only what the unit pays, while the ledger still charges the whole ask - which is
+/// what keeps `not-enough-silver` firing on it. Reconstructing the ledger's balance therefore
+/// needs the ask.
 fn balance_before_maintenance(silver: &UnitSilver) -> Option<i64> {
-    Some(silver.held + silver.income? - silver.late_income? - silver.expense?)
+    Some(silver.held + silver.income? - silver.late_income? - silver.wanted_for_orders?)
 }
 
 /// What maintenance actually draws off silver: `max(0, upkeep - late_income)`, which is
@@ -288,6 +294,7 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         income: Some(0),
         late_income: Some(late_income),
         expense: Some(0),
+        wanted_for_orders: Some(0),
         at_month_end: Some(0),
         short_for_orders: Some(0),
         short_on: None,
