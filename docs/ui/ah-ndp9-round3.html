@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ndp9 round 3 — a formed unit that has not been given its leader yet</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  header p b { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; align-items:start; margin-top:6px; }
+  @media (max-width:1000px){ .cols { grid-template-columns:1fr; } }
+  .orders { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); white-space:pre; margin-top:10px; }
+  .dim { color:var(--ink-dim); } .red { color:var(--danger); } .ok { color:var(--ok); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 4px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; } .note b { color:var(--ink); }
+  .prob { background:var(--panel); border:1px solid var(--edge); border-radius:5px; margin-top:10px;
+    font-family:system-ui,-apple-system,sans-serif; }
+  .prob h4 { font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass);
+    font-weight:normal; padding:10px 14px 8px; }
+  .prob .p { display:flex; gap:9px; padding:8px 14px; border-top:1px solid rgba(38,48,61,.6); font-size:13px; }
+  .prob .p .ic { color:var(--brass); flex:none; }
+  .prob .p .ln { color:var(--ink-dim); font-size:11.5px; flex:none; width:6ch; text-align:right;
+    font-family:'SF Mono',Menlo,monospace; }
+  .prob .empty { padding:12px 14px; border-top:1px solid rgba(38,48,61,.6); color:var(--ink-dim); font-size:13px; font-style:italic; }
+  table.grid { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:10px; font-family:system-ui,-apple-system,sans-serif; max-width:120ch;}
+  table.grid th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.grid td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  table.grid td.m { font-family:system-ui,sans-serif; color:#f0d8d8; }
+  table.grid td.s { font-family:system-ui,sans-serif; color:var(--ink-dim); font-style:italic; }
+</style></head><body>
+<header>
+  <h1>ah-ndp9 round 3 — <span>a formed unit that has not been given its leader yet</span></h1>
+  <p>Everything else is settled and unchanged: <b>T1</b> two toggles, <b>S1</b> the study sentence, <b>M1</b>
+  a sentence per route, <b>A1</b> apprentices as mages, <b>G1</b> the Settings rows, <b>X2</b> the mixed-gift tail.
+  One case the earlier rounds never showed: a unit created by <code>FORM</code> in this very document.
+  A formed unit starts with <b>no people at all</b>, and the men it will have arrive from a
+  <code>GIVE NEW n</code> line — which the app already projects. So the question is only about the moment
+  <i>before</i> that line exists.</p>
+</header>
+<main>
+
+<h3 class="sec">The idiom, finished — identical under both options</h3>
+<p>This is how a player actually makes a mage. The leader arrives by <code>GIVE NEW 1</code>, the app projects it,
+  and the composition the study is judged against is one leader. <b>No warning, either way.</b></p>
+<div class="orders">unit 1234
+  FORM 1
+    STUDY FORCE
+  END
+  GIVE NEW 1 1 LEAD   <span class="dim">; the app projects this into the new unit</span></div>
+<div class="prob" style="max-width:78ch">
+  <h4>Problems</h4>
+  <div class="empty">Nothing to report for this unit.</div>
+</div>
+
+<h3 class="sec">The moment before — the whole of the question</h3>
+<p>The same document, three lines in, while the player is still typing. The <code>GIVE NEW 1</code> line has not
+  been written. The formed unit has no people, and it is ordered to begin force.</p>
+
+<div class="cols">
+  <div>
+    <span class="opt">F1 — judge it like any other unit</span>
+    <div class="orders">unit 1234
+  FORM 1
+    <span class="red">STUDY FORCE</span>
+  END</div>
+    <div class="prob">
+      <h4>Problems</h4>
+      <div class="p"><span class="ln">3</span><span class="ic">&#9888;</span>
+        <span>only a lone leader can begin force; this unit has no people</span></div>
+    </div>
+    <ul class="notes">
+      <li>One rule, no exceptions: the same sentence the agreed table already gives a unit with no people.</li>
+      <li>A formed unit that never gets its <code>GIVE NEW</code> line at all is caught — nothing else in the app says a word about it.</li>
+      <li class="con">Fires while the orders are half-written, and clears itself once the <code>GIVE NEW</code> line is typed. Every mage a player forms shows this warning for a few seconds.</li>
+      <li class="con">A player who reads it as "force needs people" rather than "you have not written the GIVE yet" has been told something slightly misleading.</li>
+    </ul>
+  </div>
+
+  <div>
+    <span class="opt">F2 — say nothing until it has someone</span>
+    <div class="orders">unit 1234
+  FORM 1
+    <span class="ok">STUDY FORCE</span>
+  END</div>
+    <div class="prob">
+      <h4>Problems</h4>
+      <div class="empty">Nothing to report for this unit.</div>
+    </div>
+    <ul class="notes">
+      <li>Silent through the whole of the normal typing sequence; the warning only ever appears about a composition the player actually wrote.</li>
+      <li>Matches how the rest of the app treats a formed unit: it judges what has been given to it, not the empty shell.</li>
+      <li class="con">A formed unit ordered to study force and given nobody is never warned about — the order is certain to fail and the app is quiet.</li>
+      <li class="con">One exception in the rule, which has to be explained in the code and remembered by the next check.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">Where the two differ, exhaustively</h3>
+<p>Only the first row moves. Every other composition is warned identically under both.</p>
+<table class="grid">
+  <tr><th style="width:38ch">the formed unit, once the whole document is read</th><th>F1</th><th>F2</th></tr>
+  <tr><td>given nobody at all</td>
+      <td class="m">only a lone leader can begin force; this unit has no people</td>
+      <td class="s">silent</td></tr>
+  <tr><td>given 1 leader <span class="dim">(the normal idiom)</span></td><td class="s">silent</td><td class="s">silent</td></tr>
+  <tr><td>given 1 leader and 1 human</td>
+      <td class="m">only a lone leader can begin force; this unit also has 1 human</td>
+      <td class="m">only a lone leader can begin force; this unit also has 1 human</td></tr>
+  <tr><td>given 3 humans</td>
+      <td class="m">only a lone leader can begin force; this unit has 3 humans</td>
+      <td class="m">only a lone leader can begin force; this unit has 3 humans</td></tr>
+</table>
+
+<div class="note"><b>Not in question.</b> A unit the <i>report</i> shows with no people ordered to begin force is
+  warned under both — that row was agreed in round 2 and does not move. This is only about a unit
+  <code>FORM</code> creates inside the document being typed.</div>
+
+</main></body></html>
