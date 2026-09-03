@@ -10645,6 +10645,45 @@ mod tests {
             assert_eq!(silver_of(&review, "2390").income, Some(4000));
             assert_eq!(silver_of(&review, "2391").income, Some(935));
         }
+
+        #[test]
+        fn an_unknown_faction_purse_keeps_every_claim_as_written() {
+            let report = ParsedReport {
+                regions: vec![region(vec![taxer("2390", 1), taxer("2391", 1)])],
+                ..Default::default()
+            };
+            let review = review_turn(
+                &report,
+                "unit 2390\nCLAIM 4000\nunit 2391\nCLAIM 4000\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            assert_eq!(silver_of(&review, "2390").income, Some(4000));
+            assert_eq!(silver_of(&review, "2391").income, Some(4000));
+        }
+
+        #[test]
+        fn a_later_claimant_cannot_spend_silver_the_earlier_unit_received() {
+            let report = ParsedReport {
+                regions: vec![region(vec![taxer("2390", 1), taxer("2391", 1)])],
+                header: crate::report::header::ReportHeader {
+                    unclaimed_silver: Some(4935),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let review = review_turn(
+                &report,
+                "unit 2390\nCLAIM 4000\nunit 2391\nCLAIM 4000\nGIVE 0 1000 SILV\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            assert_eq!(silver_of(&review, "2391").income, Some(935));
+            assert!(review.findings.iter().any(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("2391")
+            }));
+        }
     }
 
     /// `ah-t2pn.2`. A region's wage pool and its entertainment demand are shared exactly as its
