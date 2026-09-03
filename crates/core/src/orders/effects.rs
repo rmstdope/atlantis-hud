@@ -855,6 +855,10 @@ impl Working {
                 })
                 .map(|unit| unit.unit_id.clone())
                 .collect(),
+            // No catalogue entry for the skill: nothing can be classified, every sender falls to
+            // the first phase, and transport settles in one pass as it did before this bead. The
+            // shipped ruleset states `quartermaster [QUAM]`, so this is a catalogue fault rather
+            // than a report one (`ah-d0ku`).
             None => std::collections::BTreeSet::new(),
         };
         let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
@@ -1674,8 +1678,12 @@ impl Working {
                     continue;
                 };
                 take_item(&mut self.units[pending.sender].unit.items, live, moved);
+                // Resolved the same way the live list above is, rather than by exact tag
+                // equality: an allowance that failed to find its row would silently stay
+                // undecremented, and the item could then move a second time in this phase -
+                // exactly the rule this phase pass exists to enforce (`ah-d0ku`).
                 if let Some(allowed) = allowance.get_mut(&pending.sender) {
-                    if let Some(index) = allowed.iter().position(|item| item.tag == tag) {
+                    if let Some(index) = find_item(&self.ruleset, allowed, &tag) {
                         take_item(allowed, index, moved);
                     }
                 }
@@ -5429,6 +5437,33 @@ mod tests {
                 "what arrived in this phase cannot leave again in the same phase"
             );
             assert_eq!(stone_of(&response, "900"), 0, "the source sent its stone");
+        }
+
+        #[test]
+        fn goods_arriving_in_the_first_phase_cannot_be_forwarded_in_it() {
+            // Both lines are non-quartermaster sends, so both belong to the first phase: what 903
+            // receives there may not leave again until the next one, and its own line therefore
+            // moves nothing (`rules/sequenceofevents`, `ah-d0ku`).
+            let response =
+                chain_preview("unit 900\nTRANSPORT 903 10 STON\nunit 903\nTRANSPORT 901 10 STON\n");
+
+            assert_eq!(
+                stone_of(&response, "903"),
+                10,
+                "the arrival stays this phase"
+            );
+            assert!(
+                only_unit_by_id(&response, "903").transport_sent.is_empty(),
+                "the forwarding line had nothing it was allowed to move"
+            );
+            assert!(
+                response
+                    .regions
+                    .iter()
+                    .flat_map(|region| region.units.iter())
+                    .all(|unit| unit.unit.unit_id != "901"),
+                "901 is unchanged, so nothing reached it"
+            );
         }
 
         #[test]
