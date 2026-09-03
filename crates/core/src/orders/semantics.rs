@@ -3833,8 +3833,8 @@ fn ledger_for_with_production<'a>(
 
     // After the whole walk, not inside the market phase. `settle_buy_all` reads the balance at
     // `StatePhase::Maintenance`, which carries only the deltas already *applied* - so settling it
-    // at `Market` would spend silver the unit's own STUDY, PRODUCE or BUILD has not yet charged
-    // for. `forecast_unit` settles its deferred `BUY ALL` after its whole walk for the same reason
+    // at `Market` would spend silver the unit's own STUDY or manufacturing PRODUCE has not yet
+    // charged for. `forecast_unit` settles its deferred `BUY ALL` after its whole walk for the same reason
     // (`crates/core/src/orders/silver.rs`, `Deferred::BuyAll`), and the two must agree.
     for ordered in &hex.units {
         settle_buy_all(&mut ledger, hex, ordered);
@@ -5426,7 +5426,8 @@ fn buy(
 /// which is the moment the unit's silver balance matches `forecast_unit`'s `running` - report
 /// holding, plus every credit, less every eager charge, and **not** the late income, which
 /// `charge_upkeep` nets off the fee rather than crediting (`ah-uwa3`). Settling it earlier - inside
-/// the market phase, say - would spend silver a later phase has not yet charged for (`ah-gdd3.1`).
+/// the market phase, say - would spend silver a later phase has not yet charged for: STUDY and
+/// manufacturing PRODUCE both charge `SILV` after it (`ah-gdd3.1`).
 fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
     let who = &actor.unit.unit_id;
     let Some(lines) = ledger.buy_all.remove(who) else {
@@ -14802,11 +14803,18 @@ mod tests {
             .bought
             .get(&("2390".to_string(), "GRAI".to_string()))
             .copied()
-            .unwrap_or(0);
+            .expect("the buy-all bought grain at all");
 
-        assert!(
-            grain < 10,
-            "the buy-all left the study its money rather than taking all ten grain: {grain}"
+        // Exactly, not merely fewer than ten: `< 10` would pass just as well if the order were
+        // doubted away entirely, which is not what this pins. The study takes $10 of the $100, so
+        // nine grain at $10 is every coin the month leaves.
+        assert_eq!(grain, 9, "the buy-all takes what the study leaves");
+        assert_eq!(
+            ledger
+                .state
+                .balance_at(StatePhase::Maintenance, "2390", "SILV"),
+            0,
+            "and between them they spend the whole hundred"
         );
     }
 
