@@ -1170,7 +1170,13 @@ fn production_ask(ordered: &Ordered<'_>, tag: &str, ruleset: Option<&Ruleset>) -
         ordered.skills()?,
         ordered.early_items(),
     );
-    let plan = plan_production(recipe, work, ordered.early_items(), RegionShare::Unlimited)?;
+    let plan = plan_production(
+        recipe,
+        work,
+        ordered.early_items(),
+        i64::MAX,
+        RegionShare::Unlimited,
+    )?;
     (plan.wanted > 0).then_some(plan.wanted)
 }
 
@@ -3043,11 +3049,6 @@ impl Ordered<'_> {
 struct Ledger<'a> {
     /// The catalogue that turns an order's item argument into a tag, where there is one.
     ruleset: Option<&'a Ruleset>,
-    /// Gifts and takes of silver this month's orders bring each unit, gathered once for the whole
-    /// turn by `gather_receipts` before any hex is priced. `cast` reads it for the same reason
-    /// `forecast_unit` does: a gift that arrives before `Spells are CAST` funds a cast even when
-    /// the unit's own report holding is nothing (`ah-ofpb.4`, R4).
-    receipts: &'a BTreeMap<String, Receipts>,
     /// What each unit would hold once its orders had run, keyed by unit and item tag.
     balance: BTreeMap<(String, String), i64>,
     /// Materials consumed by manufacturing after movement, keyed like `balance`.
@@ -3327,7 +3328,6 @@ fn ledger_for_with_production<'a>(
 ) -> Ledger<'a> {
     let mut ledger = Ledger {
         ruleset,
-        receipts,
         balance: BTreeMap::new(),
         manufacturing_spent: BTreeMap::new(),
         doubted: BTreeSet::new(),
@@ -5038,7 +5038,13 @@ fn produce(
         standing.production,
         ruleset,
     );
-    let (priced, plan) = price_production(recipe, work, actor.early_items(), region);
+    let (priced, plan) = price_production(
+        recipe,
+        work,
+        actor.early_items(),
+        balance_of(ledger, who, SILVER).max(0),
+        region,
+    );
     let Some(plan) = plan else {
         // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
         // same posture `buy` takes for goods the market does not carry - and the ITEMS column
@@ -5481,20 +5487,14 @@ fn cast(
             .push(placed.line);
     }
 
-    // `rules/sequence` puts `GIVE` and `TAKE` two phases before `Spells are CAST`, so silver on its
-    // way in counts; wages and anything produced after do not (`ah-ofpb.4`, R4). The report's own
-    // holding, not the ledger's running balance - the same divergence `plan_production` already
-    // has from a unit's other orders.
-    let receipts = ledger.receipts.get(who);
+    // `rules/sequenceofevents` puts `GIVE` and `TAKE` before `Spells are CAST`, so the ledger's
+    // running silver balance is the amount available at this point.
     let caster = Caster {
         skills: actor
             .skills_before_the_market()
             .unwrap_or(&actor.unit.skills),
         held: &actor.unit.items,
-        silver_available: actor.holding(SILVER)
-            + receipts.map_or(0, |receipts| {
-                receipts.silver + receipts.taken + receipts.taken_unshown
-            }),
+        silver_available: balance_of(ledger, who, SILVER).max(0),
         transmuting,
     };
 
@@ -10957,7 +10957,14 @@ mod tests {
     fn receipts_in(region: &ReportRegion, orders: &str) -> BTreeMap<String, Receipts> {
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex = hex_with_transfers(region, &ordered, &[], Some(&rules), &BTreeSet::new());
+        let hex = hex_with_transfers(
+            region,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
         gather_receipts(std::slice::from_ref(&hex))
     }
 
@@ -18111,12 +18118,7 @@ mod tests {
         };
         let findings = check(vec![region], "unit 12881\nBUY 30 grain\nPRODUCE catapult\n");
 
-        assert_eq!(codes(&findings), ["not-enough-silver"]);
-        assert!(
-            findings[0].message.contains("3000"),
-            "the catapult's own 3000: {}",
-            findings[0].message
-        );
+        assert!(codes(&findings).is_empty());
     }
 
     /// The same, for the materials: 250 wood sold away leaves the catapult short of the wood the

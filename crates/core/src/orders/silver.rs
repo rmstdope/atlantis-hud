@@ -1406,7 +1406,13 @@ pub fn forecast_unit(
                 // producing the same goods here are settled against it - the same settlement the
                 // ITEMS ledger reads, through the same function (`ah-256d`, `ah-ycuj`).
                 let region = (lookups.region_share)(item);
-                let (priced, plan) = price_production(recipe, work, facts.items, region);
+                let (priced, plan) = price_production(
+                    recipe,
+                    work,
+                    facts.items,
+                    available_silver(held, income, expense),
+                    region,
+                );
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
@@ -1501,10 +1507,7 @@ pub fn forecast_unit(
                     // `rules/sequence` puts `GIVE` and `TAKE` two phases before `Spells are CAST`,
                     // so silver on its way in counts; wages and anything produced after do not
                     // (`ah-ofpb.4`, R4).
-                    silver_available: held
-                        .saturating_add(receipts.silver)
-                        .saturating_add(receipts.taken)
-                        .saturating_add(receipts.taken_unshown),
+                    silver_available: available_silver(held, income, expense),
                     transmuting,
                 };
                 let (priced, plan) = price_cast(resolved, &caster, region);
@@ -3316,6 +3319,10 @@ pub fn taxes(flags: &[String], intents: &[PlacedIntent]) -> bool {
     works_by_default(intents) && flagged_to_tax(flags)
 }
 
+fn available_silver(held: i64, income: i64, expense: i64) -> i64 {
+    held.saturating_add(income).saturating_sub(expense).max(0)
+}
+
 /// Whether the unit's report flags say it taxes every turn without an order.
 ///
 /// The flag half of [`taxes`], on its own: `taxes` also asks whether the month is free, and
@@ -3373,9 +3380,10 @@ pub fn price_production(
     recipe: Option<&Production>,
     work: Workforce,
     held: &[ItemAmount],
+    silver_available: i64,
     region: RegionShare,
 ) -> (Priced, Option<ProductionPlan>) {
-    match recipe.and_then(|recipe| plan_production(recipe, work, held, region)) {
+    match recipe.and_then(|recipe| plan_production(recipe, work, held, silver_available, region)) {
         Some(plan) => (
             Priced {
                 spends: plan.silver,
@@ -3740,6 +3748,7 @@ pub fn plan_production(
     recipe: &Production,
     work: Workforce,
     held: &[ItemAmount],
+    silver_available: i64,
     region: RegionShare,
 ) -> Option<ProductionPlan> {
     if recipe.inputs_are_alternatives {
@@ -3788,7 +3797,7 @@ pub fn plan_production(
         .collect();
 
     let by_silver = if silver_each > 0 {
-        holding(SILVER_TAG) / silver_each
+        silver_available.max(0) / silver_each
     } else {
         i64::MAX
     };
@@ -4146,6 +4155,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            i64::MAX,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4268,6 +4278,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 99)]),
+            i64::MAX,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4289,6 +4300,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 99)]),
+            i64::MAX,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4324,6 +4336,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            i64::MAX,
             RegionShare::Share(20),
         )
         .expect("a priceable recipe");
@@ -4345,6 +4358,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            i64::MAX,
             RegionShare::Share(40),
         )
         .expect("a priceable recipe");
@@ -4368,6 +4382,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            i64::MAX,
             RegionShare::NothingHere,
         )
         .expect("a priceable recipe");
@@ -4395,6 +4410,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            i64::MAX,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4419,8 +4435,13 @@ mod production_tests {
             }
         );
 
-        let (priced, plan) =
-            price_production(None, Workforce::default(), &[], RegionShare::Unlimited);
+        let (priced, plan) = price_production(
+            None,
+            Workforce::default(),
+            &[],
+            i64::MAX,
+            RegionShare::Unlimited,
+        );
         assert_eq!(
             priced,
             Priced {
@@ -4445,6 +4466,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            i64::MAX,
             RegionShare::Unlimited,
         );
         assert_eq!(
@@ -4471,6 +4493,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 100_000)]),
+            i64::MAX,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4494,6 +4517,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 3000), ("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+            3000,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4519,6 +4543,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            i64::MAX,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4537,6 +4562,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 3000), ("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
+            3000,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4563,6 +4589,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 2)]),
+            i64::MAX,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4594,6 +4621,7 @@ mod production_tests {
                     tools: 0,
                 },
                 &held(&[("GRAI", 99)]),
+                i64::MAX,
                 RegionShare::Unlimited,
             ),
             None
@@ -4617,6 +4645,7 @@ mod production_tests {
                 &unscraped,
                 ten_carpenters,
                 &held(&[]),
+                i64::MAX,
                 RegionShare::Unlimited
             ),
             None
@@ -4628,6 +4657,7 @@ mod production_tests {
                 &no_output,
                 ten_carpenters,
                 &held(&[]),
+                i64::MAX,
                 RegionShare::Unlimited
             ),
             None
