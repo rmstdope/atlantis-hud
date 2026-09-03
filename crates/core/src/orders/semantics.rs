@@ -1859,17 +1859,18 @@ struct Ordered<'a> {
     /// The document's complete parsed list, retained only so
     /// [`check_two_month_long_orders`] can report the orders that lost the month.
     all_intents: &'a [PlacedIntent],
-    /// This unit's TEACH eligibility, decided once by
-    /// [`Ordered::retain_effective_month_intents`] and read by every later judgement about what
-    /// spends the month.
+    /// This unit's TEACH eligibility, as [`Ordered::settle_effective_month_intents`] last read
+    /// it, and what every later judgement about what spends the month reads.
     ///
     /// The outer `None` means *not yet settled*; the inner one is `teaching_eligibility`'s own
-    /// "cannot be said". Stored rather than recomputed because `apply_recruits` runs **after**
-    /// `hex_with_transfers` and rewrites `races_after_recruits` and `men_after_orders`: a second
-    /// reading could answer differently, and the filter and the `two-month-long-orders` warning
-    /// would then describe different months for one unit (`ah-rzkm`). `rules/sequenceofevents`
-    /// puts teaching before the market phase, so the post-transfer, pre-recruit state is the one
-    /// the decision belongs to.
+    /// "cannot be said". Stored rather than recomputed so the month filter, the
+    /// `two-month-long-orders` warning and the teacher checks cannot describe different months
+    /// for one unit (`ah-rzkm`).
+    ///
+    /// `rules/sequenceofevents` resolves `BUY` in the market phase and `TEACH` in the month-long
+    /// phase after it, so the men a `BUY` brought in are already in the unit when it teaches: the
+    /// settled value is the **post-recruit** one, which is what `check_teacher` has always
+    /// judged from.
     teaching_eligible: Option<Option<bool>>,
     /// `None` when the document has no block for this unit at all.
     block_line: Option<usize>,
@@ -2041,10 +2042,11 @@ fn hex_with_transfers<'a>(
         &report_units,
     );
     hex.shown_anywhere = report_units;
-    // After the transfers, never before: GIVE/TAKE can change whether a unit is all leaders, and
-    // that is the state the TEACH eligibility exception is judged from (`ah-rzkm`).
+    // A first settlement, so the provisional ledger that prices this month's recruits holds no
+    // order that lost the month. `settle_recruits_before_production` settles again afterwards,
+    // and that reading is the one that stands (`ah-rzkm`).
     for ordered in &mut hex.units {
-        ordered.retain_effective_month_intents();
+        ordered.settle_effective_month_intents();
     }
     hex
 }
@@ -3029,6 +3031,15 @@ impl Ordered<'_> {
     }
 
     fn intent_spends_the_month(&self, intent: &Intent) -> bool {
+        // Every `Hex` reaches a reader through `hex_with_transfers`, which settles every unit, so
+        // the fallback is unreachable in production. It is loud in debug rather than silent,
+        // because a future path that skipped the settlement would quietly reintroduce two
+        // readings of the same decision (`ah-rzkm`).
+        debug_assert!(
+            self.teaching_eligible.is_some(),
+            "the month has not been settled for {}",
+            self.unit.unit_id
+        );
         month_spending_intent(
             intent,
             self.teaching_eligible
@@ -3036,15 +3047,26 @@ impl Ordered<'_> {
         )
     }
 
-    /// Drops every month claim after the first, leaving the month exactly one winner (`ah-rzkm`).
+    /// Rebuilds `intents` from the document's own list, keeping every order that does not spend
+    /// the month plus the first month claim - so the month has exactly one winner (`ah-rzkm`).
     ///
-    /// Run at the end of [`hex_with_transfers`], after `apply_transfers`: whether a `TEACH`
-    /// claims the month is decided from the post-transfer state, which is what
-    /// [`check_two_month_long_orders`] already judges from, so the filter and the warning cannot
-    /// disagree. `teaching_eligibility` is read once, before the mutable borrow.
-    fn retain_effective_month_intents(&mut self) {
+    /// Rebuilt rather than filtered in place, so it is idempotent and may be run again once more
+    /// of the turn has settled. It is run twice, and both are load-bearing:
+    ///
+    /// - at the end of [`hex_with_transfers`], after `apply_transfers`, so the provisional ledger
+    ///   `settle_recruits_before_production` prices recruits against holds no order that lost the
+    ///   month;
+    /// - again straight after `apply_recruits`, which is the reading that stands. `TEACH`
+    ///   eligibility depends on what the unit is made of, and `rules/sequenceofevents` resolves
+    ///   `BUY` in the market phase before the month-long phase that teaches - so the men a `BUY`
+    ///   brought in are already there, and the post-recruit state is the one `check_teacher`
+    ///   judges from too.
+    ///
+    /// `teaching_eligibility` is read once, before the mutable borrow, and stored.
+    fn settle_effective_month_intents(&mut self) {
         let teaching_eligible = self.teaching_eligibility();
         self.teaching_eligible = Some(teaching_eligible);
+        self.intents = self.all_intents.to_vec();
         let mut winner: Option<MonthClaim> = None;
         self.intents.retain(|placed| {
             if !month_spending_intent(&placed.intent, teaching_eligible) {
@@ -3668,6 +3690,12 @@ fn settle_recruits_before_production(
             claim_allowances,
         );
         apply_recruits(&mut hex.units, &ledger, ruleset);
+        // The settlement that stands: `rules/sequenceofevents` resolves BUY before the month-long
+        // phase, so a unit teaches with the men it just bought - and `check_teacher` judges its
+        // eligibility from exactly this state (`ah-rzkm`).
+        for ordered in &mut hex.units {
+            ordered.settle_effective_month_intents();
+        }
     }
 }
 
@@ -17776,18 +17804,20 @@ mod tests {
         );
     }
 
-    /// One TEACH eligibility decision, not two. `apply_recruits` runs after `hex_with_transfers`
-    /// and can change what a unit is made of, so a second reading could answer differently - and
-    /// the filter and the `two-month-long-orders` warning would then describe different months
-    /// for one unit. `rules/sequenceofevents` puts teaching before the market phase, so the
-    /// post-transfer, pre-recruit state is the one that decides.
+    /// One TEACH eligibility decision, not two, and taken on the right side of the market phase.
+    ///
+    /// `rules/sequenceofevents` resolves `BUY` before the month-long phase that teaches, so a
+    /// unit of leaders that buys orcs is no longer all-leaders when it teaches: its `TEACH`
+    /// certainly cannot run, claims no month, and the `STUDY` below it is the order that does.
+    /// The alternative - the filter reading the pre-recruit state while `check_teacher` reads the
+    /// post-recruit one - tells the unit in one breath that it cannot teach and that the teaching
+    /// it cannot do spent its month.
     #[test]
-    fn recruits_do_not_move_the_teach_decision_after_the_month_is_settled() {
+    fn a_teach_the_market_phase_disqualifies_does_not_claim_the_month() {
         let mut hex = region(vec![
             with_leaders(with_skill(with_silver(unit("500"), 100_000), "COMB", 3), 3),
             with_silver(unit("700"), 1_000),
         ]);
-        // The BUY makes the teacher no longer all-leaders, but only after the month is settled.
         hex.for_sale.push(MarketItem {
             amount: 40,
             name: "orc".to_string(),
@@ -17796,23 +17826,20 @@ mod tests {
         });
         let orders = "unit 500\nTEACH 700\nBUY 5 orc\nSTUDY Combat\nunit 700\nSTUDY Combat\n";
 
-        assert_eq!(
-            effective_keywords(&hex, orders, "500"),
-            vec!["TEACH", "BUY"],
-            "the TEACH claims the month, so the STUDY below it is discarded"
-        );
-
-        let told: Vec<Finding> = check_months(vec![hex], orders)
-            .into_iter()
-            .filter(|finding| {
-                finding.code == codes::TWO_MONTH_LONG_ORDERS
-                    && finding.unit_id.as_deref() == Some("500")
-            })
+        let findings = check_months(vec![hex], orders);
+        let told: Vec<&str> = findings
+            .iter()
+            .filter(|finding| finding.unit_id.as_deref() == Some("500"))
+            .map(|finding| finding.code.as_str())
             .collect();
-        assert_eq!(
-            told.len(),
-            1,
-            "the discarded STUDY is still reported: {told:?}"
+
+        assert!(
+            told.contains(&codes::TEACHER_CANNOT_TEACH.as_str()),
+            "the orcs it bought are already there when it teaches: {findings:?}"
+        );
+        assert!(
+            !told.contains(&codes::TWO_MONTH_LONG_ORDERS.as_str()),
+            "a TEACH that cannot run claims no month, so the STUDY is not discarded: {findings:?}"
         );
     }
 
