@@ -4257,12 +4257,7 @@ mod production_tests {
                 tool_bonus: 0,
                 tools: 0,
             },
-            &held(&[
-                ("SILV", 100_000),
-                ("WOOD", 9999),
-                ("IRWD", 999),
-                ("FUR", 999),
-            ]),
+            &held(&[("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
             0,
             None,
             RegionShare::Unlimited,
@@ -4921,7 +4916,7 @@ mod production_tests {
                 &held(&[("GRAI", 99)]),
                 0,
                 None,
-                RegionShare::Unlimited
+                RegionShare::Unlimited,
             ),
             None
         );
@@ -5828,6 +5823,27 @@ mod tests {
         ]
     }
 
+    /// The same materials with the unit's own `SILV` line, which is what a real report prints for
+    /// a unit holding silver.
+    ///
+    /// The gift and cast cases below **must** carry it: without it the old cap read a holding of
+    /// nothing and already made none, so an assertion of `produced == 0` passed against the very
+    /// bug this bead fixes. Each of those two tests is paired with a control that drops the
+    /// spending order and asserts the run *is* funded, which is what pins the spend as the cause.
+    fn catapult_materials_and_silver(silver: i64) -> [ItemAmount; 4] {
+        let [wood, ironwood, furs] = catapult_materials();
+        [
+            ItemAmount {
+                amount: silver,
+                name: "silver".into(),
+                tag: "SILV".into(),
+            },
+            wood,
+            ironwood,
+            furs,
+        ]
+    }
+
     /// `ah-gdd3.2`. `rules/sequenceofevents` runs CLAIM in the first instant batch, long before
     /// "Manufacturing PRODUCE orders ... are processed", so silver a `CLAIM` brings in funds this
     /// month's catapult - which the report's own `SILV` line does not show.
@@ -5884,7 +5900,7 @@ mod tests {
                 amount: Amount::Exact(3000),
             }),
         ];
-        let items = catapult_materials();
+        let items = catapult_materials_and_silver(3000);
         let carpenters = [skill("CARP", 4)];
         let unit = forecast_unit(
             UnitFacts {
@@ -5909,6 +5925,34 @@ mod tests {
 
         assert_eq!(unit.produced, 0);
         assert_eq!(unit.production_capped_by, Some(ProductionCap::Silver));
+
+        // The control: the same unit without the gift is funded, so it is the gift that binds and
+        // not something missing from the fixture.
+        let alone = [placed(Intent::Produce {
+            requested: None,
+            item: "CATP".to_string(),
+        })];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 3000,
+                items: &items,
+                skills: &carpenters,
+                production_skills: &carpenters,
+                late: Some(LateFacts {
+                    men: 4,
+                    men_by_race: &[],
+                    items: &items,
+                }),
+                ..facts(4, &alone, &receipts)
+            },
+            paying("$5.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            Some(&ruleset()),
+        );
+        assert_eq!(unit.produced, 1);
     }
 
     /// `ah-gdd3.2`. "Spells are CAST" runs before manufacturing, and the committed ruleset prices
@@ -5926,7 +5970,7 @@ mod tests {
                 item: "CATP".to_string(),
             }),
         ];
-        let items = catapult_materials();
+        let items = catapult_materials_and_silver(3000);
         let carpenters = [skill("CARP", 4), skill("CRPA", 1)];
         let unit = forecast_unit(
             UnitFacts {

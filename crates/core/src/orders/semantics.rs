@@ -19541,17 +19541,29 @@ mod tests {
     /// in, and no catapult is created.
     #[test]
     fn a_gift_lowers_what_the_ledger_lets_a_produce_make() {
-        let region = region(vec![carpenters(3000, 9999), unit("12882")]);
-        let report = report(vec![region]);
+        let hex = report(vec![region(vec![carpenters(3000, 9999), unit("12882")])]);
         let orders = "unit 12881\nGIVE 12882 3000 SILV\nPRODUCE catapult\n";
 
-        let effects = item_effects(&report, orders, Some(&ruleset()));
+        let effects = item_effects(&hex, orders, Some(&ruleset()));
         let moved = effects
             .get("12881")
             .map(|unit| unit.moved.clone())
             .unwrap_or_default();
         assert!(
             !moved.iter().any(|movement| movement.tag == "CATP"),
+            "{moved:?}"
+        );
+
+        // The control: the same hex without the gift does create one, so the gift is what binds
+        // and the assertion above is not passing on a fixture that could never produce.
+        let funded = report(vec![region(vec![carpenters(3000, 9999), unit("12882")])]);
+        let effects = item_effects(&funded, "unit 12881\nPRODUCE catapult\n", Some(&ruleset()));
+        let moved = effects
+            .get("12881")
+            .map(|unit| unit.moved.clone())
+            .unwrap_or_default();
+        assert!(
+            moved.iter().any(|movement| movement.tag == "CATP"),
             "{moved:?}"
         );
     }
