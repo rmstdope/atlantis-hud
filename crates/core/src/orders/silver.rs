@@ -3782,11 +3782,11 @@ pub struct ProductionPlan {
 
 /// What a unit's `PRODUCE` order makes this month, from the recipe and what the unit holds.
 ///
-/// `men` and `held` are the caller's to supply, and the cap is taken against `held` rather than
-/// against a running balance. That is a decision, not an oversight: the ledger keeps a running
-/// balance and `forecast_unit` does not, so capping against one would give the two surfaces
-/// different answers for the same order - which is exactly the drift `ah-ycuj`'s corpus test
-/// exists to catch.
+/// `men` and `held` are the caller's to supply, and the cap is still taken against `held` rather
+/// than against a running balance. `ah-gdd3.1` gave both surfaces the turn's phase order and made
+/// the **cast** cap read the balance at `StatePhase::Cast`; the manufacturing PRODUCE cap is
+/// `ah-gdd3.2`'s and is deliberately untouched here, so that both surfaces keep answering the same
+/// way for one order - which is exactly the drift `ah-ycuj`'s corpus test exists to catch.
 ///
 /// **Both callers supply the post-gift picture** (`ah-qct4`): `rules/sequenceofevents` settles
 /// "Give orders. GIVE and TAKE orders are processed." nine phases before either PRODUCE phase, so
@@ -3944,10 +3944,11 @@ pub struct Caster<'a> {
     pub skills: &'a [Skill],
     /// Everything the unit holds, for the material inputs a cast consumes.
     pub held: &'a [ItemAmount],
-    /// Silver the unit can have before the spell resolves: what the report shows it holding plus
-    /// every gift and take this month's orders bring it. `rules/sequence` puts `GIVE` and `TAKE`
-    /// two phases before `Spells are CAST`, and wages, takings from entertaining and anything the
-    /// unit produces after it - so those are not counted, and neither is `late_income`.
+    /// Silver the unit can have when the spell resolves: what its balance holds once every phase
+    /// `rules/sequenceofevents` runs before *"Spells are CAST"* has settled - CLAIM, then GIVE and
+    /// TAKE, then TAX. The market (SELL, then BUY) opens afterwards, as do wages, takings from
+    /// entertaining and anything the unit produces, so none of those are counted and neither is
+    /// `late_income` (`ah-gdd3.1`).
     pub silver_available: i64,
     /// `CAST Transmutation [number] <material>`, resolved by the caller because only it can turn
     /// the order's text into a tag. `None` for every other spell.

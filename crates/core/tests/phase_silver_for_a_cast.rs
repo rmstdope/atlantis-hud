@@ -123,7 +123,10 @@ fn cases() -> Vec<Case> {
 /// 4 for the wrong reason, so the fixture says out loud that the fund is read.
 #[test]
 fn the_fixture_gives_the_faction_an_unclaimed_fund() {
-    assert_eq!(parse_report_full(&report(0)).header.unclaimed_silver, Some(1000));
+    assert_eq!(
+        parse_report_full(&report(0)).header.unclaimed_silver,
+        Some(1000)
+    );
 }
 
 #[test]
@@ -144,16 +147,31 @@ fn the_silver_column_prices_a_cast_from_the_silver_the_turn_leaves_it() {
             .silver
             .iter()
             .find(|silver| silver.unit_id == "900")
-            .unwrap_or_else(|| panic!("case {}: the silver column has a row for the mage", index + 1));
+            .unwrap_or_else(|| {
+                panic!(
+                    "case {}: the silver column has a row for the mage",
+                    index + 1
+                )
+            });
 
-        assert_eq!(silver.cast_made, case.cast_made, "case {}: amulets cast", index + 1);
+        assert_eq!(
+            silver.cast_made,
+            case.cast_made,
+            "case {}: amulets cast",
+            index + 1
+        );
         assert_eq!(
             silver.cast_capped_by,
             case.capped_by,
             "case {}: what capped the cast",
             index + 1
         );
-        assert_eq!(silver.expense, case.expense, "case {}: silver spent", index + 1);
+        assert_eq!(
+            silver.expense,
+            case.expense,
+            "case {}: silver spent",
+            index + 1
+        );
     }
 }
 
@@ -199,7 +217,8 @@ fn the_items_column_and_its_warning_agree_with_it() {
             index + 1
         );
         let warned = review.findings.iter().any(|finding| {
-            finding.unit_id.as_deref() == Some("900") && finding.code.as_str() == "not-enough-silver"
+            finding.unit_id.as_deref() == Some("900")
+                && finding.code.as_str() == "not-enough-silver"
         });
         assert_eq!(warned, case.warns, "case {}: not-enough-silver", index + 1);
     }

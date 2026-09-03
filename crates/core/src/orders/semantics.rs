@@ -3684,13 +3684,7 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
         .filter(|unit| !unit.own)
         .map(|unit| unit.unit_id.clone())
         .collect();
-    ledger_for_with_production(
-        hex,
-        ruleset,
-        &production,
-        &foreign_unit_ids,
-        &None,
-    )
+    ledger_for_with_production(hex, ruleset, &production, &foreign_unit_ids, &None)
 }
 
 /// Everything the hex's units hold, with this month's orders applied.
@@ -6053,7 +6047,10 @@ fn cast(
             .skills_before_the_market()
             .unwrap_or(&actor.unit.skills),
         held: &actor.unit.items,
-        silver_available: ledger.state.balance_at(StatePhase::Cast, who, SILVER).max(0),
+        silver_available: ledger
+            .state
+            .balance_at(StatePhase::Cast, who, SILVER)
+            .max(0),
         transmuting,
     };
 
@@ -15826,7 +15823,7 @@ mod tests {
             let ordered = OrderedUnits::read(orders);
             let hex = Hex::read(&hex_region, &ordered, &[]);
             let rules = ruleset();
-                let ledger = ledger_for(&hex, Some(&rules));
+            let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
         }
 
@@ -15857,7 +15854,7 @@ mod tests {
                 &BTreeSet::new(),
                 &BTreeSet::new(),
             );
-                let ledger = ledger_for(&hex, Some(&rules));
+            let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
         }
 
@@ -18638,7 +18635,10 @@ mod tests {
     /// empties (`ah-gdd3.1`).
     #[test]
     fn a_claim_written_under_a_gift_of_all_silver_is_still_given_away() {
-        let hex_region = region(vec![with_silver(unit("1234"), 0), with_silver(unit("901"), 0)]);
+        let hex_region = region(vec![
+            with_silver(unit("1234"), 0),
+            with_silver(unit("901"), 0),
+        ]);
         let ordered = OrderedUnits::read("unit 1234\nGIVE 901 ALL SILV\nCLAIM 500\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
@@ -24823,7 +24823,7 @@ mod tests {
             let ordered = OrderedUnits::read(orders);
             let hex = Hex::read(&hex_region, &ordered, &[]);
             let rules = ruleset();
-                let ledger = ledger_for(&hex, Some(&rules));
+            let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
         }
 
