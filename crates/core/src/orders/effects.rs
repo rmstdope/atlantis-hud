@@ -3900,7 +3900,8 @@ mod tests {
             "",
             "mountain (2,2) in Nowhere, 5 dwarves (dwarves), $3.",
             "",
-            "* Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON], 20 silver [SILV]. \
+            "* Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON], 20 silver [SILV], \
+             unfinished Cog [COG] (needs 15), \
              Weight: 10. Capacity: 0/0/15/0.",
             "- Stranger (7001), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
             "",

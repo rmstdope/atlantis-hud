@@ -7965,10 +7965,13 @@ fn carried_away<'a>(
         hex.units.iter().find_map(|other| {
             could_captain(other, &fleet.structure_id)
                 .then(|| {
-                    other
-                        .intents
-                        .iter()
-                        .find(|placed| matches!(placed.intent, Intent::Sail { .. }))
+                    other.intents.iter().find(|placed| {
+                        matches!(
+                            placed.intent,
+                            Intent::Sail { ref steps }
+                                if steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
+                        )
+                    })
                 })
                 .flatten()
         })
