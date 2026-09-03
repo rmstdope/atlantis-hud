@@ -3166,6 +3166,15 @@ impl Ordered<'_> {
     /// The month-long orders of this unit's block, grouped into the segments that compete for its
     /// month, as indices into `all_intents`. The last is the one that runs.
     fn month_segments(&self) -> Vec<Vec<usize>> {
+        // The same guard [`Ordered::intent_spends_the_month`] carries, and for the same reason
+        // (`ah-rzkm`): every `Hex` reaches a reader through `hex_with_transfers`, which settles
+        // every unit, so a path that recomputed eligibility here would be a second reading of one
+        // decision. Loud in debug rather than silent.
+        debug_assert!(
+            self.teaching_eligible.is_some(),
+            "the month has not been settled for {}",
+            self.unit.unit_id
+        );
         month_segments(
             self.all_intents,
             self.teaching_eligible
@@ -9042,19 +9051,19 @@ fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: 
         };
         // The last line of the winning segment, so a chain names its own keyword either way.
         let winner = &ordered.all_intents[*winning.last().expect("a segment is never empty")];
-        // A keyword `GRAMMAR` does not hold would print as an empty word in the message, so it is
-        // skipped rather than named. No order yielding an intent is one.
-        if winner.keyword.is_empty() {
-            continue;
-        }
+        // A keyword `GRAMMAR` does not hold would print as an empty word in the message, so a
+        // message that would name it is skipped rather than printed. No order yielding an intent
+        // is one, so this is a guard rather than a live path - and it silences only the messages
+        // that would be wrong, never the whole unit: a nameless winner still beat the flag below.
+        let namable_winner = (!winner.keyword.is_empty()).then_some(winner);
 
         for segment in replaced {
             // One finding per segment, on the line that opens it: a chained journey lost the month
             // once, not once per leg.
             let placed = &ordered.all_intents[*segment.first().expect("a segment is never empty")];
-            if placed.keyword.is_empty() {
+            let (Some(winner), false) = (namable_winner, placed.keyword.is_empty()) else {
                 continue;
-            }
+            };
             findings.push(ordered.finding(
                 hex,
                 codes::TWO_MONTH_LONG_ORDERS,
@@ -9073,12 +9082,13 @@ fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: 
         // finding cannot disagree. A block with its own `TAX` line is left to the ordinary wording
         // above: the tax it names is the same tax. The finding sits on the block, because the tax
         // has no line of its own and nothing is wrong with the order that beat it.
-        if flagged_to_tax(&ordered.unit.flags)
-            && !ordered
-                .all_intents
-                .iter()
-                .any(|placed| matches!(placed.intent, Intent::Tax))
-        {
+        if let Some(winner) = namable_winner.filter(|_| {
+            flagged_to_tax(&ordered.unit.flags)
+                && !ordered
+                    .all_intents
+                    .iter()
+                    .any(|placed| matches!(placed.intent, Intent::Tax))
+        }) {
             findings.push(ordered.finding_at_block(
                 hex,
                 codes::TWO_MONTH_LONG_ORDERS,
@@ -18365,6 +18375,64 @@ mod tests {
                 .iter()
                 .any(|movement| movement.tag == "SWOR" || movement.tag == "IRON"),
             "{moved:?}"
+        );
+    }
+
+    /// The navigator's own example, on the projection side: `BUILD` then `PRODUCE`, where the
+    /// `BUILD` is the replaced order. `BUILD` is priced through a call path of its own, so
+    /// [`a_losing_produce_moves_no_materials_and_creates_no_goods`] does not cover it - a replaced
+    /// `BUILD` must record no `BuildSpend` and move none of the structure's material.
+    #[test]
+    fn a_replaced_build_records_neither_material_nor_spend() {
+        let builder = in_structure(
+            with_skill(
+                with_item(
+                    with_men(with_silver(unit("900"), 1_000), 10),
+                    120,
+                    "wood",
+                    "WOOD",
+                ),
+                "BUIL",
+                3,
+            ),
+            "4",
+        );
+        let hex_region = ReportRegion {
+            structures: vec![unfinished_building("4")],
+            ..region(vec![builder])
+        };
+        let report = report(vec![hex_region]);
+
+        let replaced = item_effects(&report, "unit 900\nBUILD\nENTERTAIN\n", Some(&ruleset()))
+            .get("900")
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            replaced.built.is_empty(),
+            "a replaced BUILD spends nothing: {:?}",
+            replaced.built
+        );
+        assert!(
+            !replaced.moved.iter().any(|movement| movement.tag == "WOOD"),
+            "a replaced BUILD moves no material: {:?}",
+            replaced.moved
+        );
+
+        // The reverse order, so the assertions above are about the replacement and not about a
+        // fixture that never built anything.
+        let winning = item_effects(&report, "unit 900\nENTERTAIN\nBUILD\n", Some(&ruleset()))
+            .get("900")
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(winning.built.len(), 1, "{:?}", winning.built);
+        assert_eq!(winning.built[0].tag, "WOOD");
+        assert!(
+            winning
+                .moved
+                .iter()
+                .any(|movement| movement.tag == "WOOD" && movement.delta < 0),
+            "the winning BUILD does consume its material: {:?}",
+            winning.moved
         );
     }
 
