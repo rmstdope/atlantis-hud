@@ -297,13 +297,16 @@ export function productionStatusSentence(
   const made = silver.produced === 0 ? "none" : `${silver.produced}`;
   const summary = `Requested: ${countOf(requested, silver.producedName)}. This month: ${made}.`;
   const remaining = requested - silver.produced;
-  if (remaining <= 0 || silver.productionCappedBy === null) {
+  if (remaining <= 0) {
     return summary;
   }
   const carries =
     remaining === 1
       ? "The remaining 1 carries over."
       : `The remaining ${remaining} carry over.`;
+  if (silver.productionCappedBy === null) {
+    return `${summary}\n${carries}`;
+  }
   return `${summary}\n${limitedBy(silver, silver.productionCappedBy)} ${carries}`;
 }
 

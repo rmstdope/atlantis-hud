@@ -351,13 +351,16 @@ describe("productionStatusSentence, numbered (ah-6x5u)", () => {
   // A unit that can make none of it anywhere - below the recipe's level, or in a hex that yields
   // none - has no cap to name: the core answers an empty plan, and the Problems panel's
   // `produce-without-skill` and `produce-not-here` are what say why (the core's own decision,
-  // 2026-08-29). The request is still quoted back, because the player wrote it.
-  it("quotes the request without inventing a reason when the core named no cap", () => {
+  // 2026-08-29). The request still carries over, because `rules/produce` applies to every
+  // numbered shortfall.
+  it("carries over the request without inventing a reason when the core named no cap", () => {
     expect(
       productionStatusSentence(
         numbered({ produced: 0, productionWanted: 0, productionCappedBy: null })
       )
-    ).toBe("Requested: 3 swords. This month: none.");
+    ).toBe(
+      "Requested: 3 swords. This month: none.\nThe remaining 3 carry over."
+    );
   });
 
   it("says nothing for a unit with no priceable PRODUCE, numbered or not", () => {
