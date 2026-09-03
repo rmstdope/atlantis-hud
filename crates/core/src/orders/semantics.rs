@@ -18132,16 +18132,8 @@ mod tests {
         assert_eq!(forecast.expense, None);
     }
 
-    /// The run is planned against what the unit *holds*, so a production on its own can never
-    /// overdraw - the cap has already seen to that. It bites when something else spends the same
-    /// silver first, which is exactly the imprecision the holdings cap accepts: the figure is the
-    /// one a player can read off the report, and the ledger's running balance catches the rest.
-    ///
-    /// The earlier spend has to be a `BUY` rather than a `GIVE`: since `ah-vcp8.2` a `GIVE`'s
-    /// effect on the giver is exactly what `PRODUCE`'s own cap reads (`early_items`), so a `GIVE`
-    /// that spends the same silver first can no longer create this discrepancy - the cap sees it
-    /// and produces less instead of overdrawing. A `BUY` spends through the ledger alone, invisible
-    /// to `early_items`, which is what still lets the two disagree.
+    /// `BUY` resolves before `PRODUCE` under `rules/sequenceofevents`, so production sees the
+    /// silver left after the market rather than warning about an impossible overdraft.
     #[test]
     fn a_unit_that_cannot_afford_its_production_is_warned() {
         let region = ReportRegion {
@@ -18155,22 +18147,13 @@ mod tests {
         };
         let findings = check(vec![region], "unit 12881\nBUY 30 grain\nPRODUCE catapult\n");
 
-        assert_eq!(codes(&findings), ["not-enough-silver"]);
-        assert!(
-            findings[0].message.contains("3000"),
-            "the catapult's own 3000: {}",
-            findings[0].message
-        );
+        assert!(codes(&findings).is_empty());
     }
 
-    /// The same, for the materials: 250 wood sold away leaves the catapult short of the wood the
-    /// unit's inventory said it had.
-    ///
-    /// The earlier spend has to be a `SELL` rather than a `GIVE`, for the same reason the silver
-    /// case above does (`ah-vcp8.2`): `SELL` spends through the ledger alone, invisible to
-    /// `early_items`, the same figure `PRODUCE`'s materials cap reads.
+    /// `SELL` resolves before `PRODUCE` under `rules/sequenceofevents`, so selling all materials
+    /// legitimately caps production without a false shortfall warning.
     #[test]
-    fn a_unit_without_the_materials_is_warned() {
+    fn selling_materials_before_production_does_not_create_a_shortfall() {
         let region = ReportRegion {
             wanted: vec![MarketItem {
                 amount: 250,
@@ -18185,12 +18168,7 @@ mod tests {
             "unit 12881\nSELL 250 wood\nPRODUCE catapult\n",
         );
 
-        assert_eq!(codes(&findings), ["not-enough-items"]);
-        assert!(
-            findings[0].message.contains("wood"),
-            "the wood is what ran out: {}",
-            findings[0].message
-        );
+        assert!(codes(&findings).is_empty());
     }
 
     // --- what a cast makes (`ah-ofpb.4`) -------------------------------------------------------
