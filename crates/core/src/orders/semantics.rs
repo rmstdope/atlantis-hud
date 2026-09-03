@@ -3594,8 +3594,18 @@ struct Ledger<'a> {
     /// what `apply_recruits` and the item movements read (`ah-omn7`).
     claimed: BTreeMap<(String, String), i64>,
     /// Every bounded `BUY` this unit's silver cut down, in the order they were applied
-    /// (`ah-omn7`).
+    /// (`ah-omn7`). Always accompanied by a `not-enough-silver` finding on the same unit -
+    /// `report_shortfalls` is the only reader - because the charge is the whole ask, so a reduced
+    /// line always drives the balance below zero. Change the charge and that stops holding.
     reduced_buys: Vec<ReducedBuy>,
+    /// What each unit's `BUY` lines have been charged **beyond what they actually spent** this
+    /// month: `sum(wanted - spends)` over its reduced lines.
+    ///
+    /// The charge is the whole ask, so the ledger balance is no longer the unit's purse once a
+    /// line has been cut down: a second `BUY`, and every `BUY ALL`, must add this back to see the
+    /// silver the market really left. `forecast_unit` carries the same figure as its `funds`
+    /// running total, and the two surfaces must settle one quantity (`ah-lu0f.2`, `ah-omn7`).
+    overcharged: BTreeMap<String, i64>,
 }
 
 /// A bounded `BUY` this unit's silver cut down (`ah-omn7`).
@@ -3814,6 +3824,7 @@ fn ledger_for_with_production<'a>(
         dead_buys: Vec::new(),
         claimed: BTreeMap::new(),
         reduced_buys: Vec::new(),
+        overcharged: BTreeMap::new(),
     };
 
     let pillaged = own_unit_pillages(hex);
@@ -5543,12 +5554,15 @@ fn buy(
     // A gift that cannot be priced is `Unmeasured` - this module's accept-on-doubt policy, and the
     // behaviour before `ah-omn7`. A sharing hex is `Unmeasured` too: the shared purse settles
     // after the ledger (`ah-szye`).
+    let overcharged = ledger.overcharged.get(who).copied().unwrap_or(0);
     let funds = if Sharing::read(hex).sharers.is_empty() {
         ledger
             .state
             .known_balance_at(StatePhase::Market, who, SILVER)
             .map_or(MarketFunds::Unmeasured, |silver| {
-                MarketFunds::Silver(silver.max(0))
+                // What an earlier line was charged beyond what it spent is still in the unit's
+                // hands, and this line may spend it (`ah-omn7`).
+                MarketFunds::Silver(silver.saturating_add(overcharged).max(0))
             })
     } else {
         MarketFunds::Unmeasured
@@ -5566,6 +5580,7 @@ fn buy(
         .claimed
         .entry((who.clone(), tag.clone()))
         .or_default() += claimed;
+    *ledger.overcharged.entry(who.clone()).or_default() += line.wanted.saturating_sub(line.spends);
     if line.reduced_by_silver {
         ledger.reduced_buys.push(ReducedBuy {
             unit_id: who.clone(),
@@ -5631,8 +5646,11 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
             .copied()
             .unwrap_or(0);
         let available = deferred.share.unwrap_or(deferred.market_has);
+        // Plus whatever a reduced bounded line was charged over what it spent: that silver is
+        // still the unit's, and a `BUY ALL` spends what the bounded lines leave (`ah-omn7`).
+        let overcharged = ledger.overcharged.get(who).copied().unwrap_or(0);
         let (priced, plan) = price_buy_all(
-            balance_of(ledger, who, SILVER),
+            balance_of(ledger, who, SILVER).saturating_add(overcharged),
             deferred.price,
             available,
             deferred.market_has,
@@ -16393,6 +16411,51 @@ mod tests {
                     ledger.state.balance_at(StatePhase::Market, "2390", SILVER),
                     -5
                 );
+            });
+        }
+
+        /// The charge is the whole ask, so the ledger balance is no longer the unit's purse: a
+        /// second `BUY` line must be capped against what the first actually *spent*, exactly as
+        /// `forecast_unit`'s market-phase pass does. Two surfaces reading one order must not
+        /// settle two quantities (`ah-lu0f.2`, `ah-omn7`).
+        #[test]
+        fn a_second_bounded_buy_is_capped_by_what_the_first_actually_spent() {
+            let hex = ReportRegion {
+                for_sale: vec![line(12, 10, "grain", "GRAI"), line(12, 5, "horses", "HORS")],
+                ..region(vec![with_silver(unit("2390"), 25)])
+            };
+            with_ledger(hex, "unit 2390\nBUY 3 grain\nBUY 1 horse\n", |ledger| {
+                let delta = |tag: &str| {
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "2390" && m.tag == tag)
+                        .map(|m| m.delta)
+                };
+                // two grain at 10 leave 5, which is exactly one horse
+                assert_eq!(delta("GRAI"), Some(2));
+                assert_eq!(delta("HORS"), Some(1));
+            });
+        }
+
+        /// And a `BUY ALL` after a reduced bounded line spends what that line really left, not
+        /// what it was charged (`ah-omn7`).
+        #[test]
+        fn a_buy_all_after_a_reduced_line_spends_what_that_line_left() {
+            let hex = ReportRegion {
+                for_sale: vec![line(12, 10, "grain", "GRAI"), line(12, 5, "horses", "HORS")],
+                ..region(vec![with_silver(unit("2390"), 25)])
+            };
+            with_ledger(hex, "unit 2390\nBUY 3 grain\nBUY ALL horses\n", |ledger| {
+                let delta = |tag: &str| {
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "2390" && m.tag == tag)
+                        .map(|m| m.delta)
+                };
+                assert_eq!(delta("GRAI"), Some(2));
+                assert_eq!(delta("HORS"), Some(1));
             });
         }
 
