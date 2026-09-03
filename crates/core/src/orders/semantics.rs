@@ -3599,10 +3599,9 @@ struct Ledger<'a> {
     /// line always drives the balance below zero. Change the charge and that stops holding.
     reduced_buys: Vec<ReducedBuy>,
     /// What each unit's `BUY` lines have been charged **beyond what they actually spent** this
-    /// month: `sum(wanted - spends)` over its reduced lines.
-    ///
-    /// Summed over every bounded line, not only the reduced ones - which is the same figure,
-    /// because `price_purchase` returns `wanted == spends` on every path silver did not cut down.
+    /// month: `sum(wanted - spends)` over every bounded line. Summing over all of them rather than
+    /// only the reduced ones is the same figure, because `price_purchase` returns
+    /// `wanted == spends` on every path silver did not cut down.
     ///
     /// The charge is the whole ask, so the ledger balance is no longer the unit's purse once a
     /// line has been cut down: a second `BUY`, and every `BUY ALL`, must add this back to see the
