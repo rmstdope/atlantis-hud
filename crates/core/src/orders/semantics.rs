@@ -1354,7 +1354,9 @@ fn forecast_hex(
     // The ledger is already complete by the time the column prices a hex - `review_turn` builds
     // every hex's ledger before it forecasts any of them - so the late picture is read once here
     // and handed to everything below that needs it.
-    let late = LateHoldings::read(hex, &ledger.balance, ruleset);
+    let late = ledger
+        .state
+        .late_holdings_at(StatePhase::Maintenance, hex, ruleset);
 
     // A region's pools are shared, so who else in this hex draws on them has to be settled before
     // any one unit can be priced against them (`ah-t2pn`).
@@ -3191,6 +3193,101 @@ impl Ordered<'_> {
 ///
 /// Balances are kept per unit and per item tag, and transfers between units in the hex move
 /// between them - which is what the issue means by asking whether the silver goes round.
+type BalanceKey = (String, String);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+#[allow(dead_code)]
+enum StatePhase {
+    Give,
+    Tax,
+    Cast,
+    Market,
+    Withdraw,
+    Movement,
+    Study,
+    Manufacturing,
+    Build,
+    Maintenance,
+}
+
+impl StatePhase {
+    const COUNT: usize = 10;
+}
+
+struct PhaseState {
+    balances: BTreeMap<BalanceKey, [i64; StatePhase::COUNT]>,
+    uncertain: BTreeMap<BalanceKey, UncertainGive>,
+}
+
+impl PhaseState {
+    fn from_hex(hex: &Hex<'_>) -> Self {
+        let mut state = Self {
+            balances: BTreeMap::new(),
+            uncertain: BTreeMap::new(),
+        };
+        for ordered in &hex.units {
+            for item in &ordered.unit.items {
+                state.balances.insert(
+                    (ordered.unit.unit_id.clone(), item.tag.to_ascii_uppercase()),
+                    [item.amount; StatePhase::COUNT],
+                );
+            }
+        }
+        state
+    }
+
+    fn apply(&mut self, phase: StatePhase, unit_id: &str, tag: &str, delta: i64) {
+        let key = (unit_id.to_owned(), tag.to_ascii_uppercase());
+        let values = self.balances.entry(key).or_insert([0; StatePhase::COUNT]);
+        for value in &mut values[phase as usize..] {
+            *value += delta;
+        }
+    }
+
+    fn balance_at(&self, phase: StatePhase, unit_id: &str, tag: &str) -> i64 {
+        self.balances
+            .get(&(unit_id.to_owned(), tag.to_ascii_uppercase()))
+            .map_or(0, |values| values[phase as usize])
+    }
+
+    fn known_balance_at(
+        &self,
+        phase: StatePhase,
+        unit_id: &str,
+        tag: &str,
+    ) -> Result<i64, &UncertainGive> {
+        let key = (unit_id.to_owned(), tag.to_ascii_uppercase());
+        self.uncertain
+            .get(&key)
+            .map_or_else(|| Ok(self.balance_at(phase, unit_id, tag)), Err)
+    }
+
+    fn holdings_at(&self, phase: StatePhase, unit_id: &str) -> BTreeMap<String, i64> {
+        self.balances
+            .iter()
+            .filter(|((id, _), _)| id == unit_id)
+            .map(|((_, tag), values)| (tag.clone(), values[phase as usize]))
+            .collect()
+    }
+
+    fn late_holdings_at(
+        &self,
+        phase: StatePhase,
+        hex: &Hex<'_>,
+        ruleset: Option<&Ruleset>,
+    ) -> LateHoldings {
+        let balances = self
+            .balances
+            .iter()
+            .map(|((unit_id, tag), values)| {
+                ((unit_id.clone(), tag.clone()), values[phase as usize])
+            })
+            .collect();
+        LateHoldings::read(hex, &balances, ruleset)
+    }
+}
+
 struct Ledger<'a> {
     /// The catalogue that turns an order's item argument into a tag, where there is one.
     ruleset: Option<&'a Ruleset>,
@@ -3200,7 +3297,7 @@ struct Ledger<'a> {
     /// the unit's own report holding is nothing (`ah-ofpb.4`, R4).
     receipts: &'a BTreeMap<String, Receipts>,
     /// What each unit would hold once its orders had run, keyed by unit and item tag.
-    balance: BTreeMap<(String, String), i64>,
+    state: PhaseState,
     /// Materials consumed by manufacturing after movement, keyed like `balance`.
     manufacturing_spent: BTreeMap<(String, String), i64>,
     /// Units whose sums cannot be trusted, and which are therefore not judged at all.
@@ -3268,7 +3365,6 @@ struct Ledger<'a> {
     /// The balance of such a tag is neither the report's figure nor zero, so every arithmetic that
     /// would read it stops and says so instead - `known_balance_of` is the one lookup that asks
     /// (`ah-66yi`).
-    uncertain_balance: BTreeMap<(String, String), UncertainGive>,
     /// What each unit's `BUILD` orders spend, in document order (`ah-ofpb.2`). Keyed by unit id,
     /// exactly as `uncounted` is, because a `BUILD` records more than a movement can carry.
     pub(crate) built: BTreeMap<String, Vec<super::effects::BuildSpend>>,
@@ -3494,7 +3590,7 @@ fn ledger_for_with_production<'a>(
     let mut ledger = Ledger {
         ruleset,
         receipts,
-        balance: BTreeMap::new(),
+        state: PhaseState::from_hex(hex),
         manufacturing_spent: BTreeMap::new(),
         doubted: BTreeSet::new(),
         charged_at: BTreeMap::new(),
@@ -3507,7 +3603,6 @@ fn ledger_for_with_production<'a>(
         movements: Vec::new(),
         withdrawn_for_movement: BTreeMap::new(),
         uncounted: BTreeMap::new(),
-        uncertain_balance: BTreeMap::new(),
         built: BTreeMap::new(),
         buy_all: BTreeMap::new(),
         sold: BTreeMap::new(),
@@ -3515,15 +3610,6 @@ fn ledger_for_with_production<'a>(
         bought: BTreeMap::new(),
         dead_buys: Vec::new(),
     };
-
-    for ordered in &hex.units {
-        for item in &ordered.unit.items {
-            ledger.balance.insert(
-                (ordered.unit.unit_id.clone(), item.tag.to_ascii_uppercase()),
-                item.amount,
-            );
-        }
-    }
 
     let pillaged = own_unit_pillages(hex);
     // The same settlement the Silver column reads, so both surfaces charge for goods that exist
@@ -3909,7 +3995,9 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     // Built before anything below draws the balance down - see *Known traps*: `charge_upkeep`
     // mutates `balance` as it goes, and a `LateHoldings` read after that loop would price later
     // units against a balance earlier ones have already spent.
-    let late = LateHoldings::read(hex, &ledger.balance, ledger.ruleset);
+    let late = ledger
+        .state
+        .late_holdings_at(StatePhase::Maintenance, hex, ledger.ruleset);
 
     // Step 2 of the payment order needs every unit's step-1 leftovers before it can settle any of
     // them, so this is two passes over one set of facts rather than one pass - built once here,
@@ -3954,10 +4042,12 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         // and a unit whose wages cover its fee is still a unit with a fee.
         let charged = (owed - late_income(facts, region, *shares, ledger.ruleset)).max(0);
         if charged > 0 {
-            *ledger
-                .balance
-                .entry((ordered.unit.unit_id.clone(), SILVER.to_string()))
-                .or_insert(0) -= charged;
+            ledger.state.apply(
+                StatePhase::Maintenance,
+                &ordered.unit.unit_id,
+                SILVER,
+                -charged,
+            );
         }
         ledger.upkeep.insert(ordered.unit.unit_id.clone(), owed);
         ledger
@@ -4465,7 +4555,13 @@ fn credit_tax(
         priced.doubt.is_none(),
         "the ledger's optimism leaves nothing for `price_tax` to doubt"
     );
-    credit(ledger, &actor.unit.unit_id, SILVER, priced.earns);
+    credit(
+        ledger,
+        StatePhase::Tax,
+        &actor.unit.unit_id,
+        SILVER,
+        priced.earns,
+    );
 }
 
 /// Applies one order to the ledger.
@@ -4614,7 +4710,7 @@ fn apply(
         // warning once (`ah-bumi`).
         Intent::Claim(amount) => {
             let priced = price_claim(*amount, *claim_remaining);
-            credit(ledger, who, SILVER, priced.earns);
+            credit(ledger, StatePhase::Give, who, SILVER, priced.earns);
             if let Some(remaining) = claim_remaining {
                 *remaining = remaining.saturating_sub(priced.earns).max(0);
             }
@@ -4637,7 +4733,7 @@ fn apply(
             if priced.doubt.is_some() {
                 ledger.doubted.insert(who.clone());
             } else {
-                credit(ledger, who, SILVER, priced.earns);
+                credit(ledger, StatePhase::Give, who, SILVER, priced.earns);
             }
         }
         Intent::Buy { amount, item } => {
@@ -4794,7 +4890,8 @@ fn class_tags(
 
     Some(
         ledger
-            .balance
+            .state
+            .balances
             .keys()
             .filter(|(unit_id, _)| unit_id == holder)
             .filter(|(_, tag)| {
@@ -4889,9 +4986,10 @@ fn transfer(
         // mark a sum this ledger could not follow, and this one was followed to the end.
         GiveOutcome::Refused(_)
             if ledger
-                .balance
+                .state
+                .balances
                 .get(&(actor.unit.unit_id.clone(), tag.clone()))
-                .is_some_and(|amount| *amount > 0) =>
+                .is_some_and(|amount| amount[StatePhase::Maintenance as usize] > 0) =>
         {
             return;
         }
@@ -4906,11 +5004,12 @@ fn transfer(
         // (`ah-66yi`).
         GiveOutcome::Uncertain
             if !ledger
-                .balance
+                .state
+                .balances
                 .get(&(from.clone(), tag.clone()))
-                .is_some_and(|amount| *amount > 0) => {}
+                .is_some_and(|amount| amount[StatePhase::Maintenance as usize] > 0) => {}
         GiveOutcome::Uncertain => {
-            ledger.uncertain_balance.insert(
+            ledger.state.uncertain.insert(
                 (from.clone(), tag.clone()),
                 UncertainGive {
                     target: target_label.unwrap_or("the target").to_string(),
@@ -4936,7 +5035,8 @@ fn transfer(
             mark_uncounted(ledger, &actor.unit.unit_id, placed.line);
             if let Some(to) = to {
                 ledger
-                    .uncertain_balance
+                    .state
+                    .uncertain
                     .insert((to.clone(), tag.clone()), inherited);
                 mark_uncounted(ledger, &to, placed.line);
             }
@@ -4957,10 +5057,10 @@ fn transfer(
     };
 
     if !from.is_empty() {
-        charge(ledger, &from, &tag, quantity, placed);
+        charge(ledger, StatePhase::Give, &from, &tag, quantity, placed);
     }
     if let Some(to) = to {
-        credit(ledger, &to, &tag, quantity);
+        credit(ledger, StatePhase::Give, &to, &tag, quantity);
     }
 }
 
@@ -5023,8 +5123,15 @@ fn buy(
     let priced = price_purchase(*count, offer.price, allowed);
     let bought = quantity_bought(*count, allowed);
 
-    charge(ledger, who, SILVER, priced.spends, placed);
-    credit(ledger, who, &tag, bought);
+    charge(
+        ledger,
+        StatePhase::Market,
+        who,
+        SILVER,
+        priced.spends,
+        placed,
+    );
+    credit(ledger, StatePhase::Market, who, &tag, bought);
     *ledger.bought.entry((who.clone(), tag.clone())).or_default() += bought;
     if bought == 0 && already > 0 {
         if let Some(share) = standing.market_share_of(&tag, MarketSide::Buying) {
@@ -5098,8 +5205,15 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
             deferred.market_has,
             already,
         );
-        charge(ledger, who, SILVER, priced.spends, &deferred.placed);
-        credit(ledger, who, &deferred.tag, plan.bought);
+        charge(
+            ledger,
+            StatePhase::Market,
+            who,
+            SILVER,
+            priced.spends,
+            &deferred.placed,
+        );
+        credit(ledger, StatePhase::Market, who, &deferred.tag, plan.bought);
         *ledger
             .bought
             .entry((who.clone(), deferred.tag.clone()))
@@ -5256,7 +5370,14 @@ fn produce(
         return;
     };
 
-    charge(ledger, who, SILVER, priced.spends, placed);
+    charge(
+        ledger,
+        StatePhase::Manufacturing,
+        who,
+        SILVER,
+        priced.spends,
+        placed,
+    );
     for material in &plan.materials {
         charge_manufacturing_material(ledger, who, &material.tag, material.amount, placed);
         if material.amount != 0 {
@@ -5501,7 +5622,7 @@ fn build(
     // 10. Record the movement and the spend. Every value has exactly one source.
     let tag = material.tag.to_ascii_uppercase();
     let name = item_name(&tag, hex, Some(ruleset));
-    charge(ledger, who, &tag, plan.done, placed);
+    charge(ledger, StatePhase::Build, who, &tag, plan.done, placed);
     ledger.movements.push(ItemMovement {
         unit_id: who.clone(),
         tag: tag.clone(),
@@ -5582,8 +5703,8 @@ fn sell(
         demand.price,
     );
 
-    charge(ledger, who, &tag, line.quantity, placed);
-    credit(ledger, who, SILVER, line.earns);
+    charge(ledger, StatePhase::Market, who, &tag, line.quantity, placed);
+    credit(ledger, StatePhase::Market, who, SILVER, line.earns);
 
     let entry = ledger.sold.entry((who.clone(), tag.clone())).or_default();
     entry.quantity = entry.quantity.saturating_add(line.quantity);
@@ -5631,7 +5752,14 @@ fn study(
         ledger.doubted.insert(who.clone());
         return;
     }
-    charge(ledger, who, SILVER, priced.spends, placed);
+    charge(
+        ledger,
+        StatePhase::Study,
+        who,
+        SILVER,
+        priced.spends,
+        placed,
+    );
 }
 
 /// Credits what an earning spell raises, and charges what the ruleset says a cast consumes -
@@ -5706,8 +5834,8 @@ fn cast(
     // `not-enough-silver` warning cannot disagree about a mage's month (`ah-lu0f.3`). Silver is
     // charged from `spends` alone; `plan.materials` never contains `SILV` (`ah-ofpb.4`).
     let (priced, plan) = price_cast(resolved, &caster, region);
-    credit(ledger, who, SILVER, priced.earns);
-    charge(ledger, who, SILVER, priced.spends, placed);
+    credit(ledger, StatePhase::Cast, who, SILVER, priced.earns);
+    charge(ledger, StatePhase::Cast, who, SILVER, priced.spends, placed);
 
     let Some(plan) = plan else {
         // A spell the ruleset has no entry for could be a typo or a spell the scraper missed;
@@ -5730,7 +5858,14 @@ fn cast(
     // credited - `cast()` has never called `credit` for an item and must not start (round 2, Q5,
     // answer C).
     for material in &plan.materials {
-        charge(ledger, who, &material.tag, material.amount, placed);
+        charge(
+            ledger,
+            StatePhase::Cast,
+            who,
+            &material.tag,
+            material.amount,
+            placed,
+        );
         if material.amount != 0 {
             ledger.movements.push(ItemMovement {
                 unit_id: who.clone(),
@@ -5883,21 +6018,15 @@ fn known_balance_of<'a>(
     unit_id: &str,
     tag: &str,
 ) -> Result<i64, &'a UncertainGive> {
-    if let Some(uncertain) = ledger
-        .uncertain_balance
-        .get(&(unit_id.to_string(), tag.to_string()))
-    {
-        return Err(uncertain);
-    }
-    Ok(balance_of(ledger, unit_id, tag))
+    ledger
+        .state
+        .known_balance_at(StatePhase::Maintenance, unit_id, tag)
 }
 
 fn balance_of(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
     ledger
-        .balance
-        .get(&(unit_id.to_string(), tag.to_string()))
-        .copied()
-        .unwrap_or(0)
+        .state
+        .balance_at(StatePhase::Maintenance, unit_id, tag)
 }
 
 /// A unit's silver balance as the shortfall check must read it: what the ledger holds, plus what
@@ -6096,7 +6225,9 @@ fn feed_from_food_after_silver(
             continue;
         }
 
-        let late = LateHoldings::read(hex, &ledger.balance, ledger.ruleset);
+        let late = ledger
+            .state
+            .late_holdings_at(StatePhase::Maintenance, hex, ledger.ruleset);
         let facts = hex_facts(hex, &nothing, Some(&late), ledger.ruleset);
         let claims: Vec<LateFoodClaim> = hex
             .units
@@ -6162,16 +6293,20 @@ fn apply_relief(hexes: &mut [(Hex<'_>, Ledger<'_>)], settlement: &UpkeepSettleme
     }
 }
 
-fn credit(ledger: &mut Ledger<'_>, unit_id: &str, tag: &str, amount: i64) {
-    *ledger
-        .balance
-        .entry((unit_id.to_string(), tag.to_ascii_uppercase()))
-        .or_insert(0) += amount;
+fn credit(ledger: &mut Ledger<'_>, phase: StatePhase, unit_id: &str, tag: &str, amount: i64) {
+    ledger.state.apply(phase, unit_id, tag, amount);
 }
 
-fn charge(ledger: &mut Ledger<'_>, unit_id: &str, tag: &str, amount: i64, placed: &PlacedIntent) {
+fn charge(
+    ledger: &mut Ledger<'_>,
+    phase: StatePhase,
+    unit_id: &str,
+    tag: &str,
+    amount: i64,
+    placed: &PlacedIntent,
+) {
     let key = (unit_id.to_string(), tag.to_ascii_uppercase());
-    *ledger.balance.entry(key.clone()).or_insert(0) -= amount;
+    ledger.state.apply(phase, unit_id, tag, -amount);
     if amount > 0 {
         // The first order to draw on it, which is where a player looking for the mistake starts.
         ledger
@@ -6188,7 +6323,14 @@ fn charge_manufacturing_material(
     amount: i64,
     placed: &PlacedIntent,
 ) {
-    charge(ledger, unit_id, tag, amount, placed);
+    charge(
+        ledger,
+        StatePhase::Manufacturing,
+        unit_id,
+        tag,
+        amount,
+        placed,
+    );
     if amount > 0 {
         *ledger
             .manufacturing_spent
@@ -6393,15 +6535,13 @@ fn judge_shortfalls(
         // The ledger is keyed by unit and then by tag, so this unit's entries are one contiguous
         // run of it. Scanning the whole map of balances once per unit would be quadratic in the
         // size of a hex, and a city holds a great many units.
-        let mine = ledger
-            .balance
-            .range((who.clone(), String::new())..)
-            .take_while(|((unit_id, _), _)| unit_id == who);
-
-        let mine: Vec<(String, String, i64)> = mine
-            .map(|((unit_id, tag), _)| {
-                let balance = relieved_balance(ledger, unit_id, tag);
-                (unit_id.clone(), tag.clone(), balance)
+        let mine: Vec<(String, String, i64)> = ledger
+            .state
+            .holdings_at(StatePhase::Maintenance, who)
+            .into_keys()
+            .map(|tag| {
+                let balance = relieved_balance(ledger, who, &tag);
+                (who.clone(), tag, balance)
             })
             .collect();
 
@@ -7958,7 +8098,9 @@ fn check_studying(
         return;
     }
 
-    let late = LateHoldings::read(hex, &ledger.balance, Some(ruleset));
+    let late = ledger
+        .state
+        .late_holdings_at(StatePhase::Maintenance, hex, Some(ruleset));
     for (index, ordered) in hex.units.iter().enumerate() {
         let Some((placed, studying)) = ordered.studies_placed() else {
             continue;
@@ -8496,11 +8638,11 @@ fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 fn holdings_at_movement(ordered: &Ordered<'_>, ledger: &Ledger<'_>) -> BTreeMap<String, i64> {
     let mut holdings: BTreeMap<String, i64> = BTreeMap::new();
 
-    for ((unit_id, tag), balance) in &ledger.balance {
-        if unit_id == &ordered.unit.unit_id {
-            holdings.insert(tag.clone(), *balance);
-        }
-    }
+    holdings.extend(
+        ledger
+            .state
+            .holdings_at(StatePhase::Maintenance, &ordered.unit.unit_id),
+    );
 
     for ((unit_id, tag), withdrawn) in &ledger.withdrawn_for_movement {
         if unit_id != &ordered.unit.unit_id || *withdrawn == 0 {
@@ -9886,6 +10028,52 @@ mod tests {
 
     fn ruleset() -> Ruleset {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
+    }
+
+    #[test]
+    fn phase_state_applies_a_change_from_its_rules_phase_onward() {
+        let mut state = PhaseState {
+            balances: [(("1".to_owned(), "IRON".to_owned()), [10; StatePhase::COUNT])]
+                .into_iter()
+                .collect(),
+            uncertain: BTreeMap::new(),
+        };
+        state.apply(StatePhase::Market, "1", "iron", 3);
+        state.apply(StatePhase::Manufacturing, "1", "IRON", -4);
+        assert_eq!(state.balance_at(StatePhase::Give, "1", "IRON"), 10);
+        assert_eq!(state.balance_at(StatePhase::Market, "1", "IRON"), 13);
+        assert_eq!(state.balance_at(StatePhase::Movement, "1", "IRON"), 13);
+        assert_eq!(state.balance_at(StatePhase::Manufacturing, "1", "IRON"), 9);
+        assert_eq!(state.balance_at(StatePhase::Maintenance, "1", "IRON"), 9);
+    }
+
+    #[test]
+    fn phase_state_keeps_an_uncertain_gift_unknown_at_every_later_phase() {
+        let mut state = PhaseState {
+            balances: [(("1".to_owned(), "STON".to_owned()), [10; StatePhase::COUNT])]
+                .into_iter()
+                .collect(),
+            uncertain: [(
+                ("1".to_owned(), "IRON".to_owned()),
+                UncertainGive {
+                    target: "the target".to_owned(),
+                    line: 7,
+                },
+            )]
+            .into_iter()
+            .collect(),
+        };
+        state.apply(StatePhase::Market, "1", "ston", 2);
+        assert!(state
+            .known_balance_at(StatePhase::Market, "1", "IRON")
+            .is_err());
+        assert!(state
+            .known_balance_at(StatePhase::Build, "1", "iron")
+            .is_err());
+        assert_eq!(
+            state.known_balance_at(StatePhase::Build, "1", "STON"),
+            Ok(12)
+        );
     }
 
     /// `item_spellings` strips `wood elves` to `wood elv`, which the catalogue's `wood elf` does
@@ -17819,8 +18007,8 @@ mod tests {
         // What `charge_upkeep` and the sharing pass leave behind for a hex that could not feed
         // itself: a fee nothing paid, drawn straight off the balance, and no `SHARE` flag.
         ledger
-            .balance
-            .insert(("5".to_string(), SILVER.to_string()), -80);
+            .state
+            .apply(StatePhase::Maintenance, "5", SILVER, -80);
         ledger.upkeep.insert("5".to_string(), 80);
         ledger.upkeep_drawn.insert("5".to_string(), 80);
         ledger.maintenance_pooled = true;
@@ -23606,9 +23794,9 @@ mod tests {
                 |ledger| {
                     assert_eq!(balance_of(ledger, "2390", "ORC"), 10);
                     assert!(
-                        ledger.uncertain_balance.is_empty(),
+                        ledger.state.uncertain.is_empty(),
                         "the refusal is known, so nothing is left unresolved: {:?}",
-                        ledger.uncertain_balance
+                        ledger.state.uncertain
                     );
                     assert!(
                         !ledger.uncounted.contains_key("2390"),
@@ -23633,10 +23821,11 @@ mod tests {
                     // and this test green while pinning nothing.
                     assert!(
                         ledger
-                            .uncertain_balance
+                            .state
+                            .uncertain
                             .contains_key(&("2390".to_string(), "ORC".to_string())),
                         "{:?}",
-                        ledger.uncertain_balance
+                        ledger.state.uncertain
                     );
                 },
             );
