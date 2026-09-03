@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-5gk7 — what the editor offers after NAME once the synonyms parse</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#2b4d68; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1400px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:6.6em; }
+  .scene { margin-top:12px; border-top:1px dashed var(--edge); padding-top:10px; }
+  .scene b { display:block; font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase;
+             color:var(--ink-dim); font-weight:normal; margin-bottom:7px; font-family:system-ui,sans-serif; }
+  .ed { background:#0c1117; border:1px solid var(--edge); border-radius:6px; padding:8px 10px;
+        font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12.5px; color:#cfd8e3; position:relative; }
+  .ed .ln { color:#55617180; margin-right:10px; }
+  .ed .kw { color:#7fb3e8; }
+  .ed .str { color:#9ad7a0; }
+  .ed .caret { display:inline-block; width:1px; height:1.05em; background:var(--brass); vertical-align:-2px;
+               animation:none; margin-left:1px; }
+  .ed .squig { border-bottom:2px wavy var(--danger); text-decoration:none; }
+  .pop { margin-top:2px; margin-left:34px; width:calc(100% - 44px); background:var(--raised);
+         border:1px solid var(--edge); border-radius:5px; overflow:hidden;
+         font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12px; }
+  .pop div.row { display:flex; justify-content:space-between; gap:10px; padding:3px 9px; color:var(--ink); }
+  .pop div.row.on { background:var(--select); }
+  .pop div.row .det { color:var(--ink-dim); font-size:11px; font-style:italic; }
+  .pop div.more { padding:3px 9px; color:var(--ink-dim); font-size:11px; font-style:italic; border-top:1px solid var(--edge); }
+  .diag { font-family:system-ui,sans-serif; font-size:12px; display:flex; gap:7px; align-items:flex-start; margin-top:8px; }
+  .diag .dot { flex:none; width:8px; height:8px; border-radius:50%; margin-top:5px; background:var(--danger); }
+  .diag .dot.ok { background:var(--ok); }
+  .diag .txt { color:var(--ink-soft); }
+  .diag .txt b { color:var(--ink); font-weight:600; display:block; font-size:11px; letter-spacing:.6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:14px;
+           border-top:1px solid var(--edge); padding-top:10px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  table.q { border-collapse:collapse; font-family:system-ui,sans-serif; font-size:12.5px; margin-top:14px; width:100%; }
+  table.q th, table.q td { border:1px solid var(--edge); padding:6px 9px; text-align:left; vertical-align:top; }
+  table.q th { color:var(--brass); font-weight:600; background:var(--panel); }
+  table.q td { color:var(--ink-soft); }
+  table.q td code { font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-5gk7 — <span>what the editor offers after <code>NAME</code> once the synonyms parse</span></h1>
+  <p><code>rules/name</code> documents four targets: <code>NAME UNIT</code>, <code>NAME FACTION</code>,
+  <code>NAME OBJECT</code>, <code>NAME CITY</code>. The engine also accepts
+  <code>BUILDING</code>, <code>SHIP</code>, <code>STRUCTURE</code> as spellings of <code>OBJECT</code>,
+  and <code>VILLAGE</code>, <code>TOWN</code> as spellings of <code>CITY</code>. Today the HUD
+  marks all five invalid, so a perfectly good order is red and contributes nothing to the preview.</p>
+  <p><b>All three shapes below fix that identically</b> — every one of the nine spellings parses, and
+  the intent, the ledger and the preview are the same whichever was typed. The only difference is
+  <b>what the completion menu offers after you type <code>NAME&nbsp;</code></b>, and what the
+  diagnostic names when the word is wrong. Each shape is shown against the same three moments.</p>
+  <p style="color:var(--ink-dim)">Precedent worth knowing before you choose: <code>DESCRIBE</code>
+  already offers all five of <code>UNIT SHIP BUILDING OBJECT STRUCTURE</code> in the menu today —
+  synonyms and all, unlabelled. That is shape&nbsp;C.</p>
+</header>
+<main>
+
+<h3 class="sec">The three shapes</h3>
+<p>Read the middle scene of each card first: it is the one that differs most.</p>
+
+<div class="cards3">
+
+  <!-- A -->
+  <div class="card">
+    <h2><em>A</em>Suggest the four</h2>
+    <div class="concept">The menu stays exactly as it is today — the four spellings the rules
+    document. The other five parse silently: they are accepted if you type them, never offered.
+    The diagnostic keeps naming the documented four.</div>
+
+    <div class="scene"><b>1 · Ctrl-Space after <code>NAME&nbsp;</code></b>
+      <div class="ed"><span class="ln">14</span><span class="kw">NAME</span> <span class="caret"></span></div>
+      <div class="pop">
+        <div class="row on"><span>UNIT</span></div>
+        <div class="row"><span>FACTION</span></div>
+        <div class="row"><span>OBJECT</span></div>
+        <div class="row"><span>CITY</span></div>
+      </div>
+    </div>
+
+    <div class="scene"><b>2 · typing <code>NAME S</code></b>
+      <div class="ed"><span class="ln">14</span><span class="kw">NAME</span> S<span class="caret"></span></div>
+      <div class="pop"><div class="more">no completions — the menu closes</div></div>
+      <div class="diag"><span class="dot ok"></span><span class="txt"><b>still valid once finished</b>
+      <code>NAME SHIP "Dawn Treader"</code> parses and previews. The menu simply never
+      suggested it.</span></div>
+    </div>
+
+    <div class="scene"><b>3 · a wrong word</b>
+      <div class="ed"><span class="ln">14</span><span class="kw">NAME</span> <span class="squig">BUILDINGS</span> <span class="str">"Keep"</span></div>
+      <div class="diag"><span class="dot"></span><span class="txt"><b>error</b>
+      expected UNIT, FACTION, OBJECT, CITY, found "BUILDINGS"</span></div>
+    </div>
+
+    <ul class="notes">
+      <li>Four short words; the menu is scannable and teaches the documented spelling.</li>
+      <li>Nothing an existing player has learned about the menu changes.</li>
+      <li class="con">A player who types <code>SHIP</code> gets no menu and may think it is unsupported.</li>
+      <li class="con">Diverges from <code>DESCRIBE</code>, which offers its synonyms today.</li>
+    </ul>
+  </div>
+
+  <!-- B -->
+  <div class="card">
+    <h2><em>B</em>Offer nine, label the synonyms</h2>
+    <div class="concept">All nine are offered, documented four first, each synonym carrying grey
+    right-hand text naming the canonical spelling it means. The diagnostic names the four, so the
+    message stays short. Uses the completion entry's existing <code>detail</code> field — the same
+    grey text items and skills already use.</div>
+
+    <div class="scene"><b>1 · Ctrl-Space after <code>NAME&nbsp;</code></b>
+      <div class="ed"><span class="ln">14</span><span class="kw">NAME</span> <span class="caret"></span></div>
+      <div class="pop">
+        <div class="row on"><span>UNIT</span></div>
+        <div class="row"><span>FACTION</span></div>
+        <div class="row"><span>OBJECT</span></div>
+        <div class="row"><span>CITY</span></div>
+        <div class="row"><span>BUILDING</span><span class="det">same as OBJECT</span></div>
+        <div class="row"><span>SHIP</span><span class="det">same as OBJECT</span></div>
+        <div class="row"><span>STRUCTURE</span><span class="det">same as OBJECT</span></div>
+        <div class="row"><span>TOWN</span><span class="det">same as CITY</span></div>
+        <div class="row"><span>VILLAGE</span><span class="det">same as CITY</span></div>
+      </div>
+    </div>
+
+    <div class="scene"><b>2 · typing <code>NAME S</code></b>
+      <div class="ed"><span class="ln">14</span><span class="kw">NAME</span> S<span class="caret"></span></div>
+      <div class="pop">
+        <div class="row on"><span>SHIP</span><span class="det">same as OBJECT</span></div>
+        <div class="row"><span>STRUCTURE</span><span class="det">same as OBJECT</span></div>
+      </div>
+      <div class="diag"><span class="dot ok"></span><span class="txt"><b>discoverable</b>
+      the player finds <code>SHIP</code> and learns in the same glance that it renames the object.</span></div>
+    </div>
+
+    <div class="scene"><b>3 · a wrong word</b>
+      <div class="ed"><span class="ln">14</span><span class="kw">NAME</span> <span class="squig">BUILDINGS</span> <span class="str">"Keep"</span></div>
+      <div class="diag"><span class="dot"></span><span class="txt"><b>error</b>
+      expected UNIT, FACTION, OBJECT, CITY, found "BUILDINGS"</span></div>
+    </div>
+
+    <ul class="notes">
+      <li>Everything the engine accepts is discoverable, and the menu says what each one does.</li>
+      <li>Nine rows is one screenful; the four documented ones are still on top.</li>
+      <li class="con">Nine spellings of four things — more to read for a player who knew the four.</li>
+      <li class="con">The one shape that needs new plumbing: the menu carries text the grammar table
+      does not have today.</li>
+    </ul>
+  </div>
+
+  <!-- C -->
+  <div class="card">
+    <h2><em>C</em>Offer nine, plain</h2>
+    <div class="concept">The set simply widens from four to nine, exactly as
+    <code>DESCRIBE</code>'s five already work. No labels, and the diagnostic grows to name all nine
+    — because the accepted set and the offered set stay one list, which is the smallest possible
+    change.</div>
+
+    <div class="scene"><b>1 · Ctrl-Space after <code>NAME&nbsp;</code></b>
+      <div class="ed"><span class="ln">14</span><span class="kw">NAME</span> <span class="caret"></span></div>
+      <div class="pop">
+        <div class="row on"><span>UNIT</span></div>
+        <div class="row"><span>FACTION</span></div>
+        <div class="row"><span>OBJECT</span></div>
+        <div class="row"><span>CITY</span></div>
+        <div class="row"><span>BUILDING</span></div>
+        <div class="row"><span>SHIP</span></div>
+        <div class="row"><span>STRUCTURE</span></div>
+        <div class="row"><span>TOWN</span></div>
+        <div class="row"><span>VILLAGE</span></div>
+      </div>
+    </div>
+
+    <div class="scene"><b>2 · typing <code>NAME S</code></b>
+      <div class="ed"><span class="ln">14</span><span class="kw">NAME</span> S<span class="caret"></span></div>
+      <div class="pop">
+        <div class="row on"><span>SHIP</span></div>
+        <div class="row"><span>STRUCTURE</span></div>
+      </div>
+      <div class="diag"><span class="dot"></span><span class="txt"><b>unexplained</b>
+      two words, no hint that they are the same order as <code>OBJECT</code> — or that
+      <code>SHIP</code> does not mean "only ships".</span></div>
+    </div>
+
+    <div class="scene"><b>3 · a wrong word</b>
+      <div class="ed"><span class="ln">14</span><span class="kw">NAME</span> <span class="squig">BUILDINGS</span> <span class="str">"Keep"</span></div>
+      <div class="diag"><span class="dot"></span><span class="txt"><b>error</b>
+      expected UNIT, FACTION, OBJECT, CITY, BUILDING, SHIP, STRUCTURE, TOWN, VILLAGE,
+      found "BUILDINGS"</span></div>
+    </div>
+
+    <ul class="notes">
+      <li>One constant grows by five words; nothing else in the codebase changes.</li>
+      <li>Matches how <code>DESCRIBE</code> behaves today, so the two orders read alike.</li>
+      <li class="con">The error line becomes a nine-word list that is harder to read than the four.</li>
+      <li class="con">Menu implies nine distinct targets when there are four.</li>
+    </ul>
+  </div>
+
+</div>
+
+<h3 class="sec">What is the same in all three</h3>
+<table class="q">
+  <tr><th>Order typed</th><th>Today</th><th>After this bead, in every shape</th></tr>
+  <tr><td><code>NAME SHIP "Dawn Treader"</code></td><td>red; ignored by the preview</td>
+      <td>valid; identical to <code>NAME OBJECT "Dawn Treader"</code></td></tr>
+  <tr><td><code>NAME VILLAGE "Ashfen"</code></td><td>red; ignored by the preview</td>
+      <td>valid; identical to <code>NAME CITY "Ashfen"</code></td></tr>
+  <tr><td><code>NAME UNIT "Scouts"</code></td><td>valid; renames the unit in the preview</td>
+      <td>unchanged</td></tr>
+  <tr><td><code>NAME BUILDINGS "Keep"</code></td><td>error</td><td>still an error</td></tr>
+</table>
+
+</main>
+</body>
+</html>
