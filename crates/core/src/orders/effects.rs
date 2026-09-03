@@ -1775,7 +1775,8 @@ impl Working {
         let pending = std::mem::take(&mut self.transports);
         let mut sent: Vec<Vec<(usize, TransportSent)>> = vec![Vec::new(); self.units.len()];
         let mut received: Vec<Vec<(usize, TransportReceived)>> = vec![Vec::new(); self.units.len()];
-        let mut issues: Vec<Vec<(usize, TransportTargetIssue)>> = vec![Vec::new(); self.units.len()];
+        let mut issues: Vec<Vec<(usize, TransportTargetIssue)>> =
+            vec![Vec::new(); self.units.len()];
         // How many of its own transports each sender has written before this one, so every line
         // one order produces - sent, refused or target-refused - is stamped with that order's
         // place in the unit's block. The queue is document-ordered, and the phases below are not,
