@@ -9647,7 +9647,7 @@ fn check_faction(
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    check_quartermasters(report, ordered, ruleset, options, findings);
+    check_quartermasters(report, hexes, ruleset, options, findings);
     check_trade_regions(report, hexes, ruleset, options, findings);
     check_claims(report, ordered, ruleset, options, findings);
 }
@@ -9796,7 +9796,7 @@ fn check_trade_regions(
 /// month and is refused.
 fn check_quartermasters(
     report: &ParsedReport,
-    ordered: &OrderedUnits,
+    hexes: &[(Hex<'_>, Ledger<'_>)],
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
@@ -9827,28 +9827,27 @@ fn check_quartermasters(
 
     let free_places = (entry.maximum - entry.used).max(0);
 
-    let mut candidates: Vec<(&ReportUnit, &PlacedIntent)> = report
-        .regions
+    // The settled hexes rather than the raw document: a STUDY that lost the unit's month never
+    // runs, so it asks for no quartermaster place (`ah-rzkm`). Reported units only, as before -
+    // a unit this month's FORM creates is out of this check's scope.
+    let mut candidates: Vec<(&ReportUnit, &PlacedIntent)> = hexes
         .iter()
-        .flat_map(|region| region.units.iter())
-        .filter(|unit| unit.own)
-        .filter(|unit| {
+        .flat_map(|(hex, _)| hex.units.iter())
+        .filter(|ordered| ordered.formed.is_none() && ordered.unit.own)
+        .map(|ordered| (ordered.unit, &ordered.intents))
+        .filter(|(unit, _)| {
             !unit
                 .skills
                 .iter()
                 .any(|held| held.tag.eq_ignore_ascii_case(&skill.tag))
         })
-        .filter_map(|unit| {
+        .filter_map(|(unit, intents)| {
             // The first STUDY order wins, the same as `Ordered::studies()` reads it - a unit that
             // writes several is not asking to be counted once per line.
-            let placed =
-                ordered
-                    .intents_of(&unit.unit_id)
-                    .iter()
-                    .find_map(|placed| match &placed.intent {
-                        Intent::Study { skill: studied } => Some((placed, studied)),
-                        _ => None,
-                    })?;
+            let placed = intents.iter().find_map(|placed| match &placed.intent {
+                Intent::Study { skill: studied } => Some((placed, studied)),
+                _ => None,
+            })?;
             Some((unit, placed))
         })
         .filter(|(_, (_, studied))| {
@@ -17625,6 +17624,116 @@ mod tests {
         assert_eq!(
             finding.message,
             "STUDY already spends this unit's month, so this PRODUCE will not run"
+        );
+    }
+
+    /// A losing PRODUCE is not merely unwarned about - it does nothing at all, so neither the
+    /// SILVER forecast nor the ITEMS column may show its materials leaving or its goods arriving.
+    #[test]
+    fn a_losing_produce_moves_no_materials_and_creates_no_goods() {
+        let smith = with_item(
+            with_skill(with_silver(unit("683"), 1_000), "WEAP", 1),
+            20,
+            "iron",
+            "IRON",
+        );
+        let report = report(vec![region(vec![smith])]);
+        let orders = "unit 683\nSTUDY Combat\nPRODUCE sword\n";
+
+        let review = review_turn(&report, orders, Some(&ruleset()), CheckOptions::default());
+        let forecast = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "683")
+            .expect("the unit is priced");
+        assert_eq!(forecast.produced, 0, "{forecast:?}");
+        assert_eq!(forecast.production_wanted, 0, "{forecast:?}");
+
+        let effects = item_effects(&report, orders, Some(&ruleset()));
+        let moved = effects.get("683").map(|unit| unit.moved.clone()).unwrap_or_default();
+        assert!(
+            !moved
+                .iter()
+                .any(|movement| movement.tag == "SWOR" || movement.tag == "IRON"),
+            "{moved:?}"
+        );
+    }
+
+    /// `rules/produce`: PRODUCE spends the month, so a PRODUCE that lost it trades in no region
+    /// and cannot push the faction past its allowance.
+    #[test]
+    fn a_losing_produce_does_not_spend_a_trade_region() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![with_silver(unit("5"), 1_000)]),
+            region_at("1:8,53", 8, 53, vec![unit("6")]),
+            region_at("1:9,53", 9, 53, vec![unit("7")]),
+        ];
+        // Two regions genuinely produce, which is the allowance; the third unit's PRODUCE lost
+        // its month to the STUDY above it.
+        let orders = "unit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n\
+                      unit 5\nSTUDY Combat\nPRODUCE grain\n";
+        let findings = check_trade(regions, orders, "Trade Regions", 2);
+
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == codes::TOO_MANY_TRADE_REGIONS),
+            "{findings:?}"
+        );
+    }
+
+    /// `rules/study`: a second STUDY line never runs, so it asks for no quartermaster place.
+    #[test]
+    fn a_losing_quartermaster_study_does_not_spend_the_allowance() {
+        let findings = quartermasters(
+            vec![region(vec![unit("5"), unit("6")])],
+            "unit 5\nSTUDY QUAM\nunit 6\nMOVE N\nSTUDY QUAM\n",
+            1,
+            2,
+        );
+
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == codes::TOO_MANY_QUARTERMASTERS),
+            "{findings:?}"
+        );
+    }
+
+    /// The normalization and the conflict warning share one TEACH eligibility decision, taken
+    /// after this month's transfers. A unit of non-leaders certainly cannot teach
+    /// (`rules/teach`), so its TEACH claims no month and the STUDY below it is the order that
+    /// runs.
+    #[test]
+    fn a_teach_order_that_cannot_run_does_not_discard_the_later_month_order() {
+        let teacher = with_skill(with_silver(one_human("500"), 1_000), "COMB", 3);
+        let student = with_silver(one_human("700"), 1_000);
+        let findings = check_months(
+            vec![region(vec![teacher, student])],
+            "unit 500\nTEACH 700\nSTUDY Combat\nunit 700\nSTUDY Combat\n",
+        );
+
+        assert_eq!(
+            effective_keywords(
+                &region(vec![
+                    with_skill(with_silver(one_human("500"), 1_000), "COMB", 3),
+                    with_silver(one_human("700"), 1_000),
+                ]),
+                "unit 500\nTEACH 700\nSTUDY Combat\n",
+                "500",
+            ),
+            vec!["TEACH", "STUDY"],
+            "the TEACH claims no month, so the STUDY is the order that runs"
+        );
+        assert!(
+            codes(&findings).contains(&codes::TEACHER_CANNOT_TEACH.as_str()),
+            "{findings:?}"
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == codes::TWO_MONTH_LONG_ORDERS),
+            "{findings:?}"
         );
     }
 
@@ -25823,7 +25932,7 @@ mod tests {
     fn the_finding_sits_on_the_study_line() {
         let findings = quartermasters(
             vec![region(vec![unit("5")])],
-            "unit 5\nWORK\nSTUDY QUAM\n",
+            "unit 5\nAVOID 1\nSTUDY QUAM\n",
             2,
             2,
         );
