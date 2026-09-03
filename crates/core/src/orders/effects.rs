@@ -5888,6 +5888,34 @@ mod tests {
             );
         }
 
+        // A catalogue that names no quartermaster skill leaves nothing to resolve, so the report
+        // was never asked whether the target holds it. That is missing evidence, not a missing
+        // skill, and the interface must not state a catalogue fault as a fact about the player's
+        // own units (`ah-64wm`, `ah-d0ku`).
+        #[test]
+        fn an_unresolvable_quartermaster_skill_is_missing_evidence() {
+            let renamed = RULESET.replace("\"quartermaster\"", "\"quartermistress\"");
+            let response = preview_orders_for_remembered_report(
+                &mut ReportCache::new(),
+                &renamed,
+                &report_across_two_hexes(),
+                "[]",
+                "unit 6857\nTRANSPORT 5531 5 STON\n",
+            )
+            .expect("the ruleset loads");
+
+            let sender = only_unit_by_id(&response, "6857");
+            assert_eq!(
+                sender
+                    .transport_target_issues
+                    .iter()
+                    .map(|issue| issue.reason)
+                    .collect::<Vec<_>>(),
+                vec![TransportTargetReason::EligibilityUnknown],
+                "a target eligible under a working catalogue is not called a non-quartermaster"
+            );
+        }
+
         // A hex remembered before `Structure.base_kind` existed reads it back empty, and the kind
         // before its first comma is the same answer the parser would have derived (`ah-64wm`).
         #[test]
