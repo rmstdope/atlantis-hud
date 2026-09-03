@@ -1326,10 +1326,15 @@ pub fn forecast_unit(
         // in the hex are settled against it. `semantics::credit_tax` passes `Uncontended` instead,
         // and that difference is deliberate - see [`price_tax`].
         let priced = price_tax(men, region.tax_base, region.pillaged, shares.tax);
-        hopeful_tax = price_tax(men, region.tax_base, region.pillaged, PoolShare::Uncontended)
-            .earns
-            .saturating_sub(priced.earns)
-            .max(0);
+        hopeful_tax = price_tax(
+            men,
+            region.tax_base,
+            region.pillaged,
+            PoolShare::Uncontended,
+        )
+        .earns
+        .saturating_sub(priced.earns)
+        .max(0);
         income = income.saturating_add(priced.earns);
         income_doubt = income_doubt.or(priced.doubt);
     }
