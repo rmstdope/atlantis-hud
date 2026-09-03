@@ -2850,7 +2850,7 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
         // `before` is the headcount as the gifts left it, not `before + recruited`: weighting by
         // the headcount after the arrivals is silently wrong, the same trap `apply_transfers`
         // avoids for a gift.
-        let merged = (before > 0).then(|| effects::merge_skills(&current, before, &[], recruited));
+        let merged = effects::merge_skills(&current, before, &[], recruited);
 
         let mut races = ordered.early_men_by_race().to_vec();
         for purchased in &people {
@@ -2866,10 +2866,10 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
 
         ordered.men_after_orders = before + recruited;
         ordered.arrivals.bought += recruited;
-        ordered.skills_after_recruits = Some(match merged {
-            Some(merged) if merged == ordered.unit.skills => SkillsAfterGifts::Unchanged,
-            Some(merged) => SkillsAfterGifts::Merged(merged),
-            None => SkillsAfterGifts::Unknowable,
+        ordered.skills_after_recruits = Some(if merged == ordered.unit.skills {
+            SkillsAfterGifts::Unchanged
+        } else {
+            SkillsAfterGifts::Merged(merged)
         });
         // Race reconstruction is independently conservative from the skill merge above: a race
         // sum that fails to reconcile must not erase the skill merge that just succeeded.
