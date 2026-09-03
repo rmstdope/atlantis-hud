@@ -676,6 +676,28 @@ describe("formatItems and itemsTooltip", () => {
     );
   });
 
+  it("words the hover for a unit helping a formed unit build", () => {
+    const row = previewedUnit({
+      items: [{ amount: 30, name: "stone", tag: "STON" }],
+      built: [
+        {
+          amount: 30,
+          tag: "STON",
+          name: "stone",
+          place: "Mine",
+          founding: true,
+          helping: "new-1",
+          couldDo: 30,
+          cappedBy: null
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "was: 30 STON\nSpends 30 STON helping NEW 1 build a new Mine this month."
+    );
+  });
+
   it("words the hover for a unit helping another found a structure", () => {
     const row = previewedUnit({
       items: [{ amount: 120, name: "wood", tag: "WOOD" }],

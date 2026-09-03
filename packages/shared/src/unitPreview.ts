@@ -274,8 +274,11 @@ export function itemsTooltip(
   }
   for (const spend of built) {
     const place = spend.founding ? `a new ${spend.place}` : spend.place;
+    const helpingTarget = spend.helping?.startsWith("new-")
+      ? `NEW ${spend.helping.slice("new-".length)}`
+      : `unit ${spend.helping}`;
     const target =
-      spend.helping === null ? `on ${place}` : `helping unit ${spend.helping} build ${place}`;
+      spend.helping === null ? `on ${place}` : `helping ${helpingTarget} build ${place}`;
     lines.push(`Spends ${spend.amount} ${spend.tag} ${target} this month.`);
     if (spend.cappedBy === "materials") {
       lines.push(

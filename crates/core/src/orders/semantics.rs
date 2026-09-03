@@ -4837,9 +4837,24 @@ fn apply(
 ///
 /// A new unit has no number yet and a foreign one is not ours, so neither can be credited. Nothing
 /// is lost by that: the giver is charged either way, which is the half that can go wrong.
-fn party_id(party: &Party, hex: &Hex<'_>) -> Option<String> {
+fn party_in_hex<'hex, 'report>(
+    party: &Party,
+    hex: &'hex Hex<'report>,
+) -> Option<(String, &'hex Ordered<'report>)> {
     let id = party_unit_id(party)?;
-    hex.find(&id).map(|_| id)
+    hex.find(&id).map(|ordered| (id, ordered))
+}
+
+fn party_id(party: &Party, hex: &Hex<'_>) -> Option<String> {
+    party_in_hex(party, hex).map(|(id, _)| id)
+}
+
+fn party_label(party: &Party) -> String {
+    match party {
+        Party::Unit(id) => format!("unit {id}"),
+        Party::New(alias) => format!("NEW {alias}"),
+        Party::Foreign { .. } | Party::Discard => String::new(),
+    }
 }
 
 /// The tags one class of `what` expands to for `holder`, when this ledger can resolve it - or
@@ -5477,8 +5492,8 @@ fn build(
     let (founding_kind, task_owner, helped_id): (Option<String>, &Ordered<'_>, Option<String>) =
         match (founding, helping) {
             (Some(kind), _) => (Some(kind.clone()), actor, None),
-            (None, Some(Party::Unit(id))) => {
-                let Some(helped) = hex.find(id) else {
+            (None, Some(party)) => {
+                let Some((id, helped)) = party_in_hex(party, hex) else {
                     mark_uncounted_and_return!();
                 };
                 let their_build = helped
@@ -5503,9 +5518,6 @@ fn build(
                         }
                     }
                 }
-            }
-            (None, Some(Party::New(_) | Party::Foreign { .. } | Party::Discard)) => {
-                mark_uncounted_and_return!()
             }
             // A bare `BUILD` or `BUILD COMPLETE`: this unit's own structure.
             (None, None) => (None, actor, None),
@@ -7482,13 +7494,10 @@ fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
         // structure at all, and is doubt rather than the builder's own structure.
         let (worker, helped_id) = match helping {
             None => (ordered, None),
-            Some(Party::Unit(id)) => match hex.find(id) {
-                Some(helped) => (helped, Some(id.as_str())),
-                // A unit not in this hex - not on the report at all, or one that formed this
-                // month and has no number yet - cannot be judged.
+            Some(party) => match party_in_hex(party, hex) {
+                Some((id, helped)) => (helped, Some(id)),
                 None => continue,
             },
-            Some(Party::New(_) | Party::Foreign { .. } | Party::Discard) => continue,
         };
 
         let Some(structure_id) = structure_after_orders(worker) else {
@@ -7508,7 +7517,12 @@ fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
 
         let name = structure_label(structure);
         let message = match helped_id {
-            Some(id) => format!("{name}, which unit {id} is in, is already finished"),
+            Some(id) => {
+                let label = id
+                    .strip_prefix("new-")
+                    .map_or_else(|| format!("unit {id}"), |alias| format!("NEW {alias}"));
+                format!("{name}, which {label} is in, is already finished")
+            }
             None => format!("{name} is already finished"),
         };
         findings.push(ordered.finding(hex, codes::ALREADY_BUILT, message, Some(placed)));
@@ -7588,11 +7602,10 @@ fn check_build_help(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
         };
         // A unit formed this month with no number yet, another faction's unit or `HELP 0` cannot
         // be resolved to anything to judge.
-        let Some(Party::Unit(id)) = helping else {
+        let Some(party) = helping else {
             continue;
         };
-        // `hex.units` holds own units only, so this is also the "one of our own" test.
-        let Some(helped) = hex.find(id) else {
+        let Some((_id, helped)) = party_in_hex(party, hex) else {
             continue;
         };
         // Any BUILD counts, `BUILD [name]` included: founding is building, so there is work to
@@ -7608,7 +7621,7 @@ fn check_build_help(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
         findings.push(ordered.finding(
             hex,
             codes::BUILD_HELP_NOT_BUILDING,
-            format!("unit {id} is not building"),
+            format!("{} is not building", party_label(party)),
             Some(placed),
         ));
     }
@@ -7677,8 +7690,8 @@ fn check_build_skill(
             // `BUILD HELP <n>`: the helper is judged on what the helped unit is building. One
             // level of indirection only - a helper of a helper is not resolved and stays silent,
             // since nothing here says which of the two the chain really lands on.
-            (None, Some(Party::Unit(id))) => {
-                let Some(helped) = hex.find(id) else {
+            (None, Some(party)) => {
+                let Some((_id, helped)) = party_in_hex(party, hex) else {
                     continue;
                 };
                 let Some(target) = helped
@@ -7702,8 +7715,6 @@ fn check_build_skill(
                     },
                 }
             }
-            // `HELP 0`, another faction's unit, or a unit formed this month with no number yet.
-            (None, Some(_)) => continue,
             // A bare `BUILD` or `BUILD COMPLETE` targeting a carried unfinished ship needs no
             // structure skill check; otherwise the unit works on the structure it stands in.
             (None, None) if carries_unfinished_ship(ordered) => continue,
@@ -22478,14 +22489,13 @@ mod tests {
     }
 
     #[test]
-    fn helping_a_new_unit_is_silent() {
-        assert_eq!(
-            check(
-                vec![region(vec![unit("4117")])],
-                "unit 4117\nFORM 1\nEND\nBUILD HELP NEW 1\n",
-            ),
-            vec![]
-        );
+    fn helping_a_new_unit_that_is_not_building_warns() {
+        let finding = only(check(
+            vec![region(vec![unit("4117")])],
+            "unit 4117\nFORM 1\nEND\nBUILD HELP NEW 1\n",
+        ));
+        assert_eq!(finding.code.as_str(), "build-help-not-building");
+        assert_eq!(finding.message, "NEW 1 is not building");
     }
 
     /// One mistake, marked once, where it was made: the target is building from outside a
