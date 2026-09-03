@@ -88,6 +88,31 @@ export function findUnitBlocks(document: string): UnitBlock[] {
   return blocks;
 }
 
+/**
+ * The `;***` banner line a report writes above a region's units in its orders template.
+ *
+ * `levelField` is the third component the report prints inside the coordinate - `null` on the
+ * surface, `"nexus"` in the nexus, and so on (see `levelFieldOf`). The wording is the server's own,
+ * reproduced byte for byte so a banner this app writes into a document is indistinguishable from
+ * one the report brought with it; a corpus test pins that against every committed fixture.
+ */
+export function regionBannerLine(
+  region: {
+    terrain: string;
+    coordinate: { x: number; y: number; z: number };
+    province: string;
+    settlement: { name: string; size: string } | null;
+  },
+  levelField: string | null
+): string {
+  const { x, y } = region.coordinate;
+  const coordinate = levelField === null ? `${x},${y}` : `${x},${y},${levelField}`;
+  const settlement = region.settlement
+    ? `, contains ${region.settlement.name} [${region.settlement.size}]`
+    : "";
+  return `;*** ${region.terrain} (${coordinate}) in ${region.province}${settlement} ***`;
+}
+
 /** Reads one unit's lines out of the document, or `null` when it has no block. */
 export function readUnitOrders(document: string, unitId: string): string | null {
   const block = findUnitBlocks(document).find((candidate) => candidate.unitId === unitId);
@@ -126,6 +151,113 @@ export function writeUnitOrders(document: string, unitId: string, orders: string
   const after = lines.slice(block.lastLine + 1);
 
   return [...before, ...replacement, ...after].join("\n");
+}
+
+/**
+ * The orders document a freshly imported report starts from: its own template when it carries one,
+ * and otherwise a minimal `#atlantis <faction>` ... `#end` skeleton so the turn is still orderable
+ * and still exports as a valid orders file.
+ *
+ * A report carries no template when its faction has issued `OPTION TEMPLATE OFF` (`rules/option`),
+ * and the rules make that a display choice rather than a loss of the right to give orders: the
+ * template "gives you a formatted orders form... or write them on your own" (`rules/reportformat`).
+ * Seeded silently - a player who turned the template off chose this and does not need telling.
+ *
+ * Unchanged when there is no faction id to write: nothing honest can be put in a header for a
+ * faction the report did not name.
+ */
+export function seedOrdersDocument(templateText: string, factionId: string | null): string {
+  if (templateText.trim() !== "" || factionId === null) {
+    return templateText;
+  }
+
+  // The two notes sit above the header, where `isOrdersFile`'s sniffer skips them and
+  // `withFactionPassword`'s anchored pattern cannot mistake the second for the header itself. The
+  // password one is there because a seeded header carries none, and a turn mailed without one is
+  // silently ignored by the server.
+  return [
+    "; This report carried no orders template, so this file was started from scratch.",
+    `; If your faction has a password, add it: #atlantis ${factionId} "your password"`,
+    `#atlantis ${factionId}`,
+    "",
+    "#end"
+  ].join("\n");
+}
+
+/**
+ * The document with a `unit <id>` block for `unitId`, created under `banner` if it has none.
+ *
+ * The report's orders template is a convenience, not a permission list: an orders file is nothing
+ * but `#atlantis`, some `unit` blocks and `#end` (`rules/orders`), and a player who has issued
+ * `OPTION TEMPLATE OFF` (`rules/option`) receives no template at all and still writes orders every
+ * turn. So a unit the template never listed is still orderable, and this is what makes room for it.
+ *
+ * Nothing already in the document ever moves: the new block goes after the last unit already
+ * standing under the region's banner, or straight under the banner when it has none yet, or - when
+ * the document carries no banner for the region at all - the banner is written too, before `#end`.
+ * Unchanged when the unit already has a block.
+ */
+export function ensureUnitBlock(document: string, unitId: string, banner: string): string {
+  const blocks = findUnitBlocks(document);
+  if (blocks.some((block) => block.unitId === unitId)) {
+    return document;
+  }
+
+  const lines = document.split("\n");
+  const wanted = banner.trim();
+  const bannerIndex = lines.findIndex((line) => line.trim() === wanted);
+
+  if (bannerIndex !== -1) {
+    // The region ends at the next banner, or failing that at `#end`, or at the end of the file.
+    let regionEnd = lines.findIndex(
+      (line, index) => index > bannerIndex && REGION_BANNER.test(line.trim())
+    );
+    if (regionEnd === -1) {
+      regionEnd = lines.findIndex((line) => DOCUMENT_END_LINE.test(line.trim()));
+    }
+    if (regionEnd === -1) {
+      regionEnd = lines.length;
+    }
+
+    const mine = blocks.filter(
+      (block) => block.headerLine > bannerIndex && block.headerLine < regionEnd
+    );
+    const last = mine[mine.length - 1];
+    const at = last ? last.lastLine + 1 : bannerIndex + 1;
+    lines.splice(at, 0, "", `unit ${unitId}`);
+    return lines.join("\n");
+  }
+
+  let at = lines.findIndex((line) => DOCUMENT_END_LINE.test(line.trim()));
+  if (at === -1) {
+    at = lines.length;
+  }
+  const insertion = [banner, "", `unit ${unitId}`, ""];
+  if (at > 0 && (lines[at - 1] ?? "").trim() !== "") {
+    insertion.unshift("");
+  }
+  lines.splice(at, 0, ...insertion);
+  return lines.join("\n");
+}
+
+/**
+ * The document after one edit to a unit's block, creating the block if the unit has none.
+ *
+ * `banner` is `null` when the app cannot say which region the unit stands in; no block is created
+ * then. Nor is one created for an edit that carries no text, which is what keeps merely clicking
+ * round the map from writing into the file: the block appears on the first keystroke.
+ *
+ * The rule lives here rather than in the editor's callback so it can be tested directly.
+ */
+export function applyUnitOrders(
+  document: string,
+  unitId: string,
+  orders: string,
+  banner: string | null
+): string {
+  const base =
+    orders === "" || banner === null ? document : ensureUnitBlock(document, unitId, banner);
+  return writeUnitOrders(base, unitId, orders);
 }
 
 /**
