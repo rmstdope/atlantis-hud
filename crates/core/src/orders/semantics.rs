@@ -25,6 +25,7 @@ use super::forms::{Amount, Party, Selector};
 use super::intents::{
     read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, UnitIntents,
 };
+use super::phases::{self, StatePhase};
 use super::standing::{self, standing_after, Boarding};
 use crate::movement::graph::Direction;
 use crate::movement::mode::{
@@ -3375,26 +3376,6 @@ impl Ordered<'_> {
 /// Balances are kept per unit and per item tag, and transfers between units in the hex move
 /// between them - which is what the issue means by asking whether the silver goes round.
 type BalanceKey = (String, String);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(usize)]
-#[allow(dead_code)]
-enum StatePhase {
-    Give,
-    Tax,
-    Cast,
-    Market,
-    Withdraw,
-    Movement,
-    Study,
-    Manufacturing,
-    Build,
-    Maintenance,
-}
-
-impl StatePhase {
-    const COUNT: usize = 10;
-}
 
 struct PhaseState {
     balances: BTreeMap<BalanceKey, [i64; StatePhase::COUNT]>,
