@@ -8376,9 +8376,9 @@ fn check_magic_study_composition(
         return;
     }
 
-    let late = ledger
-        .state
-        .late_holdings_at(StatePhase::Maintenance, hex, Some(ruleset));
+    // Built on the first candidate rather than up front: most hexes contain nobody beginning
+    // magic, and this runs on every keystroke (review finding 2).
+    let mut late: Option<LateHoldings> = None;
     for (index, ordered) in hex.units.iter().enumerate() {
         let Some((placed, studying)) = ordered.studies_placed() else {
             continue;
@@ -8393,7 +8393,13 @@ fn check_magic_study_composition(
         if ordered.unit.men_estimated || ordered.holdings_unknown() {
             continue;
         }
-        let facts = late.of(index);
+        let facts = late
+            .get_or_insert_with(|| {
+                ledger
+                    .state
+                    .late_holdings_at(StatePhase::Maintenance, hex, Some(ruleset))
+            })
+            .of(index);
         // F2 (`ah-ndp9`, round 3): a unit this document creates with `FORM` and has given nobody is
         // not judged, so a correct mage does not flash a warning between two lines being typed.
         if ordered.formed.is_some() && facts.men == 0 {
@@ -9342,22 +9348,28 @@ fn check_mage_arrivals(
                 placed,
             ));
         }
+    }
 
-        for recruit in &ledger.refused_recruits {
-            if recruit.unit_id != ordered.unit.unit_id {
-                continue;
-            }
-            let placed = ordered
-                .intents
-                .iter()
-                .find(|placed| placed.line == recruit.line);
-            findings.push(ordered.finding(
-                hex,
-                codes::MEN_SENT_INTO_A_MAGE,
-                "this unit is a mage and cannot recruit, so this order buys nobody".to_string(),
-                placed,
-            ));
-        }
+    // One pass, resolving the unit by id: nested in the loop above it would be O(units x
+    // refusals) and would emit twice for two rows sharing an id (review finding 5).
+    for recruit in &ledger.refused_recruits {
+        let Some(ordered) = hex
+            .units
+            .iter()
+            .find(|ordered| ordered.unit.unit_id == recruit.unit_id)
+        else {
+            continue;
+        };
+        let placed = ordered
+            .intents
+            .iter()
+            .find(|placed| placed.line == recruit.line);
+        findings.push(ordered.finding(
+            hex,
+            codes::MEN_SENT_INTO_A_MAGE,
+            "this unit is a mage and cannot recruit, so this order buys nobody".to_string(),
+            placed,
+        ));
     }
 }
 
@@ -28253,6 +28265,28 @@ mod tests {
         assert_eq!(
             finding.message,
             "this unit is a mage and cannot take on men, so this order moves nothing"
+        );
+    }
+
+    /// The TAKE half of the same row of the navigator's table: the tail names what still moves.
+    #[test]
+    fn a_mixed_take_into_a_mage_says_what_still_moves() {
+        let source = with_item(
+            with_race(unit("1234"), 10, "orcs", "ORC"),
+            3,
+            "swords",
+            "SWOR",
+        );
+        let finding = only(check(
+            vec![region(vec![source, mage_with_id("900", 1)])],
+            "unit 900\nTAKE FROM 1234 ALL ITEMS\n",
+        ));
+
+        assert_eq!(finding.code, codes::MEN_SENT_INTO_A_MAGE);
+        assert_eq!(
+            finding.message,
+            // The fixture's maintenance grain is equipment too, and moves with the swords.
+            "this unit is a mage and cannot take on men, so this order moves only 4 grain and 3 swords"
         );
     }
 

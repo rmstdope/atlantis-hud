@@ -613,6 +613,22 @@ impl WorkingUnit {
     /// The fields the orders changed, each with what the report said.
     ///
     /// Formatted for a tooltip rather than typed, because "was: ..." is all the interface does
+    /// Whether this row had already begun magic **when the report was printed** (`ah-ndp9`).
+    ///
+    /// The report's own list, not `self.unit.skills`: this table is mutated as the walk runs -
+    /// `move_between` merges arriving men's skills into a receiver - and a unit that takes a
+    /// mage's leader mid-document would otherwise read as a mage here while `apply_transfers`,
+    /// which asks the report, says it is not. One policy on every surface is exactly what
+    /// `orders::magic` exists for. A formed unit has no original and no skills, so it is never a
+    /// mage either way.
+    fn is_mage_as_reported(&self, ruleset: &Ruleset) -> bool {
+        let skills = self
+            .original
+            .as_ref()
+            .map_or(&[][..], |original| original.skills.as_slice());
+        super::magic::is_mage(ruleset, skills)
+    }
+
     /// with an original. A formed unit has no original and so never any changes.
     fn changes(&self) -> Vec<FieldChange> {
         let Some(original) = &self.original else {
@@ -1423,7 +1439,7 @@ impl Working {
                     // A mage may take no men from anyone, an unshown source included (`ah-ndp9`).
                     // Refused before anything is credited or recorded.
                     if self.ruleset.is_man(&tag)
-                        && super::magic::is_mage(&self.ruleset, &self.units[taker].unit.skills)
+                        && self.units[taker].is_mage_as_reported(&self.ruleset)
                     {
                         return;
                     }
@@ -1489,7 +1505,7 @@ impl Working {
             // debited, so the source keeps the men it could not hand over.
             if let Some(receiver) = receiver {
                 if self.ruleset.is_man(&tag)
-                    && super::magic::is_mage(&self.ruleset, &self.units[receiver].unit.skills)
+                    && self.units[receiver].is_mage_as_reported(&self.ruleset)
                 {
                     continue;
                 }
@@ -2665,6 +2681,25 @@ mod tests {
             .flat_map(|region| region.units.iter())
             .find(|unit| unit.unit.unit_id == id)
             .unwrap_or_else(|| panic!("unit {id} is previewed: {:?}", response.regions))
+    }
+
+    /// The question is asked of the report's skills, not of the walk's mutated ones - the one
+    /// policy `orders::magic` exists to keep across surfaces (`ah-ndp9`, review finding 1).
+    ///
+    /// `ah-t8ei` refuses a mage's `GIVE` of men but not another unit's `TAKE` *from* a mage, so a
+    /// mundane unit can be holding a magic skill by the end of the document. Asking the mutated
+    /// list would refuse men into it here while `apply_transfers`, which asks the report, projects
+    /// and warns about nothing - the two halves of the screen disagreeing about one unit.
+    #[test]
+    fn a_unit_that_becomes_a_mage_mid_document_still_receives_men() {
+        let response =
+            preview_for_receiving_mage("unit 901\nTAKE FROM 900 1 LEAD\nTAKE FROM 1234 2 ORC\n");
+        let taker = previewed(&response, "901");
+        assert_eq!(
+            taker.unit.men, 8,
+            "5 orcs, the mage's leader, and the 2 orcs it then took: {:?}",
+            taker.unit.items
+        );
     }
 
     /// `rules/magic` fixes a mage's unit number, and the navigator's New Origins ruling says no man
