@@ -87,6 +87,10 @@ pub struct UnitPreview {
     /// One item arriving by another unit's `TRANSPORT`/`DISTRIBUTE` this month. Empty for a unit
     /// receiving nothing (`ah-bxgs`).
     pub transport_received: Vec<TransportReceived>,
+    /// One `TRANSPORT`/`DISTRIBUTE` whose target the report cannot show as able to receive, in
+    /// document order. Empty for a unit whose every transport reached an eligible target
+    /// (`ah-64wm`).
+    pub transport_target_issues: Vec<TransportTargetIssue>,
 }
 
 /// One line of what a unit's `TRANSPORT`/`DISTRIBUTE` orders send this month, in document order
@@ -101,9 +105,21 @@ pub struct TransportSent {
     pub to: String,
     /// The order named a unit number that appears nowhere in the report - an ally's
     /// quartermaster, or a mistake. `false` for a unit the report shows but we cannot project.
+    ///
+    /// Nothing is sent to such a unit any more: since `ah-64wm` the target gate stops an order
+    /// whose target the report cannot show receiving, and records a [`TransportTargetIssue`]
+    /// instead. The field stays part of this wire type, which is the item-class contract.
     pub to_unshown: bool,
     /// The game will not transport this item (`rules/economy_transport`), so it stays put.
     pub refused: bool,
+    /// Which of this unit's `TRANSPORT`/`DISTRIBUTE` orders wrote this line: its place among the
+    /// readable ones in its block, counting from `0` in document order.
+    ///
+    /// A line here and a [`TransportTargetIssue`] are two halves of one document, and neither
+    /// list can say on its own where its lines sat among the other's - so both carry the same
+    /// counter and the interface reads them back interleaved. One order selecting several tags
+    /// writes several lines under one index (`ah-64wm`).
+    pub order_index: i64,
 }
 
 /// One item arriving by another unit's `TRANSPORT`/`DISTRIBUTE` (`ah-bxgs`).
@@ -114,6 +130,55 @@ pub struct TransportReceived {
     pub tag: String,
     /// The sending unit's number.
     pub from: String,
+}
+
+/// Why the report cannot show a `TRANSPORT`/`DISTRIBUTE` target receiving what was sent
+/// (`ah-64wm`).
+///
+/// `rules/transport` requires the target to have the quartermaster skill and to own a transport
+/// structure; `rules/economy_transport` names that structure the Caravanserai and requires the
+/// target to be at least FRIENDLY to the issuing unit. The first two the report can settle for a
+/// unit it shows; the third it cannot, because `rules/com_attitudes` prints our attitudes toward
+/// other factions rather than theirs toward us.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TransportTargetReason {
+    /// One of ours, and the report - which prints our own units' skills in full - shows no
+    /// quartermaster skill on it.
+    NotQuartermaster,
+    /// The report shows the target, and it is not the first unit listed inside a Caravanserai in
+    /// its hex, so it owns none (`rules/world_structures`). Certain even for a foreign unit,
+    /// whose structure the report still draws.
+    NotCaravanseraiOwner,
+    /// The report does not show the target at all, or shows a foreign Caravanserai owner whose
+    /// skills it never discloses: no evidence either way.
+    EligibilityUnknown,
+    /// A foreign unit the report shows as a quartermaster owning a Caravanserai. Whether its
+    /// faction is FRIENDLY toward ours is not in our report (`rules/com_attitudes`).
+    AcceptanceUnknown,
+}
+
+/// One `TRANSPORT`/`DISTRIBUTE` the target gate stopped, in document order (`ah-64wm`).
+///
+/// Separate from [`TransportSent`], which stays the item-class contract: this one is about who
+/// was sent to, moves nothing, and is recorded once for the order rather than once per tag.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransportTargetIssue {
+    /// The unit number the order named.
+    pub to: String,
+    /// What the order would have moved out of the sender's stock. `0` when the sentence names no
+    /// amount - see `tag`.
+    pub amount: i64,
+    /// The item the order named. Empty when the goods are ones the game would not transport
+    /// anyway, or when one order selected several tags: there is no per-tag claim to make, so the
+    /// sentence explains the target and says the order moves nothing.
+    pub tag: String,
+    pub reason: TransportTargetReason,
+    /// Which of this unit's `TRANSPORT`/`DISTRIBUTE` orders this issue belongs to, on the same
+    /// counter [`TransportSent::order_index`] carries - so a refused order and a successful one
+    /// read back in the order they were written (`ah-64wm`).
+    pub order_index: i64,
 }
 
 /// Goods taken from a unit the report does not show in this hex (`ah-agbm`).
@@ -394,6 +459,7 @@ pub fn preview_orders_on_map(
         let created = entry.created.clone();
         let transport_sent = entry.transport_sent.clone();
         let transport_received = entry.transport_received.clone();
+        let transport_target_issues = entry.transport_target_issues.clone();
 
         let departed = status == UnitPreviewStatus::Departing;
         if changes.is_empty()
@@ -402,6 +468,7 @@ pub fn preview_orders_on_map(
             && uncounted.is_empty()
             && transport_sent.is_empty()
             && transport_received.is_empty()
+            && transport_target_issues.is_empty()
         {
             continue;
         }
@@ -437,6 +504,7 @@ pub fn preview_orders_on_map(
                     created: created.clone(),
                     transport_sent: transport_sent.clone(),
                     transport_received: transport_received.clone(),
+                    transport_target_issues: transport_target_issues.clone(),
                 });
             regions
                 .entry(entry.unit.region_id.clone())
@@ -455,6 +523,7 @@ pub fn preview_orders_on_map(
                     created,
                     transport_sent,
                     transport_received,
+                    transport_target_issues,
                 });
         } else {
             regions
@@ -474,6 +543,7 @@ pub fn preview_orders_on_map(
                     created,
                     transport_sent,
                     transport_received,
+                    transport_target_issues,
                 });
         }
     }
@@ -607,6 +677,9 @@ struct WorkingUnit {
     /// figure unknowable; `settle_headcounts` reads this to dilute skills by the exact settled
     /// count rather than infer one from the item list's net change (`ah-4a13`).
     recruited: Vec<crate::report::model::ItemAmount>,
+    /// This unit's `TRANSPORT`/`DISTRIBUTE` orders whose target the report cannot show as able to
+    /// receive. Written once by `apply_transports` (`ah-64wm`).
+    transport_target_issues: Vec<TransportTargetIssue>,
 }
 
 impl WorkingUnit {
@@ -778,6 +851,10 @@ struct Working {
     /// catalogue rather than by tag spelling - `QUAM` is quartermaster and `QUAR` is quarrying
     /// (`ah-d0ku`).
     quartermasters: std::collections::BTreeSet<String>,
+    /// What the report can say about each unit it shows as a `TRANSPORT`/`DISTRIBUTE` target,
+    /// keyed by unit id. A target missing from here is one the report never described
+    /// (`ah-64wm`).
+    transport_targets: BTreeMap<String, TransportTargetFacts>,
 }
 
 /// One `GIVE` or `TAKE`, held until the whole document has been read so the Give phase can be
@@ -797,12 +874,96 @@ struct PendingTransfer {
     is_give: bool,
 }
 
+/// What the report shows about one unit that a `TRANSPORT` could name (`ah-64wm`).
+///
+/// Read from the report alone, before any order runs: `rules/transport` asks about the target's
+/// skill and its structure, and neither is something this month's orders are being previewed to
+/// change here.
+struct TransportTargetFacts {
+    /// Ours, whose skills the report prints in full - so an absent skill is an absent skill,
+    /// rather than an undisclosed one.
+    own: bool,
+    /// Whether the absence of the skill can be read as absence at all. It cannot when the
+    /// catalogue names no quartermaster skill to resolve: nothing about the unit is then known,
+    /// and saying "is not a quartermaster" would state a catalogue fault as a fact about the
+    /// player's report (`ah-64wm`, `ah-d0ku`).
+    quartermaster_disclosed: bool,
+    /// The report shows the quartermaster skill on this unit, resolved through the catalogue
+    /// rather than by tag spelling (`ah-d0ku`).
+    quartermaster: bool,
+    /// The unit is the first one listed inside a Caravanserai in its hex, which is what
+    /// `rules/world_structures` makes the owner of the structure.
+    caravanserai_owner: bool,
+}
+
+/// Whether a structure is the one `rules/economy_transport` allows transport into: "The structures
+/// which allow this are: Caravanserai."
+///
+/// `base_kind` is the kind with its qualifiers stripped, and is what a bare-word match wants. It is
+/// empty on a hex remembered before that field existed, whose JSON defaulted it; the kind before
+/// its first comma is the same answer the parser would have derived (`ah-64wm`).
+fn is_caravanserai(structure: &crate::report::model::Structure) -> bool {
+    let base = if structure.base_kind.is_empty() {
+        structure.kind.split(',').next().unwrap_or_default().trim()
+    } else {
+        structure.base_kind.as_str()
+    };
+    base.eq_ignore_ascii_case("Caravanserai")
+}
+
+/// What the report says about every unit it shows, as a `TRANSPORT` target (`ah-64wm`).
+fn transport_target_facts(
+    report: &crate::report::ParsedReport,
+    quartermasters: &std::collections::BTreeSet<String>,
+    quartermaster_known: bool,
+) -> BTreeMap<String, TransportTargetFacts> {
+    let mut facts = BTreeMap::new();
+    for region in &report.regions {
+        // The first unit listed inside each Caravanserai owns it (`rules/world_structures`), so
+        // the owners are read off the region's unit list in the order the report wrote them.
+        let mut owners: BTreeMap<&str, &str> = BTreeMap::new();
+        for structure in region.structures.iter().filter(|one| is_caravanserai(one)) {
+            if let Some(owner) = region
+                .units
+                .iter()
+                .find(|unit| unit.structure_id.as_deref() == Some(&structure.structure_id))
+            {
+                owners.insert(structure.structure_id.as_str(), owner.unit_id.as_str());
+            }
+        }
+        for unit in &region.units {
+            let caravanserai_owner = unit.structure_id.as_deref().is_some_and(|structure_id| {
+                owners.get(structure_id) == Some(&unit.unit_id.as_str())
+            });
+            facts.insert(
+                unit.unit_id.clone(),
+                TransportTargetFacts {
+                    own: unit.own,
+                    quartermaster_disclosed: quartermaster_known,
+                    quartermaster: quartermasters.contains(&unit.unit_id),
+                    caravanserai_owner,
+                },
+            );
+        }
+    }
+    facts
+}
+
+/// What the report can say about a named `TRANSPORT`/`DISTRIBUTE` target (`ah-64wm`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TransportTargetOutcome {
+    /// One of ours, with the quartermaster skill, owning a Caravanserai: the goods go.
+    Eligible,
+    Refused(TransportTargetReason),
+}
+
 /// One `TRANSPORT`/`DISTRIBUTE` order, held until the month's other orders have been worked out
 /// (`ah-bxgs`).
 struct PendingTransport {
     sender: usize,
     /// The receiving row, when the target is one of ours. `None` for an ally's quartermaster or a
-    /// unit number the report does not carry - the goods still leave.
+    /// unit number the report does not carry, which `Working::transport_target` settles before
+    /// anything moves (`ah-64wm`).
     receiver: Option<usize>,
     /// The unit number as the order wrote it, for the hover.
     to: String,
@@ -851,6 +1012,7 @@ impl Working {
                 transport_sent: Vec::new(),
                 transport_received: Vec::new(),
                 recruited: Vec::new(),
+                transport_target_issues: Vec::new(),
             });
         }
         let known_units: std::collections::BTreeSet<String> =
@@ -872,11 +1034,15 @@ impl Working {
                 .map(|unit| unit.unit_id.clone())
                 .collect(),
             // No catalogue entry for the skill: nothing can be classified, every sender falls to
-            // the first phase, and transport settles in one pass as it did before this bead. The
-            // shipped ruleset states `quartermaster [QUAM]`, so this is a catalogue fault rather
-            // than a report one (`ah-d0ku`).
+            // the first phase, and transport settles in one pass as it did before `ah-d0ku`. No
+            // target can be classified either, so `transport_target` reports every one of them as
+            // eligibility the report cannot establish rather than stating a catalogue fault as a
+            // missing skill (`ah-64wm`). The shipped ruleset states `quartermaster [QUAM]`, so
+            // this is a catalogue fault rather than a report one (`ah-d0ku`).
             None => std::collections::BTreeSet::new(),
         };
+        let transport_targets =
+            transport_target_facts(report, &quartermasters, quartermaster_tag.is_some());
         let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
             BTreeMap::new();
         for region in &report.regions {
@@ -902,6 +1068,7 @@ impl Working {
                 .map(|unit| unit.unit_id.clone())
                 .collect(),
             transfers: Vec::new(),
+            transport_targets,
         }
     }
 
@@ -1139,6 +1306,7 @@ impl Working {
             transport_sent: Vec::new(),
             transport_received: Vec::new(),
             recruited: Vec::new(),
+            transport_target_issues: Vec::new(),
         });
         self.forming.push(Some(index));
     }
@@ -1558,9 +1726,10 @@ impl Working {
     ///
     /// Returns without queueing in five cases, each a decision: the line cannot be read at all;
     /// the selector is a whole class or a whole unit, which `TRANSPORT_FORMS` has no grammar for
-    /// even though `read_transfer` (shared with `GIVE`) will still hand one back; the target was
-    /// formed this month or belongs to another faction, and so owns no Caravanserai and cannot be
-    /// a quartermaster; the target is `0` (`TRANSPORT` is not `GIVE`, and no rule makes
+    /// even though `read_transfer` (shared with `GIVE`) will still hand one back; the target is an
+    /// alias for a unit formed this month, ours or another faction's, which the report cannot show
+    /// owning anything - it did not exist when the report was written; the target is `0`
+    /// (`TRANSPORT` is not `GIVE`, and no rule makes
     /// transport-to-zero destroy goods); or the target resolves to the sender itself, which the
     /// server refuses.
     fn transport(&mut self, sender: usize, arguments: &[super::lexer::Token]) {
@@ -1599,6 +1768,55 @@ impl Working {
         });
     }
 
+    /// What the report can say about the unit a `TRANSPORT`/`DISTRIBUTE` names (`ah-64wm`).
+    ///
+    /// `rules/transport`: "The target of the transport unit must be a unit with the quartermaster
+    /// skill and must be the owner of a transport structure", which `rules/economy_transport`
+    /// names the Caravanserai and which must also "be at least FRIENDLY to the unit which issues
+    /// the order".
+    ///
+    /// Only the first two are ours to settle. `rules/com_attitudes` prints the attitudes *we*
+    /// declare toward other factions, never theirs toward us, so a foreign target that passes both
+    /// structural tests is still unknown - accept on doubt, and say so.
+    fn transport_target(&self, id: &str) -> TransportTargetOutcome {
+        use TransportTargetReason::{
+            AcceptanceUnknown, EligibilityUnknown, NotCaravanseraiOwner, NotQuartermaster,
+        };
+
+        let Some(facts) = self.transport_targets.get(id) else {
+            // A unit number the report never described: an ally's quartermaster, or a mistake.
+            return TransportTargetOutcome::Refused(EligibilityUnknown);
+        };
+        if facts.own {
+            // Our own report prints our own units' skills in full, so a missing quartermaster is
+            // a fact rather than a gap - and it is the reason worth naming when the unit fails
+            // both tests.
+            if !facts.quartermaster {
+                if !facts.quartermaster_disclosed {
+                    // The catalogue names no quartermaster skill, so the report was never asked
+                    // the question: missing evidence, not a missing skill.
+                    return TransportTargetOutcome::Refused(EligibilityUnknown);
+                }
+                return TransportTargetOutcome::Refused(NotQuartermaster);
+            }
+            if !facts.caravanserai_owner {
+                return TransportTargetOutcome::Refused(NotCaravanseraiOwner);
+            }
+            return TransportTargetOutcome::Eligible;
+        }
+        // A foreign unit's structure is drawn in our report even though its skills are not, so
+        // ownership is certain either way and is asked first.
+        if !facts.caravanserai_owner {
+            return TransportTargetOutcome::Refused(NotCaravanseraiOwner);
+        }
+        if !facts.quartermaster {
+            // A foreign unit's skills are undisclosed (`rules/reportformat`), so an empty list is
+            // missing evidence rather than proof.
+            return TransportTargetOutcome::Refused(EligibilityUnknown);
+        }
+        TransportTargetOutcome::Refused(AcceptanceUnknown)
+    }
+
     /// Applies every queued `TRANSPORT`/`DISTRIBUTE`, last of all: `rules/sequenceofevents` runs
     /// transport in the month's final phases, after the market, after movement, after production
     /// (`ah-bxgs`).
@@ -1606,6 +1824,19 @@ impl Working {
         let pending = std::mem::take(&mut self.transports);
         let mut sent: Vec<Vec<(usize, TransportSent)>> = vec![Vec::new(); self.units.len()];
         let mut received: Vec<Vec<(usize, TransportReceived)>> = vec![Vec::new(); self.units.len()];
+        let mut issues: Vec<Vec<(usize, TransportTargetIssue)>> =
+            vec![Vec::new(); self.units.len()];
+        // How many of its own transports each sender has written before this one, so every line
+        // one order produces - sent, refused or target-refused - is stamped with that order's
+        // place in the unit's block. The queue is document-ordered, and the phases below are not,
+        // so the counting has to happen here (`ah-64wm`, `ah-d0ku`).
+        let mut written: BTreeMap<usize, i64> = BTreeMap::new();
+        let mut order_index: BTreeMap<usize, i64> = BTreeMap::new();
+        for pending in &pending {
+            let next = written.entry(pending.sender).or_insert(0);
+            order_index.insert(pending.sequence, *next);
+            *next += 1;
+        }
 
         for phase in [
             TransportPhase::ToQuartermaster,
@@ -1624,7 +1855,13 @@ impl Working {
             if of_this_phase.is_empty() {
                 continue;
             }
-            self.apply_transport_phase(&of_this_phase, &mut sent, &mut received);
+            self.apply_transport_phase(
+                &of_this_phase,
+                &order_index,
+                &mut sent,
+                &mut received,
+                &mut issues,
+            );
         }
 
         for (index, working) in self.units.iter_mut().enumerate() {
@@ -1634,6 +1871,9 @@ impl Working {
             let mut theirs = std::mem::take(&mut received[index]);
             theirs.sort_by_key(|(sequence, _)| *sequence);
             working.transport_received = theirs.into_iter().map(|(_, value)| value).collect();
+            let mut theirs = std::mem::take(&mut issues[index]);
+            theirs.sort_by_key(|(sequence, _)| *sequence);
+            working.transport_target_issues = theirs.into_iter().map(|(_, value)| value).collect();
         }
     }
 
@@ -1644,6 +1884,10 @@ impl Working {
     /// target the report does not show, or one whose skills are hidden - is the third: the
     /// navigator chose that deterministic fallback over inventing a skill the report never states
     /// (`ah-d0ku`).
+    ///
+    /// Since `ah-64wm` an eligible target is a quartermaster by construction, so the third phase
+    /// carries only orders the target gate refuses. It still has to run - the refusals are what
+    /// the interface explains - and it becomes live again the moment the target rule changes.
     fn transport_phase(&self, pending: &PendingTransport) -> TransportPhase {
         let sender = &self.units[pending.sender].unit.unit_id;
         if !self.quartermasters.contains(sender) {
@@ -1663,11 +1907,17 @@ impl Working {
     /// `rules/sequenceofevents`' "items may move in each of the phases but only once in each
     /// phase": goods that arrived in an earlier phase are available, and goods arriving during
     /// this one are not (`ah-d0ku`).
+    ///
+    /// The target is settled before any item is: an order whose target cannot receive moves
+    /// nothing at all, whatever it named, so the target explanation is recorded once for the order
+    /// and no per-item refusal is reported beside it (`ah-64wm`).
     fn apply_transport_phase(
         &mut self,
         pending: &[&PendingTransport],
+        order_index: &BTreeMap<usize, i64>,
         sent: &mut [Vec<(usize, TransportSent)>],
         received: &mut [Vec<(usize, TransportReceived)>],
+        issues: &mut [Vec<(usize, TransportTargetIssue)>],
     ) {
         let mut allowance: BTreeMap<usize, Vec<crate::report::model::ItemAmount>> = BTreeMap::new();
         for pending in pending {
@@ -1677,6 +1927,7 @@ impl Working {
         }
 
         for pending in pending {
+            let index = order_index.get(&pending.sequence).copied().unwrap_or(0);
             let held = allowance
                 .get(&pending.sender)
                 .cloned()
@@ -1684,12 +1935,40 @@ impl Working {
             // `GiveReach::Discard` bypasses target-specific refusal: `TRANSPORT` has
             // its own permission gate, `can_be_transported`, checked below - the two lists are
             // not the same (`IENT` may not be given but may be transported).
-            for (name, tag, moved) in self.tags_moved_from(
+            let moving = self.tags_moved_from(
                 &held,
                 &pending.what,
                 &pending.amount,
                 super::targets::GiveReach::Discard,
-            ) {
+            );
+            // An order over goods the sender does not hold has nothing to retain and nothing to
+            // explain, whoever it was aimed at.
+            if moving.is_empty() {
+                continue;
+            }
+            if let TransportTargetOutcome::Refused(reason) = self.transport_target(&pending.to) {
+                // One record for the order. A single tag the game would carry has a claim to make
+                // about those goods; anything else - an item transport refuses anyway, or several
+                // tags at once - leaves the sentence to speak of the order alone.
+                let (amount, tag) = match moving.as_slice() {
+                    [(_, tag, moved)] if self.ruleset.can_be_transported(tag) => {
+                        (*moved, tag.clone())
+                    }
+                    _ => (0, String::new()),
+                };
+                issues[pending.sender].push((
+                    pending.sequence,
+                    TransportTargetIssue {
+                        to: pending.to.clone(),
+                        amount,
+                        tag,
+                        reason,
+                        order_index: index,
+                    },
+                ));
+                continue;
+            }
+            for (name, tag, moved) in moving {
                 if !self.ruleset.can_be_transported(&tag) {
                     sent[pending.sender].push((
                         pending.sequence,
@@ -1699,6 +1978,7 @@ impl Working {
                             to: String::new(),
                             to_unshown: false,
                             refused: true,
+                            order_index: index,
                         },
                     ));
                     continue;
@@ -1729,6 +2009,7 @@ impl Working {
                         to: pending.to.clone(),
                         to_unshown: pending.to_unshown,
                         refused: false,
+                        order_index: index,
                     },
                 ));
                 if let Some(receiver) = pending.receiver {
@@ -2138,6 +2419,26 @@ mod tests {
         .join("\n")
     }
 
+    /// [`report_with_a_smith`], with a quartermaster owning a Caravanserai to transport to - so
+    /// what a `PRODUCE` makes has a target `rules/transport` accepts (`ah-64wm`).
+    fn report_with_a_smith_and_a_quartermaster() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON]. Weight: 180. Capacity: 0/0/120/0. Skills: weaponsmith [WEAP] 1 (30).",
+            "+ Waystation [1] : Caravanserai.",
+            "  * Broker (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: quartermaster [QUAM] 1 (30).",
+            "",
+        ]
+        .join("\n")
+    }
+
     /// [`report_with_a_smith`], with a neighbour to give to - for the cases where a transfer and a
     /// `PRODUCE` are written in the same month (`ah-qct4`).
     ///
@@ -2182,10 +2483,20 @@ mod tests {
         .join("\n")
     }
 
-    /// Two regions joined by an exit, own units in both, and one foreign unit - for the
-    /// `TRANSPORT`/`DISTRIBUTE` cases (`ah-bxgs`). `5530` sends; `6857` is a quartermaster that can
-    /// receive. `7001` is a foreign unit visible in `6857`'s hex, present so a transport aimed at a
-    /// unit we can see but do not own has a subject.
+    /// Two regions joined by an exit, own units in both, and foreign units - for the
+    /// `TRANSPORT`/`DISTRIBUTE` cases (`ah-bxgs`, `ah-64wm`). `5530` sends and is an ordinary unit,
+    /// so a transport aimed back at it has an ineligible own target to name.
+    ///
+    /// Every eligible target is rules-valid: `rules/transport` wants the quartermaster skill,
+    /// `rules/economy_transport` wants ownership of a Caravanserai, and
+    /// `rules/world_structures` makes the owner "the first unit listed under the object" - so
+    /// `5531` and `6857` each open a Caravanserai, while `6858` is listed second inside `6857`'s
+    /// and owns nothing. `5532` is a quartermaster standing in no structure at all.
+    ///
+    /// The foreign side covers what our report cannot say: `7001` owns no Caravanserai, which is
+    /// certain; `7003` is a disclosed quartermaster owning one, whose faction's attitude toward
+    /// ours is not in our report (`rules/com_attitudes`); `7004` owns one with its skills
+    /// undisclosed.
     ///
     /// The men must be the *first* item on each own unit's line (`count_men`,
     /// `report/unit.rs:217`).
@@ -2201,14 +2512,27 @@ mod tests {
             "",
             "* Sender (5530), Foo (1), 6 orcs [ORC], 40 stone [STON], 2 horses [HORS], \
              5 fur [FUR]. Weight: 300. Capacity: 0/0/90/0.",
+            "* Loader (5532), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: quartermaster [QUAM] 1 (30).",
+            "+ Waystation [1] : Caravanserai.",
+            "  * Broker (5531), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: quartermaster [QUAM] 3 (180).",
             "",
             "mountain (2,2) in Nowhere, 5 dwarves (dwarves), $3.",
             "",
             "Exits:",
             "  Northwest : plain (1,1) in Nowhere.",
             "",
-            "* Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON]. Weight: 10. \
-             Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 1 (30).",
+            "+ Trade Post [1] : Caravanserai.",
+            "  * Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON]. Weight: 10. \
+             Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 5 (450).",
+            "  * Hauler (6858), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: quartermaster [QUAM] 1 (30).",
+            "+ Ent Trade Emporium [2] : Caravanserai.",
+            "  - Trader (7003), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: quartermaster [QUAM] 3 (180).",
+            "+ Camel Yard [3] : Caravanserai.",
+            "  - Camel Master (7004), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
             "- Stranger (7001), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
             "",
         ]
@@ -5234,36 +5558,27 @@ mod tests {
 
         #[test]
         fn a_transport_within_one_hex_moves_goods_too() {
-            let response = preview_orders_for_remembered_report(
-                &mut ReportCache::new(),
-                RULESET,
-                &report(),
-                "[]",
-                "unit 900\nTRANSPORT 901 2 SWOR\n",
-            )
-            .expect("the ruleset loads");
+            // `5531` opens the Caravanserai in the sender's own hex, so this is a full transport
+            // that never crosses an exit.
+            let response = two_hex_preview("unit 5530\nTRANSPORT 5531 5 FUR\n");
 
-            let sender = only_unit_by_id(&response, "900");
-            let sword_count = sender
+            let sender = only_unit_by_id(&response, "5530");
+            let fur = sender
                 .unit
                 .items
                 .iter()
-                .find(|item| item.tag == "SWOR")
+                .find(|item| item.tag == "FUR")
                 .map(|item| item.amount);
-            assert_eq!(sword_count, Some(1), "3 held, 2 sent");
+            assert_eq!(fur, None, "5 held, 5 sent");
 
-            let receiver = only_unit_by_id(&response, "901");
-            let sword_count = receiver
+            let receiver = only_unit_by_id(&response, "5531");
+            let fur = receiver
                 .unit
                 .items
                 .iter()
-                .find(|item| item.tag == "SWOR")
+                .find(|item| item.tag == "FUR")
                 .map(|item| item.amount);
-            assert_eq!(
-                sword_count,
-                Some(2),
-                "0 held, 2 arrived, within the same hex"
-            );
+            assert_eq!(fur, Some(5), "0 held, 5 arrived, within the same hex");
         }
 
         #[test]
@@ -5316,6 +5631,7 @@ mod tests {
                         to: "6857".to_string(),
                         to_unshown: false,
                         refused: false,
+                        order_index: 0,
                     },
                     TransportSent {
                         amount: 0,
@@ -5323,6 +5639,7 @@ mod tests {
                         to: String::new(),
                         to_unshown: false,
                         refused: true,
+                        order_index: 1,
                     },
                 ]
             );
@@ -5330,7 +5647,8 @@ mod tests {
 
         #[test]
         fn a_transport_of_men_moves_nothing_and_leaves_the_headcount_alone() {
-            let response = two_hex_preview("unit 6857\nTRANSPORT 5530 1 LEAD\n");
+            // `5531` is an eligible target, so nothing but the item class can refuse this.
+            let response = two_hex_preview("unit 6857\nTRANSPORT 5531 1 LEAD\n");
 
             // The row is still previewed (the refusal itself is news), but nothing about the
             // unit's items or headcount changed - `can_be_transported` refuses every `MAN` tag,
@@ -5347,6 +5665,7 @@ mod tests {
                     to: String::new(),
                     to_unshown: false,
                     refused: true,
+                    order_index: 0,
                 }]
             );
         }
@@ -5390,7 +5709,7 @@ mod tests {
             let response = preview_orders_for_remembered_report(
                 &mut ReportCache::new(),
                 RULESET,
-                &report_with_a_smith(),
+                &report_with_a_smith_and_a_quartermaster(),
                 "[]",
                 "unit 900\nPRODUCE SWOR\nTRANSPORT 901 ALL SWOR\n",
             )
@@ -5426,58 +5745,381 @@ mod tests {
                     to: "6857".to_string(),
                     to_unshown: false,
                     refused: false,
+                    order_index: 0,
                 }]
             );
         }
 
-        #[test]
-        fn a_transport_to_a_unit_the_report_does_not_show_still_empties_the_stock() {
-            let response = two_hex_preview("unit 5530\nTRANSPORT 99999 5 STON\n");
-
-            let sender = sender_row(&response);
-            let stone = sender
-                .unit
+        /// What the sender still holds of one tag, or `None` once its stock is gone.
+        fn held(unit: &UnitPreview, tag: &str) -> Option<i64> {
+            unit.unit
                 .items
                 .iter()
-                .find(|item| item.tag == "STON")
-                .map(|item| item.amount);
-            assert_eq!(stone, Some(35));
+                .find(|item| item.tag == tag)
+                .map(|item| item.amount)
+        }
+
+        /// The sender's row after one order, asserted to have moved nothing at all.
+        fn kept_everything(orders: &str) -> UnitPreview {
+            let response = two_hex_preview(orders);
+            let sender = sender_row(&response).clone();
+            assert_eq!(held(&sender, "STON"), Some(40), "the stone stayed put");
+            assert!(
+                sender.transport_sent.is_empty(),
+                "a refused target sends nothing"
+            );
+            sender
+        }
+
+        /// One target issue, for the tests whose order writes exactly one.
+        fn only_issue(unit: &UnitPreview) -> &TransportTargetIssue {
             assert_eq!(
-                sender.transport_sent,
-                vec![TransportSent {
+                unit.transport_target_issues.len(),
+                1,
+                "one target issue: {:?}",
+                unit.transport_target_issues
+            );
+            &unit.transport_target_issues[0]
+        }
+
+        // `rules/transport`: "The target of the transport unit must be a unit with the
+        // quartermaster skill". Our own report prints our own skills in full, so this is certain.
+        #[test]
+        fn an_own_target_without_the_quartermaster_skill_keeps_the_goods_here() {
+            let response = two_hex_preview("unit 6857\nTRANSPORT 5530 5 STON\n");
+
+            let sender = row(&response, "1:2,2", "6857").expect("the refusal is reported");
+            assert_eq!(held(sender, "STON"), Some(15), "nothing left 6857");
+            assert!(sender.transport_sent.is_empty());
+            assert_eq!(
+                only_issue(sender),
+                &TransportTargetIssue {
+                    to: "5530".to_string(),
                     amount: 5,
                     tag: "STON".to_string(),
-                    to: "99999".to_string(),
-                    to_unshown: true,
-                    refused: false,
-                }]
+                    reason: TransportTargetReason::NotQuartermaster,
+                    order_index: 0,
+                }
+            );
+            // The sender keeps them, so no row of ours gains them either.
+            assert!(row(&response, "1:1,1", "5530").is_none());
+        }
+
+        // `rules/economy_transport`: "a quartermaster must be the owner of a structure which allows
+        // transportation of items. The structures which allow this are: Caravanserai."
+        #[test]
+        fn an_own_quartermaster_owning_no_caravanserai_keeps_the_goods_here() {
+            let sender = kept_everything("unit 5530\nTRANSPORT 5532 5 STON\n");
+
+            assert_eq!(
+                only_issue(&sender),
+                &TransportTargetIssue {
+                    to: "5532".to_string(),
+                    amount: 5,
+                    tag: "STON".to_string(),
+                    reason: TransportTargetReason::NotCaravanseraiOwner,
+                    order_index: 0,
+                }
+            );
+        }
+
+        // `rules/world_structures`: the owner "is the first unit listed under the object". `6858`
+        // is a quartermaster standing in the Caravanserai `6857` opened, and owns nothing.
+        #[test]
+        fn a_quartermaster_listed_after_the_owner_owns_no_caravanserai() {
+            let sender = kept_everything("unit 5530\nTRANSPORT 6858 5 STON\n");
+
+            assert_eq!(
+                only_issue(&sender).reason,
+                TransportTargetReason::NotCaravanseraiOwner
             );
         }
 
         #[test]
-        fn a_transport_to_a_unit_we_can_see_but_do_not_own() {
+        fn a_transport_to_a_unit_the_report_does_not_show_keeps_the_goods_here() {
+            let sender = kept_everything("unit 5530\nTRANSPORT 99999 5 STON\n");
+
+            assert_eq!(
+                only_issue(&sender),
+                &TransportTargetIssue {
+                    to: "99999".to_string(),
+                    amount: 5,
+                    tag: "STON".to_string(),
+                    reason: TransportTargetReason::EligibilityUnknown,
+                    order_index: 0,
+                }
+            );
+        }
+
+        // `rules/com_attitudes` prints the attitudes we declare toward other factions, never
+        // theirs toward us - and `rules/economy_transport` needs the target "at least FRIENDLY to
+        // the unit which issues the order". Structurally eligible, and still unknowable.
+        #[test]
+        fn a_foreign_quartermaster_owning_a_caravanserai_is_unknowable() {
+            let sender = kept_everything("unit 5530\nTRANSPORT 7003 5 STON\n");
+
+            assert_eq!(
+                only_issue(&sender),
+                &TransportTargetIssue {
+                    to: "7003".to_string(),
+                    amount: 5,
+                    tag: "STON".to_string(),
+                    reason: TransportTargetReason::AcceptanceUnknown,
+                    order_index: 0,
+                }
+            );
+        }
+
+        // A foreign unit's skills are never disclosed, so an empty list is missing evidence rather
+        // than proof that the owner is no quartermaster.
+        #[test]
+        fn a_foreign_caravanserai_owner_with_undisclosed_skills_is_unknowable() {
+            let sender = kept_everything("unit 5530\nTRANSPORT 7004 5 STON\n");
+
+            assert_eq!(
+                only_issue(&sender).reason,
+                TransportTargetReason::EligibilityUnknown
+            );
+        }
+
+        // The structure the report draws is evidence, though: a foreign unit standing in no
+        // Caravanserai owns none, whatever its skills turn out to be.
+        #[test]
+        fn a_foreign_unit_owning_no_caravanserai_is_refused_outright() {
             let response = two_hex_preview("unit 5530\nTRANSPORT 7001 5 STON\n");
 
             let sender = sender_row(&response);
-            let stone = sender
-                .unit
-                .items
-                .iter()
-                .find(|item| item.tag == "STON")
-                .map(|item| item.amount);
-            assert_eq!(stone, Some(35));
+            assert_eq!(held(sender, "STON"), Some(40));
+            assert!(sender.transport_sent.is_empty());
             assert_eq!(
-                sender.transport_sent,
-                vec![TransportSent {
+                only_issue(sender),
+                &TransportTargetIssue {
+                    to: "7001".to_string(),
                     amount: 5,
                     tag: "STON".to_string(),
-                    to: "7001".to_string(),
-                    to_unshown: false,
-                    refused: false,
-                }]
+                    reason: TransportTargetReason::NotCaravanseraiOwner,
+                    order_index: 0,
+                }
             );
             // No row of ours gains anything: 7001 is not our unit.
             assert!(row(&response, "1:2,2", "7001").is_none());
+        }
+
+        #[test]
+        fn distribute_is_refused_by_a_target_exactly_as_transport_is() {
+            let sender = kept_everything("unit 5530\nDISTRIBUTE 7001 5 STON\n");
+
+            assert_eq!(
+                only_issue(&sender),
+                &TransportTargetIssue {
+                    to: "7001".to_string(),
+                    amount: 5,
+                    tag: "STON".to_string(),
+                    reason: TransportTargetReason::NotCaravanseraiOwner,
+                    order_index: 0,
+                }
+            );
+        }
+
+        // The target gate is an order-level one and runs first, so an order that fails both tests
+        // is explained by its target alone - and, having no claim to make about goods the game
+        // would not have carried anyway, names none.
+        #[test]
+        fn a_refused_target_explains_an_order_that_also_names_an_untransportable_item() {
+            let response = two_hex_preview("unit 5530\nTRANSPORT 7001 2 HORS\n");
+
+            let sender = sender_row(&response);
+            assert_eq!(held(sender, "HORS"), Some(2));
+            assert!(
+                sender.transport_sent.is_empty(),
+                "the target reason replaces the item refusal rather than joining it"
+            );
+            assert_eq!(
+                only_issue(sender),
+                &TransportTargetIssue {
+                    to: "7001".to_string(),
+                    amount: 0,
+                    tag: String::new(),
+                    reason: TransportTargetReason::NotCaravanseraiOwner,
+                    order_index: 0,
+                }
+            );
+        }
+
+        #[test]
+        fn a_refused_target_is_silent_when_the_sender_holds_none_of_it() {
+            let response = two_hex_preview("unit 5530\nTRANSPORT 99999 5 SWOR\n");
+
+            // Nothing to retain and nothing to explain: 5530 holds no swords.
+            assert!(row(&response, "1:1,1", "5530").is_none());
+        }
+
+        #[test]
+        fn a_sent_order_and_a_refused_one_are_kept_in_document_order() {
+            let response =
+                two_hex_preview("unit 5530\nTRANSPORT 6857 30 STON\nTRANSPORT 7001 5 FUR\n");
+
+            let sender = sender_row(&response);
+            assert_eq!(held(sender, "STON"), Some(10), "30 of the 40 left");
+            assert_eq!(held(sender, "FUR"), Some(5), "the fur stayed");
+            assert_eq!(
+                sender.transport_sent,
+                vec![TransportSent {
+                    amount: 30,
+                    tag: "STON".to_string(),
+                    to: "6857".to_string(),
+                    to_unshown: false,
+                    refused: false,
+                    order_index: 0,
+                }]
+            );
+            assert_eq!(
+                sender.transport_target_issues,
+                vec![TransportTargetIssue {
+                    to: "7001".to_string(),
+                    amount: 5,
+                    tag: "FUR".to_string(),
+                    reason: TransportTargetReason::NotCaravanseraiOwner,
+                    order_index: 1,
+                }]
+            );
+        }
+
+        // The two lists are halves of one document, so the counter has to survive a block whose
+        // refused order comes *first* - the case a list-after-list hover would put backwards.
+        #[test]
+        fn a_refused_order_written_before_a_sent_one_keeps_its_place() {
+            let response =
+                two_hex_preview("unit 5530\nTRANSPORT 7001 5 FUR\nTRANSPORT 6857 30 STON\n");
+
+            let sender = sender_row(&response);
+            assert_eq!(
+                sender.transport_target_issues,
+                vec![TransportTargetIssue {
+                    to: "7001".to_string(),
+                    amount: 5,
+                    tag: "FUR".to_string(),
+                    reason: TransportTargetReason::NotCaravanseraiOwner,
+                    order_index: 0,
+                }]
+            );
+            assert_eq!(
+                sender.transport_sent,
+                vec![TransportSent {
+                    amount: 30,
+                    tag: "STON".to_string(),
+                    to: "6857".to_string(),
+                    to_unshown: false,
+                    refused: false,
+                    order_index: 1,
+                }]
+            );
+        }
+
+        // One order selecting several tags writes several lines, all under its own index - so an
+        // order after it still sorts after every one of them.
+        #[test]
+        fn every_line_one_order_writes_shares_that_order_s_place() {
+            let response = two_hex_preview(
+                "unit 5530\nTRANSPORT 6857 30 STON\nTRANSPORT 6857 2 HORS\nTRANSPORT 6857 5 FUR\n",
+            );
+
+            let sender = sender_row(&response);
+            let places: Vec<(&str, i64)> = sender
+                .transport_sent
+                .iter()
+                .map(|sent| (sent.tag.as_str(), sent.order_index))
+                .collect();
+            assert_eq!(
+                places,
+                vec![("STON", 0), ("HORS", 1), ("FUR", 2)],
+                "each line carries the place of the order that wrote it"
+            );
+        }
+
+        // A quartermaster sender splits its own orders across two phases - the eligible target is
+        // a quartermaster (phase 2), the ineligible one is not (phase 3) - and the places still
+        // read as the document wrote them. A counter kept per phase would call both the first
+        // (`ah-64wm`, `ah-d0ku`).
+        #[test]
+        fn one_sender_s_places_survive_being_split_across_phases() {
+            let response =
+                two_hex_preview("unit 6857\nTRANSPORT 7001 5 STON\nTRANSPORT 5531 10 STON\n");
+
+            let sender = only_unit_by_id(&response, "6857");
+            assert_eq!(
+                sender
+                    .transport_target_issues
+                    .iter()
+                    .map(|issue| (issue.to.as_str(), issue.order_index))
+                    .collect::<Vec<_>>(),
+                vec![("7001", 0)],
+                "the refused order keeps the place it was written in"
+            );
+            assert_eq!(
+                sender
+                    .transport_sent
+                    .iter()
+                    .map(|sent| (sent.to.as_str(), sent.order_index))
+                    .collect::<Vec<_>>(),
+                vec![("5531", 1)],
+                "the order written after it sorts after it, though it settles a phase earlier"
+            );
+        }
+
+        // A catalogue that names no quartermaster skill leaves nothing to resolve, so the report
+        // was never asked whether the target holds it. That is missing evidence, not a missing
+        // skill, and the interface must not state a catalogue fault as a fact about the player's
+        // own units (`ah-64wm`, `ah-d0ku`).
+        #[test]
+        fn an_unresolvable_quartermaster_skill_is_missing_evidence() {
+            let renamed = RULESET.replace("\"quartermaster\"", "\"quartermistress\"");
+            let response = preview_orders_for_remembered_report(
+                &mut ReportCache::new(),
+                &renamed,
+                &report_across_two_hexes(),
+                "[]",
+                "unit 6857\nTRANSPORT 5531 5 STON\n",
+            )
+            .expect("the ruleset loads");
+
+            let sender = only_unit_by_id(&response, "6857");
+            assert_eq!(
+                sender
+                    .transport_target_issues
+                    .iter()
+                    .map(|issue| issue.reason)
+                    .collect::<Vec<_>>(),
+                vec![TransportTargetReason::EligibilityUnknown],
+                "a target eligible under a working catalogue is not called a non-quartermaster"
+            );
+        }
+
+        // A hex remembered before `Structure.base_kind` existed reads it back empty, and the kind
+        // before its first comma is the same answer the parser would have derived (`ah-64wm`).
+        #[test]
+        fn a_caravanserai_is_recognised_without_a_base_kind() {
+            use crate::report::model::Structure;
+
+            let remembered = Structure {
+                kind: "Caravanserai, needs 40".to_string(),
+                ..Structure::default()
+            };
+            assert!(is_caravanserai(&remembered));
+
+            let parsed = Structure {
+                kind: "caravanserai".to_string(),
+                base_kind: "caravanserai".to_string(),
+                ..Structure::default()
+            };
+            assert!(is_caravanserai(&parsed), "the kind is matched by word");
+
+            let other = Structure {
+                kind: "Magical Citadel".to_string(),
+                base_kind: "Magical Citadel".to_string(),
+                ..Structure::default()
+            };
+            assert!(!is_caravanserai(&other));
         }
 
         #[test]
@@ -5498,7 +6140,9 @@ mod tests {
                         .iter()
                         .find(|item| item.tag == "STON")
                         .map(|item| item.amount);
-                    stone == Some(40) && unit.transport_sent.is_empty()
+                    stone == Some(40)
+                        && unit.transport_sent.is_empty()
+                        && unit.transport_target_issues.is_empty()
                 });
                 assert!(stone_untouched, "orders {orders:?} moved nothing");
             }
@@ -5509,7 +6153,7 @@ mod tests {
             // 6857 starts holding 15 stone, receives 30 more, then forwards the same 30 on -
             // ending exactly where the report found it.
             let response = two_hex_preview(
-                "unit 5530\nTRANSPORT 6857 30 STON\nunit 6857\nTRANSPORT 5530 30 STON\n",
+                "unit 5530\nTRANSPORT 6857 30 STON\nunit 6857\nTRANSPORT 5531 30 STON\n",
             );
             let receiver = receiver_row(&response).expect("6857 is still sent");
             assert!(
@@ -5536,13 +6180,16 @@ mod tests {
                     to: String::new(),
                     to_unshown: false,
                     refused: true,
+                    order_index: 0,
                 }]
             );
         }
 
-        /// Four own units in one hex, so the chain is about the phases and not about range:
-        /// an ordinary source, two quartermasters and an ordinary destination. Held skills are
-        /// what `Working::over_own_units` reads (`ah-d0ku`).
+        /// Four own units in one hex, so the chain is about the phases and not about range: an
+        /// ordinary source and three quartermasters, each owning a Caravanserai. Every target has
+        /// to be a quartermaster owning a transport structure for the goods to move at all
+        /// (`rules/transport`, `ah-64wm`), so the phases are exercised with eligible targets
+        /// throughout (`ah-d0ku`).
         fn quartermaster_chain_report() -> String {
             [
                 "Foo (1) Report",
@@ -5551,11 +6198,15 @@ mod tests {
                 "",
                 "* Source (900), Foo (1), leader [LEAD], 10 stone [STON]. Weight: 510. \
                  Capacity: 0/0/15/0.",
-                "* Quarterone (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+                "+ Post One [1] : Caravanserai.",
+                "  * Quarterone (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
                  Skills: quartermaster [QUAM] 1 (30).",
-                "* Quartertwo (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+                "+ Post Two [2] : Caravanserai.",
+                "  * Quartertwo (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
                  Skills: quartermaster [QUAM] 1 (30).",
-                "* Destination (903), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "+ Post Three [3] : Caravanserai.",
+                "  * Destination (903), Foo (1), leader [LEAD]. Weight: 10. \
+                 Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 1 (30).",
                 "",
             ]
             .join("\n")
@@ -5582,21 +6233,41 @@ mod tests {
         }
 
         #[test]
-        fn transports_run_in_three_global_phases() {
-            // `rules/sequenceofevents`: non-quartermaster to quartermaster, quartermaster to
-            // quartermaster, then quartermaster to non-quartermaster - each phase run over every
-            // unit before the next begins. The document is written in the opposite order on
-            // purpose: document order must not decide where the goods end up (`ah-d0ku`).
+        fn transports_settle_by_phase_rather_than_by_document_order() {
+            // `rules/sequenceofevents`: non-quartermaster to quartermaster first, then
+            // quartermaster to quartermaster - each phase run over every unit before the next
+            // begins. The document is written in the opposite order on purpose: document order
+            // must not decide where the goods end up (`ah-d0ku`).
+            //
+            // Every target here is a quartermaster owning a Caravanserai, because `rules/transport`
+            // moves nothing to a target that is not (`ah-64wm`). The third phase of the sequence -
+            // quartermaster to non-quartermaster - can therefore carry only refused orders, and is
+            // covered by the target-eligibility tests rather than here.
             let response = chain_preview(
                 "unit 902\nTRANSPORT 903 10 STON\n\
                  unit 901\nTRANSPORT 902 10 STON\n\
                  unit 900\nTRANSPORT 901 10 STON\n",
             );
 
-            assert_eq!(stone_of(&response, "903"), 10, "the chain reaches the end");
             assert_eq!(stone_of(&response, "900"), 0, "the source sent everything");
-            assert_eq!(stone_of(&response, "901"), 0, "the first hop kept nothing");
-            assert_eq!(stone_of(&response, "902"), 0, "the second hop kept nothing");
+            assert_eq!(
+                stone_of(&response, "901"),
+                0,
+                "what arrived in the first phase left again in the second"
+            );
+            assert_eq!(
+                stone_of(&response, "902"),
+                10,
+                "the second hop received in the phase its own line had already been resolved in"
+            );
+            assert!(
+                response
+                    .regions
+                    .iter()
+                    .flat_map(|region| region.units.iter())
+                    .all(|unit| unit.unit.unit_id != "903"),
+                "902 held nothing when the phase it sends in opened, so nothing reached 903"
+            );
         }
 
         #[test]
@@ -5616,33 +6287,6 @@ mod tests {
                 "what arrived in this phase cannot leave again in the same phase"
             );
             assert_eq!(stone_of(&response, "900"), 0, "the source sent its stone");
-        }
-
-        #[test]
-        fn goods_arriving_in_the_first_phase_cannot_be_forwarded_in_it() {
-            // Both lines are non-quartermaster sends, so both belong to the first phase: what 903
-            // receives there may not leave again until the next one, and its own line therefore
-            // moves nothing (`rules/sequenceofevents`, `ah-d0ku`).
-            let response =
-                chain_preview("unit 900\nTRANSPORT 903 10 STON\nunit 903\nTRANSPORT 901 10 STON\n");
-
-            assert_eq!(
-                stone_of(&response, "903"),
-                10,
-                "the arrival stays this phase"
-            );
-            assert!(
-                only_unit_by_id(&response, "903").transport_sent.is_empty(),
-                "the forwarding line had nothing it was allowed to move"
-            );
-            assert!(
-                response
-                    .regions
-                    .iter()
-                    .flat_map(|region| region.units.iter())
-                    .all(|unit| unit.unit.unit_id != "901"),
-                "901 is unchanged, so nothing reached it"
-            );
         }
 
         #[test]

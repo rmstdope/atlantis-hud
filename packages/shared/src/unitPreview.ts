@@ -10,6 +10,7 @@ import type {
   TakenUnshown,
   TransportReceived,
   TransportSent,
+  TransportTargetIssue,
   UnitPreview,
   UnitPreviewStatus,
   UnitSilver
@@ -61,6 +62,11 @@ export type PreviewedUnit = ReportUnit & {
   transportSent?: TransportSent[];
   /** What arrives at this unit by another unit's TRANSPORT/DISTRIBUTE this month (`ah-bxgs`). */
   transportReceived?: TransportReceived[];
+  /**
+   * This unit's TRANSPORT/DISTRIBUTE orders whose target the report cannot show as able to
+   * receive. Those orders move nothing (`ah-64wm`).
+   */
+  transportTargetIssues?: TransportTargetIssue[];
 };
 
 /**
@@ -149,7 +155,8 @@ function rowFor(previewed: UnitPreview): PreviewedUnit {
     built: previewed.built,
     created: previewed.created,
     transportSent: previewed.transportSent,
-    transportReceived: previewed.transportReceived
+    transportReceived: previewed.transportReceived,
+    transportTargetIssues: previewed.transportTargetIssues
   };
 }
 
@@ -212,6 +219,7 @@ export function itemsTooltip(
   const uncounted = unit.uncounted ?? [];
   const transportSent = unit.transportSent ?? [];
   const transportReceived = unit.transportReceived ?? [];
+  const transportTargetIssues = unit.transportTargetIssues ?? [];
   const buyAll = buyAllSentences(silver);
   const capSentence = productionStatusSentence(silver);
   const menSentence = productionMenSentence(silver);
@@ -225,6 +233,7 @@ export function itemsTooltip(
     uncounted.length === 0 &&
     transportSent.length === 0 &&
     transportReceived.length === 0 &&
+    transportTargetIssues.length === 0 &&
     buyAll.length === 0 &&
     capSentence === undefined &&
     menSentence === undefined &&
@@ -291,21 +300,90 @@ export function itemsTooltip(
   if (castCap !== undefined) {
     lines.push(castCap);
   }
-  for (const sent of transportSent) {
-    if (sent.refused) {
-      lines.push(`The game will not transport ${sent.tag}, so they stay with this unit.`);
-    } else if (sent.toUnshown) {
-      lines.push(
-        `Sends ${sent.amount} ${sent.tag} to unit ${sent.to}, which your report does not show.`
-      );
-    } else {
-      lines.push(`Sends ${sent.amount} ${sent.tag} to unit ${sent.to}.`);
-    }
+  for (const sentence of transportSentences(transportSent, transportTargetIssues)) {
+    lines.push(sentence);
   }
   for (const order of uncounted) {
     lines.push(`and more that cannot be counted: ${order}`);
   }
   return lines.join("\n");
+}
+
+/** One transported line as the hover states it. */
+function transportSentSentence(sent: TransportSent): string {
+  if (sent.refused) {
+    return `The game will not transport ${sent.tag}, so they stay with this unit.`;
+  }
+  if (sent.toUnshown) {
+    return `Sends ${sent.amount} ${sent.tag} to unit ${sent.to}, which your report does not show.`;
+  }
+  return `Sends ${sent.amount} ${sent.tag} to unit ${sent.to}.`;
+}
+
+/**
+ * This month's TRANSPORT/DISTRIBUTE block as sentences, in the order the orders were written
+ * (`ah-64wm`).
+ *
+ * The core splits one document across two lists - what left, and what a target would not take -
+ * so reading them one after the other would put a refused order written first *after* a
+ * successful one written second. `orderIndex` is what each line carries to be put back in its
+ * place; a stable sort by it keeps every line one order wrote together and in the order the core
+ * pushed them.
+ */
+export function transportSentences(
+  sent: readonly TransportSent[],
+  issues: readonly TransportTargetIssue[]
+): string[] {
+  const lines = [
+    ...sent.map((one) => ({ orderIndex: one.orderIndex, sentence: transportSentSentence(one) })),
+    ...issues.map((one) => ({
+      orderIndex: one.orderIndex,
+      sentence: transportTargetSentence(one)
+    }))
+  ];
+  return lines
+    .sort((left, right) => left.orderIndex - right.orderIndex)
+    .map((line) => line.sentence);
+}
+
+/**
+ * Whether a target issue is a gap in the report rather than a refusal it can prove (`ah-64wm`).
+ *
+ * A definite refusal is a fact the hover states and the cell need say nothing more about; a gap is
+ * what the ` + ?` mark is for - the month could not be fully counted.
+ */
+export function transportTargetUncertain(issue: TransportTargetIssue): boolean {
+  return issue.reason === "eligibilityUnknown" || issue.reason === "acceptanceUnknown";
+}
+
+/** Whether any of this row's transports was aimed at a target the report cannot settle. */
+export function hasUncertainTransportTarget(unit: PreviewedUnit | undefined): boolean {
+  return (unit?.transportTargetIssues ?? []).some(transportTargetUncertain);
+}
+
+/**
+ * One target issue as the hover states it (`ah-64wm`).
+ *
+ * An issue naming a tag makes a claim about those goods - they stay here, or they could not be
+ * counted. One naming none speaks of the order alone: the goods are ones the game would not have
+ * carried anyway, so "they stay with this unit" would imply a move that was never on offer.
+ */
+export function transportTargetSentence(issue: TransportTargetIssue): string {
+  const goods = issue.tag === "" ? null : `${issue.amount} ${issue.tag}`;
+  switch (issue.reason) {
+    case "notQuartermaster":
+      return goods === null
+        ? `Unit ${issue.to} is not a quartermaster, so this TRANSPORT moves nothing.`
+        : `Unit ${issue.to} is not a quartermaster, so ${goods} stay with this unit.`;
+    case "notCaravanseraiOwner":
+      return goods === null
+        ? `Unit ${issue.to} does not own a Caravanserai, so this TRANSPORT moves nothing.`
+        : `Unit ${issue.to} does not own a Caravanserai, so ${goods} stay with this unit.`;
+    case "eligibilityUnknown":
+      return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether it is an eligible transport target.`;
+    case "acceptanceUnknown":
+      return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether its faction accepts transports from yours.`;
+  }
 }
 
 /**

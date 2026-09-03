@@ -137,7 +137,8 @@ describe("a unit carried away by a sailing fleet", () => {
         built: [],
         created: [],
         transportSent: [],
-        transportReceived: []
+        transportReceived: [],
+        transportTargetIssues: []
       }
     ]
   });
@@ -218,7 +219,8 @@ describe("the structure column", () => {
             built: [],
             created: [],
             transportSent: [],
-            transportReceived: []
+            transportReceived: [],
+            transportTargetIssues: []
           }
         ]
       }
@@ -753,6 +755,7 @@ describe("the items column", () => {
         created: [],
         transportSent: [],
         transportReceived: [],
+        transportTargetIssues: [],
         ...previewOverrides
       }
     ]
@@ -856,6 +859,48 @@ describe("the items column", () => {
     expect(markup).not.toContain('data-predicted="true"');
   });
 
+  // `ah-64wm`. A transport aimed at a target the report cannot settle leaves the month partly
+  // uncounted, so the cell says so - and, since nothing moved, says it upright.
+  it("marks a cell whose transport target the report cannot settle", () => {
+    const markup = draw(
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 40, name: "stone", tag: "STON" }] })] }) }),
+      previewOf(
+        { unitId: "1", items: [{ amount: 40, name: "stone", tag: "STON" }] },
+        {
+          transportTargetIssues: [
+            { to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0 }
+          ]
+        }
+      )
+    );
+
+    expect(markup).toContain(" + ?");
+    expect(markup).toContain("40 STON");
+    expect(markup).toContain(
+      "does not show whether it is an eligible transport target"
+    );
+    expect(markup).not.toContain("italic text-brass");
+    expect(markup).not.toContain('data-predicted="true"');
+  });
+
+  // A refusal the report can prove is certain: the hover explains it, and the cell stays clean.
+  it("leaves a cell unmarked when the target refusal is certain", () => {
+    const markup = draw(
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 40, name: "stone", tag: "STON" }] })] }) }),
+      previewOf(
+        { unitId: "1", items: [{ amount: 40, name: "stone", tag: "STON" }] },
+        {
+          transportTargetIssues: [
+            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0 }
+          ]
+        }
+      )
+    );
+
+    expect(markup).not.toContain(" + ?");
+    expect(markup).toContain("Unit 7001 is not a quartermaster, so 5 STON stay with this unit.");
+  });
+
   // `ah-ofpb.5`. A cast's creation is a projection like any other PREDICTED figure, and a range
   // gets no ` + ?` mark - `unit.uncounted` alone still drives that span.
   it("shows a cast creation in the projected item list", () => {
@@ -901,6 +946,7 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
         created: [],
         transportSent: [],
         transportReceived: [],
+        transportTargetIssues: [],
         ...previewOverrides
       }
     ]
@@ -1184,6 +1230,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     created: [],
     transportSent: [],
     transportReceived: [],
+    transportTargetIssues: [],
     ...overrides
   });
 
