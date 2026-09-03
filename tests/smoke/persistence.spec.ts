@@ -260,14 +260,27 @@ test("a saved draft gains its missing trailing newline without moving the cursor
   await expect(page.getByTestId("orders-status")).toContainText(SAVED, { timeout: 20_000 });
 
   await expectOrders(page, /@study combat\n$/u);
-  // The caret sits where it was parked: three characters into "@work", still collapsed. The
-  // selection lives in the first line's text node, so its offset counts the same three steps.
-  const caret = await editor.evaluate(() => {
+  // The caret sits where it was parked: three characters into "@work", still collapsed. Measured
+  // from the start of the line rather than of one text node, because a finding on this line makes
+  // the editor highlight part of it and so splits the line into several nodes.
+  const caret = await editor.evaluate((root: Element) => {
     const selection = window.getSelection();
+    const anchor = selection?.anchorNode ?? null;
+    if (!anchor || !selection) {
+      return { offset: -1, collapsed: false, line: "" };
+    }
+    let line: Element | null =
+      anchor.nodeType === Node.ELEMENT_NODE ? (anchor as Element) : anchor.parentElement;
+    while (line?.parentElement && line.parentElement !== root) {
+      line = line.parentElement;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(line ?? root);
+    range.setEnd(anchor, selection.anchorOffset);
     return {
-      offset: selection?.anchorOffset ?? -1,
-      collapsed: selection?.isCollapsed ?? false,
-      line: selection?.anchorNode?.textContent ?? ""
+      offset: range.toString().length,
+      collapsed: selection.isCollapsed,
+      line: line?.textContent ?? ""
     };
   });
   expect(caret).toEqual({ offset: 3, collapsed: true, line: "@work" });

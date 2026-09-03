@@ -1884,8 +1884,8 @@ struct Ordered<'a> {
     /// of [`hex_with_transfers`] and again after `apply_recruits`, whose reading is the one that
     /// stands. See that method for why both are load-bearing.
     intents: Vec<PlacedIntent>,
-    /// The document's complete parsed list, retained only so
-    /// [`check_two_month_long_orders`] can report the orders that lost the month.
+    /// The document's complete parsed list, retained only so [`month_segments`] can resolve the
+    /// month and [`check_two_month_long_orders`] can report the orders that lost it.
     all_intents: &'a [PlacedIntent],
     /// This unit's TEACH eligibility, as [`Ordered::settle_effective_month_intents`] last read
     /// it, and what every later judgement about what spends the month reads.
@@ -3121,7 +3121,9 @@ impl Ordered<'_> {
     }
 
     /// Rebuilds `intents` from the document's own list, keeping every order that does not spend
-    /// the month plus the first month claim - so the month has exactly one winner (`ah-rzkm`).
+    /// the month plus the *last* month-long segment [`month_segments`] found - so the month has
+    /// exactly one winner (`ah-rzkm`), and it is the one the navigator's replacement rule names
+    /// (`ah-728m.2.1`).
     ///
     /// Rebuilt rather than filtered in place, so it is idempotent and may be run again once more
     /// of the turn has settled. It is run twice, and both are load-bearing:
@@ -3146,21 +3148,29 @@ impl Ordered<'_> {
     fn settle_effective_month_intents(&mut self) {
         let teaching_eligible = self.teaching_eligibility();
         self.teaching_eligible = Some(teaching_eligible);
-        self.intents = self.all_intents.to_vec();
-        let mut winner: Option<MonthClaim> = None;
-        self.intents.retain(|placed| {
-            if !month_spending_intent(&placed.intent, teaching_eligible) {
-                return true;
-            }
-            let claim = month_claim(placed);
-            match &winner {
-                Some(first) => *first == claim,
-                None => {
-                    winner = Some(claim);
-                    true
-                }
-            }
-        });
+        let winning: BTreeSet<usize> = month_segments(self.all_intents, teaching_eligible)
+            .last()
+            .map(|segment| segment.iter().copied().collect())
+            .unwrap_or_default();
+        self.intents = self
+            .all_intents
+            .iter()
+            .enumerate()
+            .filter(|(index, placed)| {
+                !month_spending_intent(&placed.intent, teaching_eligible) || winning.contains(index)
+            })
+            .map(|(_, placed)| placed.clone())
+            .collect();
+    }
+
+    /// The month-long orders of this unit's block, grouped into the segments that compete for its
+    /// month, as indices into `all_intents`. The last is the one that runs.
+    fn month_segments(&self) -> Vec<Vec<usize>> {
+        month_segments(
+            self.all_intents,
+            self.teaching_eligible
+                .unwrap_or_else(|| self.teaching_eligibility()),
+        )
     }
 
     fn intents(&self) -> impl Iterator<Item = &Intent> {
@@ -5770,7 +5780,7 @@ fn produce(
     );
     // The running deduction, silver and materials alike, so a second `PRODUCE` line in the same
     // block sees what the first consumed. **A guard rather than a live path today**: two
-    // month-long orders in one block raise `two-month-long-orders` and only the first is priced,
+    // month-long orders in one block raise `two-month-long-orders` and only the last is priced,
     // so nothing currently reaches a second line. It is kept because it makes the two surfaces
     // agree by construction rather than by that check happening to hold, and because both do it by
     // the same rule - a tag the list does not carry is pushed with the negative amount, so a
@@ -8938,28 +8948,68 @@ fn check_idle_units(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
     }
 }
 
-/// What a month-long order is competing for, for the purpose of `two-month-long-orders`.
+/// The three orders that repeat without conflicting, so consecutive lines of one of them are a
+/// single claim on the month rather than several.
 ///
-/// Three orders repeat without conflicting, so every line of each collapses to one claim:
 /// `MOVE`/`ADVANCE` chain (`rules/move`: "Multiple MOVE orders given by one unit will chain
 /// together"), `SAIL` chains (`rules/sail` gives `SAIL N` / `SAIL NW` as one route), and `TEACH`
 /// accumulates (`rules/teach`: "Subsequent TEACH orders can be used to add units to be taught").
-/// Everything else claims the month once per line, so two `STUDY` lines are two claims. `Move` and
-/// `Sail` deliberately differ: walking and sailing are two journeys.
-#[derive(PartialEq, Eq)]
-enum MonthClaim {
+/// Everything else claims the month once per line, so two `STUDY` lines are two claims.
+/// `Travelling` and `Sailing` deliberately differ: walking and sailing are two journeys.
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum ChainKind {
     Travelling,
     Sailing,
     Teaching,
-    /// Anything else, told apart by the line it was written on.
-    Line(usize),
+}
+
+fn chain_kind(intent: &Intent) -> Option<ChainKind> {
+    match intent {
+        Intent::Move { .. } => Some(ChainKind::Travelling),
+        Intent::Sail { .. } => Some(ChainKind::Sailing),
+        Intent::Teach { .. } => Some(ChainKind::Teaching),
+        _ => None,
+    }
+}
+
+/// The month-long orders of one block, grouped into the segments that compete for its month, as
+/// indices into `all`.
+///
+/// Consecutive lines of one [`ChainKind`] are one segment; every other month-long order is a
+/// segment of its own. Orders that do not spend the month are not claimants at all, so writing one
+/// between two `MOVE` lines does not interrupt the journey - only another month-long segment does,
+/// which is why `MOVE N; STUDY; MOVE S` is three segments and not two.
+///
+/// **The last segment is the one that runs**, and it replaces every earlier one. That is the
+/// navigator's decision of 2026-09-03 for this application (`ah-728m.2.1`); the rules pages state
+/// the chaining exceptions above but not the general rule. Shared by
+/// [`Ordered::settle_effective_month_intents`] and [`check_two_month_long_orders`], so the orders
+/// that are priced and the orders that are warned about cannot come to disagree.
+fn month_segments(all: &[PlacedIntent], teaching_eligible: Option<bool>) -> Vec<Vec<usize>> {
+    let mut segments: Vec<Vec<usize>> = Vec::new();
+    let mut open: Option<ChainKind> = None;
+    for (index, placed) in all.iter().enumerate() {
+        if !month_spending_intent(&placed.intent, teaching_eligible) {
+            continue;
+        }
+        let kind = chain_kind(&placed.intent);
+        match (kind, open) {
+            (Some(kind), Some(previous)) if kind == previous => segments
+                .last_mut()
+                .expect("an open chain means a segment exists")
+                .push(index),
+            _ => segments.push(vec![index]),
+        }
+        open = kind;
+    }
+    segments
 }
 
 /// Whether one intent spends the unit's month, given that unit's settled TEACH eligibility.
 ///
 /// Shared by [`Ordered::intent_spends_the_month`] and
-/// [`Ordered::retain_effective_month_intents`] so the filter and the `two-month-long-orders`
-/// warning cannot come to disagree about a `TEACH` (`ah-rzkm`).
+/// [`month_segments`] so the filter and the `two-month-long-orders` warning cannot come to
+/// disagree about a `TEACH` (`ah-rzkm`).
 fn month_spending_intent(intent: &Intent, teaching_eligible: Option<bool>) -> bool {
     match intent {
         Intent::Teach { .. } => matches!(teaching_eligible, Some(true) | None),
@@ -8967,21 +9017,13 @@ fn month_spending_intent(intent: &Intent, teaching_eligible: Option<bool>) -> bo
     }
 }
 
-fn month_claim(placed: &PlacedIntent) -> MonthClaim {
-    match placed.intent {
-        Intent::Move { .. } => MonthClaim::Travelling,
-        Intent::Sail { .. } => MonthClaim::Sailing,
-        Intent::Teach { .. } => MonthClaim::Teaching,
-        _ => MonthClaim::Line(placed.line),
-    }
-}
-
 /// Every own unit given more than one order that spends its month.
 ///
-/// The first month-long order in the block is the one that will run and is left unmarked; each
-/// later one is marked on its own line, naming the first. A unit that taxes by its report flag is
-/// a claimant too, and loses to any written month-long order - which is what [`taxes`] already
-/// decides, so the Silver column and this finding cannot disagree.
+/// The *last* month-long order in the block is the one that will run and is left unmarked; each
+/// earlier one is marked on its own line, naming the one that replaces it (`ah-728m.2.1`). A
+/// chained `MOVE`/`SAIL`/`TEACH` segment is marked once, on the line that opens it. A unit that
+/// taxes by its report flag is a claimant too, and loses to any written month-long order - which
+/// is what [`taxes`] already decides, so the Silver column and this finding cannot disagree.
 ///
 /// Unlike [`check_idle_units`], a block holding a line this reader could not parse is still
 /// judged: that check claims a unit does *nothing*, which an unread line could falsify, whereas
@@ -8992,38 +9034,35 @@ fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: 
     }
 
     for ordered in &hex.units {
-        let mut seen: Vec<MonthClaim> = Vec::new();
         // The raw document list, not the effective one: the discarded placements are exactly what
         // this check reports (`ah-rzkm`).
-        let claimants: Vec<&PlacedIntent> = ordered
-            .all_intents
-            .iter()
-            .filter(|placed| ordered.intent_spends_the_month(&placed.intent))
-            // A keyword `GRAMMAR` does not hold would print as an empty word in the message, so
-            // it is skipped rather than named. No order yielding an intent is one.
-            .filter(|placed| !placed.keyword.is_empty())
-            .filter(|placed| {
-                let claim = month_claim(placed);
-                let first = !seen.contains(&claim);
-                if first {
-                    seen.push(claim);
-                }
-                first
-            })
-            .collect();
-
-        let Some((winner, rest)) = claimants.split_first() else {
+        let segments = ordered.month_segments();
+        let Some((winning, replaced)) = segments.split_last() else {
             continue;
         };
+        // The last line of the winning segment, so a chain names its own keyword either way.
+        let winner = &ordered.all_intents[*winning.last().expect("a segment is never empty")];
+        // A keyword `GRAMMAR` does not hold would print as an empty word in the message, so it is
+        // skipped rather than named. No order yielding an intent is one.
+        if winner.keyword.is_empty() {
+            continue;
+        }
 
-        for placed in rest {
+        for segment in replaced {
+            // One finding per segment, on the line that opens it: a chained journey lost the month
+            // once, not once per leg.
+            let placed = &ordered.all_intents[*segment.first().expect("a segment is never empty")];
+            if placed.keyword.is_empty() {
+                continue;
+            }
             findings.push(ordered.finding(
                 hex,
                 codes::TWO_MONTH_LONG_ORDERS,
                 format!(
-                    "{first} already spends this unit's month, so this {later} will not run",
-                    first = winner.keyword,
-                    later = placed.keyword,
+                    "{last} replaces this {earlier} as the unit's month-long order, \
+                     so this {earlier} will not run",
+                    last = winner.keyword,
+                    earlier = placed.keyword,
                 ),
                 Some(placed),
             ));
@@ -14266,9 +14305,9 @@ mod tests {
     /// first pillages is warned about its own `TAX` line - the pillage is fine, the tax collects
     /// nothing.
     ///
-    /// `rules/pillage` and `rules/tax` each spend the unit's month, so the *pillager's* own later
-    /// `TAX` never runs and is told so once, by `two-month-long-orders`, rather than warned about
-    /// a collection it will not attempt (`ah-rzkm`).
+    /// `rules/pillage` and `rules/tax` each spend the unit's month, so the *pillager's* own
+    /// replaced `TAX` never runs and is told so once, by `two-month-long-orders`, rather than
+    /// warned about a collection it will not attempt (`ah-rzkm`, `ah-728m.2.1`).
     #[test]
     fn a_second_unit_taxing_a_pillaged_hex_is_still_told() {
         let hex_region = ReportRegion {
@@ -14280,7 +14319,7 @@ mod tests {
         };
         let review = review_turn(
             &report(vec![hex_region]),
-            "unit 1\nPILLAGE\nTAX\nunit 2\nTAX\n",
+            "unit 1\nTAX\nPILLAGE\nunit 2\nTAX\n",
             Some(&ruleset()),
             CheckOptions::default(),
         );
@@ -17914,16 +17953,66 @@ mod tests {
     }
 
     #[test]
-    fn a_second_month_long_order_is_marked_naming_the_first() {
+    fn an_earlier_month_long_order_is_marked_naming_the_final_one() {
         let finding = only(two_month_long(check_months(
             vec![region(vec![unit("683")])],
             "unit 683\nMOVE N\nSTUDY Combat\n",
         )));
-        assert_eq!(finding.line, Some(3));
+        assert_eq!(finding.line, Some(2));
         assert_eq!(finding.unit_id, Some("683".to_string()));
         assert_eq!(
             finding.message,
-            "MOVE already spends this unit's month, so this STUDY will not run"
+            "STUDY replaces this MOVE as the unit's month-long order, so this MOVE will not run"
+        );
+    }
+
+    /// The navigator's wording, on the example they chose it for.
+    #[test]
+    fn a_replaced_build_is_marked_naming_the_produce_that_replaces_it() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![unit("683")])],
+            "unit 683\nBUILD Tower\nPRODUCE sword\n",
+        )));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "PRODUCE replaces this BUILD as the unit's month-long order, so this BUILD will not run"
+        );
+    }
+
+    /// A chain broken by another month-long order is two losers and one winner, and the chain's
+    /// first leg is marked on its own line.
+    #[test]
+    fn an_interrupted_movement_chain_marks_both_earlier_segments() {
+        let findings = two_month_long(check_months(
+            vec![region(vec![unit("683")])],
+            "unit 683\nMOVE N\nSTUDY Combat\nMOVE S\n",
+        ));
+        assert_eq!(findings.len(), 2, "{findings:?}");
+        assert_eq!(findings[0].line, Some(2));
+        assert_eq!(
+            findings[0].message,
+            "MOVE replaces this MOVE as the unit's month-long order, so this MOVE will not run"
+        );
+        assert_eq!(findings[1].line, Some(3));
+        assert_eq!(
+            findings[1].message,
+            "MOVE replaces this STUDY as the unit's month-long order, so this STUDY will not run"
+        );
+    }
+
+    /// A chained journey lost the month once, not once per leg, so the whole segment is marked on
+    /// the line that opens it.
+    #[test]
+    fn a_replaced_movement_chain_is_marked_once() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![unit("683")])],
+            "unit 683\nMOVE N\nMOVE NE\nSTUDY Combat\n",
+        )));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "STUDY replaces this MOVE as the unit's month-long order, so this MOVE will not run"
         );
     }
 
@@ -17971,10 +18060,10 @@ mod tests {
             vec![region(vec![unit("683")])],
             "unit 683\nMOVE N\nSAIL NW\n",
         )));
-        assert_eq!(finding.line, Some(3));
+        assert_eq!(finding.line, Some(2));
         assert_eq!(
             finding.message,
-            "MOVE already spends this unit's month, so this SAIL will not run"
+            "SAIL replaces this MOVE as the unit's month-long order, so this MOVE will not run"
         );
     }
 
@@ -17988,7 +18077,7 @@ mod tests {
         )));
         assert_eq!(
             finding.message,
-            "STUDY already spends this unit's month, so this STUDY will not run"
+            "STUDY replaces this STUDY as the unit's month-long order, so this STUDY will not run"
         );
     }
 
@@ -18017,24 +18106,25 @@ mod tests {
         );
     }
 
-    /// Every later order is marked against the *first*, not against the one above it: the first is
+    /// Every earlier order is marked against the *last*, not against the one below it: the last is
     /// the one that will run, so it is the one each loss is measured from.
     #[test]
-    fn every_order_after_the_first_is_marked_against_it() {
+    fn every_order_before_the_last_is_marked_against_it() {
         let findings = two_month_long(check_months(
             vec![region(vec![unit("683")])],
             "unit 683\nMOVE N\nBUILD Tower\nENTERTAIN\n",
         ));
         assert_eq!(findings.len(), 2, "{findings:?}");
-        assert_eq!(findings[0].line, Some(3));
+        assert_eq!(findings[0].line, Some(2));
         assert_eq!(
             findings[0].message,
-            "MOVE already spends this unit's month, so this BUILD will not run"
+            "ENTERTAIN replaces this MOVE as the unit's month-long order, so this MOVE will not run"
         );
-        assert_eq!(findings[1].line, Some(4));
+        assert_eq!(findings[1].line, Some(3));
         assert_eq!(
             findings[1].message,
-            "MOVE already spends this unit's month, so this ENTERTAIN will not run"
+            "ENTERTAIN replaces this BUILD as the unit's month-long order, so this BUILD will \
+             not run"
         );
     }
 
@@ -18057,17 +18147,18 @@ mod tests {
     }
 
     /// A block with its own `TAX` is not also told about the flag: the tax it names is the one the
-    /// ordinary wording is already about.
+    /// ordinary wording is already about. The navigator chose one warning here, on the replaced
+    /// `TAX` line, rather than that line-level finding plus the block-level flag warning.
     #[test]
-    fn a_flagged_taxer_with_a_written_tax_line_is_not_told_twice() {
+    fn a_replaced_written_tax_does_not_duplicate_the_tax_flag_warning() {
         let finding = only(two_month_long(check_months(
             vec![region(vec![taxing_by_flag(unit("683"))])],
             "unit 683\nTAX\nWORK\n",
         )));
-        assert_eq!(finding.line, Some(3));
+        assert_eq!(finding.line, Some(2));
         assert_eq!(
             finding.message,
-            "TAX already spends this unit's month, so this WORK will not run"
+            "WORK replaces this TAX as the unit's month-long order, so this TAX will not run"
         );
     }
 
@@ -18084,10 +18175,10 @@ mod tests {
         );
     }
 
-    /// Both losses are measured from the first written order. The hex re-sorts its findings by
+    /// Both losses are measured from the last written order. The hex re-sorts its findings by
     /// line, so the block-anchored one (the `unit 683` line) comes first here.
     #[test]
-    fn a_flagged_taxer_loses_to_the_first_of_two_written_orders() {
+    fn a_flagged_taxer_loses_to_the_last_of_two_written_orders() {
         let findings = two_month_long(check_months(
             vec![region(vec![taxing_by_flag(unit("683"))])],
             "unit 683\nMOVE N\nWORK\n",
@@ -18096,12 +18187,12 @@ mod tests {
         assert_eq!(findings[0].line, Some(1));
         assert_eq!(
             findings[0].message,
-            "set to tax every month, but MOVE spends the month instead, so it will not tax"
+            "set to tax every month, but WORK spends the month instead, so it will not tax"
         );
-        assert_eq!(findings[1].line, Some(3));
+        assert_eq!(findings[1].line, Some(2));
         assert_eq!(
             findings[1].message,
-            "MOVE already spends this unit's month, so this WORK will not run"
+            "WORK replaces this MOVE as the unit's month-long order, so this MOVE will not run"
         );
     }
 
@@ -18114,10 +18205,10 @@ mod tests {
             vec![region(vec![unit("683")])],
             "unit 683\nMOVE N\nSTUDY Combat\nFLIBBERTIGIBBET 4021\n",
         )));
-        assert_eq!(finding.line, Some(3));
+        assert_eq!(finding.line, Some(2));
         assert_eq!(
             finding.message,
-            "MOVE already spends this unit's month, so this STUDY will not run"
+            "STUDY replaces this MOVE as the unit's month-long order, so this MOVE will not run"
         );
     }
 
@@ -18163,30 +18254,70 @@ mod tests {
             .collect()
     }
 
-    /// `rules/study` and `rules/produce`: each spends the unit's month, so only the first claim
-    /// runs. Chained `MOVE` lines are one claim (`rules/move`), so both are retained.
+    /// `rules/study` and `rules/produce`: each spends the unit's month, and the navigator's rule
+    /// of 2026-09-03 is that the *last* month-long order replaces every earlier one. Chained
+    /// `MOVE` lines are one claim (`rules/move`), and here they are not the last claim.
     #[test]
-    fn later_month_claims_are_removed_but_the_winning_chain_is_retained() {
+    fn earlier_month_claims_are_removed_and_only_the_final_one_is_retained() {
         let region = region(vec![unit("683")]);
         let orders = "unit 683\nMOVE N\nMOVE NE\nSTUDY Combat\nPRODUCE sword\n";
 
-        assert_eq!(
-            effective_keywords(&region, orders, "683"),
-            vec!["MOVE", "MOVE"]
-        );
+        assert_eq!(effective_keywords(&region, orders, "683"), vec!["PRODUCE"]);
         assert_eq!(
             all_keywords(&region, orders, "683"),
             vec!["MOVE", "MOVE", "STUDY", "PRODUCE"]
         );
     }
 
-    /// `rules/produce`: PRODUCE spends the month, so a PRODUCE after a STUDY never runs - and a
-    /// warning about the skill it would have needed is advice about an order that will not happen.
+    /// An order that does not spend the month is never a claimant, so every one of them survives
+    /// however the month is settled.
+    #[test]
+    fn effective_month_keeps_free_orders_and_only_the_final_single_line() {
+        let region = region(vec![with_silver(unit("683"), 1_000)]);
+        let orders = "unit 683\nBUILD Tower\nGIVE 5104 100 SILV\nPRODUCE sword\n";
+
+        assert_eq!(
+            effective_keywords(&region, orders, "683"),
+            vec!["GIVE", "PRODUCE"]
+        );
+    }
+
+    /// `rules/move`: "Multiple MOVE orders given by one unit will chain together." A free order
+    /// written between them does not interrupt the chain, so the whole chain wins together.
+    #[test]
+    fn effective_month_keeps_a_consecutive_movement_chain() {
+        let region = region(vec![with_silver(unit("683"), 1_000)]);
+        let orders = "unit 683\nMOVE N\nGIVE 5104 100 SILV\nMOVE S\n";
+
+        assert_eq!(
+            effective_keywords(&region, orders, "683"),
+            vec!["MOVE", "GIVE", "MOVE"]
+        );
+    }
+
+    /// Another month-long order between two `MOVE` lines does interrupt the chain: the navigator
+    /// chose that only the final `MOVE` survives, rather than reviving the first around the
+    /// replaced `STUDY`.
+    #[test]
+    fn effective_month_breaks_a_chain_around_another_month_long_order() {
+        let region = region(vec![unit("683")]);
+        let orders = "unit 683\nMOVE N\nSTUDY Combat\nMOVE S\n";
+
+        assert_eq!(effective_keywords(&region, orders, "683"), vec!["MOVE"]);
+        assert_eq!(
+            all_keywords(&region, orders, "683"),
+            vec!["MOVE", "STUDY", "MOVE"]
+        );
+    }
+
+    /// `rules/produce`: PRODUCE spends the month, so a PRODUCE a later STUDY replaces never runs,
+    /// and a warning about the skill it would have needed is advice about an order that will not
+    /// happen.
     #[test]
     fn a_losing_produce_emits_only_the_month_conflict_warning() {
         let findings = check_months(
             vec![region(vec![with_silver(unit("683"), 100)])],
-            "unit 683\nSTUDY Combat\nPRODUCE sword\n",
+            "unit 683\nPRODUCE sword\nSTUDY Combat\n",
         );
         assert_eq!(
             codes(&findings),
@@ -18194,10 +18325,11 @@ mod tests {
             "{findings:?}"
         );
         let finding = only(findings);
-        assert_eq!(finding.line, Some(3));
+        assert_eq!(finding.line, Some(2));
         assert_eq!(
             finding.message,
-            "STUDY already spends this unit's month, so this PRODUCE will not run"
+            "STUDY replaces this PRODUCE as the unit's month-long order, so this PRODUCE will \
+             not run"
         );
     }
 
@@ -18212,7 +18344,7 @@ mod tests {
             "IRON",
         );
         let report = report(vec![region(vec![smith])]);
-        let orders = "unit 683\nSTUDY Combat\nPRODUCE sword\n";
+        let orders = "unit 683\nPRODUCE sword\nSTUDY Combat\n";
 
         let review = review_turn(&report, orders, Some(&ruleset()), CheckOptions::default());
         let forecast = review
@@ -18246,9 +18378,9 @@ mod tests {
             region_at("1:9,53", 9, 53, vec![unit("7")]),
         ];
         // Two regions genuinely produce, which is the allowance; the third unit's PRODUCE lost
-        // its month to the STUDY above it.
+        // its month to the STUDY below it.
         let orders = "unit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n\
-                      unit 5\nSTUDY Combat\nPRODUCE grain\n";
+                      unit 5\nPRODUCE grain\nSTUDY Combat\n";
         let findings = check_trade(regions, orders, "Trade Regions", 2);
 
         assert!(
@@ -18259,12 +18391,12 @@ mod tests {
         );
     }
 
-    /// `rules/study`: a second STUDY line never runs, so it asks for no quartermaster place.
+    /// `rules/study`: a replaced STUDY line never runs, so it asks for no quartermaster place.
     #[test]
     fn a_losing_quartermaster_study_does_not_spend_the_allowance() {
         let findings = quartermasters(
             vec![region(vec![unit("5"), unit("6")])],
-            "unit 5\nSTUDY QUAM\nunit 6\nMOVE N\nSTUDY QUAM\n",
+            "unit 5\nSTUDY QUAM\nunit 6\nSTUDY QUAM\nMOVE N\n",
             1,
             2,
         );
@@ -22458,7 +22590,7 @@ mod tests {
         assert_eq!(
             codes(&check(
                 vec![region(teaching_hex())],
-                "unit 500\nTEACH 700\nunit 700\nMOVE N\nSTUDY combat\n"
+                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nMOVE N\n"
             )),
             ["taught-not-here"]
         );
@@ -22481,7 +22613,7 @@ mod tests {
 
         let findings = check(
             vec![region(vec![teacher, student])],
-            "unit 500\nTEACH 700\nunit 700\nMOVE N\nWITHDRAW 6 WSHD\nSTUDY combat\n",
+            "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nWITHDRAW 6 WSHD\nMOVE N\n",
         );
         assert!(
             !codes(&findings).contains(&"taught-not-here"),
@@ -22858,7 +22990,7 @@ mod tests {
 
         let findings = check(
             vec![region(units)],
-            "unit 500\nTEACH 700 800\nunit 700\nSTUDY combat\nunit 800\nMOVE N\nSTUDY combat\nunit 900\nSTUDY combat\n",
+            "unit 500\nTEACH 700 800\nunit 700\nSTUDY combat\nunit 800\nSTUDY combat\nMOVE N\nunit 900\nSTUDY combat\n",
         );
         let spare = findings
             .iter()
@@ -22886,7 +23018,7 @@ mod tests {
         assert_eq!(
             codes(&check(
                 vec![region(units)],
-                "unit 500\nTEACH 700\nunit 700\nMOVE N\nSTUDY combat\nunit 900\nSTUDY combat\n"
+                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nMOVE N\nunit 900\nSTUDY combat\n"
             )),
             ["taught-not-here"]
         );
@@ -23571,14 +23703,14 @@ mod tests {
     }
 
     #[test]
-    fn only_the_first_build_in_a_block_is_warned_about() {
+    fn only_the_effective_build_in_a_block_is_warned_about() {
         let finding = only(check(
             vec![region(vec![unit("4021")])],
             "unit 4021\nBUILD\nBUILD\n",
         ));
 
         assert_eq!(finding.code, codes::BUILD_OUTSIDE_STRUCTURE);
-        assert_eq!(finding.line, Some(2));
+        assert_eq!(finding.line, Some(3));
     }
 
     #[test]
@@ -27014,7 +27146,7 @@ mod tests {
     }
 
     #[test]
-    fn manufacturing_after_sailing_does_not_lighten_an_overloaded_raft() {
+    fn a_manufacture_beside_a_sailing_does_not_lighten_an_overloaded_raft() {
         let region = ReportRegion {
             structures: vec![raft("218")],
             ..region(vec![with_item(
@@ -27029,7 +27161,7 @@ mod tests {
             )])
         };
 
-        let finding = only(check(vec![region], "unit 11125\nSAIL N\nPRODUCE sword\n"));
+        let finding = only(check(vec![region], "unit 11125\nPRODUCE sword\nSAIL N\n"));
         assert_eq!(finding.code.as_str(), "fleet-overloaded");
         assert_eq!(
             finding.message,
