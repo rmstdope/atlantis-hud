@@ -1872,7 +1872,7 @@ mod tests {
             "Exits:",
             "  Southeast : plain (2,2) in Nowhere.",
             "",
-            "* Walker (900), Foo (1), behind, leader [LEAD], 3 swords [SWOR], 10 fur [FUR]. Weight: 20. Capacity: 0/0/15/0.",
+            "* Walker (900), Foo (1), behind, leader [LEAD], 3 swords [SWOR], 10 fur [FUR], $50. Weight: 20. Capacity: 0/0/15/0.",
             "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
             "",
         ]

@@ -36,10 +36,10 @@ use crate::movement::rules::{item_spellings, ItemEntry, ItemKind, Ruleset, Skill
 use crate::orders::items::item_named;
 use crate::orders::silver::{
     because_clause, feed_after_silver, feed_from_faction_food, flagged_to_tax, food_claim,
-    forecast_unit, late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants,
-    price_buy_all, price_cast, price_claim, price_pillage, price_production, price_purchase,
-    price_sale_line, price_study, price_tax, producing_skill, quantity_bought, readiness,
-    readiness_reason, settle_unclaimed, split_pool, taxes, taxing_men, transfer_shape,
+    forecast_unit_with_bounded_funds, late_income, parse_wage_centis, pillage_threshold,
+    plan_production, pool_wants, price_buy_all, price_cast, price_claim, price_pillage,
+    price_production, price_purchase, price_sale_line, price_study, price_tax, producing_skill,
+    readiness, readiness_reason, settle_unclaimed, split_pool, taxes, taxing_men, transfer_shape,
     transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
     MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts,
@@ -1466,12 +1466,13 @@ fn forecast_hex(
         };
         claims.push(food_claim(&facts, ruleset));
 
-        into.push(forecast_unit(
+        into.push(forecast_unit_with_bounded_funds(
             facts,
             region,
             shares[index],
             purse,
             purse_for_orders.lends_to[index],
+            Sharing::read(hex).sharers.is_empty(),
             Lookups {
                 sale: &sale,
                 purchase: &purchase,
@@ -4816,10 +4817,19 @@ fn buy(
         Some(share) => (share - already).max(0),
         None => *count,
     };
-    let priced = price_purchase(*count, offer.price, allowed);
-    let bought = quantity_bought(*count, allowed);
+    let line = price_purchase(
+        *count,
+        offer.price,
+        allowed,
+        if Sharing::read(hex).sharers.is_empty() {
+            balance_of(ledger, who, SILVER).max(0)
+        } else {
+            i64::MAX
+        },
+    );
+    let bought = line.quantity;
 
-    charge(ledger, who, SILVER, priced.spends, placed);
+    charge(ledger, who, SILVER, line.spends, placed);
     credit(ledger, who, &tag, bought);
     *ledger.bought.entry((who.clone(), tag.clone())).or_default() += bought;
     if bought == 0 && already > 0 {
@@ -10957,7 +10967,14 @@ mod tests {
     fn receipts_in(region: &ReportRegion, orders: &str) -> BTreeMap<String, Receipts> {
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hex = hex_with_transfers(region, &ordered, &[], Some(&rules), &BTreeSet::new());
+        let hex = hex_with_transfers(
+            region,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
         gather_receipts(std::slice::from_ref(&hex))
     }
 
@@ -28912,7 +28929,7 @@ mod tests {
     /// The half of M2 (`ah-jw85`) that is not about `FORM`: a reported unit given silver has that
     /// silver counted into both figures the shortfall message prints, not only into `short`.
     #[test]
-    fn a_reported_unit_given_silver_gets_the_same_message() {
+    fn a_reported_unit_buys_only_what_its_gift_can_pay_for() {
         let hex_region = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 100,
@@ -28932,18 +28949,16 @@ mod tests {
             CheckOptions::default(),
         );
 
-        let short = review
-            .findings
+        let silver = review
+            .silver
             .iter()
-            .find(|finding| {
-                finding.code == codes::NOT_ENOUGH_SILVER
-                    && finding.unit_id.as_deref() == Some("1923")
-            })
-            .expect("unit 1923 cannot afford its BUY even with the gift");
-        assert_eq!(
-            short.message,
-            "short $100: this unit can have $100 and its orders spend $200"
-        );
+            .find(|unit| unit.unit_id == "1923")
+            .unwrap();
+        assert_eq!(silver.expense, Some(80));
+        assert_eq!(silver.at_month_end, Some(20));
+        assert!(!review.findings.iter().any(|finding| {
+            finding.code == codes::NOT_ENOUGH_SILVER && finding.unit_id.as_deref() == Some("1923")
+        }));
     }
 
     // --- a unit created by FORM (`ah-jw85`) --------------------------------------------------

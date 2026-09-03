@@ -1119,6 +1119,29 @@ pub fn forecast_unit(
     lookups: Lookups<'_>,
     ruleset: Option<&Ruleset>,
 ) -> UnitSilver {
+    forecast_unit_with_bounded_funds(
+        facts,
+        region,
+        shares,
+        purse,
+        shared_for_orders,
+        false,
+        lookups,
+        ruleset,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn forecast_unit_with_bounded_funds(
+    facts: UnitFacts<'_>,
+    region: RegionWages,
+    shares: PoolShares,
+    purse: FactionPurse,
+    shared_for_orders: i64,
+    bounded_buy_funds_known: bool,
+    lookups: Lookups<'_>,
+    ruleset: Option<&Ruleset>,
+) -> UnitSilver {
     let sale = lookups.sale;
     let own_food = own_food_pass(&facts, ruleset);
     // Kept before the destructure below, which does not name the field.
@@ -1536,13 +1559,22 @@ pub fn forecast_unit(
                             Some(share) => (share - already).max(0),
                             None => *count,
                         };
-                        let charged = price_purchase(*count, price, allowed).spends;
-                        expense = expense.saturating_add(charged);
-                        if charged > 0 {
+                        let line = price_purchase(
+                            *count,
+                            price,
+                            allowed,
+                            if bounded_buy_funds_known {
+                                held.saturating_add(income).saturating_sub(expense).max(0)
+                            } else {
+                                i64::MAX
+                            },
+                        );
+                        expense = expense.saturating_add(line.spends);
+                        if line.spends > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Buy));
                         }
                         if let Some(tag) = tag {
-                            *bought.entry(tag).or_default() += quantity_bought(*count, allowed);
+                            *bought.entry(tag).or_default() += line.quantity;
                         }
                     }
                     // What a unit can afford depends on everything else this month does, so this
@@ -3083,20 +3115,35 @@ pub fn price_pillage(
 ///
 /// `allowed` is the settled share, or the asked count where the hex could not be settled - which is
 /// what [`Lookups::market_share`] returning `None` means, and is the behaviour before `ah-t2pn.3`.
-#[must_use]
 pub fn quantity_bought(count: i64, allowed: i64) -> i64 {
     count.min(allowed).max(0)
 }
-
-/// What a `BUY` costs.
 ///
-/// Both surfaces call this - [`forecast_unit`] and `semantics::buy` - because two surfaces reading
-/// one order must not price it two ways (`ah-lu0f.2`).
+/// What a `BUY` costs. Both surfaces call this because two surfaces reading one order must not
+/// price it two ways (`ah-lu0f.2`).
 #[must_use]
-pub fn price_purchase(count: i64, price: i64, allowed: i64) -> Priced {
-    Priced {
-        spends: quantity_bought(count, allowed).saturating_mul(price),
-        ..Priced::default()
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PurchasedLine {
+    pub quantity: i64,
+    pub spends: i64,
+}
+
+pub fn price_purchase(
+    count: i64,
+    price: i64,
+    allowed: i64,
+    silver_available: i64,
+) -> PurchasedLine {
+    if price <= 0 {
+        return PurchasedLine::default();
+    }
+    let quantity = count
+        .min(allowed)
+        .min((silver_available / price).max(0))
+        .max(0);
+    PurchasedLine {
+        quantity,
+        spends: quantity.saturating_mul(price),
     }
 }
 
@@ -4982,17 +5029,17 @@ mod tests {
     fn prices_a_purchase_a_sale_and_a_claim() {
         // a lone over-buyer is charged only for goods that exist (`ah-t2pn.3`)
         assert_eq!(
-            price_purchase(200, 5, 100),
-            Priced {
+            price_purchase(200, 5, 100, i64::MAX),
+            PurchasedLine {
+                quantity: 100,
                 spends: 500,
-                ..Priced::default()
             }
         );
         assert_eq!(
-            price_purchase(50, 5, 100),
-            Priced {
+            price_purchase(50, 5, 100, i64::MAX),
+            PurchasedLine {
+                quantity: 50,
                 spends: 250,
-                ..Priced::default()
             }
         );
         // `Amount::All { except }` can ask for a negative amount
@@ -5013,6 +5060,27 @@ mod tests {
                 ..Priced::default()
             }
         );
+    }
+
+    #[test]
+    fn price_purchase_caps_quantity_by_silver() {
+        assert_eq!(price_purchase(5, 12, 5, 0), PurchasedLine::default());
+        assert_eq!(
+            price_purchase(5, 12, 5, 25),
+            PurchasedLine {
+                quantity: 2,
+                spends: 24
+            }
+        );
+        assert_eq!(
+            price_purchase(5, 12, 3, 100),
+            PurchasedLine {
+                quantity: 3,
+                spends: 36
+            }
+        );
+        assert_eq!(price_purchase(5, 0, 5, 100), PurchasedLine::default());
+        assert_eq!(price_purchase(5, -1, 5, 100), PurchasedLine::default());
     }
 
     /// `ah-vw8e`, increment 1. `price_sale_line` replaces `price_sale`: it resolves `Amount::All`
