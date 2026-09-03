@@ -613,22 +613,6 @@ impl WorkingUnit {
     /// The fields the orders changed, each with what the report said.
     ///
     /// Formatted for a tooltip rather than typed, because "was: ..." is all the interface does
-    /// Whether this row had already begun magic **when the report was printed** (`ah-ndp9`).
-    ///
-    /// The report's own list, not `self.unit.skills`: this table is mutated as the walk runs -
-    /// `move_between` merges arriving men's skills into a receiver - and a unit that takes a
-    /// mage's leader mid-document would otherwise read as a mage here while `apply_transfers`,
-    /// which asks the report, says it is not. One policy on every surface is exactly what
-    /// `orders::magic` exists for. A formed unit has no original and no skills, so it is never a
-    /// mage either way.
-    fn is_mage_as_reported(&self, ruleset: &Ruleset) -> bool {
-        let skills = self
-            .original
-            .as_ref()
-            .map_or(&[][..], |original| original.skills.as_slice());
-        super::magic::is_mage(ruleset, skills)
-    }
-
     /// with an original. A formed unit has no original and so never any changes.
     fn changes(&self) -> Vec<FieldChange> {
         let Some(original) = &self.original else {
@@ -700,6 +684,22 @@ impl WorkingUnit {
             }
         }
         changes
+    }
+
+    /// Whether this row had already begun magic **when the report was printed** (`ah-ndp9`).
+    ///
+    /// The report's own list, not `self.unit.skills`: this table is mutated as the walk runs -
+    /// `move_between` merges arriving men's skills into a receiver - and a unit that takes a
+    /// mage's leader mid-document would otherwise read as a mage here while `apply_transfers`,
+    /// which asks the report, says it is not. One policy on every surface is exactly what
+    /// `orders::magic` exists for. A formed unit has no original and no skills, so it is never a
+    /// mage either way.
+    fn is_mage_as_reported(&self, ruleset: &Ruleset) -> bool {
+        let skills = self
+            .original
+            .as_ref()
+            .map_or(&[][..], |original| original.skills.as_slice());
+        super::magic::is_mage(ruleset, skills)
     }
 
     fn refresh_movement(&mut self, ruleset: &Ruleset) {

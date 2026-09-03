@@ -28305,17 +28305,10 @@ mod tests {
         ));
 
         assert_eq!(finding.code, codes::MEN_SENT_INTO_A_MAGE);
-        assert!(
-            finding.message.starts_with(
-                "unit 900 is a mage and cannot be given men, so this order moves only "
-            ),
-            "{}",
-            finding.message
-        );
-        assert!(
-            finding.message.contains("3 swords"),
-            "the swords still move: {}",
-            finding.message
+        assert_eq!(
+            finding.message,
+            // The fixture's maintenance grain is equipment too, and moves with the swords.
+            "unit 900 is a mage and cannot be given men, so this order moves only 4 grain and 3 swords"
         );
     }
 
