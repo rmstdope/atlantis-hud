@@ -9051,19 +9051,24 @@ fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: 
         };
         // The last line of the winning segment, so a chain names its own keyword either way.
         let winner = &ordered.all_intents[*winning.last().expect("a segment is never empty")];
-        // A keyword `GRAMMAR` does not hold would print as an empty word in the message, so a
-        // message that would name it is skipped rather than printed. No order yielding an intent
-        // is one, so this is a guard rather than a live path - and it silences only the messages
-        // that would be wrong, never the whole unit: a nameless winner still beat the flag below.
-        let namable_winner = (!winner.keyword.is_empty()).then_some(winner);
+        // Both messages below name the winner, so a winner with no keyword to name would print an
+        // empty word in either - and the block is skipped entirely rather than half-said. This is
+        // a guard and not a live path: `PlacedIntent::keyword` is a `&'static str` the grammar
+        // sets when it builds the intent, so no order yielding an intent has an empty one. It is
+        // deliberately *not* answered by dropping the nameless order from the claimants, which
+        // would let this check and `settle_effective_month_intents` pick different winners - the
+        // one thing `month_segments` exists to prevent.
+        if winner.keyword.is_empty() {
+            continue;
+        }
 
         for segment in replaced {
             // One finding per segment, on the line that opens it: a chained journey lost the month
             // once, not once per leg.
             let placed = &ordered.all_intents[*segment.first().expect("a segment is never empty")];
-            let (Some(winner), false) = (namable_winner, placed.keyword.is_empty()) else {
+            if placed.keyword.is_empty() {
                 continue;
-            };
+            }
             findings.push(ordered.finding(
                 hex,
                 codes::TWO_MONTH_LONG_ORDERS,
@@ -9082,13 +9087,12 @@ fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: 
         // finding cannot disagree. A block with its own `TAX` line is left to the ordinary wording
         // above: the tax it names is the same tax. The finding sits on the block, because the tax
         // has no line of its own and nothing is wrong with the order that beat it.
-        if let Some(winner) = namable_winner.filter(|_| {
-            flagged_to_tax(&ordered.unit.flags)
-                && !ordered
-                    .all_intents
-                    .iter()
-                    .any(|placed| matches!(placed.intent, Intent::Tax))
-        }) {
+        if flagged_to_tax(&ordered.unit.flags)
+            && !ordered
+                .all_intents
+                .iter()
+                .any(|placed| matches!(placed.intent, Intent::Tax))
+        {
             findings.push(ordered.finding_at_block(
                 hex,
                 codes::TWO_MONTH_LONG_ORDERS,
