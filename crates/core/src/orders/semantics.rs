@@ -1199,6 +1199,9 @@ fn production_ask(
         recipe,
         work,
         ordered.early_items(),
+        // Unreachable: `production_tag_of` only answers for a recipe with no inputs at all, so
+        // this recipe has no `SILV` input and the silver cap is `i64::MAX` whatever is passed.
+        0,
         requested,
         RegionShare::Unlimited,
     )?;
@@ -5589,7 +5592,19 @@ fn produce(
         standing.production,
         ruleset,
     );
-    let (priced, plan) = price_production(recipe, work, actor.early_items(), requested, region);
+    let silver_in_slice = actor
+        .early_items()
+        .iter()
+        .find(|item| item.tag.eq_ignore_ascii_case(SILVER))
+        .map_or(0, |item| item.amount);
+    let (priced, plan) = price_production(
+        recipe,
+        work,
+        actor.early_items(),
+        silver_in_slice,
+        requested,
+        region,
+    );
     let Some(plan) = plan else {
         // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
         // same posture `buy` takes for goods the market does not carry - and the ITEMS column

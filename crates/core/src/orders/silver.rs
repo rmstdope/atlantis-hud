@@ -1440,8 +1440,19 @@ pub fn forecast_unit(
                 // producing the same goods here are settled against it - the same settlement the
                 // ITEMS ledger reads, through the same function (`ah-256d`, `ah-ycuj`).
                 let region = (lookups.region_share)(item);
-                let (priced, plan) =
-                    price_production(recipe, work, facts.items, *requested, region);
+                let silver_in_slice = facts
+                    .items
+                    .iter()
+                    .find(|item| item.tag.eq_ignore_ascii_case(SILVER_TAG))
+                    .map_or(0, |item| item.amount);
+                let (priced, plan) = price_production(
+                    recipe,
+                    work,
+                    facts.items,
+                    silver_in_slice,
+                    *requested,
+                    region,
+                );
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
@@ -3431,10 +3442,11 @@ pub fn price_production(
     recipe: Option<&Production>,
     work: Workforce,
     held: &[ItemAmount],
+    silver_available: i64,
     requested: Option<i64>,
     region: RegionShare,
 ) -> (Priced, Option<ProductionPlan>) {
-    match recipe.and_then(|recipe| plan_production(recipe, work, held, requested, region)) {
+    match recipe.and_then(|recipe| plan_production(recipe, work, held, silver_available, requested, region)) {
         Some(plan) => (
             Priced {
                 spends: plan.silver,
@@ -3815,6 +3827,7 @@ pub fn plan_production(
     recipe: &Production,
     work: Workforce,
     held: &[ItemAmount],
+    silver_available: i64,
     requested: Option<i64>,
     region: RegionShare,
 ) -> Option<ProductionPlan> {
@@ -3870,7 +3883,7 @@ pub fn plan_production(
         .collect();
 
     let by_silver = if silver_each > 0 {
-        holding(SILVER_TAG) / silver_each
+        silver_available.max(0) / silver_each
     } else {
         i64::MAX
     };
@@ -4224,6 +4237,34 @@ mod production_tests {
         }
     }
 
+    /// A `SILV` line in `held` funds nothing: the silver a manufacturing run may spend is the
+    /// caller's to supply, because only the caller knows the balance at
+    /// `rules/sequenceofevents`'s manufacturing phase (`ah-gdd3.2`).
+    #[test]
+    fn a_silver_line_in_held_does_not_fund_the_run() {
+        let plan = plan_production(
+            &catapult(),
+            Workforce {
+                men: 10,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[
+                ("SILV", 100_000),
+                ("WOOD", 9999),
+                ("IRWD", 999),
+                ("FUR", 999),
+            ]),
+            0,
+            None,
+            RegionShare::Unlimited,
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.made, 0);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Silver));
+    }
+
     /// Ten carpenters at the catapult's own minimum level bring forty man-months, and a catapult
     /// is four of them - so the whole run is ten, and its silver and materials are ten times one.
     #[test]
@@ -4237,14 +4278,13 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[
-                ("SILV", 100_000),
                 ("WOOD", 9999),
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            100_000,
             None,
-            RegionShare::Unlimited,
-        )
+            RegionShare::Unlimited)
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 10);
         assert_eq!(plan.made, 10);
@@ -4365,9 +4405,9 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 99)]),
+            0,
             None,
-            RegionShare::Unlimited,
-        )
+            RegionShare::Unlimited)
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 0);
         assert_eq!(plan.made, 0);
@@ -4387,9 +4427,9 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 99)]),
+            0,
             None,
-            RegionShare::Unlimited,
-        )
+            RegionShare::Unlimited)
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 9);
         assert_eq!(plan.made, 9);
@@ -4423,9 +4463,9 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            0,
             None,
-            RegionShare::Share(20),
-        )
+            RegionShare::Share(20))
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 40);
         assert_eq!(plan.made, 20);
@@ -4445,9 +4485,9 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            0,
             None,
-            RegionShare::Share(40),
-        )
+            RegionShare::Share(40))
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 40);
         assert_eq!(plan.made, 40);
@@ -4469,9 +4509,9 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            0,
             None,
-            RegionShare::NothingHere,
-        )
+            RegionShare::NothingHere)
         .expect("a priceable recipe");
         assert_eq!(plan, ProductionPlan::default());
         assert_eq!(plan.wanted, 0);
@@ -4492,14 +4532,13 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[
-                ("SILV", 100_000),
                 ("WOOD", 9999),
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            100_000,
             None,
-            RegionShare::Unlimited,
-        )
+            RegionShare::Unlimited)
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 12);
         assert_eq!(plan.made, 12);
@@ -4526,9 +4565,9 @@ mod production_tests {
             None,
             Workforce::default(),
             &[],
+            0,
             None,
-            RegionShare::Unlimited,
-        );
+            RegionShare::Unlimited);
         assert_eq!(
             priced,
             Priced {
@@ -4548,14 +4587,13 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[
-                ("SILV", 100_000),
                 ("WOOD", 9999),
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            100_000,
             None,
-            RegionShare::Unlimited,
-        );
+            RegionShare::Unlimited);
         assert_eq!(
             priced,
             Priced {
@@ -4580,9 +4618,9 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 100_000)]),
+            100_000,
             None,
-            RegionShare::Unlimited,
-        )
+            RegionShare::Unlimited)
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 0);
         assert_eq!(plan.made, 0);
@@ -4604,9 +4642,9 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 3000), ("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+            3000,
             None,
-            RegionShare::Unlimited,
-        )
+            RegionShare::Unlimited)
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 12);
         assert_eq!(plan.made, 1);
@@ -4625,14 +4663,13 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[
-                ("SILV", 100_000),
                 ("WOOD", 250),
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            100_000,
             None,
-            RegionShare::Unlimited,
-        )
+            RegionShare::Unlimited)
         .expect("a priceable recipe");
         assert_eq!(plan.made, 1);
         assert_eq!(plan.capped_by, Some(ProductionCap::Materials));
@@ -4649,9 +4686,9 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 3000), ("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
+            3000,
             None,
-            RegionShare::Unlimited,
-        )
+            RegionShare::Unlimited)
         .expect("a priceable recipe");
         assert_eq!(plan.made, 1);
         assert_eq!(plan.capped_by, Some(ProductionCap::Silver));
@@ -4676,9 +4713,9 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 2)]),
+            0,
             None,
-            RegionShare::Unlimited,
-        )
+            RegionShare::Unlimited)
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 5);
         assert_eq!(plan.made, 2);
@@ -4714,9 +4751,9 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 20)]),
+            0,
             Some(3),
-            RegionShare::Unlimited,
-        )
+            RegionShare::Unlimited)
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 8);
         assert_eq!(plan.made, 3);
@@ -4743,9 +4780,9 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 20)]),
+            0,
             Some(10),
-            RegionShare::Unlimited,
-        )
+            RegionShare::Unlimited)
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 8);
         assert_eq!(plan.made, 8);
@@ -4765,9 +4802,9 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 5)]),
+            0,
             Some(10),
-            RegionShare::Unlimited,
-        )
+            RegionShare::Unlimited)
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 8);
         assert_eq!(plan.made, 5);
@@ -4789,9 +4826,9 @@ mod production_tests {
                     tools: 0,
                 },
                 &held(&[("IRON", 20)]),
+                0,
                 Some(requested),
-                RegionShare::Unlimited,
-            )
+                RegionShare::Unlimited)
             .expect("a priceable recipe");
             assert_eq!(plan.made, 0);
             assert_eq!(plan.wanted, 8);
@@ -4819,9 +4856,9 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            0,
             Some(10),
-            RegionShare::Share(6),
-        )
+            RegionShare::Share(6))
         .expect("a priceable recipe");
         assert_eq!(plan.wanted, 40);
         assert_eq!(plan.made, 6);
@@ -4850,9 +4887,9 @@ mod production_tests {
                     tools: 0,
                 },
                 &held(&[("GRAI", 99)]),
+                0,
                 None,
-                RegionShare::Unlimited,
-            ),
+                RegionShare::Unlimited),
             None
         );
     }
@@ -4874,6 +4911,7 @@ mod production_tests {
                 &unscraped,
                 ten_carpenters,
                 &held(&[]),
+                0,
                 None,
                 RegionShare::Unlimited
             ),
@@ -4886,6 +4924,7 @@ mod production_tests {
                 &no_output,
                 ten_carpenters,
                 &held(&[]),
+                0,
                 None,
                 RegionShare::Unlimited
             ),
