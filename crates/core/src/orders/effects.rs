@@ -10,13 +10,13 @@
 //! The governing policy is the validator's own **accept on doubt**: an order that cannot be read,
 //! or whose target cannot be found, changes nothing rather than changing something wrong.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
 use crate::cache::ReportCache;
 use crate::movement::rules::Ruleset;
-use crate::orders::items::item_named;
+use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named};
 use crate::orders::standing::{standing_after, BoardingOrder};
 use crate::report::composition;
 use crate::report::model::{level_for_points, ReportUnit, Skill, UnitMovementStatus};
@@ -317,6 +317,10 @@ pub fn preview_orders_on_map(
 
     let mut working = Working::over_own_units(&report, ruleset.clone());
     super::walk::walk(orders_document, |event| working.visit(event));
+    // `rules/sequenceofevents` settles GIVE and TAKE in one Give phase, before the market - and
+    // processes units in report order, which is why nothing moved while the document was being
+    // read (`ah-3mwm`).
+    working.apply_transfers();
 
     // What `BUY`, `SELL`, `WITHDRAW` and `TAKE` do to each unit's item list, read from the same
     // ledger the Silver column and the shortfall warnings settle an oversubscribed market line
@@ -326,11 +330,18 @@ pub fn preview_orders_on_map(
         super::semantics::item_effects(&report, orders_document, Some(ruleset.as_ref()));
     working.apply_item_effects(&item_effects);
     settle_headcounts(&mut working.units, &ruleset);
+    // `rules/form`, and only once the market has settled: a formed unit's own BUY is what decides
+    // whether it gained anybody, so nothing can be dissolved before `item_effects` has been
+    // applied and the headcounts derived from it (`ah-dhga`).
+    let dissolved = working.dissolve_empty_forms();
     // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
     // after the market, after movement, after production. A sale takes its goods first, and
     // whatever a PRODUCE made this month is there to be sent.
-    working.apply_transports();
-    for working_unit in &mut working.units {
+    working.apply_transports(&dissolved);
+    for (index, working_unit) in working.units.iter_mut().enumerate() {
+        if dissolved.contains(&index) {
+            continue;
+        }
         working_unit.refresh_movement(&ruleset);
     }
 
@@ -350,7 +361,10 @@ pub fn preview_orders_on_map(
     let mut decided: Vec<Decided> = Vec::new();
     let mut sailing: BTreeMap<(String, String), SailingFleet> = BTreeMap::new();
 
-    for entry in working.units {
+    for (index, entry) in working.units.into_iter().enumerate() {
+        if dissolved.contains(&index) {
+            continue;
+        }
         let mut arrival = None;
         let mut mode = None;
 
@@ -630,6 +644,12 @@ struct WorkingUnit {
     /// after each one, so a FORM later in the block still inherits the structure the unit is
     /// standing in by then - `visit` is a mutating walk and other arms read `structure_id`.
     boardings: Vec<BoardingOrder>,
+    /// What this row was handed by `GIVE` this month, in the order the gifts were read.
+    ///
+    /// Only a formed unit's is read, and only to dissolve it: `rules/form` reverts "the silver and
+    /// any other items it **was given**", which is exactly this list and not whatever the row's
+    /// own month bought or took (`ah-dhga`).
+    given: Vec<crate::report::model::ItemAmount>,
     /// This unit's orders whose effect on its items could not be counted, verbatim, in document
     /// order. Written once by `apply_item_effects`, after the walk that builds every unit here has
     /// finished (`ah-agbm`).
@@ -652,6 +672,11 @@ struct WorkingUnit {
     /// What arrives at this unit by another unit's `TRANSPORT`/`DISTRIBUTE` this month. Written
     /// once by `apply_transports` (`ah-bxgs`).
     transport_received: Vec<TransportReceived>,
+    /// This unit's settled recruits this month, copied from `UnitItemEffects::recruited` by
+    /// `apply_item_effects`. Empty when nothing was recruited and when a `BUY ALL` makes the exact
+    /// figure unknowable; `settle_headcounts` reads this to dilute skills by the exact settled
+    /// count rather than infer one from the item list's net change (`ah-4a13`).
+    recruited: Vec<crate::report::model::ItemAmount>,
     /// This unit's `TRANSPORT`/`DISTRIBUTE` orders whose target the report cannot show as able to
     /// receive. Written once by `apply_transports` (`ah-64wm`).
     transport_target_issues: Vec<TransportTargetIssue>,
@@ -797,10 +822,40 @@ struct Working {
     /// before anything moves in phase 9 - so the test a target needs is per-region, and the two
     /// must not be confused (`ah-vcp8.2`).
     shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>>,
+    /// Every unit id the report shows that is not ours. A `TAKE` naming one of these is refused
+    /// outright - `rules/take` confines a TAKE to "another unit in the same faction" - and must
+    /// not be mistaken for the bounded optimism a take from a unit the report never shows gets.
+    foreign_units: std::collections::BTreeSet<String>,
+    /// Every `GIVE` and `TAKE` this document writes, applied only once the whole document has
+    /// been read. `rules/sequenceofevents` settles both in one Give phase and processes units
+    /// "in the order they appear on the report", which is not the order their blocks were
+    /// written in (`ah-3mwm`).
+    transfers: Vec<PendingTransfer>,
+    /// Every unit id the report shows holding the quartermaster skill, resolved through the
+    /// catalogue rather than by tag spelling - `QUAM` is quartermaster and `QUAR` is quarrying
+    /// (`ah-d0ku`).
+    quartermasters: std::collections::BTreeSet<String>,
     /// What the report can say about each unit it shows as a `TRANSPORT`/`DISTRIBUTE` target,
     /// keyed by unit id. A target missing from here is one the report never described
     /// (`ah-64wm`).
     transport_targets: BTreeMap<String, TransportTargetFacts>,
+}
+
+/// One `GIVE` or `TAKE`, held until the whole document has been read so the Give phase can be
+/// settled in report order (`ah-3mwm`).
+struct PendingTransfer {
+    /// The unit whose block the order is in - its position in `Working::units`, which is report
+    /// order for reported units and, after them, the order the `FORM` blocks created them in.
+    actor: usize,
+    /// The document line, the secondary key: report order chooses between actors, and this still
+    /// chooses between several transfers one actor wrote.
+    line: usize,
+    /// The other end. For a `GIVE` this is the receiver; for a `TAKE`, `rules/take` reverses the
+    /// direction and it is the source.
+    party: super::forms::Party,
+    what: super::forms::Selector,
+    amount: super::forms::Amount,
+    is_give: bool,
 }
 
 /// What the report shows about one unit that a `TRANSPORT` could name (`ah-64wm`).
@@ -812,7 +867,8 @@ struct TransportTargetFacts {
     /// Ours, whose skills the report prints in full - so an absent skill is an absent skill,
     /// rather than an undisclosed one.
     own: bool,
-    /// The report shows the quartermaster skill (`QUAM`) on this unit.
+    /// The report shows the quartermaster skill on this unit, resolved through the catalogue
+    /// rather than by tag spelling (`ah-d0ku`).
     quartermaster: bool,
     /// The unit is the first one listed inside a Caravanserai in its hex, which is what
     /// `rules/world_structures` makes the owner of the structure.
@@ -837,6 +893,7 @@ fn is_caravanserai(structure: &crate::report::model::Structure) -> bool {
 /// What the report says about every unit it shows, as a `TRANSPORT` target (`ah-64wm`).
 fn transport_target_facts(
     report: &crate::report::ParsedReport,
+    quartermasters: &std::collections::BTreeSet<String>,
 ) -> BTreeMap<String, TransportTargetFacts> {
     let mut facts = BTreeMap::new();
     for region in &report.regions {
@@ -860,10 +917,7 @@ fn transport_target_facts(
                 unit.unit_id.clone(),
                 TransportTargetFacts {
                     own: unit.own,
-                    quartermaster: unit
-                        .skills
-                        .iter()
-                        .any(|skill| skill.tag.eq_ignore_ascii_case("QUAM")),
+                    quartermaster: quartermasters.contains(&unit.unit_id),
                     caravanserai_owner,
                 },
             );
@@ -894,6 +948,20 @@ struct PendingTransport {
     to_unshown: bool,
     what: super::forms::Selector,
     amount: super::forms::Amount,
+    /// Where the line stood in the document, kept privately so phase execution can restore
+    /// document order on `transport_sent`/`transport_received` afterwards (`ah-d0ku`).
+    sequence: usize,
+}
+
+/// The three phases `rules/sequenceofevents` runs TRANSPORT in, in rule order: "Items are sent
+/// from non-quartermaster units to quartermaster units", then "from one quartermaster unit to
+/// another quartermaster units", then "a quartermaster unit to non-quartermaster units"
+/// (`ah-d0ku`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum TransportPhase {
+    ToQuartermaster,
+    BetweenQuartermasters,
+    FromQuartermaster,
 }
 
 impl Working {
@@ -912,6 +980,7 @@ impl Working {
                 move_steps: None,
                 reported: unit.structure_id.clone(),
                 boardings: Vec::new(),
+                given: Vec::new(),
                 uncounted: Vec::new(),
                 taken_unshown: Vec::new(),
                 produced: Vec::new(),
@@ -919,10 +988,35 @@ impl Working {
                 created: Vec::new(),
                 transport_sent: Vec::new(),
                 transport_received: Vec::new(),
+                recruited: Vec::new(),
                 transport_target_issues: Vec::new(),
             });
         }
-        let known_units = report.units().map(|unit| unit.unit_id.clone()).collect();
+        let known_units: std::collections::BTreeSet<String> =
+            report.units().map(|unit| unit.unit_id.clone()).collect();
+        // `rules/sequenceofevents` phases TRANSPORT by whether each end is a quartermaster, so the
+        // skill has to be resolved by name through the catalogue: `QUAM` is quartermaster and
+        // `QUAR` is quarrying, and matching the spelling alone confuses the two (`ah-d0ku`).
+        let quartermaster_tag = ruleset
+            .find_skill("quartermaster")
+            .map(|skill| skill.tag.to_string());
+        let quartermasters = match &quartermaster_tag {
+            Some(tag) => report
+                .units()
+                .filter(|unit| {
+                    unit.skills
+                        .iter()
+                        .any(|skill| skill.tag.eq_ignore_ascii_case(tag))
+                })
+                .map(|unit| unit.unit_id.clone())
+                .collect(),
+            // No catalogue entry for the skill: nothing can be classified, every sender falls to
+            // the first phase, and transport settles in one pass as it did before this bead. The
+            // shipped ruleset states `quartermaster [QUAM]`, so this is a catalogue fault rather
+            // than a report one (`ah-d0ku`).
+            None => std::collections::BTreeSet::new(),
+        };
+        let transport_targets = transport_target_facts(report, &quartermasters);
         let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
             BTreeMap::new();
         for region in &report.regions {
@@ -939,9 +1033,16 @@ impl Working {
             forming: Vec::new(),
             ruleset,
             transports: Vec::new(),
+            quartermasters,
             known_units,
             shown_in_region,
-            transport_targets: transport_target_facts(report),
+            foreign_units: report
+                .units()
+                .filter(|unit| !unit.own)
+                .map(|unit| unit.unit_id.clone())
+                .collect(),
+            transfers: Vec::new(),
+            transport_targets,
         }
     }
 
@@ -987,7 +1088,7 @@ impl Working {
             }
             Event::Close { .. } | Event::Stray { .. } | Event::Abandoned(_) => {}
             Event::Order { line, depth } if depth.turn == 0 => {
-                self.read_order(line.command, line.arguments);
+                self.read_order(line.command, line.arguments, line.number);
             }
             Event::Order { .. } => {}
         }
@@ -1001,13 +1102,78 @@ impl Working {
         }
     }
 
-    /// Applies what `BUY`, `SELL`, `WITHDRAW` and `TAKE` move into or out of each unit's item
+    /// Dissolves every formed unit that gained nobody, returning its goods to the first own unit
+    /// the report shows in that region (`rules/form`: "If no recruits are gained at all, the empty
+    /// unit will be dissolved, and the silver and any other items it was given will revert to the
+    /// first unit you have in that region").
+    ///
+    /// Returns the indices of the dissolved rows rather than removing them: `by_id`, `by_alias`
+    /// and every queued `PendingTransport` store indices into `self.units`, so the entries stay
+    /// put and the caller filters them out while rendering. What the row was not given stays on
+    /// it, unrendered - so `apply_transports` is given the same set and drops what a dissolved row
+    /// had queued.
+    fn dissolve_empty_forms(&mut self) -> BTreeSet<usize> {
+        let mut dissolved = BTreeSet::new();
+        for index in 0..self.units.len() {
+            if !self.units[index].formed || self.units[index].unit.men != 0 {
+                continue;
+            }
+            let region_id = self.units[index].unit.region_id.clone();
+            // `over_own_units` preserves report order, so `position` finds the first unit the
+            // report shows in that region - not the unit that formed this one. A region with no
+            // own report unit has nobody to revert to, and then nothing is taken from the
+            // dissolving row either: taking first and discarding what could not be handed over
+            // would destroy the goods.
+            let Some(recipient) = self
+                .units
+                .iter()
+                .position(|unit| unit.unit.region_id == region_id && unit.original.is_some())
+            else {
+                dissolved.insert(index);
+                continue;
+            };
+            // Exactly what it was *given*, which is what `rules/form` reverts - not what its own
+            // month bought, produced or took. A `BUY` the game would never have executed must not
+            // become a windfall for the unit the goods revert to.
+            //
+            // Clamped to what the row still holds, by the same case-insensitive tag match the
+            // rest of this file uses: a gift the unit then sold or gave on is not there to
+            // revert. The clamp is a bound, not a ledger - it cannot tell gifted stock from stock
+            // the row acquired itself, so a row given 100 silver, giving it on and then earning
+            // 50 reverts that 50. At this layer that is the cheaper wrong answer of the two.
+            for gift in std::mem::take(&mut self.units[index].given) {
+                let Some(at) = self.units[index]
+                    .unit
+                    .items
+                    .iter()
+                    .position(|item| item.tag.eq_ignore_ascii_case(&gift.tag))
+                else {
+                    continue;
+                };
+                let moved = gift.amount.min(self.units[index].unit.items[at].amount);
+                if moved <= 0 {
+                    continue;
+                }
+                take_item(&mut self.units[index].unit.items, at, moved);
+                add_item(
+                    &mut self.units[recipient].unit.items,
+                    &gift.name,
+                    &gift.tag,
+                    moved,
+                );
+            }
+            dissolved.insert(index);
+        }
+        dissolved
+    }
+
+    /// Applies what `BUY`, `SELL` and `WITHDRAW` move into or out of each unit's item
     /// list, and records what could not be counted at all - `super::semantics::item_effects`'s
     /// seam onto the ledger the same settlement already prices (`ah-agbm`).
     ///
-    /// `GIVE` is not read here: the walk that built `self.units` has already applied every gift
-    /// through `Working::give`, and the ledger records no movement for one (`RecordMovement::No`)
-    /// for exactly that reason - applying it again here would move it twice.
+    /// `GIVE` and `TAKE` are not read here: `Working::apply_transfers` has already settled the
+    /// whole Give phase in report order, and the ledger records no movement for either for
+    /// exactly that reason - applying one again here would move it twice (`ah-3mwm`).
     fn apply_item_effects(
         &mut self,
         effects: &BTreeMap<String, super::semantics::UnitItemEffects>,
@@ -1045,17 +1211,7 @@ impl Working {
                 }
             }
             unit.uncounted = effect.uncounted.clone();
-            unit.taken_unshown = effect
-                .moved
-                .iter()
-                .filter_map(|movement| {
-                    movement.from_unshown.as_ref().map(|from| TakenUnshown {
-                        amount: movement.delta,
-                        tag: movement.tag.clone(),
-                        from: from.clone(),
-                    })
-                })
-                .collect();
+            unit.recruited = effect.recruited.clone();
             unit.produced = effect
                 .moved
                 .iter()
@@ -1115,6 +1271,7 @@ impl Working {
             move_steps: None,
             reported,
             boardings: Vec::new(),
+            given: Vec::new(),
             uncounted: Vec::new(),
             taken_unshown: Vec::new(),
             produced: Vec::new(),
@@ -1122,6 +1279,7 @@ impl Working {
             created: Vec::new(),
             transport_sent: Vec::new(),
             transport_received: Vec::new(),
+            recruited: Vec::new(),
             transport_target_issues: Vec::new(),
         });
         self.forming.push(Some(index));
@@ -1131,7 +1289,12 @@ impl Working {
     /// trailing text a valid order ignores is trimmed away before any reader below sees it, so an
     /// accepted line previews the same thing validation and `intents` agree it means, and a
     /// malformed required argument previews nothing at all - the same answer `check_shape` gives.
-    fn read_order(&mut self, command: &super::lexer::Token, arguments: &[super::lexer::Token]) {
+    fn read_order(
+        &mut self,
+        command: &super::lexer::Token,
+        arguments: &[super::lexer::Token],
+        line: usize,
+    ) {
         let Some(active) = self.active() else {
             return;
         };
@@ -1178,9 +1341,9 @@ impl Working {
         } else if command.is("leave") && arguments.is_empty() {
             self.board(active, BoardingOrder::Leave);
         } else if command.is("give") {
-            self.give(active, arguments);
+            self.queue_give(active, arguments, line);
         } else if command.is("take") {
-            self.take(active, arguments);
+            self.queue_take(active, arguments, line);
         } else if command.is("transport") || command.is("distribute") {
             // `rules/transport`: "the order DISTRIBUTE can be used in place of TRANSPORT and has
             // the same meaning and syntax", which is why one arm serves both and why the grammar
@@ -1244,103 +1407,30 @@ impl Working {
     /// or `0` to discard.
     ///
     /// The shapes are read by [`super::forms`], the same reader the validator and the intent pass
-    /// use, so an order this previews is an order the validator accepts. What is left here is
-    /// resolution: which unit the target names, whether the giver holds what it is giving, and how
-    /// much actually moves.
-    ///
-    /// A target the walker cannot find - another hex, another faction, an alias never formed -
-    /// makes the whole order a no-op: the validator flags what the server would refuse, and
-    /// half-applying it here would show a transfer that will not happen.
-    fn give(&mut self, giver: usize, arguments: &[super::lexer::Token]) {
-        use super::targets::{give_reach, party_unit_id, GiveReach};
-
+    /// use, so an order this previews is an order the validator accepts. Nothing moves here: the
+    /// order is queued and settled by [`Working::apply_transfers`] once the whole document has
+    /// been read, because `rules/sequenceofevents` settles the Give phase in report order rather
+    /// than in the order the blocks were written (`ah-3mwm`).
+    fn queue_give(&mut self, giver: usize, arguments: &[super::lexer::Token], line: usize) {
         let Some((target, rest)) = super::forms::read_party(arguments) else {
             return;
         };
         let Some((what, amount)) = super::forms::read_transfer(rest) else {
             return;
         };
-
-        let region = self.units[giver].unit.region_id.clone();
-        let giver_id = self.units[giver].unit.unit_id.clone();
-        let reach = give_reach(
-            &target,
-            &giver_id,
-            |id| self.index_in(&region, id).is_some(),
-            |id| {
-                self.shown_in_region
-                    .get(&region)
-                    .is_some_and(|shown| shown.contains(id))
-            },
-        );
-        let receiver = match reach {
-            // Nothing at all: not even the giver loses what it named (`ah-vcp8.2`).
-            GiveReach::Nowhere => return,
-            // The goods leave and no row of ours gains them.
-            GiveReach::Discard | GiveReach::Unprojectable => None,
-            // Decided by this same lookup a line ago, so it answers again.
-            GiveReach::Ours => party_unit_id(&target).and_then(|id| self.index_in(&region, &id)),
-        };
-
-        for (name, tag, moved) in self.tags_moved(giver, &what, &amount, reach) {
-            // `rules/magic`: "mages may not GIVE men at all", whatever the target - a discard
-            // included, since `GIVE 0`'s exception is about *transfer* restrictions and this is
-            // not one. Asked here rather than inside `tags_moved`, which `apply_transports` also
-            // calls: the rule is about GIVE alone. Per tag, so `ALL ITEMS` still hands over the
-            // equipment the mage may give.
-            if super::targets::mage_give_refused(
-                &self.units[giver].unit.skills,
-                &tag,
-                Some(&self.ruleset),
-            ) {
-                continue;
-            }
-            // Re-resolved by tag rather than kept from the snapshot: an earlier tag in this same
-            // loop may have removed an item ahead of this one and shifted every index after it.
-            let Some(held) = self.units[giver]
-                .unit
-                .items
-                .iter()
-                .position(|item| item.tag == tag)
-            else {
-                continue;
-            };
-            take_item(&mut self.units[giver].unit.items, held, moved);
-            if let Some(receiver) = receiver {
-                add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
-            }
-
-            // A race is people, so giving one moves men as well as stock.
-            if self.ruleset.is_man(&tag) {
-                let unit = &mut self.units[giver].unit;
-                unit.men -= moved;
-                if let Some(race) = unit.men_by_race.iter().position(|race| race.tag == tag) {
-                    take_item(&mut unit.men_by_race, race, moved);
-                }
-                if let Some(receiver) = receiver {
-                    let arriving = self.units[giver].unit.skills.clone();
-                    let unit = &mut self.units[receiver].unit;
-                    unit.skills = merge_skills(&unit.skills, unit.men, &arriving, moved);
-                    unit.men += moved;
-                    add_item(&mut unit.men_by_race, &name, &tag, moved);
-                }
-            }
-        }
+        self.transfers.push(PendingTransfer {
+            actor: giver,
+            line,
+            party: target,
+            what,
+            amount,
+            is_give: true,
+        });
     }
 
     /// `TAKE FROM source amount item`, which `rules/take` defines as a GIVE with the direction
-    /// reversed and confines to "another unit in the same faction" - so the source is always one
-    /// of ours, found the same way `give` finds its receiver.
-    ///
-    /// Deliberately moves **no items**: the ledger records a TAKE as a movement
-    /// (`RecordMovement::Yes`, `semantics.rs:2384`) and `apply_item_effects` applies it a moment
-    /// later, so moving them here as well would move them twice - and `settle_headcounts` would
-    /// then double the headcount too, since it derives from exactly that list. What is left is
-    /// the half nothing applies: the skills the arriving men bring, and a running headcount for
-    /// the merge that follows to weigh against.
-    fn take(&mut self, taker: usize, arguments: &[super::lexer::Token]) {
-        use super::forms::Party;
-
+    /// reversed. Queued exactly as a `GIVE` is, and for the same reason.
+    fn queue_take(&mut self, taker: usize, arguments: &[super::lexer::Token], line: usize) {
         let Some((_, rest)) = arguments.split_first().filter(|(kw, _)| kw.is("FROM")) else {
             return;
         };
@@ -1350,10 +1440,112 @@ impl Working {
         let Some((what, amount)) = super::forms::read_transfer(rest) else {
             return;
         };
+        self.transfers.push(PendingTransfer {
+            actor: taker,
+            line,
+            party: source,
+            what,
+            amount,
+            is_give: false,
+        });
+    }
+
+    /// Settles this month's Give phase.
+    ///
+    /// `rules/sequenceofevents` processes GIVE and TAKE together and, where nothing else orders
+    /// units within a phase, "units will be processed in the order they appear on the report" -
+    /// which is `Working::units`' own order, reported units first and this month's formed units
+    /// after them. The line is the secondary key alone, so one actor's own transfers still settle
+    /// in the order it wrote them. `sort_by_key` is stable, so equal keys - which cannot occur,
+    /// one order per line - would keep document order anyway.
+    fn apply_transfers(&mut self) {
+        let mut pending = std::mem::take(&mut self.transfers);
+        pending.sort_by_key(|transfer| (transfer.actor, transfer.line));
+        for transfer in pending {
+            if transfer.is_give {
+                self.give(
+                    transfer.actor,
+                    &transfer.party,
+                    &transfer.what,
+                    &transfer.amount,
+                );
+            } else {
+                self.take(
+                    transfer.actor,
+                    &transfer.party,
+                    &transfer.what,
+                    &transfer.amount,
+                );
+            }
+        }
+    }
+
+    /// One settled `GIVE`.
+    ///
+    /// What is left here is resolution: which unit the target names, whether the giver holds what
+    /// it is giving, and how much actually moves.
+    ///
+    /// A target the walker cannot find - another hex, another faction, an alias never formed -
+    /// makes the whole order a no-op: the validator flags what the server would refuse, and
+    /// half-applying it here would show a transfer that will not happen.
+    fn give(
+        &mut self,
+        giver: usize,
+        target: &super::forms::Party,
+        what: &super::forms::Selector,
+        amount: &super::forms::Amount,
+    ) {
+        use super::targets::{give_reach, party_unit_id, GiveReach};
+
+        let region = self.units[giver].unit.region_id.clone();
+        let giver_id = self.units[giver].unit.unit_id.clone();
+        let reach = give_reach(
+            target,
+            &giver_id,
+            |id| self.index_in(&region, id).is_some(),
+            |id| {
+                self.shown_in_region
+                    .get(&region)
+                    .is_some_and(|shown| shown.contains(id))
+            },
+            // Report-wide, and it is what separates a unit we know is in another hex from a number
+            // the report never prints, which may be a hidden Friendly target (`ah-66yi`).
+            |id| self.known_units.contains(id),
+        );
+        let receiver = match reach {
+            // Nothing at all: not even the giver loses what it named (`ah-vcp8.2`).
+            GiveReach::Nowhere => return,
+            // The goods leave and no row of ours gains them. `Unshown` reaches here too and moves
+            // nothing at all, because `tags_moved` returns no tag for it - `rules/give` may or may
+            // not let the gift through and this column says so with `+ ?` rather than a figure
+            // (`ah-66yi`).
+            GiveReach::Discard | GiveReach::Foreign | GiveReach::Unshown => None,
+            // Decided by this same lookup a line ago, so it answers again.
+            GiveReach::Ours => party_unit_id(target).and_then(|id| self.index_in(&region, &id)),
+        };
+
+        self.move_between(giver, receiver, what, amount, reach, true);
+    }
+
+    /// One settled `TAKE`, which `rules/take` defines as a GIVE with the direction reversed and
+    /// confines to "another unit in the same faction" - so the source is always one of ours, found
+    /// the same way `give` finds its receiver.
+    ///
+    /// Moves the goods as well as the people, unlike the pass this replaced: the Give phase is
+    /// settled here in report order now, so leaving the items to the later ledger-driven pass
+    /// would settle the two halves of one order in two different orders (`ah-3mwm`).
+    fn take(
+        &mut self,
+        taker: usize,
+        source: &super::forms::Party,
+        what: &super::forms::Selector,
+        amount: &super::forms::Amount,
+    ) {
+        use super::forms::{Amount, Party, Selector};
 
         let source_index = match source {
             Party::New(alias) => {
-                let key = (self.units[taker].unit.region_id.clone(), alias);
+                let key = (self.units[taker].unit.region_id.clone(), alias.clone());
                 match self.by_alias.get(&key) {
                     Some(&index) => index,
                     None => return,
@@ -1362,13 +1554,38 @@ impl Working {
             // Nobody to take from: `rules/take` confines a TAKE to a faction-mate, so another
             // faction's unit and the discard target both leave the taker unchanged.
             Party::Discard | Party::Foreign { .. } => return,
-            Party::Unit(id) => match self.by_id.get(&id) {
+            Party::Unit(id) => match self.by_id.get(id) {
                 Some(&index)
                     if self.units[index].unit.region_id == self.units[taker].unit.region_id =>
                 {
                     index
                 }
-                _ => return,
+                // A unit the report does not show here holds what no catalogue can say, so an
+                // `ALL` is left alone - but a stated quantity of a named item the catalogue knows
+                // is granted, and marked unverifiable, exactly as `ah-agbm` had the ledger grant
+                // it. A unit the report shows and we do not own is refused outright instead.
+                _ => {
+                    if self.foreign_units.contains(id) {
+                        return;
+                    }
+                    let (Selector::Item(text), Amount::Exact(count)) = (what, amount) else {
+                        return;
+                    };
+                    if *count <= 0 {
+                        return;
+                    }
+                    let Some(entry) = self.ruleset.find_item(text) else {
+                        return;
+                    };
+                    let (name, tag) = (entry.name.clone(), entry.tag.to_ascii_uppercase());
+                    add_item(&mut self.units[taker].unit.items, &name, &tag, *count);
+                    self.units[taker].taken_unshown.push(TakenUnshown {
+                        amount: *count,
+                        tag,
+                        from: id.clone(),
+                    });
+                    return;
+                }
             },
         };
 
@@ -1376,20 +1593,85 @@ impl Working {
             return;
         }
 
-        for (_, tag, moved) in self.tags_moved(
+        self.move_between(
             source_index,
-            &what,
-            &amount,
+            Some(taker),
+            what,
+            amount,
             super::targets::GiveReach::Ours,
-        ) {
-            if !self.ruleset.is_man(&tag) {
+            false,
+        );
+    }
+
+    /// The half a `GIVE` and a `TAKE` share once each has decided which row holds the goods and
+    /// which - if any - receives them: what leaves the source, what arrives, and the skills the
+    /// arriving men bring.
+    fn move_between(
+        &mut self,
+        source: usize,
+        receiver: Option<usize>,
+        what: &super::forms::Selector,
+        amount: &super::forms::Amount,
+        reach: super::targets::GiveReach,
+        // `rules/magic` forbids a mage to GIVE men and says nothing about TAKE, so the one rule
+        // this half applies differently for its two callers needs telling which it is serving
+        // (`ah-t8ei`).
+        is_give: bool,
+    ) {
+        for (name, tag, moved) in self.tags_moved(source, what, amount, reach) {
+            // `rules/magic`: "mages may not GIVE men at all", whatever the target - a discard
+            // included, since `GIVE 0`'s exception is about *transfer* restrictions and this is
+            // not one. Asked here rather than inside `tags_moved`, which `apply_transports` also
+            // calls: the rule is about GIVE alone, which is why a TAKE passes `false` above
+            // (`ah-t8ei`). Per tag, so `ALL ITEMS` still hands over the equipment the mage may
+            // give.
+            if is_give
+                && super::targets::mage_give_refused(
+                    &self.units[source].unit.skills,
+                    &tag,
+                    Some(&self.ruleset),
+                )
+            {
                 continue;
             }
-            let arriving = self.units[source_index].unit.skills.clone();
-            self.units[source_index].unit.men -= moved;
-            let unit = &mut self.units[taker].unit;
-            unit.skills = merge_skills(&unit.skills, unit.men, &arriving, moved);
-            unit.men += moved;
+            // Re-resolved by tag rather than kept from the snapshot: an earlier tag in this same
+            // loop may have removed an item ahead of this one and shifted every index after it.
+            let Some(held) = self.units[source]
+                .unit
+                .items
+                .iter()
+                .position(|item| item.tag == tag)
+            else {
+                continue;
+            };
+            take_item(&mut self.units[source].unit.items, held, moved);
+            if let Some(receiver) = receiver {
+                add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
+                // `rules/form` reverts what a dissolving formed unit "was given", so only a GIVE
+                // is recorded here: what the row TAKES is its own doing, not a gift, and must not
+                // revert with the rest (`ah-dhga`, `ah-3mwm`).
+                if is_give {
+                    add_item(&mut self.units[receiver].given, &name, &tag, moved);
+                }
+            }
+
+            // A race is people, so moving one moves men as well as stock.
+            if self.ruleset.is_man(&tag) {
+                let unit = &mut self.units[source].unit;
+                unit.men -= moved;
+                if let Some(race) = unit.men_by_race.iter().position(|race| race.tag == tag) {
+                    take_item(&mut unit.men_by_race, race, moved);
+                }
+                if let Some(receiver) = receiver {
+                    let arriving = self.units[source].unit.skills.clone();
+                    let unit = &mut self.units[receiver].unit;
+                    // The merge runs before the men are added: weighting by the headcount after
+                    // the arrivals is silently wrong.
+                    unit.skills = merge_skills(&unit.skills, unit.men, &arriving, moved);
+                    unit.men += moved;
+                    add_item(&mut unit.men_by_race, &name, &tag, moved);
+                }
+            }
         }
     }
 
@@ -1430,6 +1712,7 @@ impl Working {
         let receiver = self.by_id.get(&id).copied();
         let to_unshown = !self.known_units.contains(&id);
 
+        let sequence = self.transports.len();
         self.transports.push(PendingTransport {
             sender,
             receiver,
@@ -1437,6 +1720,7 @@ impl Working {
             to_unshown,
             what,
             amount,
+            sequence,
         });
     }
 
@@ -1487,28 +1771,118 @@ impl Working {
     /// Applies every queued `TRANSPORT`/`DISTRIBUTE`, last of all: `rules/sequenceofevents` runs
     /// transport in the month's final phases, after the market, after movement, after production
     /// (`ah-bxgs`).
+    fn apply_transports(&mut self, dissolved: &BTreeSet<usize>) {
+        let pending = std::mem::take(&mut self.transports);
+        let mut sent: Vec<Vec<(usize, TransportSent)>> = vec![Vec::new(); self.units.len()];
+        let mut received: Vec<Vec<(usize, TransportReceived)>> = vec![Vec::new(); self.units.len()];
+        let mut issues: Vec<Vec<(usize, TransportTargetIssue)>> = vec![Vec::new(); self.units.len()];
+        // How many of its own transports each sender has written before this one, so every line
+        // one order produces - sent, refused or target-refused - is stamped with that order's
+        // place in the unit's block. The queue is document-ordered, and the phases below are not,
+        // so the counting has to happen here (`ah-64wm`, `ah-d0ku`).
+        let mut written: BTreeMap<usize, i64> = BTreeMap::new();
+        let mut order_index: BTreeMap<usize, i64> = BTreeMap::new();
+        for pending in &pending {
+            let next = written.entry(pending.sender).or_insert(0);
+            order_index.insert(pending.sequence, *next);
+            *next += 1;
+        }
+
+        for phase in [
+            TransportPhase::ToQuartermaster,
+            TransportPhase::BetweenQuartermasters,
+            TransportPhase::FromQuartermaster,
+        ] {
+            let mut of_this_phase: Vec<&PendingTransport> = pending
+                .iter()
+                .filter(|pending| !dissolved.contains(&pending.sender))
+                .filter(|pending| self.transport_phase(pending) == phase)
+                .collect();
+            // `rules/sequenceofevents`: "units that appear higher on the report get precedence",
+            // which is `Working::units`' own order. The sequence is the secondary key alone, so
+            // one sender's own lines still settle in the order it wrote them.
+            of_this_phase.sort_by_key(|pending| (pending.sender, pending.sequence));
+            if of_this_phase.is_empty() {
+                continue;
+            }
+            self.apply_transport_phase(
+                &of_this_phase,
+                &order_index,
+                &mut sent,
+                &mut received,
+                &mut issues,
+            );
+        }
+
+        for (index, working) in self.units.iter_mut().enumerate() {
+            let mut theirs = std::mem::take(&mut sent[index]);
+            theirs.sort_by_key(|(sequence, _)| *sequence);
+            working.transport_sent = theirs.into_iter().map(|(_, value)| value).collect();
+            let mut theirs = std::mem::take(&mut received[index]);
+            theirs.sort_by_key(|(sequence, _)| *sequence);
+            working.transport_received = theirs.into_iter().map(|(_, value)| value).collect();
+            let mut theirs = std::mem::take(&mut issues[index]);
+            theirs.sort_by_key(|(sequence, _)| *sequence);
+            working.transport_target_issues = theirs.into_iter().map(|(_, value)| value).collect();
+        }
+    }
+
+    /// Which of `rules/sequenceofevents`' three phases one queued line belongs to.
+    ///
+    /// A sender that is not a quartermaster is always the first phase. A quartermaster sending to
+    /// a unit the report shows holding the skill is the second. Everything else - including a
+    /// target the report does not show, or one whose skills are hidden - is the third: the
+    /// navigator chose that deterministic fallback over inventing a skill the report never states
+    /// (`ah-d0ku`).
+    fn transport_phase(&self, pending: &PendingTransport) -> TransportPhase {
+        let sender = &self.units[pending.sender].unit.unit_id;
+        if !self.quartermasters.contains(sender) {
+            return TransportPhase::ToQuartermaster;
+        }
+        if self.quartermasters.contains(&pending.to) {
+            TransportPhase::BetweenQuartermasters
+        } else {
+            TransportPhase::FromQuartermaster
+        }
+    }
+
+    /// One phase of transport, over every queued line that belongs to it.
+    ///
+    /// Each unit's holdings as the phase opened are the allowance every send in this phase is
+    /// resolved against, while the movement itself is applied to the live item list. That is
+    /// `rules/sequenceofevents`' "items may move in each of the phases but only once in each
+    /// phase": goods that arrived in an earlier phase are available, and goods arriving during
+    /// this one are not (`ah-d0ku`).
     ///
     /// The target is settled before any item is: an order whose target cannot receive moves
     /// nothing at all, whatever it named, so the target explanation is recorded once for the order
     /// and no per-item refusal is reported beside it (`ah-64wm`).
-    fn apply_transports(&mut self) {
-        let pending = std::mem::take(&mut self.transports);
-        // How many of its own transports each sender has been given, so every line one order
-        // writes - sent or refused - is stamped with that order's place in the unit's block. The
-        // queue is document-ordered already, so counting it is counting the document (`ah-64wm`).
-        let mut orders_written: BTreeMap<usize, i64> = BTreeMap::new();
+    fn apply_transport_phase(
+        &mut self,
+        pending: &[&PendingTransport],
+        order_index: &BTreeMap<usize, i64>,
+        sent: &mut [Vec<(usize, TransportSent)>],
+        received: &mut [Vec<(usize, TransportReceived)>],
+        issues: &mut [Vec<(usize, TransportTargetIssue)>],
+    ) {
+        let mut allowance: BTreeMap<usize, Vec<crate::report::model::ItemAmount>> = BTreeMap::new();
         for pending in pending {
-            let order_index = {
-                let next = orders_written.entry(pending.sender).or_insert(0);
-                let index = *next;
-                *next += 1;
-                index
-            };
+            allowance
+                .entry(pending.sender)
+                .or_insert_with(|| self.units[pending.sender].unit.items.clone());
+        }
+
+        for pending in pending {
+            let index = order_index.get(&pending.sequence).copied().unwrap_or(0);
+            let held = allowance
+                .get(&pending.sender)
+                .cloned()
+                .unwrap_or_else(Vec::new);
             // `GiveReach::Discard` bypasses target-specific refusal: `TRANSPORT` has
             // its own permission gate, `can_be_transported`, checked below - the two lists are
             // not the same (`IENT` may not be given but may be transported).
-            let moving = self.tags_moved(
-                pending.sender,
+            let moving = self.tags_moved_from(
+                &held,
                 &pending.what,
                 &pending.amount,
                 super::targets::GiveReach::Discard,
@@ -1528,60 +1902,73 @@ impl Working {
                     }
                     _ => (0, String::new()),
                 };
-                self.units[pending.sender]
-                    .transport_target_issues
-                    .push(TransportTargetIssue {
+                issues[pending.sender].push((
+                    pending.sequence,
+                    TransportTargetIssue {
                         to: pending.to.clone(),
                         amount,
                         tag,
                         reason,
-                        order_index,
-                    });
+                        order_index: index,
+                    },
+                ));
                 continue;
             }
             for (name, tag, moved) in moving {
                 if !self.ruleset.can_be_transported(&tag) {
-                    self.units[pending.sender]
-                        .transport_sent
-                        .push(TransportSent {
+                    sent[pending.sender].push((
+                        pending.sequence,
+                        TransportSent {
                             amount: 0,
                             tag,
                             to: String::new(),
                             to_unshown: false,
                             refused: true,
-                            order_index,
-                        });
+                            order_index: index,
+                        },
+                    ));
                     continue;
                 }
                 // Re-resolved by tag rather than kept from the snapshot, exactly as `give` does:
                 // an earlier transport in this same document may have emptied a stock ahead of
                 // this one and shifted every index after it.
-                let Some(held) =
+                let Some(live) =
                     find_item(&self.ruleset, &self.units[pending.sender].unit.items, &tag)
                 else {
                     continue;
                 };
-                take_item(&mut self.units[pending.sender].unit.items, held, moved);
-                self.units[pending.sender]
-                    .transport_sent
-                    .push(TransportSent {
+                take_item(&mut self.units[pending.sender].unit.items, live, moved);
+                // Resolved the same way the live list above is, rather than by exact tag
+                // equality: an allowance that failed to find its row would silently stay
+                // undecremented, and the item could then move a second time in this phase -
+                // exactly the rule this phase pass exists to enforce (`ah-d0ku`).
+                if let Some(allowed) = allowance.get_mut(&pending.sender) {
+                    if let Some(index) = find_item(&self.ruleset, allowed, &tag) {
+                        take_item(allowed, index, moved);
+                    }
+                }
+                sent[pending.sender].push((
+                    pending.sequence,
+                    TransportSent {
                         amount: moved,
                         tag: tag.clone(),
                         to: pending.to.clone(),
                         to_unshown: pending.to_unshown,
                         refused: false,
-                        order_index,
-                    });
+                        order_index: index,
+                    },
+                ));
                 if let Some(receiver) = pending.receiver {
                     add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
                     let from = self.units[pending.sender].unit.unit_id.clone();
-                    self.units[receiver]
-                        .transport_received
-                        .push(TransportReceived {
+                    received[receiver].push((
+                        pending.sequence,
+                        TransportReceived {
                             amount: moved,
                             tag,
                             from,
-                        });
+                        },
+                    ));
                 }
             }
         }
@@ -1603,11 +1990,24 @@ impl Working {
     /// `GIVE target UNIT` hands over the whole unit rather than anything it holds - ownership is
     /// a different question from what a row shows, and is left to a later issue.
     ///
-    /// `GiveReach` preserves the discard exception and rejects men aimed at another faction
-    /// (`rules/give`).
+    /// `give_outcome` preserves the discard exception, rejects men aimed at another faction, and
+    /// holds back a tag whose permission the report cannot establish (`rules/give`, `ah-66yi`).
     fn tags_moved(
         &self,
         holder: usize,
+        what: &super::forms::Selector,
+        amount: &super::forms::Amount,
+        reach: super::targets::GiveReach,
+    ) -> Vec<(String, String, i64)> {
+        self.tags_moved_from(&self.units[holder].unit.items, what, amount, reach)
+    }
+
+    /// The same question asked of an explicit item list rather than of a row's live holdings, so
+    /// that a transport phase can resolve against the allowance it opened with while the movement
+    /// itself is applied to the live list (`ah-d0ku`).
+    fn tags_moved_from(
+        &self,
+        held_items: &[crate::report::model::ItemAmount],
         what: &super::forms::Selector,
         amount: &super::forms::Amount,
         reach: super::targets::GiveReach,
@@ -1616,12 +2016,14 @@ impl Working {
 
         let moving: Vec<(String, String, i64)> = match what {
             Selector::Item(item) => {
-                let Some(held) = find_item(&self.ruleset, &self.units[holder].unit.items, item)
-                else {
+                let Some(held) = find_item(&self.ruleset, held_items, item) else {
                     return Vec::new();
                 };
                 let (name, tag, held_amount) = {
-                    let held = &self.units[holder].unit.items[held];
+                    let held = &held_items[held];
+                    if is_unfinished_ship(held, Some(&self.ruleset)) {
+                        return Vec::new();
+                    }
                     (held.name.clone(), held.tag.clone(), held.amount)
                 };
                 let requested = match amount {
@@ -1635,6 +2037,29 @@ impl Working {
                     vec![(name, tag, moved)]
                 }
             }
+            Selector::UnfinishedShip(text) => {
+                let Some(tag) =
+                    unfinished_ship_named(Some(&self.ruleset), text, || held_items.iter())
+                else {
+                    return Vec::new();
+                };
+                let Some(held) = held_items
+                    .iter()
+                    .find(|item| item.tag.eq_ignore_ascii_case(&tag))
+                else {
+                    return Vec::new();
+                };
+                let requested = match amount {
+                    Amount::All { except } => held.amount.saturating_sub(*except),
+                    Amount::Exact(count) => *count,
+                };
+                let moved = requested.clamp(0, held.amount);
+                if moved > 0 {
+                    vec![(held.name.clone(), held.tag.clone(), moved)]
+                } else {
+                    Vec::new()
+                }
+            }
             // `rules/give` gives `EXCEPT` and a stated amount to the named-item forms alone; the
             // class form is `GIVE [unit] ALL [item class]` and nothing else. A class arriving
             // with either is a shape the rules do not define, so it is left exactly as today.
@@ -1642,30 +2067,32 @@ impl Working {
             Selector::Class(name)
                 if name.eq_ignore_ascii_case("MAN") || name.eq_ignore_ascii_case("MEN") =>
             {
-                self.units[holder]
-                    .unit
-                    .items
+                held_items
                     .iter()
-                    .filter(|item| self.ruleset.is_man(&item.tag))
+                    .filter(|item| {
+                        !is_unfinished_ship(item, Some(&self.ruleset))
+                            && self.ruleset.is_man(&item.tag)
+                    })
+                    .filter(|item| !is_unfinished_ship(item, Some(&self.ruleset)))
                     .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
                     .collect()
             }
             Selector::Class(name)
                 if name.eq_ignore_ascii_case("ITEM") || name.eq_ignore_ascii_case("ITEMS") =>
             {
-                self.units[holder]
-                    .unit
-                    .items
+                held_items
                     .iter()
+                    .filter(|item| !is_unfinished_ship(item, Some(&self.ruleset)))
                     .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
                     .collect()
             }
             Selector::Class(name) => match self.ruleset.class_members(name) {
-                Some(tags) => self.units[holder]
-                    .unit
-                    .items
+                Some(tags) => held_items
                     .iter()
-                    .filter(|item| tags.iter().any(|tag| tag == &item.tag))
+                    .filter(|item| {
+                        !is_unfinished_ship(item, Some(&self.ruleset))
+                            && tags.iter().any(|tag| tag == &item.tag)
+                    })
                     .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
                     .collect(),
                 None => Vec::new(),
@@ -1676,7 +2103,13 @@ impl Working {
         moving
             .into_iter()
             .filter(|(_, tag, _)| {
-                super::targets::give_refusal(reach, tag, Some(&self.ruleset)).is_none()
+                // Only what definitely moves. A tag the rules refuse and a tag whose permission the
+                // report cannot establish both stay with the giver - the second is admitted through
+                // the ledger's `uncounted`, which the preview renders as `+ ?` (`ah-66yi`).
+                matches!(
+                    super::targets::give_outcome(reach, tag, Some(&self.ruleset)),
+                    super::targets::GiveOutcome::Moves
+                )
             })
             .collect()
     }
@@ -1701,22 +2134,34 @@ fn settle_headcounts(units: &mut [WorkingUnit], ruleset: &crate::movement::rules
         }
         let before = working.unit.men;
         let (by_race, total) = composition::men_in(&working.unit.items, ruleset);
-        if total > before {
-            // A man tag credited from a unit this hex does not show (`ah-agbm`'s
-            // `taken_unshown`) is not a recruit: its true skills are unknown, not zero, exactly
-            // as `apply_gifts_of_men` already marks that unit `Unknowable` rather than guessing.
-            // Left out of the merge here, or the checks and the units table would disagree about
-            // the same arrival.
-            let taken_unknown: i64 = working
-                .taken_unshown
-                .iter()
-                .filter(|taken| ruleset.is_man(&taken.tag))
-                .map(|taken| taken.amount)
-                .sum();
-            let recruited = total - before - taken_unknown;
-            if recruited > 0 {
-                working.unit.skills = merge_skills(&working.unit.skills, before, &[], recruited);
+        let recruited = if working.recruited.is_empty() {
+            // No exact settled recruit to read - either nothing was recruited, or a `BUY ALL`
+            // makes the exact figure unknowable and this falls back to the net change in the item
+            // list exactly as it did before `UnitItemEffects::recruited` existed.
+            if total > before {
+                // A man tag credited from a unit this hex does not show (`ah-agbm`'s
+                // `taken_unshown`) is not a recruit: its true skills are unknown, not zero,
+                // exactly as `apply_gifts_of_men` already marks that unit `Unknowable` rather than
+                // guessing. Left out of the merge here, or the checks and the units table would
+                // disagree about the same arrival.
+                let taken_unknown: i64 = working
+                    .taken_unshown
+                    .iter()
+                    .filter(|taken| ruleset.is_man(&taken.tag))
+                    .map(|taken| taken.amount)
+                    .sum();
+                total - before - taken_unknown
+            } else {
+                0
             }
+        } else {
+            // A same-race gift out and recruit back in can leave `total` unchanged even though a
+            // recruit arrived (`ah-4a13`) - the exact settled list still dilutes the unit's
+            // skills even when the net headcount does not move.
+            working.recruited.iter().map(|item| item.amount).sum()
+        };
+        if recruited > 0 {
+            working.unit.skills = merge_skills(&working.unit.skills, before, &[], recruited);
         }
         working.unit.men_by_race = by_race;
         working.unit.men = total;
@@ -2140,7 +2585,7 @@ mod tests {
     #[test]
     fn a_formed_unit_starts_inside_the_parents_structure() {
         // The game creates the new unit in the same object as the unit forming it.
-        let response = preview("unit 900\nENTER 4\nFORM 1\nEND\n");
+        let response = preview("unit 900\nENTER 4\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n");
 
         let formed = response.regions[0]
             .units
@@ -2311,7 +2756,9 @@ mod tests {
     /// the orders after it still belong to the unit being formed.
     #[test]
     fn endform_closes_nothing_because_the_rules_have_no_such_order() {
-        let response = preview("unit 900\nFORM 1\nENDFORM\nNAME UNIT \"Formed\"\n");
+        let response = preview(
+            "unit 900\nFORM 1\nENDFORM\nNAME UNIT \"Formed\"\nunit 900\nGIVE NEW 1 1 LEAD\n",
+        );
 
         let formed = response.regions[0]
             .units
@@ -2502,6 +2949,54 @@ mod tests {
                 "the control: a mundane unit's {orders} does move its leader"
             );
         }
+    }
+
+    /// The other side of `ah-t8ei`'s rule, and the position this application takes: a mage's men
+    /// may be **taken** from it, even though the mage may not give them.
+    ///
+    /// `rules/magic` says "mages may not GIVE men at all", and `ah-t8ei` (#877) read that as
+    /// binding `GIVE` alone — its own summary says "GIVE UNIT, TAKE, TRANSPORT and DISTRIBUTE are
+    /// untouched" — so all three surfaces gate the refusal on the order being a GIVE. Nothing
+    /// asserted it until this test: the delta round on `ah-3mwm` found that removing the `is_give`
+    /// gate left the whole suite green, so the position was carried only by the code.
+    ///
+    /// It is worth knowing that `rules/take` says the TAKE order "works just like the GIVE order,
+    /// except that the direction of transfer is reversed", which is an argument the other way.
+    /// Whether that should extend the prohibition is not `ah-3mwm`'s question — this test pins
+    /// what the application does today, so that changing it has to be deliberate.
+    #[test]
+    fn a_mages_men_may_still_be_taken_from_it() {
+        let response = preview_for_mage("force [FORC]", "unit 901\nTAKE FROM 900 1 LEAD\n");
+
+        let of = |id: &str| {
+            response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == id)
+                .unwrap_or_else(|| panic!("unit {id} is previewed"))
+        };
+
+        let taker = of("901");
+        assert_eq!(
+            taker
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "LEAD")
+                .map(|item| item.amount),
+            Some(1),
+            "the leader reaches the taker"
+        );
+        assert_eq!(taker.unit.men, 2, "its own orc, and the leader it took");
+
+        let mage = of("900");
+        assert!(
+            !mage.unit.items.iter().any(|item| item.tag == "LEAD"),
+            "and leaves the mage: {:?}",
+            mage.unit.items
+        );
+        assert_eq!(mage.unit.men, 0);
     }
 
     /// `GIVE 0` bypasses the catalogue's own un-giveable restrictions, because a discard is not a
@@ -2811,12 +3306,12 @@ mod tests {
         assert!(receiver.unit.items.iter().any(|item| item.tag == "ORC"));
     }
 
-    /// A gift to another faction's new unit is decided without either closure: the game really
+    /// A gift to another faction's new unit is decided without any closure: the game really
     /// creates that unit in this hex, so it is not "named nowhere" however little the report can
-    /// say about it. The goods leave the giver and no row of ours gains them (`ah-vcp8.2`; this
-    /// test held the opposite answer before that bead).
+    /// say about it - and it is another faction's, so `rules/give` wants a declaration no report
+    /// carries. The swords' count stands and the order is admitted (`ah-66yi`).
     #[test]
-    fn giving_to_another_factions_new_unit_empties_the_giver() {
+    fn giving_to_another_factions_new_unit_leaves_the_goods_uncertain() {
         let response = preview("unit 900\nGIVE FACTION 14 NEW 2 1 SWOR\n");
         let giver = only_unit(&response);
         assert_eq!(
@@ -2826,15 +3321,19 @@ mod tests {
                 .iter()
                 .find(|item| item.tag == "SWOR")
                 .map(|item| item.amount),
-            Some(2),
-            "one of the three swords left the giver"
+            Some(3),
+            "the report's own count stands"
+        );
+        assert_eq!(
+            giver.uncounted,
+            vec!["GIVE FACTION 14 NEW 2 1 SWOR".to_string()]
         );
 
         // The control: our own new unit, same order shape. Without it this test would pass just as
         // well against a reader that had stopped understanding `NEW` at all - and the arm it
         // guards is the dangerous one, since a foreign target read as a zero would destroy the
         // swords rather than merely fail to move them.
-        let ours = preview("unit 900\nFORM 2\nEND\nGIVE NEW 2 1 SWOR\n");
+        let ours = preview("unit 900\nFORM 2\nEND\nGIVE NEW 2 1 SWOR\nGIVE NEW 2 1 LEAD\n");
         assert!(
             ours.regions[0]
                 .units
@@ -2849,7 +3348,7 @@ mod tests {
     #[test]
     fn a_second_form_with_a_taken_alias_is_swallowed() {
         let response = preview(
-            "unit 900\nFORM 1\nNAME UNIT \"First\"\nEND\nFORM 1\nNAME UNIT \"Second\"\nEND\n",
+            "unit 900\nFORM 1\nNAME UNIT \"First\"\nEND\nFORM 1\nNAME UNIT \"Second\"\nEND\nGIVE NEW 1 1 LEAD\n",
         );
 
         let formed: Vec<_> = response.regions[0]
@@ -2885,7 +3384,7 @@ mod tests {
             RULESET,
             &report,
             "[]",
-            "unit 900\nFORM 1\nEND\nunit 902\nGIVE NEW 1 2 SWOR\n",
+            "unit 900\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\nunit 902\nGIVE NEW 1 2 SWOR\n",
         )
         .expect("the ruleset loads");
 
@@ -2896,7 +3395,7 @@ mod tests {
             .find(|unit| unit.status == UnitPreviewStatus::Formed)
             .expect("the formed unit");
         assert!(
-            formed.unit.items.is_empty(),
+            !formed.unit.items.iter().any(|item| item.tag == "SWOR"),
             "a GIVE from another hex must not reach it: {:?}",
             formed.unit.items
         );
@@ -3016,7 +3515,8 @@ mod tests {
 
     #[test]
     fn form_creates_a_provisional_unit_that_its_block_names() {
-        let response = preview("unit 900\nFORM 1\nNAME UNIT \"Recruits\"\nBEHIND 1\nEND\n");
+        let response =
+            preview("unit 900\nFORM 1\nNAME UNIT \"Recruits\"\nBEHIND 1\nEND\nGIVE NEW 1 1 LEAD\n");
 
         let formed = response.regions[0]
             .units
@@ -3027,7 +3527,400 @@ mod tests {
         assert_eq!(formed.unit.name, "Recruits");
         assert!(formed.unit.own);
         assert!(formed.unit.flags.iter().any(|flag| flag == "behind"));
-        assert_eq!(formed.unit.men, 0, "nobody has been given to it yet");
+        assert_eq!(
+            formed.unit.men, 1,
+            "the leader transferred to it, which is what keeps it from dissolving"
+        );
+    }
+
+    /// A formed unit's own `BUY` has to reach the preview before dissolution can be decided, or
+    /// every unit created through the documented `rules/form` recruitment idiom would be removed
+    /// (`rules/form`: "If a new unit gains at least one recruit, the unit will form possessing any
+    /// unused silver and all the other items it was given").
+    #[test]
+    fn formed_market_purchases_are_projected_before_dissolution() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nFORM 1\nBUY 1 humans\nEND\nGIVE NEW 1 100 silver\n",
+        );
+
+        let formed = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the formed unit survives its successful recruitment");
+        assert_eq!(formed.status, UnitPreviewStatus::Formed);
+        assert_eq!(formed.unit.men, 1, "the recruit was bought");
+        assert_eq!(
+            formed
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "HUMN")
+                .map_or(0, |item| item.amount),
+            1
+        );
+        assert_eq!(
+            formed
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SILV")
+                .map_or(0, |item| item.amount),
+            100,
+            "the silver it was given stays with it, as the ITEMS column shows silver for every \
+             other unit that BUYs - the spend belongs to the SILVER column"
+        );
+    }
+
+    /// `rules/form`: "If the demand for recruits in that region that month is much higher than
+    /// the supply, ... it may not gain any recruits at all. ... If no recruits are gained at all,
+    /// the empty unit will be dissolved, and the silver and any other items it was given will
+    /// revert to the first unit you have in that region." The first unit is the first the *report*
+    /// shows, not the one that formed it - so the market here has nobody left to sell.
+    #[test]
+    fn an_empty_formed_unit_returns_its_goods_to_the_first_own_unit() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 0 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR], 10 silver [SILV]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 1 humans\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 1 10 SILV\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units.iter().any(|unit| unit.unit.unit_id == "new-1"),
+            "the empty formed unit is dissolved: {:?}",
+            units
+                .iter()
+                .map(|unit| &unit.unit.unit_id)
+                .collect::<Vec<_>>()
+        );
+
+        let amount = |id: &str, tag: &str| {
+            units
+                .iter()
+                .find(|unit| unit.unit.unit_id == id)
+                .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == tag))
+                .map_or(0, |item| item.amount)
+        };
+        assert_eq!(amount("900", "SWOR"), 3, "the first own unit receives them");
+        assert_eq!(amount("900", "SILV"), 10);
+        assert_eq!(amount("901", "SWOR"), 0, "the bystander receives nothing");
+        assert_eq!(amount("901", "SILV"), 0);
+        assert_eq!(amount("902", "SWOR"), 0, "the former gave them away");
+        assert_eq!(amount("902", "SILV"), 0);
+    }
+
+    /// `rules/form` reverts "the silver and any other items it **was given**". A unit that
+    /// dissolves never existed to trade, so what its own `BUY` bought is not a windfall for the
+    /// unit it reverts to.
+    #[test]
+    fn a_dissolved_units_purchases_are_not_handed_on() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 20 grain [GRAI] at $10.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 100 silver [SILV]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 5 grain\nEND\nGIVE NEW 1 100 SILV\n",
+        );
+
+        let receiver = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the first own unit receives what was given");
+        assert_eq!(
+            receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SILV")
+                .map_or(0, |item| item.amount),
+            100,
+            "the silver it was given reverts in full"
+        );
+        assert!(
+            !receiver.unit.items.iter().any(|item| item.tag == "GRAI"),
+            "nobody ordered grain for this unit: {:?}",
+            receiver.unit.items
+        );
+    }
+
+    /// A dissolved unit's queued `TRANSPORT` is dropped: what its own month bought must not reach
+    /// a recipient by the one path the revert itself does not cover.
+    #[test]
+    fn a_dissolved_unit_sends_no_transport() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 20 grain [GRAI] at $10.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 100 silver [SILV]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 5 grain\nTRANSPORT 900 5 GRAI\nEND\nGIVE NEW 1 100 SILV\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units.iter().any(|unit| unit.unit.unit_id == "new-1"),
+            "the empty formed unit dissolves"
+        );
+        let receiver = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the first own unit is previewed, having received the silver");
+        assert!(
+            receiver.transport_received.is_empty(),
+            "nothing arrives from a unit that never existed: {:?}",
+            receiver.transport_received
+        );
+        assert!(
+            !receiver.unit.items.iter().any(|item| item.tag == "GRAI"),
+            "and no grain with it: {:?}",
+            receiver.unit.items
+        );
+    }
+
+    /// A formed unit's `BUY` competes for the same limited stock as the report's own units
+    /// (`rules/buy`), which is what wiring `formed_units` into `item_effects` puts back.
+    #[test]
+    fn a_formed_units_buy_competes_for_a_scarce_market() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 2 humans [HUMN] at $38.",
+            "",
+            "* Crew (900), Foo (1), 10 humans [HUMN], 400 silver [SILV]. Weight: 100. \
+             Capacity: 0/0/150/0.",
+            "",
+        ]
+        .join("\n");
+        let alone = preview_over(&report, "unit 900\nBUY 2 HUMN\n");
+        let bought_alone = alone.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == "HUMN"))
+            .map_or(0, |item| item.amount);
+        assert_eq!(bought_alone, 12, "the whole offer, with nobody to share it");
+
+        let shared = preview_over(
+            &report,
+            "unit 900\nBUY 2 HUMN\nFORM 1\nBUY 2 HUMN\nEND\nGIVE NEW 1 100 SILV\n",
+        );
+        let bought_shared = shared.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == "HUMN"))
+            .map_or(0, |item| item.amount);
+        assert_eq!(
+            bought_shared, 11,
+            "one of the two on offer goes to the formed unit"
+        );
+    }
+
+    /// What a dissolving unit `TAKE`s from a unit the report shows is not handed on either - only
+    /// what it was given is. The source keeps the shortfall its own projected `TAKE` left it,
+    /// which is the pre-existing behaviour of that row and not dissolution's to unwind.
+    #[test]
+    fn a_dissolved_units_take_is_not_handed_on() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 5 stone [STON], 2 swords [SWOR]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nTAKE FROM 902 4 STON\nEND\nGIVE NEW 1 2 SWOR\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units.iter().any(|unit| unit.unit.unit_id == "new-1"),
+            "the empty formed unit dissolves"
+        );
+        let held = |id: &str, tag: &str| {
+            units
+                .iter()
+                .find(|unit| unit.unit.unit_id == id)
+                .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == tag))
+                .map_or(0, |item| item.amount)
+        };
+        assert_eq!(held("900", "SWOR"), 2, "the gift reverts");
+        assert_eq!(
+            held("900", "STON"),
+            0,
+            "what the dissolving unit took is not a windfall for the recipient"
+        );
+    }
+
+    /// Two empty formed units in one region: both dissolve, and both revert to the same first own
+    /// unit - a dissolving row can never be another's recipient, because a recipient is always a
+    /// unit the report shows.
+    #[test]
+    fn two_empty_forms_in_one_region_both_revert_to_the_first_unit() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR], 4 stone [STON]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nEND\nFORM 2\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 2 4 STON\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units
+                .iter()
+                .any(|unit| unit.unit.unit_id.starts_with("new-")),
+            "both dissolve: {:?}",
+            units
+                .iter()
+                .map(|unit| &unit.unit.unit_id)
+                .collect::<Vec<_>>()
+        );
+        let receiver = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the first own unit receives both lots");
+        let held = |tag: &str| {
+            receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == tag)
+                .map_or(0, |item| item.amount)
+        };
+        assert_eq!(held("SWOR"), 3);
+        assert_eq!(held("STON"), 4);
+    }
+
+    /// The recipient search is region-scoped: two regions, each forming an empty unit, must revert
+    /// to their own first unit and not to the other region's.
+    #[test]
+    fn each_region_reverts_to_its_own_first_unit() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* North (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* NorthFormer (901), Foo (1), leader [LEAD], 3 swords [SWOR]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+            "plain (3,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* South (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* SouthFormer (903), Foo (1), leader [LEAD], 4 stone [STON]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 901\nFORM 1\nEND\nGIVE NEW 1 3 SWOR\nunit 903\nFORM 1\nEND\nGIVE NEW 1 4 STON\n",
+        );
+
+        let units: Vec<&UnitPreview> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .collect();
+        assert!(
+            !units
+                .iter()
+                .any(|unit| unit.unit.unit_id.starts_with("new-")),
+            "both empty formed units dissolve: {:?}",
+            units
+                .iter()
+                .map(|unit| &unit.unit.unit_id)
+                .collect::<Vec<_>>()
+        );
+        let held = |id: &str, tag: &str| {
+            units
+                .iter()
+                .find(|unit| unit.unit.unit_id == id)
+                .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == tag))
+                .map_or(0, |item| item.amount)
+        };
+        assert_eq!(held("900", "SWOR"), 3, "its own region's goods come back");
+        assert_eq!(held("900", "STON"), 0, "and the other region's do not");
+        assert_eq!(held("902", "STON"), 4);
+        assert_eq!(held("902", "SWOR"), 0);
+    }
+
+    /// The rule's condition is the resulting headcount, not whether a `BUY` was written: people
+    /// handed over by `GIVE` keep the provisional unit alive.
+    #[test]
+    fn people_given_to_a_formed_unit_keep_it_alive() {
+        let response = preview("unit 900\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n");
+
+        let formed = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("a formed unit holding people survives");
+        assert_eq!(formed.status, UnitPreviewStatus::Formed);
+        assert_eq!(formed.unit.men, 1);
     }
 
     #[test]
@@ -3387,7 +4280,7 @@ mod tests {
             2
         );
 
-        let formed = preview("unit 900\nFORM 1\nEND\nGIVE NEW 1 3 SWOR\n");
+        let formed = preview("unit 900\nFORM 1\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 1 1 LEAD\n");
         let recruit = formed.regions[0]
             .units
             .iter()
@@ -3405,10 +4298,12 @@ mod tests {
     }
 
     /// `7001` is another faction's unit standing in `6857`'s own hex. `rules/give` allows the gift
-    /// once they have declared us Friendly, and the report cannot say whether they have - so the
-    /// goods leave and no row of ours gains them (`ah-vcp8.2`).
+    /// once *their* faction has declared us Friendly, and the report carries only our declarations
+    /// toward them - so the stone neither definitely leaves nor definitely stays, and the column
+    /// keeps the report's count and admits the order instead (`ah-66yi`, which reversed
+    /// `ah-vcp8.2`'s answer here).
     #[test]
-    fn a_gift_to_another_factions_unit_in_this_hex_empties_the_giver() {
+    fn a_gift_to_a_visible_foreign_unit_leaves_the_goods_uncertain() {
         let response = two_hex_preview("unit 6857\nGIVE 7001 10 STON\n");
         let giver = row(&response, "1:2,2", "6857").expect("the giver's row is previewed");
 
@@ -3419,28 +4314,129 @@ mod tests {
                 .iter()
                 .find(|item| item.tag == "STON")
                 .map(|item| item.amount),
-            Some(5),
-            "ten of the fifteen stone left the giver"
+            Some(15),
+            "the report's own count stands: nothing is known to have left"
         );
+        assert_eq!(giver.uncounted, vec!["GIVE 7001 10 STON".to_string()]);
         assert!(
             row(&response, "1:2,2", "7001").is_none(),
-            "no row of ours gains them"
+            "no row of ours gains them either"
         );
     }
 
-    /// A unit number this hex does not show: the order does nothing at all, so the giver's row is
-    /// unchanged - and an unchanged row is dropped from the response entirely (`effects.rs:382`), which is what
-    /// "reads exactly as it would with the order deleted" means here (`ah-vcp8.2`).
+    /// The same target, and silver: `rules/give` exempts silver from the factional rule outright
+    /// ("silver may be given to any unit, regardless of factional affiliation"), so a target we can
+    /// see takes it definitely and nothing is admitted (`ah-66yi`).
     #[test]
-    fn a_gift_to_a_unit_this_hex_does_not_show_moves_nothing() {
+    fn visible_foreign_silver_still_leaves_definitely() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "mountain (2,2) in Nowhere, 5 dwarves (dwarves), $3.",
+            "",
+            "* Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON], 20 silver [SILV], \
+             unfinished Cog [COG] (needs 15), \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "- Stranger (7001), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(&report, "unit 6857\nGIVE 7001 20 SILV\n");
+        let giver = only_unit(&response);
+
+        assert!(
+            !giver
+                .unit
+                .items
+                .iter()
+                .any(|item| item.tag == "SILV" && item.amount > 0),
+            "the five silver left: {:?}",
+            giver.unit.items
+        );
+        assert!(giver.uncounted.is_empty(), "{:?}", giver.uncounted);
+    }
+
+    /// A unit number the *whole report* never prints. `rules/give` lets a unit we cannot see
+    /// receive a gift once its faction has declared us Friendly, so this may be a perfectly good
+    /// order - the count stands and the order is admitted rather than silently doing nothing
+    /// (`ah-66yi`).
+    #[test]
+    fn an_unshown_number_is_not_a_definite_missing_target() {
         let response = two_hex_preview("unit 6857\nGIVE 9999 10 STON\n");
+        let giver = row(&response, "1:2,2", "6857").expect("the giver's row is previewed");
+
+        assert_eq!(
+            giver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount),
+            Some(15)
+        );
+        assert_eq!(giver.uncounted, vec!["GIVE 9999 10 STON".to_string()]);
+    }
+
+    /// The control that keeps the case above narrow: `5530` is a unit our own report shows, in the
+    /// *other* hex. Gifts settle in phase 4 and nothing moves until phase 9
+    /// (`rules/sequenceofevents`), so that target really is not here - today's definite no-op, and
+    /// an unchanged row is dropped from the response entirely.
+    #[test]
+    fn a_gift_to_a_unit_the_report_shows_elsewhere_moves_nothing() {
+        let response = two_hex_preview("unit 6857\nGIVE 5530 10 STON\n");
 
         assert!(row(&response, "1:2,2", "6857").is_none());
     }
 
+    /// `ALL ITEMS` across the same visible foreign target: `rules/give` settles the silver and
+    /// cannot settle the stone, so the known half moves and the rest keeps its count with the
+    /// order admitted once (`ah-66yi`).
+    #[test]
+    fn a_mixed_gift_moves_the_silver_and_leaves_the_rest_uncertain() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "mountain (2,2) in Nowhere, 5 dwarves (dwarves), $3.",
+            "",
+            "* Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON], 20 silver [SILV]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "- Stranger (7001), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(&report, "unit 6857\nGIVE 7001 ALL ITEMS\n");
+        let giver = only_unit(&response);
+
+        assert!(
+            !giver
+                .unit
+                .items
+                .iter()
+                .any(|item| item.tag == "SILV" && item.amount > 0),
+            "the silver is definite and goes: {:?}",
+            giver.unit.items
+        );
+        assert_eq!(
+            giver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount),
+            Some(15),
+            "the stone's permission is unresolved, so its count stands"
+        );
+        assert_eq!(
+            giver.uncounted,
+            vec!["GIVE 7001 ALL ITEMS".to_string()],
+            "one order, one line in the hover, however many tags it named"
+        );
+    }
+
     #[test]
     fn give_beyond_the_hex_or_the_stock_changes_nothing_wrong() {
-        // Unit 555 is nowhere in the report, so the whole order is a no-op.
+        // Unit 555 is nowhere in the report at all, so `rules/give` may or may not let the sword
+        // through - the count stands and the order is admitted rather than vanishing (`ah-66yi`).
         let missing = preview_orders_for_remembered_report(
             &mut ReportCache::new(),
             RULESET,
@@ -3449,7 +4445,17 @@ mod tests {
             "unit 900\nGIVE 555 1 SWOR\n",
         )
         .expect("the ruleset loads");
-        assert!(missing.regions.is_empty(), "{:?}", missing.regions);
+        let giver = only_unit(&missing);
+        assert_eq!(
+            giver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .map(|item| item.amount),
+            Some(3)
+        );
+        assert_eq!(giver.uncounted, vec!["GIVE 555 1 SWOR".to_string()]);
 
         // Giving more than the unit holds empties the stock rather than going negative.
         let drained = preview("unit 900\nGIVE 901 99 SWOR\n");
@@ -4922,6 +5928,129 @@ mod tests {
             );
         }
 
+        /// Four own units in one hex, so the chain is about the phases and not about range: an
+        /// ordinary source and three quartermasters, each owning a Caravanserai. Every target has
+        /// to be a quartermaster owning a transport structure for the goods to move at all
+        /// (`rules/transport`, `ah-64wm`), so the phases are exercised with eligible targets
+        /// throughout (`ah-d0ku`).
+        fn quartermaster_chain_report() -> String {
+            [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "* Source (900), Foo (1), leader [LEAD], 10 stone [STON]. Weight: 510. \
+                 Capacity: 0/0/15/0.",
+                "+ Post One [1] : Caravanserai.",
+                "  * Quarterone (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+                 Skills: quartermaster [QUAM] 1 (30).",
+                "+ Post Two [2] : Caravanserai.",
+                "  * Quartertwo (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+                 Skills: quartermaster [QUAM] 1 (30).",
+                "+ Post Three [3] : Caravanserai.",
+                "  * Destination (903), Foo (1), leader [LEAD]. Weight: 10. \
+                 Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 1 (30).",
+                "",
+            ]
+            .join("\n")
+        }
+
+        fn chain_preview(orders: &str) -> OrdersPreviewResponse {
+            preview_orders_for_remembered_report(
+                &mut ReportCache::new(),
+                RULESET,
+                &quartermaster_chain_report(),
+                "[]",
+                orders,
+            )
+            .expect("the ruleset loads")
+        }
+
+        fn stone_of(response: &OrdersPreviewResponse, unit_id: &str) -> i64 {
+            only_unit_by_id(response, unit_id)
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map_or(0, |item| item.amount)
+        }
+
+        #[test]
+        fn transports_settle_by_phase_rather_than_by_document_order() {
+            // `rules/sequenceofevents`: non-quartermaster to quartermaster first, then
+            // quartermaster to quartermaster - each phase run over every unit before the next
+            // begins. The document is written in the opposite order on purpose: document order
+            // must not decide where the goods end up (`ah-d0ku`).
+            //
+            // Every target here is a quartermaster owning a Caravanserai, because `rules/transport`
+            // moves nothing to a target that is not (`ah-64wm`). The third phase of the sequence -
+            // quartermaster to non-quartermaster - can therefore carry only refused orders, and is
+            // covered by the target-eligibility tests rather than here.
+            let response = chain_preview(
+                "unit 902\nTRANSPORT 903 10 STON\n\
+                 unit 901\nTRANSPORT 902 10 STON\n\
+                 unit 900\nTRANSPORT 901 10 STON\n",
+            );
+
+            assert_eq!(stone_of(&response, "900"), 0, "the source sent everything");
+            assert_eq!(
+                stone_of(&response, "901"),
+                0,
+                "what arrived in the first phase left again in the second"
+            );
+            assert_eq!(
+                stone_of(&response, "902"),
+                10,
+                "the second hop received in the phase its own line had already been resolved in"
+            );
+            assert!(
+                response
+                    .regions
+                    .iter()
+                    .flat_map(|region| region.units.iter())
+                    .all(|unit| unit.unit.unit_id != "903"),
+                "902 held nothing when the phase it sends in opened, so nothing reached 903"
+            );
+        }
+
+        #[test]
+        fn an_item_moves_only_once_in_a_transport_phase() {
+            // "Items may move in each of the phases but only once in each phase". 901 receives in
+            // phase 1 and forwards in phase 2, which is allowed; 902 receives in phase 2 and its
+            // own phase-2 line therefore has nothing it may move (`ah-d0ku`).
+            let response = chain_preview(
+                "unit 900\nTRANSPORT 901 10 STON\n\
+                 unit 901\nTRANSPORT 902 10 STON\n\
+                 unit 902\nTRANSPORT 901 10 STON\n",
+            );
+
+            assert_eq!(
+                stone_of(&response, "902"),
+                10,
+                "what arrived in this phase cannot leave again in the same phase"
+            );
+            assert_eq!(stone_of(&response, "900"), 0, "the source sent its stone");
+        }
+
+        #[test]
+        fn transport_annotations_remain_in_document_order() {
+            // The quartermaster-to-quartermaster line settles a phase before the line written
+            // above it, and the annotations still read in the order the player wrote them: the
+            // navigator chose document order for this column (`ah-d0ku`).
+            let response = chain_preview(
+                "unit 900\nTRANSPORT 901 10 STON\n\
+                 unit 901\nTRANSPORT 903 4 STON\nTRANSPORT 902 6 STON\n",
+            );
+
+            let hop = only_unit_by_id(&response, "901");
+            let targets: Vec<&str> = hop
+                .transport_sent
+                .iter()
+                .map(|sent| sent.to.as_str())
+                .collect();
+            assert_eq!(targets, vec!["903", "902"], "document order is kept");
+        }
+
         fn only_unit_by_id<'a>(
             response: &'a OrdersPreviewResponse,
             unit_id: &str,
@@ -4932,6 +6061,118 @@ mod tests {
                 .flat_map(|region| region.units.iter())
                 .find(|unit| unit.unit.unit_id == unit_id)
                 .unwrap_or_else(|| panic!("unit {unit_id} is previewed"))
+        }
+    }
+
+    /// `rules/sequenceofevents` runs GIVE and TAKE in one Give phase and processes units "in the
+    /// order they appear on the report", so the preview settles them that way too - the same
+    /// answer `semantics::apply_transfers` gives the Problems and SILVER columns beside it
+    /// (`ah-3mwm`).
+    mod report_ordered_transfers {
+        use super::*;
+
+        /// Three own units in report order - the source first, then the taker, then the unit the
+        /// source gives to. The source holds exactly what the other two compete for.
+        fn report_with_three() -> String {
+            [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  Southeast : plain (2,2) in Nowhere.",
+                "",
+                "* Source (900), Foo (1), 10 humans [HUMN], 10 swords [SWOR]. Weight: 150. \
+                 Capacity: 0/0/150/0. Skills: lumberjack [LUMB] 3 (180).",
+                "* Taker (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "* Recipient (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "",
+            ]
+            .join("\n")
+        }
+
+        fn amount_of(unit: &UnitPreview, tag: &str) -> i64 {
+            unit.unit
+                .items
+                .iter()
+                .find(|item| item.tag == tag)
+                .map_or(0, |item| item.amount)
+        }
+
+        #[test]
+        fn competing_give_and_take_transfers_follow_report_order_in_preview() {
+            let taker_block = "unit 901\nTAKE FROM 900 10 SWOR\nTAKE FROM 900 10 HUMN\n";
+            let giver_block = "unit 900\nGIVE 902 10 SWOR\nGIVE 902 10 HUMN\n";
+
+            for (label, orders) in [
+                (
+                    "the take written first",
+                    format!("{taker_block}{giver_block}"),
+                ),
+                (
+                    "the give written first",
+                    format!("{giver_block}{taker_block}"),
+                ),
+            ] {
+                let response = preview_over(&report_with_three(), &orders);
+                let of = |id: &str| {
+                    response
+                        .regions
+                        .iter()
+                        .flat_map(|region| region.units.iter())
+                        .find(|unit| unit.unit.unit_id == id)
+                        .unwrap_or_else(|| panic!("{label}: unit {id} is previewed"))
+                };
+
+                let recipient = of("902");
+                assert_eq!(amount_of(recipient, "SWOR"), 10, "{label}");
+                assert_eq!(amount_of(recipient, "HUMN"), 10, "{label}");
+                assert_eq!(
+                    recipient.unit.men, 11,
+                    "{label}: its own leader and the ten arrivals"
+                );
+                assert_eq!(
+                    recipient
+                        .unit
+                        .skills
+                        .iter()
+                        .find(|skill| skill.tag == "LUMB")
+                        .map(|skill| skill.level),
+                    Some(2),
+                    "{label}: ten lumberjack-3 men diluted across the leader they join"
+                );
+
+                let taker = response
+                    .regions
+                    .iter()
+                    .flat_map(|region| region.units.iter())
+                    .find(|unit| unit.unit.unit_id == "901");
+                assert!(
+                    taker.is_none_or(
+                        |taker| amount_of(taker, "SWOR") == 0 && amount_of(taker, "HUMN") == 0
+                    ),
+                    "{label}: the losing TAKE moved nothing"
+                );
+            }
+        }
+
+        /// `ah-agbm`'s bounded optimism, kept where the preview now owns TAKE outright: an exact
+        /// take of a named item from a unit the report does not show still reaches the taker, and
+        /// still says where it came from.
+        #[test]
+        fn an_unseen_exact_take_still_reaches_the_preview_after_report_ordering() {
+            let response = preview_over(&report_with_three(), "unit 901\nTAKE FROM 999 5 GRAI\n");
+            let unit = only_unit(&response);
+
+            assert_eq!(amount_of(unit, "GRAI"), 5);
+            assert_eq!(
+                unit.taken_unshown,
+                vec![TakenUnshown {
+                    amount: 5,
+                    tag: "GRAI".to_string(),
+                    from: "999".to_string(),
+                }]
+            );
         }
     }
 }

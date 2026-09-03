@@ -498,6 +498,57 @@ describe("formatItems and itemsTooltip", () => {
     );
   });
 
+  // `ah-6x5u`. The same two lines the SILVER hover shows, in the same words and from the same
+  // helper: `rules/produce` says a numbered order attempts exactly the number it names and carries
+  // the rest over, and the navigator chose to show that in both places (decision 8).
+  it("shows_numbered_production_in_the_items_hover", () => {
+    const row = previewedUnit({
+      items: [
+        { amount: 12, name: "iron", tag: "IRON" },
+        { amount: 8, name: "swords", tag: "SWOR" }
+      ],
+      previewChanges: [{ field: "items", original: "20 IRON" }],
+      produced: [{ amount: 8, tag: "SWOR" }]
+    });
+    const silver = aUnitSilver({
+      produced: 8,
+      producedName: "sword",
+      productionWanted: 8,
+      productionRequested: 10,
+      productionCappedBy: "workforce"
+    });
+
+    expect(itemsTooltip(row, silver)).toBe(
+      "was: 20 IRON\n" +
+        "Includes 8 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "Requested: 10 swords. This month: 8.\n" +
+        "Limited by skill and tools. The remaining 2 carry over."
+    );
+  });
+
+  // A numbered order that fits exactly still says so, which is the one case with no cap to explain
+  // it - so the hover must not fall silent the way the unnumbered one does.
+  it("shows an exact numbered run in the items hover as well", () => {
+    const row = previewedUnit({
+      items: [{ amount: 3, name: "swords", tag: "SWOR" }],
+      previewChanges: [{ field: "items", original: "0 SWOR" }],
+      produced: [{ amount: 3, tag: "SWOR" }]
+    });
+    const silver = aUnitSilver({
+      produced: 3,
+      producedName: "sword",
+      productionWanted: 8,
+      productionRequested: 3,
+      productionCappedBy: null
+    });
+
+    expect(itemsTooltip(row, silver)).toBe(
+      "was: 0 SWOR\n" +
+        "Includes 3 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "Requested: 3 swords. This month: 3."
+    );
+  });
+
   it("words the hover for a unit that produces nothing at all", () => {
     const row = previewedUnit({ items: [{ amount: 3, name: "swords", tag: "SWOR" }] });
     const silver = aUnitSilver({

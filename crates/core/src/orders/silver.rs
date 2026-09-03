@@ -19,6 +19,7 @@ use crate::movement::rules::{CastCost, CastOutput, ItemKind, Production, Ruleset
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::orders::semantics::{counted_with_singular, FormedSubject, Plurals};
+use crate::orders::targets::{give_outcome, give_target_label, GiveOutcome, GiveReach};
 use crate::report::model::{ItemAmount, Skill};
 
 /// "Each taxing character collects $50."
@@ -379,8 +380,16 @@ pub struct UnitSilver {
     /// items the way `ah-eacd`'s `nameOfHeldItem` does - it would render `CATP`.
     pub produced_name: Option<String>,
     /// How many its men alone would have made. Equal to `produced` unless `production_capped_by`
-    /// says something stopped it.
+    /// says something stopped it, or unless a numbered order asked for fewer.
     pub production_wanted: i64,
+    /// The count a numbered `PRODUCE <number> <item>` named, or `None` for the unbounded
+    /// `PRODUCE <item>` - and for a unit with no priceable `PRODUCE` order at all.
+    ///
+    /// Carried beside [`UnitSilver::production_wanted`] rather than folded into it: `rules/produce`
+    /// makes the two different facts - what the player asked for, and what the men could manage -
+    /// and the existing unnumbered wording quotes the second (`ah-6x5u`). `None` is also the
+    /// backward-compatible default for a payload written before this field existed.
+    pub production_requested: Option<i64>,
     /// What stopped it making `production_wanted`, or `None` when nothing did. Drives the hover's
     /// note and nothing else - the figures above are already the capped ones (`ah-19l2.2`).
     pub production_capped_by: Option<ProductionCap>,
@@ -523,6 +532,10 @@ pub enum TransferShape {
 pub fn transfer_shape(what: &Selector, amount: &Amount) -> TransferShape {
     match what {
         Selector::Class(_) | Selector::WholeUnit => TransferShape::Unpriceable,
+        Selector::UnfinishedShip(_) => match amount {
+            Amount::Exact(count) => TransferShape::Exact(*count),
+            Amount::All { except } => TransferShape::All { except: *except },
+        },
         Selector::Item(_) => match amount {
             Amount::Exact(count) => TransferShape::Exact(*count),
             Amount::All { except } => TransferShape::All { except: *except },
@@ -571,6 +584,13 @@ pub enum SilverDoubt {
     UnknownCombatReady,
     /// This month's arrivals cannot be merged into the unit's skills, so PRODUCE is uncountable.
     UnknownSkillsAfterArrivals,
+    /// `GIVE` of silver to a target the report cannot settle: `rules/give` lets a unit we cannot
+    /// see receive it once its faction has declared us Friendly, and no report carries that
+    /// declaration - so whether the silver leaves cannot be said (`ah-66yi`).
+    GiveTargetUncertain,
+    /// A later order prices goods an earlier `GIVE` may or may not have taken away, so what this
+    /// unit earns or spends afterwards cannot be said (`ah-66yi`).
+    GiveConsequencesUncertain,
 }
 
 /// What one unit may draw from one contended regional pool, once its faction-mates in the same hex
@@ -758,12 +778,18 @@ pub struct Lookups<'a> {
     /// catalogue cannot say which items that class holds. See `semantics::class_carries_silver`,
     /// which is the one implementation - the column and the ledger must not answer this two ways.
     pub class_carries_silver: &'a dyn Fn(&str) -> Option<bool>,
-    /// Whether a `GIVE`'s target is one this order can reach at all. `false` for a unit number
-    /// named nowhere in the hex, a `NEW` alias no `FORM` there creates, and a unit giving to
-    /// itself: the server refuses all three, so the order costs this unit nothing (`ah-vcp8.2`).
-    /// A closure for the same reason `item_tag` is one - resolving a party against a hex is
-    /// `super::semantics`' business, and this module holds no hex types.
-    pub give_lands: &'a dyn Fn(&Party) -> bool,
+    /// Where a `GIVE`'s target stands. A closure for the same reason `item_tag` is one - resolving
+    /// a party against a hex is `super::semantics`' business, and this module holds no hex types.
+    ///
+    /// [`GiveReach::Nowhere`] is a unit number the report shows elsewhere, a `NEW` alias no `FORM`
+    /// here creates, and a unit giving to itself: the server refuses all three, so the order costs
+    /// this unit nothing (`ah-vcp8.2`). The arm applies [`give_outcome`] to the actual silver tag
+    /// for the rest, so a visible foreign gift of silver is still an expense and one aimed at a
+    /// unit the report never prints is a doubt (`rules/give`, `ah-66yi`).
+    pub give_reach: &'a dyn Fn(&Party) -> GiveReach,
+    /// The target a `GIVE` this month left uncertain named, for an upper-case item tag, or `None`
+    /// where this unit's holding of that tag survives its gifts intact (`ah-66yi`).
+    pub uncertain_after_gifts: &'a dyn Fn(&str) -> Option<String>,
 }
 
 /// What this hex's market says about goods a unit is ordered to sell.
@@ -790,18 +816,21 @@ pub enum SaleAnswer {
 ///
 /// Gathered once per turn by [`super::semantics::review_turn`] rather than per unit: the giving
 /// orders live all over the document, and re-scanning it per unit would be quadratic in the size
-/// of a faction. A gift this pass cannot count - from another hex, from a foreign unit, or of an
-/// `ALL` amount whose giver it cannot price - is silently absent rather than doubted, which
-/// understates income and never overstates it.
+/// of a faction. Every figure below is what the hex's own transfer settlement actually moved, in
+/// the report order `rules/sequenceofevents` gives the Give phase (`ah-3mwm`) - never a quantity
+/// an order merely asked for. A gift this pass cannot count - from another hex, from a foreign
+/// unit, or of an `ALL` amount whose giver it cannot price - is silently absent rather than
+/// doubted, which understates income and never overstates it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Receipts {
     /// Silver given by units whose orders we can read and whose hex matches. Already summed.
     pub silver: i64,
-    /// The givers, as `<name> (<id>)`, for the hover to name them. In document order.
+    /// The givers, as `<name> (<id>)`, for the hover to name them. In settlement order: report
+    /// order between units, and written order within one unit's block.
     pub givers: Vec<String>,
     /// Silver this unit's own `TAKE` orders pull from units the report shows in this hex.
     pub taken: i64,
-    /// Those sources, as `<name> (<id>)`, so the hover can name them. In document order.
+    /// Those sources, as `<name> (<id>)`, so the hover can name them. In settlement order.
     pub taken_from: Vec<String>,
     /// Silver this unit's own `TAKE` orders pull from units the report does **not** show in this
     /// hex. Counted, because the ledger counts it: `shared_silver_covered` and `upkeep` are
@@ -809,7 +838,7 @@ pub struct Receipts {
     /// (`ah-awcm`).
     pub taken_unshown: i64,
     /// Those sources, as `unit <id>` - the report gives no name for a unit it does not show. In
-    /// document order.
+    /// settlement order.
     pub taken_unshown_from: Vec<String>,
     /// Whether a `TAKE ... ALL SILV` could not be priced, which silences the unit's whole figure.
     ///
@@ -866,6 +895,14 @@ pub struct UnitFacts<'a> {
     pub after_gifts_unknown: bool,
     /// Set when arrivals cannot be merged into the unit's skills.
     pub skills_unknown: bool,
+    /// Whether a `GIVE` this month left food this unit could have eaten unresolved.
+    ///
+    /// Maintenance is settled from the whole food stock rather than from a tag an order names, so
+    /// [`unit_upkeep`], [`food_claim`] and the column all charge nothing rather than a guess - the
+    /// same answer an estimated headcount gets. Per food tag, so an uncertain gift of stone leaves
+    /// this unit's maintenance exactly as it was; every other term asks
+    /// [`Lookups::uncertain_after_gifts`] about the tag it actually reads (`ah-66yi`).
+    pub food_uncertain: bool,
     /// The unit's skills once this month's recruits have merged on top of its gifts - the picture
     /// `rules/buy` says a `BUY` dilutes, read only by the PRODUCE arm below. Every other arm
     /// keeps reading `skills`, the pre-market view, because `rules/sequenceofevents` prices STUDY,
@@ -1156,6 +1193,7 @@ pub fn forecast_unit(
             production_men_left: 0,
             produced_name: None,
             production_wanted: 0,
+            production_requested: None,
             production_capped_by: None,
             production_region_name: None,
             works_by_default: is_set_to_work(unit_flags, intents),
@@ -1177,6 +1215,12 @@ pub fn forecast_unit(
         .saturating_add(receipts.taken)
         .saturating_add(receipts.taken_unshown);
     let mut expense = 0i64;
+    // Market-phase spending, held apart from `expense` until the deferred pass below has settled
+    // the Give phase. `rules/sequenceofevents` puts *Give orders* before *Market orders*, so a
+    // `GIVE ... ALL SILV` gives away silver an exact `BUY` on any line will later spend
+    // (`ah-npab`).
+    let mut market_expense = 0i64;
+    let mut claim_remaining = purse.unclaimed;
     // A `TAKE ... ALL SILV` is in this unit's own block, but what it will yield depends on the
     // source unit's month, which this per-unit pass has not run (`ah-awcm`).
     let mut income_doubt = receipts
@@ -1189,7 +1233,7 @@ pub fn forecast_unit(
     // The first order in the block that actually moves silver out, which is what the hover names.
     // Recorded where `expense` grows rather than read off the intents: a `GIVE` of items and a
     // costless `CAST` are orders, but they spend nothing, and naming one of those would point the
-    // reader at an order the game will not refuse. A deferred `BUY ALL` or `GIVE ALL SILV` is
+    // reader at an order the game will not refuse. A deferred `GIVE ALL SILV` or `BUY ALL` is
     // considered only if no direct spender was found, since it spends what the others leave.
     let mut spent_on: Option<SilverSpender> = None;
     // What a `PRODUCE` order will make, for the four fields the hover reads. Filled by the arm
@@ -1201,6 +1245,10 @@ pub fn forecast_unit(
     // The region's own word for what a `PRODUCE` order makes, for the one sentence that says the
     // hex's yield is what limited it. Set only where it did (`ah-256d`).
     let mut production_region_name: Option<String> = None;
+    // The count a numbered `PRODUCE <number> <item>` asked for, for the sentence that repeats it
+    // back. `None` for the unbounded form and for a unit with no priceable `PRODUCE` at all, which
+    // are one and the same answer to the hover: there is no written request to quote (`ah-6x5u`).
+    let mut production_requested: Option<i64> = None;
     // What a `CAST` order will make, for the four `cast_*` fields the hover reads. Filled by the
     // arm below; a unit with no such order, or none the ruleset prices, leaves it at nothing.
     let mut cast: Option<CastPlan> = None;
@@ -1213,10 +1261,12 @@ pub fn forecast_unit(
     // the first left - of the market line and of this unit's share of it alike (`ah-lauy`).
     let mut bought: BTreeMap<String, i64> = BTreeMap::new();
     // `BUY ALL` and `GIVE ... ALL SILV` spend what is left after every other term, so they cannot
-    // be priced inside this pass. Collected in document order and applied below.
+    // be priced inside this pass. Collected in document order and applied below by phase - every
+    // `GIVE ... ALL SILV` first, then every `BUY ALL`, since `rules/sequenceofevents` runs *Give
+    // orders* before *Market orders* (`ah-npab`). Within one phase, document order (`ah-vw8e`).
     let mut deferred: Vec<Deferred> = Vec::new();
     // What each `BUY ALL` in `deferred` settled to, for the hover - filled by the deferred pass
-    // below, in document order.
+    // below, in document order among the `BUY ALL`s.
     let mut buy_all: Vec<BuyAllShown> = Vec::new();
 
     // Whether this unit taxes at all is a property of the unit, not of one line in its block: the
@@ -1242,15 +1292,31 @@ pub fn forecast_unit(
     }
 
     for placed in intents {
+        // An earlier `GIVE` may or may not have taken these goods away (`rules/give` wants the
+        // target faction's declaration toward us and no report carries it), so nothing priced from
+        // what the unit still holds of that tag can be stated. The `GIVE` itself is exempt: it is
+        // what raised the doubt, and its own arm below decides whether any *silver* moved
+        // (`ah-66yi`).
+        let reads_a_holding = match &placed.intent {
+            Intent::Sell { item, .. } | Intent::Produce { item, .. } => Some(item.as_str()),
+            _ => None,
+        };
+        if let Some(item) = reads_a_holding {
+            if (lookups.item_tag)(item)
+                .is_some_and(|tag| (lookups.uncertain_after_gifts)(&tag).is_some())
+            {
+                income_doubt = income_doubt.or(Some(SilverDoubt::GiveConsequencesUncertain));
+                expense_doubt = expense_doubt.or(Some(SilverDoubt::GiveConsequencesUncertain));
+                continue;
+            }
+        }
         match &placed.intent {
             Intent::Claim(amount) => {
-                // Capped at what the faction actually holds, and never divided between units that
-                // claim in the same turn - unlike the regional pools, which `ah-t2pn` settles
-                // between own units. The purse is faction-wide and `ah-bumi` settled it
-                // deliberately the other way; `claims-exceed-unclaimed` (`ah-wur4`) is what carries
-                // the overrun. A purse the report does not state leaves only the limit unknown, not
-                // the amount, so the stated figure is counted and nothing is doubted.
-                income = income.saturating_add(price_claim(*amount, purse.unclaimed).earns);
+                let priced = price_claim(*amount, claim_remaining);
+                income = income.saturating_add(priced.earns);
+                if let Some(remaining) = &mut claim_remaining {
+                    *remaining = remaining.saturating_sub(priced.earns).max(0);
+                }
             }
             // Priced once above, as a unit-level term rather than per line: a unit may tax by
             // its flag with no `TAX` order at all, and one with both must be counted once
@@ -1321,7 +1387,7 @@ pub fn forecast_unit(
             // `PRODUCE` is priced from the recipe the ruleset scraped, through the same
             // `plan_production` the ledger uses - one function, two callers, which is what keeps
             // this column and the `not-enough-silver` warning from drifting apart (`ah-ycuj`).
-            Intent::Produce { item } => {
+            Intent::Produce { requested, item } => {
                 if facts.production_skills_unknown {
                     expense_doubt = expense_doubt.or(Some(SilverDoubt::UnknownSkillsAfterArrivals));
                     doubt_subject = doubt_subject.or(Some(item.to_lowercase()));
@@ -1363,7 +1429,8 @@ pub fn forecast_unit(
                 // producing the same goods here are settled against it - the same settlement the
                 // ITEMS ledger reads, through the same function (`ah-256d`, `ah-ycuj`).
                 let region = (lookups.region_share)(item);
-                let (priced, plan) = price_production(recipe, work, facts.items, region);
+                let (priced, plan) =
+                    price_production(recipe, work, facts.items, *requested, region);
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
@@ -1385,6 +1452,9 @@ pub fn forecast_unit(
                         production_region_name = capped_by
                             .filter(|cap| matches!(cap, ProductionCap::Region))
                             .and_then(|_| (lookups.region_product_name)(item));
+                        // Beside `production`, and set from the same first priceable order, so the
+                        // request and the figures it bounded can never describe different lines.
+                        production_requested = *requested;
                     }
                     None => {
                         expense_doubt = expense_doubt.or(priced.doubt);
@@ -1425,6 +1495,32 @@ pub fn forecast_unit(
                     output_tag: tag.as_str(),
                     number: *number,
                 });
+
+                // A cast whose own reagents a `GIVE` may or may not have taken cannot be priced.
+                // Per reagent rather than per unit: an uncertain gift of stone leaves a spell that
+                // consumes swords exactly as numeric as it was (`ah-66yi`). Both sides of
+                // `transmute` are asked because the map's material and its output are both item
+                // tags, and asking about a tag no gift touched costs one lookup that answers `None`.
+                let uncertain_input =
+                    resolved
+                        .and_then(|skill| skill.cast.as_ref())
+                        .is_some_and(|cost| {
+                            cost.costs
+                                .iter()
+                                .any(|input| (lookups.uncertain_after_gifts)(&input.tag).is_some())
+                                || cost.transmute.iter().any(|(from, to)| {
+                                    (lookups.uncertain_after_gifts)(from).is_some()
+                                        || (lookups.uncertain_after_gifts)(to).is_some()
+                                })
+                        })
+                        || transmute_tag
+                            .as_ref()
+                            .is_some_and(|(_, tag)| (lookups.uncertain_after_gifts)(tag).is_some());
+                if uncertain_input {
+                    income_doubt = income_doubt.or(Some(SilverDoubt::GiveConsequencesUncertain));
+                    expense_doubt = expense_doubt.or(Some(SilverDoubt::GiveConsequencesUncertain));
+                    continue;
+                }
 
                 let caster = Caster {
                     skills: facts.skills,
@@ -1468,7 +1564,7 @@ pub fn forecast_unit(
                             None => *count,
                         };
                         let charged = price_purchase(*count, price, allowed).spends;
-                        expense = expense.saturating_add(charged);
+                        market_expense = market_expense.saturating_add(charged);
                         if charged > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Buy));
                         }
@@ -1500,9 +1596,16 @@ pub fn forecast_unit(
             Intent::Give { to, what, amount } => {
                 // A target the order cannot reach costs this unit nothing. Before the class branch
                 // below, which defers `GIVE ... ALL ITEMS` against the running total (`ah-vcp8.2`).
-                if !(lookups.give_lands)(to) {
+                let reach = (lookups.give_reach)(to);
+                if reach == GiveReach::Nowhere {
                     continue;
                 }
+                // `rules/give` exempts silver from the factional rule outright, so a target we can
+                // see takes it definitely. A number the report never prints is the other case: it
+                // may be a unit we cannot see whose faction has declared us Friendly, and no report
+                // says which (`ah-66yi`).
+                let silver_uncertain =
+                    give_outcome(reach, SILVER_TAG, None) == GiveOutcome::Uncertain;
                 if let Selector::Class(name) = what {
                     if *amount == (Amount::All { except: 0 }) {
                         match (lookups.class_carries_silver)(name) {
@@ -1512,6 +1615,12 @@ pub fn forecast_unit(
                             // Every one of the unit's coins leaves, exactly as `GIVE ... ALL SILV`
                             // does - and deferred for the same reason, so it spends against the
                             // running total rather than the report's opening figure.
+                            Some(true) if silver_uncertain => {
+                                expense_doubt =
+                                    expense_doubt.or(Some(SilverDoubt::GiveTargetUncertain));
+                                doubt_subject = doubt_subject.or(Some(give_target_label(to)));
+                                continue;
+                            }
                             Some(true) => {
                                 deferred.push(Deferred::GiveAllSilver {
                                     except: 0,
@@ -1542,6 +1651,11 @@ pub fn forecast_unit(
                 };
                 if !(lookups.item_tag)(text).is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER_TAG))
                 {
+                    continue;
+                }
+                if silver_uncertain {
+                    expense_doubt = expense_doubt.or(Some(SilverDoubt::GiveTargetUncertain));
+                    doubt_subject = doubt_subject.or(Some(give_target_label(to)));
                     continue;
                 }
                 let to_nobody = matches!(to, Party::Discard);
@@ -1596,9 +1710,9 @@ pub fn forecast_unit(
     let late = late_income(&facts, region, shares, ruleset);
     income = income.saturating_add(late);
 
-    // Everything that spends what is *left*, in document order, against a running total that
-    // already carries every other term. Skipped where a side is doubted: the total it would spend
-    // against is not a number, and the side it feeds is `None` either way.
+    // Everything that spends what is *left*, by game phase and then in document order, against a
+    // running total that already carries every other term. Skipped where a side is doubted: the
+    // total it would spend against is not a number, and the side it feeds is `None` either way.
     if income_doubt.is_none() && expense_doubt.is_none() {
         // What a deferred order can spend is what reaches the unit *in time* - `ah-1wcw.3` settled
         // that `BUY ALL` spends what the unit can afford, and wages it earns this month cannot pay
@@ -1607,54 +1721,68 @@ pub fn forecast_unit(
             .saturating_add(income)
             .saturating_sub(late)
             .saturating_sub(expense);
+        // Give phase: `rules/sequenceofevents` settles GIVE before the market opens, so this
+        // pass runs whatever line the gift was written on (`ah-npab`).
         for spend in &deferred {
-            let spent = match spend {
-                Deferred::BuyAll {
-                    price,
-                    share,
-                    market_has,
-                    tag,
-                } => {
-                    let already = bought.get(tag).copied().unwrap_or(0);
-                    // Unlike the exact arm, the running total comes off the fallback too:
-                    // `market_has` is a real quantity of goods, so a unit that has already bought
-                    // the line cannot buy it again whether a share was settled or not.
-                    let available = share.unwrap_or(*market_has);
-                    let (priced, plan) =
-                        price_buy_all(running, *price, available, *market_has, already);
-                    buy_all.push(BuyAllShown {
-                        bought_named: (lookups.counted_or_none)(plan.bought, tag),
-                        market_named: (lookups.counted_or_none)(plan.market_has, tag),
-                        bought: plan.bought,
-                        affordable: plan.affordable,
-                        available: plan.available,
-                        market_has: plan.market_has,
-                        already_bought: plan.already_bought,
-                        silver_available: running,
-                        price: *price,
-                        capped_by: plan.capped_by,
-                    });
-                    *bought.entry(tag.clone()).or_default() += plan.bought;
-                    priced.spends
-                }
-                Deferred::GiveAllSilver { except, to_nobody } => {
-                    let spent = running.saturating_sub(*except).max(0);
-                    if *to_nobody {
-                        given_to_nobody = given_to_nobody.saturating_add(spent);
-                    }
-                    spent
-                }
+            let Deferred::GiveAllSilver { except, to_nobody } = spend else {
+                continue;
             };
+            let spent = running.saturating_sub(*except).max(0);
+            if *to_nobody {
+                given_to_nobody = given_to_nobody.saturating_add(spent);
+            }
             if spent > 0 {
-                spent_on = spent_on.or(Some(match spend {
-                    Deferred::BuyAll { .. } => SilverSpender::Buy,
-                    Deferred::GiveAllSilver { .. } => SilverSpender::Give,
-                }));
+                spent_on = spent_on.or(Some(SilverSpender::Give));
             }
             expense = expense.saturating_add(spent);
             running = running.saturating_sub(spent);
         }
+
+        // Market phase: every exact `BUY` priced above is charged here, and each `BUY ALL` then
+        // spends what those leave.
+        running = running.saturating_sub(market_expense);
+
+        for spend in &deferred {
+            let Deferred::BuyAll {
+                price,
+                share,
+                market_has,
+                tag,
+            } = spend
+            else {
+                continue;
+            };
+            let already = bought.get(tag).copied().unwrap_or(0);
+            // Unlike the exact arm, the running total comes off the fallback too:
+            // `market_has` is a real quantity of goods, so a unit that has already bought
+            // the line cannot buy it again whether a share was settled or not.
+            let available = share.unwrap_or(*market_has);
+            let (priced, plan) = price_buy_all(running, *price, available, *market_has, already);
+            buy_all.push(BuyAllShown {
+                bought_named: (lookups.counted_or_none)(plan.bought, tag),
+                market_named: (lookups.counted_or_none)(plan.market_has, tag),
+                bought: plan.bought,
+                affordable: plan.affordable,
+                available: plan.available,
+                market_has: plan.market_has,
+                already_bought: plan.already_bought,
+                silver_available: running,
+                price: *price,
+                capped_by: plan.capped_by,
+            });
+            *bought.entry(tag.clone()).or_default() += plan.bought;
+            if priced.spends > 0 {
+                spent_on = spent_on.or(Some(SilverSpender::Buy));
+            }
+            expense = expense.saturating_add(priced.spends);
+            running = running.saturating_sub(priced.spends);
+        }
     }
+
+    // Outside the guard: a doubted side skips the deferred pass entirely, and an exact `BUY` is
+    // still a number the column must report. Added exactly once, and `expense` above never
+    // carried it (`ah-npab`).
+    expense = expense.saturating_add(market_expense);
 
     let income = income_doubt.is_none().then_some(income);
     let late_income = income.map(|_| late);
@@ -1700,6 +1828,7 @@ pub fn forecast_unit(
                     | Some(SilverDoubt::MarketDoesNotSell)
                     | Some(SilverDoubt::UnpricedProduction)
                     | Some(SilverDoubt::GivesAWholeClass)
+                    | Some(SilverDoubt::GiveTargetUncertain)
             )
         }),
         received: receipts.silver,
@@ -1724,6 +1853,7 @@ pub fn forecast_unit(
         production_men_left,
         produced_name: production.as_ref().map(|(name, _)| name.clone()),
         production_wanted: production.as_ref().map_or(0, |(_, plan)| plan.wanted),
+        production_requested,
         production_capped_by: production.as_ref().and_then(|(_, plan)| plan.capped_by),
         production_region_name,
         works_by_default: is_set_to_work(unit_flags, intents),
@@ -1746,6 +1876,9 @@ pub fn forecast_unit(
 }
 
 /// A term that spends whatever is left after every other one, kept until the running total exists.
+///
+/// Settled by phase rather than purely in document order: `rules/sequenceofevents` runs *Give
+/// orders* before *Market orders*, so a `GIVE ... ALL SILV` settles before any `BUY` (`ah-npab`).
 #[derive(Debug, Clone)]
 enum Deferred {
     /// `BUY ALL`: as many as the unit can afford, and no more than its settled share of the line.
@@ -1800,7 +1933,9 @@ struct OwnFoodPass {
 ///
 /// `None` for a headcount that is itself a guess: charge nothing rather than a guess.
 fn own_food_pass(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<OwnFoodPass> {
-    if facts.men_estimated {
+    // `food_uncertain`: a `GIVE` this month may or may not have taken the food this unit would eat,
+    // so charge nothing rather than a guess - exactly what an estimated headcount gets (`ah-66yi`).
+    if facts.men_estimated || facts.food_uncertain {
         return None;
     }
     let late = facts.late();
@@ -1856,6 +1991,14 @@ pub struct FoodClaim {
     pub owed_after_own_food: i64,
     /// Whether the unit carries the `consuming faction's food` flag.
     pub draws_on_pool: bool,
+    /// Whether a `GIVE` this month may or may not have taken the food this unit would have brought
+    /// to the pool (`ah-66yi`).
+    ///
+    /// `spare_food` is empty for such a unit, and an empty stock would otherwise read as "brought
+    /// nothing" - a definite answer that makes a *hex-mate* go short and warn, on the strength of
+    /// an order that unit did not write. [`feed_from_faction_food`] reads this and takes its
+    /// "cannot be told" path instead.
+    pub spare_food_uncertain: bool,
 }
 
 /// What one unit brings to, and takes from, the pool, once it has fed itself at step 1.
@@ -1867,6 +2010,7 @@ pub fn food_claim(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> FoodClaim
     let pass = own_food_pass(facts, ruleset);
     FoodClaim {
         unit_id: facts.unit_id.to_string(),
+        spare_food_uncertain: facts.food_uncertain,
         owed_after_own_food: pass.as_ref().map_or(0, |pass| pass.owed_after_own_food),
         spare_food: pass.map_or_else(Vec::new, |pass| pass.spare_food),
         draws_on_pool: facts
@@ -1919,6 +2063,24 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
         .iter()
         .filter(|claim| claim.draws_on_pool && claim.owed_after_own_food > 0)
         .collect();
+
+    // A contributor whose food a `GIVE` may or may not have taken brings an *unknown* amount, not
+    // none - and the difference decides whether somebody else in this hex eats. There is no correct
+    // number to share out, so every contender is doubted and the remainder cannot be told, exactly
+    // as a pool too short for several contenders already is (`ah-66yi`).
+    // Whether anyone claims at step 2 or not: `pool_left` is read again by `feed_after_silver` for
+    // steps 5 and 6, and a definite remainder there would deny a hex-mate relief from food that may
+    // still be there. With no claimant the `settled` map below is empty anyway, so this is the
+    // remainder alone.
+    if claims.iter().any(|claim| claim.spare_food_uncertain) {
+        return FactionFoodPass {
+            settled: claimants
+                .iter()
+                .map(|claim| (claim.unit_id.clone(), None))
+                .collect(),
+            pool_left: None,
+        };
+    }
 
     let pool_total: i64 = pool.iter().map(|entry| entry.amount).sum();
 
@@ -3251,14 +3413,19 @@ pub fn price_study(cost: Option<i64>, men: i64) -> Priced {
 ///
 /// The caller resolves the item to a recipe, because the column has a `Lookups` closure and the
 /// ledger has the hex; [`plan_production`] is the shared part and stays the only recipe reader.
+///
+/// `requested` is the count of a numbered `PRODUCE <number> <item>`, and `None` the unbounded
+/// form - passed straight through to [`plan_production`], which is where the request meets every
+/// other limit (`ah-6x5u`).
 #[must_use]
 pub fn price_production(
     recipe: Option<&Production>,
     work: Workforce,
     held: &[ItemAmount],
+    requested: Option<i64>,
     region: RegionShare,
 ) -> (Priced, Option<ProductionPlan>) {
-    match recipe.and_then(|recipe| plan_production(recipe, work, held, region)) {
+    match recipe.and_then(|recipe| plan_production(recipe, work, held, requested, region)) {
         Some(plan) => (
             Priced {
                 spends: plan.silver,
@@ -3553,6 +3720,10 @@ pub enum ProductionCap {
     /// units have been settled against its `Products` line (`ah-256d`). Only ever set for a
     /// *primary* `PRODUCE` - one whose recipe takes no materials - and never for a summon.
     Region,
+    /// A numbered `PRODUCE <number> <item>` asks for more than the unit's skill and tools can
+    /// finish this month, so `rules/produce` carries the remainder over (`ah-6x5u`). Only ever set
+    /// for a numbered order: an unbounded one never asks for more than its men can make.
+    Workforce,
 }
 
 /// What the region a unit produces in leaves that unit's `PRODUCE` order.
@@ -3582,7 +3753,9 @@ pub struct ProductionPlan {
     pub made: i64,
     /// How many its men alone would make - the unit's man-months over the recipe's, rounded down,
     /// where its man-months are `men * level + min(men, tools) * tool_bonus` ([`Workforce`]).
-    /// Equal to `made` unless something capped it.
+    /// Equal to `made` unless something capped it, or unless a numbered order asked for fewer than
+    /// its men could finish - this stays the *natural* output either way, which is what the
+    /// unnumbered wording quotes (`ah-6x5u`).
     pub wanted: i64,
     /// Silver the whole run costs: `made * <the recipe's SILV input>`. `0` for the great majority
     /// of recipes, which take no silver.
@@ -3593,7 +3766,8 @@ pub struct ProductionPlan {
     /// surface needs English resolves it (`semantics::item_name`), the same way the
     /// `not-enough-items` message already does.
     pub materials: Vec<ItemAmount>,
-    /// What stopped it making `wanted`, or `None` when nothing did.
+    /// What stopped it making everything the order asked for - `wanted` for the unbounded form,
+    /// the number named for `PRODUCE <number> <item>` - or `None` when nothing did.
     pub capped_by: Option<ProductionCap>,
 }
 
@@ -3618,11 +3792,21 @@ pub struct ProductionPlan {
 /// inputs are alternatives rather than requirements - cooking's "any of grain, livestock and
 /// fish" consumes *one* of the three, and reading it as three requirements would debit all three.
 /// Each of those is a `?` in the column rather than an invented number.
+///
+/// **`requested` is the number a `PRODUCE <number> <item>` names**, and `None` the unbounded form.
+/// `rules/produce` says a numbered order attempts exactly that many and carries what it cannot
+/// finish over to later months, so the request is one more upper bound over the existing ones
+/// rather than a replacement for any of them: the run is the least of the request, the men, the
+/// silver, the materials and the region's settled share (`ah-6x5u`). The three gates above answer
+/// before the request is read at all - a unit below the recipe's level, a hex yielding none of the
+/// goods, and men who could not make one - because each of those makes nothing whatever was asked
+/// for, and each already has its own sentence in the Problems panel.
 #[must_use]
 pub fn plan_production(
     recipe: &Production,
     work: Workforce,
     held: &[ItemAmount],
+    requested: Option<i64>,
     region: RegionShare,
 ) -> Option<ProductionPlan> {
     if recipe.inputs_are_alternatives {
@@ -3652,6 +3836,12 @@ pub fn plan_production(
     if wanted <= 0 {
         return Some(ProductionPlan::default());
     }
+
+    // What the order actually asks for this month: the number a `PRODUCE <number> <item>` names,
+    // or - for the unbounded form - everything the men could make, which is what keeps every
+    // unnumbered figure and sentence exactly as it was (`ah-6x5u`). Clamped at zero so a count no
+    // grammar can write cannot make a negative run.
+    let target = requested.unwrap_or(wanted).max(0);
 
     let holding = |tag: &str| -> i64 {
         held.iter()
@@ -3689,21 +3879,34 @@ pub fn plan_production(
         RegionShare::Share(share) => share.max(0),
     };
 
-    let made = wanted.min(by_silver).min(by_materials).min(by_region);
-    // The region is named first when it ties, because it is the only one of the three the unit
+    let made = target
+        .min(wanted)
+        .min(by_silver)
+        .min(by_materials)
+        .min(by_region);
+    // The region is named first when it ties, because it is the only one of the four the unit
     // cannot fix by carrying more - "buy more iron" is wasted advice about a hex that has none
-    // left. In this ruleset it can never tie: every recipe drawing on a pool has no inputs at all,
-    // so `by_silver` and `by_materials` are both `i64::MAX` whenever `by_region` is not. The order
-    // is stated so that a ruleset which changed that would still be deterministic. Silver is then
-    // named before materials when those two bind, because the column this feeds is about silver.
-    let capped_by = if made == wanted {
+    // left. In this ruleset it can never tie with the two holdings: every recipe drawing on a pool
+    // has no inputs at all, so `by_silver` and `by_materials` are both `i64::MAX` whenever
+    // `by_region` is not. The order is stated so that a ruleset which changed that would still be
+    // deterministic. Silver is then named before materials when those two bind, because the column
+    // this feeds is about silver, and the month's own men come last: a workforce cap is only ever
+    // reachable from a numbered request, and anything the unit could carry more of is the more
+    // actionable answer (`ah-6x5u`).
+    //
+    // `target` rather than `wanted`, which is the same thing for an unbounded order: a numbered
+    // one that got everything it asked for is not capped, however much more its men could have
+    // made.
+    let capped_by = if made == target {
         None
-    } else if by_region <= by_silver && by_region <= by_materials {
+    } else if by_region <= by_silver && by_region <= by_materials && by_region <= wanted {
         Some(ProductionCap::Region)
-    } else if by_silver <= by_materials {
+    } else if by_silver <= by_materials && by_silver <= wanted {
         Some(ProductionCap::Silver)
-    } else {
+    } else if by_materials <= wanted {
         Some(ProductionCap::Materials)
+    } else {
+        Some(ProductionCap::Workforce)
     };
 
     Some(ProductionPlan {
@@ -4029,6 +4232,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4151,6 +4355,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 99)]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4172,6 +4377,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 99)]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4207,6 +4413,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            None,
             RegionShare::Share(20),
         )
         .expect("a priceable recipe");
@@ -4228,6 +4435,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            None,
             RegionShare::Share(40),
         )
         .expect("a priceable recipe");
@@ -4251,6 +4459,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            None,
             RegionShare::NothingHere,
         )
         .expect("a priceable recipe");
@@ -4278,6 +4487,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4302,8 +4512,13 @@ mod production_tests {
             }
         );
 
-        let (priced, plan) =
-            price_production(None, Workforce::default(), &[], RegionShare::Unlimited);
+        let (priced, plan) = price_production(
+            None,
+            Workforce::default(),
+            &[],
+            None,
+            RegionShare::Unlimited,
+        );
         assert_eq!(
             priced,
             Priced {
@@ -4328,6 +4543,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            None,
             RegionShare::Unlimited,
         );
         assert_eq!(
@@ -4354,6 +4570,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 100_000)]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4377,6 +4594,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 3000), ("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4402,6 +4620,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4420,6 +4639,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 3000), ("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4446,6 +4666,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 2)]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4453,6 +4674,148 @@ mod production_tests {
         assert_eq!(plan.made, 2);
         assert_eq!(plan.silver, 0);
         assert_eq!(plan.capped_by, Some(ProductionCap::Materials));
+    }
+
+    /// A sword, exactly as `config/public/ruleset.json`'s `skills.WEAP.produces` entry states it
+    /// and `rules/tableiteminfo` says: one iron per sword, one man-month for one, at weaponsmith 1.
+    fn sword() -> Production {
+        Production {
+            tag: "SWOR".to_string(),
+            level: 1,
+            inputs: vec![input("IRON", 1)],
+            inputs_are_alternatives: false,
+            man_months: Some(1),
+            outputs: Some(1),
+        }
+    }
+
+    /// `PRODUCE 3 sword` from a unit that could make eight makes three, and takes materials for
+    /// three: `rules/produce` says a numbered order "will attempt to produce exactly that number
+    /// of items". `wanted` stays the natural workforce output, which is what the unnumbered
+    /// wording quotes, and nothing is capped - the unit made everything it was asked for.
+    #[test]
+    fn a_numbered_run_stops_at_the_requested_count() {
+        let plan = plan_production(
+            &sword(),
+            Workforce {
+                men: 8,
+                level: 1,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("IRON", 20)]),
+            Some(3),
+            RegionShare::Unlimited,
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 8);
+        assert_eq!(plan.made, 3);
+        assert_eq!(
+            plan.materials
+                .iter()
+                .map(|item| (item.tag.as_str(), item.amount))
+                .collect::<Vec<_>>(),
+            vec![("IRON", 3)]
+        );
+        assert_eq!(plan.capped_by, None);
+    }
+
+    /// A request for more than the month's men can finish is capped by the workforce, and
+    /// `rules/produce` carries the rest over - the one cap an unnumbered order can never raise.
+    #[test]
+    fn a_numbered_run_names_workforce_when_the_month_cannot_finish_it() {
+        let plan = plan_production(
+            &sword(),
+            Workforce {
+                men: 8,
+                level: 1,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("IRON", 20)]),
+            Some(10),
+            RegionShare::Unlimited,
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 8);
+        assert_eq!(plan.made, 8);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Workforce));
+    }
+
+    /// Where both the month's men and the unit's materials fall short of the request, the lower
+    /// one is what actually bound - and the navigator's "binding limit only" wording names it.
+    #[test]
+    fn a_lower_material_limit_wins_over_workforce() {
+        let plan = plan_production(
+            &sword(),
+            Workforce {
+                men: 8,
+                level: 1,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("IRON", 5)]),
+            Some(10),
+            RegionShare::Unlimited,
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 8);
+        assert_eq!(plan.made, 5);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Materials));
+    }
+
+    /// A request of none is a run of none, and materials for none - and nothing is capped, since
+    /// the order asked for nothing and got it. A negative one cannot be written (the grammar's
+    /// `Number` refuses the sign) but is clamped rather than trusted.
+    #[test]
+    fn a_request_of_none_makes_none() {
+        for requested in [0, -3] {
+            let plan = plan_production(
+                &sword(),
+                Workforce {
+                    men: 8,
+                    level: 1,
+                    tool_bonus: 0,
+                    tools: 0,
+                },
+                &held(&[("IRON", 20)]),
+                Some(requested),
+                RegionShare::Unlimited,
+            )
+            .expect("a priceable recipe");
+            assert_eq!(plan.made, 0);
+            assert_eq!(plan.wanted, 8);
+            assert_eq!(
+                plan.materials
+                    .iter()
+                    .map(|item| item.amount)
+                    .collect::<Vec<_>>(),
+                vec![0]
+            );
+            assert_eq!(plan.capped_by, None);
+        }
+    }
+
+    /// A numbered primary producer the region cannot fill is capped by the region, exactly as the
+    /// unnumbered one is - the request only lowers the target, never the other limits.
+    #[test]
+    fn a_numbered_run_is_still_capped_by_the_region() {
+        let plan = plan_production(
+            &iron(),
+            Workforce {
+                men: 8,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[]),
+            Some(10),
+            RegionShare::Share(6),
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 40);
+        assert_eq!(plan.made, 6);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Region));
     }
 
     /// Cooking says "any of grain, livestock and fish", and which the engine takes cannot be told -
@@ -4477,6 +4840,7 @@ mod production_tests {
                     tools: 0,
                 },
                 &held(&[("GRAI", 99)]),
+                None,
                 RegionShare::Unlimited,
             ),
             None
@@ -4500,6 +4864,7 @@ mod production_tests {
                 &unscraped,
                 ten_carpenters,
                 &held(&[]),
+                None,
                 RegionShare::Unlimited
             ),
             None
@@ -4511,6 +4876,7 @@ mod production_tests {
                 &no_output,
                 ten_carpenters,
                 &held(&[]),
+                None,
                 RegionShare::Unlimited
             ),
             None
@@ -5084,6 +5450,7 @@ mod tests {
             receipts,
             formed: None,
             after_gifts_unknown: false,
+            food_uncertain: false,
             skills_unknown: false,
             production_skills: &[],
             production_skills_unknown: false,
@@ -5123,8 +5490,15 @@ mod tests {
 
     /// `true` for every target - what the column did before `ah-vcp8.2`, so no existing assertion
     /// moves for a reason unrelated to what it tests.
-    fn every_target_lands(_party: &Party) -> bool {
-        true
+    /// Every target is one of ours, standing here - the reading these arithmetic tests had before
+    /// `ah-66yi` split reach into five answers, so their expectations are unchanged.
+    fn every_target_is_ours(_party: &Party) -> GiveReach {
+        GiveReach::Ours
+    }
+
+    /// No gift left anything uncertain, so every later order prices exactly as it always did.
+    fn nothing_uncertain(_tag: &str) -> Option<String> {
+        None
     }
 
     /// No region to consult, so no regional pool applies - which is what keeps this module's own
@@ -5151,7 +5525,8 @@ mod tests {
             counted_item: &verbatim_counted,
             counted_or_none: &verbatim_counted_or_none,
             class_carries_silver: &no_class_members,
-            give_lands: &every_target_lands,
+            give_reach: &every_target_is_ours,
+            uncertain_after_gifts: &nothing_uncertain,
         }
     }
 
@@ -5211,6 +5586,7 @@ mod tests {
     fn produce_with_unknown_arrival_skills_reports_a_doubt() {
         let receipts = Receipts::default();
         let intents = [placed(Intent::Produce {
+            requested: None,
             item: "SWOR".to_string(),
         })];
         let mut facts = facts(8, &intents, &receipts);
@@ -5314,6 +5690,7 @@ mod tests {
     fn a_unit_that_parted_with_men_reports_how_many_left() {
         let receipts = Receipts::default();
         let intents = [placed(Intent::Produce {
+            requested: None,
             item: "SWOR".to_string(),
         })];
         let items = [ItemAmount {
@@ -5352,6 +5729,7 @@ mod tests {
     fn a_unit_that_gained_men_reports_none_left() {
         let receipts = Receipts::default();
         let intents = [placed(Intent::Produce {
+            requested: None,
             item: "SWOR".to_string(),
         })];
         let items = [ItemAmount {
@@ -5866,16 +6244,16 @@ mod tests {
         assert_eq!(unit.doubt, None);
     }
 
-    /// The accepted overstatement, pinned deliberately: each unit is capped at the whole purse and
-    /// the purse is never divided between them, exactly as `WORK` treats a region's wages. A
-    /// warning about the total belongs to `ah-wur4` - do not "fix" this into contention modelling.
     #[test]
-    fn two_units_claiming_are_each_capped_at_the_whole_purse() {
+    fn one_unit_repeated_claims_share_its_allowance() {
         let region = RegionWages::default();
-        let first = forecast_holding(1, region, purse(Some(4935)), &[placed(Intent::Claim(4000))]);
-        let second = forecast_holding(1, region, purse(Some(4935)), &[placed(Intent::Claim(4000))]);
-        assert_eq!(first.income, Some(4000));
-        assert_eq!(second.income, Some(4000));
+        let unit = forecast_holding(
+            1,
+            region,
+            purse(Some(4935)),
+            &[placed(Intent::Claim(4000)), placed(Intent::Claim(4000))],
+        );
+        assert_eq!(unit.income, Some(4935));
     }
 
     #[test]
@@ -7318,6 +7696,84 @@ mod tests {
         assert_eq!(unit.at_month_end, Some(200));
     }
 
+    /// `rules/sequenceofevents` runs *Give orders* before *Market orders*, so a
+    /// `GIVE ... ALL SILV EXCEPT` settles against the whole purse whatever line an exact `BUY`
+    /// is written on (`ah-npab`).
+    #[test]
+    fn giving_all_silver_precedes_exact_market_spending_in_either_text_order() {
+        let give = placed(Intent::Give {
+            to: Party::Unit("1235".to_string()),
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::All { except: 50 },
+        });
+        let buy = placed(Intent::Buy {
+            amount: Amount::Exact(1),
+            item: "grain".to_string(),
+        });
+        for intents in [
+            vec![give.clone(), buy.clone()],
+            vec![buy.clone(), give.clone()],
+        ] {
+            let unit = spending(100, &intents, RegionWages::default(), &sells(20, 10), None);
+            assert_eq!(unit.expense, Some(70));
+            assert_eq!(unit.at_month_end, Some(30));
+            assert_eq!(unit.short_for_orders, Some(0));
+            assert_eq!(unit.given_to_nobody, 0);
+            assert_eq!(unit.doubt, None);
+        }
+    }
+
+    /// The Give phase empties the purse before a `BUY ALL` prices anything, whatever line each
+    /// is written on (`ah-npab`).
+    #[test]
+    fn buying_all_after_giving_all_silver_away_buys_nothing_in_either_text_order() {
+        let give = placed(Intent::Give {
+            to: Party::Unit("1235".to_string()),
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::All { except: 0 },
+        });
+        let buy = placed(Intent::Buy {
+            amount: Amount::All { except: 0 },
+            item: "grain".to_string(),
+        });
+        for intents in [
+            vec![give.clone(), buy.clone()],
+            vec![buy.clone(), give.clone()],
+        ] {
+            let unit = spending(100, &intents, RegionWages::default(), &sells(20, 10), None);
+            assert_eq!(unit.expense, Some(100));
+            assert_eq!(unit.at_month_end, Some(0));
+            assert_eq!(unit.buy_all.len(), 1);
+            assert_eq!(unit.buy_all[0].bought, 0);
+        }
+    }
+
+    /// A gift of the *whole* purse leaves an exact `BUY` unaffordable, whatever line each is
+    /// written on: the game settles the gift first and the purchase then fails, so the column
+    /// says so rather than quietly pricing the gift against what the purchase left (`ah-npab`).
+    #[test]
+    fn giving_the_whole_purse_away_starves_an_exact_purchase_in_either_text_order() {
+        let give = placed(Intent::Give {
+            to: Party::Unit("1235".to_string()),
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::All { except: 0 },
+        });
+        let buy = placed(Intent::Buy {
+            amount: Amount::Exact(1),
+            item: "grain".to_string(),
+        });
+        for intents in [
+            vec![give.clone(), buy.clone()],
+            vec![buy.clone(), give.clone()],
+        ] {
+            let unit = spending(100, &intents, RegionWages::default(), &sells(20, 10), None);
+            assert_eq!(unit.expense, Some(120));
+            assert_eq!(unit.at_month_end, Some(-20));
+            assert_eq!(unit.short_for_orders, Some(20));
+            assert_eq!(unit.doubt, None);
+        }
+    }
+
     #[test]
     fn silver_given_to_nobody_is_still_spent() {
         let intents = vec![placed(Intent::Give {
@@ -7672,6 +8128,7 @@ mod tests {
             receipts: no_receipts(),
             formed: None,
             after_gifts_unknown: false,
+            food_uncertain: false,
             skills_unknown: false,
             production_skills: &[],
             production_skills_unknown: false,
@@ -7912,11 +8369,52 @@ mod faction_food_tests {
             Vec::new()
         };
         FoodClaim {
+            spare_food_uncertain: false,
             unit_id: id.to_string(),
             spare_food: spare,
             owed_after_own_food: owed,
             draws_on_pool: draws,
         }
+    }
+
+    /// `ah-66yi`: a contributor whose food a `GIVE` may or may not have taken brings an *unknown*
+    /// amount, not none - and the difference decides whether somebody else in this hex eats.
+    ///
+    /// Without this, `own_food_pass` returning `None` for the giver empties its `spare_food`, an
+    /// empty stock reads as "brought nothing", and a hex-mate that the pool used to feed goes
+    /// definitely short on the strength of an order it never wrote.
+    #[test]
+    fn an_uncertain_contributor_leaves_the_pool_untellable() {
+        // `spare_food` empty and the flag set is exactly what `food_claim` builds for such a unit:
+        // its own pass could not be run, so it has no stock to publish.
+        let mut giver = claim("2390", 0, 0, false);
+        giver.spare_food_uncertain = true;
+        let hungry = claim("2391", 0, 200, true);
+
+        // The control: the same pool, definitely brought, feeds the claimant outright.
+        let fed = feed_from_faction_food(&[claim("2390", 50, 0, false), hungry.clone()]);
+        assert_eq!(fed.settled.get("2391"), Some(&Some(0)));
+
+        let told = feed_from_faction_food(&[giver.clone(), hungry]);
+        assert_eq!(
+            told.settled.get("2391"),
+            Some(&None),
+            "the claimant's own shortfall cannot be told: {told:?}"
+        );
+        assert_eq!(pool_count(&told), None);
+
+        // And with nobody claiming at step 2 either: `pool_left` is read again for steps 5 and 6,
+        // where a definite remainder would deny a hex-mate relief from food that may still be
+        // there - the same wrong warning, one pass later.
+        // A third unit definitely brings food, so this is the `claimants.is_empty()` return rather
+        // than the empty-pool one: the remainder would otherwise read as a definite 50 grain, when
+        // the giver may still be holding its own on top of that.
+        let nobody_claiming = feed_from_faction_food(&[
+            giver,
+            claim("2391", 0, 200, false),
+            claim("2392", 50, 0, false),
+        ]);
+        assert_eq!(pool_count(&nobody_claiming), None, "{nobody_claiming:?}");
     }
 
     /// The total items a pass says the hex still holds, for the assertions that pin the remainder.
@@ -8001,6 +8499,7 @@ mod faction_food_tests {
     #[test]
     fn a_mixed_value_pool_is_spent_least_valuable_first() {
         let quartermaster = FoodClaim {
+            spare_food_uncertain: false,
             unit_id: "quartermaster".to_string(),
             spare_food: vec![food("MEAL", 1, 20), food("GRAI", 2, 40)],
             owed_after_own_food: 0,
@@ -8235,6 +8734,7 @@ mod combat_ready_tests {
             receipts,
             formed: None,
             after_gifts_unknown: false,
+            food_uncertain: false,
             skills_unknown: false,
             production_skills: skills,
             production_skills_unknown: false,

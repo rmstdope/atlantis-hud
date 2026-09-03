@@ -67,6 +67,12 @@ const EXPECTED: &[(&str, usize)] = &[
 ];
 
 /// What the committed turn's 27 own units spend between them, all of it on `STUDY`.
+///
+/// Unmoved by `ah-66yi`, and that is the point: four of these units carry a standing
+/// `GIVE 2396 ALL MARM`/`ALL MSWO` to another faction, which that bead leaves unresolved - and all
+/// six of the turn's casts consume swords and plate armour, which no gift here touches. Uncertainty
+/// is tracked per item, so an unresolved gift of one tag leaves a month priced from others exactly
+/// where it was.
 const EXPECTED_SPENDING: i64 = 800;
 
 /// The expectation table as a map, so an assertion can be read as a table.
@@ -144,6 +150,22 @@ fn one_wrong_word_in_that_same_document_is_found() {
     assert_eq!(result.error_count(), 1, "{:?}", result.diagnostics);
     assert_eq!(result.diagnostics[0].code, "bad-argument");
     assert!(result.diagnostics[0].message.contains("fifty"));
+}
+
+#[test]
+fn unfinished_ship_transfer_forms_are_accepted_by_the_public_validator() {
+    for orders in [
+        "unit 17\nGIVE 17 ALL UNFINISHED Cog EXCEPT 2\n",
+        "unit 17\nTAKE FROM 17 ALL UNFINISHED Cog EXCEPT 2\n",
+    ] {
+        let result = validate_orders(orders, None);
+        assert_eq!(
+            result.diagnostics,
+            vec![],
+            "{orders:?}: {:?}",
+            result.diagnostics
+        );
+    }
 }
 
 // --- the same bar, for the checks that read the report -------------------------------------

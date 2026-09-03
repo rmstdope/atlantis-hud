@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ah-728m.2.2 - debit the supplying rows</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #10151c; color: #e8edf3; }
+    body { margin: 0; padding: 30px; }
+    main { max-width: 980px; margin: auto; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .lede, .muted { color: #9eabb9; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 22px; }
+    .card { background: #18212b; border: 1px solid #2b3948; border-radius: 12px; padding: 16px; }
+    .changed { border-color: #3a8f61; background: #14271e; }
+    .tag { display: inline-block; border-radius: 999px; background: #263648; padding: 3px 9px; font-size: 12px; }
+    .before { color: #9eabb9; text-decoration: line-through; }
+    .after { color: #7ee2a8; font-weight: 700; }
+    code { color: #f0bd69; }
+    @media (max-width: 720px) { body { padding: 16px; } .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Option A: debit the supplying unit rows</h1>
+  <p class="lede">Shared materials leave the first eligible sharers in report order, so every projected inventory adds up.</p>
+  <div class="grid">
+    <section class="card changed">
+      <span class="tag">1st in report · SHARE 1</span>
+      <h2>Wood store [101]</h2>
+      <p><span class="before">10 WOOD</span> → <span class="after">0 WOOD</span></p>
+      <p class="muted">Lends all 10 wood first.</p>
+    </section>
+    <section class="card changed">
+      <span class="tag">2nd in report · SHARE 1</span>
+      <h2>Foresters [102]</h2>
+      <p><span class="before">10 WOOD</span> → <span class="after">5 WOOD</span></p>
+      <p class="muted">Lends the remaining 5 wood.</p>
+    </section>
+    <section class="card changed">
+      <span class="tag">3rd in report · PRODUCE</span>
+      <h2>Weaponsmiths [103]</h2>
+      <p><span class="after">Produces 15 axes</span></p>
+      <p class="muted">Its own WOOD stays at zero; the suppliers show where the material went.</p>
+    </section>
+  </div>
+  <p><strong>Cost:</strong> exact, additive inventories, but which sharing row changes becomes part of the forecast contract.</p>
+</main>
+</body>
+</html>

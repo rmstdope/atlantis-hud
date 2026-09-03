@@ -36,6 +36,8 @@ pub enum Amount {
 pub enum Selector {
     /// An item as the order wrote it - a tag, a name, or a plural. Resolving it needs a catalogue.
     Item(String),
+    /// An unfinished ship, written `UNFINISHED Cog`.
+    UnfinishedShip(String),
     /// One of the classes the rules enumerate, as in `GIVE 42 ALL ITEMS`.
     Class(String),
     /// `GIVE 42 UNIT`, which hands over the unit itself rather than anything it holds.
@@ -111,6 +113,15 @@ pub(super) fn read_transfer(tokens: &[Token]) -> Option<(Selector, Amount)> {
 
     let (amount, rest) = read_amount(tokens)?;
     let (item, rest) = rest.split_first()?;
+    let (unfinished, item, rest) = if item.is("UNFINISHED") {
+        let (ship, rest) = rest.split_first()?;
+        if ship.is("UNIT") {
+            return None;
+        }
+        (true, ship, rest)
+    } else {
+        (false, item, rest)
+    };
 
     // `ALL [item] EXCEPT [n]` keeps a reserve back. Only the ALL form takes one.
     let amount = match (amount, rest) {
@@ -121,7 +132,9 @@ pub(super) fn read_transfer(tokens: &[Token]) -> Option<(Selector, Amount)> {
         _ => return None,
     };
 
-    let selector = if is_item_class(&item.text) {
+    let selector = if unfinished {
+        Selector::UnfinishedShip(item.text.clone())
+    } else if is_item_class(&item.text) {
         Selector::Class(item.text.clone())
     } else {
         Selector::Item(item.text.clone())
@@ -298,6 +311,35 @@ mod tests {
             read("GIVE 17 UNIT"),
             Some((Selector::WholeUnit, Amount::All { except: 0 }))
         );
+        assert_eq!(
+            read("GIVE 17 1 UNFINISHED Cog"),
+            Some((
+                Selector::UnfinishedShip("Cog".to_string()),
+                Amount::Exact(1)
+            ))
+        );
+        assert_eq!(
+            read("GIVE 17 ALL UNFINISHED Cog EXCEPT 2"),
+            Some((
+                Selector::UnfinishedShip("Cog".to_string()),
+                Amount::All { except: 2 }
+            ))
+        );
+        assert_eq!(
+            read_transfer(&arguments("TAKE FROM 17 ALL UNFINISHED Cog EXCEPT 2")[2..]),
+            Some((
+                Selector::UnfinishedShip("Cog".to_string()),
+                Amount::All { except: 2 }
+            ))
+        );
+    }
+
+    #[test]
+    fn unfinished_ship_modifier_has_a_strict_position() {
+        let read = |line: &str| read_transfer(&arguments(line)[1..]);
+        assert_eq!(read("GIVE 17 1 UNFINISHED"), None);
+        assert_eq!(read("GIVE 17 1 Cog UNFINISHED"), None);
+        assert_eq!(read("GIVE 17 1 UNFINISHED UNIT"), None);
     }
 
     /// The strictness the whole module exists to make uniform: an order that does not consume its

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ah-728m.2 - manufactured material reaches BUILD</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #10151c; color: #e8edf3; }
+    body { margin: 0; padding: 32px; }
+    main { max-width: 940px; margin: auto; }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    .lede { color: #9eabb9; margin: 0 0 24px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .card { background: #18212b; border: 1px solid #2b3948; border-radius: 12px; padding: 18px; }
+    .orders { font: 14px/1.6 ui-monospace, SFMono-Regular, monospace; background: #0c1117; border-radius: 8px; padding: 14px; }
+    .phase { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+    .phase strong { min-width: 116px; color: #79c0ff; }
+    .arrow { color: #58697b; }
+    .result { border-color: #3a8f61; background: #14271e; }
+    .result h2 { color: #7ee2a8; }
+    .tag { display: inline-block; border-radius: 999px; background: #263648; padding: 3px 9px; font-size: 12px; }
+    @media (max-width: 680px) { body { padding: 18px; } .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Option A: manufactured material reaches BUILD</h1>
+  <p class="lede">The forecast follows the phase order even when the orders are written in the opposite order.</p>
+  <div class="grid">
+    <section class="card">
+      <span class="tag">Orders as written</span>
+      <div class="orders">UNIT 900<br>BUILD<br>PRODUCE wood</div>
+      <div class="phase"><strong>Manufacturing</strong><span>PRODUCE adds 10 wood</span></div>
+      <div class="phase"><strong>BUILD</strong><span>uses those 10 wood</span></div>
+    </section>
+    <section class="card result">
+      <span class="tag">Projected result</span>
+      <h2>10 work completed</h2>
+      <p>The ITEMS preview shows 10 wood produced and then 10 wood consumed. No shortfall warning appears.</p>
+      <p class="lede">Cost: this child must classify primary versus manufacturing PRODUCE and record produced items at their distinct phases.</p>
+    </section>
+  </div>
+</main>
+</body>
+</html>

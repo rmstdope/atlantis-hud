@@ -10,6 +10,7 @@ import {
   selectHex,
   selectUnit
 } from "./gameSetup";
+import { readReport } from "@atlantis/fixtures";
 
 /**
  * The orders editor itself: undo, completion, and diagnostics in the margin (#89).
@@ -553,4 +554,26 @@ test("with Order OCD on, a stray closer with no opener stays where it is", async
   // A closer that matches nothing changes no depth (`orderIndent`), so the running depth is 0 and
   // the line is already where it belongs.
   await expectOrders(page, /^WORK\nEND\n$/);
+});
+
+/**
+ * The fixture that carries no orders template at all, and a unit it therefore never listed.
+ *
+ * Before ah-0gs8 this unit could not be ordered: the editor refused every unit in this report,
+ * because the document it was editing was empty. The template is a convenience, not a permission
+ * list (`rules/reportformat`), so the block is written on the first keystroke instead.
+ */
+test("a unit the report's template never listed can still be ordered", async ({ page }) => {
+  await loadReport(page, "No template", readReport("g7f62t20"), "regions");
+
+  await selectHex(page, "1:43,81");
+  await selectUnit(page, "1656");
+
+  await expect(page.getByTestId("orders-locked")).toHaveCount(0);
+  await expect(ordersInput(page)).toBeVisible();
+
+  await fillOrders(page, "buy 1 humn\nstudy forc");
+
+  await expectOrders(page, /study forc/);
+  await expect(page.getByTestId("orders-status")).toContainText("0 errors");
 });

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-0gs8 &mdash; Round 2: the file the player gets</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+
+  /* an Orders panel, drawn at a realistic width */
+  .op { width:430px; background:var(--panel); border:1px solid var(--edge); border-radius:8px; overflow:hidden;
+        font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .op .bar { display:flex; align-items:center; gap:8px; padding:6px 10px; border-bottom:1px solid var(--edge);
+             font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft); }
+  .op .bar b { color:var(--brass); font-weight:600; letter-spacing:.1em; }
+  .op .body { height:190px; padding:10px; }
+  .op .body.centre { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; color:var(--ink-dim); }
+  .badge { border:1px solid var(--edge); border-radius:4px; padding:4px 10px; font-size:10.5px;
+           letter-spacing:.08em; text-transform:uppercase; color:var(--ink-soft); }
+  .cm { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12.5px; line-height:1.65; color:var(--ink); }
+  .cm .gut { color:var(--ink-dim); display:inline-block; width:22px; text-align:right; margin-right:10px; }
+  .cm .ph { color:var(--ink-dim); font-style:italic; }
+  .caret { display:inline-block; width:1px; height:13px; background:var(--brass-bright); vertical-align:-2px; }
+  .op .status { border-top:1px solid var(--edge); padding:5px 10px; display:flex; gap:14px;
+                font-size:11px; color:var(--ink-soft); }
+  .op .status .ok { color:var(--ok); }
+  button.act { font:11.5px/1 'Helvetica Neue',Arial,sans-serif; background:var(--raised); color:var(--ink);
+               border:1px solid var(--edge); border-radius:5px; padding:7px 12px; cursor:default; }
+  button.act.primary { border-color:var(--brass); color:var(--brass-bright); }
+  pre.file { background:var(--ground); border:1px solid var(--edge-soft); border-radius:6px; padding:10px 12px;
+             font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.55; color:var(--ink-soft);
+             overflow-x:auto; white-space:pre; }
+  pre.file .new { color:var(--ok); }
+  pre.file .hdr { color:var(--brass-bright); }
+  pre.file .old { color:var(--ink-dim); }
+  .toast { background:var(--raised); border:1px solid var(--edge); border-left:3px solid var(--brass);
+           border-radius:6px; padding:9px 12px; font:12px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink); max-width:520px; }
+</style></head><body>
+<header><h1>Round 2 &mdash; <span>the file the player gets</span></h1>
+<p>Settled in round 1: the editor <b>simply opens</b> for any own unit standing in the turn (no notice, no button,
+no placeholder); a new block goes <b>under the unit&rsquo;s own region banner</b>; and a report with no template gets
+a <code>#atlantis</code>&hellip;<code>#end</code> skeleton <b>silently</b>. This page is the four things that decision
+leaves open, all of them visible in the exported orders file.</p></header>
+<main>
+
+<h3 class="sec">Q1 &mdash; the document has no banner for this unit&rsquo;s region</h3>
+<p>The seeded skeleton has no banners at all, and a real template only carries a banner for a region that had a
+listed unit in it. Ordering <b>1656</b> in <code>mountain (42,82) in Derngill</code> when that banner is absent.</p>
+<div class="card"><div class="split2">
+<div>
+  <div class="hexlab">Q1a &mdash; write the banner too</div>
+  <div class="stage"><pre class="file"><span class="hdr">#atlantis 62</span>
+
+<span class="new">;*** mountain (42,82) in Derngill ***</span>
+
+<span class="new">unit 1656</span>
+<span class="new">buy 1 humn</span>
+<span class="new">study forc</span>
+
+<span class="hdr">#end</span></pre></div>
+  <ul class="notes">
+    <li>A file built from nothing still reads like one the server wrote.</li>
+    <li>Ordering a second unit in the same region files it under the same heading.</li>
+    <li class="con">The app is writing a heading the server did not; its wording has to match the report&rsquo;s
+        own line exactly or it looks wrong beside the real ones.</li>
+  </ul>
+</div>
+<div>
+  <div class="hexlab">Q1b &mdash; no banner; just the block, before <code>#end</code></div>
+  <div class="stage"><pre class="file"><span class="hdr">#atlantis 62</span>
+
+<span class="new">unit 1656</span>
+<span class="new">buy 1 humn</span>
+<span class="new">study forc</span>
+
+<span class="hdr">#end</span></pre></div>
+  <ul class="notes">
+    <li>The app never invents text the server did not write.</li>
+    <li class="con">On a no-template report the whole file is an unsorted list of units.</li>
+  </ul>
+</div>
+</div></div>
+
+<h3 class="sec">Q2 &mdash; where among the units already under that banner</h3>
+<p>The banner exists and already has <code>1655</code> and <code>3832</code> under it. Ordering <b>1656</b>.</p>
+<div class="card"><div class="split2">
+<div>
+  <div class="hexlab">Q2a &mdash; after the region&rsquo;s last unit</div>
+  <div class="stage"><pre class="file"><span class="old">;*** mountain (42,82) in Derngill ***</span>
+
+<span class="old">unit 1655</span>
+<span class="old">@tax</span>
+
+<span class="old">unit 3832</span>
+<span class="old">@study stea</span>
+
+<span class="new">unit 1656</span>
+<span class="new">buy 1 humn</span>
+<span class="new">study forc</span>
+</pre></div>
+  <ul class="notes">
+    <li>One rule; the existing lines never move.</li>
+    <li class="con">Unit numbers end up out of order within the region.</li>
+  </ul>
+</div>
+<div>
+  <div class="hexlab">Q2b &mdash; in unit-number order</div>
+  <div class="stage"><pre class="file"><span class="old">;*** mountain (42,82) in Derngill ***</span>
+
+<span class="old">unit 1655</span>
+<span class="old">@tax</span>
+
+<span class="new">unit 1656</span>
+<span class="new">buy 1 humn</span>
+<span class="new">study forc</span>
+
+<span class="old">unit 3832</span>
+<span class="old">@study stea</span>
+</pre></div>
+  <ul class="notes">
+    <li>Numerically tidy, and easy to find a unit by eye.</li>
+    <li class="con">The server&rsquo;s own template is not sorted by number, so this only half-holds &mdash; the
+        inserted units are in order and the rest are in whatever order the server used.</li>
+  </ul>
+</div>
+</div></div>
+
+<h3 class="sec">Q3 &mdash; you create a block, then delete every order in it</h3>
+<p>You typed <code>buy 1 humn</code> for 1656, thought better of it, and selected all and deleted.</p>
+<div class="card"><div class="split2">
+<div>
+  <div class="hexlab">Q3a &mdash; the empty block stays</div>
+  <div class="stage"><pre class="file"><span class="old">unit 1655</span>
+<span class="old">@tax</span>
+
+<span class="new">unit 1656</span>
+
+<span class="old">unit 3832</span>
+<span class="old">@study stea</span>
+</pre></div>
+  <ul class="notes">
+    <li>Exactly how a listed unit with no orders already behaves &mdash; one rule for both.</li>
+    <li>An empty <code>unit</code> block is harmless to the server.</li>
+    <li class="con">Clicking through units and typing a stray character leaves a trail of empty blocks.</li>
+  </ul>
+</div>
+<div>
+  <div class="hexlab">Q3b &mdash; the block disappears again</div>
+  <div class="stage"><pre class="file"><span class="old">unit 1655</span>
+<span class="old">@tax</span>
+
+<span class="old">unit 3832</span>
+<span class="old">@study stea</span>
+</pre></div>
+  <ul class="notes">
+    <li>The file only ever holds units you actually ordered.</li>
+    <li class="con">Blocks the report listed and blocks you created behave differently, and the player cannot
+        see which kind they are looking at.</li>
+  </ul>
+</div>
+</div></div>
+
+<h3 class="sec">Q4 &mdash; the seeded header carries no password</h3>
+<p>A template from a report arrives as <code>#atlantis 62 "secret"</code>. A skeleton we seed ourselves has no
+password to put there, because the report never carried one. <b>Send Orders</b> is unaffected &mdash; it asks for the
+password and writes it into the line. Plain <b>Export</b> is the case: the file the player mails by hand would be
+rejected if their faction has a password set.</p>
+<div class="card"><div class="split2">
+<div>
+  <div class="hexlab">Q4a &mdash; bare header, nothing said</div>
+  <div class="stage"><pre class="file"><span class="hdr">#atlantis 62</span>
+
+<span class="old">unit 1656</span>
+<span class="old">buy 1 humn</span>
+
+<span class="hdr">#end</span></pre></div>
+  <ul class="notes">
+    <li>Correct for a faction with no password, which is what <code>#atlantis 62</code> means.</li>
+    <li class="con">A player with a password who exports and mails the file gets a silently ignored turn.</li>
+  </ul>
+</div>
+<div>
+  <div class="hexlab">Q4b &mdash; bare header plus a comment above it</div>
+  <div class="stage"><pre class="file"><span class="new">; This report carried no orders template, so this file was started from scratch.</span>
+<span class="new">; If your faction has a password, add it: #atlantis 62 "your password"</span>
+<span class="hdr">#atlantis 62</span>
+
+<span class="old">unit 1656</span>
+<span class="old">buy 1 humn</span>
+
+<span class="hdr">#end</span></pre></div>
+  <ul class="notes">
+    <li>The warning is in the file the player is about to mail, which is where they will be looking.</li>
+    <li class="n">A <code>;</code> comment is ignored by the server (<code>rules/orders</code>), and the two lines
+        sit above <code>#atlantis</code> so the sniffer that recognises an orders file still finds it.</li>
+    <li class="con">Two lines of ours at the top of a file the player may reasonably regard as theirs.</li>
+  </ul>
+</div>
+</div></div>
+
+</main>
+<footer>ah-0gs8 &mdash; round 2. Rules cited from the committed snapshot: <code>rules/orders</code>,
+<code>rules/reportformat</code>, <code>rules/option</code>.</footer>
+</body></html>

@@ -187,15 +187,17 @@ function countOf(count: number, name: string): string {
 
 /**
  * "This unit has materials for 5 swords, not the 8 its skill and tools could make." - the shape
- * [`productionCapSentence`] and [`castCapSentence`] share, differing in two words: what limited
- * the run, what it names, how many it could have made, what that count is of, and what it would
- * have done with them (`ah-ofpb.4`, `ah-ofpb.5`).
+ * [`unnumberedProductionCapSentence`] and [`castCapSentence`] share, differing in two words: what
+ * limited the run, what it names, how many it could have made, what that count is of, and what it
+ * would have done with them (`ah-ofpb.4`, `ah-ofpb.5`).
  */
 function capSentence(
   // `"region"` is excluded rather than handled: that reason's noun is not a fixed word but the
-  // region's own, so it is worded in `productionCapSentence` before this is reached. Narrowed
-  // rather than cast, so the compiler keeps proving there is no other route in (`ah-256d`).
-  has: Exclude<ProductionCap, "region">,
+  // region's own, so it is worded in `unnumberedProductionCapSentence` before this is reached.
+  // `"workforce"` is excluded because only a numbered order can reach it, and that one has a
+  // shape of its own (`ah-6x5u`). Narrowed rather than cast, so the compiler keeps proving there
+  // is no other route in (`ah-256d`).
+  has: Exclude<ProductionCap, "region" | "workforce">,
   named: string,
   wanted: number,
   could: "its skill and tools" | "its level",
@@ -206,14 +208,17 @@ function capSentence(
 }
 
 /**
- * "This unit has materials for 5 swords, not the 8 its skill and tools could make." - `undefined` when
- * nothing capped the run, or when there is no priceable PRODUCE to speak about.
+ * "This unit has materials for 5 swords, not the 8 its skill and tools could make." - `undefined`
+ * when nothing capped the run, or when there is no priceable PRODUCE to speak about.
  *
- * Exported because the ITEMS hover says it too (`ah-ofpb.1`), and two copies of one sentence are
- * two things to keep in step.
+ * The unbounded `PRODUCE <item>` alone, byte for byte as it has always read: a numbered order says
+ * the navigator's requested/this-month breakdown instead, and [`productionStatusSentence`] is what
+ * chooses between the two (`ah-6x5u`).
  */
-export function productionCapSentence(silver: UnitSilver | null | undefined): string | undefined {
-  if (!silver || silver.productionCappedBy === null || silver.producedName === null) {
+function unnumberedProductionCapSentence(
+  silver: UnitSilver
+): string | undefined {
+  if (silver.productionCappedBy === null || silver.producedName === null) {
     return undefined;
   }
   // The region's yield is the one reason whose noun is not a fixed word, so it does not go through
@@ -224,6 +229,12 @@ export function productionCapSentence(silver: UnitSilver | null | undefined): st
     const named = silver.productionRegionName ?? silver.producedName;
     return `This region has ${named} for ${silver.produced}, not the ${silver.productionWanted} its skill and tools could make.`;
   }
+  // `"workforce"` cannot be reached from an unbounded order - nothing asked for more than the men
+  // could make - so it is answered here rather than worded, and the compiler keeps `capSentence`
+  // free of it (`ah-6x5u`).
+  if (silver.productionCappedBy === "workforce") {
+    return undefined;
+  }
   return capSentence(
     silver.productionCappedBy,
     countOf(silver.produced, silver.producedName),
@@ -231,6 +242,72 @@ export function productionCapSentence(silver: UnitSilver | null | undefined): st
     "its skill and tools",
     "make",
   );
+}
+
+/**
+ * What a numbered production was stopped by, in the navigator's own words (2026-09-03, decisions
+ * 3, 4 and 7): the binding limit and nothing else, so a run short of both its materials and its
+ * month names only the one that actually bound.
+ *
+ * `region` is worded from the region's own noun - `iron`, `horses`, `floater hides` - the same
+ * `Products`-line word the unnumbered sentence uses, with the catalogue's name as the fallback for
+ * a payload written before the field existed.
+ */
+function limitedBy(silver: UnitSilver, capped: ProductionCap): string {
+  switch (capped) {
+    case "materials":
+      return "Limited by materials.";
+    case "silver":
+      return "Limited by silver.";
+    case "workforce":
+      return "Limited by skill and tools.";
+    case "region":
+      return `Limited by this region's ${silver.productionRegionName ?? silver.producedName}.`;
+    // A summon's cap, which no `PRODUCE` order can carry: `plan_production` never sets it. Worded
+    // rather than dropped so the switch stays exhaustive and a future cap cannot slip through as
+    // generic copy (`ah-6x5u`).
+    case "room":
+      return "Limited by room.";
+  }
+}
+
+/**
+ * "Requested: 3 swords. This month: 2.\nLimited by materials. The remaining 1 carries over." for a
+ * numbered `PRODUCE <number> <item>`, and the unnumbered cap sentence for everything else -
+ * `undefined` when there is no priceable PRODUCE to speak about, or nothing to say about one.
+ *
+ * `rules/produce`: a numbered order "will attempt to produce exactly that number of items; if this
+ * is not possible in one month then the order will carry over to subsequent months" - so the
+ * written request is shown even when it fits exactly (the navigator's decision 2), and every
+ * shortfall ends by saying what carries over (decision 6). One entry point for both hovers,
+ * because the ITEMS and SILVER cells of one row must say the same thing in the same words
+ * (`ah-ofpb.1`).
+ */
+export function productionStatusSentence(
+  silver: UnitSilver | null | undefined
+): string | undefined {
+  if (!silver || silver.producedName === null) {
+    return undefined;
+  }
+  const requested = silver.productionRequested;
+  if (requested === null) {
+    return unnumberedProductionCapSentence(silver);
+  }
+  // `none` rather than `0`, the navigator's decision 5.
+  const made = silver.produced === 0 ? "none" : `${silver.produced}`;
+  const summary = `Requested: ${countOf(requested, silver.producedName)}. This month: ${made}.`;
+  const remaining = requested - silver.produced;
+  if (remaining <= 0) {
+    return summary;
+  }
+  const carries =
+    remaining === 1
+      ? "The remaining 1 carries over."
+      : `The remaining ${remaining} carry over.`;
+  if (silver.productionCappedBy === null) {
+    return `${summary}\n${carries}`;
+  }
+  return `${summary}\n${limitedBy(silver, silver.productionCappedBy)} ${carries}`;
 }
 
 /**
@@ -246,7 +323,7 @@ export function productionCapSentence(silver: UnitSilver | null | undefined): st
  * the GIVE order, except that the direction of transfer is reversed", so both move men out of a
  * unit before production and one sentence is true of either (`ah-qct4`).
  *
- * Exported because the ITEMS hover says it as well, the arrangement [`productionCapSentence`]
+ * Exported because the ITEMS hover says it as well, the arrangement [`productionStatusSentence`]
  * already has.
  */
 export function productionMenSentence(silver: UnitSilver | null | undefined): string | undefined {
@@ -266,7 +343,7 @@ export function productionMenSentence(silver: UnitSilver | null | undefined): st
  * it buying more. Empty when the unit wrote none, or when its sums are doubted.
  *
  * Exported because the ITEMS hover says it too (`ah-jown`), the arrangement
- * [`productionCapSentence`] already has: two copies of one sentence are two things to keep in step.
+ * [`productionStatusSentence`] already has: two copies of one sentence are two things to keep in step.
  */
 export function buyAllSentences(silver: UnitSilver | null | undefined): string[] {
   return (silver?.buyAll ?? []).map((b) => {
@@ -300,16 +377,17 @@ export function buyAllSentences(silver: UnitSilver | null | undefined): string[]
  * `castMadeNamed` is already counted and named - unlike `producedName` above, the core cannot
  * pluralise what a unit does not hold yet, so it is not passed through `countOf` here (`ah-ofpb.4`).
  *
- * Exported because the ITEMS hover repeats it too, exactly as `productionCapSentence` is
+ * Exported because the ITEMS hover repeats it too, exactly as `productionStatusSentence` is
  * (`ah-ofpb.1`'s K1, extended to casts by `ah-ofpb.5`).
  */
 export function castCapSentence(silver: UnitSilver | null | undefined): string | undefined {
   if (!silver || silver.castCappedBy === null || silver.castMadeNamed === null) {
     return undefined;
   }
-  // `castCappedBy` is never the region: `plan_cast` sets only the three a summon can hit. Stated
+  // `castCappedBy` is never the region, and never the workforce: `plan_cast` sets only the three
+  // a summon can hit, and `"workforce"` belongs to a numbered `PRODUCE` alone (`ah-6x5u`). Stated
   // as a guard rather than a cast so the compiler keeps checking it (`ah-256d`).
-  if (silver.castCappedBy === "region") {
+  if (silver.castCappedBy === "region" || silver.castCappedBy === "workforce") {
     return undefined;
   }
   return capSentence(
@@ -546,6 +624,30 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     })
   },
   {
+    id: "give-target-uncertain",
+    when: ({ silver }) => silver.doubt === "give-target-uncertain",
+    say: ({ silver }) =>
+      `Your report does not show whether ${silver.doubtSubject ?? "the target"} can receive this GIVE, so what this unit spends cannot be said.`,
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "give-target-uncertain", doubtSubject: "unit 9999" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  {
+    id: "give-consequences-uncertain",
+    when: ({ silver }) => silver.doubt === "give-consequences-uncertain",
+    say: () =>
+      "Because this GIVE cannot be predicted, what this unit earns or spends afterwards cannot be said.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "give-consequences-uncertain" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  {
     id: "doubt-unknown-combat-ready",
     when: ({ silver }) => silver.doubt === "unknown-combat-ready",
     say: () =>
@@ -680,8 +782,8 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // count is only worth a line when something stopped it.
   {
     id: "production-capped",
-    when: ({ silver }) => productionCapSentence(silver) !== undefined,
-    say: ({ silver }) => productionCapSentence(silver) ?? "",
+    when: ({ silver }) => productionStatusSentence(silver) !== undefined,
+    say: ({ silver }) => productionStatusSentence(silver) ?? "",
     example: () => ({
       unit: aReportUnit({ men: 3 }),
       silver: aUnitSilver({

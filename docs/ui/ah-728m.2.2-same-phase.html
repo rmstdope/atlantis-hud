@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ah-728m.2.2 - same-phase output is available</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #10151c; color: #e8edf3; }
+    body { margin: 0; padding: 30px; }
+    main { max-width: 980px; margin: auto; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .lede, .muted { color: #9eabb9; }
+    .flow { display: grid; grid-template-columns: 1fr auto 1fr; gap: 18px; align-items: center; margin-top: 24px; }
+    .card { background: #18212b; border: 1px solid #2b3948; border-radius: 12px; padding: 18px; }
+    .good { border-color: #3a8f61; background: #14271e; }
+    .arrow { color: #79c0ff; font-size: 28px; }
+    code { color: #f0bd69; }
+    .result { color: #7ee2a8; font-weight: 700; }
+    @media (max-width: 700px) { body { padding: 16px; } .flow { grid-template-columns: 1fr; } .arrow { transform: rotate(90deg); text-align: center; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Option A: manufacturing settles line by line</h1>
+  <p class="lede">An earlier producer's shared output is available to a later producer in the same manufacturing phase.</p>
+  <div class="flow">
+    <section class="card good">
+      <h2>1st in report · SHARE 1</h2>
+      <p><code>PRODUCE leather</code></p>
+      <p class="result">Makes 10 leather</p>
+    </section>
+    <div class="arrow">→</div>
+    <section class="card good">
+      <h2>2nd in report</h2>
+      <p><code>PRODUCE bags</code></p>
+      <p class="result">Uses 10 shared leather</p>
+    </section>
+  </div>
+  <p><strong>Cost:</strong> report order governs both consumption and newly made stock inside the phase; moving a unit in the report can change the chain.</p>
+</main>
+</body>
+</html>

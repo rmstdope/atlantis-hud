@@ -156,6 +156,9 @@ fn completions_for(
         match arg {
             Arg::Kw(_) | Arg::OneOf(_) | Arg::ItemClass | Arg::MoveStep => {
                 for word in grammar::keywords(arg) {
+                    if word == "UNFINISHED" {
+                        continue;
+                    }
                     if !keywords.iter().any(|entry| entry.value == word) {
                         keywords.push(OrderCompletion::keyword(word));
                     }

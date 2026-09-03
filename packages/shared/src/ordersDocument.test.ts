@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { readReport } from "@atlantis/fixtures";
 import { MOVEMENT_ORDER_COMMANDS } from "@atlantis/core-client";
+import { isOrdersFile } from "./ordersImport";
 import {
+  applyUnitOrders,
   commandsOnly,
+  ensureUnitBlock,
   findUnitBlocks,
   hasFactionHeader,
   LONG_ORDER_COMMANDS,
   longOrderOf,
   readUnitOrders,
+  seedOrdersDocument,
+  regionBannerLine,
   stripMovementOrderLines,
   stripUnitComments,
   withoutTrailingBlankLines,
@@ -568,5 +573,185 @@ describe("finds the one order that takes the whole month", () => {
 
   it("returns the first one when a document somehow holds two", () => {
     expect(longOrderOf("produce yew\n@tax")).toBe("produce yew");
+  });
+});
+
+describe("regionBannerLine", () => {
+  it("writes the banner a report writes", () => {
+    expect(
+      regionBannerLine(
+        {
+          terrain: "mountain",
+          coordinate: { x: 43, y: 81, z: 1 },
+          province: "Derngill",
+          settlement: { name: "Onthead", size: "city" }
+        },
+        null
+      )
+    ).toBe(";*** mountain (43,81) in Derngill, contains Onthead [city] ***");
+
+    expect(
+      regionBannerLine(
+        {
+          terrain: "forest",
+          coordinate: { x: 43, y: 79, z: 1 },
+          province: "Utso",
+          settlement: null
+        },
+        null
+      )
+    ).toBe(";*** forest (43,79) in Utso ***");
+
+    expect(
+      regionBannerLine(
+        {
+          terrain: "nexus",
+          coordinate: { x: 0, y: 0, z: 0 },
+          province: "The Void",
+          settlement: null
+        },
+        "nexus"
+      )
+    ).toBe(";*** nexus (0,0,nexus) in The Void ***");
+  });
+});
+
+const BANNER_43_81 = ";*** mountain (43,81) in Derngill, contains Onthead [city] ***";
+
+describe("ensureUnitBlock", () => {
+  const region = [
+    "#atlantis 62",
+    "",
+    BANNER_43_81,
+    "",
+    "unit 1655",
+    "@tax",
+    "",
+    "unit 3832",
+    "@study stea",
+    "",
+    "#end",
+    ""
+  ].join("\n");
+
+  it("leaves a unit that already has a block alone", () => {
+    expect(ensureUnitBlock(region, "3832", BANNER_43_81)).toBe(region);
+  });
+
+  it("adds a block after the last unit under its own banner", () => {
+    expect(ensureUnitBlock(region, "1656", BANNER_43_81)).toBe(
+      [
+        "#atlantis 62",
+        "",
+        BANNER_43_81,
+        "",
+        "unit 1655",
+        "@tax",
+        "",
+        "unit 3832",
+        "@study stea",
+        "",
+        "unit 1656",
+        "",
+        "#end",
+        ""
+      ].join("\n")
+    );
+  });
+
+  it("adds a block straight under a banner that has no units yet", () => {
+    const empty = ["#atlantis 62", "", BANNER_43_81, "", "#end", ""].join("\n");
+    expect(ensureUnitBlock(empty, "1656", BANNER_43_81)).toBe(
+      ["#atlantis 62", "", BANNER_43_81, "", "unit 1656", "", "#end", ""].join("\n")
+    );
+  });
+
+  it("writes the banner too, before #end, when the document has no banner for the region", () => {
+    const seeded = ["#atlantis 62", "", "#end", ""].join("\n");
+    expect(ensureUnitBlock(seeded, "1656", BANNER_43_81)).toBe(
+      ["#atlantis 62", "", BANNER_43_81, "", "unit 1656", "", "#end", ""].join("\n")
+    );
+  });
+
+  it("writeUnitOrders fills the block ensureUnitBlock created", () => {
+    const seeded = ["#atlantis 62", "", "#end", ""].join("\n");
+    const withBlock = ensureUnitBlock(seeded, "1656", BANNER_43_81);
+    expect(writeUnitOrders(withBlock, "1656", "buy 1 humn\nstudy forc")).toBe(
+      [
+        "#atlantis 62",
+        "",
+        BANNER_43_81,
+        "",
+        "unit 1656",
+        "buy 1 humn",
+        "study forc",
+        "",
+        "#end",
+        ""
+      ].join("\n")
+    );
+  });
+});
+
+const SEEDED = [
+  "; This report carried no orders template, so this file was started from scratch.",
+  '; If your faction has a password, add it: #atlantis 62 "your password"',
+  "#atlantis 62",
+  "",
+  "#end"
+].join("\n");
+
+describe("seedOrdersDocument", () => {
+  it("leaves a report's own template alone", () => {
+    expect(seedOrdersDocument(DOCUMENT, "62")).toBe(DOCUMENT);
+  });
+
+  it("seeds a header, a note and #end when the report carried no template", () => {
+    expect(seedOrdersDocument("", "62")).toBe(SEEDED);
+    expect(seedOrdersDocument("   \n\n", "62")).toBe(SEEDED);
+  });
+
+  it("seeds nothing when the report names no faction", () => {
+    expect(seedOrdersDocument("", null)).toBe("");
+  });
+
+  it("the seeded document is still recognised as an orders file and still takes a password", () => {
+    expect(isOrdersFile(SEEDED)).toBe(true);
+    expect(hasFactionHeader(SEEDED)).toBe(true);
+    const withPassword = withFactionPassword(SEEDED, "secret");
+    expect(withPassword.split("\n")[0]).toBe(
+      "; This report carried no orders template, so this file was started from scratch."
+    );
+    expect(withPassword.split("\n")[1]).toBe(
+      '; If your faction has a password, add it: #atlantis 62 "your password"'
+    );
+    expect(withPassword.split("\n")[2]).toBe('#atlantis 62 "secret"');
+  });
+});
+
+describe("applyUnitOrders", () => {
+  const seeded = ["#atlantis 62", "", "#end", ""].join("\n");
+
+  it("creates the block under the region's banner on the first order", () => {
+    expect(applyUnitOrders(seeded, "1656", "buy 1 humn", BANNER_43_81)).toBe(
+      ["#atlantis 62", "", BANNER_43_81, "", "unit 1656", "buy 1 humn", "", "#end", ""].join("\n")
+    );
+  });
+
+  it("creates nothing for an edit that carries no text", () => {
+    expect(applyUnitOrders(seeded, "1656", "", BANNER_43_81)).toBe(seeded);
+  });
+
+  it("creates nothing when there is no banner to put it under", () => {
+    expect(applyUnitOrders(seeded, "1656", "buy 1 humn", null)).toBe(seeded);
+  });
+
+  it("leaves an existing block where it is", () => {
+    const existing = ["#atlantis 62", "", BANNER_43_81, "", "unit 1656", "@tax", "", "#end", ""].join(
+      "\n"
+    );
+    expect(applyUnitOrders(existing, "1656", "@work", BANNER_43_81)).toBe(
+      ["#atlantis 62", "", BANNER_43_81, "", "unit 1656", "@work", "", "#end", ""].join("\n")
+    );
   });
 });

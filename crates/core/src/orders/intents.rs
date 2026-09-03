@@ -63,10 +63,16 @@ pub enum Intent {
         count: i64,
         item: String,
     },
-    /// `PRODUCE <item>`. Still a full month order; unlike the other month-long ones, what it
-    /// makes can cost silver and materials, so the item is carried rather than discarded
+    /// `PRODUCE [number] <item>`. Still a full month order; unlike the other month-long ones, what
+    /// it makes can cost silver and materials, so the item is carried rather than discarded
     /// (`ah-19l2.2`). Resolved to a catalogue item by `semantics`, whose business that is.
+    ///
+    /// `requested` is the number token of `PRODUCE <number> <item>`, and `None` the unbounded
+    /// `PRODUCE <item>`: `rules/produce` says a numbered order "will attempt to produce exactly
+    /// that number of items", carrying what it cannot finish over to later months, where the
+    /// unbounded one makes "as much as possible" (`ah-6x5u`).
     Produce {
+        requested: Option<i64>,
         item: String,
     },
     /// An order that takes the whole month and that no check reads any further.
@@ -608,14 +614,26 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
             _ => None,
         },
         // A full month order, and the one whose argument is worth keeping: what it makes can cost
-        // silver and materials (`ah-19l2.2`). Read in the shape WITHDRAW uses just above. Any
-        // other form - no argument, or more than one token - stays a bare month-long order: the
-        // month is still spoken for and nothing can be priced. Read from the raw arguments rather
-        // than the grammar's consumed prefix: an argument shape the grammar itself refuses (a
-        // bare `PRODUCE`, say) must still spend the month here, the same reason `ANNIHILATE` and
-        // a bare `CAST` do below.
+        // silver and materials (`ah-19l2.2`). Read in the shape WITHDRAW uses just above, both
+        // forms `rules/produce` states - the numbered one attempts exactly that many and carries
+        // the rest over, so the count is kept rather than discarded (`ah-6x5u`). Any other form -
+        // no argument, a number where the item belongs, or more than two tokens - stays a bare
+        // month-long order: the month is still spoken for and nothing can be priced. Read from the
+        // raw arguments rather than the grammar's consumed prefix: an argument shape the grammar
+        // itself refuses (a bare `PRODUCE`, say) must still spend the month here, the same reason
+        // `ANNIHILATE` and a bare `CAST` do below.
         "PRODUCE" => match arguments {
+            [count, item] if count.kind == TokenKind::Number && item.kind != TokenKind::Number => {
+                match count.text.parse() {
+                    Ok(requested) => Some(Intent::Produce {
+                        requested: Some(requested),
+                        item: item.text.clone(),
+                    }),
+                    Err(_) => Some(Intent::MonthLong("PRODUCE")),
+                }
+            }
             [item] if item.kind != TokenKind::Number => Some(Intent::Produce {
+                requested: None,
                 item: item.text.clone(),
             }),
             _ => Some(Intent::MonthLong("PRODUCE")),
@@ -1182,13 +1200,22 @@ mod tests {
         );
     }
 
-    /// `PRODUCE <item>` carries what it makes, so it can be priced (`ah-19l2.2`); anything else
-    /// stays a bare month-long order, because nothing can be priced from it.
+    /// `PRODUCE <item>` and `PRODUCE <number> <item>` both carry what they make, so both can be
+    /// priced (`ah-19l2.2`, `ah-6x5u`); anything else stays a bare month-long order, because
+    /// nothing can be priced from it.
     #[test]
-    fn reads_what_a_produce_order_makes() {
+    fn reads_bounded_and_unbounded_produce_orders() {
         assert_eq!(
             intents("unit 5\nPRODUCE catapult\n"),
             vec![Intent::Produce {
+                requested: None,
+                item: "catapult".to_string()
+            }]
+        );
+        assert_eq!(
+            intents("unit 5\nPRODUCE 3 catapult\n"),
+            vec![Intent::Produce {
+                requested: Some(3),
                 item: "catapult".to_string()
             }]
         );
@@ -1197,7 +1224,11 @@ mod tests {
             vec![Intent::MonthLong("PRODUCE")]
         );
         assert_eq!(
-            intents("unit 5\nPRODUCE 3 catapult\n"),
+            intents("unit 5\nPRODUCE 3 4\n"),
+            vec![Intent::MonthLong("PRODUCE")]
+        );
+        assert_eq!(
+            intents("unit 5\nPRODUCE 3 catapult wagon\n"),
             vec![Intent::MonthLong("PRODUCE")]
         );
     }

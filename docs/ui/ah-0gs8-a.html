@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-0gs8 &mdash; A: the editor simply opens</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+
+  /* an Orders panel, drawn at a realistic width */
+  .op { width:430px; background:var(--panel); border:1px solid var(--edge); border-radius:8px; overflow:hidden;
+        font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .op .bar { display:flex; align-items:center; gap:8px; padding:6px 10px; border-bottom:1px solid var(--edge);
+             font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft); }
+  .op .bar b { color:var(--brass); font-weight:600; letter-spacing:.1em; }
+  .op .body { height:190px; padding:10px; }
+  .op .body.centre { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; color:var(--ink-dim); }
+  .badge { border:1px solid var(--edge); border-radius:4px; padding:4px 10px; font-size:10.5px;
+           letter-spacing:.08em; text-transform:uppercase; color:var(--ink-soft); }
+  .cm { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12.5px; line-height:1.65; color:var(--ink); }
+  .cm .gut { color:var(--ink-dim); display:inline-block; width:22px; text-align:right; margin-right:10px; }
+  .cm .ph { color:var(--ink-dim); font-style:italic; }
+  .caret { display:inline-block; width:1px; height:13px; background:var(--brass-bright); vertical-align:-2px; }
+  .op .status { border-top:1px solid var(--edge); padding:5px 10px; display:flex; gap:14px;
+                font-size:11px; color:var(--ink-soft); }
+  .op .status .ok { color:var(--ok); }
+  button.act { font:11.5px/1 'Helvetica Neue',Arial,sans-serif; background:var(--raised); color:var(--ink);
+               border:1px solid var(--edge); border-radius:5px; padding:7px 12px; cursor:default; }
+  button.act.primary { border-color:var(--brass); color:var(--brass-bright); }
+  pre.file { background:var(--ground); border:1px solid var(--edge-soft); border-radius:6px; padding:10px 12px;
+             font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.55; color:var(--ink-soft);
+             overflow-x:auto; white-space:pre; }
+  pre.file .new { color:var(--ok); }
+  pre.file .hdr { color:var(--brass-bright); }
+  pre.file .old { color:var(--ink-dim); }
+  .toast { background:var(--raised); border:1px solid var(--edge); border-left:3px solid var(--brass);
+           border-radius:6px; padding:9px 12px; font:12px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink); max-width:520px; }
+</style></head><body>
+<header><h1>Option A &mdash; <span>the editor simply opens</span></h1>
+<p>Every own unit standing in the current turn gets a working editor, whether or not the report&rsquo;s
+<b>Orders Template</b> happened to list it. There is no notice and no button: the block is written into the
+orders document the moment the first order is typed, and until then nothing is added to the file.
+The rules are on our side here &mdash; the template is a convenience, not a permission list:
+&ldquo;This template gives you a formatted orders form, with all of your units listed. You may use this to fill in your
+orders, <b>or write them on your own</b>&hellip; or turning it off altogether&rdquo; (<code>rules/reportformat</code>,
+<code>rules/option</code>).</p></header>
+<main>
+
+<h3 class="sec">1 &mdash; Selecting a unit the template never listed</h3>
+<p>Left: what happens today. Right: option A. The unit is <b>Nine of Eight (1656)</b>, an own unit standing in the
+turn-20 report.</p>
+<div class="card"><div class="split2">
+<div>
+  <div class="hexlab">today</div>
+  <div class="stage"><div class="op">
+    <div class="bar">Orders <b>&mdash; unit 1656</b></div>
+    <div class="body centre">
+      <span class="badge">No orders block</span>
+      <span>The report&rsquo;s orders template has no block for this unit.</span>
+      <span>Adding one would produce a file the server rejects.</span>
+    </div>
+  </div></div>
+  <ul class="notes">
+    <li class="con">The claim is not true: the server takes a <code>unit</code> block for any unit you own.</li>
+    <li class="con">Nothing can be ordered, and there is no way forward from the screen.</li>
+  </ul>
+</div>
+<div>
+  <div class="hexlab">option A</div>
+  <div class="stage"><div class="op">
+    <div class="bar">Orders <b>&mdash; unit 1656</b></div>
+    <div class="body">
+      <div class="cm"><span class="gut">1</span><span class="caret"></span></div>
+    </div>
+    <div class="status"><span class="ok">0 errors</span><span class="ok">0 warnings</span><span>not saved yet</span></div>
+  </div></div>
+  <ul class="notes">
+    <li>An empty editor, exactly like a listed unit whose block happens to be empty.</li>
+    <li>No new control to learn, and nothing to press before typing.</li>
+    <li class="n">The document gains <code>unit 1656</code> on the first keystroke, not on selection &mdash; so merely
+        clicking round the map never edits the file.</li>
+  </ul>
+</div>
+</div></div>
+
+<h3 class="sec">2 &mdash; Where the new block lands in the file</h3>
+<p>Two placements, both valid to the server. Shown as the exported orders file after typing
+<code>buy 1 humn</code> and <code>study forc</code> for 1656.</p>
+<div class="card"><div class="split2">
+<div>
+  <div class="hexlab">P1 &mdash; under the unit&rsquo;s own region banner</div>
+  <div class="stage"><pre class="file"><span class="hdr">#atlantis 62 "secret"</span>
+
+<span class="old">;*** mountain (42,82) in Derngill ***</span>
+
+<span class="old">unit 1655</span>
+<span class="old">@tax</span>
+
+<span class="new">unit 1656</span>
+<span class="new">buy 1 humn</span>
+<span class="new">study forc</span>
+
+<span class="old">unit 3832</span>
+<span class="old">@study stea</span>
+
+<span class="hdr">#end</span></pre></div>
+  <ul class="notes">
+    <li>Reads like a template the server wrote: the unit sits with its neighbours.</li>
+    <li class="con">Needs the app to know which region the unit is in and to find that banner.</li>
+  </ul>
+</div>
+<div>
+  <div class="hexlab">P2 &mdash; at the end, just before <code>#end</code></div>
+  <div class="stage"><pre class="file"><span class="hdr">#atlantis 62 "secret"</span>
+
+<span class="old">;*** mountain (42,82) in Derngill ***</span>
+
+<span class="old">unit 1655</span>
+<span class="old">@tax</span>
+
+<span class="old">unit 3832</span>
+<span class="old">@study stea</span>
+
+<span class="new">unit 1656</span>
+<span class="new">buy 1 humn</span>
+<span class="new">study forc</span>
+
+<span class="hdr">#end</span></pre></div>
+  <ul class="notes">
+    <li>One rule, always the same place; nothing to get wrong.</li>
+    <li class="con">A unit you ordered is at the bottom rather than beside its neighbours.</li>
+  </ul>
+</div>
+</div></div>
+
+<h3 class="sec">3 &mdash; A report with no Orders Template at all</h3>
+<p>The turn-20 fixture has no template section whatsoever &mdash; which is also what a player who set
+<code>OPTION TEMPLATE OFF</code> gets every turn. The orders document therefore starts <b>empty</b>: no
+<code>#atlantis</code> line, no <code>#end</code>, so today <em>every</em> own unit shows the notice above and an export
+would be an empty file.</p>
+<div class="card"><div class="split2">
+<div>
+  <div class="hexlab">S1 &mdash; seed a skeleton silently on import</div>
+  <div class="stage"><pre class="file"><span class="new">#atlantis 62</span>
+
+<span class="new">#end</span></pre></div>
+  <ul class="notes">
+    <li>Every own unit is orderable; the export is a valid orders file.</li>
+    <li class="n">Faction number taken from the report&rsquo;s own header. No password &mdash; Send Orders writes the
+        typed one into the line, exactly as it does today.</li>
+    <li class="con">The player is never told the report carried no template.</li>
+  </ul>
+</div>
+<div>
+  <div class="hexlab">S2 &mdash; seed it, and say so once</div>
+  <div class="stage"><pre class="file"><span class="new">#atlantis 62</span>
+
+<span class="new">#end</span></pre>
+  <div style="height:12px"></div>
+  <div class="toast">This report carries no orders template, so orders start empty. Every unit can still be
+  ordered, and the exported file will be complete.</div>
+  </div>
+  <ul class="notes">
+    <li>Explains an empty orders panel the player did not expect.</li>
+    <li class="con">One more line in the import summary, every turn, for a player who chose
+        <code>OPTION TEMPLATE OFF</code> on purpose.</li>
+  </ul>
+</div>
+</div></div>
+
+<h3 class="sec">4 &mdash; The states the happy path hides</h3>
+<div class="card"><div class="split2">
+<div>
+  <div class="hexlab">a foreign unit &mdash; unchanged</div>
+  <div class="stage"><div class="op">
+    <div class="bar">Orders <b>&mdash; unit 2011</b></div>
+    <div class="body centre">
+      <span class="badge">Read only</span>
+      <span>This unit belongs to Queen XOT (34).</span>
+      <span>You can only write orders for units in Borg (62).</span>
+    </div>
+  </div></div>
+  <ul class="notes"><li class="n">Untouched by this work.</li></ul>
+</div>
+<div>
+  <div class="hexlab">an own unit last seen in an earlier turn &mdash; unchanged</div>
+  <div class="stage"><div class="op">
+    <div class="bar">Orders <b>&mdash; unit 1655</b></div>
+    <div class="body centre">
+      <span class="badge">Not in this turn</span>
+      <span>This unit was last seen on turn 18 and is not in the current report.</span>
+      <span>Orders can only be written for units present in the current turn.</span>
+    </div>
+  </div></div>
+  <ul class="notes"><li class="n">Untouched. This is the lock that legitimately refuses an edit.</li></ul>
+</div>
+</div></div>
+<p style="color:var(--ink-soft); font-size:13px; max-width:100ch">Under option A the <b>No orders block</b> notice
+has no remaining case at all and disappears from the application.</p>
+
+</main>
+<footer>ah-0gs8 &mdash; option A. Rules cited from the committed snapshot: <code>rules/orders</code>,
+<code>rules/reportformat</code>, <code>rules/option</code>.</footer>
+</body></html>

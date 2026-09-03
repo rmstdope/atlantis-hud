@@ -317,6 +317,7 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         production_men_left: 0,
         produced_name: None,
         production_wanted: 0,
+        production_requested: None,
         production_capped_by: None,
         production_region_name: None,
         works_by_default: false,

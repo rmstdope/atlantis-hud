@@ -94,6 +94,31 @@ export function levelNameOf(levels: MapLevel[], z: number): string | null {
 }
 
 /**
+ * The third field a report prints inside a coordinate: `null` on the surface, otherwise the level's
+ * own name, and the bare number for a level no shipped ruleset names.
+ *
+ * The TypeScript twin of `crates/core/src/report/level.rs`'s `level_field`. A pure function of `z`
+ * rather than of the known map's `levels`: the engine fixes these words, while `levels` exists for
+ * the level control and carries whatever the core named the levels this faction has seen.
+ */
+export function levelFieldOf(z: number): string | null {
+  switch (z) {
+    case SURFACE:
+      return null;
+    case NEXUS:
+      return "nexus";
+    case 2:
+      return "underworld";
+    case 3:
+      return "underdeep";
+    case 4:
+      return "abyss";
+    default:
+      return String(z);
+  }
+}
+
+/**
  * The clause the region panel adds for an unexplored hex off the surface: `""` on the surface or
  * for a level the map does not list; `, in the nexus` / `, in the underworld` for a named level;
  * `, on level 5` when the core's name is its `level N` fallback (`report/level.rs` `level_name`).

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ndp9 round 2 — the exact strings, and two edges</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  header p b { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .orders { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); white-space:pre; margin-top:10px; }
+  .dim { color:var(--ink-dim); } .red { color:var(--danger); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 4px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .q { background:#2a2113; border:1px solid #5c4718; border-left:4px solid var(--brass); border-radius:5px;
+    padding:11px 14px; margin:22px 0 2px; max-width:100ch; font-size:13.5px; }
+  .q b { color:var(--brass); }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; } .note b { color:var(--ink); }
+  .settings { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:14px 16px;
+    max-width:78ch; margin-top:10px; font-family:system-ui,-apple-system,sans-serif; }
+  .settings h4 { font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass);
+    font-weight:normal; margin-bottom:9px; }
+  .row { display:flex; gap:10px; align-items:flex-start; padding:6px 0; border-top:1px solid rgba(38,48,61,.6); }
+  .row:first-of-type { border-top:none; }
+  .sw { width:30px; height:17px; border-radius:9px; background:var(--brass); position:relative; flex:none; margin-top:2px; }
+  .sw::after { content:""; position:absolute; right:2px; top:2px; width:13px; height:13px; border-radius:50%; background:#10151c; }
+  .row .t { font-size:13px; color:var(--ink); } .row .d { font-size:11.5px; color:var(--ink-dim); margin-top:1px; }
+  .row.new .t { color:var(--brass); } .row.old { opacity:.45; }
+  table.grid { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:10px; font-family:system-ui,-apple-system,sans-serif; max-width:114ch;}
+  table.grid th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.grid td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  table.grid td.m { font-family:system-ui,sans-serif; color:#f0d8d8; }
+  table.grid td.q { font-family:system-ui,sans-serif; color:var(--ink-dim); }
+</style></head><body>
+<header>
+  <h1>ah-ndp9 round 2 — <span>the exact strings, and two edges</span></h1>
+  <p>Settled in round 1: <b>T1</b> two toggles, <b>S1</b> the teacher-shaped study sentence, <b>M1</b> a sentence
+  per route, <b>A1</b> apprentices treated exactly as mages. What follows is everything those four choices
+  left open — the words as they will actually ship.</p>
+</header>
+<main>
+
+<h3 class="sec">Part 5 — the two Settings rows, as they will read</h3>
+<p>These are the only sentences a player sees when the check is <i>not</i> firing, so they carry the whole
+  explanation of what the switch does. Shown in place, with the neighbours they will sit beside.</p>
+
+<span class="opt">G1 — name the situation</span>
+<div class="settings">
+  <h4>Studying / Teaching</h4>
+  <div class="row old"><div class="sw"></div><div><div class="t">Magic study outside a building</div>
+    <div class="d">A mage above level 2 studying magic where no building houses them, which halves the month's study.</div></div></div>
+  <div class="row new"><div class="sw"></div><div><div class="t">Magic study by a unit that cannot become a mage</div>
+    <div class="d">A unit that is not one leader on its own ordered to begin force, pattern, spirit or manipulation.</div></div></div>
+</div>
+<div class="settings" style="margin-top:12px">
+  <h4>Orders</h4>
+  <div class="row old"><div class="sw"></div><div><div class="t">Gifts the game will refuse</div>
+    <div class="d">A GIVE or TAKE naming items that cannot change hands, or men given to another faction.</div></div></div>
+  <div class="row new"><div class="sw"></div><div><div class="t">Men sent into a mage</div>
+    <div class="d">A GIVE, TAKE or BUY that would add people to a unit that has already begun magic.</div></div></div>
+</div>
+<ul class="notes">
+  <li>The description of the first names the four skills outright, so a player never has to know what
+    "Foundation" means — and it stays true if they play a variant where the four are spelled differently,
+    because the app reads them from the catalogue.</li>
+  <li class="con">"a unit that cannot become a mage" is a mouthful for a switch title.</li>
+</ul>
+
+<span class="opt">G2 — name the rule</span>
+<div class="settings">
+  <h4>Studying / Teaching</h4>
+  <div class="row old"><div class="sw"></div><div><div class="t">Magic study outside a building</div>
+    <div class="d">A mage above level 2 studying magic where no building houses them, which halves the month's study.</div></div></div>
+  <div class="row new"><div class="sw"></div><div><div class="t">Only a lone leader can begin magic</div>
+    <div class="d">A unit that is not one leader on its own ordered to begin force, pattern, spirit or manipulation.</div></div></div>
+</div>
+<div class="settings" style="margin-top:12px">
+  <h4>Orders</h4>
+  <div class="row old"><div class="sw"></div><div><div class="t">Gifts the game will refuse</div>
+    <div class="d">A GIVE or TAKE naming items that cannot change hands, or men given to another faction.</div></div></div>
+  <div class="row new"><div class="sw"></div><div><div class="t">A mage's people cannot change</div>
+    <div class="d">A GIVE, TAKE or BUY that would add people to a unit that has already begun magic.</div></div></div>
+</div>
+<ul class="notes">
+  <li>Each title states the rule, so the tab reads as a list of things the game will not let you do.
+    The first echoes the warning's own first clause word for word.</li>
+  <li class="con">Every other title in the tab names a <i>situation</i> ("Overloaded units", "Dropped guards",
+    "Students elsewhere"), not a rule. These two would be the odd pair out.</li>
+</ul>
+
+<h3 class="sec">Part 6 — the study sentence, every composition</h3>
+<p>S1's shape, filled in. Races are named with the report's own plurals, never an invented <code>-s</code>,
+  exactly as the teacher warning already does.</p>
+<table class="grid">
+  <tr><th style="width:30ch">the unit ordered STUDY FORCE</th><th>the message</th></tr>
+  <tr><td>3 humans</td><td class="m">only a lone leader can begin force; this unit has 3 humans</td></tr>
+  <tr><td>1 human</td><td class="m">only a lone leader can begin force; this unit has 1 human</td></tr>
+  <tr><td>2 leaders</td><td class="m">only a lone leader can begin force; this unit has 2 leaders</td></tr>
+  <tr><td>1 leader and 1 human</td><td class="m">only a lone leader can begin force; this unit also has 1 human</td></tr>
+  <tr><td>2 humans and 3 orcs</td><td class="m">only a lone leader can begin force; this unit has 2 humans and 3 orcs</td></tr>
+  <tr><td>no people at all</td><td class="m">only a lone leader can begin force; this unit has no people</td></tr>
+  <tr><td>1 leader <b>(legal)</b></td><td class="q">nothing</td></tr>
+  <tr><td>headcount only estimated</td><td class="q">nothing — the app cannot see the composition</td></tr>
+  <tr><td>1 leader given 2 humans this month</td><td class="m">only a lone leader can begin force; this unit also has 2 humans</td></tr>
+</table>
+<div class="note">The last row is the one worth a second look: the unit <i>is</i> one leader on the report, and
+  becomes ineligible only because of an order in the same document. <code>rules/sequenceofevents</code> runs
+  GIVE before STUDY, so the study really would fail — and the app judges the composition the month leaves,
+  the same way the existing study-ceiling warning already does. <b>(Under this bead the gift itself is
+  legal: the receiver is not a mage yet.)</b></div>
+
+<h3 class="sec">Part 7 — a GIVE that carries men and equipment together</h3>
+<p>The refused men are only part of the order. The app's shipped refusal sentence already has a shape for
+  this — <code>the lions cannot be given away, so this order moves only 3 swords</code> — and M1's sentence
+  has to decide whether to borrow it.</p>
+<div class="orders">unit 800              <span class="dim">; 20 humans [HUMN], 3 swords [SWOR]</span>
+<span class="red">GIVE 900 ALL ITEMS</span>   <span class="dim">; 900 is a mage: the swords may go, the men may not</span></div>
+
+<span class="opt">X1 — always "moves nothing"</span>
+<table class="grid">
+  <tr><th style="width:26ch">the order</th><th>the message</th></tr>
+  <tr><td>GIVE 900 5 HUMN</td><td class="m">unit 900 is a mage and cannot be given men, so this order moves nothing</td></tr>
+  <tr><td>GIVE 900 ALL ITEMS</td><td class="m">unit 900 is a mage and cannot be given men, so this order moves nothing</td></tr>
+</table>
+<ul class="notes">
+  <li>One sentence, always true of the men.</li>
+  <li class="con">Flatly wrong about the second order: the three swords <i>do</i> arrive. A warning that
+    misdescribes what the projection will show is the one thing this module says it will never do.</li>
+</ul>
+
+<span class="opt">X2 — borrow the shipped tail (recommended)</span>
+<table class="grid">
+  <tr><th style="width:26ch">the order</th><th>the message</th></tr>
+  <tr><td>GIVE 900 5 HUMN</td><td class="m">unit 900 is a mage and cannot be given men, so this order moves nothing</td></tr>
+  <tr><td>GIVE 900 ALL ITEMS</td><td class="m">unit 900 is a mage and cannot be given men, so this order moves only 3 swords</td></tr>
+  <tr><td>TAKE FROM 800 ALL ITEMS<br><span class="dim">(the mage taking)</span></td><td class="m">this unit is a mage and cannot take on men, so this order moves only 3 swords</td></tr>
+</table>
+<ul class="notes">
+  <li>Word for word the tail of <code>Gifts the game will refuse</code>, which players will already have seen
+    on <code>ALL MONSTERS</code> orders — same problem, same sentence ending.</li>
+  <li>Tells the player what <i>did</i> happen, which is what they need to decide whether to rewrite the line.</li>
+  <li class="con">The count has to be carried from the projection to the message, rather than the message
+    being built from the order text.</li>
+</ul>
+
+<h3 class="sec">Part 8 — <code>BUY 5 PEASANTS</code></h3>
+<p><code>rules/buy</code>: <i>"you may use PEASANT or PEASANTS to recruit whichever race is present in the
+  region."</i> The HUD does not resolve that word today — <code>PEASANTS</code> names no item in the catalogue,
+  so the order is already marked <b>uncounted</b> and its silver is left unprojected, for every unit, mage or
+  not. It is a known gap with a bead of its own.</p>
+<div class="orders">unit 900              <span class="dim">; 1 leader [LEAD], force [FORC] 2 — a mage</span>
+BUY 5 HUMANS          <span class="dim">; resolves → warned</span>
+BUY 5 PEASANTS        <span class="dim">; resolves to nothing today → ?</span></div>
+
+<span class="opt">P1 — leave PEASANTS alone (recommended)</span>
+<ul class="notes">
+  <li>The mage check fires wherever the order names a race the app can resolve, and stays quiet on
+    <code>PEASANTS</code> along with everything else about that line — no silver, no headcount, no warning.
+    Nothing about this bead changes.</li>
+  <li>Consistent: the line is already marked as one the app could not read, so the player is not being told
+    it is fine.</li>
+  <li class="con">The most natural way to recruit is the one spelling that will not warn, and a player who
+    types <code>BUY 5 PEASANTS</code> into a mage sees only the general "could not read this line" marker.</li>
+</ul>
+
+<span class="opt">P2 — resolve PEASANTS in this bead, at least far enough to warn</span>
+<ul class="notes">
+  <li>Both spellings warn, so the check does what a player would expect of it.</li>
+  <li class="con">Resolving that word properly means deciding which race the region offers and feeding it
+    into the market share, the silver and the headcount — a bead's worth of work, and one that is already
+    filed. Doing half of it here means the line warns about the mage while its silver is still unprojected.</li>
+</ul>
+
+<div class="q"><b>The four questions.</b> (5) The Settings rows — <b>G1</b> or <b>G2</b>? (6) Is the
+  composition table in Part 6 right as it stands, including the last row? (7) The mixed GIVE — <b>X1</b>
+  or <b>X2</b>? (8) <code>BUY 5 PEASANTS</code> — <b>P1</b> or <b>P2</b>?</div>
+
+</main></body></html>
