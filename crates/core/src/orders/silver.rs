@@ -3846,28 +3846,6 @@ pub struct ProductionPlan {
 /// before the request is read at all - a unit below the recipe's level, a hex yielding none of the
 /// goods, and men who could not make one - because each of those makes nothing whatever was asked
 /// for, and each already has its own sentence in the Problems panel.
-/// Take `amount` of `tag` off a running holdings list, pushing a negative entry where the list
-/// carries none - the same rule `semantics::subtract_from_holdings` follows, so the two surfaces
-/// answer a second `PRODUCE` line identically (`ah-l80z`).
-fn subtract_running(
-    held: &mut Vec<ItemAmount>,
-    tag: &str,
-    amount: i64,
-    name_of: &dyn Fn(&str) -> String,
-) {
-    match held
-        .iter_mut()
-        .find(|item| item.tag.eq_ignore_ascii_case(tag))
-    {
-        Some(entry) => entry.amount -= amount,
-        None => held.push(ItemAmount {
-            amount: -amount,
-            name: name_of(tag),
-            tag: tag.to_ascii_uppercase(),
-        }),
-    }
-}
-
 #[must_use]
 pub fn plan_production(
     recipe: &Production,
@@ -3990,6 +3968,28 @@ pub fn plan_production(
             .collect(),
         capped_by,
     })
+}
+
+/// Take `amount` of `tag` off a running holdings list, pushing a negative entry where the list
+/// carries none - the same rule `semantics::subtract_from_holdings` follows, so the two surfaces
+/// answer a second `PRODUCE` line identically (`ah-l80z`).
+fn subtract_running(
+    held: &mut Vec<ItemAmount>,
+    tag: &str,
+    amount: i64,
+    name_of: &dyn Fn(&str) -> String,
+) {
+    match held
+        .iter_mut()
+        .find(|item| item.tag.eq_ignore_ascii_case(tag))
+    {
+        Some(entry) => entry.amount -= amount,
+        None => held.push(ItemAmount {
+            amount: -amount,
+            name: name_of(tag),
+            tag: tag.to_ascii_uppercase(),
+        }),
+    }
 }
 
 /// What the caster brings to a cast.

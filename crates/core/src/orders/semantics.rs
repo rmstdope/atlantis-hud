@@ -4213,6 +4213,16 @@ impl LateHoldings {
 /// can hand this function a negative amount. It is applied anyway, once per hex, so that the two
 /// surfaces are demonstrably given the same list and a snapshot built some other way cannot
 /// quietly reach `plan_production` unclamped.
+fn clamped_holdings(items: &[ItemAmount]) -> Vec<ItemAmount> {
+    items
+        .iter()
+        .map(|item| ItemAmount {
+            amount: item.amount.max(0),
+            ..item.clone()
+        })
+        .collect()
+}
+
 /// Take `amount` of `tag` off a running holdings list, pushing a negative entry where the list
 /// carries none - so a deficit survives to the next order rather than being silently dropped
 /// (`ah-l80z`). Tags are matched case-insensitively, as `plan_production`'s own `holding` closure
@@ -4235,16 +4245,6 @@ fn subtract_from_holdings(
             tag: tag.to_ascii_uppercase(),
         }),
     }
-}
-
-fn clamped_holdings(items: &[ItemAmount]) -> Vec<ItemAmount> {
-    items
-        .iter()
-        .map(|item| ItemAmount {
-            amount: item.amount.max(0),
-            ..item.clone()
-        })
-        .collect()
 }
 
 /// Whether two item lists carry the same man-tagged entries, regardless of order or of anything
