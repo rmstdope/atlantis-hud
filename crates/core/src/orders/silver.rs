@@ -933,6 +933,10 @@ pub struct LateFacts<'a> {
     pub men: i64,
     pub men_by_race: &'a [ItemAmount],
     pub items: &'a [ItemAmount],
+    /// What the unit holds as manufacturing opens: the market has run, no PRODUCE has been
+    /// charged. Read by the `PRODUCE` arm alone; every other term wants `items`
+    /// (`rules/sequenceofevents`, `ah-l80z`). Already clamped at zero by whoever built it.
+    pub before_manufacturing: &'a [ItemAmount],
 }
 
 impl<'a> UnitFacts<'a> {
@@ -944,6 +948,7 @@ impl<'a> UnitFacts<'a> {
             men: self.men,
             men_by_race: self.men_by_race,
             items: self.items,
+            before_manufacturing: self.items,
         })
     }
 }
@@ -1300,6 +1305,12 @@ pub fn forecast_unit(
         income_doubt = income_doubt.or(priced.doubt);
     }
 
+    // The materials manufacturing works from, kept running so a second `PRODUCE` line sees what
+    // the first consumed - exactly as the ITEMS ledger keeps its own (`ah-l80z`). Already clamped
+    // at zero by `forecast_hex`, so this arm clamps nothing itself and the two surfaces cannot
+    // clamp differently.
+    let mut manufacturing_items = facts.late().before_manufacturing.to_vec();
+
     // `rules/sequenceofevents` fixes the order the turn runs the block in, and the order the
     // player wrote it in does not change it (`ah-gdd3.1`).
     for placed in phases::in_phase_order(intents) {
@@ -1408,12 +1419,12 @@ pub fn forecast_unit(
                 // man-months capacity reads the late headcount - men this month's `BUY`/`GIVE`
                 // bring, not only what the report printed (`ah-dxfd.2`).
                 //
-                // **Materials stay the early picture, deliberately.** `semantics::produce` prices
-                // this same order a second time from the ledger's own balance to build the ITEMS
-                // column, and charges the materials it plans against that balance - so reading the
-                // late picture's `items` here would price this order against a balance its own
-                // ledger twin has already spent, silently halving what the unit can make. Pending
-                // a way to read a mid-month balance rather than the ledger's own end state.
+                // **Materials and tools are the pre-manufacturing balance**, which is the
+                // mid-month picture `facts.late().before_manufacturing` now carries: every market
+                // effect applied, no PRODUCE charged. `semantics::produce` reads exactly the same
+                // phase for the ITEMS column, so the two surfaces answer one order identically
+                // (`rules/sequenceofevents`, `ah-l80z`). Not `facts.items`, which is the
+                // maintenance index and already carries this production's own material debit.
                 //
                 // The level and the tools enter through `workforce_for`, which the ITEMS ledger
                 // also calls - one builder, so the two surfaces cannot be given different
@@ -1432,7 +1443,7 @@ pub fn forecast_unit(
                             tag,
                             facts.late().men,
                             facts.production_skills,
-                            facts.items,
+                            &manufacturing_items,
                         )
                     });
                 let recipe = found.as_ref().map(|(_, _, recipe)| *recipe);
@@ -1441,10 +1452,32 @@ pub fn forecast_unit(
                 // ITEMS ledger reads, through the same function (`ah-256d`, `ah-ycuj`).
                 let region = (lookups.region_share)(item);
                 let (priced, plan) =
-                    price_production(recipe, work, facts.items, *requested, region);
+                    price_production(recipe, work, &manufacturing_items, *requested, region);
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
+                        // The same running deduction the ITEMS ledger makes, by the same rule: a
+                        // material with no entry pushes a negative one rather than being dropped,
+                        // so a deficit survives to the next `PRODUCE` line.
+                        if let Some(silver) = manufacturing_items
+                            .iter_mut()
+                            .find(|item| item.tag.eq_ignore_ascii_case(SILVER_TAG))
+                        {
+                            silver.amount -= priced.spends;
+                        }
+                        for material in &plan.materials {
+                            match manufacturing_items
+                                .iter_mut()
+                                .find(|item| item.tag.eq_ignore_ascii_case(&material.tag))
+                            {
+                                Some(entry) => entry.amount -= material.amount,
+                                None => manufacturing_items.push(ItemAmount {
+                                    amount: -material.amount,
+                                    name: (lookups.item_name)(&material.tag),
+                                    tag: material.tag.to_ascii_uppercase(),
+                                }),
+                            }
+                        }
                         if priced.spends > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Produce));
                         }
@@ -3782,19 +3815,21 @@ pub struct ProductionPlan {
 
 /// What a unit's `PRODUCE` order makes this month, from the recipe and what the unit holds.
 ///
-/// `men` and `held` are the caller's to supply, and the cap is still taken against `held` rather
-/// than against a running balance. `ah-gdd3.1` gave both surfaces the turn's phase order and made
-/// the **cast** cap read the balance at `StatePhase::Cast`; the manufacturing PRODUCE cap is
-/// `ah-gdd3.2`'s and is deliberately untouched here, so that both surfaces keep answering the same
-/// way for one order - which is exactly the drift `ah-ycuj`'s corpus test exists to catch.
+/// `men` and `held` are the caller's to supply. `ah-gdd3.1` gave both surfaces the turn's phase
+/// order and made the **cast** cap read the balance at `StatePhase::Cast`; `ah-l80z` then gave the
+/// manufacturing PRODUCE cap the same treatment, so both of *its* callers now supply a *running*
+/// balance: what the unit holds as manufacturing opens, less whatever its earlier `PRODUCE` lines
+/// consumed. `semantics::produce` keeps one per unit and `forecast_unit` keeps its own by the same
+/// rule, so the two surfaces answer one order identically - which is the drift `ah-ycuj`'s corpus
+/// test exists to catch.
 ///
-/// **Both callers supply the post-gift picture** (`ah-qct4`): `rules/sequenceofevents` settles
-/// "Give orders. GIVE and TAKE orders are processed." nine phases before either PRODUCE phase, so
-/// the men who work and the materials they work with are the ones this month's transfers leave
-/// behind. The two still differ for men bought or sold this month - the ledger cannot see the
-/// market during its own intent loop - which is pre-existing and documented at the `PRODUCE` arm
-/// of [`forecast_unit`]. The figures remain imprecise in the other direction too: a unit that BUYs
-/// wood first makes more than this says.
+/// **Both callers supply the pre-manufacturing picture**: `rules/sequenceofevents` settles the
+/// Give phase, then TAX, then the market, then WITHDRAW, movement and STUDY, all before
+/// manufacturing PRODUCE - so the men who work and the materials they work with are the ones this
+/// month's transfers *and* this month's trading leave behind (`ah-qct4`, `ah-l80z`).
+///
+/// `held` arrives clamped at zero: this function does not clamp `by_materials` itself, and a
+/// running balance - unlike a report figure - can go negative where a unit overdrew a stock.
 ///
 /// `None` when the recipe cannot be applied at all: a recipe stating no man-months or no outputs
 /// (a ruleset scraped before `ah-19l2.1`, or cooking, whose page states a formula), or one whose
@@ -5719,6 +5754,7 @@ mod tests {
                     men: 3,
                     men_by_race: &[],
                     items: &items,
+                    before_manufacturing: &items,
                 }),
                 ..facts(3, &intents, &receipts)
             },
@@ -5758,6 +5794,7 @@ mod tests {
                     men: 8,
                     men_by_race: &[],
                     items: &items,
+                    before_manufacturing: &items,
                 }),
                 ..facts(8, &intents, &receipts)
             },
@@ -5791,6 +5828,7 @@ mod tests {
                     men: 3,
                     men_by_race: &[],
                     items: &items,
+                    before_manufacturing: &items,
                 }),
                 ..facts(3, &[], &receipts)
             },
