@@ -758,6 +758,10 @@ struct Working {
     /// "in the order they appear on the report", which is not the order their blocks were
     /// written in (`ah-3mwm`).
     transfers: Vec<PendingTransfer>,
+    /// Every unit id the report shows holding the quartermaster skill, resolved through the
+    /// catalogue rather than by tag spelling - `QUAM` is quartermaster and `QUAR` is quarrying
+    /// (`ah-d0ku`).
+    quartermasters: std::collections::BTreeSet<String>,
 }
 
 /// One `GIVE` or `TAKE`, held until the whole document has been read so the Give phase can be
@@ -790,6 +794,20 @@ struct PendingTransport {
     to_unshown: bool,
     what: super::forms::Selector,
     amount: super::forms::Amount,
+    /// Where the line stood in the document, kept privately so phase execution can restore
+    /// document order on `transport_sent`/`transport_received` afterwards (`ah-d0ku`).
+    sequence: usize,
+}
+
+/// The three phases `rules/sequenceofevents` runs TRANSPORT in, in rule order: "Items are sent
+/// from non-quartermaster units to quartermaster units", then "from one quartermaster unit to
+/// another quartermaster units", then "a quartermaster unit to non-quartermaster units"
+/// (`ah-d0ku`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum TransportPhase {
+    ToQuartermaster,
+    BetweenQuartermasters,
+    FromQuartermaster,
 }
 
 impl Working {
@@ -819,7 +837,26 @@ impl Working {
                 recruited: Vec::new(),
             });
         }
-        let known_units = report.units().map(|unit| unit.unit_id.clone()).collect();
+        let known_units: std::collections::BTreeSet<String> =
+            report.units().map(|unit| unit.unit_id.clone()).collect();
+        // `rules/sequenceofevents` phases TRANSPORT by whether each end is a quartermaster, so the
+        // skill has to be resolved by name through the catalogue: `QUAM` is quartermaster and
+        // `QUAR` is quarrying, and matching the spelling alone confuses the two (`ah-d0ku`).
+        let quartermaster_tag = ruleset
+            .find_skill("quartermaster")
+            .map(|skill| skill.tag.to_string());
+        let quartermasters = match &quartermaster_tag {
+            Some(tag) => report
+                .units()
+                .filter(|unit| {
+                    unit.skills
+                        .iter()
+                        .any(|skill| skill.tag.eq_ignore_ascii_case(tag))
+                })
+                .map(|unit| unit.unit_id.clone())
+                .collect(),
+            None => std::collections::BTreeSet::new(),
+        };
         let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
             BTreeMap::new();
         for region in &report.regions {
@@ -836,6 +873,7 @@ impl Working {
             forming: Vec::new(),
             ruleset,
             transports: Vec::new(),
+            quartermasters,
             known_units,
             shown_in_region,
             foreign_units: report
@@ -1511,6 +1549,7 @@ impl Working {
         let receiver = self.by_id.get(&id).copied();
         let to_unshown = !self.known_units.contains(&id);
 
+        let sequence = self.transports.len();
         self.transports.push(PendingTransport {
             sender,
             receiver,
@@ -1518,6 +1557,7 @@ impl Working {
             to_unshown,
             what,
             amount,
+            sequence,
         });
     }
 
@@ -1526,62 +1566,140 @@ impl Working {
     /// (`ah-bxgs`).
     fn apply_transports(&mut self, dissolved: &BTreeSet<usize>) {
         let pending = std::mem::take(&mut self.transports);
-        for pending in pending {
-            // A unit that dissolved never existed to send anything: its row is not rendered, and
-            // whatever its own month acquired stays on it rather than reaching a recipient by the
-            // one path `dissolve_empty_forms` does not itself cover (`ah-dhga`).
-            if dissolved.contains(&pending.sender) {
+        let mut sent: Vec<Vec<(usize, TransportSent)>> = vec![Vec::new(); self.units.len()];
+        let mut received: Vec<Vec<(usize, TransportReceived)>> = vec![Vec::new(); self.units.len()];
+
+        for phase in [
+            TransportPhase::ToQuartermaster,
+            TransportPhase::BetweenQuartermasters,
+            TransportPhase::FromQuartermaster,
+        ] {
+            let mut of_this_phase: Vec<&PendingTransport> = pending
+                .iter()
+                .filter(|pending| !dissolved.contains(&pending.sender))
+                .filter(|pending| self.transport_phase(pending) == phase)
+                .collect();
+            // `rules/sequenceofevents`: "units that appear higher on the report get precedence",
+            // which is `Working::units`' own order. The sequence is the secondary key alone, so
+            // one sender's own lines still settle in the order it wrote them.
+            of_this_phase.sort_by_key(|pending| (pending.sender, pending.sequence));
+            if of_this_phase.is_empty() {
                 continue;
             }
+            self.apply_transport_phase(&of_this_phase, &mut sent, &mut received);
+        }
+
+        for (index, working) in self.units.iter_mut().enumerate() {
+            let mut theirs = std::mem::take(&mut sent[index]);
+            theirs.sort_by_key(|(sequence, _)| *sequence);
+            working.transport_sent = theirs.into_iter().map(|(_, value)| value).collect();
+            let mut theirs = std::mem::take(&mut received[index]);
+            theirs.sort_by_key(|(sequence, _)| *sequence);
+            working.transport_received = theirs.into_iter().map(|(_, value)| value).collect();
+        }
+    }
+
+    /// Which of `rules/sequenceofevents`' three phases one queued line belongs to.
+    ///
+    /// A sender that is not a quartermaster is always the first phase. A quartermaster sending to
+    /// a unit the report shows holding the skill is the second. Everything else - including a
+    /// target the report does not show, or one whose skills are hidden - is the third: the
+    /// navigator chose that deterministic fallback over inventing a skill the report never states
+    /// (`ah-d0ku`).
+    fn transport_phase(&self, pending: &PendingTransport) -> TransportPhase {
+        let sender = &self.units[pending.sender].unit.unit_id;
+        if !self.quartermasters.contains(sender) {
+            return TransportPhase::ToQuartermaster;
+        }
+        if self.quartermasters.contains(&pending.to) {
+            TransportPhase::BetweenQuartermasters
+        } else {
+            TransportPhase::FromQuartermaster
+        }
+    }
+
+    /// One phase of transport, over every queued line that belongs to it.
+    ///
+    /// Each unit's holdings as the phase opened are the allowance every send in this phase is
+    /// resolved against, while the movement itself is applied to the live item list. That is
+    /// `rules/sequenceofevents`' "items may move in each of the phases but only once in each
+    /// phase": goods that arrived in an earlier phase are available, and goods arriving during
+    /// this one are not (`ah-d0ku`).
+    fn apply_transport_phase(
+        &mut self,
+        pending: &[&PendingTransport],
+        sent: &mut [Vec<(usize, TransportSent)>],
+        received: &mut [Vec<(usize, TransportReceived)>],
+    ) {
+        let mut allowance: BTreeMap<usize, Vec<crate::report::model::ItemAmount>> = BTreeMap::new();
+        for pending in pending {
+            allowance
+                .entry(pending.sender)
+                .or_insert_with(|| self.units[pending.sender].unit.items.clone());
+        }
+
+        for pending in pending {
+            let held = allowance
+                .get(&pending.sender)
+                .cloned()
+                .unwrap_or_else(Vec::new);
             // `GiveReach::Discard` bypasses target-specific refusal: `TRANSPORT` has
             // its own permission gate, `can_be_transported`, checked below - the two lists are
             // not the same (`IENT` may not be given but may be transported).
-            for (name, tag, moved) in self.tags_moved(
-                pending.sender,
+            for (name, tag, moved) in self.tags_moved_from(
+                &held,
                 &pending.what,
                 &pending.amount,
                 super::targets::GiveReach::Discard,
             ) {
                 if !self.ruleset.can_be_transported(&tag) {
-                    self.units[pending.sender]
-                        .transport_sent
-                        .push(TransportSent {
+                    sent[pending.sender].push((
+                        pending.sequence,
+                        TransportSent {
                             amount: 0,
                             tag,
                             to: String::new(),
                             to_unshown: false,
                             refused: true,
-                        });
+                        },
+                    ));
                     continue;
                 }
                 // Re-resolved by tag rather than kept from the snapshot, exactly as `give` does:
                 // an earlier transport in this same document may have emptied a stock ahead of
                 // this one and shifted every index after it.
-                let Some(held) =
+                let Some(live) =
                     find_item(&self.ruleset, &self.units[pending.sender].unit.items, &tag)
                 else {
                     continue;
                 };
-                take_item(&mut self.units[pending.sender].unit.items, held, moved);
-                self.units[pending.sender]
-                    .transport_sent
-                    .push(TransportSent {
+                take_item(&mut self.units[pending.sender].unit.items, live, moved);
+                if let Some(allowed) = allowance.get_mut(&pending.sender) {
+                    if let Some(index) = allowed.iter().position(|item| item.tag == tag) {
+                        take_item(allowed, index, moved);
+                    }
+                }
+                sent[pending.sender].push((
+                    pending.sequence,
+                    TransportSent {
                         amount: moved,
                         tag: tag.clone(),
                         to: pending.to.clone(),
                         to_unshown: pending.to_unshown,
                         refused: false,
-                    });
+                    },
+                ));
                 if let Some(receiver) = pending.receiver {
                     add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
                     let from = self.units[pending.sender].unit.unit_id.clone();
-                    self.units[receiver]
-                        .transport_received
-                        .push(TransportReceived {
+                    received[receiver].push((
+                        pending.sequence,
+                        TransportReceived {
                             amount: moved,
                             tag,
                             from,
-                        });
+                        },
+                    ));
                 }
             }
         }
@@ -1612,16 +1730,29 @@ impl Working {
         amount: &super::forms::Amount,
         reach: super::targets::GiveReach,
     ) -> Vec<(String, String, i64)> {
+        self.tags_moved_from(&self.units[holder].unit.items, what, amount, reach)
+    }
+
+    /// The same question asked of an explicit item list rather than of a row's live holdings, so
+    /// that a transport phase can resolve against the allowance it opened with while the movement
+    /// itself is applied to the live list (`ah-d0ku`).
+    fn tags_moved_from(
+        &self,
+        held_items: &[crate::report::model::ItemAmount],
+        what: &super::forms::Selector,
+        amount: &super::forms::Amount,
+        reach: super::targets::GiveReach,
+    ) -> Vec<(String, String, i64)> {
         use super::forms::{Amount, Selector};
 
         let moving: Vec<(String, String, i64)> = match what {
             Selector::Item(item) => {
-                let Some(held) = find_item(&self.ruleset, &self.units[holder].unit.items, item)
+                let Some(held) = find_item(&self.ruleset, held_items, item)
                 else {
                     return Vec::new();
                 };
                 let (name, tag, held_amount) = {
-                    let held = &self.units[holder].unit.items[held];
+                    let held = &held_items[held];
                     if is_unfinished_ship(held, Some(&self.ruleset)) {
                         return Vec::new();
                     }
@@ -1640,13 +1771,11 @@ impl Working {
             }
             Selector::UnfinishedShip(text) => {
                 let Some(tag) = unfinished_ship_named(Some(&self.ruleset), text, || {
-                    self.units[holder].unit.items.iter()
+                    held_items.iter()
                 }) else {
                     return Vec::new();
                 };
-                let Some(held) = self.units[holder]
-                    .unit
-                    .items
+                let Some(held) = held_items
                     .iter()
                     .find(|item| item.tag.eq_ignore_ascii_case(&tag))
                 else {
@@ -1670,9 +1799,7 @@ impl Working {
             Selector::Class(name)
                 if name.eq_ignore_ascii_case("MAN") || name.eq_ignore_ascii_case("MEN") =>
             {
-                self.units[holder]
-                    .unit
-                    .items
+                held_items
                     .iter()
                     .filter(|item| {
                         !is_unfinished_ship(item, Some(&self.ruleset))
@@ -1685,18 +1812,14 @@ impl Working {
             Selector::Class(name)
                 if name.eq_ignore_ascii_case("ITEM") || name.eq_ignore_ascii_case("ITEMS") =>
             {
-                self.units[holder]
-                    .unit
-                    .items
+                held_items
                     .iter()
                     .filter(|item| !is_unfinished_ship(item, Some(&self.ruleset)))
                     .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
                     .collect()
             }
             Selector::Class(name) => match self.ruleset.class_members(name) {
-                Some(tags) => self.units[holder]
-                    .unit
-                    .items
+                Some(tags) => held_items
                     .iter()
                     .filter(|item| {
                         !is_unfinished_ship(item, Some(&self.ruleset))
@@ -2044,7 +2167,7 @@ mod tests {
             "  Northwest : plain (1,1) in Nowhere.",
             "",
             "* Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON]. Weight: 10. \
-             Capacity: 0/0/15/0.",
+             Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 1 (30).",
             "- Stranger (7001), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
             "",
         ]
@@ -5229,6 +5352,103 @@ mod tests {
                     refused: true,
                 }]
             );
+        }
+
+        /// Four own units in one hex, so the chain is about the phases and not about range:
+        /// an ordinary source, two quartermasters and an ordinary destination. Held skills are
+        /// what `Working::over_own_units` reads (`ah-d0ku`).
+        fn quartermaster_chain_report() -> String {
+            [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "* Source (900), Foo (1), leader [LEAD], 10 stone [STON]. Weight: 510. \
+                 Capacity: 0/0/15/0.",
+                "* Quarterone (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+                 Skills: quartermaster [QUAM] 1 (30).",
+                "* Quartertwo (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+                 Skills: quartermaster [QUAM] 1 (30).",
+                "* Destination (903), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "",
+            ]
+            .join("\n")
+        }
+
+        fn chain_preview(orders: &str) -> OrdersPreviewResponse {
+            preview_orders_for_remembered_report(
+                &mut ReportCache::new(),
+                RULESET,
+                &quartermaster_chain_report(),
+                "[]",
+                orders,
+            )
+            .expect("the ruleset loads")
+        }
+
+        fn stone_of(response: &OrdersPreviewResponse, unit_id: &str) -> i64 {
+            only_unit_by_id(response, unit_id)
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map_or(0, |item| item.amount)
+        }
+
+        #[test]
+        fn transports_run_in_three_global_phases() {
+            // `rules/sequenceofevents`: non-quartermaster to quartermaster, quartermaster to
+            // quartermaster, then quartermaster to non-quartermaster - each phase run over every
+            // unit before the next begins. The document is written in the opposite order on
+            // purpose: document order must not decide where the goods end up (`ah-d0ku`).
+            let response = chain_preview(
+                "unit 902\nTRANSPORT 903 10 STON\n\
+                 unit 901\nTRANSPORT 902 10 STON\n\
+                 unit 900\nTRANSPORT 901 10 STON\n",
+            );
+
+            assert_eq!(stone_of(&response, "903"), 10, "the chain reaches the end");
+            assert_eq!(stone_of(&response, "900"), 0, "the source sent everything");
+            assert_eq!(stone_of(&response, "901"), 0, "the first hop kept nothing");
+            assert_eq!(stone_of(&response, "902"), 0, "the second hop kept nothing");
+        }
+
+        #[test]
+        fn an_item_moves_only_once_in_a_transport_phase() {
+            // "Items may move in each of the phases but only once in each phase". 901 receives in
+            // phase 1 and forwards in phase 2, which is allowed; 902 receives in phase 2 and its
+            // own phase-2 line therefore has nothing it may move (`ah-d0ku`).
+            let response = chain_preview(
+                "unit 900\nTRANSPORT 901 10 STON\n\
+                 unit 901\nTRANSPORT 902 10 STON\n\
+                 unit 902\nTRANSPORT 901 10 STON\n",
+            );
+
+            assert_eq!(
+                stone_of(&response, "902"),
+                10,
+                "what arrived in this phase cannot leave again in the same phase"
+            );
+            assert_eq!(stone_of(&response, "900"), 0, "the source sent its stone");
+        }
+
+        #[test]
+        fn transport_annotations_remain_in_document_order() {
+            // The quartermaster-to-quartermaster line settles a phase before the line written
+            // above it, and the annotations still read in the order the player wrote them: the
+            // navigator chose document order for this column (`ah-d0ku`).
+            let response = chain_preview(
+                "unit 900\nTRANSPORT 901 10 STON\n\
+                 unit 901\nTRANSPORT 903 4 STON\nTRANSPORT 902 6 STON\n",
+            );
+
+            let hop = only_unit_by_id(&response, "901");
+            let targets: Vec<&str> = hop
+                .transport_sent
+                .iter()
+                .map(|sent| sent.to.as_str())
+                .collect();
+            assert_eq!(targets, vec!["903", "902"], "document order is kept");
         }
 
         fn only_unit_by_id<'a>(
