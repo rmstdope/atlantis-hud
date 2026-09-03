@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-szye round 2 — the engine's own BUY rule, and what to warn about</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1420px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:104ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:104ch; }
+  .setup { background:var(--panel); border:1px solid var(--edge); border-left:3px solid var(--brass);
+           border-radius:8px; padding:14px 16px; margin-top:16px; font-size:13.5px; color:var(--ink-soft); }
+  .setup b { color:var(--ink); }
+  .setup table { border-collapse:collapse; margin-top:10px; font-family:system-ui,sans-serif; font-size:12.5px; }
+  .setup td, .setup th { padding:4px 16px 4px 0; text-align:left; }
+  .setup th { color:var(--brass); font-weight:600; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; margin-top:6px; }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; margin-top:6px; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; }
+  .scene { margin-top:12px; border-top:1px dashed var(--edge); padding-top:10px; }
+  .scene b.lbl { display:block; font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase;
+             color:var(--ink-dim); font-weight:normal; margin-bottom:7px; font-family:system-ui,sans-serif; }
+  .dlg { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; padding:10px; }
+  .dlg h4 { font-size:11.5px; letter-spacing:.5px; color:var(--select); margin-bottom:5px; font-weight:600; }
+  .dlg dl { display:grid; gap:3px; }
+  .dlg dl > div { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .dlg dt { color:var(--ink-soft); } .dlg dd { color:var(--ink); font-variant-numeric:tabular-nums; }
+  .dlg dd.neg { color:var(--danger); } .dlg dd.good { color:var(--ok); } .dlg dd.cut { color:var(--brass); }
+  .rule { border-top:1px solid var(--edge); margin:9px 0; }
+  .find { font-family:system-ui,sans-serif; font-size:12px; display:flex; gap:7px; align-items:flex-start; margin-top:7px; }
+  .find .dot { flex:none; width:8px; height:8px; border-radius:50%; margin-top:5px; background:var(--danger); }
+  .find .dot.warn { background:var(--brass); }
+  .find .txt { color:var(--ink-soft); }
+  .find .txt b { color:var(--ink); font-weight:600; display:block; font-size:11px; letter-spacing:.6px; }
+  .find .txt i { color:var(--brass); font-style:normal; }
+  .quiet { font-family:system-ui,sans-serif; font-size:12px; color:var(--ink-dim); font-style:italic; margin-top:7px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:5px; margin-top:14px;
+           border-top:1px solid var(--edge); padding-top:10px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .ed { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 10px;
+        font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; color:var(--ink); }
+  .ed .line { display:flex; gap:8px; align-items:baseline; padding:2px 0; }
+  .ed .gutter { color:var(--danger); flex:none; width:12px; }
+  .ed .gutter.warn { color:var(--brass); }
+  .ed .gutter.none { color:var(--ink-dim); }
+  .ed .hint { font-family:system-ui,sans-serif; font-size:11.5px; color:var(--ink-soft);
+              border-left:2px solid var(--brass); padding-left:8px; margin:4px 0 4px 20px; }
+  .ed .hint b { color:var(--ink); }
+  pre.src { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:10px 12px;
+            font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink-soft);
+            overflow-x:auto; margin-top:10px; }
+  pre.src b { color:var(--brass); font-weight:normal; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-szye round 2 — <span>the engine's own BUY rule, and the one thing left to decide</span></h1>
+  <p>Round 1 offered three ways of splitting a short purse between competing buyers. The engine
+  source settles that: <b>for BUY it does not split at all.</b> <code>GetBuyAmount</code> sizes every
+  unit's order against the <b>full, undecremented</b> shared pool in a first pass; <code>DoBuy</code>
+  consumes in a second pass, and <code>ConsumeShared</code> has no failure path — when the money runs
+  out the loop simply ends, silently, with no error and no negative balance.</p>
+  <pre class="src">GetBuyAmount   <b>// pass 1: pool NOT decremented between units</b>
+    if (o-&gt;num * m-&gt;price &gt; u-&gt;GetSharedMoney())
+        o-&gt;num = u-&gt;GetSharedMoney() / m-&gt;price;
+DoBuy          <b>// pass 2</b>
+    u-&gt;ConsumeSharedMoney(temp * m-&gt;price);   <b>// runs dry silently</b></pre>
+  <p>So the rule to model is: <b>each BUY line is capped at (its unit's own silver + the whole
+  region's shared pool), and by nothing another buyer did.</b> No buyer is ever cut on account of
+  another. That is a real cap — it bites whenever one line alone outruns the purse — and it needs no
+  ordering rule and blames nobody.</p>
+</header>
+<main>
+
+<h3 class="sec">What that rule looks like, in the two cases that matter</h3>
+<p>Nothing below is being asked; this is the rule drawn out so it can be checked against the source
+before the plan is written on it.</p>
+
+<div class="cards2">
+
+  <div class="card">
+    <h2><em>1</em> One line outruns the purse &mdash; it is cut</h2>
+    <div class="concept">Treasurer holds $300 and shares. Smith holds nothing and orders
+    <code>BUY 5 sword</code> at $100. <code>GetSharedMoney</code> is $300, so the engine approves 3.</div>
+    <div class="scene">
+      <b class="lbl">Projected inventory</b>
+      <div class="dlg">
+        <h4>2202 Smith</h4>
+        <dl><div><dt>swords</dt><dd class="cut">3 <span style="color:var(--ink-dim)">of 5</span></dd></div>
+            <div><dt>at month end</dt><dd class="neg">&minus;$500</dd></div></dl>
+      </div>
+      <div class="quiet">The ledger still charges the full $500 ask, so the money columns and every
+      existing warning are untouched &mdash; ah-omn7's decision, kept.</div>
+    </div>
+    <div class="scene">
+      <b class="lbl">Editor, Smith's orders</b>
+      <div class="ed">
+        <div class="line"><span class="gutter warn">!</span><span>BUY 5 sword</span></div>
+        <div class="hint">This hex is short of silver between its units, so this order buys
+        <b>3 of the 5 swords</b>. See Problems for the hex.</div>
+      </div>
+    </div>
+    <div class="scene">
+      <b class="lbl">Today, for comparison</b>
+      <div class="quiet">5 swords shown, and no clause anywhere. The bead's defect.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><em>2</em> Two lines outrun it together &mdash; neither is cut</h2>
+    <div class="concept">Treasurer holds $100 and shares. Orcs at $40, market has 10. Both Smith and
+    Scout order <code>BUY 2 ORC</code>. Each is sized against the whole $100, so <b>both are approved
+    for 2</b>. Smith consumes $80; Scout receives 2 orcs and pays the $20 that is left.</div>
+    <div class="scene">
+      <b class="lbl">Projected inventory</b>
+      <div class="dlg">
+        <h4>2202 Smith</h4>
+        <dl><div><dt>orcs</dt><dd class="good">2</dd></div>
+            <div><dt>at month end</dt><dd class="neg">&minus;$80</dd></div></dl>
+        <div class="rule"></div>
+        <h4>2203 Scout</h4>
+        <dl><div><dt>orcs</dt><dd class="good">2</dd></div>
+            <div><dt>at month end</dt><dd class="neg">&minus;$80</dd></div></dl>
+      </div>
+      <div class="quiet">Both get everything they ordered &mdash; which is what the engine really does,
+      and what the HUD already shows today.</div>
+    </div>
+    <div class="scene">
+      <b class="lbl">But the hex is $60 overdrawn on paper</b>
+      <div class="find"><span class="dot"></span><span class="txt"><b>NOT-ENOUGH-SILVER (hex)</b>
+        the units in this hex are short $60 between them: they can have $100 and their orders spend $160</span></div>
+      <div class="quiet">The engine will not complain and will not fail either purchase. Whether the
+      HUD should still say this is question W below.</div>
+    </div>
+  </div>
+
+</div>
+
+<h3 class="sec">Question W &mdash; the hex is overdrawn, but the engine will pay out anyway. Say so, or stay quiet?</h3>
+<p>Only about scene 2: a pooled silver shortfall whose <b>whole</b> overdraft comes from BUY lines the
+engine will fulfil regardless. Every other pooled shortfall &mdash; STUDY, PRODUCE inputs, maintenance,
+a mixed hex &mdash; is unaffected whichever is chosen; those consumers do decrement the pool and do fail.</p>
+
+<div class="cards3">
+
+  <div class="card">
+    <h2><em>W1</em> Keep the warning exactly as it is</h2>
+    <div class="concept">The hex finding fires with today's wording and today's figures. A player is
+    told the hex spent more than it has, which is true of the arithmetic, and is not told that the
+    engine happens to be lenient about it.</div>
+    <div class="scene">
+      <b class="lbl">Problems, for the hex</b>
+      <div class="find"><span class="dot"></span><span class="txt"><b>NOT-ENOUGH-SILVER</b>
+        the units in this hex are short $60 between them: they can have $100 and their orders spend $160</span></div>
+      <b class="lbl" style="margin-top:10px">Editor, Scout's orders</b>
+      <div class="ed">
+        <div class="line"><span class="gutter warn">!</span><span>BUY 2 ORC</span></div>
+        <div class="hint">This hex is short of silver between its units. See Problems for the hex.</div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Not one existing string, test or finding changes. The whole bead becomes the quantity cap.</li>
+      <li>A dropped zero or a mistyped price still shows up loudly.</li>
+      <li>The overspend is real money the faction does not have; the player probably wants to know.</li>
+      <li class="con">Warns about something that will not actually go wrong this month.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>W2</em> Keep it, and say the engine will pay</h2>
+    <div class="concept">Same finding, same figures, one added clause when the whole overdraft is
+    BUY lines. The player learns both facts: the sums do not add up, and nothing will fail.</div>
+    <div class="scene">
+      <b class="lbl">Problems, for the hex</b>
+      <div class="find"><span class="dot"></span><span class="txt"><b>NOT-ENOUGH-SILVER</b>
+        the units in this hex are short $60 between them: they can have $100 and their orders spend $160<i>,
+        which the game will let them buy anyway</i></span></div>
+      <b class="lbl" style="margin-top:10px">Editor, Scout's orders</b>
+      <div class="ed">
+        <div class="line"><span class="gutter warn">!</span><span>BUY 2 ORC</span></div>
+        <div class="hint">This hex is short of silver between its units. See Problems for the hex.</div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Honest about both halves, and still loud enough to catch a typo.</li>
+      <li>One new clause, one new condition, no new code and no new severity.</li>
+      <li class="con">The clause documents an engine quirk that a future engine version may fix, and would then be wrong.</li>
+      <li class="con">Needs a test that the clause appears only when <i>every</i> claim on the pool is a BUY.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>W3</em> Stay quiet</h2>
+    <div class="concept">A pooled silver shortfall whose whole overdraft is BUY lines emits nothing
+    at all &mdash; neither the hex finding nor the line markers. The HUD shows exactly what the engine
+    will do and says nothing about the arithmetic behind it.</div>
+    <div class="scene">
+      <b class="lbl">Problems, for the hex</b>
+      <div class="quiet">Nothing.</div>
+      <b class="lbl" style="margin-top:10px">Editor, Scout's orders</b>
+      <div class="ed">
+        <div class="line"><span class="gutter none">&middot;</span><span>BUY 2 ORC</span></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>No false alarm: every warning the HUD shows is something that will really happen.</li>
+      <li class="con">A mistyped quantity in a sharing hex becomes completely invisible.</li>
+      <li class="con">The SILVER column still shows both units ending the month in the red while nothing warns &mdash; the column and the warning stop agreeing, which a corpus-wide test exists to prevent.</li>
+      <li class="con">The largest change of the three: a new suppression rule inside <code>pool_shortfalls</code>, and existing tests to revisit.</li>
+    </ul>
+  </div>
+
+</div>
+
+</main>
+</body>
+</html>
