@@ -187,3 +187,120 @@ fn full_partial_and_failed_recruitment_leave_every_production_surface_in_agreeme
         );
     }
 }
+
+/// A raw-report fixture for `ah-4a13`'s own regression: a same-race `GIVE` out and `BUY` back that
+/// leaves the net headcount unchanged, which is exactly the case `Ledger::balance` cannot tell
+/// apart from "nothing happened" - only `Ledger::bought` can.
+///
+/// Unit 900 gives one of its two orcs to unit 901 and immediately recruits one back, so its
+/// headcount never moves even though a fresh, unskilled recruit did arrive and must still dilute
+/// its weaponsmith.
+fn give_then_recruit_report() -> String {
+    [
+        "Atlantis Report For:".to_string(),
+        "The Smiths (1)".to_string(),
+        "February, Year 1".to_string(),
+        "".to_string(),
+        "plain (1,1) in Nowhere, 10 peasants (orcs), $5.".to_string(),
+        "------------------------------------------------------------".to_string(),
+        "  Wages: $13.5 (Max: $633).".to_string(),
+        "  Wanted: none.".to_string(),
+        "  For Sale: 1 orc [ORC] at $10.".to_string(),
+        "  Entertainment available: $85.".to_string(),
+        "  Products: none.".to_string(),
+        "".to_string(),
+        "Exits:".to_string(),
+        "  Southeast : plain (2,2) in Nowhere.".to_string(),
+        "".to_string(),
+        "* Smiths (900), The Smiths (1), behind, 2 orcs [ORC], 100 iron [IRON], 100 silver \
+         [SILV]. Weight: 45. Capacity: 0/0/30/0. Skills: weaponsmith [WEAP] 3 (180)."
+            .to_string(),
+        "* Recipients (901), The Smiths (1), behind, 1 orc [ORC]. Weight: 15. \
+         Capacity: 0/0/15/0."
+            .to_string(),
+        "".to_string(),
+    ]
+    .join("\n")
+}
+
+const GIVE_THEN_RECRUIT_ORDERS: &str = "unit 900\nGIVE 901 1 ORC\nBUY 1 ORC\nPRODUCE SWOR\n";
+
+#[test]
+fn give_then_recruit_keeps_problems_and_preview_skill_dilution_in_agreement() {
+    let text = give_then_recruit_report();
+
+    let mut parsed = parse_report_full(&text);
+    classify_units(&mut parsed, &ruleset());
+    let review = review_turn(
+        &parsed,
+        GIVE_THEN_RECRUIT_ORDERS,
+        Some(&ruleset()),
+        CheckOptions::default(),
+    );
+
+    let arrivals: Vec<_> = review
+        .findings
+        .iter()
+        .filter(|finding| {
+            finding.unit_id.as_deref() == Some("900")
+                && finding.code.as_str() == "arrivals-lower-a-skill"
+        })
+        .collect();
+    assert_eq!(arrivals.len(), 1, "{:?}", review.findings);
+    assert_eq!(
+        arrivals[0].message,
+        "buying 1 man into this unit lowers its weaponsmith from 3 to 2"
+    );
+
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        &text,
+        "[]",
+        &format!(
+            "{}\n{GIVE_THEN_RECRUIT_ORDERS}",
+            atlantis_hud_core::report::orders::extract_orders_template(&text)
+                .map(|template| template.text)
+                .unwrap_or_default()
+        ),
+    )
+    .expect("the ruleset loads");
+
+    let unit = response
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .find(|unit| unit.unit.unit_id == "900")
+        .expect("unit 900 is in the preview");
+
+    assert_eq!(
+        unit.unit.men, 2,
+        "the GIVE out and the BUY back leave the headcount exactly where it started"
+    );
+    let weaponsmith_points = unit
+        .unit
+        .skills
+        .iter()
+        .find(|skill| skill.tag == "WEAP")
+        .map_or(0, |skill| skill.points);
+    assert_eq!(
+        weaponsmith_points, 90,
+        "the recruit still dilutes weaponsmith even though the headcount did not move"
+    );
+
+    let preview_swor: i64 = unit
+        .produced
+        .iter()
+        .filter(|produced| produced.tag == "SWOR")
+        .map(|produced| produced.amount)
+        .sum();
+    let silver_produced = review
+        .silver
+        .iter()
+        .find(|silver| silver.unit_id == "900")
+        .map_or(0, |silver| silver.produced);
+    assert_eq!(
+        preview_swor, silver_produced,
+        "the unit preview and the SILVER column must still agree on the produced sword count"
+    );
+}

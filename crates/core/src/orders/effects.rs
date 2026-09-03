@@ -602,6 +602,11 @@ struct WorkingUnit {
     /// What arrives at this unit by another unit's `TRANSPORT`/`DISTRIBUTE` this month. Written
     /// once by `apply_transports` (`ah-bxgs`).
     transport_received: Vec<TransportReceived>,
+    /// This unit's settled recruits this month, copied from `UnitItemEffects::recruited` by
+    /// `apply_item_effects`. Empty when nothing was recruited and when a `BUY ALL` makes the exact
+    /// figure unknowable; `settle_headcounts` reads this to dilute skills by the exact settled
+    /// count rather than infer one from the item list's net change (`ah-4a13`).
+    recruited: Vec<crate::report::model::ItemAmount>,
 }
 
 impl WorkingUnit {
@@ -811,6 +816,7 @@ impl Working {
                 created: Vec::new(),
                 transport_sent: Vec::new(),
                 transport_received: Vec::new(),
+                recruited: Vec::new(),
             });
         }
         let known_units = report.units().map(|unit| unit.unit_id.clone()).collect();
@@ -1006,6 +1012,7 @@ impl Working {
                 }
             }
             unit.uncounted = effect.uncounted.clone();
+            unit.recruited = effect.recruited.clone();
             unit.produced = effect
                 .moved
                 .iter()
@@ -1073,6 +1080,7 @@ impl Working {
             created: Vec::new(),
             transport_sent: Vec::new(),
             transport_received: Vec::new(),
+            recruited: Vec::new(),
         });
         self.forming.push(Some(index));
     }
@@ -1699,22 +1707,34 @@ fn settle_headcounts(units: &mut [WorkingUnit], ruleset: &crate::movement::rules
         }
         let before = working.unit.men;
         let (by_race, total) = composition::men_in(&working.unit.items, ruleset);
-        if total > before {
-            // A man tag credited from a unit this hex does not show (`ah-agbm`'s
-            // `taken_unshown`) is not a recruit: its true skills are unknown, not zero, exactly
-            // as `apply_gifts_of_men` already marks that unit `Unknowable` rather than guessing.
-            // Left out of the merge here, or the checks and the units table would disagree about
-            // the same arrival.
-            let taken_unknown: i64 = working
-                .taken_unshown
-                .iter()
-                .filter(|taken| ruleset.is_man(&taken.tag))
-                .map(|taken| taken.amount)
-                .sum();
-            let recruited = total - before - taken_unknown;
-            if recruited > 0 {
-                working.unit.skills = merge_skills(&working.unit.skills, before, &[], recruited);
+        let recruited = if working.recruited.is_empty() {
+            // No exact settled recruit to read - either nothing was recruited, or a `BUY ALL`
+            // makes the exact figure unknowable and this falls back to the net change in the item
+            // list exactly as it did before `UnitItemEffects::recruited` existed.
+            if total > before {
+                // A man tag credited from a unit this hex does not show (`ah-agbm`'s
+                // `taken_unshown`) is not a recruit: its true skills are unknown, not zero,
+                // exactly as `apply_gifts_of_men` already marks that unit `Unknowable` rather than
+                // guessing. Left out of the merge here, or the checks and the units table would
+                // disagree about the same arrival.
+                let taken_unknown: i64 = working
+                    .taken_unshown
+                    .iter()
+                    .filter(|taken| ruleset.is_man(&taken.tag))
+                    .map(|taken| taken.amount)
+                    .sum();
+                total - before - taken_unknown
+            } else {
+                0
             }
+        } else {
+            // A same-race gift out and recruit back in can leave `total` unchanged even though a
+            // recruit arrived (`ah-4a13`) - the exact settled list still dilutes the unit's
+            // skills even when the net headcount does not move.
+            working.recruited.iter().map(|item| item.amount).sum()
+        };
+        if recruited > 0 {
+            working.unit.skills = merge_skills(&working.unit.skills, before, &[], recruited);
         }
         working.unit.men_by_race = by_race;
         working.unit.men = total;

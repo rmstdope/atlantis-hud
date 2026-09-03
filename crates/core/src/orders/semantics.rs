@@ -505,7 +505,7 @@ pub fn review_turn(
 
     let mut hexes: Vec<(Hex<'_>, Ledger<'_>)> = hexes
         .into_iter()
-        .map(|mut hex| {
+        .map(|hex| {
             let ledger = ledger_for_with_production(
                 &hex,
                 ruleset,
@@ -514,7 +514,9 @@ pub fn review_turn(
                 &foreign_unit_ids,
                 &claim_allowances,
             );
-            apply_recruits(&mut hex.units, &ledger, ruleset);
+            // Recruits are already settled, once, by `settle_recruits_before_production` above -
+            // this final ledger is a reader of that state, not another recruitment settlement.
+            // `item_effects` follows the same shape (`ah-40c9`).
             (hex, ledger)
         })
         .collect();
@@ -1786,6 +1788,23 @@ enum SkillsAfterGifts {
     Unknowable,
 }
 
+/// A unit's race breakdown once this month's recruits have merged on top of gifts.
+///
+/// The mirror of [`SkillsAfterGifts`] for headcount by race rather than skill points, and
+/// deliberately its own type: a recruit can be known exactly (`Ledger::bought` names the tag) while
+/// its skill dilution is unknowable, or the reverse, and the two must not be forced to agree.
+#[derive(Debug)]
+enum RacesAfterRecruits {
+    /// No recruit joined, or none of the ones that did changed the breakdown, so the pre-recruit
+    /// figure stands.
+    Unchanged,
+    /// This month's recruits merged into the pre-recruit breakdown.
+    Merged(Vec<ItemAmount>),
+    /// A recruit arrived by a route this application does not model, so no race-reading check may
+    /// judge this unit.
+    Unknowable,
+}
+
 /// How many men joined a unit this month, by each route that can bring them.
 ///
 /// Never netted against men who left: a unit that receives three and gives two away has
@@ -1827,6 +1846,17 @@ struct Ordered<'a> {
     skills_after_gifts: SkillsAfterGifts,
     /// The unit's skills after this month's recruits have merged on top of gifts.
     skills_after_recruits: Option<SkillsAfterGifts>,
+    /// The unit's race breakdown after this month's recruits have merged on top of gifts. Written
+    /// by `apply_recruits`; `Unchanged` until then. See `SkillsAfterGifts`/`skills_after_recruits`
+    /// for why this is a separate, independently conservative outcome rather than folded into
+    /// them: a race sum that fails to reconcile must not erase a valid skill merge, and the
+    /// reverse.
+    races_after_recruits: RacesAfterRecruits,
+    /// Whether `apply_recruits` has already settled this unit's recruits this turn. Set the first
+    /// time its pass reaches this unit; a caller that reaches it again is a duplicate settlement,
+    /// which `ah-40c9` shows doubles every recruit (`debug_assert!`ed against, and skipped rather
+    /// than reapplied, so release behaviour stays idempotent even if a caller regresses).
+    recruits_settled: bool,
     /// The unit's people and goods once this month's GIVE and TAKE orders have run. Written by
     /// `apply_transfers` after the hex is read, alongside `skills_after_gifts`; `Unchanged` until
     /// then.
@@ -1877,6 +1907,8 @@ impl<'a> Hex<'a> {
                     formed: None,
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     skills_after_recruits: None,
+                    races_after_recruits: RacesAfterRecruits::Unchanged,
+                    recruits_settled: false,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
                     uncertain_after_gifts: BTreeMap::new(),
                     refused_transfers: Vec::new(),
@@ -1901,6 +1933,8 @@ impl<'a> Hex<'a> {
                     }),
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     skills_after_recruits: None,
+                    races_after_recruits: RacesAfterRecruits::Unchanged,
+                    recruits_settled: false,
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
                     uncertain_after_gifts: BTreeMap::new(),
                     refused_transfers: Vec::new(),
@@ -1996,9 +2030,10 @@ struct Working {
     /// Men that arrived at this unit through a `TAKE` the walk actually followed.
     men_taken: i64,
     /// A transfer into this unit moved fewer men than the order named, because the source did not
-    /// hold that many. `apply_recruits` cannot then attribute the difference between the ledger's
-    /// arrivals and `men_given + men_taken` to recruiting, because part of it is an over-give the
-    /// ledger does not clamp and this walk does. See *Known traps*.
+    /// hold that many. The ledger's own `transfer` runs the same GIVE/TAKE order independently and
+    /// may not clamp it identically, so a check that reads the ledger's balance for this unit
+    /// cannot be trusted to agree with the headcount this walk actually settled - `skills_after_gifts`
+    /// is marked `Unknowable` below rather than risk the two disagreeing about one gift.
     men_clamped: bool,
 }
 
@@ -2502,9 +2537,10 @@ fn apply_transfers(
                 continue;
             }
 
-            // A gift the source cannot cover is clamped here and is *not* clamped by the ledger,
-            // so the difference would reach `apply_recruits` looking exactly like recruiting -
-            // for a man tag only, since that is the only thing `apply_recruits` sums.
+            // A gift the source cannot cover is clamped here and is *not* clamped identically by
+            // the ledger's own `transfer`, so a check that reads the ledger's balance for this
+            // unit could disagree with the headcount this walk actually settled - for a man tag
+            // only, since only a man tag's headcount feeds a skill merge.
             if is_man && moved < requested {
                 if let GiveTarget::Unit(receiver_position) = receiver {
                     working
@@ -2716,6 +2752,63 @@ fn apply_transfers(
     }
 }
 
+/// This unit's settled recruits, one canonical [`ItemAmount`] per man tag `Ledger::bought`
+/// actually credited it, or `None` where they cannot be told apart from the goods a
+/// `BUY ALL` might also have bought.
+///
+/// Reads `Ledger::bought` rather than `Ledger::balance`: `balance` also carries this month's
+/// settled `GIVE`/`TAKE`, so a same-race gift out followed by a recruit back in can leave it
+/// unchanged even though a recruit arrived (see the bead's *Known traps*). `bought` is settled
+/// exact purchases by normalized tag, and is the one reader both Problems and the unit preview
+/// use, so they cannot settle recruitment on two different timelines again (`ah-40c9`).
+fn recruited_people(
+    ordered: &Ordered<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: &Ruleset,
+) -> Option<Vec<ItemAmount>> {
+    // `buy` returns early for `Amount::All` and credits nothing to `Ledger::bought`'s exact form -
+    // `settle_buy_all` writes it there instead, keyed the same way, so a `BUY ALL` of a man tag
+    // cannot be told apart from a `BUY ALL` of anything else here. `BUY ALL PEASANTS` cannot be
+    // told from `BUY ALL SWORDS` either - `PEASANTS` names no catalogue item at all - so the test
+    // is on the amount, not the item. `ah-jown` makes this arm deletable. Checked ahead of
+    // `bought` itself, which `settle_buy_all` also writes to.
+    let buys_all_people = ordered.intents().any(|intent| {
+        matches!(
+            intent,
+            Intent::Buy {
+                amount: Amount::All { .. },
+                ..
+            }
+        )
+    });
+    if buys_all_people {
+        return None;
+    }
+
+    let who = &ordered.unit.unit_id;
+    let mut people = Vec::new();
+    for ((unit_id, tag), amount) in &ledger.bought {
+        if unit_id != who || *amount <= 0 || !ruleset.is_man(tag) {
+            continue;
+        }
+        // Canonicalized so a caller merging this into an existing race breakdown matches an
+        // existing entry rather than adding a second line for the same race under a different
+        // spelling.
+        let Some(entry) = ruleset.find_item(tag) else {
+            // Unreachable in practice - `is_man` already found this tag in the same catalogue -
+            // but an all-or-nothing `None` here is the conservative answer, not a partial list
+            // missing the one tag that failed to resolve.
+            return None;
+        };
+        people.push(ItemAmount {
+            amount: *amount,
+            name: entry.name.clone(),
+            tag: entry.tag.clone(),
+        });
+    }
+    Some(people)
+}
+
 /// Merges this month's recruits into the units that bought them.
 ///
 /// `rules/economy_recruiting`: "New recruits will not have any skills or items", so a purchase of
@@ -2727,65 +2820,47 @@ fn apply_transfers(
 ///
 /// Runs after `apply_transfers` because `rules/sequenceofevents` puts *Give orders* before
 /// *Market orders*, and after `ledger_for` because only the ledger knows how many people a `BUY`
-/// could actually pay for.
+/// could actually pay for. Settles each unit exactly once per turn: `settle_recruits_before_production`
+/// and every later, final-ledger caller must read this state rather than reapply it, or a recruit
+/// doubles (`ah-40c9`).
 fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Option<&Ruleset>) {
     let Some(ruleset) = ruleset else { return };
 
-    // Indices rather than `iter_mut`: the arrival sum below reads the unit inside a closure while
-    // the branches around it write to it, and taking the two borrows one after the other in the
-    // same body avoids a fight with the borrow checker for no gain.
+    // Indices rather than `iter_mut`: the borrows below read the unit inside a closure while the
+    // branches around it write to it, and taking the two borrows one after the other in the same
+    // body avoids a fight with the borrow checker for no gain.
     #[allow(clippy::needless_range_loop)]
     for index in 0..units.len() {
+        if units[index].recruits_settled {
+            // A second call for the same unit this turn - `settle_recruits_before_production`'s
+            // provisional pass and a caller's final ledger must never both apply, or a recruit
+            // doubles exactly as `ah-40c9`'s regression did. Idempotent in release so a duplicate
+            // caller does not corrupt state further, but loud in a debug build so the bug is
+            // caught here rather than in a doubled finding.
+            debug_assert!(
+                false,
+                "apply_recruits settled unit {} twice this turn",
+                units[index].unit.unit_id
+            );
+            continue;
+        }
+        units[index].recruits_settled = true;
+
         if matches!(
             units[index].skills_after_gifts,
             SkillsAfterGifts::Unknowable
         ) {
             units[index].skills_after_recruits = Some(SkillsAfterGifts::Unknowable);
+            units[index].races_after_recruits = RacesAfterRecruits::Unknowable;
             continue;
         }
 
-        let buys_all_people = units[index].intents().any(|intent| {
-            matches!(
-                intent,
-                Intent::Buy {
-                    amount: Amount::All { .. },
-                    ..
-                }
-            )
-        });
-        if buys_all_people {
-            // `buy` returns early for `Amount::All` and credits nothing to the balance, so the
-            // arrivals below would read as zero and the unit would be judged as though it had
-            // recruited nobody. `BUY ALL PEASANTS` cannot be told from `BUY ALL SWORDS` here -
-            // `PEASANTS` names no catalogue item at all - so the test is on the amount, not the
-            // item. `ah-jown` makes this arm deletable.
+        let Some(people) = recruited_people(&units[index], ledger, ruleset) else {
             units[index].skills_after_recruits = Some(SkillsAfterGifts::Unknowable);
+            units[index].races_after_recruits = RacesAfterRecruits::Unknowable;
             continue;
-        }
-
-        // Arrivals the ledger saw, per man tag, positive parts only - never the net, so a unit
-        // that takes gnolls in and gives centaurs away has recruited nobody rather than netting to
-        // a number that looks like it by accident.
-        let arrived: i64 = {
-            let ordered = &units[index];
-            ledger
-                .balance
-                .iter()
-                .filter(|((unit_id, tag), _)| {
-                    unit_id == &ordered.unit.unit_id && ruleset.is_man(tag)
-                })
-                .map(|((_, tag), balance)| (balance - ordered.holding(tag)).max(0))
-                .sum()
         };
-
-        let recruited = arrived - units[index].arrivals.total();
-        if recruited < 0 {
-            // The two walks disagree about one unit. Step 2 above and the `clamped` flag on
-            // `apply_transfers` cover the routes known to diverge, so nothing should reach here
-            // - this is a backstop, and silence is the right shape for one.
-            units[index].skills_after_recruits = Some(SkillsAfterGifts::Unknowable);
-            continue;
-        }
+        let recruited: i64 = people.iter().map(|item| item.amount).sum();
         if recruited == 0 {
             continue;
         }
@@ -2793,6 +2868,7 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
             // The merge is weighted by the receiver's headcount, and `settle_headcounts` skips
             // such a unit for the same reason.
             units[index].skills_after_recruits = Some(SkillsAfterGifts::Unknowable);
+            units[index].races_after_recruits = RacesAfterRecruits::Unknowable;
             continue;
         }
 
@@ -2808,6 +2884,19 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
         // the headcount after the arrivals is silently wrong, the same trap `apply_transfers`
         // avoids for a gift.
         let merged = effects::merge_skills(&current, before, &[], recruited);
+
+        let mut races = ordered.early_men_by_race().to_vec();
+        for purchased in &people {
+            if let Some(existing) = races
+                .iter_mut()
+                .find(|item| item.tag.eq_ignore_ascii_case(&purchased.tag))
+            {
+                existing.amount += purchased.amount;
+            } else {
+                races.push(purchased.clone());
+            }
+        }
+
         ordered.men_after_orders = before + recruited;
         ordered.arrivals.bought += recruited;
         ordered.skills_after_recruits = Some(if merged == ordered.unit.skills {
@@ -2815,6 +2904,14 @@ fn apply_recruits(units: &mut [Ordered<'_>], ledger: &Ledger<'_>, ruleset: Optio
         } else {
             SkillsAfterGifts::Merged(merged)
         });
+        // Race reconstruction is independently conservative from the skill merge above: a race
+        // sum that fails to reconcile must not erase the skill merge that just succeeded.
+        let races_total: i64 = races.iter().map(|item| item.amount).sum();
+        ordered.races_after_recruits = if races_total == ordered.men_after_orders {
+            RacesAfterRecruits::Merged(races)
+        } else {
+            RacesAfterRecruits::Unknowable
+        };
     }
 }
 
@@ -2839,16 +2936,24 @@ fn sailing_level_phrase(levels: i64, noun: &str) -> String {
 }
 
 impl Ordered<'_> {
+    /// Whether the unit can teach - `rules/skills_teaching`: "only leaders will teach", read
+    /// against the settled state `rules/sequenceofevents` puts before `TEACH`: this month's
+    /// `GIVE`, `TAKE` and `BUY` have all already run.
+    ///
+    /// `None` for an estimated report headcount, an unfollowable transfer, or unknown post-recruit
+    /// composition - the same three routes `skills()` goes silent for, and for the same reason:
+    /// a warning built on a figure the turn has already moved past is wrong more often than it is
+    /// missing.
     fn teaching_eligibility(&self) -> Option<bool> {
         if self.unit.men_estimated || self.holdings_unknown() {
             return None;
         }
-        let races = self.early_men_by_race();
-        if races.iter().map(|item| item.amount).sum::<i64>() != self.early_men() {
+        let races = self.men_by_race_after_orders()?;
+        if races.iter().map(|item| item.amount).sum::<i64>() != self.men_after_orders {
             return None;
         }
         Some(
-            self.early_men() > 0
+            self.men_after_orders > 0
                 && races
                     .iter()
                     .all(|item| item.tag.eq_ignore_ascii_case("LEAD")),
@@ -2935,6 +3040,19 @@ impl Ordered<'_> {
             SkillsAfterGifts::Unchanged => Some(&self.unit.skills),
             SkillsAfterGifts::Merged(merged) => Some(merged),
             SkillsAfterGifts::Unknowable => None,
+        }
+    }
+
+    /// The unit's race breakdown once this month's gifts, takes and recruits have all run - what
+    /// teaching must read, since `rules/sequenceofevents` settles `BUY` before `TEACH`.
+    ///
+    /// `None` exactly as `skills()`: a recruit arrived by a route this application does not
+    /// model, so no race-reading check may judge this unit either.
+    fn men_by_race_after_orders(&self) -> Option<&[ItemAmount]> {
+        match &self.races_after_recruits {
+            RacesAfterRecruits::Unchanged => Some(self.early_men_by_race()),
+            RacesAfterRecruits::Merged(merged) => Some(merged),
+            RacesAfterRecruits::Unknowable => None,
         }
     }
 
@@ -3536,6 +3654,22 @@ pub(crate) fn item_effects(
             &claim_allowances,
         );
 
+        // Read before any of the ledger's fields are consumed below: the preview's exact
+        // recruits are the same settled `Ledger::bought` reading Problems uses, so the two
+        // surfaces cannot disagree about which arrivals were a recruit (`ah-40c9`).
+        if let Some(ruleset) = ruleset {
+            for ordered in &hex.units {
+                if let Some(people) = recruited_people(ordered, &ledger, ruleset) {
+                    if !people.is_empty() {
+                        result
+                            .entry(ordered.unit.unit_id.clone())
+                            .or_default()
+                            .recruited = people;
+                    }
+                }
+            }
+        }
+
         for movement in ledger.movements {
             result
                 .entry(movement.unit_id.clone())
@@ -3573,6 +3707,11 @@ pub(crate) struct UnitItemEffects {
     pub uncounted: Vec<String>,
     /// What this unit's `BUILD` orders spend this month, in document order (`ah-ofpb.2`).
     pub built: Vec<super::effects::BuildSpend>,
+    /// This unit's settled recruits this month, one entry per man tag `Ledger::bought` credited
+    /// it. Empty both when nothing was recruited and when a `BUY ALL` makes the exact figure
+    /// unknowable - either way the preview falls back to its own net-count inference
+    /// (`effects::settle_headcounts`), exactly as it did before this bead.
+    pub recruited: Vec<ItemAmount>,
 }
 
 /// What each unit in a hex holds once its whole month has run, in `hex.units` order.
@@ -6860,8 +6999,13 @@ fn check_one_teacher(
     match teacher.teaching_eligibility() {
         Some(false) => {
             if options.emits(codes::TEACHER_CANNOT_TEACH) {
-                let non_leaders: Vec<String> = teacher
-                    .early_men_by_race()
+                // `teaching_eligibility` only ever returns `Some` once this settled slice is
+                // itself `Some`, but read defensively rather than fall back to report-era races
+                // or panic - a future divergence between the two must go silent, not wrong.
+                let Some(races) = teacher.men_by_race_after_orders() else {
+                    return;
+                };
+                let non_leaders: Vec<String> = races
                     .iter()
                     .filter(|item| !item.tag.eq_ignore_ascii_case("LEAD"))
                     .map(|item| counted_item(item.amount, &item.tag, hex, ruleset, plurals))
@@ -6869,8 +7013,7 @@ fn check_one_teacher(
                 let message = if non_leaders.is_empty() {
                     "only leaders can teach; this unit has no people".to_string()
                 } else {
-                    let prefix = if teacher
-                        .early_men_by_race()
+                    let prefix = if races
                         .iter()
                         .any(|item| item.tag.eq_ignore_ascii_case("LEAD"))
                     {
@@ -6959,7 +7102,12 @@ fn check_one_teacher(
         }
     }
 
-    let slots = teacher.unit.men.saturating_mul(STUDENTS_PER_TEACHER);
+    // The teacher's own capacity is read post-orders too, exactly as `taught_men` above already
+    // reads each pupil's: a recruit or a gift changes how many students the teacher can carry,
+    // and `rules/sequenceofevents` settles all of it before `TEACH` (`ah-4a13`).
+    let slots = teacher
+        .men_after_orders
+        .saturating_mul(STUDENTS_PER_TEACHER);
     if taught_men > slots && options.emits(codes::TEACHING_OVERSUBSCRIBED) {
         findings.push(teacher.finding(
             hex,
@@ -7044,8 +7192,10 @@ fn offer_free_slots(
         return;
     }
 
-    let free =
-        teacher.unit.men.saturating_mul(STUDENTS_PER_TEACHER) - taught_by(teacher, hex, departed);
+    let free = teacher
+        .men_after_orders
+        .saturating_mul(STUDENTS_PER_TEACHER)
+        - taught_by(teacher, hex, departed);
     if free <= 0 {
         return;
     }
@@ -21075,6 +21225,177 @@ mod tests {
                 "unit 500\nTEACH 700 800\nunit 700\nSTUDY combat\n"
             )),
             ["teaching-oversubscribed"]
+        );
+    }
+
+    // --- teaching reads the state this month's orders leave, not the report's own (`ah-4a13`) ---
+
+    /// `rules/sequenceofevents` settles `BUY` before `TEACH`, so a teacher that recruits a
+    /// non-leader this month is ineligible from the moment its month runs, exactly as a report
+    /// that already showed the mixed race would be - and the mixed-race message, not the
+    /// report-era one, is what names the recruit.
+    #[test]
+    fn teaching_after_orders_rejects_a_teacher_who_recruits_a_non_leader() {
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![
+                with_named_skill_pts(
+                    with_race(with_silver(unit("500"), 1000), 1, "leaders", "LEAD"),
+                    "combat",
+                    "COMB",
+                    180,
+                ),
+                with_men(with_silver(unit("700"), 1000), 1),
+            ])
+        };
+        let orders = "unit 500\nBUY 1 HUMN\nTEACH 700\nunit 700\nSTUDY combat\n";
+
+        let findings = check(vec![region], orders);
+
+        let teaching: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| {
+                matches!(
+                    finding.code,
+                    codes::TEACHER_CANNOT_TEACH
+                        | codes::TAUGHT_NOT_HERE
+                        | codes::TAUGHT_NOT_STUDYING
+                        | codes::TEACHING_OVERSUBSCRIBED
+                        | codes::TEACHER_HAS_FREE_SLOTS
+                )
+            })
+            .collect();
+        assert_eq!(teaching.len(), 1, "{findings:?}");
+        assert_eq!(
+            teaching[0].code,
+            codes::TEACHER_CANNOT_TEACH,
+            "no student-check finding follows the ineligible-teacher warning"
+        );
+        assert_eq!(
+            teaching[0].message,
+            "only leaders can teach; this unit also has 1 human"
+        );
+    }
+
+    /// A recruit dilutes the teacher's skill exactly as a gift does, but does not shrink its
+    /// capacity - `rules/skills_teaching`'s ten students per teacher counts *people*, and a
+    /// recruit is one more person settled before `TEACH` runs.
+    #[test]
+    fn teaching_after_orders_counts_recruited_leaders_in_capacity() {
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 1,
+                name: "leader".to_string(),
+                tag: "LEAD".to_string(),
+                price: 50,
+            }],
+            ..region(vec![
+                with_named_skill_pts(
+                    with_race(with_silver(unit("500"), 1000), 1, "leaders", "LEAD"),
+                    "combat",
+                    "COMB",
+                    180,
+                ),
+                with_men(with_silver(unit("700"), 1000), 15),
+                with_men(with_silver(unit("900"), 1000), 1),
+            ])
+        };
+        let orders =
+            "unit 500\nBUY 1 LEAD\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n";
+
+        let findings = check(vec![region], orders);
+
+        assert!(
+            !codes(&findings).contains(&"teaching-oversubscribed"),
+            "{findings:?}"
+        );
+        let free_slots: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::TEACHER_HAS_FREE_SLOTS)
+            .collect();
+        assert_eq!(free_slots.len(), 1, "{findings:?}");
+        assert_eq!(
+            free_slots[0].message,
+            "has 5 teaching slots still free and could also teach unit 900"
+        );
+    }
+
+    /// The same settled capacity for a gift, already the established route since
+    /// `ah-t8ei`/`ah-3mwm`: this pins that `check_one_teacher`'s and `offer_free_slots`'
+    /// capacity reads did not regress back to the report's own headcount while `BUY` was being
+    /// settled onto it.
+    #[test]
+    fn teaching_after_orders_counts_gifted_leaders_in_capacity() {
+        let giver = with_named_skill_pts(
+            with_race(with_silver(unit("400"), 1000), 1, "leaders", "LEAD"),
+            "combat",
+            "COMB",
+            180,
+        );
+        let teacher = with_named_skill_pts(
+            with_race(with_silver(unit("500"), 1000), 1, "leaders", "LEAD"),
+            "combat",
+            "COMB",
+            180,
+        );
+        let student = with_men(with_silver(unit("700"), 1000), 15);
+        let orders = "unit 400\nGIVE 500 1 LEAD\nunit 500\nTEACH 700\nunit 700\nSTUDY combat\n";
+
+        let findings = check(vec![region(vec![giver, teacher, student])], orders);
+
+        assert!(
+            !codes(&findings).contains(&"teaching-oversubscribed"),
+            "{findings:?}"
+        );
+    }
+
+    /// Both routes settle onto the same headcount in the same month: a gift that leaves and a
+    /// recruit that arrives are each read post-orders, so the teacher's capacity is neither the
+    /// report's original two nor a stale one - it is the one person the gift left, plus the one
+    /// the recruit brought back.
+    #[test]
+    fn teaching_after_orders_preserves_capacity_across_give_then_recruit() {
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 1,
+                name: "leader".to_string(),
+                tag: "LEAD".to_string(),
+                price: 50,
+            }],
+            ..region(vec![
+                with_named_skill_pts(
+                    with_race(with_silver(unit("500"), 1000), 2, "leaders", "LEAD"),
+                    "combat",
+                    "COMB",
+                    180,
+                ),
+                unit("901"),
+                with_men(with_silver(unit("700"), 1000), 15),
+                with_men(with_silver(unit("900"), 1000), 1),
+            ])
+        };
+        let orders = "unit 500\nGIVE 901 1 LEAD\nBUY 1 LEAD\nTEACH 700\nunit 700\nSTUDY combat\n\
+                       unit 900\nSTUDY combat\n";
+
+        let findings = check(vec![region], orders);
+
+        assert!(
+            !codes(&findings).contains(&"teaching-oversubscribed"),
+            "{findings:?}"
+        );
+        let free_slots: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::TEACHER_HAS_FREE_SLOTS)
+            .collect();
+        assert_eq!(free_slots.len(), 1, "{findings:?}");
+        assert_eq!(
+            free_slots[0].message,
+            "has 5 teaching slots still free and could also teach unit 900"
         );
     }
 
