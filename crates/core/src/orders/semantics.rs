@@ -7182,11 +7182,35 @@ fn report_shortfalls(
             // does through the ledger's own `apply` - a unit given 100 and told to spend 200 reads
             // "can have $100 and its orders spend $200", not "$0 ... $100" (M2, `ah-jw85`).
             let received = receipts.get(unit_id).map_or(0, |receipts| receipts.silver);
+            // `rules/buy` buys as many as the unit can afford, so the sentence goes on to say
+            // what it gets instead of what it asked for. Appended rather than replacing anything,
+            // so the figures a player already reads stay where they are (`ah-omn7`, Q1).
+            let cut: Vec<String> = ledger
+                .reduced_buys
+                .iter()
+                .filter(|reduced| &reduced.unit_id == unit_id)
+                .map(|reduced| {
+                    format!(
+                        "{} of the {} ordered",
+                        if reduced.bought == 0 {
+                            "none".to_string()
+                        } else {
+                            reduced.bought.to_string()
+                        },
+                        counted_item(reduced.ordered, &reduced.tag, hex, ruleset, plurals),
+                    )
+                })
+                .collect();
+            let bought = if cut.is_empty() {
+                String::new()
+            } else {
+                format!(", so it buys {}", cut.join(" and "))
+            };
             ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
                 format!(
-                    "short ${short}: this unit can have ${} and its {} spend ${}",
+                    "short ${short}: this unit can have ${} and its {} spend ${}{bought}",
                     ordered.holding(SILVER) + received,
                     spenders(upkeep_still_drawn(ledger, unit_id)),
                     ordered.holding(SILVER) + received + short,
@@ -7397,6 +7421,20 @@ fn plurals_in(report: &ParsedReport) -> Plurals {
         .iter()
         .flat_map(|region| region.units.iter())
         .flat_map(|unit| unit.items.iter())
+        .filter(|item| item.amount > 1)
+    {
+        plurals
+            .entry(item.tag.to_ascii_uppercase())
+            .or_insert_with(|| item.name.clone());
+    }
+    // The market lines too, and after the units so no existing answer moves: `For Sale` and
+    // `Wanted` print `482 hill dwarves [HDWA]` in exactly the shape a unit's inventory does, and
+    // the goods a message is about are often ones the market has and nobody holds - a `BUY` cut
+    // down to what the unit can afford names them (`ah-omn7`).
+    for item in report
+        .regions
+        .iter()
+        .flat_map(|region| region.for_sale.iter().chain(region.wanted.iter()))
         .filter(|item| item.amount > 1)
     {
         plurals
@@ -20189,7 +20227,7 @@ mod tests {
         let mut hex = region(vec![with_men(with_silver(starving(unit("5")), 10), 4)]);
         hex.for_sale.push(MarketItem {
             amount: 10,
-            name: "horse".to_string(),
+            name: "horses".to_string(),
             tag: "HORS".to_string(),
             price: 70,
         });
@@ -20202,7 +20240,8 @@ mod tests {
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.message,
-            "short $340: this unit can have $10 and its orders spend $350"
+            "short $340: this unit can have $10 and its orders spend $350, \
+             so it buys none of the 5 horses ordered"
         );
     }
 
@@ -20420,7 +20459,7 @@ mod tests {
         let mut hex = region(vec![with_silver(unit("5"), 100)]);
         hex.for_sale.push(MarketItem {
             amount: 10,
-            name: "horse".to_string(),
+            name: "horses".to_string(),
             tag: "HORS".to_string(),
             price: 70,
         });
@@ -20433,7 +20472,8 @@ mod tests {
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.message,
-            "short $40: this unit can have $100 and its orders spend $140"
+            "short $40: this unit can have $100 and its orders spend $140, \
+             so it buys 1 of the 2 horses ordered"
         );
     }
 
@@ -31357,7 +31397,8 @@ mod tests {
             .expect("unit 1923 cannot afford its BUY even with the gift");
         assert_eq!(
             short.message,
-            "short $100: this unit can have $100 and its orders spend $200"
+            "short $100: this unit can have $100 and its orders spend $200, \
+             so it buys 2 of the 5 plainsmen ordered"
         );
     }
 
@@ -31458,7 +31499,8 @@ mod tests {
                 .expect("new-1 cannot afford its BUY even with the gift");
             assert_eq!(
                 short.message,
-                "short $100: this unit can have $100 and its orders spend $200"
+                "short $100: this unit can have $100 and its orders spend $200, \
+             so it buys 2 of the 5 plainsmen ordered"
             );
         }
 
