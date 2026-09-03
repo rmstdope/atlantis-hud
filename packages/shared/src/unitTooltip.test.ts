@@ -6,7 +6,7 @@ import {
   SILVER_NOTES,
   buyAllSentences,
   placeTooltip,
-  productionCapSentence,
+  productionStatusSentence,
   productionMenSentence,
   summariseUnit,
   type SilverFacts
@@ -180,10 +180,10 @@ describe("productionMenSentence", () => {
   });
 });
 
-describe("productionCapSentence", () => {
+describe("productionStatusSentence, unnumbered (ah-19l2.2, ah-256d)", () => {
   it("words a capped production the same way wherever it is asked", () => {
     expect(
-      productionCapSentence(
+      productionStatusSentence(
         aUnitSilver({
           produced: 1,
           producedName: "catapult",
@@ -196,7 +196,7 @@ describe("productionCapSentence", () => {
 
   it("says nothing when nothing capped the run", () => {
     expect(
-      productionCapSentence(
+      productionStatusSentence(
         aUnitSilver({
           produced: 3,
           producedName: "catapult",
@@ -208,14 +208,14 @@ describe("productionCapSentence", () => {
   });
 
   it("says nothing for a unit with no priceable PRODUCE to speak about", () => {
-    expect(productionCapSentence(aUnitSilver())).toBeUndefined();
-    expect(productionCapSentence(null)).toBeUndefined();
-    expect(productionCapSentence(undefined)).toBeUndefined();
+    expect(productionStatusSentence(aUnitSilver())).toBeUndefined();
+    expect(productionStatusSentence(null)).toBeUndefined();
+    expect(productionStatusSentence(undefined)).toBeUndefined();
   });
 
   it("names the region when the hex's yield is what limited the run", () => {
     expect(
-      productionCapSentence(
+      productionStatusSentence(
         aUnitSilver({
           produced: 20,
           producedName: "iron",
@@ -232,7 +232,7 @@ describe("productionCapSentence", () => {
     // this slot wants a bare noun rather than a counted one (`ah-256d`). Seven of the nineteen
     // land recipes differ this way - HORS, HERB, FLOA, TURT, MUSH, WING and CAME.
     expect(
-      productionCapSentence(
+      productionStatusSentence(
         aUnitSilver({
           produced: 4,
           producedName: "floater hide",
@@ -242,6 +242,128 @@ describe("productionCapSentence", () => {
         })
       )
     ).toBe("This region has floater hides for 4, not the 10 its skill and tools could make.");
+  });
+});
+
+describe("productionStatusSentence, numbered (ah-6x5u)", () => {
+  // `rules/produce`: "If a number is given then the unit will attempt to produce exactly that
+  // number of items; if this is not possible in one month then the order will carry over to
+  // subsequent months." The wording below is the navigator's, from
+  // `docs/ui/ah-6x5u-numbered-produce.html`.
+  const numbered = (overrides: Partial<UnitSilver> = {}) =>
+    aUnitSilver({
+      produced: 3,
+      producedName: "sword",
+      productionWanted: 8,
+      productionRequested: 3,
+      productionCappedBy: null,
+      ...overrides
+    });
+
+  it("shows the request and the month's output even when they fit exactly", () => {
+    expect(productionStatusSentence(numbered())).toBe(
+      "Requested: 3 swords. This month: 3."
+    );
+  });
+
+  it("says none rather than 0 for a month that makes nothing", () => {
+    expect(
+      productionStatusSentence(
+        numbered({ produced: 0, productionCappedBy: "materials" })
+      )
+    ).toBe(
+      "Requested: 3 swords. This month: none.\nLimited by materials. The remaining 3 carry over."
+    );
+  });
+
+  it("names the materials and carries a single remaining item over in the singular", () => {
+    expect(
+      productionStatusSentence(
+        numbered({ produced: 2, productionCappedBy: "materials" })
+      )
+    ).toBe(
+      "Requested: 3 swords. This month: 2.\nLimited by materials. The remaining 1 carries over."
+    );
+  });
+
+  it("names silver when the unit cannot pay for the whole run", () => {
+    expect(
+      productionStatusSentence(
+        numbered({
+          produced: 1,
+          producedName: "catapult",
+          productionWanted: 12,
+          productionCappedBy: "silver"
+        })
+      )
+    ).toBe(
+      "Requested: 3 catapults. This month: 1.\nLimited by silver. The remaining 2 carry over."
+    );
+  });
+
+  it("names skill and tools when the month itself cannot finish the request", () => {
+    expect(
+      productionStatusSentence(
+        numbered({
+          produced: 8,
+          productionRequested: 10,
+          productionCappedBy: "workforce"
+        })
+      )
+    ).toBe(
+      "Requested: 10 swords. This month: 8.\nLimited by skill and tools. The remaining 2 carry over."
+    );
+  });
+
+  it("names the region with its own noun when the hex is what ran out", () => {
+    expect(
+      productionStatusSentence(
+        numbered({
+          produced: 6,
+          producedName: "iron",
+          productionWanted: 40,
+          productionRequested: 10,
+          productionCappedBy: "region",
+          productionRegionName: "iron"
+        })
+      )
+    ).toBe(
+      "Requested: 10 irons. This month: 6.\nLimited by this region's iron. The remaining 4 carry over."
+    );
+  });
+
+  it("falls back to the item's own name for a payload written before the region name existed", () => {
+    expect(
+      productionStatusSentence(
+        numbered({
+          produced: 6,
+          producedName: "iron",
+          productionRequested: 10,
+          productionCappedBy: "region",
+          productionRegionName: null
+        })
+      )
+    ).toBe(
+      "Requested: 10 irons. This month: 6.\nLimited by this region's iron. The remaining 4 carry over."
+    );
+  });
+
+  // A unit that can make none of it anywhere - below the recipe's level, or in a hex that yields
+  // none - has no cap to name: the core answers an empty plan, and the Problems panel's
+  // `produce-without-skill` and `produce-not-here` are what say why (the core's own decision,
+  // 2026-08-29). The request is still quoted back, because the player wrote it.
+  it("quotes the request without inventing a reason when the core named no cap", () => {
+    expect(
+      productionStatusSentence(
+        numbered({ produced: 0, productionWanted: 0, productionCappedBy: null })
+      )
+    ).toBe("Requested: 3 swords. This month: none.");
+  });
+
+  it("says nothing for a unit with no priceable PRODUCE, numbered or not", () => {
+    expect(
+      productionStatusSentence(numbered({ producedName: null }))
+    ).toBeUndefined();
   });
 });
 
@@ -1499,6 +1621,27 @@ describe("the hover says every sentence that holds (ah-x36v)", () => {
         "This unit's upkeep was paid by a faction-mate's silver (20).",
         "A faction-mate's silver in this hex pays for this unit's orders."
       ].join("\n")
+    );
+  });
+
+  // `ah-6x5u`. The SILVER hover's own call site for the shared helper, so the two surfaces cannot
+  // be wired to different wording: the same two lines the ITEMS hover shows.
+  it("a numbered production is told what it asked for and what carries over", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1", men: 8 }),
+      forecast({
+        produced: 8,
+        producedName: "sword",
+        productionWanted: 8,
+        productionRequested: 10,
+        productionCappedBy: "workforce"
+      }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.note).toBe(
+      "Requested: 10 swords. This month: 8.\nLimited by skill and tools. The remaining 2 carry over."
     );
   });
 

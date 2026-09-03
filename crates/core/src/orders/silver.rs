@@ -380,8 +380,16 @@ pub struct UnitSilver {
     /// items the way `ah-eacd`'s `nameOfHeldItem` does - it would render `CATP`.
     pub produced_name: Option<String>,
     /// How many its men alone would have made. Equal to `produced` unless `production_capped_by`
-    /// says something stopped it.
+    /// says something stopped it, or unless a numbered order asked for fewer.
     pub production_wanted: i64,
+    /// The count a numbered `PRODUCE <number> <item>` named, or `None` for the unbounded
+    /// `PRODUCE <item>` - and for a unit with no priceable `PRODUCE` order at all.
+    ///
+    /// Carried beside [`UnitSilver::production_wanted`] rather than folded into it: `rules/produce`
+    /// makes the two different facts - what the player asked for, and what the men could manage -
+    /// and the existing unnumbered wording quotes the second (`ah-6x5u`). `None` is also the
+    /// backward-compatible default for a payload written before this field existed.
+    pub production_requested: Option<i64>,
     /// What stopped it making `production_wanted`, or `None` when nothing did. Drives the hover's
     /// note and nothing else - the figures above are already the capped ones (`ah-19l2.2`).
     pub production_capped_by: Option<ProductionCap>,
@@ -1181,6 +1189,7 @@ pub fn forecast_unit(
             production_men_left: 0,
             produced_name: None,
             production_wanted: 0,
+            production_requested: None,
             production_capped_by: None,
             production_region_name: None,
             works_by_default: is_set_to_work(unit_flags, intents),
@@ -1227,6 +1236,10 @@ pub fn forecast_unit(
     // The region's own word for what a `PRODUCE` order makes, for the one sentence that says the
     // hex's yield is what limited it. Set only where it did (`ah-256d`).
     let mut production_region_name: Option<String> = None;
+    // The count a numbered `PRODUCE <number> <item>` asked for, for the sentence that repeats it
+    // back. `None` for the unbounded form and for a unit with no priceable `PRODUCE` at all, which
+    // are one and the same answer to the hover: there is no written request to quote (`ah-6x5u`).
+    let mut production_requested: Option<i64> = None;
     // What a `CAST` order will make, for the four `cast_*` fields the hover reads. Filled by the
     // arm below; a unit with no such order, or none the ruleset prices, leaves it at nothing.
     let mut cast: Option<CastPlan> = None;
@@ -1274,7 +1287,7 @@ pub fn forecast_unit(
         // what raised the doubt, and its own arm below decides whether any *silver* moved
         // (`ah-66yi`).
         let reads_a_holding = match &placed.intent {
-            Intent::Sell { item, .. } | Intent::Produce { item } => Some(item.as_str()),
+            Intent::Sell { item, .. } | Intent::Produce { item, .. } => Some(item.as_str()),
             _ => None,
         };
         if let Some(item) = reads_a_holding {
@@ -1363,7 +1376,7 @@ pub fn forecast_unit(
             // `PRODUCE` is priced from the recipe the ruleset scraped, through the same
             // `plan_production` the ledger uses - one function, two callers, which is what keeps
             // this column and the `not-enough-silver` warning from drifting apart (`ah-ycuj`).
-            Intent::Produce { item } => {
+            Intent::Produce { requested, item } => {
                 if facts.production_skills_unknown {
                     expense_doubt = expense_doubt.or(Some(SilverDoubt::UnknownSkillsAfterArrivals));
                     doubt_subject = doubt_subject.or(Some(item.to_lowercase()));
@@ -1405,7 +1418,8 @@ pub fn forecast_unit(
                 // producing the same goods here are settled against it - the same settlement the
                 // ITEMS ledger reads, through the same function (`ah-256d`, `ah-ycuj`).
                 let region = (lookups.region_share)(item);
-                let (priced, plan) = price_production(recipe, work, facts.items, region);
+                let (priced, plan) =
+                    price_production(recipe, work, facts.items, *requested, region);
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
@@ -1427,6 +1441,9 @@ pub fn forecast_unit(
                         production_region_name = capped_by
                             .filter(|cap| matches!(cap, ProductionCap::Region))
                             .and_then(|_| (lookups.region_product_name)(item));
+                        // Beside `production`, and set from the same first priceable order, so the
+                        // request and the figures it bounded can never describe different lines.
+                        production_requested = *requested;
                     }
                     None => {
                         expense_doubt = expense_doubt.or(priced.doubt);
@@ -1811,6 +1828,7 @@ pub fn forecast_unit(
         production_men_left,
         produced_name: production.as_ref().map(|(name, _)| name.clone()),
         production_wanted: production.as_ref().map_or(0, |(_, plan)| plan.wanted),
+        production_requested,
         production_capped_by: production.as_ref().and_then(|(_, plan)| plan.capped_by),
         production_region_name,
         works_by_default: is_set_to_work(unit_flags, intents),
@@ -3367,14 +3385,19 @@ pub fn price_study(cost: Option<i64>, men: i64) -> Priced {
 ///
 /// The caller resolves the item to a recipe, because the column has a `Lookups` closure and the
 /// ledger has the hex; [`plan_production`] is the shared part and stays the only recipe reader.
+///
+/// `requested` is the count of a numbered `PRODUCE <number> <item>`, and `None` the unbounded
+/// form - passed straight through to [`plan_production`], which is where the request meets every
+/// other limit (`ah-6x5u`).
 #[must_use]
 pub fn price_production(
     recipe: Option<&Production>,
     work: Workforce,
     held: &[ItemAmount],
+    requested: Option<i64>,
     region: RegionShare,
 ) -> (Priced, Option<ProductionPlan>) {
-    match recipe.and_then(|recipe| plan_production(recipe, work, held, region)) {
+    match recipe.and_then(|recipe| plan_production(recipe, work, held, requested, region)) {
         Some(plan) => (
             Priced {
                 spends: plan.silver,
@@ -3669,6 +3692,10 @@ pub enum ProductionCap {
     /// units have been settled against its `Products` line (`ah-256d`). Only ever set for a
     /// *primary* `PRODUCE` - one whose recipe takes no materials - and never for a summon.
     Region,
+    /// A numbered `PRODUCE <number> <item>` asks for more than the unit's skill and tools can
+    /// finish this month, so `rules/produce` carries the remainder over (`ah-6x5u`). Only ever set
+    /// for a numbered order: an unbounded one never asks for more than its men can make.
+    Workforce,
 }
 
 /// What the region a unit produces in leaves that unit's `PRODUCE` order.
@@ -3698,7 +3725,9 @@ pub struct ProductionPlan {
     pub made: i64,
     /// How many its men alone would make - the unit's man-months over the recipe's, rounded down,
     /// where its man-months are `men * level + min(men, tools) * tool_bonus` ([`Workforce`]).
-    /// Equal to `made` unless something capped it.
+    /// Equal to `made` unless something capped it, or unless a numbered order asked for fewer than
+    /// its men could finish - this stays the *natural* output either way, which is what the
+    /// unnumbered wording quotes (`ah-6x5u`).
     pub wanted: i64,
     /// Silver the whole run costs: `made * <the recipe's SILV input>`. `0` for the great majority
     /// of recipes, which take no silver.
@@ -3709,7 +3738,8 @@ pub struct ProductionPlan {
     /// surface needs English resolves it (`semantics::item_name`), the same way the
     /// `not-enough-items` message already does.
     pub materials: Vec<ItemAmount>,
-    /// What stopped it making `wanted`, or `None` when nothing did.
+    /// What stopped it making everything the order asked for - `wanted` for the unbounded form,
+    /// the number named for `PRODUCE <number> <item>` - or `None` when nothing did.
     pub capped_by: Option<ProductionCap>,
 }
 
@@ -3734,11 +3764,21 @@ pub struct ProductionPlan {
 /// inputs are alternatives rather than requirements - cooking's "any of grain, livestock and
 /// fish" consumes *one* of the three, and reading it as three requirements would debit all three.
 /// Each of those is a `?` in the column rather than an invented number.
+///
+/// **`requested` is the number a `PRODUCE <number> <item>` names**, and `None` the unbounded form.
+/// `rules/produce` says a numbered order attempts exactly that many and carries what it cannot
+/// finish over to later months, so the request is one more upper bound over the existing ones
+/// rather than a replacement for any of them: the run is the least of the request, the men, the
+/// silver, the materials and the region's settled share (`ah-6x5u`). The three gates above answer
+/// before the request is read at all - a unit below the recipe's level, a hex yielding none of the
+/// goods, and men who could not make one - because each of those makes nothing whatever was asked
+/// for, and each already has its own sentence in the Problems panel.
 #[must_use]
 pub fn plan_production(
     recipe: &Production,
     work: Workforce,
     held: &[ItemAmount],
+    requested: Option<i64>,
     region: RegionShare,
 ) -> Option<ProductionPlan> {
     if recipe.inputs_are_alternatives {
@@ -3768,6 +3808,12 @@ pub fn plan_production(
     if wanted <= 0 {
         return Some(ProductionPlan::default());
     }
+
+    // What the order actually asks for this month: the number a `PRODUCE <number> <item>` names,
+    // or - for the unbounded form - everything the men could make, which is what keeps every
+    // unnumbered figure and sentence exactly as it was (`ah-6x5u`). Clamped at zero so a count no
+    // grammar can write cannot make a negative run.
+    let target = requested.unwrap_or(wanted).max(0);
 
     let holding = |tag: &str| -> i64 {
         held.iter()
@@ -3805,21 +3851,34 @@ pub fn plan_production(
         RegionShare::Share(share) => share.max(0),
     };
 
-    let made = wanted.min(by_silver).min(by_materials).min(by_region);
-    // The region is named first when it ties, because it is the only one of the three the unit
+    let made = target
+        .min(wanted)
+        .min(by_silver)
+        .min(by_materials)
+        .min(by_region);
+    // The region is named first when it ties, because it is the only one of the four the unit
     // cannot fix by carrying more - "buy more iron" is wasted advice about a hex that has none
-    // left. In this ruleset it can never tie: every recipe drawing on a pool has no inputs at all,
-    // so `by_silver` and `by_materials` are both `i64::MAX` whenever `by_region` is not. The order
-    // is stated so that a ruleset which changed that would still be deterministic. Silver is then
-    // named before materials when those two bind, because the column this feeds is about silver.
-    let capped_by = if made == wanted {
+    // left. In this ruleset it can never tie with the two holdings: every recipe drawing on a pool
+    // has no inputs at all, so `by_silver` and `by_materials` are both `i64::MAX` whenever
+    // `by_region` is not. The order is stated so that a ruleset which changed that would still be
+    // deterministic. Silver is then named before materials when those two bind, because the column
+    // this feeds is about silver, and the month's own men come last: a workforce cap is only ever
+    // reachable from a numbered request, and anything the unit could carry more of is the more
+    // actionable answer (`ah-6x5u`).
+    //
+    // `target` rather than `wanted`, which is the same thing for an unbounded order: a numbered
+    // one that got everything it asked for is not capped, however much more its men could have
+    // made.
+    let capped_by = if made == target {
         None
-    } else if by_region <= by_silver && by_region <= by_materials {
+    } else if by_region <= by_silver && by_region <= by_materials && by_region <= wanted {
         Some(ProductionCap::Region)
-    } else if by_silver <= by_materials {
+    } else if by_silver <= by_materials && by_silver <= wanted {
         Some(ProductionCap::Silver)
-    } else {
+    } else if by_materials <= wanted {
         Some(ProductionCap::Materials)
+    } else {
+        Some(ProductionCap::Workforce)
     };
 
     Some(ProductionPlan {
@@ -4145,6 +4204,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4267,6 +4327,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 99)]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4288,6 +4349,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 99)]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4323,6 +4385,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            None,
             RegionShare::Share(20),
         )
         .expect("a priceable recipe");
@@ -4344,6 +4407,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            None,
             RegionShare::Share(40),
         )
         .expect("a priceable recipe");
@@ -4367,6 +4431,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            None,
             RegionShare::NothingHere,
         )
         .expect("a priceable recipe");
@@ -4394,6 +4459,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4418,8 +4484,13 @@ mod production_tests {
             }
         );
 
-        let (priced, plan) =
-            price_production(None, Workforce::default(), &[], RegionShare::Unlimited);
+        let (priced, plan) = price_production(
+            None,
+            Workforce::default(),
+            &[],
+            None,
+            RegionShare::Unlimited,
+        );
         assert_eq!(
             priced,
             Priced {
@@ -4444,6 +4515,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            None,
             RegionShare::Unlimited,
         );
         assert_eq!(
@@ -4470,6 +4542,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 100_000)]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4493,6 +4566,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 3000), ("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4518,6 +4592,7 @@ mod production_tests {
                 ("IRWD", 999),
                 ("FUR", 999),
             ]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4536,6 +4611,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("SILV", 3000), ("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4562,6 +4638,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 2)]),
+            None,
             RegionShare::Unlimited,
         )
         .expect("a priceable recipe");
@@ -4569,6 +4646,148 @@ mod production_tests {
         assert_eq!(plan.made, 2);
         assert_eq!(plan.silver, 0);
         assert_eq!(plan.capped_by, Some(ProductionCap::Materials));
+    }
+
+    /// A sword, exactly as `config/public/ruleset.json`'s `skills.WEAP.produces` entry states it
+    /// and `rules/tableiteminfo` says: one iron per sword, one man-month for one, at weaponsmith 1.
+    fn sword() -> Production {
+        Production {
+            tag: "SWOR".to_string(),
+            level: 1,
+            inputs: vec![input("IRON", 1)],
+            inputs_are_alternatives: false,
+            man_months: Some(1),
+            outputs: Some(1),
+        }
+    }
+
+    /// `PRODUCE 3 sword` from a unit that could make eight makes three, and takes materials for
+    /// three: `rules/produce` says a numbered order "will attempt to produce exactly that number
+    /// of items". `wanted` stays the natural workforce output, which is what the unnumbered
+    /// wording quotes, and nothing is capped - the unit made everything it was asked for.
+    #[test]
+    fn a_numbered_run_stops_at_the_requested_count() {
+        let plan = plan_production(
+            &sword(),
+            Workforce {
+                men: 8,
+                level: 1,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("IRON", 20)]),
+            Some(3),
+            RegionShare::Unlimited,
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 8);
+        assert_eq!(plan.made, 3);
+        assert_eq!(
+            plan.materials
+                .iter()
+                .map(|item| (item.tag.as_str(), item.amount))
+                .collect::<Vec<_>>(),
+            vec![("IRON", 3)]
+        );
+        assert_eq!(plan.capped_by, None);
+    }
+
+    /// A request for more than the month's men can finish is capped by the workforce, and
+    /// `rules/produce` carries the rest over - the one cap an unnumbered order can never raise.
+    #[test]
+    fn a_numbered_run_names_workforce_when_the_month_cannot_finish_it() {
+        let plan = plan_production(
+            &sword(),
+            Workforce {
+                men: 8,
+                level: 1,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("IRON", 20)]),
+            Some(10),
+            RegionShare::Unlimited,
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 8);
+        assert_eq!(plan.made, 8);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Workforce));
+    }
+
+    /// Where both the month's men and the unit's materials fall short of the request, the lower
+    /// one is what actually bound - and the navigator's "binding limit only" wording names it.
+    #[test]
+    fn a_lower_material_limit_wins_over_workforce() {
+        let plan = plan_production(
+            &sword(),
+            Workforce {
+                men: 8,
+                level: 1,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("IRON", 5)]),
+            Some(10),
+            RegionShare::Unlimited,
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 8);
+        assert_eq!(plan.made, 5);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Materials));
+    }
+
+    /// A request of none is a run of none, and materials for none - and nothing is capped, since
+    /// the order asked for nothing and got it. A negative one cannot be written (the grammar's
+    /// `Number` refuses the sign) but is clamped rather than trusted.
+    #[test]
+    fn a_request_of_none_makes_none() {
+        for requested in [0, -3] {
+            let plan = plan_production(
+                &sword(),
+                Workforce {
+                    men: 8,
+                    level: 1,
+                    tool_bonus: 0,
+                    tools: 0,
+                },
+                &held(&[("IRON", 20)]),
+                Some(requested),
+                RegionShare::Unlimited,
+            )
+            .expect("a priceable recipe");
+            assert_eq!(plan.made, 0);
+            assert_eq!(plan.wanted, 8);
+            assert_eq!(
+                plan.materials
+                    .iter()
+                    .map(|item| item.amount)
+                    .collect::<Vec<_>>(),
+                vec![0]
+            );
+            assert_eq!(plan.capped_by, None);
+        }
+    }
+
+    /// A numbered primary producer the region cannot fill is capped by the region, exactly as the
+    /// unnumbered one is - the request only lowers the target, never the other limits.
+    #[test]
+    fn a_numbered_run_is_still_capped_by_the_region() {
+        let plan = plan_production(
+            &iron(),
+            Workforce {
+                men: 8,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[]),
+            Some(10),
+            RegionShare::Share(6),
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.wanted, 40);
+        assert_eq!(plan.made, 6);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Region));
     }
 
     /// Cooking says "any of grain, livestock and fish", and which the engine takes cannot be told -
@@ -4593,6 +4812,7 @@ mod production_tests {
                     tools: 0,
                 },
                 &held(&[("GRAI", 99)]),
+                None,
                 RegionShare::Unlimited,
             ),
             None
@@ -4616,6 +4836,7 @@ mod production_tests {
                 &unscraped,
                 ten_carpenters,
                 &held(&[]),
+                None,
                 RegionShare::Unlimited
             ),
             None
@@ -4627,6 +4848,7 @@ mod production_tests {
                 &no_output,
                 ten_carpenters,
                 &held(&[]),
+                None,
                 RegionShare::Unlimited
             ),
             None
@@ -5336,6 +5558,7 @@ mod tests {
     fn produce_with_unknown_arrival_skills_reports_a_doubt() {
         let receipts = Receipts::default();
         let intents = [placed(Intent::Produce {
+            requested: None,
             item: "SWOR".to_string(),
         })];
         let mut facts = facts(8, &intents, &receipts);
@@ -5439,6 +5662,7 @@ mod tests {
     fn a_unit_that_parted_with_men_reports_how_many_left() {
         let receipts = Receipts::default();
         let intents = [placed(Intent::Produce {
+            requested: None,
             item: "SWOR".to_string(),
         })];
         let items = [ItemAmount {
@@ -5477,6 +5701,7 @@ mod tests {
     fn a_unit_that_gained_men_reports_none_left() {
         let receipts = Receipts::default();
         let intents = [placed(Intent::Produce {
+            requested: None,
             item: "SWOR".to_string(),
         })];
         let items = [ItemAmount {

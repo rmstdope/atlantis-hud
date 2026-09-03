@@ -17,7 +17,7 @@ import type {
 import {
   buyAllSentences,
   castCapSentence,
-  productionCapSentence,
+  productionStatusSentence,
   productionMenSentence
 } from "./unitTooltip";
 
@@ -213,7 +213,7 @@ export function itemsTooltip(
   const transportSent = unit.transportSent ?? [];
   const transportReceived = unit.transportReceived ?? [];
   const buyAll = buyAllSentences(silver);
-  const capSentence = productionCapSentence(silver);
+  const capSentence = productionStatusSentence(silver);
   const menSentence = productionMenSentence(silver);
   const castCap = castCapSentence(silver);
   if (

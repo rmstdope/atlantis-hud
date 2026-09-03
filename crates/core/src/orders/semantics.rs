@@ -1032,13 +1032,13 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
             else {
                 continue;
             };
-            let Intent::Produce { item } = &placed.intent else {
+            let Intent::Produce { requested, item } = &placed.intent else {
                 continue;
             };
             let Some(tag) = production_tag_of(hex, ordered, item, ruleset) else {
                 continue;
             };
-            let Some(wanted) = production_ask(ordered, &tag, ruleset) else {
+            let Some(wanted) = production_ask(ordered, &tag, *requested, ruleset) else {
                 continue;
             };
             let sailing = ruleset.and_then(|rules| carried_away(hex, ordered, rules));
@@ -1149,7 +1149,13 @@ fn production_tag_of(
     Some(tag)
 }
 
-/// How many of the goods a unit's own men could make, which is what it claims of its region.
+/// How many of the goods a unit's `PRODUCE` order asks its region for.
+///
+/// The order's own run under an unlimited region, not the men's natural output: `rules/produce`
+/// says a numbered order attempts exactly the number it names, so a `PRODUCE 3 iron` claims three
+/// of the hex's yield however many its men could have mined. Claiming the natural output would
+/// have a numbered producer take regional yield it never asked for away from its faction-mates,
+/// whose own shares are settled from these claims before either surface reads one (`ah-6x5u`).
 ///
 /// Built from **`men_after_orders`, `Ordered::skills()` and `early_items()`** - the settled
 /// post-recruit people and skill picture, paired with the early-phase item picture. `rules/buy`
@@ -1160,12 +1166,18 @@ fn production_tag_of(
 /// balance, and this bead is about people and skills rather than the item-phase model.
 ///
 /// `tag` is the canonical tag [`production_tag_of`] resolved, so this is only ever asked about a
-/// primary `PRODUCE` that draws on a region at all.
+/// primary `PRODUCE` that draws on a region at all; `requested` is the count the order named, or
+/// `None` for the unbounded form.
 ///
 /// **Says nothing about availability**, which belongs to the region the unit produces in and not
 /// to the one it is listed in - the passenger's whole difficulty (`ah-k43x`). `None` where the run
 /// is not priceable at all, or where the men could make none of it anyway.
-fn production_ask(ordered: &Ordered<'_>, tag: &str, ruleset: Option<&Ruleset>) -> Option<i64> {
+fn production_ask(
+    ordered: &Ordered<'_>,
+    tag: &str,
+    requested: Option<i64>,
+    ruleset: Option<&Ruleset>,
+) -> Option<i64> {
     let (skill, recipe) = producing_skill(ruleset, tag, ordered.skills())?;
     let work = workforce_for(
         ruleset,
@@ -1175,8 +1187,14 @@ fn production_ask(ordered: &Ordered<'_>, tag: &str, ruleset: Option<&Ruleset>) -
         ordered.skills()?,
         ordered.early_items(),
     );
-    let plan = plan_production(recipe, work, ordered.early_items(), RegionShare::Unlimited)?;
-    (plan.wanted > 0).then_some(plan.wanted)
+    let plan = plan_production(
+        recipe,
+        work,
+        ordered.early_items(),
+        requested,
+        RegionShare::Unlimited,
+    )?;
+    (plan.made > 0).then_some(plan.made)
 }
 
 /// What the region leaves one unit's `PRODUCE` of the goods `item` names.
@@ -4586,8 +4604,16 @@ fn apply(
     let who = &actor.unit.unit_id;
 
     match &placed.intent {
-        Intent::Produce { item } => {
-            produce(ledger, hex, actor, placed, item, ruleset, standing);
+        Intent::Produce { requested, item } => {
+            produce(
+                ledger,
+                hex,
+                actor,
+                placed,
+                (*requested, item),
+                ruleset,
+                standing,
+            );
         }
         Intent::Give { to, what, amount } => {
             let reach = give_reach(
@@ -5309,7 +5335,9 @@ fn produce(
     hex: &Hex<'_>,
     actor: &Ordered<'_>,
     placed: &PlacedIntent,
-    item: &str,
+    // What the order names, straight off the intent, the shape `buy` above uses: how many it asks
+    // for - `None` for the unbounded form - and of what (`ah-6x5u`).
+    (requested, item): (Option<i64>, &str),
     ruleset: Option<&Ruleset>,
     standing: HexStanding<'_>,
 ) {
@@ -5356,7 +5384,7 @@ fn produce(
         standing.production,
         ruleset,
     );
-    let (priced, plan) = price_production(recipe, work, actor.early_items(), region);
+    let (priced, plan) = price_production(recipe, work, actor.early_items(), requested, region);
     let Some(plan) = plan else {
         // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
         // same posture `buy` takes for goods the market does not carry - and the ITEMS column
@@ -7940,7 +7968,7 @@ fn check_production(
         else {
             continue;
         };
-        let Intent::Produce { item } = &placed.intent else {
+        let Intent::Produce { item, .. } = &placed.intent else {
             continue;
         };
 
@@ -14971,6 +14999,61 @@ mod tests {
             assert_eq!(silver.production_capped_by, None);
         }
 
+        /// `rules/produce`: a numbered order "will attempt to produce exactly that number of
+        /// items", so a numbered primary producer claims only that many of the hex's yield - and
+        /// its faction-mate takes the rest. Settled before either surface reads a share, so a
+        /// claim of the men's natural output here would divide the line against a demand nobody
+        /// made and cut both units, even though the numbered one's own figure is clamped later
+        /// (`ah-6x5u`). Six asked of a hex yielding 36, beside a neighbour whose thirty fills it
+        /// exactly: with the natural 32 claimed instead, the two would ask 62 and split short.
+        #[test]
+        fn a_numbered_primary_producer_claims_only_what_the_order_requests() {
+            let review = review_of(
+                yielding(
+                    vec![product(36, "iron", "IRON")],
+                    vec![
+                        with_item(producer("1795", 8, "MINI", 3), 8, "pick", "PICK"),
+                        producer("5105", 6, "MINI", 5),
+                    ],
+                ),
+                "unit 1795\nPRODUCE 6 iron\nunit 5105\nPRODUCE iron\n",
+            );
+
+            let numbered = silver_of(&review, "1795");
+            assert_eq!(numbered.produced, 6, "it asked for six of the hex's iron");
+            assert_eq!(numbered.production_requested, Some(6));
+            assert_eq!(numbered.production_wanted, 32);
+            assert_eq!(numbered.production_capped_by, None);
+            let neighbour = silver_of(&review, "5105");
+            assert_eq!(
+                neighbour.produced, 30,
+                "the numbered claim leaves the neighbour's thirty whole"
+            );
+            assert_eq!(neighbour.production_capped_by, None);
+        }
+
+        /// A numbered claim the hex cannot fill is still capped by the region, and its own share
+        /// is settled from the number it asked for rather than from its men.
+        #[test]
+        fn a_numbered_claim_beyond_the_hexs_yield_is_capped_by_the_region() {
+            let review = review_of(
+                yielding(
+                    vec![product(16, "stone", "STON")],
+                    vec![producer("2693", 10, "QUAR", 2)],
+                ),
+                "unit 2693\nPRODUCE 20 stone\n",
+            );
+
+            let silver = silver_of(&review, "2693");
+            assert_eq!(silver.produced, 16);
+            assert_eq!(silver.production_requested, Some(20));
+            assert_eq!(silver.production_wanted, 20);
+            assert_eq!(
+                silver.production_capped_by,
+                Some(crate::orders::silver::ProductionCap::Region)
+            );
+        }
+
         /// `rules/sequenceofevents` runs "Manufacturing PRODUCE orders (those that produce items
         /// from other items...)" in a phase of their own, ahead of the primary ones: a sword is
         /// made from iron the unit carries rather than from the hex. So a weaponsmith takes no
@@ -18514,6 +18597,55 @@ mod tests {
             forecast.production_capped_by,
             Some(crate::orders::silver::ProductionCap::Silver)
         );
+    }
+
+    /// `rules/produce`: "If a number is given then the unit will attempt to produce exactly that
+    /// number of items". Ten carpenters at level five could make twelve catapults and afford
+    /// twelve, but the order asks for three - so three are made and 9,000 silver spent, not twelve
+    /// and 36,000 (`ah-6x5u`). `production_wanted` stays the twelve their men could have made,
+    /// which is what the unnumbered wording quotes.
+    #[test]
+    fn a_numbered_production_charges_only_the_requested_run() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(100_000, 9999)])],
+            "unit 12881\nPRODUCE 3 catapult\n",
+        );
+
+        assert_eq!(forecast.expense, Some(9000));
+        assert_eq!(forecast.produced, 3);
+        assert_eq!(forecast.production_requested, Some(3));
+        assert_eq!(forecast.production_wanted, 12);
+        assert_eq!(forecast.production_capped_by, None);
+    }
+
+    /// A request beyond the month's men is capped by the workforce, and `rules/produce` carries
+    /// the rest over. The unbounded form can never reach this cap.
+    #[test]
+    fn a_numbered_production_beyond_the_month_names_the_workforce() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(100_000, 9999)])],
+            "unit 12881\nPRODUCE 20 catapult\n",
+        );
+
+        assert_eq!(forecast.expense, Some(36_000));
+        assert_eq!(forecast.produced, 12);
+        assert_eq!(forecast.production_requested, Some(20));
+        assert_eq!(forecast.production_wanted, 12);
+        assert_eq!(
+            forecast.production_capped_by,
+            Some(crate::orders::silver::ProductionCap::Workforce)
+        );
+    }
+
+    /// The unbounded form is untouched, and says so where it matters most: no request to quote.
+    #[test]
+    fn an_unbounded_production_requests_nothing() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(100_000, 9999)])],
+            "unit 12881\nPRODUCE catapult\n",
+        );
+
+        assert_eq!(forecast.production_requested, None);
     }
 
     #[test]
