@@ -16,6 +16,8 @@ pub mod grammar;
 pub mod intents;
 pub mod items;
 pub mod lexer;
+/// Core-internal: who may become a mage, and who already is one.
+mod magic;
 pub mod parser;
 pub mod semantics;
 pub mod silver;

@@ -34,6 +34,7 @@ use crate::movement::mode::{
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, ItemEntry, ItemKind, Ruleset, SkillEntry};
 use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named};
+use crate::orders::magic;
 use crate::orders::silver::{
     because_clause, feed_after_silver, feed_from_faction_food, flagged_to_tax, food_claim,
     forecast_unit, late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants,
@@ -128,6 +129,13 @@ pub mod codes {
     pub const ALREADY_BUILT: Code = Code("already-built");
     pub const TOO_MANY_TRADE_REGIONS: Code = Code("too-many-trade-regions");
     pub const MAGIC_STUDY_OUTSIDE_BUILDING: Code = Code("magic-study-outside-building");
+
+    /// A unit that is not exactly one leader ordered to begin a Foundation magic skill
+    /// (`rules/magic`) or `manipulation` (`rules/magic_apprentices`).
+    pub const MAGIC_STUDY_NEEDS_A_LONE_LEADER: Code = Code("magic-study-needs-a-lone-leader");
+
+    /// A `GIVE`, `TAKE` or `BUY` that would add people to a unit that has already begun magic.
+    pub const MEN_SENT_INTO_A_MAGE: Code = Code("men-sent-into-a-mage");
     pub const BUILD_OUTSIDE_STRUCTURE: Code = Code("build-outside-structure");
     pub const BUILD_HELP_NOT_BUILDING: Code = Code("build-help-not-building");
     pub const UNIT_DOES_NOTHING: Code = Code("unit-does-nothing");
@@ -156,7 +164,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 43] = [
+    pub const ALL: [Code; 45] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -200,6 +208,8 @@ pub mod codes {
         GUARD_WITHOUT_TAX_ABILITY,
         WITHDRAW_IN_NEXUS,
         TAX_WITHOUT_COMBAT_READY_MEN,
+        MAGIC_STUDY_NEEDS_A_LONE_LEADER,
+        MEN_SENT_INTO_A_MAGE,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -602,6 +612,7 @@ pub fn review_turn(
         check_studying(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_magic_study(hex, ruleset, &options, &mut findings);
         check_magic_study_prerequisites(hex, ruleset, &options, &mut findings);
+        check_magic_study_composition(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_forms(hex, &options, &mut findings);
         check_idle_units(hex, &options, &mut findings);
         check_two_month_long_orders(hex, &options, &mut findings);
@@ -609,6 +620,7 @@ pub fn review_turn(
         check_take_from_another_faction(hex, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
         check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
+        check_mage_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_withdraw_in_nexus(hex, &options, &mut findings);
         check_sailing(hex, ledger, ruleset, &options, &mut findings);
         check_movement(hex, ledger, ruleset, &options, &mut findings);
@@ -2279,10 +2291,15 @@ struct RefusedTransfer {
     /// A `GIVE` rather than a `TAKE`, which picks the verb in the sentence.
     is_give: bool,
     /// The tags this transfer would have moved but the catalogue says may not change hands, each
-    /// with the count it would have carried, in the order the walk met them. Never empty: a
-    /// `RefusedTransfer` is recorded only when something was actually refused.
+    /// with the count it would have carried, in the order the walk met them. May be empty: a
+    /// `RefusedTransfer` is kept when *any* of the three refusal buckets has something in it.
     refused: Vec<(String, i64)>,
     refused_to_another_faction: Vec<(String, i64)>,
+    /// Men this order would have moved into a unit that has already begun magic (`ah-ndp9`).
+    into_a_mage: Vec<(String, i64)>,
+    /// The mage, when it is not the unit whose line this is - a `GIVE`, whose warning appears in
+    /// the *giver's* block and has to name the unit at the other end. `None` for a `TAKE`.
+    mage_id: Option<String>,
     /// What the transfer still moves, same shape, same order. Empty when nothing survives.
     moving: Vec<(String, i64)>,
 }
@@ -2523,6 +2540,25 @@ fn apply_transfers(
                                 }
                             }
                         }
+                        // A mage takes on no men, an unshown source included (`ah-ndp9`).
+                        // Before `receiver_state` is bound, so the early `continue` leaves no
+                        // unused binding behind.
+                        if is_man && magic::is_mage(ruleset, &units[receiver_position].unit.skills)
+                        {
+                            refused_by_position.push((
+                                receiver_position,
+                                RefusedTransfer {
+                                    line: transfer.line,
+                                    is_give: false,
+                                    refused: vec![],
+                                    refused_to_another_faction: vec![],
+                                    into_a_mage: vec![(tag.clone(), *count)],
+                                    mage_id: None,
+                                    moving: vec![],
+                                },
+                            ));
+                            continue;
+                        }
                         let receiver_state = working
                             .entry(receiver_position)
                             .or_insert_with(|| seed_working(units, receiver_position));
@@ -2577,6 +2613,8 @@ fn apply_transfers(
         // written into `RefusedTransfer` after the loop, only when something was refused.
         let mut refused: Vec<(String, i64)> = Vec::new();
         let mut refused_to_another_faction: Vec<(String, i64)> = Vec::new();
+        let mut into_a_mage: Vec<(String, i64)> = Vec::new();
+        let mut mage_id: Option<String> = None;
         let mut moving: Vec<(String, i64)> = Vec::new();
 
         for tag in tags {
@@ -2608,6 +2646,22 @@ fn apply_transfers(
             // bead adds no diagnostic, and `check_refused_transfers` must say nothing new.
             if transfer.is_give && mage_give_refused(&source_skills, &tag, Some(ruleset)) {
                 continue;
+            }
+
+            // The mirror of that rule: no man may join a mage either, by GIVE or by TAKE
+            // (`ah-ndp9`). Asked of the receiver's skills as the report printed them, the one
+            // policy this bead applies on every surface. Placed *after* the departure guard on
+            // purpose: a mage giving men to a mage trips both and stays silent, as it does today.
+            if is_man {
+                if let GiveTarget::Unit(receiver_position) = receiver {
+                    if magic::is_mage(ruleset, &units[receiver_position].unit.skills) {
+                        into_a_mage.push((tag.clone(), moved));
+                        if mage_id.is_none() && transfer.is_give {
+                            mage_id = Some(units[receiver_position].unit.unit_id.clone());
+                        }
+                        continue;
+                    }
+                }
             }
 
             // A gift the source cannot cover is clamped here and is *not* clamped identically by
@@ -2768,7 +2822,8 @@ fn apply_transfers(
             move_holding(source_state, &tag, &name, -moved);
         }
 
-        if !refused.is_empty() || !refused_to_another_faction.is_empty() {
+        if !refused.is_empty() || !refused_to_another_faction.is_empty() || !into_a_mage.is_empty()
+        {
             refused_by_position.push((
                 transfer.position,
                 RefusedTransfer {
@@ -2776,6 +2831,8 @@ fn apply_transfers(
                     is_give: transfer.is_give,
                     refused,
                     refused_to_another_faction,
+                    into_a_mage,
+                    mage_id,
                     moving,
                 },
             ));
@@ -3412,6 +3469,13 @@ impl PhaseState {
     }
 }
 
+/// A `BUY` of people by a unit that has already begun magic: refused, and warned about
+/// (`ah-ndp9`).
+pub(crate) struct RefusedRecruit {
+    pub(crate) unit_id: String,
+    pub(crate) line: usize,
+}
+
 struct Ledger<'a> {
     /// The catalogue that turns an order's item argument into a tag, where there is one.
     ruleset: Option<&'a Ruleset>,
@@ -3484,6 +3548,10 @@ struct Ledger<'a> {
     /// Lines whose effect on a unit's items could not be counted at all, by unit, in document
     /// order (`ah-agbm`).
     pub(crate) uncounted: BTreeMap<String, Vec<usize>>,
+    /// `BUY`s of people by a unit that has already begun magic: refused, and warned about
+    /// (`ah-ndp9`). One entry per refused line; no tag and no count, because the sentence the
+    /// navigator chose names neither.
+    pub(crate) refused_recruits: Vec<RefusedRecruit>,
     /// Tags a `GIVE` may or may not have moved out of a unit, keyed exactly as `balance` is.
     ///
     /// The balance of such a tag is neither the report's figure nor zero, so every arithmetic that
@@ -3733,6 +3801,7 @@ fn ledger_for_with_production<'a>(
         movements: Vec::new(),
         withdrawn_for_movement: BTreeMap::new(),
         uncounted: BTreeMap::new(),
+        refused_recruits: Vec::new(),
         built: BTreeMap::new(),
         buy_all: BTreeMap::new(),
         sold: BTreeMap::new(),
@@ -5278,6 +5347,20 @@ fn buy(
     };
 
     let tag = offer.tag.to_ascii_uppercase();
+
+    // `rules/magic` fixes a mage's unit number, and the navigator's New Origins ruling refuses a
+    // mage's recruiting too (`ah-ndp9`). Refused before anything is charged, credited or recorded:
+    // the server refuses the order, so no silver leaves. Before the `BUY ALL` deferral as well, so
+    // no `BUY ALL` slips past into `settle_buy_all`.
+    if let Some(ruleset) = ruleset {
+        if ruleset.is_man(&tag) && magic::is_mage(ruleset, &actor.unit.skills) {
+            ledger.refused_recruits.push(RefusedRecruit {
+                unit_id: who.clone(),
+                line: placed.line,
+            });
+            return;
+        }
+    }
 
     let Amount::Exact(count) = amount else {
         // What this hex's other own buyers left of the line. `None` where nothing was settled, and
@@ -8366,6 +8449,97 @@ fn race_subjects(races: &[&ItemEntry], plurals: &Plurals) -> String {
     }
 }
 
+/// Whether the unit ordered to begin magic could ever become a mage.
+///
+/// `rules/magic`: *"Only one man units, with the man being a leader, are permitted to study these
+/// skills"*, and `rules/magic_apprentices` says the same of `manipulation`. The composition judged
+/// is the one the study month has - `LateHoldings`, after this month's gifts and market, because
+/// `rules/sequenceofevents` runs both before study.
+fn check_magic_study_composition(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    let Some(ruleset) = ruleset else { return };
+    if !options.emits(codes::MAGIC_STUDY_NEEDS_A_LONE_LEADER) {
+        return;
+    }
+
+    // Built on the first candidate rather than up front: most hexes contain nobody beginning
+    // magic, and this runs on every keystroke (review finding 2).
+    let mut late: Option<LateHoldings> = None;
+    for (index, ordered) in hex.units.iter().enumerate() {
+        let Some((placed, studying)) = ordered.studies_placed() else {
+            continue;
+        };
+        // A skill the catalogue does not know is not judged.
+        let Some(skill) = ruleset.find_skill(studying) else {
+            continue;
+        };
+        if !magic::begins_magic(ruleset, skill) {
+            continue;
+        }
+        if ordered.unit.men_estimated || ordered.holdings_unknown() {
+            continue;
+        }
+        let facts = late
+            .get_or_insert_with(|| {
+                ledger
+                    .state
+                    .late_holdings_at(StatePhase::Maintenance, hex, Some(ruleset))
+            })
+            .of(index);
+        // F2 (`ah-ndp9`, round 3): a unit this document creates with `FORM` and has given nobody is
+        // not judged, so a correct mage does not flash a warning between two lines being typed.
+        if ordered.formed.is_some() && facts.men == 0 {
+            continue;
+        }
+        if magic::lone_leader(facts.men, facts.men_by_race) != Some(false) {
+            continue;
+        }
+
+        let others: Vec<String> = facts
+            .men_by_race
+            .iter()
+            .filter(|race| race.amount > 0 && !race.tag.eq_ignore_ascii_case(magic::LEADER_TAG))
+            .map(|race| counted_item(race.amount, &race.tag, hex, Some(ruleset), plurals))
+            .collect();
+        let name = &skill.name;
+        let message = if facts.men == 0 {
+            format!("only a lone leader can begin {name}; this unit has no people")
+        } else if others.is_empty() {
+            // Every man is a leader, so there is more than one of them.
+            format!(
+                "only a lone leader can begin {name}; this unit has {}",
+                counted_item(facts.men, magic::LEADER_TAG, hex, Some(ruleset), plurals)
+            )
+        } else {
+            let prefix = if facts
+                .men_by_race
+                .iter()
+                .any(|race| race.amount > 0 && race.tag.eq_ignore_ascii_case(magic::LEADER_TAG))
+            {
+                "this unit also has"
+            } else {
+                "this unit has"
+            };
+            format!(
+                "only a lone leader can begin {name}; {prefix} {}",
+                in_a_list(&others)
+            )
+        };
+        findings.push(ordered.finding(
+            hex,
+            codes::MAGIC_STUDY_NEEDS_A_LONE_LEADER,
+            message,
+            Some(placed),
+        ));
+    }
+}
+
 fn check_magic_study_prerequisites(
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
@@ -9218,6 +9392,94 @@ fn check_arrivals(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
     }
 }
 
+/// A list of tags and counts as a sentence names them: `3 swords and 2 orcs`.
+///
+/// A free function rather than a closure inside one check, so the two panels that build a
+/// `so this order moves …` tail cannot come to word it differently (`ah-ndp9`).
+fn named_items(
+    pairs: &[(String, i64)],
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+) -> String {
+    in_a_list(
+        &pairs
+            .iter()
+            .map(|(tag, count)| counted_item(*count, tag, hex, ruleset, plurals))
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// Every order this month that would have put people into a unit that has already begun magic.
+///
+/// `rules/magic` fixes a mage's unit number, and the navigator's New Origins ruling extends that to
+/// recruiting and to receiving men. Works nothing out for itself: `apply_transfers` and `buy` have
+/// already refused, and this turns their records into sentences (`ah-ndp9`).
+fn check_mage_arrivals(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::MEN_SENT_INTO_A_MAGE) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        for refused in &ordered.refused_transfers {
+            if refused.into_a_mage.is_empty() {
+                continue;
+            }
+            let tail = if refused.moving.is_empty() {
+                "nothing".to_string()
+            } else {
+                format!(
+                    "only {}",
+                    named_items(&refused.moving, hex, ruleset, plurals)
+                )
+            };
+            let head = match (&refused.mage_id, refused.is_give) {
+                (Some(id), true) => format!("unit {id} is a mage and cannot be given men"),
+                _ => "this unit is a mage and cannot take on men".to_string(),
+            };
+            let placed = ordered
+                .intents
+                .iter()
+                .find(|placed| placed.line == refused.line);
+            findings.push(ordered.finding(
+                hex,
+                codes::MEN_SENT_INTO_A_MAGE,
+                format!("{head}, so this order moves {tail}"),
+                placed,
+            ));
+        }
+    }
+
+    // One pass, resolving the unit by id: nested in the loop above it would be O(units x
+    // refusals) and would emit twice for two rows sharing an id (review finding 5).
+    for recruit in &ledger.refused_recruits {
+        let Some(ordered) = hex
+            .units
+            .iter()
+            .find(|ordered| ordered.unit.unit_id == recruit.unit_id)
+        else {
+            continue;
+        };
+        let placed = ordered
+            .intents
+            .iter()
+            .find(|placed| placed.line == recruit.line);
+        findings.push(ordered.finding(
+            hex,
+            codes::MEN_SENT_INTO_A_MAGE,
+            "this unit is a mage and cannot recruit, so this order buys nobody".to_string(),
+            placed,
+        ));
+    }
+}
+
 /// Every transfer this month that named items the game will not move.
 ///
 /// `rules/give` accepts a class the engine then filters item by item: 51 monsters and the
@@ -9241,17 +9503,13 @@ fn check_refused_transfers(
         return;
     }
 
-    let named = |pairs: &[(String, i64)]| -> String {
-        in_a_list(
-            &pairs
-                .iter()
-                .map(|(tag, count)| counted_item(*count, tag, hex, ruleset, plurals))
-                .collect::<Vec<_>>(),
-        )
-    };
-
     for ordered in &hex.units {
         for refused in &ordered.refused_transfers {
+            if refused.refused.is_empty() && refused.refused_to_another_faction.is_empty() {
+                // An `ah-ndp9` record only. `check_mage_arrivals` speaks for it; this check must
+                // say nothing, and would otherwise build a sentence with no reason in it.
+                continue;
+            }
             let verb = if refused.is_give {
                 "given away"
             } else {
@@ -9260,17 +9518,23 @@ fn check_refused_transfers(
             let tail = if refused.moving.is_empty() {
                 "nothing".to_string()
             } else {
-                format!("only {}", named(&refused.moving))
+                format!(
+                    "only {}",
+                    named_items(&refused.moving, hex, ruleset, plurals)
+                )
             };
             let mut reasons = Vec::new();
             if !refused.refused_to_another_faction.is_empty() {
                 reasons.push(format!(
                     "{} cannot be given to another faction",
-                    named(&refused.refused_to_another_faction)
+                    named_items(&refused.refused_to_another_faction, hex, ruleset, plurals)
                 ));
             }
             if !refused.refused.is_empty() {
-                reasons.push(format!("{} cannot be {verb}", named(&refused.refused)));
+                reasons.push(format!(
+                    "{} cannot be {verb}",
+                    named_items(&refused.refused, hex, ruleset, plurals)
+                ));
             }
             let message = format!("{}, so this order moves {tail}", reasons.join(" and "));
             let placed = ordered
@@ -18915,7 +19179,12 @@ mod tests {
     #[test]
     fn a_magic_study_is_priced_at_what_the_page_says_it_costs() {
         // "Magic skills (which cost $100)". One man studying force costs 100.
-        let regions = vec![region(vec![with_silver(unit("5"), 50)])];
+        // A leader, so `ah-ndp9`'s composition check has no opinion about the fixture; a leader's
+        // month of force still costs 100, so the subject of this test is unchanged.
+        let regions = vec![region(vec![with_silver(
+            with_race(unit("5"), 1, "leader", "LEAD"),
+            50,
+        )])];
 
         assert_eq!(
             codes(&check(regions, "unit 5\nSTUDY force\n")),
@@ -23416,6 +23685,188 @@ mod tests {
         with_men_grain(with_people(studying_unit(id, tag, level), people), men)
     }
 
+    /// `ah-ndp9`: the composition message, for the tests that assert only the sentence.
+    fn lone_leader_message(findings: Vec<Finding>) -> String {
+        findings
+            .into_iter()
+            .find(|finding| finding.code == codes::MAGIC_STUDY_NEEDS_A_LONE_LEADER)
+            .unwrap_or_else(|| panic!("no magic-study-needs-a-lone-leader finding"))
+            .message
+    }
+
+    /// `rules/magic`: "Only one man units, with the man being a leader, are permitted to study
+    /// these skills."
+    #[test]
+    fn a_unit_that_is_not_a_lone_leader_cannot_begin_a_foundation() {
+        let findings = check(
+            vec![region(vec![with_silver(
+                with_race(unit("5"), 3, "humans", "HUMN"),
+                1000,
+            )])],
+            "unit 5\nSTUDY FORC\n",
+        );
+        let finding = findings
+            .iter()
+            .find(|finding| finding.code == codes::MAGIC_STUDY_NEEDS_A_LONE_LEADER)
+            .expect("a three-human unit cannot begin force");
+        assert_eq!(
+            finding.message,
+            "only a lone leader can begin force; this unit has 3 humans"
+        );
+        // 1-based; the STUDY is the second line of the block.
+        assert_eq!(finding.line, Some(2));
+    }
+
+    #[test]
+    fn a_lone_leader_may_begin_magic() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![with_silver(
+                    with_race(unit("5"), 1, "leader", "LEAD"),
+                    1000,
+                )])],
+                "unit 5\nSTUDY FORC\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// Every row of the navigator's table (`docs/ui/ah-ndp9-round2.html`), asserted whole.
+    #[test]
+    fn the_study_warning_reads_the_same_for_every_composition() {
+        struct Case {
+            races: Vec<(i64, &'static str, &'static str)>,
+            skill: &'static str,
+            message: &'static str,
+        }
+
+        for case in [
+            Case {
+                races: vec![(3, "humans", "HUMN")],
+                skill: "FORC",
+                message: "only a lone leader can begin force; this unit has 3 humans",
+            },
+            Case {
+                races: vec![(1, "humans", "HUMN")],
+                skill: "FORC",
+                message: "only a lone leader can begin force; this unit has 1 human",
+            },
+            Case {
+                races: vec![(2, "leaders", "LEAD")],
+                skill: "FORC",
+                message: "only a lone leader can begin force; this unit has 2 leaders",
+            },
+            Case {
+                races: vec![(1, "leaders", "LEAD"), (1, "humans", "HUMN")],
+                skill: "FORC",
+                message: "only a lone leader can begin force; this unit also has 1 human",
+            },
+            Case {
+                races: vec![(2, "humans", "HUMN"), (3, "orcs", "ORC")],
+                skill: "FORC",
+                message: "only a lone leader can begin force; this unit has 2 humans and 3 orcs",
+            },
+            Case {
+                races: vec![],
+                skill: "FORC",
+                message: "only a lone leader can begin force; this unit has no people",
+            },
+            Case {
+                races: vec![(3, "humans", "HUMN")],
+                skill: "MANI",
+                message: "only a lone leader can begin manipulation; this unit has 3 humans",
+            },
+        ] {
+            let men: i64 = case.races.iter().map(|(amount, _, _)| *amount).sum();
+            let people: Vec<ItemAmount> = case
+                .races
+                .iter()
+                .map(|(amount, name, tag)| ItemAmount {
+                    amount: *amount,
+                    name: (*name).to_string(),
+                    tag: (*tag).to_string(),
+                })
+                .collect();
+            let subject = with_silver(
+                with_men_grain(with_people(unit("5"), people), men.max(1)),
+                1000,
+            );
+            assert_eq!(
+                lone_leader_message(check(
+                    vec![region(vec![subject])],
+                    &format!("unit 5\nSTUDY {}\n", case.skill),
+                )),
+                case.message,
+                "{}",
+                case.skill
+            );
+        }
+    }
+
+    #[test]
+    fn an_estimated_headcount_is_not_judged_for_magic_study() {
+        let mut subject = with_silver(with_race(unit("5"), 3, "humans", "HUMN"), 1000);
+        subject.men_estimated = true;
+        assert!(
+            !codes(&check(vec![region(vec![subject])], "unit 5\nSTUDY FORC\n",))
+                .contains(&"magic-study-needs-a-lone-leader")
+        );
+    }
+
+    #[test]
+    fn a_skill_the_catalogue_does_not_know_is_not_judged_for_magic_study() {
+        assert!(!codes(&check(
+            vec![region(vec![with_silver(
+                with_race(unit("5"), 3, "humans", "HUMN"),
+                1000,
+            )])],
+            "unit 5\nSTUDY XXXX\n",
+        ))
+        .contains(&"magic-study-needs-a-lone-leader"));
+    }
+
+    /// `rules/sequenceofevents` runs GIVE before study, so the composition judged is the one the
+    /// study month has.
+    #[test]
+    fn a_leader_given_men_this_month_cannot_begin_magic() {
+        assert_eq!(
+            lone_leader_message(check(
+                vec![region(vec![
+                    with_silver(with_race(unit("5"), 1, "leaders", "LEAD"), 1000),
+                    with_race(unit("6"), 2, "humans", "HUMN"),
+                ])],
+                "unit 6\nGIVE 5 2 HUMN\nunit 5\nSTUDY FORC\n",
+            )),
+            "only a lone leader can begin force; this unit also has 2 humans"
+        );
+    }
+
+    /// F2 (round 3): a unit formed in this document and given nobody yet is not judged, or every
+    /// mage a player forms would flash a warning between two lines of a correct document.
+    #[test]
+    fn a_formed_unit_given_nobody_is_not_judged_for_magic_study() {
+        assert!(!codes(&check(
+            vec![region(vec![with_silver(
+                with_race(unit("5"), 1, "leaders", "LEAD"),
+                1000,
+            )])],
+            "unit 5\nFORM 1\nSTUDY FORC\nEND\n",
+        ))
+        .contains(&"magic-study-needs-a-lone-leader"));
+    }
+
+    #[test]
+    fn a_formed_unit_given_one_leader_may_begin_magic() {
+        assert!(!codes(&check(
+            vec![region(vec![with_silver(
+                with_race(unit("5"), 2, "leaders", "LEAD"),
+                1000,
+            )])],
+            "unit 5\nFORM 1\nSTUDY FORC\nEND\nGIVE NEW 1 1 LEAD\n",
+        ))
+        .contains(&"magic-study-needs-a-lone-leader"));
+    }
+
     /// The `study-at-maximum` message, for a test that only cares what the sentence says.
     fn study_message(findings: Vec<Finding>) -> String {
         findings
@@ -23427,10 +23878,15 @@ mod tests {
 
     #[test]
     fn a_recruited_race_limits_study_after_the_market_phase() {
+        // A leader at the human combat ceiling. `data/LEAD` takes a leader to 5, so nothing stops
+        // this unit until the human it buys arrives - and `ah-ndp9` refuses that purchase for a
+        // mage, so this is pinned on a mundane skill instead.
+        // 600 points, so the human that arrives dilutes the pool to 300 each - still level 4, so
+        // it is the race ceiling this test is about that speaks, not `arrivals-lower-a-skill`.
         let leader = with_skill_pts(
-            with_silver(with_race(unit("5"), 1, "leaders", "LEAD"), 1000),
-            "FORC",
-            180,
+            with_race(with_silver(unit("5"), 1000), 1, "leaders", "LEAD"),
+            "COMB",
+            600,
         );
         let region = ReportRegion {
             for_sale: vec![MarketItem {
@@ -23443,8 +23899,84 @@ mod tests {
         };
 
         assert_eq!(
-            study_message(check(vec![region], "unit 5\nBUY 1 HUMN\nSTUDY FORC\n")),
-            "the human race cannot learn force past level 2, and this unit is already there"
+            study_message(check(vec![region], "unit 5\nBUY 1 HUMN\nSTUDY COMB\n")),
+            "the human race cannot learn combat past level 4, and this unit is already there"
+        );
+    }
+
+    /// `ah-ndp9`: a mage may not recruit, so nothing is bought and nothing is spent.
+    #[test]
+    fn a_mage_that_buys_people_recruits_nobody_and_spends_nothing() {
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![with_silver(mage(1), 1000)])
+        };
+        let findings = check(vec![region], "unit 5\nBUY 5 HUMN\n");
+        let finding = findings
+            .iter()
+            .find(|finding| finding.code == codes::MEN_SENT_INTO_A_MAGE)
+            .unwrap_or_else(|| panic!("no refusal: {:?}", codes(&findings)));
+
+        assert_eq!(finding.unit_id, Some("5".to_string()));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "this unit is a mage and cannot recruit, so this order buys nobody"
+        );
+        assert!(
+            !codes(&findings).contains(&"not-enough-silver"),
+            "no silver is spent: {:?}",
+            codes(&findings)
+        );
+    }
+
+    /// `buy` defers a `BUY ALL` to `settle_buy_all`, so a guard that ran later would miss it.
+    #[test]
+    fn a_mage_buying_all_of_a_race_recruits_nobody() {
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![with_silver(mage(1), 1000)])
+        };
+        let findings = check(vec![region], "unit 5\nBUY ALL HUMN\n");
+
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|finding| finding.code == codes::MEN_SENT_INTO_A_MAGE)
+                .map(|finding| finding.message.as_str())
+                .collect::<Vec<_>>(),
+            vec!["this unit is a mage and cannot recruit, so this order buys nobody"]
+        );
+    }
+
+    /// Only people are refused: a mage still buys its own equipment.
+    #[test]
+    fn a_mage_may_still_buy_equipment() {
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 10,
+            }],
+            ..region(vec![with_silver(mage(1), 1000)])
+        };
+        let findings = check(vec![region], "unit 5\nBUY 2 SWOR\n");
+
+        assert!(
+            !codes(&findings).contains(&"men-sent-into-a-mage"),
+            "{:?}",
+            codes(&findings)
         );
     }
 
@@ -24031,7 +24563,8 @@ mod tests {
 
     #[test]
     fn a_skill_the_unit_has_never_studied_is_below_the_threshold() {
-        let units = vec![with_silver(unit("5"), 1000)];
+        // A leader, so `ah-ndp9`'s composition check has no opinion about this fixture.
+        let units = vec![with_race(with_silver(unit("5"), 1000), 1, "leader", "LEAD")];
         assert_eq!(check(vec![region(units)], "unit 5\nSTUDY FORC\n"), vec![]);
     }
 
@@ -24099,6 +24632,8 @@ mod tests {
     // --- FORM aliases -------------------------------------------------------------------------
 
     #[test]
+    // Both formed units are given nobody, so `ah-ndp9`'s F2 rule leaves them unjudged and `only`
+    // still sees exactly one finding.
     fn a_form_number_used_twice_by_one_unit_warns_on_the_second() {
         let finding = only(check(
             vec![region(vec![unit("5")])],
@@ -25728,6 +26263,20 @@ mod tests {
                     ..region(vec![with_silver(unit("683"), 0), foreign_guard("14")])
                 }],
                 orders: "unit 683\nTAX\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::MAGIC_STUDY_NEEDS_A_LONE_LEADER,
+                regions: vec![region(vec![with_silver(unit("5"), 1000)])],
+                orders: "unit 5\nSTUDY FORC\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::MEN_SENT_INTO_A_MAGE,
+                regions: vec![region(vec![mage(2), men_holder("1010", 5)])],
+                orders: "unit 1010\nGIVE 5 1 HUMN\n",
                 allowance: None,
                 unclaimed: None,
             },
@@ -28058,6 +28607,144 @@ mod tests {
             .map(|item| item.amount)
     }
 
+    /// `ah-ndp9`: `rules/magic` fixes a mage's unit number, so the men never arrive and the giver
+    /// keeps them.
+    #[test]
+    fn a_gift_of_men_to_a_mage_changes_no_projection() {
+        let giver = with_race(unit("1234"), 10, "orcs", "ORC");
+        let mage = mage_with_id("900", 1);
+        let orders = "unit 1234\nGIVE 900 5 ORC\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![giver, mage]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        let mage = hex.find("900").unwrap();
+        assert_eq!(mage.men_after_orders, 1, "the mage gains nobody");
+        assert_eq!(mage.skill_level("FORC"), Some(1), "and keeps its own skill");
+        assert!(
+            mage.after_gifts()
+                .is_none_or(|holdings| item_amount(&holdings.items, "ORC").is_none()),
+            "no orc reaches the mage"
+        );
+
+        let giver = hex.find("1234").unwrap();
+        assert_eq!(giver.men_after_orders, 10, "the giver keeps its men");
+    }
+
+    #[test]
+    fn the_warning_for_a_gift_into_a_mage_names_the_mage() {
+        let finding = only(check(
+            vec![region(vec![
+                with_race(unit("1234"), 10, "orcs", "ORC"),
+                mage_with_id("900", 1),
+            ])],
+            "unit 1234\nGIVE 900 5 ORC\n",
+        ));
+
+        assert_eq!(finding.code, codes::MEN_SENT_INTO_A_MAGE);
+        assert_eq!(finding.unit_id, Some("1234".to_string()));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "unit 900 is a mage and cannot be given men, so this order moves nothing"
+        );
+    }
+
+    #[test]
+    fn a_mage_taking_men_is_warned_on_its_own_line() {
+        let finding = only(check(
+            vec![region(vec![
+                with_race(unit("1234"), 10, "orcs", "ORC"),
+                mage_with_id("900", 1),
+            ])],
+            "unit 900\nTAKE FROM 1234 3 ORC\n",
+        ));
+
+        assert_eq!(finding.code, codes::MEN_SENT_INTO_A_MAGE);
+        assert_eq!(finding.unit_id, Some("900".to_string()));
+        assert_eq!(
+            finding.message,
+            "this unit is a mage and cannot take on men, so this order moves nothing"
+        );
+    }
+
+    /// The TAKE half of the same row of the navigator's table: the tail names what still moves.
+    #[test]
+    fn a_mixed_take_into_a_mage_says_what_still_moves() {
+        let source = with_item(
+            with_race(unit("1234"), 10, "orcs", "ORC"),
+            3,
+            "swords",
+            "SWOR",
+        );
+        let finding = only(check(
+            vec![region(vec![source, mage_with_id("900", 1)])],
+            "unit 900\nTAKE FROM 1234 ALL ITEMS\n",
+        ));
+
+        assert_eq!(finding.code, codes::MEN_SENT_INTO_A_MAGE);
+        assert_eq!(
+            finding.message,
+            // The fixture's maintenance grain is equipment too, and moves with the swords.
+            "this unit is a mage and cannot take on men, so this order moves only 4 grain and 3 swords"
+        );
+    }
+
+    /// X2: the equipment still moves, and the sentence says so in the shipped tail's own words.
+    #[test]
+    fn a_mixed_gift_into_a_mage_says_what_still_moves() {
+        let giver = with_item(
+            with_race(unit("1234"), 10, "orcs", "ORC"),
+            3,
+            "swords",
+            "SWOR",
+        );
+        let finding = only(check(
+            vec![region(vec![giver, mage_with_id("900", 1)])],
+            "unit 1234\nGIVE 900 ALL ITEMS\n",
+        ));
+
+        assert_eq!(finding.code, codes::MEN_SENT_INTO_A_MAGE);
+        assert_eq!(
+            finding.message,
+            // The fixture's maintenance grain is equipment too, and moves with the swords.
+            "unit 900 is a mage and cannot be given men, so this order moves only 4 grain and 3 swords"
+        );
+    }
+
+    /// `ah-t8ei`'s departure guard runs first and stays silent, which is the shipped behaviour for
+    /// every mage GIVE of men - so a mage-to-mage gift produces no finding at all.
+    #[test]
+    fn a_mage_giving_men_to_a_mage_stays_silent() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![mage_with_id("900", 1), mage_with_id("901", 1)])],
+                "unit 900\nGIVE 901 1 LEAD\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// `check_arrivals` counts only arrivals that were actually projected, so a refused one cannot
+    /// reach it. Pinned rather than implemented - no production change belongs to this test.
+    #[test]
+    fn a_refused_arrival_lowers_no_skill() {
+        let mage = with_skill_pts(mage_with_id("900", 1), "COMB", 180);
+        let findings = check(
+            vec![region(vec![
+                with_race(unit("1234"), 10, "humans", "HUMN"),
+                mage,
+            ])],
+            "unit 1234\nGIVE 900 ALL MEN\n",
+        );
+
+        assert!(
+            !codes(&findings).contains(&"arrivals-lower-a-skill"),
+            "{:?}",
+            codes(&findings)
+        );
+    }
+
     #[test]
     fn a_gift_of_weapons_reaches_the_receivers_holdings() {
         // ORC is a man tag, so each unit's `men` is set to match its own reported headcount item
@@ -28638,6 +29325,8 @@ mod tests {
                 is_give: true,
                 refused: vec![("LION".to_string(), 20)],
                 refused_to_another_faction: vec![],
+                into_a_mage: vec![],
+                mage_id: None,
                 moving: vec![("SKEL".to_string(), 1)],
             }]
         );

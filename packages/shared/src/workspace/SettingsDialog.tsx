@@ -471,6 +471,12 @@ export const WARNING_GROUPS: readonly {
         title: "Magic study outside a building",
         description:
           "A mage above level 2 studying magic where no building houses them, which halves the month's study."
+      },
+      {
+        code: "magic-study-needs-a-lone-leader",
+        title: "Magic study by a unit that cannot become a mage",
+        description:
+          "A unit that is not one leader on its own ordered to begin force, pattern, spirit or manipulation."
       }
     ]
   },
@@ -583,6 +589,12 @@ export const WARNING_GROUPS: readonly {
         title: "Gifts the game will refuse",
         description:
           "A GIVE or TAKE naming items that cannot change hands, or men given to another faction."
+      },
+      {
+        code: "men-sent-into-a-mage",
+        title: "Men sent into a mage",
+        description:
+          "A GIVE, TAKE or BUY that would add people to a unit that has already begun magic."
       },
       {
         code: "too-many-trade-regions",
