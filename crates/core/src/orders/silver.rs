@@ -1233,7 +1233,7 @@ pub fn forecast_unit(
     // The first order in the block that actually moves silver out, which is what the hover names.
     // Recorded where `expense` grows rather than read off the intents: a `GIVE` of items and a
     // costless `CAST` are orders, but they spend nothing, and naming one of those would point the
-    // reader at an order the game will not refuse. A deferred `BUY ALL` or `GIVE ALL SILV` is
+    // reader at an order the game will not refuse. A deferred `GIVE ALL SILV` or `BUY ALL` is
     // considered only if no direct spender was found, since it spends what the others leave.
     let mut spent_on: Option<SilverSpender> = None;
     // What a `PRODUCE` order will make, for the four fields the hover reads. Filled by the arm
@@ -1261,10 +1261,12 @@ pub fn forecast_unit(
     // the first left - of the market line and of this unit's share of it alike (`ah-lauy`).
     let mut bought: BTreeMap<String, i64> = BTreeMap::new();
     // `BUY ALL` and `GIVE ... ALL SILV` spend what is left after every other term, so they cannot
-    // be priced inside this pass. Collected in document order and applied below.
+    // be priced inside this pass. Collected in document order and applied below by phase - every
+    // `GIVE ... ALL SILV` first, then every `BUY ALL`, since `rules/sequenceofevents` runs *Give
+    // orders* before *Market orders* (`ah-npab`). Within one phase, document order (`ah-vw8e`).
     let mut deferred: Vec<Deferred> = Vec::new();
     // What each `BUY ALL` in `deferred` settled to, for the hover - filled by the deferred pass
-    // below, in document order.
+    // below, in document order among the `BUY ALL`s.
     let mut buy_all: Vec<BuyAllShown> = Vec::new();
 
     // Whether this unit taxes at all is a property of the unit, not of one line in its block: the
@@ -1708,8 +1710,8 @@ pub fn forecast_unit(
     let late = late_income(&facts, region, shares, ruleset);
     income = income.saturating_add(late);
 
-    // Everything that spends what is *left*, in document order, against a running total that
-    // already carries every other term. Skipped where a side is doubted: the total it would spend
+    // Everything that spends what is *left*, by game phase and then in document order, against a
+    // running total that already carries every other term. Skipped where a side is doubted: the total it would spend
     // against is not a number, and the side it feeds is `None` either way.
     if income_doubt.is_none() && expense_doubt.is_none() {
         // What a deferred order can spend is what reaches the unit *in time* - `ah-1wcw.3` settled
@@ -1874,6 +1876,9 @@ pub fn forecast_unit(
 }
 
 /// A term that spends whatever is left after every other one, kept until the running total exists.
+///
+/// Settled by phase rather than purely in document order: `rules/sequenceofevents` runs *Give
+/// orders* before *Market orders*, so a `GIVE ... ALL SILV` settles before any `BUY` (`ah-npab`).
 #[derive(Debug, Clone)]
 enum Deferred {
     /// `BUY ALL`: as many as the unit can afford, and no more than its settled share of the line.
@@ -7715,6 +7720,31 @@ mod tests {
             assert_eq!(unit.short_for_orders, Some(0));
             assert_eq!(unit.given_to_nobody, 0);
             assert_eq!(unit.doubt, None);
+        }
+    }
+
+    /// The Give phase empties the purse before a `BUY ALL` prices anything, whatever line each
+    /// is written on (`ah-npab`).
+    #[test]
+    fn buying_all_after_giving_all_silver_away_buys_nothing_in_either_text_order() {
+        let give = placed(Intent::Give {
+            to: Party::Unit("1235".to_string()),
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::All { except: 0 },
+        });
+        let buy = placed(Intent::Buy {
+            amount: Amount::All { except: 0 },
+            item: "grain".to_string(),
+        });
+        for intents in [
+            vec![give.clone(), buy.clone()],
+            vec![buy.clone(), give.clone()],
+        ] {
+            let unit = spending(100, &intents, RegionWages::default(), &sells(20, 10), None);
+            assert_eq!(unit.expense, Some(100));
+            assert_eq!(unit.at_month_end, Some(0));
+            assert_eq!(unit.buy_all.len(), 1);
+            assert_eq!(unit.buy_all[0].bought, 0);
         }
     }
 

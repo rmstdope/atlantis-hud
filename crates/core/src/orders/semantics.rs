@@ -5280,18 +5280,6 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
                 .push(deferred.placed.line);
             continue;
         }
-        // A `BUY ALL` followed by a `GIVE ... ALL SILV` is the one case the two surfaces cannot
-        // be made to agree cheaply (see the bead's Known traps), so it is left uncounted too,
-        // keeping today's ` + ?`.
-        if gives_all_silver_after(hex, actor, ledger.ruleset, deferred.placed.line) {
-            ledger
-                .uncounted
-                .entry(who.clone())
-                .or_default()
-                .push(deferred.placed.line);
-            continue;
-        }
-
         let already = ledger
             .bought
             .get(&(who.clone(), deferred.tag.clone()))
@@ -5342,28 +5330,6 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
             });
         }
     }
-}
-
-/// Whether a later order gives away every silver this unit has, which the ledger settles eagerly
-/// and the column defers - so the two would disagree about what is left to buy with. Only a
-/// *later* one matters: written first, both surfaces leave nothing.
-fn gives_all_silver_after(
-    hex: &Hex<'_>,
-    actor: &Ordered<'_>,
-    ruleset: Option<&Ruleset>,
-    after: usize,
-) -> bool {
-    actor.intents.iter().any(|placed| {
-        placed.line > after
-            && matches!(
-                &placed.intent,
-                Intent::Give {
-                    what: Selector::Item(text),
-                    amount: Amount::All { .. },
-                    ..
-                } if resolve_item(text, hex, actor, ruleset).is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER))
-            )
-    })
 }
 
 /// How this hex's contended pools are split between the faction's own units, and which of them the
@@ -15034,8 +15000,11 @@ mod tests {
                 assert_eq!(giver.doubt, None, "orders: {orders}");
                 assert_eq!(silver_of(&review, "2391").received, 50, "orders: {orders}");
                 assert!(
-                    !review.findings.iter().any(|f| f.code == codes::NOT_ENOUGH_SILVER
-                        && f.unit_id.as_deref() == Some("2390")),
+                    !review
+                        .findings
+                        .iter()
+                        .any(|f| f.code == codes::NOT_ENOUGH_SILVER
+                            && f.unit_id.as_deref() == Some("2390")),
                     "orders: {orders}: {:?}",
                     review.findings
                 );
@@ -15859,8 +15828,10 @@ mod tests {
             }
         }
 
+        /// Both surfaces now say the gift empties the purse before the market opens, so the
+        /// `BUY ALL` buys nothing definitely rather than uncertainly (`ah-npab`).
         #[test]
-        fn a_buy_all_followed_by_giving_all_silver_stays_uncounted() {
+        fn a_buy_all_before_a_give_of_all_silver_buys_nothing_and_is_counted() {
             let hex_region = ReportRegion {
                 for_sale: vec![line(30, 18, "grain", "GRAI")],
                 ..region(vec![with_silver(unit("2390"), 356)])
@@ -15874,13 +15845,10 @@ mod tests {
                             .movements
                             .iter()
                             .any(|m| m.unit_id == "2390" && m.tag == "GRAI"),
-                        "a BUY ALL followed by giving away all silver is left uncounted: {:?}",
+                        "the gift takes the silver first, so nothing is bought: {:?}",
                         ledger.movements
                     );
-                    assert_eq!(
-                        ledger.uncounted.get("2390").map(Vec::as_slice),
-                        Some([2].as_slice())
-                    );
+                    assert!(!ledger.uncounted.contains_key("2390"));
                 },
             );
         }
