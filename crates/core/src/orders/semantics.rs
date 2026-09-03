@@ -10683,6 +10683,10 @@ mod tests {
                 finding.code == codes::NOT_ENOUGH_SILVER
                     && finding.unit_id.as_deref() == Some("2391")
             }));
+            assert!(!review.findings.iter().any(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("2390")
+            }));
         }
     }
 
