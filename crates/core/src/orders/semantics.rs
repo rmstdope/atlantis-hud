@@ -29152,9 +29152,8 @@ mod tests {
     fn an_unfollowable_sailing_producer_does_not_guess_a_trade_region() {
         let mut regions = fleet_sailing_north(one_product(50, "fish", "FISH"));
         regions.truncate(1);
-        regions[0].units.push(unit("5"));
-        let orders = "unit 5\nPRODUCE grain\nunit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n";
-        let findings = check_trade(regions, orders, "Trade Regions", 1);
+        let orders = "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n";
+        let findings = check_trade(regions, orders, "Trade Regions", 0);
 
         assert!(!findings
             .iter()
