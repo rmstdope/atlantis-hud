@@ -13848,9 +13848,11 @@ mod tests {
         assert_eq!(told.len(), 1, "on the taxing unit's line: {told:?}");
         assert_eq!(told[0].unit_id.as_deref(), Some("2"));
         assert!(
-            review.findings.iter().any(|finding| finding.code
-                == codes::TWO_MONTH_LONG_ORDERS
-                && finding.unit_id.as_deref() == Some("1")),
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TWO_MONTH_LONG_ORDERS
+                    && finding.unit_id.as_deref() == Some("1")),
             "the pillager's own TAX is told it will not run: {:?}",
             codes(&review.findings)
         );
@@ -17618,7 +17620,11 @@ mod tests {
             vec![region(vec![with_silver(unit("683"), 100)])],
             "unit 683\nSTUDY Combat\nPRODUCE sword\n",
         );
-        assert_eq!(codes(&findings), vec!["two-month-long-orders"], "{findings:?}");
+        assert_eq!(
+            codes(&findings),
+            vec!["two-month-long-orders"],
+            "{findings:?}"
+        );
         let finding = only(findings);
         assert_eq!(finding.line, Some(3));
         assert_eq!(
@@ -17650,7 +17656,10 @@ mod tests {
         assert_eq!(forecast.production_wanted, 0, "{forecast:?}");
 
         let effects = item_effects(&report, orders, Some(&ruleset()));
-        let moved = effects.get("683").map(|unit| unit.moved.clone()).unwrap_or_default();
+        let moved = effects
+            .get("683")
+            .map(|unit| unit.moved.clone())
+            .unwrap_or_default();
         assert!(
             !moved
                 .iter()
@@ -23359,7 +23368,10 @@ mod tests {
     #[test]
     fn the_finding_sits_on_the_study_line_for_study_at_maximum() {
         let units = vec![studying_race("5", 2, "leaders", "LEAD", "OBSE", 5)];
-        let finding = only(check(vec![region(units)], "unit 5\nAVOID 1\n\nSTUDY OBSE\n"));
+        let finding = only(check(
+            vec![region(units)],
+            "unit 5\nAVOID 1\n\nSTUDY OBSE\n",
+        ));
 
         assert_eq!(finding.line, Some(4), "the STUDY line, not the block's");
     }

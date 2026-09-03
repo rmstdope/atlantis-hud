@@ -21,7 +21,7 @@ use atlantis_hud_core::report::{classify_units, parse_report_full};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod common;
-use common::ruleset;
+use common::{ruleset, without_standing_month_orders};
 
 /// One own unit of one fixture, with both surfaces' answers about it side by side.
 struct Compared {
@@ -807,9 +807,12 @@ fn pillage_case(extra: &str) -> (BTreeMap<String, UnitSilver>, Vec<String>) {
     let text = atlantis_hud_fixtures::G3_F42_T42.text;
     let mut parsed = parse_report_full(text);
     classify_units(&mut parsed, &ruleset);
-    let orders = extract_orders_template(text)
+    let template = extract_orders_template(text)
         .map(|template| template.text)
         .unwrap_or_default();
+    // The units these cases order to PILLAGE carry standing month-long orders in the report's own
+    // template, and a PILLAGE that lost the month never runs (`ah-rzkm`).
+    let orders = without_standing_month_orders(&template, &["2418", "12222", "13303"]);
     let review = review_turn(
         &parsed,
         &format!("{orders}{extra}"),

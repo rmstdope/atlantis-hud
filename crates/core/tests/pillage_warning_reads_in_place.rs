@@ -18,7 +18,7 @@ use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
 mod common;
-use common::ruleset;
+use common::{ruleset, without_standing_month_orders};
 
 #[test]
 fn the_reported_pillage_warning_names_the_pillagers_and_counts_a_combat_skilled_unit() {
@@ -26,9 +26,10 @@ fn the_reported_pillage_warning_names_the_pillagers_and_counts_a_combat_skilled_
     let text = atlantis_hud_fixtures::G3_F42_T82.text;
     let mut parsed = parse_report_full(text);
     classify_units(&mut parsed, &ruleset);
-    let orders = extract_orders_template(text)
+    let template = extract_orders_template(text)
         .map(|template| template.text)
         .unwrap_or_default();
+    let orders = without_standing_month_orders(&template, &["10116"]);
     let orders = format!("{orders}\nunit 10116\nPILLAGE\n");
 
     let review = review_turn(&parsed, &orders, Some(&ruleset), CheckOptions::default());
@@ -59,9 +60,10 @@ fn pillage_warning_fires_when_a_gift_cannot_be_followed() {
     let text = atlantis_hud_fixtures::G3_F42_T42.text;
     let mut parsed = parse_report_full(text);
     classify_units(&mut parsed, &ruleset);
-    let orders = extract_orders_template(text)
+    let template = extract_orders_template(text)
         .map(|template| template.text)
         .unwrap_or_default();
+    let orders = without_standing_month_orders(&template, &["2418"]);
     let orders = format!("{orders}\nunit 13303\nGIVE 2418 ALL MAGIC\nunit 2418\nPILLAGE\n");
 
     let review = review_turn(&parsed, &orders, Some(&ruleset), CheckOptions::default());
@@ -151,13 +153,19 @@ fn a_countable_pillager_is_still_told_it_cannot() {
 /// The pillage warnings of mountain (36,4) in `G3_F42_T42`, in the order they are raised, with
 /// `extra` appended to the report's own orders template.
 fn pillage_warnings(extra: &str) -> Vec<String> {
+    pillage_warnings_for(extra, &["2418", "12222", "13303"])
+}
+
+/// [`pillage_warnings`], naming the units whose standing month orders the fixture replaces.
+fn pillage_warnings_for(extra: &str, units: &[&str]) -> Vec<String> {
     let ruleset = ruleset();
     let text = atlantis_hud_fixtures::G3_F42_T42.text;
     let mut parsed = parse_report_full(text);
     classify_units(&mut parsed, &ruleset);
-    let orders = extract_orders_template(text)
+    let template = extract_orders_template(text)
         .map(|template| template.text)
         .unwrap_or_default();
+    let orders = without_standing_month_orders(&template, units);
     let orders = format!("{orders}{extra}");
 
     review_turn(&parsed, &orders, Some(&ruleset), CheckOptions::default())
