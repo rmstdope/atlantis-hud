@@ -510,7 +510,7 @@ pub fn review_turn(
     // the cross-hex disagreement `ah-k43x` fixed (`ah-40c9`).
     let mut hexes = hexes;
     let claim_allowances = claim_allowances_for(&hexes, purse.unclaimed);
-    settle_recruits_before_production(&mut hexes, ruleset, &receipts, &claim_allowances);
+    settle_recruits_before_production(&mut hexes, ruleset, &claim_allowances);
 
     let production = production_shares_for(&hexes, ruleset);
 
@@ -520,7 +520,6 @@ pub fn review_turn(
             let ledger = ledger_for_with_production(
                 &hex,
                 ruleset,
-                &receipts,
                 &production,
                 &foreign_unit_ids,
                 &claim_allowances,
@@ -3460,11 +3459,6 @@ pub(crate) struct RefusedRecruit {
 struct Ledger<'a> {
     /// The catalogue that turns an order's item argument into a tag, where there is one.
     ruleset: Option<&'a Ruleset>,
-    /// Gifts and takes of silver this month's orders bring each unit, gathered once for the whole
-    /// turn by `gather_receipts` before any hex is priced. `cast` reads it for the same reason
-    /// `forecast_unit` does: a gift that arrives before `Spells are CAST` funds a cast even when
-    /// the unit's own report holding is nothing (`ah-ofpb.4`, R4).
-    receipts: &'a BTreeMap<String, Receipts>,
     /// What each unit would hold once its orders had run, keyed by unit and item tag.
     state: PhaseState,
     /// Materials consumed by manufacturing after movement, keyed like `balance`.
@@ -3681,11 +3675,7 @@ fn own_unit_pillages(hex: &Hex<'_>) -> bool {
 /// (`ah-k43x`). A hex read alone can still settle its own producers, which is what every focused
 /// test of this module wants and what this gives them.
 #[cfg(test)]
-fn ledger_for<'a>(
-    hex: &Hex<'_>,
-    ruleset: Option<&'a Ruleset>,
-    receipts: &'a BTreeMap<String, Receipts>,
-) -> Ledger<'a> {
+fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
     let production = production_shares_for(std::slice::from_ref(hex), ruleset);
     let foreign_unit_ids = hex
         .region
@@ -3697,7 +3687,6 @@ fn ledger_for<'a>(
     ledger_for_with_production(
         hex,
         ruleset,
-        receipts,
         &production,
         &foreign_unit_ids,
         &None,
@@ -3728,7 +3717,6 @@ fn ledger_for<'a>(
 fn settle_recruits_before_production(
     hexes: &mut [Hex<'_>],
     ruleset: Option<&Ruleset>,
-    receipts: &BTreeMap<String, Receipts>,
     claim_allowances: &ClaimAllowances,
 ) {
     let provisional = production_shares_for(hexes, ruleset);
@@ -3743,7 +3731,6 @@ fn settle_recruits_before_production(
         let ledger = ledger_for_with_production(
             hex,
             ruleset,
-            receipts,
             &provisional,
             &foreign_unit_ids,
             claim_allowances,
@@ -3761,14 +3748,12 @@ fn settle_recruits_before_production(
 fn ledger_for_with_production<'a>(
     hex: &Hex<'_>,
     ruleset: Option<&'a Ruleset>,
-    receipts: &'a BTreeMap<String, Receipts>,
     production: &ProductionShares,
     foreign_unit_ids: &BTreeSet<String>,
     claim_allowances: &ClaimAllowances,
 ) -> Ledger<'a> {
     let mut ledger = Ledger {
         ruleset,
-        receipts,
         state: PhaseState::from_hex(hex),
         manufacturing_spent: BTreeMap::new(),
         doubted: BTreeSet::new(),
@@ -3935,7 +3920,6 @@ pub(crate) fn item_effects(
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
     let mut result: BTreeMap<String, UnitItemEffects> = BTreeMap::new();
-    let no_receipts = BTreeMap::new();
 
     // The units this month's `FORM` orders create, built before `hexes` below so they outlive
     // every `Hex<'_>` that borrows from them. A formed unit's own `BUY` has to be priced here, or
@@ -3966,7 +3950,7 @@ pub(crate) fn item_effects(
     // acquiring separate recruitment settlements (`ah-40c9`).
     let mut hexes = hexes;
     let claim_allowances = claim_allowances_for(&hexes, report.header.unclaimed_silver);
-    settle_recruits_before_production(&mut hexes, ruleset, &no_receipts, &claim_allowances);
+    settle_recruits_before_production(&mut hexes, ruleset, &claim_allowances);
 
     // Every hex before any ledger, and one settlement for all of them: a passenger produces where
     // its vessel arrives, so the pool it draws on is in another hex's `Products` line. Settling
@@ -3978,7 +3962,6 @@ pub(crate) fn item_effects(
         let ledger = ledger_for_with_production(
             hex,
             ruleset,
-            &no_receipts,
             &production,
             &foreign_unit_ids,
             &claim_allowances,
@@ -6061,20 +6044,16 @@ fn cast(
             .push(placed.line);
     }
 
-    // `rules/sequence` puts `GIVE` and `TAKE` two phases before `Spells are CAST`, so silver on its
-    // way in counts; wages and anything produced after do not (`ah-ofpb.4`, R4). The report's own
-    // holding, not the ledger's running balance - the same divergence `plan_production` already
-    // has from a unit's other orders.
-    let receipts = ledger.receipts.get(who);
+    // `rules/sequenceofevents` settles CLAIM, GIVE/TAKE and TAX before `Spells are CAST`, and opens
+    // the market after it. The dispatch runs those phases for every unit in the hex before this
+    // one, so the balance at `Cast` is the whole answer and the gathered receipts - which
+    // `transfer` has already applied at `StatePhase::Give` - are no longer read here (`ah-gdd3.1`).
     let caster = Caster {
         skills: actor
             .skills_before_the_market()
             .unwrap_or(&actor.unit.skills),
         held: &actor.unit.items,
-        silver_available: actor.holding(SILVER)
-            + receipts.map_or(0, |receipts| {
-                receipts.silver + receipts.taken + receipts.taken_unshown
-            }),
+        silver_available: ledger.state.balance_at(StatePhase::Cast, who, SILVER).max(0),
         transmuting,
     };
 
@@ -12205,8 +12184,7 @@ mod tests {
             &BTreeSet::new(),
             &BTreeSet::new(),
         );
-        let no_receipts = BTreeMap::new();
-        let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
+        let ledger = ledger_for(&hex_with_transfers, Some(&rules));
         assert_eq!(balance_of(&ledger, "2390", "SILV"), 0);
 
         let mut overruns = Vec::new();
@@ -12262,8 +12240,7 @@ mod tests {
             &BTreeSet::new(),
             &BTreeSet::new(),
         );
-        let no_receipts = BTreeMap::new();
-        let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
+        let ledger = ledger_for(&hex_with_transfers, Some(&rules));
         let moved: i64 = ledger
             .movements
             .iter()
@@ -12323,8 +12300,7 @@ mod tests {
             &BTreeSet::new(),
             &BTreeSet::new(),
         );
-        let no_receipts = BTreeMap::new();
-        let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
+        let ledger = ledger_for(&hex_with_transfers, Some(&rules));
         let moved = |id: &str| -> i64 {
             ledger
                 .movements
@@ -12865,8 +12841,7 @@ mod tests {
             &BTreeSet::new(),
             &BTreeSet::new(),
         );
-        let no_receipts = BTreeMap::new();
-        let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
+        let ledger = ledger_for(&hex_with_transfers, Some(&rules));
         assert_eq!(balance_of(&ledger, "2390", "FUR"), 7);
     }
 
@@ -12914,8 +12889,7 @@ mod tests {
             &BTreeSet::new(),
             &BTreeSet::new(),
         );
-        let no_receipts = BTreeMap::new();
-        let ledger = ledger_for(&hex_with_transfers, Some(&rules), &no_receipts);
+        let ledger = ledger_for(&hex_with_transfers, Some(&rules));
         let moved: i64 = ledger
             .movements
             .iter()
@@ -13152,8 +13126,7 @@ mod tests {
         let ordered = OrderedUnits::read("");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let no_receipts = BTreeMap::new();
-        let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+        let ledger = ledger_for(&hex, Some(&rules));
 
         assert_eq!(silver_balance(&ledger, "1"), 50);
     }
@@ -13167,8 +13140,7 @@ mod tests {
         let ordered = OrderedUnits::read("unit 1\nTAX\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let no_receipts = BTreeMap::new();
-        let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+        let ledger = ledger_for(&hex, Some(&rules));
 
         assert_eq!(silver_balance(&ledger, "1"), 50);
     }
@@ -13275,8 +13247,7 @@ mod tests {
         let ordered = OrderedUnits::read("unit 1\nPILLAGE\n\nunit 2\nTAX\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let no_receipts = BTreeMap::new();
-        let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+        let ledger = ledger_for(&hex, Some(&rules));
 
         assert_eq!(
             silver_balance(&ledger, "2"),
@@ -15855,8 +15826,7 @@ mod tests {
             let ordered = OrderedUnits::read(orders);
             let hex = Hex::read(&hex_region, &ordered, &[]);
             let rules = ruleset();
-            let no_receipts = BTreeMap::new();
-            let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+                let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
         }
 
@@ -15887,8 +15857,7 @@ mod tests {
                 &BTreeSet::new(),
                 &BTreeSet::new(),
             );
-            let no_receipts = BTreeMap::new();
-            let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+                let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
         }
 
@@ -18393,8 +18362,7 @@ mod tests {
         let ordered = OrderedUnits::read(orders);
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let no_receipts = BTreeMap::new();
-        let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+        let ledger = ledger_for(&hex, Some(&rules));
         let sharing = Sharing::read(&hex);
         judge_shortfalls(&hex, &ledger, &sharing, Some(&rules))
     }
@@ -18647,8 +18615,7 @@ mod tests {
         let ordered = OrderedUnits::read("unit 5\nGIVE 0 30 swords\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let no_receipts = BTreeMap::new();
-        let mut ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+        let mut ledger = ledger_for(&hex, Some(&rules));
         let sharing = Sharing::read(&hex);
         let verdicts = judge_shortfalls(&hex, &ledger, &sharing, Some(&rules));
 
@@ -18675,7 +18642,6 @@ mod tests {
         let ordered = OrderedUnits::read("unit 1234\nGIVE 901 ALL SILV\nCLAIM 500\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let no_receipts = BTreeMap::new();
         let allowances: ClaimAllowances = Some(
             [("1234".to_string(), 500i64), ("901".to_string(), 0i64)]
                 .into_iter()
@@ -18686,7 +18652,6 @@ mod tests {
         let ledger = ledger_for_with_production(
             &hex,
             Some(&rules),
-            &no_receipts,
             &production,
             &BTreeSet::new(),
             &allowances,
@@ -18709,8 +18674,7 @@ mod tests {
         let ordered = OrderedUnits::read(orders);
         let hex = Hex::read(hex_region, &ordered, &[]);
         let rules = ruleset();
-        let no_receipts = BTreeMap::new();
-        let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+        let ledger = ledger_for(&hex, Some(&rules));
         sharing_purse(&hex, &ledger)
     }
 
@@ -18761,8 +18725,7 @@ mod tests {
         let ordered = OrderedUnits::read("unit 5\nSTUDY combat\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let no_receipts = BTreeMap::new();
-        let mut ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+        let mut ledger = ledger_for(&hex, Some(&rules));
 
         assert_eq!(
             sharing_purse(&hex, &ledger).lends_to,
@@ -18916,8 +18879,7 @@ mod tests {
         let ordered = OrderedUnits::read("");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let no_receipts = BTreeMap::new();
-        let mut ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+        let mut ledger = ledger_for(&hex, Some(&rules));
 
         // What `charge_upkeep` and the sharing pass leave behind for a hex that could not feed
         // itself: a fee nothing paid, drawn straight off the balance, and no `SHARE` flag.
@@ -20319,8 +20281,7 @@ mod tests {
         let ordered = OrderedUnits::read("unit 5\nWORK\n");
         let read = Hex::read(&hex, &ordered, &[]);
         let rules = ruleset();
-        let no_receipts = BTreeMap::new();
-        let ledger = ledger_for(&read, Some(&rules), &no_receipts);
+        let ledger = ledger_for(&read, Some(&rules));
 
         assert_eq!(ledger.upkeep.get("5"), Some(&60), "the whole fee");
         assert_eq!(
@@ -20341,8 +20302,7 @@ mod tests {
         let ordered = OrderedUnits::read("");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
-        let no_receipts = BTreeMap::new();
-        let mut ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+        let mut ledger = ledger_for(&hex, Some(&rules));
 
         let before = silver_balance(&ledger, "5");
         ledger.upkeep_lent.insert("5".to_string(), 40);
@@ -21150,11 +21110,18 @@ mod tests {
         );
     }
 
-    /// `ah-ofpb.4`: the engine now charges the stated cost once **per item** the cast will make,
-    /// not once whatever the level makes - a level 3 amulet maker makes three and spends $600, not
-    /// one and $200. A capped cast can never overspend on its own, so the gift to unit 6 is what
-    /// makes the change observable at all; unit 6 has to stand in the hex or the gift goes
-    /// uncounted and a second, unrelated finding breaks `only()`.
+    /// `ah-ofpb.4`: the engine charges the stated cost once **per item** the cast will make, not
+    /// once whatever the level makes. A capped cast can never overspend on its own, so the gift to
+    /// unit 6 is what makes the charge observable at all; unit 6 has to stand in the hex or the
+    /// gift goes uncounted and a second, unrelated finding breaks `only()`.
+    ///
+    /// `ah-gdd3.1` changed what the mage can afford, and so this message. `rules/sequenceofevents`
+    /// processes *"Give orders. GIVE and TAKE orders are processed."* before
+    /// *"Spells are CAST"*, and the document's order does not change that: the $500 has gone by the
+    /// time the spell resolves, so the level-3 mage has $100, makes none of the three amulets its
+    /// level wants, and is still charged for the one `plan_cast` charges whenever the level wants
+    /// any. $500 + $200 = $700 against a purse of $600. Before that correction the cast was priced
+    /// from the report's opening holding, which is the bug `ah-gdd3.1` exists to fix.
     #[test]
     fn a_mage_is_charged_for_every_artifact_it_makes() {
         let regions = vec![region(vec![
@@ -21170,7 +21137,7 @@ mod tests {
         assert_eq!(finding.unit_id.as_deref(), Some("5"));
         assert_eq!(
             finding.message,
-            "short $500: this unit can have $600 and its orders spend $1100"
+            "short $100: this unit can have $600 and its orders spend $700"
         );
     }
 
@@ -24856,8 +24823,7 @@ mod tests {
             let ordered = OrderedUnits::read(orders);
             let hex = Hex::read(&hex_region, &ordered, &[]);
             let rules = ruleset();
-            let no_receipts = BTreeMap::new();
-            let ledger = ledger_for(&hex, Some(&rules), &no_receipts);
+                let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
         }
 
@@ -28363,8 +28329,7 @@ mod tests {
             &BTreeSet::new(),
             &shown_anywhere,
         );
-        let receipts = BTreeMap::new();
-        let ledger = ledger_for(&hex, Some(&rules), &receipts);
+        let ledger = ledger_for(&hex, Some(&rules));
         apply_recruits(&mut hex.units, &ledger, Some(&rules));
         hex
     }
