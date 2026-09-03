@@ -12,17 +12,11 @@ import { SeverityMark } from "./primitives";
 import type { CaretLookup } from "../orderCompletion";
 import type { OrderSnippet } from "../orderSnippets";
 import { readUnitOrders } from "../ordersDocument";
+import { describeLock, lockFor, type Lock } from "./ordersLock";
 import { useSettingsStore } from "../settingsStore";
 import type { Ref } from "react";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { OrdersEditor, type OrdersEditorHandle } from "./OrdersEditor";
-
-/** Why the editor is refusing an edit. Each reason needs its own wording to be any use. */
-type Lock =
-  | { kind: "no-unit" }
-  | { kind: "foreign"; factionName: string; factionId: string | null }
-  | { kind: "not-in-turn"; lastSeenTurn: number | null }
-  | { kind: "no-block" };
 
 type OrdersPanelProps = {
   unit: ReportUnit | null;
@@ -69,28 +63,6 @@ type OrdersPanelProps = {
   walkPosition?: { at: number; of: number } | null;
 };
 
-function lockFor(unit: ReportUnit | null, hex: HexNode | null, block: string | null): Lock | null {
-  if (!unit) {
-    return { kind: "no-unit" };
-  }
-  if (!unit.own) {
-    return {
-      kind: "foreign",
-      factionName: unit.factionName ?? "another faction",
-      factionId: unit.factionId
-    };
-  }
-  // A unit carried over from an earlier turn cannot be ordered: you cannot command what you cannot
-  // presently see, and the server would reject orders for it.
-  if (hex?.knowledge === "stale") {
-    return { kind: "not-in-turn", lastSeenTurn: hex.lastSeenTurn };
-  }
-  if (block === null) {
-    return { kind: "no-block" };
-  }
-  return null;
-}
-
 export function OrdersPanel({
   unit,
   hex,
@@ -113,7 +85,7 @@ export function OrdersPanel({
   const orderOcd = useSettingsStore((state) => state.orderOcd);
   const unitId = unit?.unitId ?? null;
   const block = unitId === null ? null : readUnitOrders(document, unitId);
-  const lock = lockFor(unit, hex, block);
+  const lock = lockFor(unit, hex);
 
   // This unit's problems, and how many the rest of the faction has. The document-wide figure is
   // what stops a mistake in a unit nobody is looking at from reaching the server unnoticed. Not
@@ -317,7 +289,7 @@ function SaveNotice({ save }: { save: SaveState }) {
 }
 
 function LockNotice({ lock, ownFaction }: { lock: Lock; ownFaction: string }) {
-  const { badge, lines } = describe(lock, ownFaction);
+  const { badge, lines } = describeLock(lock, ownFaction);
 
   return (
     <div
@@ -333,37 +305,4 @@ function LockNotice({ lock, ownFaction }: { lock: Lock; ownFaction: string }) {
       ))}
     </div>
   );
-}
-
-function describe(lock: Lock, ownFaction: string): { badge: string; lines: string[] } {
-  switch (lock.kind) {
-    case "no-unit":
-      return { badge: "No unit", lines: ["Select a unit to write its orders."] };
-    case "foreign":
-      return {
-        badge: "Read only",
-        lines: [
-          `This unit belongs to ${lock.factionName}${lock.factionId ? ` (${lock.factionId})` : ""}.`,
-          `You can only write orders for units in ${ownFaction}.`
-        ]
-      };
-    case "not-in-turn":
-      return {
-        badge: "Not in this turn",
-        lines: [
-          lock.lastSeenTurn === null
-            ? "This unit is not in the current report."
-            : `This unit was last seen on turn ${lock.lastSeenTurn} and is not in the current report.`,
-          "Orders can only be written for units present in the current turn."
-        ]
-      };
-    case "no-block":
-      return {
-        badge: "No orders block",
-        lines: [
-          "The report's orders template has no block for this unit.",
-          "Adding one would produce a file the server rejects."
-        ]
-      };
-  }
 }

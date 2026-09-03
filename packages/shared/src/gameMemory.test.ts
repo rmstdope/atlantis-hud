@@ -657,4 +657,14 @@ describe("reopening the turn the player was last in", () => {
     expect(restored?.orders).toBe("#atlantis 95 pass");
     expect(restored?.ordersSavedAt).toBeNull();
   });
+
+  it("reopening a turn whose report carried no template seeds the same document", async () => {
+    const core = restoring();
+    const noTemplate = { ...report("95"), ordersTemplate: null };
+
+    const restored = await restoreLatestTurn(core, OPEN_GAME, vi.fn().mockResolvedValue(noTemplate), RULESET);
+
+    expect(restored?.orders).toContain("#atlantis 95");
+    expect(restored?.orders).toContain("#end");
+  });
 });

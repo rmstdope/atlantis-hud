@@ -170,6 +170,17 @@ describe("loadTurn", () => {
     expect(loaded.ordersSavedAt).toBeNull();
   });
 
+  it("a report with no orders template still opens on a document that can be ordered", async () => {
+    const core = client();
+    const noTemplate = report({ factionId: "62" });
+    (noTemplate as { ordersTemplate: unknown }).ordersTemplate = null;
+
+    const loaded = await loadTurn(core, OPEN_GAME, noTemplate, "raw text", RULESET, NOW);
+
+    expect(loaded.orders).toContain("#atlantis 62");
+    expect(loaded.orders).toContain("#end");
+  });
+
   it("does not remember again when the caller already committed the turn", async () => {
     const core = client();
 
@@ -191,7 +202,9 @@ describe("loadTurn", () => {
 
     expect(loaded.remembered).toEqual([]);
     expect(loaded.merged).toEqual([]);
-    expect(loaded.orders).toBe("");
+    // No game to hold a draft, and a report with no template of its own: the document is seeded so
+    // the turn is still orderable (ah-0gs8), rather than left empty as it was before.
+    expect(loaded.orders).toContain("#atlantis 95");
     expect(loaded.status.tone).toBe("routine");
     expect(core.commitReportImport).not.toHaveBeenCalled();
   });

@@ -9,6 +9,7 @@ import {
   hexToPixel,
   isValidCoordinate,
   levelClause,
+  levelFieldOf,
   levelNameOf,
   parseRegionId,
   regionIdOf,
@@ -240,6 +241,15 @@ describe("levels", () => {
     expect(levelClause([{ z: 2, name: "underworld" }], 2)).toBe(", in the underworld");
     expect(levelClause([{ z: 5, name: "level 5" }], 5)).toBe(", on level 5");
     expect(levelClause([], 2)).toBe("");
+  });
+
+  it("levelFieldOf writes the third coordinate field a report prints", () => {
+    expect(levelFieldOf(1)).toBeNull();
+    expect(levelFieldOf(0)).toBe("nexus");
+    expect(levelFieldOf(2)).toBe("underworld");
+    expect(levelFieldOf(3)).toBe("underdeep");
+    expect(levelFieldOf(4)).toBe("abyss");
+    expect(levelFieldOf(5)).toBe("5");
   });
 });
 

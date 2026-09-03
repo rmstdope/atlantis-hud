@@ -45,6 +45,7 @@ import {
 } from "./mapExportImport";
 import { sortUnitsForDisplay } from "./hexMapModel";
 import { countsStatus, noticeStatus, warningStatus } from "./workspace/shellStatus";
+import { seedOrdersDocument } from "./ordersDocument";
 
 /**
  * How a report names its own faction, as `Borg TNG (95)`, or `null` when it names none.
@@ -123,7 +124,7 @@ export async function loadTurn(
   // Saved orders beat the report's own template, including on opening the same file again. There is
   // no undo anywhere in this application, and a stray file-open must not silently erase an evening's
   // work; a new turn's report brings a clean template with it.
-  const template = report.ordersTemplate?.text ?? "";
+  const template = seedOrdersDocument(report.ordersTemplate?.text ?? "", report.header.factionId);
   const chosen = game
     ? await documentFor(client, game, draftKeyFor(report), template)
     : { text: template, restored: false, savedAt: null, warning: null };

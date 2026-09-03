@@ -22,6 +22,7 @@ import {
   buildHexMapModel,
   levelClause,
   parseRegionId,
+  levelFieldOf,
   SURFACE_LEVEL,
   unitsForHex,
   type HexMapModel
@@ -29,8 +30,11 @@ import {
 import { type TextFileSaver } from "../downloadFile";
 import type { OrdersUploader } from "./ordersUpload";
 import {
+  applyUnitOrders,
+  ensureUnitBlock,
   longOrderOf,
   readUnitOrders,
+  regionBannerLine,
   stripMovementOrderLines,
   writeUnitOrders
 } from "../ordersDocument";
@@ -2799,15 +2803,28 @@ export function AppShell({
   /** The faction and turn the document in front of the player belongs to. */
   const draftKey = useMemo(() => draftKeyFor(parsed), [parsed]);
 
+  /**
+   * The banner a block created for the selected unit would go under, or null when we cannot say.
+   *
+   * Null only for a hex known from memory rather than seen this turn, which the orders lock already
+   * refuses as `not-in-turn` - so this is a guard rather than a behaviour.
+   */
+  const newBlockBanner = useMemo(() => {
+    const region = hex?.region;
+    return region ? regionBannerLine(region, levelFieldOf(region.coordinate.z)) : null;
+  }, [hex]);
+
   const onOrdersChange = useCallback(
     (unitId: string, orders: string) => {
       writeOrdersDocument("editor", (document) => {
-        const next = writeUnitOrders(document, unitId, orders);
+        // The block is created on the first keystroke, not on selection: an edit that arrives with
+        // no text in it has typed nothing (ah-0gs8).
+        const next = applyUnitOrders(document, unitId, orders, newBlockBanner);
         writer.markDirty(game, draftKey, next);
         return next;
       });
     },
-    [game, draftKey, writer, writeOrdersDocument]
+    [game, draftKey, writer, writeOrdersDocument, newBlockBanner]
   );
 
   /**
@@ -2887,15 +2904,20 @@ export function AppShell({
         return;
       }
       writeOrdersDocument("external", (document) => {
-        const existing = readUnitOrders(document, unit.unitId) ?? "";
+        // A planned route is never empty, so the block is made unconditionally.
+        const base =
+          newBlockBanner === null
+            ? document
+            : ensureUnitBlock(document, unit.unitId, newBlockBanner);
+        const existing = readUnitOrders(base, unit.unitId) ?? "";
         const withoutMove = stripMovementOrderLines(existing);
         const next = withoutMove ? `${withoutMove}\n${order}` : order;
-        const written = writeUnitOrders(document, unit.unitId, next);
+        const written = writeUnitOrders(base, unit.unitId, next);
         writer.markDirty(game, draftKey, written);
         return written;
       });
     },
-    [unit, game, draftKey, writer, writeOrdersDocument]
+    [unit, game, draftKey, writer, writeOrdersDocument, newBlockBanner]
   );
 
   /**
