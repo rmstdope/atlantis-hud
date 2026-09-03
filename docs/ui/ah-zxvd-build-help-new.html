@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ah-zxvd - BUILD HELP NEW</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    body { margin: 0; background: #10151d; color: #e7edf5; }
+    main { max-width: 920px; margin: 48px auto; padding: 0 24px; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .lede { margin: 0 0 28px; color: #9eabba; }
+    .panel { border: 1px solid #334155; border-radius: 12px; background: #17202b; overflow: hidden; }
+    .unit { display: grid; grid-template-columns: 1.2fr .8fr .7fr; gap: 16px; padding: 14px 18px; }
+    .unit + .unit { border-top: 1px solid #334155; }
+    .muted { color: #9eabba; font-size: 13px; }
+    .items { position: relative; text-decoration: underline dotted #8fa5bd; text-underline-offset: 4px; }
+    .tooltip { margin-top: 10px; padding: 12px 14px; border: 1px solid #52657a; border-radius: 8px;
+      background: #0b1118; box-shadow: 0 14px 34px #0008; line-height: 1.5; font-size: 14px; }
+    .tag { color: #8bd5ca; font-family: ui-monospace, SFMono-Regular, monospace; }
+    .note { margin-top: 22px; padding: 14px 16px; border-left: 3px solid #60a5fa; background: #142235; }
+    code { font-family: ui-monospace, SFMono-Regular, monospace; color: #c6d8f0; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>BUILD HELP NEW - chosen wording</h1>
+    <p class="lede">The item forecast names a formed target exactly as the player wrote it: <strong>NEW 1</strong>.</p>
+    <section class="panel" aria-label="Unit preview">
+      <div class="unit">
+        <div><strong>Stonehands (4117)</strong><div class="muted">10 humans</div></div>
+        <div><span class="items">90 stone <span class="tag">STON</span></span>
+          <div class="tooltip" role="tooltip">
+            was: 120 STON<br>
+            Spends 30 STON helping <strong>NEW 1</strong> build a new Mine this month.
+          </div>
+        </div>
+        <div>Mining 3</div>
+      </div>
+    </section>
+    <div class="note">
+      Valid aliases resolve across the build preview and existing BUILD warnings. An alias with no matching
+      <code>FORM</code> remains unresolved and produces no new diagnostic in this bead.
+    </div>
+  </main>
+</body>
+</html>
