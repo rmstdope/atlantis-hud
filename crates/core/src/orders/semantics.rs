@@ -1199,6 +1199,9 @@ fn production_ask(
         recipe,
         work,
         ordered.early_items(),
+        // Unreachable: `production_tag_of` only answers for a recipe with no inputs at all, so
+        // this recipe has no `SILV` input and the silver cap is `i64::MAX` whatever is passed.
+        0,
         requested,
         RegionShare::Unlimited,
     )?;
@@ -5717,7 +5720,33 @@ fn produce(
         standing.production,
         ruleset,
     );
-    let (priced, plan) = price_production(recipe, work, held, requested, region);
+    // Every phase `rules/sequenceofevents` runs before "Manufacturing PRODUCE orders ... are
+    // processed" has been applied to this unit by the phase-major dispatch, and `PhaseState::apply`
+    // writes each delta forward, so this balance is the whole answer. Wages never enter it at all:
+    // `charge_upkeep` nets `late_income` against the fee rather than crediting it (`ah-gdd3.2`).
+    // `held` stays the material slice `ah-l80z` gave it.
+    //
+    // **Do not simplify this into `held`'s own `SILV` line.** The two coincide *today* and no test
+    // can tell them apart: `BEFORE_MANUFACTURING` is `StatePhase::Study`, which sits immediately
+    // before `Manufacturing` in `PHASES`, so a slice taken there already carries CLAIM, GIVE, CAST
+    // and the market, and nothing between the two phases moves silver. A charge at `Study` lands
+    // in *both*, so it separates nothing; and this function's own charge is mirrored into `held`
+    // by the `subtract_from_holdings(held, SILVER, ...)` below, which is why even a second
+    // `PRODUCE` line moves the two by the same amount. **They diverge as soon as something moves
+    // silver at `Manufacturing` before this read without a matching deduction from `held`** - and
+    // the reading that stays correct through that is the one naming the phase it means.
+    //
+    // Nothing pins this line today, and that is the point of writing it down: the SILVER column's
+    // twin is pinned by `a_claim_funds_the_months_manufacturing`,
+    // `a_gift_written_under_a_produce_is_still_spent_first` and
+    // `a_cast_lowers_what_a_production_can_afford` in `silver.rs`, but
+    // `crates/core/tests/silver_for_a_production.rs` asserts only that the two *columns* agree,
+    // which they do under either reading. It is not a guard on the choice made here.
+    let purse = ledger
+        .state
+        .balance_at(StatePhase::Manufacturing, who, SILVER)
+        .max(0);
+    let (priced, plan) = price_production(recipe, work, held, purse, requested, region);
     let Some(plan) = plan else {
         // Nothing in the ruleset prices it, so this unit's month cannot be judged at all - the
         // same posture `buy` takes for goods the market does not carry - and the ITEMS column
@@ -19658,6 +19687,39 @@ mod tests {
 
         assert_eq!(forecast.doubt, Some(SilverDoubt::UnpricedProduction));
         assert_eq!(forecast.expense, None);
+    }
+
+    /// `ah-gdd3.2`. The ledger settles a `GIVE` at its own phase, and `rules/sequenceofevents`
+    /// runs "Give orders. GIVE and TAKE orders are processed." long before manufacturing - so a
+    /// gift of the whole purse leaves nothing for the catapult whichever order the two are written
+    /// in, and no catapult is created.
+    #[test]
+    fn a_gift_lowers_what_the_ledger_lets_a_produce_make() {
+        let hex = report(vec![region(vec![carpenters(3000, 9999), unit("12882")])]);
+        let orders = "unit 12881\nGIVE 12882 3000 SILV\nPRODUCE catapult\n";
+
+        let effects = item_effects(&hex, orders, Some(&ruleset()));
+        let moved = effects
+            .get("12881")
+            .map(|unit| unit.moved.clone())
+            .unwrap_or_default();
+        assert!(
+            !moved.iter().any(|movement| movement.tag == "CATP"),
+            "{moved:?}"
+        );
+
+        // The control: the same hex without the gift does create one, so the gift is what binds
+        // and the assertion above is not passing on a fixture that could never produce.
+        let funded = report(vec![region(vec![carpenters(3000, 9999), unit("12882")])]);
+        let effects = item_effects(&funded, "unit 12881\nPRODUCE catapult\n", Some(&ruleset()));
+        let moved = effects
+            .get("12881")
+            .map(|unit| unit.moved.clone())
+            .unwrap_or_default();
+        assert!(
+            moved.iter().any(|movement| movement.tag == "CATP"),
+            "{moved:?}"
+        );
     }
 
     /// Silver spent at market is silver production has not got: `rules/sequenceofevents` settles

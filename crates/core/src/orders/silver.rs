@@ -1426,6 +1426,9 @@ pub fn forecast_unit(
                 // (`rules/sequenceofevents`, `ah-l80z`). Not `facts.items`, which is the
                 // maintenance index and already carries this production's own material debit.
                 //
+                // **The silver is not read from that slice at all** (`ah-gdd3.2`): it is the
+                // running balance below, for the same phase and the same reason.
+                //
                 // The level and the tools enter through `workforce_for`, which the ITEMS ledger
                 // also calls - one builder, so the two surfaces cannot be given different
                 // workforces (`ah-vtwn`). The tag is carried alongside because `workforce_for`
@@ -1451,8 +1454,20 @@ pub fn forecast_unit(
                 // producing the same goods here are settled against it - the same settlement the
                 // ITEMS ledger reads, through the same function (`ah-256d`, `ah-ycuj`).
                 let region = (lookups.region_share)(item);
-                let (priced, plan) =
-                    price_production(recipe, work, &manufacturing_items, *requested, region);
+                // `rules/sequenceofevents` runs every earning and spending phase this loop has
+                // already walked - CLAIM, GIVE/TAKE, TAX, CAST, SELL, BUY, WITHDRAW, STUDY -
+                // before "Manufacturing PRODUCE orders ... are processed", and the wages of
+                // ENTERTAIN and WORK arrive after it, which is why `late` is not in `income` yet
+                // at this point in the loop. `market_expense` is carried separately from `expense`
+                // and both are spent before manufacturing, so the cap must see the two together.
+                let (priced, plan) = price_production(
+                    recipe,
+                    work,
+                    &manufacturing_items,
+                    available_silver(held, income, expense.saturating_add(market_expense)),
+                    *requested,
+                    region,
+                );
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
@@ -3463,10 +3478,13 @@ pub fn price_production(
     recipe: Option<&Production>,
     work: Workforce,
     held: &[ItemAmount],
+    silver_available: i64,
     requested: Option<i64>,
     region: RegionShare,
 ) -> (Priced, Option<ProductionPlan>) {
-    match recipe.and_then(|recipe| plan_production(recipe, work, held, requested, region)) {
+    match recipe
+        .and_then(|recipe| plan_production(recipe, work, held, silver_available, requested, region))
+    {
         Some(plan) => (
             Priced {
                 spends: plan.silver,
@@ -3814,13 +3832,16 @@ pub struct ProductionPlan {
 
 /// What a unit's `PRODUCE` order makes this month, from the recipe and what the unit holds.
 ///
-/// `men` and `held` are the caller's to supply. `ah-gdd3.1` gave both surfaces the turn's phase
-/// order and made the **cast** cap read the balance at `StatePhase::Cast`; `ah-l80z` then gave the
-/// manufacturing PRODUCE cap the same treatment, so both of *its* callers now supply a *running*
-/// balance: what the unit holds as manufacturing opens, less whatever its earlier `PRODUCE` lines
-/// consumed. `semantics::produce` keeps one per unit and `forecast_unit` keeps its own by the same
-/// rule, so the two surfaces answer one order identically - which is the drift `ah-ycuj`'s corpus
-/// test exists to catch.
+/// `men` and `held` are the caller's to supply, and so is `silver_available`. `ah-gdd3.1` gave
+/// both surfaces the turn's phase order and made the **cast** cap read the balance at
+/// `StatePhase::Cast`; `ah-l80z` then gave the manufacturing PRODUCE cap the same treatment for
+/// its *materials*, so both callers supply a running material balance - what the unit holds as
+/// manufacturing opens, less whatever its earlier `PRODUCE` lines consumed. `ah-gdd3.2` completes
+/// the pair for the silver: **the `SILV` line of `held`, if there is one, is ignored**, and the
+/// silver a run may spend is the balance its unit has when `rules/sequenceofevents` runs
+/// *"Manufacturing PRODUCE orders ... are processed"* - which only the caller can know. Both
+/// surfaces compute it from their own phase-ordered walk, so the two answer one order identically,
+/// which is the drift `ah-ycuj`'s corpus test exists to catch.
 ///
 /// **Both callers supply the pre-manufacturing picture**: `rules/sequenceofevents` settles the
 /// Give phase, then TAX, then the market, then WITHDRAW, movement and STUDY, all before
@@ -3851,6 +3872,7 @@ pub fn plan_production(
     recipe: &Production,
     work: Workforce,
     held: &[ItemAmount],
+    silver_available: i64,
     requested: Option<i64>,
     region: RegionShare,
 ) -> Option<ProductionPlan> {
@@ -3906,7 +3928,7 @@ pub fn plan_production(
         .collect();
 
     let by_silver = if silver_each > 0 {
-        holding(SILVER_TAG) / silver_each
+        silver_available.max(0) / silver_each
     } else {
         i64::MAX
     };
@@ -4282,6 +4304,29 @@ mod production_tests {
         }
     }
 
+    /// A `SILV` line in `held` funds nothing: the silver a manufacturing run may spend is the
+    /// caller's to supply, because only the caller knows the balance at
+    /// `rules/sequenceofevents`'s manufacturing phase (`ah-gdd3.2`).
+    #[test]
+    fn a_silver_line_in_held_does_not_fund_the_run() {
+        let plan = plan_production(
+            &catapult(),
+            Workforce {
+                men: 10,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+            0,
+            None,
+            RegionShare::Unlimited,
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.made, 0);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Silver));
+    }
+
     /// Ten carpenters at the catapult's own minimum level bring forty man-months, and a catapult
     /// is four of them - so the whole run is ten, and its silver and materials are ten times one.
     #[test]
@@ -4294,12 +4339,8 @@ mod production_tests {
                 tool_bonus: 0,
                 tools: 0,
             },
-            &held(&[
-                ("SILV", 100_000),
-                ("WOOD", 9999),
-                ("IRWD", 999),
-                ("FUR", 999),
-            ]),
+            &held(&[("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+            100_000,
             None,
             RegionShare::Unlimited,
         )
@@ -4423,6 +4464,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 99)]),
+            0,
             None,
             RegionShare::Unlimited,
         )
@@ -4445,6 +4487,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 99)]),
+            0,
             None,
             RegionShare::Unlimited,
         )
@@ -4481,6 +4524,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            0,
             None,
             RegionShare::Share(20),
         )
@@ -4503,6 +4547,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            0,
             None,
             RegionShare::Share(40),
         )
@@ -4527,6 +4572,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            0,
             None,
             RegionShare::NothingHere,
         )
@@ -4549,12 +4595,8 @@ mod production_tests {
                 tool_bonus: 0,
                 tools: 0,
             },
-            &held(&[
-                ("SILV", 100_000),
-                ("WOOD", 9999),
-                ("IRWD", 999),
-                ("FUR", 999),
-            ]),
+            &held(&[("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+            100_000,
             None,
             RegionShare::Unlimited,
         )
@@ -4584,6 +4626,7 @@ mod production_tests {
             None,
             Workforce::default(),
             &[],
+            0,
             None,
             RegionShare::Unlimited,
         );
@@ -4605,12 +4648,8 @@ mod production_tests {
                 tool_bonus: 0,
                 tools: 0,
             },
-            &held(&[
-                ("SILV", 100_000),
-                ("WOOD", 9999),
-                ("IRWD", 999),
-                ("FUR", 999),
-            ]),
+            &held(&[("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+            100_000,
             None,
             RegionShare::Unlimited,
         );
@@ -4637,7 +4676,8 @@ mod production_tests {
                 tool_bonus: 0,
                 tools: 0,
             },
-            &held(&[("SILV", 100_000)]),
+            &held(&[]),
+            100_000,
             None,
             RegionShare::Unlimited,
         )
@@ -4661,7 +4701,8 @@ mod production_tests {
                 tool_bonus: 0,
                 tools: 0,
             },
-            &held(&[("SILV", 3000), ("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+            &held(&[("WOOD", 9999), ("IRWD", 999), ("FUR", 999)]),
+            3000,
             None,
             RegionShare::Unlimited,
         )
@@ -4672,6 +4713,28 @@ mod production_tests {
         assert_eq!(plan.capped_by, Some(ProductionCap::Silver));
     }
 
+    /// `ah-gdd3.2`. Materials keep reading the item slice: only silver moved to the caller.
+    #[test]
+    fn materials_are_still_read_from_the_item_slice() {
+        let plan = plan_production(
+            &catapult(),
+            Workforce {
+                men: 10,
+                level: 5,
+                tool_bonus: 0,
+                tools: 0,
+            },
+            &held(&[("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
+            1_000_000,
+            None,
+            RegionShare::Unlimited,
+        )
+        .expect("a priceable recipe");
+        assert_eq!(plan.made, 1);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Materials));
+    }
+
+    /// The materials bind when they are the least of the caps.
     #[test]
     fn materials_cap_what_a_unit_produces() {
         let plan = plan_production(
@@ -4682,12 +4745,8 @@ mod production_tests {
                 tool_bonus: 0,
                 tools: 0,
             },
-            &held(&[
-                ("SILV", 100_000),
-                ("WOOD", 250),
-                ("IRWD", 999),
-                ("FUR", 999),
-            ]),
+            &held(&[("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
+            100_000,
             None,
             RegionShare::Unlimited,
         )
@@ -4706,7 +4765,8 @@ mod production_tests {
                 tool_bonus: 0,
                 tools: 0,
             },
-            &held(&[("SILV", 3000), ("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
+            &held(&[("WOOD", 250), ("IRWD", 999), ("FUR", 999)]),
+            3000,
             None,
             RegionShare::Unlimited,
         )
@@ -4734,6 +4794,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 2)]),
+            0,
             None,
             RegionShare::Unlimited,
         )
@@ -4772,6 +4833,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 20)]),
+            0,
             Some(3),
             RegionShare::Unlimited,
         )
@@ -4801,6 +4863,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 20)]),
+            0,
             Some(10),
             RegionShare::Unlimited,
         )
@@ -4823,6 +4886,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[("IRON", 5)]),
+            0,
             Some(10),
             RegionShare::Unlimited,
         )
@@ -4847,6 +4911,7 @@ mod production_tests {
                     tools: 0,
                 },
                 &held(&[("IRON", 20)]),
+                0,
                 Some(requested),
                 RegionShare::Unlimited,
             )
@@ -4877,6 +4942,7 @@ mod production_tests {
                 tools: 0,
             },
             &held(&[]),
+            0,
             Some(10),
             RegionShare::Share(6),
         )
@@ -4908,6 +4974,7 @@ mod production_tests {
                     tools: 0,
                 },
                 &held(&[("GRAI", 99)]),
+                0,
                 None,
                 RegionShare::Unlimited,
             ),
@@ -4932,6 +4999,7 @@ mod production_tests {
                 &unscraped,
                 ten_carpenters,
                 &held(&[]),
+                0,
                 None,
                 RegionShare::Unlimited
             ),
@@ -4944,6 +5012,7 @@ mod production_tests {
                 &no_output,
                 ten_carpenters,
                 &held(&[]),
+                0,
                 None,
                 RegionShare::Unlimited
             ),
@@ -5791,6 +5860,205 @@ mod tests {
 
         assert_eq!(unit.production_men_left, 5);
         assert_eq!(unit.produced, 3);
+    }
+
+    /// `ah-gdd3.2`. Materials in these four are exactly one catapult's, so `by_materials` is 1 and
+    /// only the silver moves.
+    fn catapult_materials() -> [ItemAmount; 3] {
+        [
+            ItemAmount {
+                amount: 250,
+                name: "wood".into(),
+                tag: "WOOD".into(),
+            },
+            ItemAmount {
+                amount: 30,
+                name: "ironwood".into(),
+                tag: "IRWD".into(),
+            },
+            ItemAmount {
+                amount: 80,
+                name: "furs".into(),
+                tag: "FUR".into(),
+            },
+        ]
+    }
+
+    /// The same materials with the unit's own `SILV` line, which is what a real report prints for
+    /// a unit holding silver.
+    ///
+    /// The gift and cast cases below **must** carry it: without it the old cap read a holding of
+    /// nothing and already made none, so an assertion of `produced == 0` passed against the very
+    /// bug this bead fixes. Each of those two tests is paired with a control that drops the
+    /// spending order and asserts the run *is* funded, which is what pins the spend as the cause.
+    fn catapult_materials_and_silver(silver: i64) -> [ItemAmount; 4] {
+        let [wood, ironwood, furs] = catapult_materials();
+        [
+            ItemAmount {
+                amount: silver,
+                name: "silver".into(),
+                tag: "SILV".into(),
+            },
+            wood,
+            ironwood,
+            furs,
+        ]
+    }
+
+    /// `ah-gdd3.2`. `rules/sequenceofevents` runs CLAIM in the first instant batch, long before
+    /// "Manufacturing PRODUCE orders ... are processed", so silver a `CLAIM` brings in funds this
+    /// month's catapult - which the report's own `SILV` line does not show.
+    #[test]
+    fn a_claim_funds_the_months_manufacturing() {
+        let receipts = Receipts::default();
+        let intents = [
+            placed(Intent::Claim(3000)),
+            placed(Intent::Produce {
+                requested: None,
+                item: "CATP".to_string(),
+            }),
+        ];
+        let items = catapult_materials();
+        let carpenters = [skill("CARP", 4)];
+        let unit = forecast_unit(
+            UnitFacts {
+                items: &items,
+                skills: &carpenters,
+                production_skills: &carpenters,
+                late: Some(LateFacts {
+                    men: 4,
+                    men_by_race: &[],
+                    items: &items,
+                    before_manufacturing: &items,
+                }),
+                ..facts(4, &intents, &receipts)
+            },
+            paying("$5.0", None),
+            PoolShares::default(),
+            FactionPurse {
+                unclaimed: Some(3000),
+            },
+            0,
+            no_market(),
+            Some(&ruleset()),
+        );
+
+        assert_eq!(unit.produced, 1);
+    }
+
+    /// `ah-gdd3.2`. GIVE settles before manufacturing whatever order the two are written in, so a
+    /// gift written *under* a `PRODUCE` still empties the purse the run would have spent.
+    #[test]
+    fn a_gift_written_under_a_produce_is_still_spent_first() {
+        let receipts = Receipts::default();
+        let intents = [
+            placed(Intent::Produce {
+                requested: None,
+                item: "CATP".to_string(),
+            }),
+            placed(Intent::Give {
+                to: Party::Unit("1235".to_string()),
+                what: Selector::Item("SILV".to_string()),
+                amount: Amount::Exact(3000),
+            }),
+        ];
+        let items = catapult_materials_and_silver(3000);
+        let carpenters = [skill("CARP", 4)];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 3000,
+                items: &items,
+                skills: &carpenters,
+                production_skills: &carpenters,
+                late: Some(LateFacts {
+                    men: 4,
+                    men_by_race: &[],
+                    items: &items,
+                    before_manufacturing: &items,
+                }),
+                ..facts(4, &intents, &receipts)
+            },
+            paying("$5.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            Some(&ruleset()),
+        );
+
+        assert_eq!(unit.produced, 0);
+        assert_eq!(unit.production_capped_by, Some(ProductionCap::Silver));
+
+        // The control: the same unit without the gift is funded, so it is the gift that binds and
+        // not something missing from the fixture.
+        let alone = [placed(Intent::Produce {
+            requested: None,
+            item: "CATP".to_string(),
+        })];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 3000,
+                items: &items,
+                skills: &carpenters,
+                production_skills: &carpenters,
+                late: Some(LateFacts {
+                    men: 4,
+                    men_by_race: &[],
+                    items: &items,
+                    before_manufacturing: &items,
+                }),
+                ..facts(4, &alone, &receipts)
+            },
+            paying("$5.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            Some(&ruleset()),
+        );
+        assert_eq!(unit.produced, 1);
+    }
+
+    /// `ah-gdd3.2`. "Spells are CAST" runs before manufacturing, and the committed ruleset prices
+    /// `CRPA`'s cast at 200 silver - so 3000 held becomes 2800, and a catapult wants 3000.
+    #[test]
+    fn a_cast_lowers_what_a_production_can_afford() {
+        let receipts = Receipts::default();
+        let intents = [
+            placed(Intent::Cast {
+                spell: "create amulet of protection".to_string(),
+                arguments: vec![],
+            }),
+            placed(Intent::Produce {
+                requested: None,
+                item: "CATP".to_string(),
+            }),
+        ];
+        let items = catapult_materials_and_silver(3000);
+        let carpenters = [skill("CARP", 4), skill("CRPA", 1)];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 3000,
+                items: &items,
+                skills: &carpenters,
+                production_skills: &carpenters,
+                late: Some(LateFacts {
+                    men: 4,
+                    men_by_race: &[],
+                    items: &items,
+                    before_manufacturing: &items,
+                }),
+                ..facts(4, &intents, &receipts)
+            },
+            paying("$5.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            Some(&ruleset()),
+        );
+
+        assert_eq!(unit.produced, 0);
     }
 
     /// Clamped at zero: a unit that *gains* men produces more, which needs no sentence.
