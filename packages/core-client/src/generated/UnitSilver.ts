@@ -218,9 +218,19 @@ productionMenLeft: number,
 producedName: string | null, 
 /**
  * How many its men alone would have made. Equal to `produced` unless `production_capped_by`
- * says something stopped it.
+ * says something stopped it, or unless a numbered order asked for fewer.
  */
 productionWanted: number, 
+/**
+ * The count a numbered `PRODUCE <number> <item>` named, or `None` for the unbounded
+ * `PRODUCE <item>` - and for a unit with no priceable `PRODUCE` order at all.
+ *
+ * Carried beside [`UnitSilver::production_wanted`] rather than folded into it: `rules/produce`
+ * makes the two different facts - what the player asked for, and what the men could manage -
+ * and the existing unnumbered wording quotes the second (`ah-6x5u`). `None` is also the
+ * backward-compatible default for a payload written before this field existed.
+ */
+productionRequested: number | null, 
 /**
  * What stopped it making `production_wanted`, or `None` when nothing did. Drives the hover's
  * note and nothing else - the figures above are already the capped ones (`ah-19l2.2`).

@@ -4,4 +4,4 @@
  * Which limit decided how many a unit produces, when it is not its men - or, for a `CAST` that
  * summons, how many it may control.
  */
-export type ProductionCap = "silver" | "materials" | "room" | "region";
+export type ProductionCap = "silver" | "materials" | "room" | "region" | "workforce";
