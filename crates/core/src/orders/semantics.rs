@@ -3601,6 +3601,9 @@ struct Ledger<'a> {
     /// What each unit's `BUY` lines have been charged **beyond what they actually spent** this
     /// month: `sum(wanted - spends)` over its reduced lines.
     ///
+    /// Summed over every bounded line, not only the reduced ones - which is the same figure,
+    /// because `price_purchase` returns `wanted == spends` on every path silver did not cut down.
+    ///
     /// The charge is the whole ask, so the ledger balance is no longer the unit's purse once a
     /// line has been cut down: a second `BUY`, and every `BUY ALL`, must add this back to see the
     /// silver the market really left. `forecast_unit` carries the same figure as its `funds`
@@ -16424,7 +16427,8 @@ mod tests {
                 for_sale: vec![line(12, 10, "grain", "GRAI"), line(12, 5, "horses", "HORS")],
                 ..region(vec![with_silver(unit("2390"), 25)])
             };
-            with_ledger(hex, "unit 2390\nBUY 3 grain\nBUY 1 horse\n", |ledger| {
+            let orders = "unit 2390\nBUY 3 grain\nBUY 1 horse\n";
+            with_ledger(hex.clone(), orders, |ledger| {
                 let delta = |tag: &str| {
                     ledger
                         .movements
@@ -16436,6 +16440,22 @@ mod tests {
                 assert_eq!(delta("GRAI"), Some(2));
                 assert_eq!(delta("HORS"), Some(1));
             });
+            // ... and the SILVER column settles the same two quantities: 20 on grain and 5 on the
+            // horse, against an ask of 30 + 5.
+            let review = review_turn(
+                &report(vec![hex]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let column = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "2390")
+                .expect("the buyer is forecast");
+            assert_eq!(column.expense, Some(25));
+            assert_eq!(column.wanted_for_orders, Some(35));
+            assert_eq!(column.at_month_end, Some(0));
         }
 
         /// And a `BUY ALL` after a reduced bounded line spends what that line really left, not
