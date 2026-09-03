@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-6x5u - Numbered PRODUCE tooltip, breakdown variant</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --brass:#d9a441; --soft:#a3b0c0; --good:#7fb069; }
+  * { box-sizing:border-box; }
+  body { background:var(--page); color:var(--ink); font:14px/1.5 system-ui,sans-serif;
+         margin:0; padding:24px 32px 80px; }
+  h1 { font-size:20px; margin:0 0 6px; }
+  h2 { font-size:15px; margin:28px 0 8px; border-bottom:1px dashed var(--edge); padding-bottom:4px; }
+  p.note { color:var(--dim); max-width:88ch; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; }
+  .case { min-width:0; }
+  .lab { color:var(--brass); font-size:11px; letter-spacing:1px; text-transform:uppercase; margin:0 0 5px; }
+  .tip { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:9px 12px;
+         max-width:46ch; white-space:pre-wrap; overflow-wrap:anywhere;
+         font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--soft); }
+  .new { color:var(--ink); }
+  .key { color:var(--dim); }
+  .cost { color:var(--dim); font-size:12.5px; max-width:60ch; }
+  .narrow { width:230px; }
+  b { color:var(--ink); }
+</style>
+</head>
+<body>
+<h1>Option B - compact requested/this-month breakdown</h1>
+<p class="note">
+  Numbered orders always show their requested and projected totals, even when they fit. A final line
+  names the binding limit and carry-over when something remains. Unnumbered PRODUCE keeps its
+  current wording. Chosen by the navigator on 2026-09-03.
+</p>
+
+<h2>Numbered order states</h2>
+<div class="grid">
+  <div class="case">
+    <p class="lab">Exact fit - PRODUCE 3 sword</p>
+    <div class="tip">was: 0 SWOR
+Includes 3 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.
+<span class="new"><span class="key">Requested:</span> 3 swords. <span class="key">This month:</span> 3.</span></div>
+    <p class="cost">The written request is visible even when no explanation is needed.</p>
+  </div>
+  <div class="case">
+    <p class="lab">Materials limit - PRODUCE 3 sword, 2 iron</p>
+    <div class="tip">was: 2 IRON
+Includes 2 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.
+<span class="new"><span class="key">Requested:</span> 3 swords. <span class="key">This month:</span> 2.
+Limited by materials. The remaining 1 carries over.</span></div>
+  </div>
+  <div class="case">
+    <p class="lab">Skill and tools limit - PRODUCE 10 sword</p>
+    <div class="tip">was: 20 IRON
+Includes 8 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.
+<span class="new"><span class="key">Requested:</span> 10 swords. <span class="key">This month:</span> 8.
+Limited by skill and tools. The remaining 2 carry over.</span></div>
+  </div>
+  <div class="case">
+    <p class="lab">Nothing this month - PRODUCE 3 sword, no iron</p>
+    <div class="tip">was: 0 IRON
+<span class="new"><span class="key">Requested:</span> 3 swords. <span class="key">This month:</span> none.
+Limited by materials. The remaining 3 carry over.</span></div>
+  </div>
+  <div class="case">
+    <p class="lab">Silver limit - PRODUCE 3 catapult</p>
+    <div class="tip">was: 3000 SILV, 999 WOOD, 999 IRWD, 999 FUR
+Includes 1 CATP this unit will produce. Production resolves last, so it cannot be spent this month.
+<span class="new"><span class="key">Requested:</span> 3 catapults. <span class="key">This month:</span> 1.
+Limited by silver. The remaining 2 carry over.</span></div>
+  </div>
+  <div class="case">
+    <p class="lab">Region limit - PRODUCE 10 iron</p>
+    <div class="tip">was: 3 IRON
+Includes 6 IRON this unit will produce. Production resolves last, so they cannot be spent this month.
+<span class="new"><span class="key">Requested:</span> 10 iron. <span class="key">This month:</span> 6.
+Limited by this region's iron. The remaining 4 carry over.</span></div>
+  </div>
+</div>
+
+<h2>Existing unnumbered order remains unchanged</h2>
+<div class="tip">was: 5 IRON
+Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.
+This unit has materials for 5 swords, not the 8 its skill and tools could make.</div>
+
+<h2>Narrow window</h2>
+<div class="tip narrow">was: 20 IRON
+Includes 8 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.
+<span class="new"><span class="key">Requested:</span> 10 swords. <span class="key">This month:</span> 8.
+Limited by skill and tools. The remaining 2 carry over.</span></div>
+<p class="cost">
+  <b>Cost:</b> easier to scan and shorter when narrow, but it introduces a label-like presentation
+  that no other sentence in this tooltip currently uses and adds a line to every numbered order.
+</p>
+</body>
+</html>
