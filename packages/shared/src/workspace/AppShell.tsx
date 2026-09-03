@@ -22,6 +22,7 @@ import {
   buildHexMapModel,
   levelClause,
   parseRegionId,
+  levelFieldOf,
   SURFACE_LEVEL,
   unitsForHex,
   type HexMapModel
@@ -30,6 +31,9 @@ import { type TextFileSaver } from "../downloadFile";
 import type { OrdersUploader } from "./ordersUpload";
 import {
   longOrderOf,
+  applyUnitOrders,
+  ensureUnitBlock,
+  regionBannerLine,
   readUnitOrders,
   stripMovementOrderLines,
   writeUnitOrders
@@ -2796,18 +2800,23 @@ export function AppShell({
     return hexPreview.units.find((previewed) => previewed.unit.unitId === unit.unitId) ?? null;
   }, [unit, hexPreview]);
 
+  const newBlockBanner = useMemo(() => {
+    const region = hex?.region;
+    return region ? regionBannerLine(region, levelFieldOf(region.coordinate.z)) : null;
+  }, [hex]);
+
   /** The faction and turn the document in front of the player belongs to. */
   const draftKey = useMemo(() => draftKeyFor(parsed), [parsed]);
 
   const onOrdersChange = useCallback(
     (unitId: string, orders: string) => {
       writeOrdersDocument("editor", (document) => {
-        const next = writeUnitOrders(document, unitId, orders);
+        const next = applyUnitOrders(document, unitId, orders, newBlockBanner);
         writer.markDirty(game, draftKey, next);
         return next;
       });
     },
-    [game, draftKey, writer, writeOrdersDocument]
+    [game, draftKey, writer, writeOrdersDocument, newBlockBanner]
   );
 
   /**
@@ -2887,15 +2896,16 @@ export function AppShell({
         return;
       }
       writeOrdersDocument("external", (document) => {
-        const existing = readUnitOrders(document, unit.unitId) ?? "";
+        const base = newBlockBanner === null ? document : ensureUnitBlock(document, unit.unitId, newBlockBanner);
+        const existing = readUnitOrders(base, unit.unitId) ?? "";
         const withoutMove = stripMovementOrderLines(existing);
         const next = withoutMove ? `${withoutMove}\n${order}` : order;
-        const written = writeUnitOrders(document, unit.unitId, next);
+        const written = writeUnitOrders(base, unit.unitId, next);
         writer.markDirty(game, draftKey, written);
         return written;
       });
     },
-    [unit, game, draftKey, writer, writeOrdersDocument]
+    [unit, game, draftKey, writer, writeOrdersDocument, newBlockBanner]
   );
 
   /**

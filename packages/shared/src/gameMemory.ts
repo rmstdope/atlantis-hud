@@ -25,6 +25,7 @@ import type {
   ReportMergeResult
 } from "@atlantis/core-client";
 import { documentFor, draftKeyFor } from "./orderDraft";
+import { seedOrdersDocument } from "./ordersDocument";
 
 /**
  * What the shell holds about the world beyond the report: the remembered regions (for the planner
@@ -408,7 +409,7 @@ export async function restoreLatestTurn(
   const merged = await mergedReportsFor(client, game, factionId, turnNumber);
   const map = await knownMapFor(client, stored.rawReport, rulesetJson, remembered);
 
-  const template = parsed.ordersTemplate?.text ?? "";
+  const template = seedOrdersDocument(parsed.ordersTemplate?.text ?? "", parsed.header.factionId);
   const chosen = await documentFor(client, game, draftKeyFor(parsed), template);
 
   return {

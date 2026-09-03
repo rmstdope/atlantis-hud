@@ -88,6 +88,17 @@ export const SURFACE = 1;
 /** The surface as a level entry, for a model with no game behind it. */
 export const SURFACE_LEVEL: MapLevel = { z: SURFACE, name: "surface" };
 
+export function levelFieldOf(z: number): string | null {
+  switch (z) {
+    case 0: return "nexus";
+    case 1: return null;
+    case 2: return "underworld";
+    case 3: return "underdeep";
+    case 4: return "abyss";
+    default: return String(z);
+  }
+}
+
 /** The name the known map gives a level, or `null` when the map has no such level. */
 export function levelNameOf(levels: MapLevel[], z: number): string | null {
   return levels.find((level) => level.z === z)?.name ?? null;

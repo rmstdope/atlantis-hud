@@ -23,6 +23,63 @@ export type UnitBlock = {
   lastLine: number;
 };
 
+export function regionBannerLine(
+  region: {
+    terrain: string;
+    coordinate: { x: number; y: number; z: number };
+    province: string;
+    settlement: { name: string; size: string } | null;
+  },
+  levelField: string | null
+): string {
+  const coordinate = `(${region.coordinate.x},${region.coordinate.y}${levelField === null ? "" : `,${levelField}`})`;
+  const settlement = region.settlement
+    ? `, contains ${region.settlement.name} [${region.settlement.size}]`
+    : "";
+  return `;*** ${region.terrain} ${coordinate} in ${region.province}${settlement} ***`;
+}
+
+export function ensureUnitBlock(document: string, unitId: string, banner: string): string {
+  if (findUnitBlocks(document).some((block) => block.unitId === unitId)) return document;
+  const lines = document.split("\n");
+  const bannerIndex = lines.findIndex((line) => line.trim() === banner.trim());
+  let at: number;
+  if (bannerIndex >= 0) {
+    let regionEnd = lines.findIndex((line, index) => index > bannerIndex && REGION_BANNER.test(line));
+    if (regionEnd < 0) {
+      regionEnd = lines.findIndex(
+        (line, index) => index > bannerIndex && DOCUMENT_END_LINE.test(line.trim())
+      );
+    }
+    const end = regionEnd >= 0 ? regionEnd : lines.length;
+    const mine = findUnitBlocks(document).filter((block) => block.headerLine > bannerIndex && block.headerLine < end);
+    at = mine.length > 0 ? mine[mine.length - 1].lastLine + 1 : bannerIndex + 1;
+    lines.splice(at, 0, "", `unit ${unitId}`);
+  } else {
+    const end = lines.findIndex((line) => DOCUMENT_END_LINE.test(line.trim()));
+    at = end >= 0 ? end : lines.length;
+    const prefix = at > 0 && lines[at - 1].trim() !== "" ? [""] : [];
+    lines.splice(at, 0, ...prefix, banner, "", `unit ${unitId}`, "");
+  }
+  return lines.join("\n");
+}
+
+export function seedOrdersDocument(templateText: string, factionId: string | null): string {
+  if (templateText.trim() !== "" || factionId === null) return templateText;
+  return [
+    "; This report carried no orders template, so this file was started from scratch.",
+    `; If your faction has a password, add it: #atlantis ${factionId} "your password"`,
+    `#atlantis ${factionId}`,
+    "",
+    "#end"
+  ].join("\n");
+}
+
+export function applyUnitOrders(document: string, unitId: string, orders: string, banner: string | null): string {
+  const base = orders === "" || banner === null ? document : ensureUnitBlock(document, unitId, banner);
+  return writeUnitOrders(base, unitId, orders);
+}
+
 const UNIT_LINE = /^unit\s+(\S+)\s*$/iu;
 const DOCUMENT_END_LINE = /^#end$/iu;
 /** `;*** mountain (7,53) in Inhead, contains Inholm [city] ***`, one before each region's units. */

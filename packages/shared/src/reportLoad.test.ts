@@ -191,7 +191,8 @@ describe("loadTurn", () => {
 
     expect(loaded.remembered).toEqual([]);
     expect(loaded.merged).toEqual([]);
-    expect(loaded.orders).toBe("");
+    expect(loaded.orders).toContain("#atlantis");
+    expect(loaded.orders).toContain("#end");
     expect(loaded.status.tone).toBe("routine");
     expect(core.commitReportImport).not.toHaveBeenCalled();
   });
