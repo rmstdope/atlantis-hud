@@ -1852,9 +1852,12 @@ impl Arrivals {
 struct Ordered<'a> {
     unit: &'a ReportUnit,
     /// The intents that can actually execute this month: every order that does not spend the
-    /// month, plus the one month claim that wins (`ah-rzkm`). Normalized by
-    /// [`Ordered::retain_effective_month_intents`] at the end of [`hex_with_transfers`], so every
-    /// projection and every specialized check describes the executable month.
+    /// month, plus the one month claim that wins (`ah-rzkm`), so every projection and every
+    /// specialized check describes the executable month.
+    ///
+    /// Written by [`Ordered::settle_effective_month_intents`], which runs twice - once at the end
+    /// of [`hex_with_transfers`] and again after `apply_recruits`, whose reading is the one that
+    /// stands. See that method for why both are load-bearing.
     intents: Vec<PlacedIntent>,
     /// The document's complete parsed list, retained only so
     /// [`check_two_month_long_orders`] can report the orders that lost the month.
@@ -3063,6 +3066,13 @@ impl Ordered<'_> {
     ///   judges from too.
     ///
     /// `teaching_eligibility` is read once, before the mutable borrow, and stored.
+    ///
+    /// The two settlements can therefore pick different winners, in either direction: a unit may
+    /// lose eligibility across the market phase, and one with no men yet - `teaching_eligibility`
+    /// answers `false` for an empty unit - may gain it by buying leaders, which promotes its
+    /// `TEACH` and demotes a `STUDY` the provisional ledger had already priced. That ledger is
+    /// discarded and every caller recomputes from the post-recruit state, so the answer a reader
+    /// sees is always the second settlement's; only the provisional costing is affected.
     fn settle_effective_month_intents(&mut self) {
         let teaching_eligible = self.teaching_eligibility();
         self.teaching_eligible = Some(teaching_eligible);
