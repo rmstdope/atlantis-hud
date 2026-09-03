@@ -19523,18 +19523,16 @@ mod tests {
         assert_eq!(forecast.expense, None);
     }
 
-    /// The run is planned against what the unit *holds*, so a production on its own can never
-    /// overdraw - the cap has already seen to that. It bites when something else spends the same
-    /// silver first, which is exactly the imprecision the holdings cap accepts: the figure is the
-    /// one a player can read off the report, and the ledger's running balance catches the rest.
+    /// Silver spent at market is silver production has not got: `rules/sequenceofevents` settles
+    /// BUY in the market phase, eleven entries before manufacturing PRODUCE, so a catapult whose
+    /// recipe wants the same 3000 the unit has just spent on grain is *capped*, not short
+    /// (`ah-l80z`).
     ///
-    /// The earlier spend has to be a `BUY` rather than a `GIVE`: since `ah-vcp8.2` a `GIVE`'s
-    /// effect on the giver is exactly what `PRODUCE`'s own cap reads (`early_items`), so a `GIVE`
-    /// that spends the same silver first can no longer create this discrepancy - the cap sees it
-    /// and produces less instead of overdrawing. A `BUY` spends through the ledger alone, invisible
-    /// to `early_items`, which is what still lets the two disagree.
+    /// The cap is what replaces the old `not-enough-silver` warning here, so the absence of the
+    /// warning is asserted beside the cap itself: an emptiness assertion alone would pass for a
+    /// run that made a catapult out of nothing.
     #[test]
-    fn a_unit_that_cannot_afford_its_production_is_warned() {
+    fn spending_the_silver_at_market_caps_production_instead_of_warning() {
         let region = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 30,
@@ -19544,24 +19542,23 @@ mod tests {
             }],
             ..region(vec![carpenters(3000, 9999)])
         };
-        let findings = check(vec![region], "unit 12881\nBUY 30 grain\nPRODUCE catapult\n");
+        let findings = check(vec![region.clone()], "unit 12881\nBUY 30 grain\nPRODUCE catapult\n");
 
-        assert_eq!(codes(&findings), ["not-enough-silver"]);
-        assert!(
-            findings[0].message.contains("3000"),
-            "the catapult's own 3000: {}",
-            findings[0].message
+        assert_eq!(codes(&findings), [] as [&str; 0]);
+
+        let forecast =
+            forecast_with_ruleset(vec![region], "unit 12881\nBUY 30 grain\nPRODUCE catapult\n");
+        assert_eq!(forecast.produced, 0);
+        assert_eq!(
+            forecast.production_capped_by,
+            Some(crate::orders::silver::ProductionCap::Silver)
         );
     }
 
-    /// The same, for the materials: 250 wood sold away leaves the catapult short of the wood the
-    /// unit's inventory said it had.
-    ///
-    /// The earlier spend has to be a `SELL` rather than a `GIVE`, for the same reason the silver
-    /// case above does (`ah-vcp8.2`): `SELL` spends through the ledger alone, invisible to
-    /// `early_items`, the same figure `PRODUCE`'s materials cap reads.
+    /// The same, for the materials: 250 wood sold at market is wood the catapult cannot be made
+    /// from, so the run is capped rather than warned about (`ah-l80z`).
     #[test]
-    fn a_unit_without_the_materials_is_warned() {
+    fn selling_the_materials_caps_production_instead_of_warning() {
         let region = ReportRegion {
             wanted: vec![MarketItem {
                 amount: 250,
@@ -19572,15 +19569,20 @@ mod tests {
             ..region(vec![carpenters(100_000, 250)])
         };
         let findings = check(
-            vec![region],
+            vec![region.clone()],
             "unit 12881\nSELL 250 wood\nPRODUCE catapult\n",
         );
 
-        assert_eq!(codes(&findings), ["not-enough-items"]);
-        assert!(
-            findings[0].message.contains("wood"),
-            "the wood is what ran out: {}",
-            findings[0].message
+        assert_eq!(codes(&findings), [] as [&str; 0]);
+
+        let forecast = forecast_with_ruleset(
+            vec![region],
+            "unit 12881\nSELL 250 wood\nPRODUCE catapult\n",
+        );
+        assert_eq!(forecast.produced, 0);
+        assert_eq!(
+            forecast.production_capped_by,
+            Some(crate::orders::silver::ProductionCap::Materials)
         );
     }
 
