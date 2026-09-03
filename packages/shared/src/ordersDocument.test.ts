@@ -3,6 +3,8 @@ import { readReport } from "@atlantis/fixtures";
 import { MOVEMENT_ORDER_COMMANDS } from "@atlantis/core-client";
 import {
   commandsOnly,
+  applyUnitOrders,
+  ensureUnitBlock,
   findUnitBlocks,
   hasFactionHeader,
   LONG_ORDER_COMMANDS,
@@ -14,7 +16,31 @@ import {
   withFactionPassword,
   withUnitComments,
   writeUnitOrders
+  ,regionBannerLine
 } from "./ordersDocument";
+
+const SEEDED = "; This report carried no orders template, so this file was started from scratch.\n; If your faction has a password, add it: #atlantis 62 \"your password\"\n#atlantis 62\n\n#end";
+
+describe("unlisted unit orders", () => {
+  it("creates an owned unit block under its region banner on the first order", () => {
+    const banner = regionBannerLine(
+      { terrain: "mountain", coordinate: { x: 43, y: 81, z: 1 }, province: "Derngill", settlement: { name: "Onthead", size: "city" } },
+      null
+    );
+    const document = applyUnitOrders(SEEDED, "1656", "buy 1 humn\nstudy forc", banner);
+    expect(document).toContain(`${banner}\n\nunit 1656\nbuy 1 humn\nstudy forc`);
+    expect(readUnitOrders(document, "1656")).toBe("buy 1 humn\nstudy forc");
+  });
+
+  it("does not create a block for an empty edit", () => {
+    expect(applyUnitOrders(SEEDED, "1656", "", ";*** mountain (43,81) in Derngill ***")).toBe(SEEDED);
+  });
+
+  it("preserves an existing block", () => {
+    const document = `${SEEDED}\nunit 1656\nold`;
+    expect(applyUnitOrders(document, "1656", "new", null)).toContain("unit 1656\nnew");
+  });
+});
 
 /** Shaped exactly like the template a real report carries. */
 const DOCUMENT = [
