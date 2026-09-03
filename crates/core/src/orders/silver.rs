@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::movement::rules::{CastCost, CastOutput, ItemKind, Production, Ruleset, SkillEntry};
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
+use crate::orders::phases;
 use crate::orders::semantics::{counted_with_singular, FormedSubject, Plurals};
 use crate::orders::targets::{give_outcome, give_target_label, GiveOutcome, GiveReach};
 use crate::report::model::{ItemAmount, Skill};
@@ -1108,6 +1109,14 @@ pub fn late_income(
     late
 }
 
+/// The silver a unit can still spend: what it held, plus what has reached it, less what has left.
+///
+/// Clamped at zero. A `GIVE` of a stated quantity is not clamped against the holding, so `expense`
+/// can exceed `held + income`, and a negative count must never reach a cap.
+fn available_silver(held: i64, income: i64, expense: i64) -> i64 {
+    held.saturating_add(income).saturating_sub(expense).max(0)
+}
+
 /// What one unit's month does to its silver.
 ///
 /// `facts.intents` is the unit's orders exactly as [`super::semantics`] already holds them, so the
@@ -1291,7 +1300,9 @@ pub fn forecast_unit(
         income_doubt = income_doubt.or(priced.doubt);
     }
 
-    for placed in intents {
+    // `rules/sequenceofevents` fixes the order the turn runs the block in, and the order the
+    // player wrote it in does not change it (`ah-gdd3.1`).
+    for placed in phases::in_phase_order(intents) {
         // An earlier `GIVE` may or may not have taken these goods away (`rules/give` wants the
         // target faction's declaration toward us and no report carries it), so nothing priced from
         // what the unit still holds of that tag can be stated. The `GIVE` itself is exempt: it is
@@ -1525,13 +1536,11 @@ pub fn forecast_unit(
                 let caster = Caster {
                     skills: facts.skills,
                     held: facts.items,
-                    // `rules/sequence` puts `GIVE` and `TAKE` two phases before `Spells are CAST`,
-                    // so silver on its way in counts; wages and anything produced after do not
-                    // (`ah-ofpb.4`, R4).
-                    silver_available: held
-                        .saturating_add(receipts.silver)
-                        .saturating_add(receipts.taken)
-                        .saturating_add(receipts.taken_unshown),
+                    // `rules/sequenceofevents` settles CLAIM, GIVE/TAKE and TAX before `Spells are
+                    // CAST`, and opens the market after it. This walk is in that order, so the
+                    // running balance is the whole answer: `income` already carries the gathered
+                    // gifts (`ah-ofpb.4`, R4), and adding them again here would count each twice.
+                    silver_available: available_silver(held, income, expense),
                     transmuting,
                 };
                 let (priced, plan) = price_cast(resolved, &caster, region);
@@ -3773,11 +3782,11 @@ pub struct ProductionPlan {
 
 /// What a unit's `PRODUCE` order makes this month, from the recipe and what the unit holds.
 ///
-/// `men` and `held` are the caller's to supply, and the cap is taken against `held` rather than
-/// against a running balance. That is a decision, not an oversight: the ledger keeps a running
-/// balance and `forecast_unit` does not, so capping against one would give the two surfaces
-/// different answers for the same order - which is exactly the drift `ah-ycuj`'s corpus test
-/// exists to catch.
+/// `men` and `held` are the caller's to supply, and the cap is still taken against `held` rather
+/// than against a running balance. `ah-gdd3.1` gave both surfaces the turn's phase order and made
+/// the **cast** cap read the balance at `StatePhase::Cast`; the manufacturing PRODUCE cap is
+/// `ah-gdd3.2`'s and is deliberately untouched here, so that both surfaces keep answering the same
+/// way for one order - which is exactly the drift `ah-ycuj`'s corpus test exists to catch.
 ///
 /// **Both callers supply the post-gift picture** (`ah-qct4`): `rules/sequenceofevents` settles
 /// "Give orders. GIVE and TAKE orders are processed." nine phases before either PRODUCE phase, so
@@ -3935,10 +3944,11 @@ pub struct Caster<'a> {
     pub skills: &'a [Skill],
     /// Everything the unit holds, for the material inputs a cast consumes.
     pub held: &'a [ItemAmount],
-    /// Silver the unit can have before the spell resolves: what the report shows it holding plus
-    /// every gift and take this month's orders bring it. `rules/sequence` puts `GIVE` and `TAKE`
-    /// two phases before `Spells are CAST`, and wages, takings from entertaining and anything the
-    /// unit produces after it - so those are not counted, and neither is `late_income`.
+    /// Silver the unit can have when the spell resolves: what its balance holds once every phase
+    /// `rules/sequenceofevents` runs before *"Spells are CAST"* has settled - CLAIM, then GIVE and
+    /// TAKE, then TAX. The market (SELL, then BUY) opens afterwards, as do wages, takings from
+    /// entertaining and anything the unit produces, so none of those are counted and neither is
+    /// `late_income` (`ah-gdd3.1`).
     pub silver_available: i64,
     /// `CAST Transmutation [number] <material>`, resolved by the caller because only it can turn
     /// the order's text into a tag. `None` for every other spell.
@@ -6906,6 +6916,129 @@ mod tests {
         );
         assert_eq!(unit.income, Some(30));
         assert_eq!(unit.late_income, Some(0));
+    }
+
+    // --- the turn's order, not the document's (`ah-gdd3.1`) --------------------------------------
+
+    /// `rules/sequenceofevents` opens the market (`SELL`, then `BUY`) *after* `Spells are CAST`, so
+    /// a sale written above a cast is still money the cast never sees.
+    #[test]
+    fn a_sale_does_not_fund_the_same_months_cast() {
+        let ruleset = ruleset();
+        let receipts = Receipts::default();
+        let intents = [
+            placed(Intent::Sell {
+                item: "grain".to_string(),
+                amount: Amount::Exact(30),
+            }),
+            placed(Intent::Cast {
+                spell: "Create_Amulet_Of_Protection".to_string(),
+                arguments: Vec::new(),
+            }),
+        ];
+        let skills = [skill("CRPA", 1)];
+        let sale = |_item: &str| SaleAnswer::Wanted {
+            price: 10,
+            market_takes: 100,
+            unit_holds: 100,
+        };
+
+        let unit = forecast_unit(
+            UnitFacts {
+                skills: &skills,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            Lookups {
+                sale: &sale,
+                ..no_market()
+            },
+            Some(&ruleset),
+        );
+
+        assert_eq!(unit.income, Some(300), "the sale still earns 300");
+        assert_eq!(unit.cast_made, 0, "but none of it reaches the cast");
+    }
+
+    /// `CLAIM` is in the first batch of instant orders, so it funds a cast written above it exactly
+    /// as it funds one written below it.
+    #[test]
+    fn a_claim_funds_a_cast_whichever_line_came_first() {
+        let ruleset = ruleset();
+        let receipts = Receipts::default();
+        let skills = [skill("CRPA", 1)];
+        let cast = || {
+            placed(Intent::Cast {
+                spell: "Create_Amulet_Of_Protection".to_string(),
+                arguments: Vec::new(),
+            })
+        };
+        let made = |intents: &[PlacedIntent]| {
+            forecast_unit(
+                UnitFacts {
+                    skills: &skills,
+                    ..facts(1, intents, &receipts)
+                },
+                RegionWages::default(),
+                PoolShares::default(),
+                FactionPurse {
+                    unclaimed: Some(200),
+                },
+                0,
+                no_market(),
+                Some(&ruleset),
+            )
+            .cast_made
+        };
+
+        assert_eq!(made(&[placed(Intent::Claim(200)), cast()]), 1);
+        assert_eq!(made(&[cast(), placed(Intent::Claim(200))]), 1);
+    }
+
+    /// The hover names the first spender the *turn* reaches, not the first one written.
+    /// `rules/sequenceofevents` casts spells before it opens the market, so a `BUY` written above a
+    /// `CAST` still names the cast.
+    #[test]
+    fn the_first_spender_named_is_the_first_the_turn_reaches() {
+        let ruleset = ruleset();
+        let receipts = Receipts::default();
+        let skills = [skill("CRPA", 1)];
+        let intents = [
+            placed(Intent::Buy {
+                amount: Amount::Exact(5),
+                item: "grain".to_string(),
+            }),
+            placed(Intent::Cast {
+                spell: "Create_Amulet_Of_Protection".to_string(),
+                arguments: Vec::new(),
+            }),
+        ];
+        let purchase = sells(12, 40);
+
+        let unit = forecast_unit(
+            UnitFacts {
+                skills: &skills,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            Lookups {
+                purchase: &purchase,
+                ..no_market()
+            },
+            Some(&ruleset),
+        );
+
+        assert!(
+            unit.short_for_orders.is_some_and(|short| short > 0),
+            "the month wants more silver than the unit has"
+        );
+        assert_eq!(unit.short_on, Some(SilverSpender::Cast));
     }
 
     // --- what the orders cannot cover ------------------------------------------------------------
