@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ndp9 — mages, leaders and men that must not arrive</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  header p b { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .orders { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); white-space:pre; margin-top:10px; }
+  .dim { color:var(--ink-dim); } .red { color:var(--danger); } .ok { color:var(--ok); }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); } .bad { border-left-color:var(--danger); } .good { border-left-color:var(--ok); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 4px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .q { background:#2a2113; border:1px solid #5c4718; border-left:4px solid var(--brass); border-radius:5px;
+    padding:11px 14px; margin:22px 0 2px; max-width:100ch; font-size:13.5px; }
+  .q b { color:var(--brass); }
+  .warn { font-family:system-ui,sans-serif; font-size:12.5px; background:#2a1a1a; border:1px solid #5c2a2a;
+    border-left:4px solid var(--danger); border-radius:4px; padding:9px 12px; margin-top:8px; color:#f0d8d8; max-width:100ch; }
+  .quiet { font-family:system-ui,sans-serif; font-size:12.5px; background:var(--raised); border:1px solid var(--edge);
+    border-left:4px solid var(--edge); border-radius:4px; padding:9px 12px; margin-top:8px; color:var(--ink-dim); max-width:100ch; }
+  .settings { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:14px 16px;
+    max-width:76ch; margin-top:10px; font-family:system-ui,-apple-system,sans-serif; }
+  .settings h4 { font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass);
+    font-weight:normal; margin-bottom:9px; }
+  .row { display:flex; gap:10px; align-items:flex-start; padding:6px 0; border-top:1px solid rgba(38,48,61,.6); }
+  .row:first-of-type { border-top:none; }
+  .sw { width:30px; height:17px; border-radius:9px; background:var(--brass); position:relative; flex:none; margin-top:2px; }
+  .sw::after { content:""; position:absolute; right:2px; top:2px; width:13px; height:13px; border-radius:50%; background:#10151c; }
+  .row .t { font-size:13px; color:var(--ink); } .row .d { font-size:11.5px; color:var(--ink-dim); margin-top:1px; }
+  .row.new .t { color:var(--brass); }
+  table.grid { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:10px; font-family:system-ui,-apple-system,sans-serif; max-width:110ch;}
+  table.grid th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.grid td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  table.grid td.m { font-family:system-ui,sans-serif; color:#f0d8d8; }
+</style></head><body>
+<header>
+  <h1>ah-ndp9 — <span>mages, leaders, and men that must not arrive</span></h1>
+  <p><code>rules/magic</code>: <i>"Only one man units, with the man being a leader, are permitted to study these
+  skills&nbsp;… once a unit becomes a mage the unit number is fixed."</i> Your New&nbsp;Origins ruling adds the other
+  half: a mage may neither <b>recruit</b> people with BUY nor <b>receive</b> people from another unit.</p>
+  <p>Today the HUD projects all of it happily — it will show you a three-human unit beginning <code>STUDY FORCE</code>,
+  and it will happily pour ten peasants into a mage and dilute its skills. This bead makes those orders
+  <b>warn, and project nothing</b>. Everything below is the wording and the toggles; the arithmetic is settled.</p>
+  <p>Sibling bead <code>ah-t8ei</code> (in flight) covers the opposite direction — a mage <i>giving</i> men away —
+  and deliberately adds <b>no</b> message. This bead's scope says the incoming side <b>is</b> warned, which is why
+  wording is on the table at all.</p>
+</header>
+<main>
+
+<h3 class="sec">Part 1 — how many switches appear in Settings</h3>
+<p>Every advisory check is one toggle in Settings ▸ Warnings, grouped by concern. This bead adds one or two.</p>
+
+<span class="opt">T1 — two toggles (recommended)</span>
+<div class="settings">
+  <h4>Studying / Teaching</h4>
+  <div class="row"><div class="sw"></div><div><div class="t">Magic study outside a building</div>
+    <div class="d">A mage above level 2 studying magic where no building houses them, which halves the month's study.</div></div></div>
+  <div class="row new"><div class="sw"></div><div><div class="t">Magic study by a unit that cannot become a mage</div>
+    <div class="d">A unit that is not exactly one leader ordered to begin a Foundation magic skill.</div></div></div>
+</div>
+<div class="settings" style="margin-top:12px">
+  <h4>Orders</h4>
+  <div class="row"><div class="sw"></div><div><div class="t">Gifts the game will refuse</div>
+    <div class="d">A GIVE or TAKE naming items that cannot change hands, or men given to another faction.</div></div></div>
+  <div class="row new"><div class="sw"></div><div><div class="t">Men sent into a mage</div>
+    <div class="d">A GIVE, TAKE or BUY that would add people to a unit that has already begun magic.</div></div></div>
+</div>
+<ul class="notes">
+  <li>The two situations are genuinely different: one is about a unit that <i>is not yet</i> a mage and is being
+    told it cannot become one; the other about one that already is.</li>
+  <li>Each lands in the group a player would look in — the study one beside the other two magic-study checks,
+    the arrivals one beside <code>Gifts the game will refuse</code> and <code>Arrivals that lower a skill</code>.</li>
+  <li class="con">Two more rows in a Settings tab that already has 43.</li>
+</ul>
+
+<span class="opt">T2 — one toggle for the whole rule</span>
+<div class="settings">
+  <h4>Studying / Teaching</h4>
+  <div class="row new"><div class="sw"></div><div><div class="t">Mage unit composition</div>
+    <div class="d">A unit that is not one leader beginning magic, or men sent into a unit that has already begun it.</div></div></div>
+</div>
+<ul class="notes">
+  <li>One switch, one rule from the rulebook: <i>a mage is one leader, and stays one leader.</i></li>
+  <li class="con">Turning off the noisy half turns off the useful half. A player who is content to see
+    "you cannot recruit into your mage" every month <b>also</b> loses the warning that a study will simply fail.</li>
+  <li class="con">One of its two halves has to sit in the wrong Settings group.</li>
+</ul>
+
+<h3 class="sec">Part 2 — the study warning's sentence</h3>
+<p>Four compositions reach this check. The <b>teacher</b> check is the closest existing precedent and reads
+  <code>only leaders can teach; this unit has 3 humans</code>, so a matching shape is available.</p>
+
+<div class="orders">unit 900              <span class="dim">; 3 humans [HUMN]</span>
+<span class="red">STUDY FORCE</span></div>
+
+<span class="opt">S1 — mirror the teacher warning</span>
+<table class="grid">
+  <tr><th style="width:26ch">the unit</th><th>the message</th></tr>
+  <tr><td>3 humans</td><td class="m">only a lone leader can begin force; this unit has 3 humans</td></tr>
+  <tr><td>2 leaders</td><td class="m">only a lone leader can begin force; this unit has 2 leaders</td></tr>
+  <tr><td>1 leader, 1 human</td><td class="m">only a lone leader can begin force; this unit also has 1 human</td></tr>
+  <tr><td>no people</td><td class="m">only a lone leader can begin force; this unit has no people</td></tr>
+</table>
+<ul class="notes">
+  <li>Word for word the shape of <code>only leaders can teach; this unit has 3 humans</code>, including its
+    <i>also</i> for a unit that has some of the right people and some of the wrong ones.</li>
+  <li>Names the skill, so a block with two study orders in it points at the right one.</li>
+  <li class="con">"a lone leader" is a new phrase in the app's vocabulary.</li>
+</ul>
+
+<span class="opt">S2 — say what will happen</span>
+<table class="grid">
+  <tr><th style="width:26ch">the unit</th><th>the message</th></tr>
+  <tr><td>3 humans</td><td class="m">force can only be begun by a unit of one leader, and this unit has 3 humans, so the study will fail</td></tr>
+  <tr><td>no people</td><td class="m">force can only be begun by a unit of one leader, and this unit has no people, so the study will fail</td></tr>
+</table>
+<ul class="notes">
+  <li>Says the consequence out loud. The server refuses the order outright and the month is wasted — which
+    the other two shapes leave the player to infer.</li>
+  <li class="con">Long. On a narrow Problems panel it wraps to three lines, where every neighbouring
+    warning is one or two.</li>
+</ul>
+
+<span class="opt">S3 — subject first, shortest</span>
+<table class="grid">
+  <tr><th style="width:26ch">the unit</th><th>the message</th></tr>
+  <tr><td>3 humans</td><td class="m">this unit is 3 humans, so it cannot begin force</td></tr>
+  <tr><td>2 leaders</td><td class="m">this unit is 2 leaders, so it cannot begin force</td></tr>
+  <tr><td>no people</td><td class="m">this unit has no people, so it cannot begin force</td></tr>
+</table>
+<ul class="notes">
+  <li>Shortest of the three, and reads naturally in a list of a hex's problems.</li>
+  <li class="con">Never states the rule, so a player who does not know it learns only that something
+    is wrong — not that <i>one leader</i> is the answer.</li>
+  <li class="con">Two shapes ("is 3 humans" / "has no people") for one sentence.</li>
+</ul>
+
+<h3 class="sec">Part 3 — the sentence when men are sent into a mage</h3>
+<p>Three routes reach a mage: another unit's <code>GIVE</code>, the mage's own <code>TAKE</code>, and the mage's own
+  <code>BUY</code>. The warning sits <b>on the line that ordered it</b> — so the GIVE case warns in the
+  <i>giver's</i> block, about a unit that is not the giver.</p>
+
+<div class="orders">unit 800              <span class="dim">; 20 humans [HUMN] — an ordinary unit</span>
+<span class="red">GIVE 900 5 HUMN</span>
+
+unit 900              <span class="dim">; 1 leader [LEAD], force [FORC] 2 — a mage</span>
+<span class="red">BUY 5 PEASANTS</span>
+<span class="red">TAKE FROM 800 3 HUMN</span></div>
+
+<span class="opt">M1 — one sentence, the existing refusal shape</span>
+<table class="grid">
+  <tr><th style="width:22ch">the order</th><th>the message</th></tr>
+  <tr><td>GIVE 900 5 HUMN</td><td class="m">unit 900 is a mage and cannot be given men, so this order moves nothing</td></tr>
+  <tr><td>TAKE FROM 800 3 HUMN</td><td class="m">this unit is a mage and cannot take on men, so this order moves nothing</td></tr>
+  <tr><td>BUY 5 PEASANTS</td><td class="m">this unit is a mage and cannot recruit, so this order buys nobody</td></tr>
+</table>
+<ul class="notes">
+  <li><code>… so this order moves nothing</code> is already the app's phrase for a refused transfer
+    (<code>unit 900 belongs to another faction, so this TAKE moves nothing</code>).</li>
+  <li>The GIVE line names <b>unit 900</b>, because the warning appears in unit 800's block and the reader
+    otherwise has no idea which of its gifts is at fault.</li>
+  <li class="con">Three strings rather than one.</li>
+</ul>
+
+<span class="opt">M2 — one sentence for all three routes</span>
+<table class="grid">
+  <tr><th style="width:22ch">the order</th><th>the message</th></tr>
+  <tr><td>GIVE 900 5 HUMN</td><td class="m">unit 900 has begun magic, so its people cannot change; this order moves nothing</td></tr>
+  <tr><td>TAKE FROM 800 3 HUMN</td><td class="m">this unit has begun magic, so its people cannot change; this order moves nothing</td></tr>
+  <tr><td>BUY 5 PEASANTS</td><td class="m">this unit has begun magic, so its people cannot change; this order moves nothing</td></tr>
+</table>
+<ul class="notes">
+  <li>One string with one substitution, and it states the <i>reason</i> — the mage's unit is fixed — rather
+    than three variations on the verb.</li>
+  <li class="con">"this order moves nothing" is a strange thing to say about a <code>BUY</code>, which does not
+    move anything even when it works.</li>
+</ul>
+
+<span class="opt">M3 — count what was refused</span>
+<table class="grid">
+  <tr><th style="width:22ch">the order</th><th>the message</th></tr>
+  <tr><td>GIVE 900 5 HUMN</td><td class="m">unit 900 is a mage, so 5 men stay where they are</td></tr>
+  <tr><td>BUY 5 PEASANTS</td><td class="m">this unit is a mage, so it recruits nobody</td></tr>
+</table>
+<ul class="notes">
+  <li>Names the size of what did not happen, the way <code>Arrivals that lower a skill</code> does
+    (<code>giving 5 men to this unit lowers its combat from 3 to 1</code>).</li>
+  <li class="con">A count is a promise, and <code>BUY 5 PEASANTS</code> would not have bought five anyway —
+    the market share decides. The number would sometimes be a lie.</li>
+</ul>
+
+<h3 class="sec">Part 4 — does the rule cover apprentices?</h3>
+<p><code>rules/magic_apprentices</code>: <i>"Apprentices may be created by having a unit study manipulation. Like
+  Mages, only one man units, with the man being a leader, may become Apprentices."</i> — the same composition
+  restriction, in the same words. But the fixed-unit-number sentence in <code>rules/magic</code> is written
+  about mages only, and says nothing about apprentices.</p>
+<p>In the catalogue this is an exact, checkable distinction: <code>force</code>, <code>pattern</code>,
+  <code>spirit</code> and <code>manipulation</code> are the four magic skills with <b>no prerequisites</b>;
+  every other magic skill needs one of them first.</p>
+<table class="grid">
+  <tr><th style="width:16ch">option</th><th style="width:34ch">STUDY MANIPULATION by 3 humans</th><th>GIVE men to a manipulation-only unit</th></tr>
+  <tr><td><b>A1</b></td><td class="m">warned — the rules say so in as many words</td><td class="m">warned — an apprentice is treated as a mage throughout</td></tr>
+  <tr><td><b>A2</b></td><td class="m">warned</td><td class="m">silent — the rules fix only a <i>mage's</i> unit number</td></tr>
+  <tr><td><b>A3</b></td><td class="m">silent — the bead says Foundations, and manipulation is not one</td><td class="m">silent</td></tr>
+</table>
+<div class="note"><b>Worth knowing:</b> the sibling bead <code>ah-t8ei</code>, already in flight, treats
+  <i>any</i> magic skill as making a unit a mage for the purpose of refusing a GIVE of men. Choosing <b>A2</b>
+  or <b>A3</b> means this bead and that one answer "is this unit a mage?" differently, for the same unit,
+  in the same month.</div>
+
+<h3 class="sec">What is settled without asking</h3>
+<ul class="notes">
+  <li><b>Silence where the app cannot see.</b> A unit whose headcount the report only estimates, one whose
+    races it could not classify, or one whose month cannot be followed, is not judged at all — the same
+    accept-on-doubt policy that already governs the teacher check and every study check.</li>
+  <li><b>Nothing is blocked.</b> Every semantic finding in this app is a warning; the invalid order stays in
+    the editor and can still be sent.</li>
+  <li><b>The composition is the one the month leaves.</b> A unit given a leader this month and ordered to
+    study force is judged on what it will be when the study runs, not on what the report printed.</li>
+  <li><b>A refused arrival cannot dilute anything.</b> The mage keeps its people, races and skills, so
+    <code>Arrivals that lower a skill</code> never fires off the back of an order this bead refused.</li>
+  <li><b>GIVE UNIT is untouched</b> — <code>rules/magic</code> expressly permits handing a whole mage over.</li>
+</ul>
+
+<div class="q"><b>The four questions.</b> (1) Two toggles or one — <b>T1</b> or <b>T2</b>? (2) The study
+  sentence — <b>S1</b>, <b>S2</b> or <b>S3</b>? (3) The arrivals sentence — <b>M1</b>, <b>M2</b> or
+  <b>M3</b>? (4) Apprentices — <b>A1</b>, <b>A2</b> or <b>A3</b>?</div>
+
+</main></body></html>
