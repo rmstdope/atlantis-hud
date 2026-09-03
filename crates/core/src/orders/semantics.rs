@@ -622,7 +622,7 @@ pub fn review_turn(
     // Everything above is about one hex. An allowance is spent across the whole map, so it is
     // counted once, after every hex has been read - and `validate_turn` sorts the whole list by
     // line afterwards, so these findings land beside the per-hex ones rather than after them.
-    check_faction(report, &ordered, ruleset, &options, &mut findings);
+    check_faction(report, &ordered, &hexes, ruleset, &options, &mut findings);
     check_upkeep_fund(report, &settlement, &options, &mut findings);
 
     TurnReview { findings, silver }
@@ -1041,11 +1041,7 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
             let Some(wanted) = production_ask(ordered, &tag, ruleset) else {
                 continue;
             };
-            let sailing = ruleset.and_then(|rules| carried_away(hex, ordered, rules));
-            let produces_in = match sailing.map(|placed| &placed.intent) {
-                Some(Intent::Sail { steps }) => sail_destination(hex.region, steps, &by_coordinate),
-                _ => Some(hex.region),
-            };
+            let produces_in = production_region(hex, ordered, ruleset, &by_coordinate);
             // The report cannot follow the sail, so there is no yield to settle against and the
             // answer stays absent - never the origin, and never the last region reached.
             let Some(region) = produces_in else {
@@ -7906,6 +7902,19 @@ fn sail_destination<'a>(
     Some(here)
 }
 
+fn production_region<'a>(
+    hex: &Hex<'a>,
+    ordered: &Ordered<'_>,
+    ruleset: Option<&Ruleset>,
+    by_coordinate: &HashMap<Coordinate, &'a ReportRegion>,
+) -> Option<&'a ReportRegion> {
+    let sailing = ruleset.and_then(|rules| carried_away(hex, ordered, rules));
+    match sailing.map(|placed| &placed.intent) {
+        Some(Intent::Sail { steps }) => sail_destination(hex.region, steps, by_coordinate),
+        _ => Some(hex.region),
+    }
+}
+
 /// Both ways a `PRODUCE` order makes nothing: the unit cannot make the item anywhere, or not here.
 ///
 /// Two codes rather than one because they are separately toggleable and separately true, and a
@@ -8001,11 +8010,7 @@ fn check_production(
             // a region nobody can see is worse than no mark at all (`ah-jk9h`, `ah-8myf`).
             // `produce-without-skill` above is unaffected: whether the unit has the skill is a
             // fact about the unit, not about the region.
-            let sailing = carried_away(hex, ordered, ruleset);
-            let where_it_produces = match sailing.map(|placed| &placed.intent) {
-                Some(Intent::Sail { steps }) => sail_destination(hex.region, steps, by_coordinate),
-                _ => Some(hex.region),
-            };
+            let where_it_produces = production_region(hex, ordered, Some(ruleset), by_coordinate);
             let Some(region) = where_it_produces else {
                 continue;
             };
@@ -9478,12 +9483,13 @@ fn check_movement(
 fn check_faction(
     report: &ParsedReport,
     ordered: &OrderedUnits,
+    hexes: &[(Hex<'_>, Ledger<'_>)],
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
     check_quartermasters(report, ordered, ruleset, options, findings);
-    check_trade_regions(report, ordered, options, findings);
+    check_trade_regions(report, hexes, ruleset, options, findings);
     check_claims(report, ordered, ruleset, options, findings);
 }
 
@@ -9522,7 +9528,8 @@ fn trade_allowance(report: &ParsedReport) -> Option<(i64, bool)> {
 /// one mistake, on something the player can click.
 fn check_trade_regions(
     report: &ParsedReport,
-    ordered: &OrderedUnits,
+    hexes: &[(Hex<'_>, Ledger<'_>)],
+    ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
@@ -9538,20 +9545,33 @@ fn check_trade_regions(
     let mut taxing: BTreeSet<&str> = BTreeSet::new();
     let mut first_produce: Option<(&str, &str, &PlacedIntent)> = None;
 
-    for region in &report.regions {
-        let region_id = region.region_id.as_str();
-        for unit in region.units.iter().filter(|unit| unit.own) {
+    let by_coordinate: HashMap<Coordinate, &ReportRegion> = hexes
+        .iter()
+        .map(|(hex, _)| (hex.region.coordinate, hex.region))
+        .collect();
+    for (hex, _) in hexes {
+        for ordered_unit in hex
+            .units
+            .iter()
+            .filter(|unit| unit.formed.is_none() && unit.unit.own)
+        {
+            let unit = &ordered_unit.unit;
+            let region_id = hex.region.region_id.as_str();
             // A unit taxing by its flag taxes this region with no `TAX` line to find, so the
             // region counts against the allowance like any other (`ah-fvzu`).
-            if taxes(&unit.flags, ordered.intents_of(&unit.unit_id)) {
+            if taxes(&unit.flags, ordered_unit.intents) {
                 taxing.insert(region_id);
             }
-            for placed in ordered.intents_of(&unit.unit_id) {
+            for placed in ordered_unit.intents.iter() {
                 match &placed.intent {
                     // Both shapes a PRODUCE order can take: one naming what it makes
                     // (`ah-19l2.2`) and one that named nothing readable.
                     Intent::Produce { .. } | Intent::MonthLong("PRODUCE") => {
-                        producing.insert(region_id);
+                        if let Some(region) =
+                            production_region(hex, ordered_unit, ruleset, &by_coordinate)
+                        {
+                            producing.insert(region.region_id.as_str());
+                        }
                         let earlier = first_produce
                             .as_ref()
                             .is_none_or(|(_, _, first)| placed.line < first.line);
@@ -29111,6 +29131,33 @@ mod tests {
             "PRODUCE orders in 3 regions; this faction may trade in 2, so 1 region's production \
              will be refused"
         );
+    }
+
+    #[test]
+    fn a_sailing_passenger_uses_the_destination_trade_region() {
+        let mut regions = fleet_sailing_north(one_product(50, "fish", "FISH"));
+        regions[0].units.push(unit("5"));
+        let orders = "unit 5\nPRODUCE grain\nunit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n";
+        let findings = check_trade(regions, orders, "Trade Regions", 1);
+
+        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        assert_eq!(
+            findings[0].message,
+            "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production \
+             will be refused"
+        );
+    }
+
+    #[test]
+    fn an_unfollowable_sailing_producer_does_not_guess_a_trade_region() {
+        let mut regions = fleet_sailing_north(one_product(50, "fish", "FISH"));
+        regions.truncate(1);
+        let orders = "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n";
+        let findings = check_trade(regions, orders, "Trade Regions", 0);
+
+        assert!(!findings
+            .iter()
+            .any(|finding| finding.code == codes::TOO_MANY_TRADE_REGIONS));
     }
 
     #[test]
