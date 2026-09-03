@@ -24,6 +24,8 @@ export const ADVISORY_CHECK_CODES = [
   "already-built",
   "too-many-trade-regions",
   "magic-study-outside-building",
+  "magic-study-needs-a-lone-leader",
+  "men-sent-into-a-mage",
   "build-outside-structure",
   "build-help-not-building",
   "unit-does-nothing",

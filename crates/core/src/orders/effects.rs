@@ -1370,6 +1370,11 @@ impl Working {
                         return;
                     };
                     let (name, tag) = (entry.name.clone(), entry.tag.to_ascii_uppercase());
+                    if self.ruleset.is_man(&tag)
+                        && super::magic::is_mage(&self.ruleset, &self.units[taker].unit.skills)
+                    {
+                        return;
+                    }
                     add_item(&mut self.units[taker].unit.items, &name, &tag, *count);
                     self.units[taker].taken_unshown.push(TakenUnshown {
                         amount: *count,
@@ -1425,6 +1430,13 @@ impl Working {
                 )
             {
                 continue;
+            }
+            if let Some(receiver) = receiver {
+                if self.ruleset.is_man(&tag)
+                    && super::magic::is_mage(&self.ruleset, &self.units[receiver].unit.skills)
+                {
+                    continue;
+                }
             }
             // Re-resolved by tag rather than kept from the snapshot: an earlier tag in this same
             // loop may have removed an item ahead of this one and shifted every index after it.
@@ -2461,52 +2473,24 @@ mod tests {
         }
     }
 
-    /// The other side of `ah-t8ei`'s rule, and the position this application takes: a mage's men
-    /// may be **taken** from it, even though the mage may not give them.
-    ///
-    /// `rules/magic` says "mages may not GIVE men at all", and `ah-t8ei` (#877) read that as
-    /// binding `GIVE` alone — its own summary says "GIVE UNIT, TAKE, TRANSPORT and DISTRIBUTE are
-    /// untouched" — so all three surfaces gate the refusal on the order being a GIVE. Nothing
-    /// asserted it until this test: the delta round on `ah-3mwm` found that removing the `is_give`
-    /// gate left the whole suite green, so the position was carried only by the code.
-    ///
-    /// It is worth knowing that `rules/take` says the TAKE order "works just like the GIVE order,
-    /// except that the direction of transfer is reversed", which is an argument the other way.
-    /// Whether that should extend the prohibition is not `ah-3mwm`'s question — this test pins
-    /// what the application does today, so that changing it has to be deliberate.
     #[test]
-    fn a_mages_men_may_still_be_taken_from_it() {
-        let response = preview_for_mage("force [FORC]", "unit 901\nTAKE FROM 900 1 LEAD\n");
-
-        let of = |id: &str| {
-            response
-                .regions
-                .iter()
-                .flat_map(|region| region.units.iter())
-                .find(|unit| unit.unit.unit_id == id)
-                .unwrap_or_else(|| panic!("unit {id} is previewed"))
-        };
-
-        let taker = of("901");
-        assert_eq!(
-            taker
-                .unit
-                .items
-                .iter()
-                .find(|item| item.tag == "LEAD")
-                .map(|item| item.amount),
-            Some(1),
-            "the leader reaches the taker"
-        );
-        assert_eq!(taker.unit.men, 2, "its own orc, and the leader it took");
-
-        let mage = of("900");
+    fn a_mage_given_men_keeps_its_people_and_its_skills() {
+        let response = preview_for_mage("force [FORC]", "unit 901\nGIVE 900 1 ORC\n");
         assert!(
-            !mage.unit.items.iter().any(|item| item.tag == "LEAD"),
-            "and leaves the mage: {:?}",
-            mage.unit.items
+            response.regions.is_empty(),
+            "giving men to a mage moves nothing: {:?}",
+            response.regions
         );
-        assert_eq!(mage.unit.men, 0);
+    }
+
+    #[test]
+    fn a_mage_taking_men_takes_none_of_them() {
+        let response = preview_for_mage("force [FORC]", "unit 900\nTAKE FROM 901 1 ORC\n");
+        assert!(
+            response.regions.is_empty(),
+            "a mage taking men should not change either row: {:?}",
+            response.regions
+        );
     }
 
     /// `GIVE 0` bypasses the catalogue's own un-giveable restrictions, because a discard is not a
@@ -2532,7 +2516,7 @@ mod tests {
     /// The refusal is per tag, not per order: `ALL ITEMS` still hands over the equipment the mage
     /// may give while its men stay behind.
     #[test]
-    fn a_mage_giving_all_items_keeps_men_and_moves_equipment() {
+    fn a_mage_given_all_items_keeps_its_men_and_gains_the_equipment() {
         let response = preview_for_mage("force [FORC]", "unit 900\nGIVE 901 ALL ITEMS\n");
         let region = &response.regions[0];
         let giver = region
@@ -2576,6 +2560,16 @@ mod tests {
             !receiver.unit.items.iter().any(|item| item.tag == "LEAD"),
             "and no leader arrives: {:?}",
             receiver.unit.items
+        );
+    }
+
+    #[test]
+    fn a_mage_taking_men_from_an_unshown_unit_takes_none_of_them() {
+        let response = preview_for_mage("force [FORC]", "unit 900\nTAKE FROM 999 1 LEAD\n");
+        assert!(
+            response.regions.is_empty(),
+            "an unshown source still may not add men to a mage: {:?}",
+            response.regions
         );
     }
 

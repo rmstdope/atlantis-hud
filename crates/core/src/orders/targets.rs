@@ -14,6 +14,7 @@
 //! definite miss. Both of those are [`GiveOutcome::Uncertain`] rather than a made-up answer.
 
 use super::forms::Party;
+use super::magic;
 use crate::movement::rules::Ruleset;
 use crate::report::model::Skill;
 
@@ -43,7 +44,7 @@ pub fn mage_give_refused(skills: &[Skill], tag: &str, ruleset: Option<&Ruleset>)
     let Some(ruleset) = ruleset else {
         return false;
     };
-    ruleset.is_man(tag) && skills.iter().any(|skill| ruleset.is_magic(&skill.tag))
+    ruleset.is_man(tag) && magic::is_mage(ruleset, skills)
 }
 
 /// What a `GIVE`'s target is, as far as the whole report can tell.

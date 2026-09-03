@@ -16,6 +16,7 @@ pub mod grammar;
 pub mod intents;
 pub mod items;
 pub mod lexer;
+mod magic;
 pub mod parser;
 pub mod semantics;
 pub mod silver;
