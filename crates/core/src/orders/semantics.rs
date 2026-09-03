@@ -181,8 +181,6 @@ pub mod codes {
         ALREADY_BUILT,
         TOO_MANY_TRADE_REGIONS,
         MAGIC_STUDY_OUTSIDE_BUILDING,
-        MAGIC_STUDY_NEEDS_A_LONE_LEADER,
-        MEN_SENT_INTO_A_MAGE,
         BUILD_OUTSIDE_STRUCTURE,
         BUILD_HELP_NOT_BUILDING,
         UNIT_DOES_NOTHING,
@@ -205,6 +203,8 @@ pub mod codes {
         GUARD_WITHOUT_TAX_ABILITY,
         WITHDRAW_IN_NEXUS,
         TAX_WITHOUT_COMBAT_READY_MEN,
+        MAGIC_STUDY_NEEDS_A_LONE_LEADER,
+        MEN_SENT_INTO_A_MAGE,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -2402,7 +2402,9 @@ fn apply_transfers(
                         let receiver_state = working
                             .entry(receiver_position)
                             .or_insert_with(|| seed_working(units, receiver_position));
-                        if is_man && magic::is_mage(ruleset, &receiver_state.skills) {
+                        if is_man
+                            && magic::is_mage(ruleset, &units[receiver_position].unit.skills)
+                        {
                             refused_by_position.push((
                                 receiver_position,
                                 RefusedTransfer {
@@ -2563,7 +2565,7 @@ fn apply_transfers(
                     let receiver_state = working
                         .entry(receiver_position)
                         .or_insert_with(|| seed_working(units, receiver_position));
-                    if magic::is_mage(ruleset, &receiver_state.skills) {
+                    if magic::is_mage(ruleset, &units[receiver_position].unit.skills) {
                         into_a_mage.push((tag.clone(), moved));
                         if transfer.is_give {
                             mage_id.get_or_insert_with(|| {
@@ -7832,9 +7834,6 @@ fn check_studying(
 
     let late = LateHoldings::read(hex, &ledger.balance, Some(ruleset));
     for (index, ordered) in hex.units.iter().enumerate() {
-        if ordered.formed.is_some() {
-            continue;
-        }
         let Some((placed, studying)) = ordered.studies_placed() else {
             continue;
         };
@@ -8156,9 +8155,6 @@ fn check_magic_study_composition(
         }
 
         let facts = late.of(index);
-        if facts.men_by_race.is_empty() {
-            continue;
-        }
         if magic::lone_leader(facts.men, facts.men_by_race) != Some(false) {
             continue;
         }
