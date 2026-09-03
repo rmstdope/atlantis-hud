@@ -29777,16 +29777,20 @@ mod tests {
                 .find(|finding| finding.code == codes::TOO_MANY_QUARTERMASTERS)
                 .expect("a staffed formed unit spends a quartermaster allowance");
             assert_eq!(finding.unit_id.as_deref(), Some("new-1"));
+            assert_eq!(finding.line, Some(3));
             assert_eq!(
-                finding.formed.as_ref().map(|formed| formed.alias.as_str()),
-                Some("1")
+                finding.formed,
+                Some(FormedSubject {
+                    alias: "1".to_string(),
+                    formed_by: "1922".to_string()
+                })
             );
         }
 
         #[test]
         fn an_unstaffed_formed_unit_spends_no_faction_allowance() {
             let review = review_turn(
-                &report_with_status("Quartermasters", 1, 1, vec![region(vec![unit("1922")])]),
+                &report_with_status("Regions", 2, 2, vec![region(vec![unit("1922")])]),
                 "unit 1922\nFORM 1\nSTUDY QUAM\nPRODUCE grain\nEND\n",
                 Some(&ruleset()),
                 CheckOptions::default(),
@@ -29825,10 +29829,15 @@ mod tests {
                 .find(|finding| finding.code == codes::TOO_MANY_TRADE_REGIONS)
                 .expect("two producing regions exceed the allowance");
             assert_eq!(finding.unit_id.as_deref(), Some("new-1"));
+            assert_eq!(finding.line, Some(3));
             assert_eq!(
-                finding.formed.as_ref().map(|formed| formed.alias.as_str()),
-                Some("1")
+                finding.formed,
+                Some(FormedSubject {
+                    alias: "1".to_string(),
+                    formed_by: "1922".to_string()
+                })
             );
+            assert_eq!(finding.message, "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production will be refused");
         }
 
         /// A nested `FORM`'s parent is the *outer* formed unit's synthetic id, which the report's
