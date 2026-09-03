@@ -2808,6 +2808,10 @@ export function AppShell({
    *
    * Null only for a hex known from memory rather than seen this turn, which the orders lock already
    * refuses as `not-in-turn` - so this is a guard rather than a behaviour.
+   *
+   * For a unit merely *arriving* in the selected hex this month (ah-0fa, through `hexPreview`) this
+   * is the destination's banner rather than the one it stands under this turn. Banners are comments
+   * (`rules/orders`), so the file stays valid either way and only reads slightly oddly.
    */
   const newBlockBanner = useMemo(() => {
     const region = hex?.region;
