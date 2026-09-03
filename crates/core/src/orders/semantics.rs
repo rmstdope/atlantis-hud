@@ -14956,7 +14956,6 @@ mod tests {
         }
     }
 
-    /// `ah-256d`. A region's `Products` line states how much of each resource the hex yields this
     /// `rules/sequenceofevents` runs *Give orders* before *Market orders*, so a
     /// `GIVE ... ALL SILV EXCEPT` settles against the whole purse whatever line an exact `BUY`
     /// is written on, and both projections say the same thing (`ah-npab`).
@@ -15012,6 +15011,7 @@ mod tests {
         }
     }
 
+    /// `ah-256d`. A region's `Products` line states how much of each resource the hex yields this
     /// month, and every own unit producing there shares it: `rules/tableiteminfo` says "If the
     /// units in a region attempt to produce more of a commodity than can be produced that month,
     /// then the amount available is distributed among the producers".

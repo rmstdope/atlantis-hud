@@ -1711,8 +1711,8 @@ pub fn forecast_unit(
     income = income.saturating_add(late);
 
     // Everything that spends what is *left*, by game phase and then in document order, against a
-    // running total that already carries every other term. Skipped where a side is doubted: the total it would spend
-    // against is not a number, and the side it feeds is `None` either way.
+    // running total that already carries every other term. Skipped where a side is doubted: the
+    // total it would spend against is not a number, and the side it feeds is `None` either way.
     if income_doubt.is_none() && expense_doubt.is_none() {
         // What a deferred order can spend is what reaches the unit *in time* - `ah-1wcw.3` settled
         // that `BUY ALL` spends what the unit can afford, and wages it earns this month cannot pay
@@ -7745,6 +7745,32 @@ mod tests {
             assert_eq!(unit.at_month_end, Some(0));
             assert_eq!(unit.buy_all.len(), 1);
             assert_eq!(unit.buy_all[0].bought, 0);
+        }
+    }
+
+    /// A gift of the *whole* purse leaves an exact `BUY` unaffordable, whatever line each is
+    /// written on: the game settles the gift first and the purchase then fails, so the column
+    /// says so rather than quietly pricing the gift against what the purchase left (`ah-npab`).
+    #[test]
+    fn giving_the_whole_purse_away_starves_an_exact_purchase_in_either_text_order() {
+        let give = placed(Intent::Give {
+            to: Party::Unit("1235".to_string()),
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::All { except: 0 },
+        });
+        let buy = placed(Intent::Buy {
+            amount: Amount::Exact(1),
+            item: "grain".to_string(),
+        });
+        for intents in [
+            vec![give.clone(), buy.clone()],
+            vec![buy.clone(), give.clone()],
+        ] {
+            let unit = spending(100, &intents, RegionWages::default(), &sells(20, 10), None);
+            assert_eq!(unit.expense, Some(120));
+            assert_eq!(unit.at_month_end, Some(-20));
+            assert_eq!(unit.short_for_orders, Some(20));
+            assert_eq!(unit.doubt, None);
         }
     }
 
