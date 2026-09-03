@@ -40,6 +40,7 @@ use crate::orders::silver::{
     because_clause, feed_after_silver, feed_from_faction_food, flagged_to_tax, food_claim,
     forecast_unit, late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants,
     price_buy_all, price_cast, price_claim, price_pillage, price_production, price_purchase,
+    MarketFunds,
     price_sale_line, price_study, price_tax, producing_skill, quantity_bought, readiness,
     readiness_reason, settle_unclaimed, split_pool, taxes, taxing_men, transfer_shape,
     transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
@@ -5509,7 +5510,7 @@ fn buy(
         Some(share) => (share - already).max(0),
         None => *count,
     };
-    let priced = price_purchase(*count, offer.price, allowed);
+    let priced = price_purchase(*count, offer.price, allowed, MarketFunds::Unmeasured);
     let bought = quantity_bought(*count, allowed);
 
     charge(

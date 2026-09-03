@@ -1619,7 +1619,7 @@ pub fn forecast_unit(
                             Some(share) => (share - already).max(0),
                             None => *count,
                         };
-                        let charged = price_purchase(*count, price, allowed).spends;
+                        let charged = price_purchase(*count, price, allowed, MarketFunds::Unmeasured).spends;
                         market_expense = market_expense.saturating_add(charged);
                         if charged > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Buy));
@@ -3189,15 +3189,63 @@ pub fn quantity_bought(count: i64, allowed: i64) -> i64 {
     count.min(allowed).max(0)
 }
 
-/// What a `BUY` costs.
+/// What a bounded `BUY` has to spend when the market opens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarketFunds {
+    /// Everything that reaches this unit in time, less what earlier phases already spent.
+    Silver(i64),
+    /// Not measurable here - an own unit in this hex has `SHARE` set, or a gift on the way in
+    /// cannot be priced. No cap is applied, which is the behaviour before `ah-omn7`.
+    Unmeasured,
+}
+
+/// One bounded `BUY` line, settled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PurchasedLine {
+    /// How many the unit actually gets: what it asked for, capped by the market settlement and
+    /// then by its silver.
+    pub quantity: i64,
+    /// What it actually pays.
+    pub spends: i64,
+    /// What the line asked to spend - `quantity_bought(count, allowed) * price`, which is what
+    /// this function returned before `ah-omn7`. The ledger still charges this, so the shortfall
+    /// warning keeps firing; the column reports it as `wanted_for_orders`.
+    pub wanted: i64,
+    /// Whether silver, rather than the market, is what cut the line down.
+    pub reduced_by_silver: bool,
+}
+
+/// What a `BUY` takes and what it costs.
+///
+/// `rules/buy`: *"If the unit can't afford as many as [quantity], it will attempt to buy as many
+/// as it can."*
 ///
 /// Both surfaces call this - [`forecast_unit`] and `semantics::buy` - because two surfaces reading
 /// one order must not price it two ways (`ah-lu0f.2`).
 #[must_use]
-pub fn price_purchase(count: i64, price: i64, allowed: i64) -> Priced {
-    Priced {
-        spends: quantity_bought(count, allowed).saturating_mul(price),
-        ..Priced::default()
+pub fn price_purchase(count: i64, price: i64, allowed: i64, funds: MarketFunds) -> PurchasedLine {
+    if price <= 0 {
+        return PurchasedLine::default();
+    }
+    let asked = quantity_bought(count, allowed);
+    let wanted = asked.saturating_mul(price);
+    match funds {
+        MarketFunds::Unmeasured => PurchasedLine {
+            quantity: asked,
+            spends: wanted,
+            wanted,
+            reduced_by_silver: false,
+        },
+        MarketFunds::Silver(silver) => {
+            let affordable = silver.max(0) / price;
+            let quantity = asked.min(affordable);
+            PurchasedLine {
+                quantity,
+                spends: quantity.saturating_mul(price),
+                wanted,
+                reduced_by_silver: affordable < asked,
+            }
+        }
     }
 }
 
@@ -5365,21 +5413,80 @@ mod tests {
     }
 
     #[test]
+    fn price_purchase_caps_quantity_by_silver() {
+        // `rules/buy`: a unit that cannot afford the whole line buys as many as it can.
+        // no silver at all: the line asks for its full cost and takes nothing
+        assert_eq!(
+            price_purchase(5, 12, 5, MarketFunds::Silver(0)),
+            PurchasedLine {
+                quantity: 0,
+                spends: 0,
+                wanted: 60,
+                reduced_by_silver: true,
+            }
+        );
+        // 25 silver at 12 buys two, and still wanted the whole 60
+        assert_eq!(
+            price_purchase(5, 12, 5, MarketFunds::Silver(25)),
+            PurchasedLine {
+                quantity: 2,
+                spends: 24,
+                wanted: 60,
+                reduced_by_silver: true,
+            }
+        );
+        // money to spare: nothing is cut
+        assert_eq!(
+            price_purchase(5, 12, 5, MarketFunds::Silver(1_000)),
+            PurchasedLine {
+                quantity: 5,
+                spends: 60,
+                wanted: 60,
+                reduced_by_silver: false,
+            }
+        );
+        // the market, not the silver, is what binds
+        assert_eq!(
+            price_purchase(5, 12, 2, MarketFunds::Silver(1_000)),
+            PurchasedLine {
+                quantity: 2,
+                spends: 24,
+                wanted: 24,
+                reduced_by_silver: false,
+            }
+        );
+        // not measurable here: no cap at all, which is the behaviour before `ah-omn7`
+        assert_eq!(
+            price_purchase(5, 12, 5, MarketFunds::Unmeasured),
+            PurchasedLine {
+                quantity: 5,
+                spends: 60,
+                wanted: 60,
+                reduced_by_silver: false,
+            }
+        );
+        // `Amount::All { except }` can ask for a negative amount
+        assert_eq!(
+            price_purchase(-5, 12, 5, MarketFunds::Silver(25)),
+            PurchasedLine::default()
+        );
+        // no real market line is priced at zero; the defensive answer is explicit
+        assert_eq!(
+            price_purchase(5, 0, 5, MarketFunds::Silver(25)),
+            PurchasedLine::default()
+        );
+    }
+
+    #[test]
     fn prices_a_purchase_a_sale_and_a_claim() {
         // a lone over-buyer is charged only for goods that exist (`ah-t2pn.3`)
         assert_eq!(
-            price_purchase(200, 5, 100),
-            Priced {
-                spends: 500,
-                ..Priced::default()
-            }
+            price_purchase(200, 5, 100, MarketFunds::Unmeasured).spends,
+            500
         );
         assert_eq!(
-            price_purchase(50, 5, 100),
-            Priced {
-                spends: 250,
-                ..Priced::default()
-            }
+            price_purchase(50, 5, 100, MarketFunds::Unmeasured).spends,
+            250
         );
         // `Amount::All { except }` can ask for a negative amount
         assert_eq!(quantity_sold(-5, 10, 100), 0);
