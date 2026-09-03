@@ -22498,6 +22498,20 @@ mod tests {
         assert_eq!(finding.message, "NEW 1 is not building");
     }
 
+    #[test]
+    fn an_unformed_build_help_alias_remains_unresolved() {
+        let findings = check(
+            vec![region(vec![unit("4117")])],
+            "unit 4117\nBUILD HELP NEW 2\n",
+        );
+        assert!(
+            findings
+                .iter()
+                .all(|finding| !finding.code.as_str().starts_with("build-")),
+            "missing FORM aliases must remain conservative: {findings:?}"
+        );
+    }
+
     /// One mistake, marked once, where it was made: the target is building from outside a
     /// structure and carries that warning on its own line; the helper is not warned as well.
     /// A deliberate divergence from `already-built`'s helper behaviour - do not "fix" it.
