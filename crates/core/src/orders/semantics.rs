@@ -4166,30 +4166,33 @@ impl LateHoldings {
         Self(holdings)
     }
 
-    /// One unit's late picture, by its index in `hex.units`. The manufacturing input list falls
-    /// back to this same late picture, exactly as [`UnitFacts::late`] falls back to the early one
-    /// for a caller holding no ledger - only `forecast_hex` holds the second snapshot, and it
-    /// calls [`LateHoldings::of_with`] instead.
+    /// One unit's late picture, by its index in `hex.units`.
+    ///
+    /// **The manufacturing input list falls back to this snapshot's own items, and that fallback
+    /// is only safe for a caller that never prices a `PRODUCE`.** It is *not* the safe fallback
+    /// [`UnitFacts::late`] makes: that one falls back to the *early* picture, while this snapshot
+    /// is usually the `Maintenance` index, which already carries a production's own material
+    /// debit, so pricing from it would apply that debit twice (`ah-l80z`). Today's three callers are
+    /// upkeep, the study ceiling and [`hex_facts`], none of which reach `forecast_unit`. A caller
+    /// that does reach it must hold a `BEFORE_MANUFACTURING` snapshot and use
+    /// [`LateHoldings::of_with`], as `forecast_hex` does.
     fn of(&self, index: usize) -> LateFacts<'_> {
-        let holdings = &self.0[index];
-        LateFacts {
-            men: holdings.men,
-            men_by_race: &holdings.men_by_race,
-            items: &holdings.items,
-            before_manufacturing: &holdings.items,
-        }
+        self.of_with(index, self.items_of(index))
     }
 
     /// [`LateHoldings::of`], with the pre-manufacturing item list supplied from a second snapshot
-    /// of the same hex (`ah-l80z`).
+    /// of the same hex - the only shape a caller pricing a `PRODUCE` may use (`ah-l80z`).
     fn of_with<'a>(
         &'a self,
         index: usize,
         before_manufacturing: &'a [ItemAmount],
     ) -> LateFacts<'a> {
+        let holdings = &self.0[index];
         LateFacts {
+            men: holdings.men,
+            men_by_race: &holdings.men_by_race,
+            items: &holdings.items,
             before_manufacturing,
-            ..self.of(index)
         }
     }
 
@@ -4201,12 +4204,39 @@ impl LateHoldings {
 }
 
 /// An item list with every negative amount read as zero, which is what production is allowed to
-/// work with.
+/// work with: `plan_production` does not clamp its own materials cap, so a negative holding there
+/// would yield a negative run. Overdrawing is `judge_shortfalls`' finding to report, not
+/// production's - the same reading `capacity_after_orders` already documents (`ah-l80z`).
 ///
-/// `plan_production` does not clamp its own materials cap, and a running balance can go negative
-/// where a report figure never could - a unit that sold more than it held. Overdrawing is
-/// `judge_shortfalls`' finding to report, not production's, and this is the reading
-/// `capacity_after_orders` already documents for the same reason (`ah-l80z`).
+/// **A guard rather than a live conversion.** Both of today's snapshots come from
+/// [`LateHoldings::read`], which already drops every entry at or below zero, so neither call site
+/// can hand this function a negative amount. It is applied anyway, once per hex, so that the two
+/// surfaces are demonstrably given the same list and a snapshot built some other way cannot
+/// quietly reach `plan_production` unclamped.
+/// Take `amount` of `tag` off a running holdings list, pushing a negative entry where the list
+/// carries none - so a deficit survives to the next order rather than being silently dropped
+/// (`ah-l80z`). Tags are matched case-insensitively, as `plan_production`'s own `holding` closure
+/// does.
+fn subtract_from_holdings(
+    held: &mut Vec<ItemAmount>,
+    tag: &str,
+    amount: i64,
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+) {
+    match held
+        .iter_mut()
+        .find(|item| item.tag.eq_ignore_ascii_case(tag))
+    {
+        Some(entry) => entry.amount -= amount,
+        None => held.push(ItemAmount {
+            amount: -amount,
+            name: item_name(tag, hex, ruleset),
+            tag: tag.to_ascii_uppercase(),
+        }),
+    }
+}
+
 fn clamped_holdings(items: &[ItemAmount]) -> Vec<ItemAmount> {
     items
         .iter()
@@ -5709,28 +5739,17 @@ fn produce(
         priced.spends,
         placed,
     );
-    if let Some(silver) = held
-        .iter_mut()
-        .find(|item| item.tag.eq_ignore_ascii_case(SILVER))
-    {
-        silver.amount -= priced.spends;
-    }
+    // The running deduction, silver and materials alike, so a second `PRODUCE` line in the same
+    // block sees what the first consumed. **A guard rather than a live path today**: two
+    // month-long orders in one block raise `two-month-long-orders` and only the first is priced,
+    // so nothing currently reaches a second line. It is kept because it makes the two surfaces
+    // agree by construction rather than by that check happening to hold, and because both do it by
+    // the same rule - a tag the list does not carry is pushed with the negative amount, so a
+    // deficit survives rather than being silently dropped.
+    subtract_from_holdings(held, SILVER, priced.spends, hex, ruleset);
     for material in &plan.materials {
         charge_manufacturing_material(ledger, who, &material.tag, material.amount, placed);
-        // So a second PRODUCE line in the same block sees what the first consumed. A material
-        // with no entry pushes a negative one rather than being dropped, so a deficit within one
-        // unit's block survives to the next line.
-        match held
-            .iter_mut()
-            .find(|item| item.tag.eq_ignore_ascii_case(&material.tag))
-        {
-            Some(entry) => entry.amount -= material.amount,
-            None => held.push(ItemAmount {
-                amount: -material.amount,
-                name: item_name(&material.tag, hex, ruleset),
-                tag: material.tag.to_ascii_uppercase(),
-            }),
-        }
+        subtract_from_holdings(held, &material.tag, material.amount, hex, ruleset);
         if material.amount != 0 {
             ledger.movements.push(ItemMovement {
                 unit_id: who.clone(),

@@ -1456,27 +1456,26 @@ pub fn forecast_unit(
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
-                        // The same running deduction the ITEMS ledger makes, by the same rule: a
-                        // material with no entry pushes a negative one rather than being dropped,
-                        // so a deficit survives to the next `PRODUCE` line.
-                        if let Some(silver) = manufacturing_items
-                            .iter_mut()
-                            .find(|item| item.tag.eq_ignore_ascii_case(SILVER_TAG))
-                        {
-                            silver.amount -= priced.spends;
-                        }
+                        // The same running deduction the ITEMS ledger makes, by the same rule and
+                        // for silver and materials alike: a tag the list does not carry is pushed
+                        // with the negative amount, so a deficit survives to the next `PRODUCE`
+                        // line rather than being silently dropped. A guard rather than a live path
+                        // today - `two-month-long-orders` means only the first month-long order in
+                        // a block is priced - kept so the two surfaces agree by construction
+                        // rather than by that check happening to hold (`ah-l80z`).
+                        subtract_running(
+                            &mut manufacturing_items,
+                            SILVER_TAG,
+                            priced.spends,
+                            &lookups.item_name,
+                        );
                         for material in &plan.materials {
-                            match manufacturing_items
-                                .iter_mut()
-                                .find(|item| item.tag.eq_ignore_ascii_case(&material.tag))
-                            {
-                                Some(entry) => entry.amount -= material.amount,
-                                None => manufacturing_items.push(ItemAmount {
-                                    amount: -material.amount,
-                                    name: (lookups.item_name)(&material.tag),
-                                    tag: material.tag.to_ascii_uppercase(),
-                                }),
-                            }
+                            subtract_running(
+                                &mut manufacturing_items,
+                                &material.tag,
+                                material.amount,
+                                &lookups.item_name,
+                            );
                         }
                         if priced.spends > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Produce));
@@ -3828,8 +3827,10 @@ pub struct ProductionPlan {
 /// manufacturing PRODUCE - so the men who work and the materials they work with are the ones this
 /// month's transfers *and* this month's trading leave behind (`ah-qct4`, `ah-l80z`).
 ///
-/// `held` arrives clamped at zero: this function does not clamp `by_materials` itself, and a
-/// running balance - unlike a report figure - can go negative where a unit overdrew a stock.
+/// `held` arrives clamped at zero, because this function does not clamp `by_materials` itself and
+/// a negative holding would yield a negative run. Both of today's callers build their list from a
+/// snapshot that already carries no entry at or below zero, so the clamp is a guard on the
+/// contract rather than a conversion either of them needs.
 ///
 /// `None` when the recipe cannot be applied at all: a recipe stating no man-months or no outputs
 /// (a ruleset scraped before `ah-19l2.1`, or cooking, whose page states a formula), or one whose
@@ -3845,6 +3846,28 @@ pub struct ProductionPlan {
 /// before the request is read at all - a unit below the recipe's level, a hex yielding none of the
 /// goods, and men who could not make one - because each of those makes nothing whatever was asked
 /// for, and each already has its own sentence in the Problems panel.
+/// Take `amount` of `tag` off a running holdings list, pushing a negative entry where the list
+/// carries none - the same rule `semantics::subtract_from_holdings` follows, so the two surfaces
+/// answer a second `PRODUCE` line identically (`ah-l80z`).
+fn subtract_running(
+    held: &mut Vec<ItemAmount>,
+    tag: &str,
+    amount: i64,
+    name_of: &dyn Fn(&str) -> String,
+) {
+    match held
+        .iter_mut()
+        .find(|item| item.tag.eq_ignore_ascii_case(tag))
+    {
+        Some(entry) => entry.amount -= amount,
+        None => held.push(ItemAmount {
+            amount: -amount,
+            name: name_of(tag),
+            tag: tag.to_ascii_uppercase(),
+        }),
+    }
+}
+
 #[must_use]
 pub fn plan_production(
     recipe: &Production,

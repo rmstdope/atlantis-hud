@@ -155,8 +155,12 @@ struct Expected {
 
 /// Every row, in both text orders: the market line above `PRODUCE sword`, and below it. Both
 /// orders must give the same answer - that is what proves phase order beats document order.
+///
+/// Every mismatch is collected and reported together rather than panicking on the first, so a
+/// regression in one row is never masked by a failure in an earlier one.
 #[test]
 fn market_trades_set_the_materials_for_manufacturing_in_every_projection() {
+    let mut wrong: Vec<String> = Vec::new();
     for expected in [
         Expected {
             iron: 0,
@@ -206,50 +210,46 @@ fn market_trades_set_the_materials_for_manufacturing_in_every_projection() {
         };
 
         for script in scripts {
+            let where_ = format!("`{script}` from {} iron", expected.iron);
             let (swords, iron_left) = items_column(expected.iron, &script);
-            assert_eq!(
-                swords, expected.swords,
-                "the ITEMS column's swords for `{script}` from {} iron",
-                expected.iron
-            );
-            assert_eq!(
-                iron_left, expected.iron_left,
-                "the ITEMS column's iron left for `{script}` from {} iron",
-                expected.iron
-            );
-
             let row = silver_column(expected.iron, &script);
-            assert_eq!(
-                row.produced, expected.swords,
-                "the SILVER column's swords for `{script}` from {} iron",
-                expected.iron
-            );
-            assert_eq!(
-                row.income,
-                Some(expected.income),
-                "income for `{script}` from {} iron",
-                expected.iron
-            );
-            assert_eq!(
-                row.expense,
-                Some(expected.expense),
-                "expense for `{script}` from {} iron",
-                expected.iron
-            );
-            assert_eq!(
-                row.at_month_end,
-                Some(expected.at_month_end),
-                "silver at month end for `{script}` from {} iron",
-                expected.iron
-            );
-            assert!(
-                !row.codes
-                    .iter()
-                    .any(|code| code == "not-enough-items" || code == "not-enough-silver"),
-                "no shortfall for `{script}` from {} iron: {:?}",
-                expected.iron,
-                row.codes
-            );
+
+            for (what, got, want) in [
+                ("the ITEMS column's swords", swords, expected.swords),
+                (
+                    "the ITEMS column's iron left",
+                    iron_left,
+                    expected.iron_left,
+                ),
+                ("the SILVER column's swords", row.produced, expected.swords),
+            ] {
+                if got != want {
+                    wrong.push(format!("{what} for {where_}: {got}, expected {want}"));
+                }
+            }
+            for (what, got, want) in [
+                ("income", row.income, expected.income),
+                ("expense", row.expense, expected.expense),
+                (
+                    "silver at month end",
+                    row.at_month_end,
+                    expected.at_month_end,
+                ),
+            ] {
+                if got != Some(want) {
+                    wrong.push(format!("{what} for {where_}: {got:?}, expected {want}"));
+                }
+            }
+            let shortfalls: Vec<&String> = row
+                .codes
+                .iter()
+                .filter(|code| *code == "not-enough-items" || *code == "not-enough-silver")
+                .collect();
+            if !shortfalls.is_empty() {
+                wrong.push(format!("a shortfall for {where_}: {shortfalls:?}"));
+            }
         }
     }
+
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }
