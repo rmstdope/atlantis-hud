@@ -1859,6 +1859,18 @@ struct Ordered<'a> {
     /// The document's complete parsed list, retained only so
     /// [`check_two_month_long_orders`] can report the orders that lost the month.
     all_intents: &'a [PlacedIntent],
+    /// This unit's TEACH eligibility, decided once by
+    /// [`Ordered::retain_effective_month_intents`] and read by every later judgement about what
+    /// spends the month.
+    ///
+    /// The outer `None` means *not yet settled*; the inner one is `teaching_eligibility`'s own
+    /// "cannot be said". Stored rather than recomputed because `apply_recruits` runs **after**
+    /// `hex_with_transfers` and rewrites `races_after_recruits` and `men_after_orders`: a second
+    /// reading could answer differently, and the filter and the `two-month-long-orders` warning
+    /// would then describe different months for one unit (`ah-rzkm`). `rules/sequenceofevents`
+    /// puts teaching before the market phase, so the post-transfer, pre-recruit state is the one
+    /// the decision belongs to.
+    teaching_eligible: Option<Option<bool>>,
     /// `None` when the document has no block for this unit at all.
     block_line: Option<usize>,
     unread: bool,
@@ -1926,6 +1938,7 @@ impl<'a> Hex<'a> {
                     unit,
                     intents: orders.map_or_else(Vec::new, |orders| orders.intents.clone()),
                     all_intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
+                    teaching_eligible: None,
                     block_line: orders.map(|orders| orders.block_line),
                     unread: orders.is_some_and(|orders| orders.unread),
                     formed: None,
@@ -1950,6 +1963,7 @@ impl<'a> Hex<'a> {
                     unit: &formed.unit,
                     intents: formed.block.intents.clone(),
                     all_intents: &formed.block.intents,
+                    teaching_eligible: None,
                     block_line: Some(formed.block.block_line),
                     unread: !formed.block.unread.is_empty(),
                     formed: Some(FormedSubject {
@@ -3015,7 +3029,11 @@ impl Ordered<'_> {
     }
 
     fn intent_spends_the_month(&self, intent: &Intent) -> bool {
-        month_spending_intent(intent, self.teaching_eligibility())
+        month_spending_intent(
+            intent,
+            self.teaching_eligible
+                .unwrap_or_else(|| self.teaching_eligibility()),
+        )
     }
 
     /// Drops every month claim after the first, leaving the month exactly one winner (`ah-rzkm`).
@@ -3026,6 +3044,7 @@ impl Ordered<'_> {
     /// disagree. `teaching_eligibility` is read once, before the mutable borrow.
     fn retain_effective_month_intents(&mut self) {
         let teaching_eligible = self.teaching_eligibility();
+        self.teaching_eligible = Some(teaching_eligible);
         let mut winner: Option<MonthClaim> = None;
         self.intents.retain(|placed| {
             if !month_spending_intent(&placed.intent, teaching_eligible) {
@@ -10776,18 +10795,29 @@ mod tests {
                 CheckOptions::default(),
             );
 
-            let messages: Vec<&str> = oversubscriptions(&review)
+            let mut told: Vec<(&str, &str)> = oversubscriptions(&review)
                 .iter()
-                .map(|finding| finding.message.as_str())
+                .map(|finding| {
+                    let pool = if finding.message.contains("tax for") {
+                        "tax"
+                    } else if finding.message.contains("work for") {
+                        "work"
+                    } else {
+                        "other"
+                    };
+                    (finding.unit_id.as_deref().unwrap_or("(hex)"), pool)
+                })
                 .collect();
-            assert!(
-                messages.iter().any(|message| message.contains("tax for")),
-                "{:?}",
-                review.findings
-            );
-            assert!(
-                messages.iter().any(|message| message.contains("work for")),
-                "{:?}",
+            told.sort_unstable();
+            assert_eq!(
+                told,
+                vec![
+                    ("2390", "tax"),
+                    ("2391", "tax"),
+                    ("2392", "work"),
+                    ("2393", "work"),
+                ],
+                "one finding for each claiming unit, naming its own pool: {:?}",
                 review.findings
             );
         }
@@ -13825,7 +13855,7 @@ mod tests {
     /// `TAX` never runs and is told so once, by `two-month-long-orders`, rather than warned about
     /// a collection it will not attempt (`ah-rzkm`).
     #[test]
-    fn a_unit_that_pillages_and_is_also_ordered_to_tax_is_still_told() {
+    fn a_second_unit_taxing_a_pillaged_hex_is_still_told() {
         let hex_region = ReportRegion {
             tax_base: Some(2500),
             ..region(vec![
@@ -17743,6 +17773,46 @@ mod tests {
                 .iter()
                 .any(|finding| finding.code == codes::TWO_MONTH_LONG_ORDERS),
             "{findings:?}"
+        );
+    }
+
+    /// One TEACH eligibility decision, not two. `apply_recruits` runs after `hex_with_transfers`
+    /// and can change what a unit is made of, so a second reading could answer differently - and
+    /// the filter and the `two-month-long-orders` warning would then describe different months
+    /// for one unit. `rules/sequenceofevents` puts teaching before the market phase, so the
+    /// post-transfer, pre-recruit state is the one that decides.
+    #[test]
+    fn recruits_do_not_move_the_teach_decision_after_the_month_is_settled() {
+        let mut hex = region(vec![
+            with_leaders(with_skill(with_silver(unit("500"), 100_000), "COMB", 3), 3),
+            with_silver(unit("700"), 1_000),
+        ]);
+        // The BUY makes the teacher no longer all-leaders, but only after the month is settled.
+        hex.for_sale.push(MarketItem {
+            amount: 40,
+            name: "orc".to_string(),
+            tag: "ORC".to_string(),
+            price: 10,
+        });
+        let orders = "unit 500\nTEACH 700\nBUY 5 orc\nSTUDY Combat\nunit 700\nSTUDY Combat\n";
+
+        assert_eq!(
+            effective_keywords(&hex, orders, "500"),
+            vec!["TEACH", "BUY"],
+            "the TEACH claims the month, so the STUDY below it is discarded"
+        );
+
+        let told: Vec<Finding> = check_months(vec![hex], orders)
+            .into_iter()
+            .filter(|finding| {
+                finding.code == codes::TWO_MONTH_LONG_ORDERS
+                    && finding.unit_id.as_deref() == Some("500")
+            })
+            .collect();
+        assert_eq!(
+            told.len(),
+            1,
+            "the discarded STUDY is still reported: {told:?}"
         );
     }
 

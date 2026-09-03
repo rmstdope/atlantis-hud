@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 use atlantis_hud_core::movement::rules::Ruleset;
+use atlantis_hud_core::orders::intents::{read_intents, spends_the_month};
 use atlantis_hud_core::report::model::Coordinate;
 
 /// A map coordinate on the plane most fixtures live on.
@@ -20,45 +21,25 @@ pub fn ruleset() -> Ruleset {
 /// `rules/tax`, `rules/move` and `rules/study` each spend the unit's month, so a `PILLAGE`
 /// written under a unit that still carries its template's `@tax`, `MOVE` or `@STUDY` never runs
 /// and is told so instead (`ah-rzkm`). A player giving one of these units `PILLAGE` replaces its
-/// standing month order; these fixtures say the same thing by dropping it.
+/// standing month order; these fixtures say the same thing by dropping every one of them.
 ///
-/// Only a line at the start of its own block is dropped - an indented line inside a `@TURN`
-/// block belongs to a later month.
+/// The crate's own reader and predicate decide what goes, rather than a keyword list copied into
+/// test code that nothing would fail to update: `read_intents` skips `TURN` blocks, whose orders
+/// belong to a later month, so those lines survive.
 pub fn without_standing_month_orders(template: &str, units: &[&str]) -> String {
-    const MONTH_LONG: [&str; 11] = [
-        "TAX",
-        "MOVE",
-        "ADVANCE",
-        "STUDY",
-        "PRODUCE",
-        "BUILD",
-        "SAIL",
-        "TEACH",
-        "WORK",
-        "ENTERTAIN",
-        "PILLAGE",
-    ];
-    let mut current: Option<String> = None;
-    let mut kept: Vec<&str> = Vec::new();
-    for line in template.lines() {
-        if let Some(rest) = line.strip_prefix("unit ") {
-            current = Some(rest.trim().to_string());
-            kept.push(line);
-            continue;
-        }
-        let ours = current.as_deref().is_some_and(|id| units.contains(&id));
-        let bare = line.trim_start_matches('@');
-        let indented = line.starts_with(' ') || line.starts_with('\t');
-        let keyword = bare.split_whitespace().next().unwrap_or("");
-        if ours
-            && !indented
-            && MONTH_LONG
-                .iter()
-                .any(|month| keyword.eq_ignore_ascii_case(month))
-        {
-            continue;
-        }
-        kept.push(line);
-    }
-    kept.join("\n")
+    let dropped: std::collections::BTreeSet<usize> = read_intents(template)
+        .iter()
+        .filter(|block| units.contains(&block.unit_id.as_str()))
+        .flat_map(|block| block.intents.iter())
+        .filter(|placed| spends_the_month(&placed.intent))
+        .map(|placed| placed.line)
+        .collect();
+
+    template
+        .lines()
+        .enumerate()
+        .filter(|(index, _)| !dropped.contains(&(index + 1)))
+        .map(|(_, line)| line)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
