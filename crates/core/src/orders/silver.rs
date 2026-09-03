@@ -1109,6 +1109,14 @@ pub fn late_income(
     late
 }
 
+/// The silver a unit can still spend: what it held, plus what has reached it, less what has left.
+///
+/// Clamped at zero. A `GIVE` of a stated quantity is not clamped against the holding, so `expense`
+/// can exceed `held + income`, and a negative count must never reach a cap.
+fn available_silver(held: i64, income: i64, expense: i64) -> i64 {
+    held.saturating_add(income).saturating_sub(expense).max(0)
+}
+
 /// What one unit's month does to its silver.
 ///
 /// `facts.intents` is the unit's orders exactly as [`super::semantics`] already holds them, so the
@@ -1123,14 +1131,6 @@ pub fn late_income(
 /// doubted, `doubt` reports the first match in order of increasing scope - [`SilverDoubt::EstimatedMen`]
 /// first, which short-circuits, because nothing per-man can be multiplied out.
 #[must_use]
-/// The silver a unit can still spend: what it held, plus what has reached it, less what has left.
-///
-/// Clamped at zero. A `GIVE` of a stated quantity is not clamped against the holding, so `expense`
-/// can exceed `held + income`, and a negative count must never reach a cap.
-fn available_silver(held: i64, income: i64, expense: i64) -> i64 {
-    held.saturating_add(income).saturating_sub(expense).max(0)
-}
-
 pub fn forecast_unit(
     facts: UnitFacts<'_>,
     region: RegionWages,

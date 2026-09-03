@@ -16,6 +16,9 @@ use super::intents::{Intent, PlacedIntent};
 #[repr(usize)]
 pub(crate) enum StatePhase {
     Instant,
+    /// CLAIM is in the same batch of instant orders as AVOID and GUARD 0, and so is not really a
+    /// phase of its own: it is separated out only so that it is unambiguously ordered ahead of
+    /// `Give`, which is the whole of what any silver answer turns on.
     Claim,
     Give,
     Tax,

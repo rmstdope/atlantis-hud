@@ -3828,10 +3828,16 @@ fn ledger_for_with_production<'a>(
                         .expect("every unit of this hex was given a claim purse above"),
                 );
             }
-            if phase == StatePhase::Market {
-                settle_buy_all(&mut ledger, hex, ordered);
-            }
         }
+    }
+
+    // After the whole walk, not inside the market phase. `settle_buy_all` reads the balance at
+    // `StatePhase::Maintenance`, which carries only the deltas already *applied* - so settling it
+    // at `Market` would spend silver the unit's own STUDY, PRODUCE or BUILD has not yet charged
+    // for. `forecast_unit` settles its deferred `BUY ALL` after its whole walk for the same reason
+    // (`crates/core/src/orders/silver.rs`, `Deferred::BuyAll`), and the two must agree.
+    for ordered in &hex.units {
+        settle_buy_all(&mut ledger, hex, ordered);
     }
 
     discard_unfinished_ships_after_movement(&mut ledger, hex, ruleset);
@@ -5416,10 +5422,11 @@ fn buy(
 /// Settles this unit's `BUY ALL` lines, in document order, once the rest of its month has been
 /// applied.
 ///
-/// Called from `ledger_for` right after `credit_tax`, which is the moment the unit's silver
-/// balance matches `forecast_unit`'s `running` - report holding, plus every credit, less every
-/// eager charge, and **not** the late income, which `charge_upkeep` nets off the fee rather than
-/// crediting (`ah-uwa3`).
+/// Called from `ledger_for` once every phase of `phases::ORDER` has run for every unit in the hex,
+/// which is the moment the unit's silver balance matches `forecast_unit`'s `running` - report
+/// holding, plus every credit, less every eager charge, and **not** the late income, which
+/// `charge_upkeep` nets off the fee rather than crediting (`ah-uwa3`). Settling it earlier - inside
+/// the market phase, say - would spend silver a later phase has not yet charged for (`ah-gdd3.1`).
 fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
     let who = &actor.unit.unit_id;
     let Some(lines) = ledger.buy_all.remove(who) else {
@@ -14767,6 +14774,42 @@ mod tests {
         );
     }
 
+    /// `ah-gdd3.1`: `BUY ALL` is settled from what every *other* order leaves, so a month-long
+    /// spend written under it still holds its money back.
+    ///
+    /// The phase-major dispatch moved the market ahead of `Study`, and `settle_buy_all` reads the
+    /// balance at `StatePhase::Maintenance` - which only carries deltas already applied. Settling
+    /// the `BUY ALL` inside the market phase would therefore spend silver the study still wants,
+    /// and would disagree with `forecast_unit`, which settles its deferred `BUY ALL` after the
+    /// whole walk. Both surfaces are read here, because agreeing is the point.
+    #[test]
+    fn a_buy_all_leaves_a_month_long_spend_its_money() {
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 100,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 10,
+            }],
+            ..region(vec![with_silver(unit("2390"), 100)])
+        };
+        let ordered = OrderedUnits::read("unit 2390\nBUY ALL grain\nSTUDY combat\n");
+        let read = Hex::read(&hex, &ordered, &[]);
+        let rules = ruleset();
+        let ledger = ledger_for(&read, Some(&rules));
+
+        let grain = ledger
+            .bought
+            .get(&("2390".to_string(), "GRAI".to_string()))
+            .copied()
+            .unwrap_or(0);
+
+        assert!(
+            grain < 10,
+            "the buy-all left the study its money rather than taking all ten grain: {grain}"
+        );
+    }
+
     /// `ah-lauy`, increment 6. The buying-side counterpart of `check_emptied_sales` - a second
     /// `BUY ALL` of the same goods this unit's own earlier line already took warns on the line
     /// that finds nothing left, unbounded and exact alike.
@@ -21122,6 +21165,11 @@ mod tests {
     /// level wants, and is still charged for the one `plan_cast` charges whenever the level wants
     /// any. $500 + $200 = $700 against a purse of $600. Before that correction the cast was priced
     /// from the report's opening holding, which is the bug `ah-gdd3.1` exists to fix.
+    ///
+    /// A capped cast can never overspend on its own, so with the gift settled first this fixture
+    /// can only reach `plan_cast`'s `charged = max(1, made)` fallback: the **per-item** charge
+    /// `ah-ofpb.4` introduced is pinned by `silver::tests::prices_a_cast_for_every_item_it_makes`,
+    /// which is where a reader should go for it.
     #[test]
     fn a_mage_is_charged_for_every_artifact_it_makes() {
         let regions = vec![region(vec![
