@@ -14991,6 +14991,58 @@ mod tests {
     }
 
     /// `ah-256d`. A region's `Products` line states how much of each resource the hex yields this
+    /// `rules/sequenceofevents` runs *Give orders* before *Market orders*, so a
+    /// `GIVE ... ALL SILV EXCEPT` settles against the whole purse whatever line an exact `BUY`
+    /// is written on, and both projections say the same thing (`ah-npab`).
+    mod give_before_market {
+        use super::*;
+
+        fn silver_of(review: &TurnReview, id: &str) -> UnitSilver {
+            review
+                .silver
+                .iter()
+                .find(|forecast| forecast.unit_id == id)
+                .cloned()
+                .unwrap_or_else(|| panic!("no forecast for {id}: {:?}", review.silver))
+        }
+
+        #[test]
+        fn giving_all_silver_precedes_market_spending_in_either_text_order() {
+            let hex = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 30,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 20,
+                }],
+                ..region(vec![with_silver(unit("2390"), 100), unit("2391")])
+            };
+            for orders in [
+                "unit 2390\nGIVE 2391 ALL SILV EXCEPT 50\nBUY 1 grain\n",
+                "unit 2390\nBUY 1 grain\nGIVE 2391 ALL SILV EXCEPT 50\n",
+            ] {
+                let review = review_turn(
+                    &report(vec![hex.clone()]),
+                    orders,
+                    Some(&ruleset()),
+                    CheckOptions::default(),
+                );
+                let giver = silver_of(&review, "2390");
+                assert_eq!(giver.expense, Some(70), "orders: {orders}");
+                assert_eq!(giver.at_month_end, Some(30), "orders: {orders}");
+                assert_eq!(giver.short_for_orders, Some(0), "orders: {orders}");
+                assert_eq!(giver.doubt, None, "orders: {orders}");
+                assert_eq!(silver_of(&review, "2391").received, 50, "orders: {orders}");
+                assert!(
+                    !review.findings.iter().any(|f| f.code == codes::NOT_ENOUGH_SILVER
+                        && f.unit_id.as_deref() == Some("2390")),
+                    "orders: {orders}: {:?}",
+                    review.findings
+                );
+            }
+        }
+    }
+
     /// month, and every own unit producing there shares it: `rules/tableiteminfo` says "If the
     /// units in a region attempt to produce more of a commodity than can be produced that month,
     /// then the amount available is distributed among the producers".
@@ -15777,6 +15829,34 @@ mod tests {
                     assert!(ledger.uncounted.contains_key("2390"));
                 },
             );
+        }
+
+        /// The ledger has always been phase-correct here (`PhaseState` writes a Give-phase
+        /// delta into every later phase); this pins that against regression (`ah-npab`).
+        #[test]
+        fn a_give_of_all_silver_leaves_the_purchase_affordable_in_either_text_order() {
+            for orders in [
+                "unit 2390\nGIVE 2391 ALL SILV EXCEPT 50\nBUY 1 grain\n",
+                "unit 2390\nBUY 1 grain\nGIVE 2391 ALL SILV EXCEPT 50\n",
+            ] {
+                let hex_region = ReportRegion {
+                    for_sale: vec![line(30, 20, "grain", "GRAI")],
+                    ..region(vec![with_silver(unit("2390"), 100), unit("2391")])
+                };
+                with_ledger_after_transfers(hex_region, orders, |ledger| {
+                    assert_eq!(balance_of(ledger, "2390", "SILV"), 30, "orders: {orders}");
+                    assert_eq!(balance_of(ledger, "2391", "SILV"), 50, "orders: {orders}");
+                    assert!(
+                        ledger
+                            .movements
+                            .iter()
+                            .any(|m| m.unit_id == "2390" && m.tag == "GRAI" && m.delta == 1),
+                        "orders: {orders}: {:?}",
+                        ledger.movements
+                    );
+                    assert!(ledger.uncounted.is_empty(), "orders: {orders}");
+                });
+            }
         }
 
         #[test]
