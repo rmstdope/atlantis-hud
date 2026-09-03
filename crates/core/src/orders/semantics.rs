@@ -4989,7 +4989,7 @@ fn transfer(
                 .state
                 .balances
                 .get(&(actor.unit.unit_id.clone(), tag.clone()))
-                .is_some_and(|amount| amount[StatePhase::Maintenance as usize] > 0) =>
+                .is_some_and(|amount| amount[StatePhase::Give as usize] > 0) =>
         {
             return;
         }
@@ -5007,7 +5007,7 @@ fn transfer(
                 .state
                 .balances
                 .get(&(from.clone(), tag.clone()))
-                .is_some_and(|amount| amount[StatePhase::Maintenance as usize] > 0) => {}
+                .is_some_and(|amount| amount[StatePhase::Give as usize] > 0) => {}
         GiveOutcome::Uncertain => {
             ledger.state.uncertain.insert(
                 (from.clone(), tag.clone()),
@@ -5027,7 +5027,7 @@ fn transfer(
     // drawn from goods that may already have gone. A receiver of ours inherits the same doubt, so
     // its row shows `+ ?` rather than a flat arrival off a balance this ledger has marked
     // unknowable (`ah-66yi`).
-    let known_source = match known_balance_of(ledger, &from, &tag) {
+    let known_source = match ledger.state.known_balance_at(StatePhase::Give, &from, &tag) {
         Ok(holding) => holding,
         Err(uncertain) => {
             let inherited = uncertain.clone();
