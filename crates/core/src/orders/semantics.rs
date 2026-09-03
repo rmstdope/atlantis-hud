@@ -29757,6 +29757,80 @@ mod tests {
             assert_eq!(silver.formed, Some(expected));
         }
 
+        #[test]
+        fn a_staffed_formed_unit_studying_quartermaster_spends_the_allowance() {
+            let review = review_turn(
+                &report_with_status(
+                    "Quartermasters",
+                    1,
+                    1,
+                    vec![region(vec![with_men(unit("1922"), 2)])],
+                ),
+                "unit 1922\nFORM 1\nSTUDY QUAM\nEND\nGIVE NEW 1 1 HUMN\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let finding = review
+                .findings
+                .iter()
+                .find(|finding| finding.code == codes::TOO_MANY_QUARTERMASTERS)
+                .expect("a staffed formed unit spends a quartermaster allowance");
+            assert_eq!(finding.unit_id.as_deref(), Some("new-1"));
+            assert_eq!(
+                finding.formed.as_ref().map(|formed| formed.alias.as_str()),
+                Some("1")
+            );
+        }
+
+        #[test]
+        fn an_unstaffed_formed_unit_spends_no_faction_allowance() {
+            let review = review_turn(
+                &report_with_status("Quartermasters", 1, 1, vec![region(vec![unit("1922")])]),
+                "unit 1922\nFORM 1\nSTUDY QUAM\nPRODUCE grain\nEND\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert!(!review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TOO_MANY_QUARTERMASTERS));
+            assert!(!review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TOO_MANY_TRADE_REGIONS));
+        }
+
+        #[test]
+        fn a_staffed_formed_producer_spends_a_trade_region() {
+            let review = review_turn(
+                &report_with_status(
+                    "Trade Regions",
+                    0,
+                    1,
+                    vec![
+                        region(vec![with_men(unit("1922"), 2)]),
+                        region_at("1:8,53", 8, 53, vec![unit("2000")]),
+                    ],
+                ),
+                "unit 1922\nFORM 1\nPRODUCE grain\nEND\nGIVE NEW 1 1 HUMN\nunit 2000\nPRODUCE grain\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let finding = review
+                .findings
+                .iter()
+                .find(|finding| finding.code == codes::TOO_MANY_TRADE_REGIONS)
+                .expect("two producing regions exceed the allowance");
+            assert_eq!(finding.unit_id.as_deref(), Some("new-1"));
+            assert_eq!(
+                finding.formed.as_ref().map(|formed| formed.alias.as_str()),
+                Some("1")
+            );
+        }
+
         /// A nested `FORM`'s parent is the *outer* formed unit's synthetic id, which the report's
         /// own units (`unit_by_id`) have never heard of - `review_turn` must resolve it against a
         /// formed unit built earlier in the same pass, or the inner unit is silently dropped from
