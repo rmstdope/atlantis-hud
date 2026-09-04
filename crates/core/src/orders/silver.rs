@@ -1526,10 +1526,11 @@ pub fn forecast_unit(
                 //
                 // **Materials and tools are the pre-manufacturing balance**, which is the
                 // mid-month picture `facts.production().before_manufacturing` now carries:
-                // every market effect applied, no PRODUCE charged. `semantics::produce` reads exactly the same
-                // phase for the ITEMS column, so the two surfaces answer one order identically
-                // (`rules/sequenceofevents`, `ah-l80z`). Not `facts.items`, which is the
-                // maintenance index and already carries this production's own material debit.
+                // every market effect applied, no PRODUCE charged. `semantics::produce` reads
+                // exactly the same phase for the ITEMS column, so the two surfaces answer one
+                // order identically (`rules/sequenceofevents`, `ah-l80z`). Not `facts.items`,
+                // which is the maintenance index and already carries this production's own
+                // material debit.
                 //
                 // **The silver is not read from that slice at all** (`ah-gdd3.2`): it is the
                 // running balance below, for the same phase and the same reason.
@@ -1571,11 +1572,11 @@ pub fn forecast_unit(
                 // to fund a recipe either way, so this is the reading before `ah-omn7` unchanged.
                 // The materials this run may spend, which in a hex that shares is more than this
                 // unit's own list: `facts.production().shared_materials` is what
-                // `semantics::produce` priced the very same order against, so the two columns cannot drift (the
-                // invariant this comment block has always claimed, and which pooling would
-                // otherwise have broken - `ah-728m.2.2`). Empty for a hex that shares nothing and
-                // for a recipe the ruleset cannot price, and then this is byte for byte the list
-                // it always was.
+                // `semantics::produce` priced the very same order against, so the two columns
+                // cannot drift (the invariant this comment block has always claimed, and which
+                // pooling would otherwise have broken - `ah-728m.2.2`). Empty for a hex that
+                // shares nothing and for a recipe the ruleset cannot price, and then this is byte
+                // for byte the list it always was.
                 let priced_against = pooled_materials(
                     &manufacturing_items,
                     materials_for_line(facts.production().shared_materials, placed.line),

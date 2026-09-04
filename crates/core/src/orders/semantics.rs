@@ -3626,8 +3626,9 @@ impl PhaseHoldings {
 /// The headcount every post-market phase shares, derived from one phase's stocks.
 ///
 /// Lifted out of the old `LateHoldings::read` unchanged (`ah-728m.2.3`): a unit whose headcount
-/// is itself a guess keeps the parser's figures, a caller with a ruleset short-circuits through `same_men`
-/// against the early picture, and a caller with none keeps the report's own figures.
+/// is itself a guess keeps the parser's figures, a caller with a ruleset short-circuits
+/// through `same_men` against the early picture, and a caller with none keeps the report's
+/// own figures.
 fn men_from(hex: &Hex<'_>, stocks: &[Vec<ItemAmount>], ruleset: Option<&Ruleset>) -> Vec<LateMen> {
     hex.units
         .iter()
