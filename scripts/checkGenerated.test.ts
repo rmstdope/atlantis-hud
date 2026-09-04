@@ -6,9 +6,9 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   ALLOW_EXTERNAL_EXPORT_DIR,
   compareTrees,
+  CRATE_RELATIVE_EXPORT_DIR,
   describeDivergence,
   describeUncommitted,
-  CRATE_RELATIVE_EXPORT_DIR,
   EXPORT_DIR,
   exportCommand,
   GENERATED_DIRS,
@@ -235,12 +235,6 @@ describe("exportCommand", () => {
  * *main checkout's* root from inside a worktree (see its doc comment, and ah-gdp) - that would ask
  * this question of the wrong tree.
  */
-describe("CRATE_RELATIVE_EXPORT_DIR", () => {
-  it("is EXPORT_DIR spelled from the crate, so the temporary tree keeps its depth", () => {
-    expect(CRATE_RELATIVE_EXPORT_DIR).toBe(`../../${EXPORT_DIR}`);
-  });
-});
-
 describe("EXPORT_DIR", () => {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const config = readFileSync(join(root, ".cargo", "config.toml"), "utf8");
@@ -281,5 +275,11 @@ describe("EXPORT_DIR", () => {
     // real directories, and the comparison would be the working tree against itself - passing for
     // ever, silently.
     expect(entry[1]).not.toContain("force");
+  });
+});
+
+describe("CRATE_RELATIVE_EXPORT_DIR", () => {
+  it("is EXPORT_DIR spelled from the crate, so the temporary tree keeps its depth", () => {
+    expect(CRATE_RELATIVE_EXPORT_DIR).toBe(`../../${EXPORT_DIR}`);
   });
 });

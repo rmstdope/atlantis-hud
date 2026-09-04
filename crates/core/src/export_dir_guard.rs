@@ -31,7 +31,12 @@ pub(crate) enum Verdict {
 
 /// Lexically resolve `.` and `..`. No filesystem access and no symlink resolution, on purpose: the
 /// directory being judged does not have to exist yet, and `checkGenerated.ts`'s temporary tree does
-/// not. A `..` that would climb past the root is a no-op pop.
+/// not.
+///
+/// A leading `..` is dropped rather than preserved: on an absolute path that is a no-op pop off the
+/// root, but on a relative one it yields a *different* path (`../x` normalizes to `x`). `verdict`
+/// only ever calls this on `cwd.join(dir)`, which is absolute whenever `cwd` is, so that case does
+/// not arise there; a future caller passing a relative path must know it.
 pub(crate) fn normalize(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {
