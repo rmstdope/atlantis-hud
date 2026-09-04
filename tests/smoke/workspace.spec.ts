@@ -4425,7 +4425,7 @@ test("a BUY ALL settles and marks the ITEMS cell as a projection", async ({ page
  *
  * That is why this cannot use the default turn-71 fixture - its five own units carry only
  * observation, stealth and manipulation - and follows the `CAST` walk below onto `F42_T42`.
- * `Farmers (3493)` is 17 orcs with `farming [FARM] 5` in `mountain (36,4)`, and what it makes is
+ * `Farmers (3493)` is 17 orcs with `farming [FARM] 2` in `mountain (36,4)`, and what it makes is
  * capped by `ah-256d` sharing the hex's own `Products: 34 livestock [LIVE] ...` between the units
  * producing there. The walk asserts the cell names LIVE and carries the projection title, both of
  * which hold whatever the settled figure is.
@@ -4433,10 +4433,10 @@ test("a BUY ALL settles and marks the ITEMS cell as a projection", async ({ page
  * **Not the miners, since `ah-728m.2.2`.** This walk used to follow `MinersA (5105)` and its iron.
  * That hex has `sharing` units, and `Smiths (2964)` in it produces swords from iron - so now that
  * a manufacturer draws on the hex's shared stock before primary PRODUCE runs, the miner lends the
- * smith exactly the iron it goes on to mine back, its net item change for the month is zero, and
- * a unit with no changes is not in the preview response at all. That is the settlement working,
- * not a projection going missing; livestock is the row that shows a projection without also being
- * somebody else's raw material.
+ * smith exactly the iron it goes on to mine back: its net item change for the month is zero, so
+ * its row carries no projection to mark. That is the settlement working, not a projection going
+ * missing, and the walk directly below pins it. Livestock is the row that shows a projection
+ * without also being somebody else's raw material.
  */
 test("a produced item marks the ITEMS cell as a projection", async ({ page }) => {
   await loadReport(page, "Produce smoke", F42_T42, "regions");
@@ -4448,6 +4448,42 @@ test("a produced item marks the ITEMS cell as a projection", async ({ page }) =>
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toContainText("LIVE");
   await expect(itemsCell).toHaveAttribute("title", /this unit will produce/);
+});
+
+/**
+ * ah-728m.2.2: the settlement the walk above had to move off, pinned rather than walked around.
+ *
+ * `mountain (36,4)` shares, so `Smiths (2964)` - 14 orcs with `weaponsmith [WEAP] 2` and 11
+ * hammers, carrying no iron at all - forges from the hex's sharing units' stock: `rules/share`
+ * lends "resources for production", and `rules/sequenceofevents` runs manufacturing PRODUCE before
+ * primary PRODUCE, so the iron a miner holds *now* is iron the smith may work. Before this bead a
+ * unit with no iron made nothing whatever; it now makes 36, which on top of the 24 swords it
+ * already carries is the 60 the cell shows.
+ *
+ * The miner then mines back exactly what it lent, so its month nets to nothing and its row carries
+ * no projection at all - which is why the walk above follows the farmers instead. Both halves are
+ * asserted here, because between them they are this bead's user-visible behaviour.
+ */
+test("a manufacturer draws on the hex's shared stock, and its supplier nets to nothing", async ({
+  page,
+}) => {
+  await loadReport(page, "Shared produce smoke", F42_T42, "regions");
+  await selectHex(page, "1:36,4");
+  await selectUnit(page, "2964");
+  await fillOrders(page, "PRODUCE sword");
+
+  // By the projection's own title, not `.first()`: forging 36 swords moves the unit's weight too,
+  // so the movement cell is marked as well and sorts ahead of the items one.
+  const smith = page
+    .getByTestId("unit-row-2964")
+    .locator('[data-predicted="true"][title*="will produce"]');
+  await expect(smith).toContainText("60 SWOR");
+  await expect(smith).toHaveAttribute("title", /36 SWOR this unit will produce/);
+
+  await selectUnit(page, "5105");
+  await fillOrders(page, "PRODUCE iron");
+  await expect(page.getByTestId("unit-row-5105")).toBeVisible();
+  await expect(page.getByTestId("unit-row-5105").locator('[data-predicted="true"]')).toHaveCount(0);
 });
 
 /**
