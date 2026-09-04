@@ -1936,9 +1936,6 @@ pub fn forecast_unit(
         // that `BUY ALL` spends what the unit can afford, and wages it earns this month cannot pay
         // for anything this month's orders buy (`ah-uwa3`).
         // The Give phase spends what the unit holds when GIVE runs: what it opened with, plus what
-        // the instant orders and the gifts of others put there (`ah-tc79`). `expense` is subtracted
-        // whole, and that is a known conservatism rather than an oversight (`ah-a5ci`).
-        // The Give phase spends what the unit holds when GIVE runs: what it opened with, plus what
         // the instant orders and the gifts of others put there, less the exact gifts of this block
         // alone. A study and a manufacture are charged in the turn's last block and neither makes
         // the gift smaller (`ah-a5ci`).
@@ -1965,8 +1962,8 @@ pub fn forecast_unit(
         }
         // Everything the Give phase could not spend is in the purse by the time the market opens:
         // TAX and PILLAGE settle in the tax phase, both before "SELL orders are processed". A cast
-        // settles there too and has already been paid for, so its cost comes off here and not
-        // above. `late` stays out - wages earned this month cannot pay for anything this month's
+        // settles in *Instant Magic*, after the tax phase and still before the market, and has
+        // already been paid for, so its cost comes off here and not above. `late` stays out - wages earned this month cannot pay for anything this month's
         // orders buy (`ah-uwa3`) - and so does `month_long_expense`, which the market never
         // reaches (`ah-a5ci`).
         running = running
