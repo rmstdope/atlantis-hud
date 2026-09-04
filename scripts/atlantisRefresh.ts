@@ -8,11 +8,22 @@
  * reads that JSON and uses the renderers and `decideFiling` below to act on it.
  */
 
+/** What one world's refresh found. */
+export type WorldRefresh = {
+  /** The world's id, as `WORLDS` spells it: `neworigins`, `newage-arcanum`, `newage-trident`. */
+  world: string;
+  /** Which sources moved: `"rules"`, and `"data"` or `"database"` for the catalogue. */
+  changedSources: string[];
+  /** One line per changed ruleset leaf, already trimmed. */
+  rulesetChanges: string[];
+};
+
 /** What one run of `atlantis refresh` found, structured for a workflow to branch on. */
 export type RefreshOutcome =
   | { kind: "unchanged" }
-  | { kind: "refreshed"; changedPages: string[]; rulesetChanges: string[] }
-  | { kind: "scrape-failed"; message: string };
+  /** Only the worlds whose sources actually moved; never an empty array. */
+  | { kind: "refreshed"; worlds: WorldRefresh[] }
+  | { kind: "scrape-failed"; world: string; message: string };
 
 /** The branch every refresh pushes to, reused rather than accumulating one branch per week. */
 export const REFRESH_BRANCH = "atlantis-rules-refresh";
@@ -26,44 +37,53 @@ export const REFRESH_ISSUE_TITLE =
 
 type Refreshed = Extract<RefreshOutcome, { kind: "refreshed" }>;
 
-/** The pull request's title, given what moved. */
+/** `rules` -> `rules page`, `data` -> `data page`, `database` -> `database`. */
+function sourceLabel(source: string): string {
+  return source === "database" ? "database" : `${source} page`;
+}
+
+/** The pull request's title, given what moved. A title listing three worlds would not fit. */
 export function refreshPullRequestTitle(outcome: Refreshed): string {
-  const pages = outcome.changedPages.join(" and ");
-  const plural = outcome.changedPages.length > 1 ? "s" : "";
-  return `Atlantis rules refresh: the ${pages} page${plural} changed`;
+  if (outcome.worlds.length > 1) {
+    return `Atlantis rules refresh: ${outcome.worlds.length} worlds changed`;
+  }
+  const [world] = outcome.worlds;
+  const sources = world.changedSources.map(sourceLabel).join(" and ");
+  return `Atlantis rules refresh: ${world.world}'s ${sources} changed`;
 }
 
 /** The pull request's body: what moved, what it changed in the ruleset, and what to check. */
 export function refreshPullRequestBody(outcome: Refreshed): string {
-  const pages = outcome.changedPages.join(" and ");
-  const plural = outcome.changedPages.length > 1 ? "s" : "";
   const lines = [
-    `The ${pages} page${plural} on atlantis-pbem.com moved since the last refresh. This PR carries`,
-    "the refreshed pages and the ruleset regenerated from them, together, so the repository stays",
-    "green at every commit.",
+    "These sources moved since the last refresh. This PR carries the refreshed sources and the",
+    "rulesets regenerated from them, together, so the repository stays green at every commit.",
     ""
   ];
 
-  if (outcome.rulesetChanges.length > 0) {
-    lines.push("Ruleset changes:", "");
-    for (const change of outcome.rulesetChanges) {
-      lines.push(`- ${change}`);
+  for (const world of outcome.worlds) {
+    lines.push(`## ${world.world}`, "", `Changed: ${world.changedSources.map(sourceLabel).join(" and ")}`, "");
+    if (world.rulesetChanges.length > 0) {
+      lines.push("Ruleset changes:", "");
+      for (const change of world.rulesetChanges) {
+        lines.push(`- ${change}`);
+      }
+      lines.push("");
+    } else {
+      lines.push("No ruleset field changed — only the page text moved.", "");
     }
-    lines.push(
-      "",
-      "These are numbers the route planner uses — read the diff before merging."
-    );
-  } else {
-    lines.push("No ruleset field changed — only the page text moved.");
   }
 
-  return lines.join("\n");
+  if (outcome.worlds.some((world) => world.rulesetChanges.length > 0)) {
+    lines.push("These are numbers the route planner uses — read the diff before merging.");
+  }
+
+  return lines.join("\n").trimEnd();
 }
 
 /** The issue's body: the scraper's own message, and what a person has to decide. */
-export function refreshIssueBody(message: string): string {
+export function refreshIssueBody(world: string, message: string): string {
   return [
-    "The scheduled Atlantis rules refresh could not regenerate config/public/ruleset.json:",
+    `The scheduled Atlantis rules refresh could not regenerate ${world}'s ruleset:`,
     "one of the pages was reworded in a way the scraper does not recognise.",
     "",
     "The scraper's own message:",

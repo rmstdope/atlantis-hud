@@ -1,8 +1,8 @@
 name: Atlantis rules refresh
 
-# Keeps tests/fixtures/ruleset/neworigins-{rules,data}.html — and the ruleset regenerated from them
-# — in step with the live game pages, so every lookup made with `pnpm run atlantis` (ah-97ij.1)
-# stays trustworthy. See ah-97ij.2's plan (bd show ah-97ij.2) for the decisions behind this file.
+# Keeps every committed world's fixtures — and the rulesets regenerated from them — in step with
+# the live game sources, so every lookup made with `pnpm run atlantis` (ah-97ij.1) stays
+# trustworthy, whichever world it names. See ah-97ij.2's plan (bd show ah-97ij.2) for the decisions behind this file.
 #
 # This workflow never merges anything itself. The pull request it opens is the navigator's to
 # review like any other change to application behaviour — do not add auto-merge here, and do not
@@ -111,7 +111,15 @@ jobs:
               run(["git", "config", "user.name", "github-actions[bot]"]);
               run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"]);
               run(["git", "checkout", "-B", mod.REFRESH_BRANCH]);
-              run(["git", "add", "tests/fixtures/ruleset", "config/public/ruleset.json"]);
+              // Named explicitly rather than as config/public, which also holds icons and biomes.
+              // A fourth world needs this list extended: this script imports only
+              // scripts/atlantisRefresh.ts, so it cannot read WORLDS.
+              run([
+                "git", "add", "tests/fixtures/ruleset",
+                "config/public/ruleset.json",
+                "config/public/ruleset-newage-arcanum.json",
+                "config/public/ruleset-newage-trident.json"
+              ]);
               run(["git", "commit", "-m", title]);
               run(["git", "push", "--force", "origin", mod.REFRESH_BRANCH]);
 
@@ -146,7 +154,7 @@ jobs:
               labels: issue.labels.map((label) => label.name)
             }));
             const decision = mod.decideFiling(open, "issue");
-            const body = mod.refreshIssueBody(outcome.message);
+            const body = mod.refreshIssueBody(outcome.world, outcome.message);
             writeFileSync("/tmp/atlantis-refresh-issue-body.md", body);
 
             if (decision.action === "create") {

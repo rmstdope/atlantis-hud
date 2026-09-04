@@ -152,16 +152,27 @@ describe("renderDataEntries and renderDataIndex", () => {
 });
 
 describe("rulesProvenance", () => {
-  it("reads the version and change date off the page", () => {
+  it("reads the edition and change date off the New Origins page", () => {
     const provenance = rulesProvenance(RULES_HTML);
 
-    expect(provenance.version).toContain("8.0.0");
-    expect(provenance.lastChange).toContain("Jun 20");
+    expect(provenance.edition).toContain("NewOrigins v8.0.0");
+    expect(provenance.lastChange).toBe("Jun 20, 2025");
+  });
+
+  it("takes the first h1, not the engine version below it", () => {
+    expect(rulesProvenance(RULES_HTML).edition).not.toContain("Atlantis v5.2.5");
+  });
+
+  it("reads a New Age banner, whose change date is a paragraph rather than a heading", () => {
+    const provenance = rulesProvenance(read("tests/fixtures/ruleset/newage-arcanum-rules.html"));
+
+    expect(provenance.edition).toBe("NewAge 1.2 Rules — Arcanum");
+    expect(provenance.lastChange).toBe("September 04, 2026");
   });
 
   it("returns nulls rather than throwing when the banner is gone", () => {
     expect(rulesProvenance("<html><body>nothing here</body></html>")).toEqual({
-      version: null,
+      edition: null,
       lastChange: null
     });
   });

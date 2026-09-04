@@ -247,31 +247,28 @@ export function nearestAnchors(wanted: string, anchors: string[], limit = 3): st
 }
 
 /**
- * The page's own version and change date, for the provenance header. Returns nulls rather than
- * throwing - a reworded banner must never break a lookup.
+ * The rules page's own banner: the first `<h1>`'s text, and whatever follows `Last Change:`
+ * wherever on the page it appears. Both null rather than throwing when the page has neither - a
+ * provenance line is a courtesy, and a page that has lost its banner is still answerable.
+ *
+ * Quoting the page beats matching one server's wording: the New Origins page writes
+ * `Rules for NewOrigins v8.0.0` in an `<h1>` and its date in an `<h3>`, while a New Age world
+ * writes `NewAge 1.2 Rules — Arcanum` and puts its date in a `<p>`.
  */
-export function rulesProvenance(html: string): { version: string | null; lastChange: string | null } {
-  let version: string | null = null;
-  for (const match of html.matchAll(/<h1>([\s\S]*?)<\/h1>/gi)) {
-    const text = match[1].replace(/\s+/g, " ").trim();
-    const found = text.match(/^Rules for NewOrigins (.+)$/);
-    if (found) {
-      version = found[1].trim();
-      break;
-    }
-  }
+export function rulesProvenance(html: string): { edition: string | null; lastChange: string | null } {
+  // The first h1 only: the New Origins page carries a second one, `Based on Atlantis v5.2.5`,
+  // which is the engine version rather than the edition.
+  const heading = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const edition = heading ? heading[1].replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim() : null;
 
-  let lastChange: string | null = null;
-  for (const match of html.matchAll(/<h3>([\s\S]*?)<\/h3>/gi)) {
-    const text = match[1].replace(/\s+/g, " ").trim();
-    const found = text.match(/^Last Change:\s*(.+)$/);
-    if (found) {
-      lastChange = found[1].trim();
-      break;
-    }
-  }
+  // Anchored on the text rather than on the element, because the two servers put it in different
+  // ones - an `<h3>` on New Origins and a `<p>` on a New Age world. The first occurrence is taken
+  // to be the banner's; a page that discussed the phrase in prose above its banner would report
+  // that instead, which is why this is a courtesy line and never something a fact is cited from.
+  const change = html.match(/Last Change:\s*([^<]*)/);
+  const lastChange = change ? change[1].replace(/\s+/g, " ").trim() : null;
 
-  return { version, lastChange };
+  return { edition: edition || null, lastChange: lastChange || null };
 }
 
 // ---- the data page ---------------------------------------------------------------------------

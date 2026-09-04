@@ -11,12 +11,25 @@ implementation, a ruleset regeneration and a round of test edits over exactly th
 cheaper than being wrong, so use it — do not guess and do not trust what you remember about this
 game.
 
-## The two sources
+## The sources
+
+New Origins is what a plain lookup answers from:
 
 - **The rules** — order syntax, what each order does, the sequence of events in a turn, movement,
   combat, economy. Committed at `tests/fixtures/ruleset/neworigins-rules.html`.
 - **The data page** — items, skills, structures and their numbers. Committed at
   `tests/fixtures/ruleset/neworigins-data.html`.
+
+This repository also commits two **Atlantis New Age** worlds, whose catalogues are not
+interchangeable with New Origins' — they differ in skills, items and prices:
+
+- `arcanum` — `tests/fixtures/ruleset/newage-arcanum-rules.html` and
+  `tests/fixtures/ruleset/newage-arcanum-database.json`.
+- `trident` — `tests/fixtures/ruleset/newage-trident-rules.html` and
+  `tests/fixtures/ruleset/newage-trident-database.json`.
+
+A New Age world publishes no HTML data page: its catalogue is a JSON database, rendered as a data
+page on the way to your answer, so `newage <world> data` reads exactly like a plain `data` lookup.
 
 Both are read from the **committed copy**, not fetched live — checked byte-for-byte against
 `https://atlantis-pbem.com/rules` and `https://atlantis-pbem.com/data` when this skill was written.
@@ -32,14 +45,20 @@ not strip a literal `--`; `atlantis` itself drops one leading `--` defensively, 
 | Command | Does |
 |---|---|
 | `pnpm run atlantis rules <anchor>` | The rendered section, under a provenance header |
+| `pnpm run atlantis newage <world> rules <anchor>` | The same, from a committed New Age world (`arcanum`, `trident`) |
+| `pnpm run atlantis newage <world> data <term>` | The same, from that world's own catalogue |
 | `pnpm run atlantis rules --list` | All anchor names, one per line |
 | `pnpm run atlantis rules --search <term>` | Anchors whose text mentions the term |
 | `pnpm run atlantis data <term>` | Full entries when the term names one thing; an index when it names several |
 | `pnpm run atlantis data --list skills\|items\|objects` | One line per distinct name in that section |
-| `pnpm run atlantis verify` | Compares `config/public/ruleset.json` to the committed data page |
-| `pnpm run atlantis check` | Fetches both live pages, compares bytes to the committed copy |
-| `pnpm run atlantis refresh` | Re-fetches, rewrites the committed pages and `config/public/ruleset.json` |
+| `pnpm run atlantis verify` | Compares every committed world's ruleset to its own committed sources |
+| `pnpm run atlantis check` | Fetches every committed world's sources, compares bytes to the committed copy |
+| `pnpm run atlantis refresh` | Re-fetches, rewrites every committed world's sources and rulesets |
 | `pnpm run atlantis` or `--help` | This table, in prose |
+
+The plain forms answer from New Origins and print a trailing line naming the other committed worlds.
+`verify`, `check` and `refresh` cover every committed world at once and take no world of their own —
+naming one before them is refused.
 
 A lookup is cheap — milliseconds against a 280 KB file read once — so there is never a reason to
 guess instead of running one. An anchor that does not exist prints its closest matches; a data term
@@ -51,6 +70,13 @@ Every lookup prints a provenance header naming its source and the fact that it i
 snapshot, so a rule can be quoted and cited — e.g. `rules/give` or `data/SWOR` — rather than passed
 off as something recalled.
 
+## Which world you are looking at
+
+**A plain lookup is a New Origins lookup.** A statement about a New Age game must be cited from a
+`newage <world>` lookup instead — the two catalogues differ, so a New Origins answer quoted at a New
+Age game is simply wrong. The provenance header on every answer names the world it came from, so
+check the header before quoting it.
+
 ## `verify`, and the data page as arbiter
 
 `config/public/ruleset.json` is the file the application actually reads; it is generated from the
@@ -58,6 +84,10 @@ data page by a separate scraper (`@atlantis/ruleset`), and the two can drift if 
 the other. `pnpm run atlantis verify` compares them field by field and names any disagreement. **The
 data page is the arbiter** — if it disagrees with `ruleset.json`, the fix is
 `pnpm run atlantis refresh`, never a hand edit of the JSON.
+
+`verify`, `check` and `refresh` each cover **every** committed world, and `refresh` is
+all-or-nothing: one world the scraper cannot read leaves every world's files untouched, so the
+repository is never half-refreshed.
 
 `verify` only compares what the scraper models: items, skills, buildings and movement numbers. It
 says nothing about the rules page's prose, so a clean run is not a claim that every sentence in the
