@@ -21,7 +21,7 @@ export type { TerrainCosts } from "./generated/TerrainCosts";
 import type { MovementMode } from "./generated/MovementMode";
 import type { Gap } from "./generated/Gap";
 import type { MovementRules } from "./generated/MovementRules";
-import { htmlToText } from "./html";
+import { anchoredTableRows, htmlToText } from "./html";
 
 /** Raised when the page does not say what the scraper needs, naming the value that is missing. */
 export class RulesetScrapeError extends Error {
@@ -396,4 +396,57 @@ export function parseWeatherGap(html: string): Gap {
     new RegExp(`${CALM_WEATHER.source}|${WINTER_WEATHER.source}`, "i")
   );
   return WEATHER_GAP;
+}
+
+/** What each terrain may hold, keyed by the terrain word, holding resource names in page order. */
+export type RegionResources = Record<string, string[]>;
+
+/** `floater hide (40%)` - a resource and the chance the terrain holds it. */
+const RESOURCE_SHARE = /^(.+?)\s*\((\d+)%\)$/;
+
+/**
+ * Reads `rules/region_resources`' table: one row per terrain, whose cell reads
+ * `wood (100%), floater hide (40%), herb (100%), mushroom (30%).`
+ *
+ * Names, not tags: the rules page has no tags in it. `buildRuleset` resolves them against the
+ * catalogue the data page gives, which is the only place both are in hand. The percentages are read
+ * and discarded - nothing needs them, and a number nothing reads is a number nobody keeps honest -
+ * but a cell that does not state one stops the run rather than being read as a shorter list.
+ */
+export function parseRegionResources(html: string): RegionResources {
+  const resources: RegionResources = {};
+
+  for (const row of anchoredTableRows(html, "region_resources")) {
+    if (row.length !== 2) {
+      continue;
+    }
+    const terrain = row[0].trim().toLowerCase();
+    if (terrain === "region type" || terrain.length === 0) {
+      continue;
+    }
+
+    const named: string[] = [];
+    for (const part of row[1].replace(/\.\s*$/, "").split(",")) {
+      const stated = part.trim();
+      if (stated.length === 0) {
+        continue;
+      }
+      const share = stated.match(RESOURCE_SHARE);
+      if (!share) {
+        throw new RulesetScrapeError(
+          `could not read terrain ${terrain}'s resource "${stated}" in the region resources table`
+        );
+      }
+      const name = share[1].trim().toLowerCase();
+      if (!named.includes(name)) {
+        named.push(name);
+      }
+    }
+    resources[terrain] = named;
+  }
+
+  if (Object.keys(resources).length === 0) {
+    throw new RulesetScrapeError("could not read the region resources table");
+  }
+  return resources;
 }

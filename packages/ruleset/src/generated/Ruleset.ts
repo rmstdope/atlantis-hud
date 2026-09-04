@@ -43,4 +43,14 @@ itemClasses: { [key in string]: Array<string> },
  * to be ungiveable" - the permissive direction, and the one that matches a page which states
  * the restriction and is silent otherwise.
  */
-ungiveableItems: Array<string>, };
+ungiveableItems: Array<string>, 
+/**
+ * What each terrain may hold, keyed by the terrain word a region report prints (`swamp`,
+ * `mountain`, `underforest`) and holding item tags in the page's own order, from
+ * `rules/region_resources`.
+ *
+ * Empty for a ruleset generated before this was scraped, which reads as "this catalogue
+ * cannot say what a terrain holds" - never as "this terrain holds nothing". A terrain the
+ * table does not list (the Nexus) is absent for the same reason.
+ */
+terrainResources: { [key in string]: Array<string> }, };

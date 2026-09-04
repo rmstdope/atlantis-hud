@@ -190,3 +190,22 @@ stone [STON], weight 50, costs 75 silver to withdraw. This item is a trade resou
     ).toThrowError(/movementPoints/);
   });
 });
+
+describe("buildRuleset and the terrain table", () => {
+  it("refuses a terrain resource the catalogue does not name", () => {
+    const rulesHtml = RULES_HTML.replace(
+      "horse (100%), winged horse (20%).",
+      "horse (100%), unobtanium (10%)."
+    );
+
+    expect(() =>
+      buildRuleset({
+        rulesHtml,
+        dataHtml: DATA_HTML,
+        rulesUrl: "https://example.test/rules",
+        dataUrl: "https://example.test/data",
+        fetchedAt: "2026-01-01T00:00:00Z"
+      })
+    ).toThrowError(/plain[\s\S]*unobtanium|unobtanium[\s\S]*plain/);
+  });
+});

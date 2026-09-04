@@ -53,3 +53,25 @@ export function preformattedText(html: string): string {
   const blocks = [...html.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi)].map((match) => match[1]);
   return decodeEntities(blocks.join("\n\n").replace(/<[^>]*>/g, ""));
 }
+
+/**
+ * The rows of the first `<table>` after a named anchor, each row as its cells' text.
+ *
+ * The rules page's only tabular data is markup rather than prose, and `htmlToText` - which exists
+ * to flatten wrapped sentences - cannot express it: it returns one line with the cell boundaries
+ * gone. An anchor or a table that is not there yields `[]`; the caller decides whether that is
+ * fatal.
+ */
+export function anchoredTableRows(html: string, anchor: string): string[][] {
+  const at = html.search(new RegExp(`<a\\b[^>]*name="${anchor}"`, "i"));
+  if (at === -1) {
+    return [];
+  }
+  const table = html.slice(at).match(/<table\b[^>]*>([\s\S]*?)<\/table>/i);
+  if (!table) {
+    return [];
+  }
+  return [...table[1].matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map((row) =>
+    [...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map((cell) => htmlToText(cell[1]))
+  );
+}

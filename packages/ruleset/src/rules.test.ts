@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseFoodMaintenance,
   parseMovementRules,
+  parseRegionResources,
   parseWeatherGap,
   RulesetScrapeError
 } from "./rules";
@@ -368,5 +369,34 @@ describe("parseWeatherGap", () => {
     expect(() => parseWeatherGap("<html><body>no weather here</body></html>")).toThrowError(
       /weatherRule/
     );
+  });
+});
+
+describe("parseRegionResources", () => {
+  it("reads the region resources table", () => {
+    const resources = parseRegionResources(RULES_HTML);
+
+    expect(Object.keys(resources)).toEqual([
+      "ocean",
+      "plain",
+      "forest",
+      "mountain",
+      "swamp",
+      "jungle",
+      "desert",
+      "tundra",
+      "volcano"
+    ]);
+    expect(resources.swamp).toEqual(["wood", "floater hide", "herb", "mushroom"]);
+    expect(resources.mountain).toEqual(["iron", "stone", "mithril", "rootstone", "admantium"]);
+  });
+
+  it("refuses a resource cell it cannot read", () => {
+    const broken = RULES_HTML.replace(
+      "wood (100%), floater hide (40%), herb (100%), mushroom (30%).",
+      "wood (100%), floater hide, herb (100%), mushroom (30%)."
+    );
+
+    expect(() => parseRegionResources(broken)).toThrowError(/swamp/);
   });
 });
