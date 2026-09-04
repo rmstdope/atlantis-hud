@@ -258,3 +258,34 @@ mod a_hex_that_shares {
         assert_eq!(wanted, 39, "what its skill and tools alone could make");
     }
 }
+
+// --- a gift of the whole purse precedes the manufacture (`ah-m7su`) ----------------------------
+
+/// `rules/sequenceofevents` runs *Give orders* second and "Manufacturing PRODUCE orders ... are
+/// processed" in the turn's last block, so a `GIVE ... ALL SILV` hands over the whole purse and the
+/// catapult is then unfunded - on both surfaces, in either document order.
+const GIVES_EVERYTHING: [&str; 2] = [
+    "GIVE 901 ALL SILV\nPRODUCE catapult",
+    "PRODUCE catapult\nGIVE 901 ALL SILV",
+];
+
+#[test]
+fn the_silver_column_gives_the_whole_purse_and_builds_nothing() {
+    for script in GIVES_EVERYTHING {
+        let (produced, capped_by, spent, _) = silver_column(3000, script);
+        assert_eq!(produced, 0, "{script:?}: nothing is left to build with");
+        assert_eq!(capped_by, Some(ProductionCap::Silver), "{script:?}");
+        assert_eq!(
+            spent,
+            Some(3000),
+            "{script:?}: the gift, and nothing for a catapult never made"
+        );
+    }
+}
+
+#[test]
+fn the_items_column_agrees_that_no_catapult_is_made() {
+    for script in GIVES_EVERYTHING {
+        assert_eq!(items_column_produced(3000, script), 0, "{script:?}");
+    }
+}
