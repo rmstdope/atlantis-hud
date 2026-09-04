@@ -1339,6 +1339,13 @@ pub fn forecast_unit(
     // orders*, so it comes off the market's running total but not the gift's (`ah-a5ci`).
     let mut cast_expense = 0i64;
     let mut market_expense;
+    // Whether the walk has passed out of the Give phase and settled the block's `GIVE ... ALL SILV`
+    // orders. Once, and never again: `phases::in_phase_order` sorts the block, so the phase cannot
+    // come back (`ah-m7su`).
+    let mut give_settled = false;
+    // Whether that settlement actually moved silver, so `spent_on` can be credited where it was
+    // credited before this bead - after every arm of the walk and before the market's own spends.
+    let mut gave_all_silver = false;
     /// One bounded `BUY`, held until the market phase so it is priced against what the Give phase
     /// leaves (`ah-npab`).
     struct ExactBuy {
@@ -1439,6 +1446,22 @@ pub fn forecast_unit(
     // `rules/sequenceofevents` fixes the order the turn runs the block in, and the order the
     // player wrote it in does not change it (`ah-gdd3.1`).
     for placed in phases::in_phase_order(intents) {
+        // The Give phase is over the moment the walk reaches a later one. Settling here rather than
+        // below the walk is the whole of this bead: a CAST and a manufacturing PRODUCE are priced
+        // from `expense` further down this loop, and the gift has to be in it by then (`ah-m7su`).
+        if !give_settled && phases::phase_of(&placed.intent) > phases::StatePhase::Give {
+            give_settled = true;
+            if income_doubt.is_none() && expense_doubt.is_none() {
+                let (given, to_nobody) = settle_give_all_silver(
+                    &deferred,
+                    held.saturating_add(give_phase_income)
+                        .saturating_sub(expense),
+                );
+                expense = expense.saturating_add(given);
+                given_to_nobody = given_to_nobody.saturating_add(to_nobody);
+                gave_all_silver = given > 0;
+            }
+        }
         // An earlier `GIVE` may or may not have taken these goods away (`rules/give` wants the
         // target faction's declaration toward us and no report carries it), so nothing priced from
         // what the unit still holds of that tag can be stated. The `GIVE` itself is exempt: it is
@@ -1901,6 +1924,26 @@ pub fn forecast_unit(
         }
     }
 
+    // A block whose last order is in the Give phase never crossed the boundary above, and the pass
+    // below still needs the gift in `expense` (`ah-m7su`).
+    if !give_settled && income_doubt.is_none() && expense_doubt.is_none() {
+        let (given, to_nobody) = settle_give_all_silver(
+            &deferred,
+            held.saturating_add(give_phase_income)
+                .saturating_sub(expense),
+        );
+        expense = expense.saturating_add(given);
+        given_to_nobody = given_to_nobody.saturating_add(to_nobody);
+        gave_all_silver = given > 0;
+    }
+    // Credited here, not inside the settlement, so a gift keeps the place in `spent_on`'s
+    // first-wins order that it had when it settled below the walk: after every arm of the walk, and
+    // before the market's own spends. `short_on` therefore still names the order the unit could not
+    // afford rather than the gift that emptied the purse (`ah-m7su`).
+    if gave_all_silver {
+        spent_on = spent_on.or(Some(SilverSpender::Give));
+    }
+
     // The two earnings that arrive in the turn's last phase - wages and entertaining - priced in
     // one place so this function and the upkeep charge can never disagree about them (`ah-uwa3`).
     // Neither earning spell is among them any more (`ah-e77q`): both are priced above, in time.
@@ -1935,31 +1978,15 @@ pub fn forecast_unit(
         // What a deferred order can spend is what reaches the unit *in time* - `ah-1wcw.3` settled
         // that `BUY ALL` spends what the unit can afford, and wages it earns this month cannot pay
         // for anything this month's orders buy (`ah-uwa3`).
-        // The Give phase spends what the unit holds when GIVE runs: what it opened with, plus what
-        // the instant orders and the gifts of others put there, less the exact gifts of this block
-        // alone. A study and a manufacture are charged in the turn's last block and neither makes
-        // the gift smaller (`ah-a5ci`).
+        // The Give phase is already settled - it now happens inside the intent walk, the moment
+        // the turn leaves it (`ah-m7su`) - so `expense` here carries the exact gifts *and* the
+        // deferred ones, and what is left is what the market opens on. A study and a manufacture
+        // are charged in the turn's last block and neither makes the gift smaller (`ah-a5ci`).
         let mut running = held.saturating_add(give_phase_income).saturating_sub(
             expense
                 .saturating_sub(cast_expense)
                 .saturating_sub(month_long_expense),
         );
-        // Give phase: `rules/sequenceofevents` settles GIVE before the market opens, so this
-        // pass runs whatever line the gift was written on (`ah-npab`).
-        for spend in &deferred {
-            let Deferred::GiveAllSilver { except, to_nobody } = spend else {
-                continue;
-            };
-            let spent = running.saturating_sub(*except).max(0);
-            if *to_nobody {
-                given_to_nobody = given_to_nobody.saturating_add(spent);
-            }
-            if spent > 0 {
-                spent_on = spent_on.or(Some(SilverSpender::Give));
-            }
-            expense = expense.saturating_add(spent);
-            running = running.saturating_sub(spent);
-        }
         // Everything the Give phase could not spend is in the purse by the time the market opens:
         // TAX and PILLAGE settle in the tax phase, both before "SELL orders are processed". A cast
         // settles in *Instant Magic*, after the tax phase and still before the market, and has
@@ -2168,6 +2195,37 @@ enum Deferred {
     },
     /// `GIVE ... ALL SILV`, less any `EXCEPT` reserve.
     GiveAllSilver { except: i64, to_nobody: bool },
+}
+
+/// What the deferred `GIVE ... ALL SILV` orders of one block hand over, settled the moment the turn
+/// leaves the Give phase.
+///
+/// `purse` is what the unit holds when GIVE runs. Returns the total given away and the part of it
+/// that went to nobody; the caller adds the first to `expense` and the second to `given_to_nobody`,
+/// which is how this stays a pure function of the block (`ah-m7su`).
+///
+/// A `Deferred::BuyAll` cannot be in the slice yet - the market runs after the Give phase - but is
+/// skipped rather than matched on, so the function stays correct if it ever is.
+fn settle_give_all_silver(deferred: &[Deferred], purse: i64) -> (i64, i64) {
+    let mut running = purse;
+    let mut given = 0i64;
+    let mut to_nobody = 0i64;
+    for spend in deferred {
+        let Deferred::GiveAllSilver {
+            except,
+            to_nobody: discarded,
+        } = spend
+        else {
+            continue;
+        };
+        let spent = running.saturating_sub(*except).max(0);
+        if *discarded {
+            to_nobody = to_nobody.saturating_add(spent);
+        }
+        given = given.saturating_add(spent);
+        running = running.saturating_sub(spent);
+    }
+    (given, to_nobody)
 }
 
 /// What one unit owes in maintenance this month, after any food it will spend on it.
@@ -7813,9 +7871,8 @@ mod tests {
     // --- the turn's order, not the document's (`ah-gdd3.1`) --------------------------------------
 
     /// "Instant Magic ... Spells are CAST" runs after *Give orders*, so a cast's cost does not make
-    /// the gift smaller. The gift alone is asserted: the cast is still priced against the purse the
-    /// gift will empty, which is `ah-m7su`'s to fix, so the totals beside it are not yet worth
-    /// pinning (`ah-a5ci`).
+    /// the gift smaller - and the cast is priced against the purse the gift leaves behind
+    /// (`ah-a5ci`, `ah-m7su`).
     #[test]
     fn giving_all_silver_away_is_not_charged_for_this_months_cast() {
         let ruleset = ruleset();
@@ -7850,6 +7907,22 @@ mod tests {
             );
             assert_eq!(unit.given_to_nobody, 200);
             assert_eq!(unit.doubt, None);
+            assert_eq!(unit.cast_made, 0, "the gift leaves nothing to cast with");
+            assert_eq!(
+                unit.cast_wanted, 1,
+                "which is not what its level could have made"
+            );
+            assert_eq!(unit.cast_capped_by, Some(ProductionCap::Silver));
+            // `plan_cast` charges a mage that cannot afford even one for one anyway, which is the
+            // shipped reading and not this bead's to change.
+            assert_eq!(
+                unit.expense,
+                Some(400),
+                "200 given away and 200 charged for the cast"
+            );
+            assert_eq!(unit.at_month_end, Some(-200));
+            assert_eq!(unit.short_for_orders, Some(200));
+            assert_eq!(unit.short_on, Some(SilverSpender::Cast));
         }
     }
 
@@ -7987,9 +8060,8 @@ mod tests {
     }
 
     /// "Manufacturing PRODUCE orders ... are processed" is in the turn's last block, after *Give
-    /// orders*, so a deferred gift of the whole purse is not charged for the catapult. Only the
-    /// gift is asserted: the catapult is still priced against the pre-gift purse until `ah-m7su`
-    /// lands, so the totals beside it are not yet worth pinning (`ah-a5ci`).
+    /// orders*, so a deferred gift of the whole purse is not charged for the catapult - and the
+    /// catapult is priced against the purse the gift leaves behind (`ah-a5ci`, `ah-m7su`).
     #[test]
     fn giving_all_silver_away_is_not_charged_for_this_months_manufacture() {
         let items = catapult_materials_and_silver(3000);
@@ -8033,7 +8105,89 @@ mod tests {
             );
             assert_eq!(unit.given_to_nobody, 3000);
             assert_eq!(unit.doubt, None);
+            assert_eq!(
+                unit.produced, 0,
+                "the gift leaves nothing to build the catapult with"
+            );
+            assert_eq!(unit.production_capped_by, Some(ProductionCap::Silver));
+            assert_eq!(
+                unit.expense,
+                Some(3000),
+                "the gift, and nothing for a catapult never made"
+            );
+            assert_eq!(unit.at_month_end, Some(0));
         }
+    }
+
+    /// A `GIVE ... ALL SILV` is settled in the Give phase, so an order the pass cannot price later
+    /// in the turn no longer hides it: the gift is a number even where `Out` is not (`ah-m7su`).
+    #[test]
+    fn an_unpriceable_later_order_no_longer_hides_the_size_of_the_gift() {
+        let intents = [
+            placed(Intent::Give {
+                to: Party::Discard,
+                what: Selector::Item("SILV".to_string()),
+                amount: Amount::All { except: 0 },
+            }),
+            placed(Intent::Buy {
+                amount: Amount::Exact(1),
+                item: "grain".to_string(),
+            }),
+        ];
+        let receipts = Receipts::default();
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 300,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&ruleset()),
+        );
+        assert_eq!(unit.doubt, Some(SilverDoubt::MarketDoesNotSell));
+        assert_eq!(unit.expense, None, "a doubted side is not a number");
+        assert_eq!(unit.given_to_nobody, 300, "but the size of the gift is");
+        assert_eq!(
+            unit.short_on, None,
+            "a doubted month reports no shortfall to explain"
+        );
+    }
+
+    /// A doubt raised *in* the Give phase or before it does still hide the gift: the purse the gift
+    /// empties is what is unknown (`ah-m7su`).
+    #[test]
+    fn a_take_of_everything_still_hides_the_size_of_the_gift() {
+        let intents = [placed(Intent::Give {
+            to: Party::Discard,
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::All { except: 0 },
+        })];
+        let receipts = Receipts {
+            take_all_unpriceable: true,
+            ..Receipts::default()
+        };
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 300,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&ruleset()),
+        );
+        assert_eq!(unit.doubt, Some(SilverDoubt::TakesAllFromAnother));
+        assert_eq!(
+            unit.given_to_nobody, 0,
+            "the purse the gift empties is not a number"
+        );
     }
 
     /// `rules/sequenceofevents` opens the market (`SELL`, then `BUY`) *after* `Spells are CAST`, so
