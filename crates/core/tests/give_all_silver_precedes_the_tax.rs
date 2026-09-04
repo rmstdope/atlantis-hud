@@ -85,6 +85,18 @@ fn the_silver_column_gives_only_what_the_unit_holds_before_it_taxes() {
             Some(500),
             "{script:?}: what the tax brought in stays"
         );
+
+        // The bead's criterion names the receiver's figure too, and this is the surface it names.
+        let received = review
+            .silver
+            .iter()
+            .find(|silver| silver.unit_id == "901")
+            .unwrap_or_else(|| panic!("{script:?}: the silver column has a row for the receiver"));
+        assert_eq!(
+            received.income,
+            Some(100),
+            "{script:?}: and the receiver is credited the same 100"
+        );
     }
 }
 
@@ -121,8 +133,9 @@ fn the_item_projection_and_the_receivers_row_agree_with_it() {
             "{script:?}: the receiver gets what the giver held, not what it later taxed"
         );
         // The projection counts what the *orders* move, and a tax credit is not an item change it
-        // models - so the giver is down by the gift alone. What matters here is the size of that
-        // gift: 100, not the 600 the column used to make of it.
+        // models - so the giver is down by the gift alone. This line is a consistency check rather
+        // than the regression: the giver holds 100 and cannot go below zero, so it reads 0 whether
+        // the gift is 100 or 600. The receiver's figure above is what pins the size of the gift.
         assert_eq!(
             silver_of("900"),
             0,

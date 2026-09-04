@@ -1307,21 +1307,22 @@ pub fn forecast_unit(
 
     // A gift is in the giver's block, so it arrives already gathered. It is income whatever the
     // unit itself is ordered to do, including nothing.
-    let mut income = receipts
+    // Silver another unit's block has already handed over. Both accumulators below open from this
+    // one binding rather than from two copies of the expression: a receipt field added later then
+    // reaches both, instead of being added to `income` and silently missed by the Give phase.
+    let received = receipts
         .silver
         .saturating_add(receipts.taken)
         .saturating_add(receipts.taken_unshown);
+    let mut income = received;
     // What the unit holds when the *Give* phase runs. `rules/sequenceofevents` settles the instant
     // orders and then GIVE/TAKE; every other income term this pass credits arrives later - TAX and
     // PILLAGE in the tax phase, a CAST's earnings in instant magic, a SELL's when the market opens,
     // wages later still. So a `GIVE ... ALL SILV` spends this, not `income` (`ah-tc79`).
     //
-    // Counted up rather than deducted from `income`: a new income arm added later is credited to
+    // Counted up rather than deducted from `income`: a new income *arm* added later is credited to
     // `income` alone and so is correctly unavailable to a gift, which is the safe direction.
-    let mut give_phase_income = receipts
-        .silver
-        .saturating_add(receipts.taken)
-        .saturating_add(receipts.taken_unshown);
+    let mut give_phase_income = received;
     let mut expense = 0i64;
     // Market-phase spending, held apart from `expense` until the deferred pass below has settled
     // the Give phase. `rules/sequenceofevents` puts *Give orders* before *Market orders*, so a
