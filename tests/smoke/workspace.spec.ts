@@ -2817,8 +2817,10 @@ test("the flags column shows each flag as a letter", async ({ page }) => {
   // nothing has been reordered. The cell holds the words for a screen reader as well as the letters
   // for the eye, so the assertion is on the visible span rather than on the cell's whole text.
   //
-  // Only our own units are drawn for a hex until a foreign one is pinned, so this asserts over the
-  // own unit alone; the one-flag and no-flags cases are pinned by the unit tests on `flagLetters`.
+  // Over an own unit alone: the hex source draws every unit in the region, foreign ones included,
+  // but the table is windowed (`visible.slice(start, end)`) and own units sort first, so a foreign
+  // row in a hex this busy has no DOM node until it is scrolled to. The single-flag and no-flags
+  // cases are pinned by the unit tests on `flagLetters` instead.
   await expect(
     page.locator("[data-testid='unit-row-18642'] td:nth-child(7) span[aria-hidden]")
   ).toHaveText("ABHRS");
