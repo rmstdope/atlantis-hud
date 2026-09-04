@@ -3507,8 +3507,8 @@ struct Ledger<'a> {
     state: PhaseState,
     /// Materials consumed by manufacturing after movement, keyed like `balance`.
     manufacturing_spent: BTreeMap<(String, String), i64>,
-    /// What each PRODUCE created, and what the month's three production phases then spent, keyed
-    /// like `balance`.
+    /// What each PRODUCE created, and what later orders then spent, keyed like `balance` and held
+    /// per phase.
     ///
     /// The pair exists to settle one conflict. `report_shortfalls` judges the *final* balance, so a
     /// production's output credited all the way to `Maintenance` would fund an order the rules
@@ -3517,9 +3517,10 @@ struct Ledger<'a> {
     /// would then bill the producer for output another unit legitimately consumed at
     /// `Manufacturing` or `Build`, and warn about goods that existed. So the credit reaches the
     /// phases that may consume it, and `unwind_unconsumed_production` takes back only what nothing
-    /// did (`ah-728m.2.2`).
-    produced: BTreeMap<(String, String), i64>,
-    spent_after_production: BTreeMap<(String, String), i64>,
+    /// did. **Per phase, not per tag**: a spend at `Manufacturing` cannot have consumed an output
+    /// credited at `PrimaryProduction`, which is two phases later (`ah-728m.2.2`).
+    produced: BTreeMap<(String, String), [i64; StatePhase::COUNT]>,
+    spent_after_production: BTreeMap<(String, String), [i64; StatePhase::COUNT]>,
     /// Units whose sums cannot be trusted, and which are therefore not judged at all.
     ///
     /// A unit lands here the moment its orders touch something the report cannot price: a
@@ -4030,9 +4031,11 @@ fn ledger_for_with_production<'a>(
 /// not. Unwinding the whole credit instead would bill the producer for output another unit
 /// legitimately spent at `Manufacturing` or `Build`, warning about goods that plainly existed.
 ///
-/// So only the unconsumed remainder goes back. A hex with no sharing and no recipe chain - every
-/// hex the shipped ruleset can make - consumes none of it and lands exactly where it did before
-/// this bead (`ah-728m.2.2`).
+/// So only the unconsumed remainder goes back, and only where the spend could actually have
+/// reached the output: the netting walks the phases in the turn's order, so a spend at
+/// `Manufacturing` never nets off an output credited at `PrimaryProduction`. A unit whose output
+/// nothing consumes therefore lands exactly where it did before this bead, whatever else in the
+/// hex is spending the same tag (`ah-728m.2.2`).
 ///
 /// Phase-correct shortfall reading is `ah-728m.2.3`'s; this is the narrowest thing that keeps both
 /// answers right until it arrives.
@@ -4041,8 +4044,21 @@ fn unwind_unconsumed_production(ledger: &mut Ledger<'_>) {
         .produced
         .iter()
         .map(|(key, made)| {
-            let spent = ledger.spent_after_production.get(key).copied().unwrap_or(0);
-            (key.clone(), (made - spent).max(0))
+            let spent = ledger
+                .spent_after_production
+                .get(key)
+                .copied()
+                .unwrap_or([0; StatePhase::COUNT]);
+            // Walk the phases in the turn's order, carrying forward what has been credited and
+            // not yet spent. A spend can only consume output credited at its own phase or an
+            // earlier one, which is what keeps a `Manufacturing` spend from netting off a
+            // `PrimaryProduction` output two phases later.
+            let mut unspent = 0i64;
+            for phase in 0..StatePhase::COUNT {
+                unspent += made[phase];
+                unspent -= spent[phase].min(unspent);
+            }
+            (key.clone(), unspent)
         })
         .filter(|(_, unwind)| *unwind != 0)
         .collect();
@@ -5942,9 +5958,9 @@ fn produce(
             }
             let tag = input.tag.to_ascii_uppercase();
             let Some(available) = material_available_at(ledger, phase, pool, &tag) else {
-                // A gift this walk could not follow, or a sharer whose own sums are doubted: the
-                // run cannot be settled without inventing an allocation, so the line goes
-                // uncounted exactly as an unpriced recipe does below.
+                // A gift this walk could not follow has left a holding this run must read
+                // uncertain, so it cannot be settled without inventing an allocation: the line
+                // goes uncounted exactly as an unpriced recipe does below.
                 ledger
                     .uncounted
                     .entry(who.clone())
@@ -5998,10 +6014,10 @@ fn produce(
         // ...and remembered, so `unwind_unconsumed_production` can take back at `Wages` whatever
         // no later order spent. What the unit ends the month holding is the preview's answer,
         // built from `movements`, and neither the credit nor the unwind touches it.
-        *ledger
+        ledger
             .produced
             .entry((who.clone(), tag.to_ascii_uppercase()))
-            .or_insert(0) += plan.made;
+            .or_insert([0; StatePhase::COUNT])[phase as usize] += plan.made;
         ledger.movements.push(ItemMovement {
             unit_id: who.clone(),
             name: item_name(&tag, hex, ruleset),
@@ -6190,8 +6206,7 @@ fn build(
     }
     // An uncertain tag cannot answer "does this hex hold any of it", so a recipe offering it
     // among its alternatives cannot be settled (`ah-66yi`). Read through the pool since
-    // `ah-728m.2.2`: a doubted sharer silences the stock it shares, exactly as it does for a
-    // shortfall.
+    // `ah-728m.2.2`, which withholds a doubted sharer's stock without silencing the order.
     let available_of = |tag: &str| {
         material_available_at(ledger, StatePhase::Build, pool, &tag.to_ascii_uppercase())
     };
@@ -6951,8 +6966,8 @@ struct Pool<'a> {
     /// The index is what decides *order* and what a [`SharedDebit`] names, so two report rows
     /// sharing an id are never confused for one another here. Their *balances* still are:
     /// [`PhaseState`] is keyed by unit id, so a duplicate id is one balance read and charged once
-    /// per row. That is the ledger's own limit and predates this bead; carrying the index is what
-    /// leaves it fixable in one place when `PhaseState` is rekeyed.
+    /// per row. That is the ledger's own limit and predates this bead (`ah-bm0d`); carrying the
+    /// index is what leaves it fixable in one place when `PhaseState` is rekeyed.
     actor_index: usize,
 }
 
@@ -7006,7 +7021,8 @@ fn material_available_at(
     // already answers empty for an untrusted pool, so the actor is left with its own certain
     // holding rather than the line going uncounted. A unit that shares nothing and holds all its
     // own material is judged exactly as it was before this bead, whatever an unrelated sharing
-    // unit elsewhere in the hex is doing (`a_doubted_sharer_silences_the_stock_it_shares`).
+    // unit elsewhere in the hex is doing
+    // (`a_doubted_sharer_does_not_silence_a_run_from_a_units_own_stock`).
     for (_, supplier) in material_suppliers(ledger, pool, tag) {
         let held = ledger
             .state
@@ -7070,10 +7086,10 @@ fn charge_shared_material(
     for debit in &debits {
         let unit_id = pool.hex.units[debit.supplier_index].unit.unit_id.clone();
         charge(ledger, phase, &unit_id, tag, debit.amount, placed);
-        *ledger
+        ledger
             .spent_after_production
             .entry((unit_id.clone(), tag.to_ascii_uppercase()))
-            .or_insert(0) += debit.amount;
+            .or_insert([0; StatePhase::COUNT])[phase as usize] += debit.amount;
         if phase == StatePhase::Manufacturing {
             *ledger
                 .manufacturing_spent
@@ -16758,6 +16774,81 @@ BUILD
                     "swapping the report rows swaps who is served first"
                 );
             });
+        }
+
+        /// `rules/sequenceofevents` runs manufacturing PRODUCE two phases before primary PRODUCE,
+        /// so wood a lumberjack has not cut yet cannot be what a wagon was made from - and netting
+        /// the two off against each other would leave uncut wood in the balance
+        /// `report_shortfalls` judges.
+        #[test]
+        fn a_spend_never_nets_off_an_output_credited_after_it() {
+            let hex_region = region(vec![
+                sharing(with_item(
+                    with_skill(with_men(unit("900"), 10), "LUMB", 1),
+                    20,
+                    "wood",
+                    "WOOD",
+                )),
+                with_skill(with_men(unit("901"), 15), "CARP", 1),
+            ]);
+            with_ledger(
+                hex_region,
+                "unit 900\nPRODUCE wood\nunit 901\nPRODUCE wagon\n",
+                |ledger| {
+                    assert_eq!(
+                        balance_of(ledger, "900", "WOOD"),
+                        5,
+                        "twenty held, fifteen taken by the wagons at Manufacturing; what the \
+                         lumberjack cuts afterwards is unwound and does not fill the gap"
+                    );
+                },
+            );
+        }
+
+        /// The pool a doubted sharer poisons is the *pool*: a unit holding all its own material is
+        /// judged as it always was. Before `ah-728m.2.2` this hex's every PRODUCE and BUILD would
+        /// have gone uncounted instead.
+        #[test]
+        fn a_doubted_sharer_does_not_silence_a_run_from_a_units_own_stock() {
+            let hex_region = region(vec![
+                with_item(
+                    with_skill(with_men(unit("900"), 5), "CARP", 1),
+                    5,
+                    "wood",
+                    "WOOD",
+                ),
+                sharing(with_item(unit("901"), 20, "wood", "WOOD")),
+            ]);
+            with_ledger(
+                hex_region,
+                "unit 900\nPRODUCE wagon\nunit 901\nTAKE FROM 999 ALL SILV\n",
+                |ledger| {
+                    assert!(
+                        ledger.doubted.contains("901"),
+                        "the fixture's TAKE from a unit outside the hex should have doubted the sharer"
+                    );
+                    assert!(
+                        !ledger.uncounted.contains_key("900"),
+                        "the producer holds all five wood itself, so its run is still judged: \
+                         {:?}",
+                        ledger.uncounted
+                    );
+                    assert_eq!(
+                        ledger
+                            .movements
+                            .iter()
+                            .filter(|movement| movement.produced)
+                            .map(|movement| (movement.unit_id.as_str(), movement.delta))
+                            .collect::<Vec<_>>(),
+                        vec![("900", 5)]
+                    );
+                    assert_eq!(
+                        balance_of(ledger, "901", "WOOD"),
+                        20,
+                        "and the doubted sharer's stock is not drawn on"
+                    );
+                },
+            );
         }
 
         /// Two manufacturers, one shared stock: "units that appear higher on the report get
