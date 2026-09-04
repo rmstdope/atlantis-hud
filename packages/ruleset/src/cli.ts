@@ -100,7 +100,7 @@ export async function main(): Promise<void> {
   const catalogueUrl = dataUrl ?? databaseUrl;
   if (!catalogueUrl) {
     // Unreachable: the usage guard above already refuses both being absent. It is here so the
-    // type narrows without a cast, and nothing below has to be written against `string | undefined`.
+    // type narrows without a cast, and nothing below is written against `string | undefined`.
     throw new Error("--data or --database is required");
   }
 
