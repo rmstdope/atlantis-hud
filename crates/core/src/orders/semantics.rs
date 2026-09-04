@@ -44,7 +44,7 @@ use crate::orders::silver::{
     readiness_reason, settle_unclaimed, split_pool, taxes, taxing_men, transfer_shape,
     transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
-    MarketFunds, MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
+    MarketFunds, MarketSide, PhaseFacts, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
     PurchaseAnswer, Receipts, RegionShare, RegionWages, SaleAnswer, SharedMarket, SilverDoubt,
     TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
@@ -683,7 +683,7 @@ struct PoolSettlement {
 fn pool_shares_for(
     hex: &Hex<'_>,
     region: RegionWages,
-    late: Option<&LateHoldings>,
+    phases: Option<&PhaseHoldings>,
     ruleset: Option<&Ruleset>,
 ) -> PoolSettlement {
     /// One contended pool, as the loop below reads it: what a unit asks of it, where that unit's
@@ -697,7 +697,7 @@ fn pool_shares_for(
     }
 
     let nothing = Receipts::default();
-    let wants: Vec<PoolWants> = hex_facts(hex, &nothing, late, ruleset)
+    let wants: Vec<PoolWants> = hex_facts(hex, &nothing, phases, ruleset)
         .iter()
         .map(|facts| pool_wants(facts, region, ruleset))
         .collect();
@@ -1388,16 +1388,11 @@ fn forecast_hex(
     // The ledger is already complete by the time the column prices a hex - `review_turn` builds
     // every hex's ledger before it forecasts any of them - so the late picture is read once here
     // and handed to everything below that needs it.
-    let late = ledger
-        .state
-        .late_holdings_at(StatePhase::Maintenance, hex, ruleset);
+    let phases = ledger.state.phase_holdings(hex, ruleset);
     // The second snapshot, for the one term that wants a mid-month balance: what each unit holds
     // as manufacturing opens (`ah-l80z`). Clamped here, once per hex, so the ITEMS ledger and this
     // column are handed exactly the same numbers and cannot clamp differently.
-    let before_manufacturing =
-        ledger
-            .state
-            .late_holdings_at(PhaseState::BEFORE_MANUFACTURING, hex, ruleset);
+    let before_manufacturing = &phases.production;
     // What the ITEMS ledger actually priced each `PRODUCE` against, so the column's cap sentence
     // speaks of the same materials rather than of this unit's own stock alone (`ah-728m.2.2`).
     let shared_materials_of = |unit_id: &str| {
@@ -1412,7 +1407,7 @@ fn forecast_hex(
 
     // A region's pools are shared, so who else in this hex draws on them has to be settled before
     // any one unit can be priced against them (`ah-t2pn`).
-    let settled = pool_shares_for(hex, region, Some(&late), ruleset);
+    let settled = pool_shares_for(hex, region, Some(&phases), ruleset);
     let shares = settled.shares;
     overruns.extend(settled.overruns);
 
@@ -1551,7 +1546,7 @@ fn forecast_hex(
             // gifts, since `apply_recruits` runs before this hex is priced (`ah-40c9`).
             production_skills: ordered.skills().unwrap_or(&ordered.unit.skills),
             production_skills_unknown: ordered.skills().is_none(),
-            late: Some(late.of_with(
+            phases: Some(phases.of_with(
                 index,
                 &clamped[index],
                 shared_materials_of(&ordered.unit.unit_id),
@@ -3493,21 +3488,172 @@ impl PhaseState {
             .collect()
     }
 
-    fn late_holdings_at(
+    /// One item list per unit per named phase, in `hex.units` order and in the order the phases
+    /// were asked for.
+    ///
+    /// One walk of `balances` and one `item_name` per `(unit, tag)` however many phases are named:
+    /// this path runs per keystroke, and the name lookup is the expensive half (`ah-728m.2.3`).
+    /// Non-positive stocks are omitted, exactly as the report omits an empty one.
+    fn stocks(
         &self,
-        phase: StatePhase,
+        phases: &[StatePhase],
         hex: &Hex<'_>,
         ruleset: Option<&Ruleset>,
-    ) -> LateHoldings {
-        let balances = self
-            .balances
-            .iter()
-            .map(|((unit_id, tag), values)| {
-                ((unit_id.clone(), tag.clone()), values[phase as usize])
+    ) -> Vec<Vec<Vec<ItemAmount>>> {
+        let mut per_phase: Vec<BTreeMap<&str, Vec<ItemAmount>>> =
+            vec![BTreeMap::new(); phases.len()];
+        for ((unit_id, tag), values) in &self.balances {
+            let mut name: Option<String> = None;
+            for (slot, phase) in phases.iter().enumerate() {
+                let amount = values[*phase as usize];
+                if amount <= 0 {
+                    continue;
+                }
+                let name = name
+                    .get_or_insert_with(|| item_name(tag, hex, ruleset))
+                    .clone();
+                per_phase[slot]
+                    .entry(unit_id.as_str())
+                    .or_default()
+                    .push(ItemAmount {
+                        amount,
+                        name,
+                        tag: tag.clone(),
+                    });
+            }
+        }
+        per_phase
+            .into_iter()
+            .map(|by_unit| {
+                hex.units
+                    .iter()
+                    .map(|ordered| {
+                        by_unit
+                            .get(ordered.unit.unit_id.as_str())
+                            .cloned()
+                            .unwrap_or_default()
+                    })
+                    .collect()
             })
-            .collect();
-        LateHoldings::read(hex, &balances, ruleset)
+            .collect()
     }
+
+    /// The three projections every non-movement reader is entitled to, sharing one headcount.
+    ///
+    /// A phase's slot holds the state *after* that phase has spent, so the view a phase **sees** is
+    /// the slot before it: STUDY sees what `Movement` leaves, and manufacturing PRODUCE sees what
+    /// `Study` leaves. Maintenance reads its own slot, which is what it has always read
+    /// (`rules/sequenceofevents`, `ah-728m.2.3`).
+    fn phase_holdings(&self, hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> PhaseHoldings {
+        let mut stocks = self.stocks(
+            &[
+                StatePhase::Movement,
+                PhaseState::BEFORE_MANUFACTURING,
+                StatePhase::Maintenance,
+            ],
+            hex,
+            ruleset,
+        );
+        let maintenance = stocks.pop().expect("three phases were asked for");
+        let production = stocks.pop().expect("three phases were asked for");
+        let study = stocks.pop().expect("three phases were asked for");
+        // Derived once, from the maintenance stocks, and shared: no phase after the market can move
+        // a man-tagged item (`rules/sequenceofevents` puts GIVE/TAKE, the market and WITHDRAW
+        // before Movement), so a per-phase derivation could only ever agree - at three times the
+        // cost, on a path that runs per keystroke.
+        let men = men_from(hex, &maintenance, ruleset);
+        PhaseHoldings {
+            study: LateHoldings::assemble(study, &men),
+            production: LateHoldings::assemble(production, &men),
+            maintenance: LateHoldings::assemble(maintenance, &men),
+        }
+    }
+
+    /// Each unit's people once the market has run, in `hex.units` order - for the two study checks,
+    /// which read no items at all and must not be handed a picture that invites one.
+    fn men_after_the_market(&self, hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<LateMen> {
+        let stocks = self.stocks(&[StatePhase::Maintenance], hex, ruleset);
+        men_from(hex, &stocks[0], ruleset)
+    }
+}
+
+/// One unit's people as every phase after the market sees them.
+struct LateMen {
+    men: i64,
+    men_by_race: Vec<ItemAmount>,
+}
+
+/// The three named projections the non-movement readers ask for, built together so no `UnitFacts`
+/// can carry a study or production view that is secretly the maintenance picture (`ah-728m.2.3`).
+struct PhaseHoldings {
+    /// What STUDY sees: what [`StatePhase::Movement`] leaves, before this month's study fees.
+    study: LateHoldings,
+    /// What manufacturing PRODUCE sees: what [`PhaseState::BEFORE_MANUFACTURING`] leaves.
+    production: LateHoldings,
+    /// What maintenance, WORK and ENTERTAIN see.
+    maintenance: LateHoldings,
+}
+
+impl PhaseHoldings {
+    /// One unit's three pictures, by its index in `hex.units`.
+    fn of(&self, index: usize) -> PhaseFacts<'_> {
+        PhaseFacts {
+            study: self.study.of(index),
+            production: self.production.of(index),
+            maintenance: self.maintenance.of(index),
+        }
+    }
+
+    /// [`PhaseHoldings::of`], with the production picture's manufacturing inputs supplied - the
+    /// clamped pre-manufacturing list and the settled shared materials, which only `forecast_hex`
+    /// holds (`ah-l80z`, `ah-728m.2.2`).
+    fn of_with<'a>(
+        &'a self,
+        index: usize,
+        before_manufacturing: &'a [ItemAmount],
+        shared_materials: &'a [(usize, Vec<ItemAmount>)],
+    ) -> PhaseFacts<'a> {
+        PhaseFacts {
+            study: self.study.of(index),
+            production: self
+                .production
+                .of_with(index, before_manufacturing, shared_materials),
+            maintenance: self.maintenance.of(index),
+        }
+    }
+}
+
+/// The headcount every post-market phase shares, derived from one phase's stocks.
+///
+/// Lifted out of the old `LateHoldings::read` unchanged (`ah-728m.2.3`): a unit whose headcount is itself
+/// a guess keeps the parser's figures, a caller with a ruleset short-circuits through `same_men`
+/// against the early picture, and a caller with none keeps the report's own figures.
+fn men_from(hex: &Hex<'_>, stocks: &[Vec<ItemAmount>], ruleset: Option<&Ruleset>) -> Vec<LateMen> {
+    hex.units
+        .iter()
+        .zip(stocks)
+        .map(|(ordered, items)| {
+            // Not derived for a unit whose headcount is itself a guess - re-deriving from a list
+            // the catalogue cannot fully read is the guess `classify_unit` refuses to make, under
+            // another name. Only `BUY`/`SELL` of a man-tagged item can move a headcount any further
+            // than the early picture already has it - `PRODUCE`, `WITHDRAW` and trading in anything
+            // else leave a unit's own people untouched, so this compares man tags alone against the
+            // early picture rather than re-deriving from every item the ledger happens to be
+            // tracking.
+            let (men_by_race, men) = if ordered.unit.men_estimated {
+                (ordered.unit.men_by_race.clone(), ordered.unit.men)
+            } else if let Some(ruleset) = ruleset {
+                if same_men(items, ordered.early_items(), ruleset) {
+                    (ordered.early_men_by_race().to_vec(), ordered.early_men())
+                } else {
+                    composition::men_in(items, ruleset)
+                }
+            } else {
+                (ordered.unit.men_by_race.clone(), ordered.unit.men)
+            };
+            LateMen { men, men_by_race }
+        })
+        .collect()
 }
 
 /// A `BUY` of people by a unit that has already begun magic: refused, and warned about
@@ -3604,7 +3750,7 @@ struct Ledger<'a> {
     /// Goods a resolvable, non-Nexus `WITHDRAW` order credited this month, keyed by unit and
     /// normalized item tag exactly as `credit` normalizes them. Movement-phase state only
     /// (`ah-0wpn`): `rules/withdraw` acquires the goods before movement, but `Ledger.balance` has
-    /// many readers outside movement - `LateHoldings::read`, `judge_shortfalls`, recruitment,
+    /// many readers outside movement - `PhaseState::stocks`, `judge_shortfalls`, recruitment,
     /// production, study, maintenance and the Silver forecast all intentionally read that map as
     /// their own phase model, and crediting it here would change every one of those. Read only by
     /// `holdings_at_movement`, which is the sole inventory source for `weight_after_orders` and
@@ -3997,11 +4143,11 @@ fn ledger_for_with_production<'a>(
     // walk rather than what puts it after the market. The same treatment BUILD has directly below.
     //
     // One walk of the whole hex's balances, not one per PRODUCE order: this path runs on every
-    // keystroke, and `late_holdings_at` reads every unit and every tag (`ah-1ad6.2`, `ah-lu0f.3`).
-    let before_manufacturing =
-        ledger
-            .state
-            .late_holdings_at(PhaseState::BEFORE_MANUFACTURING, hex, ruleset);
+    // keystroke, and `PhaseState::stocks` reads every unit and every tag (`ah-1ad6.2`, `ah-lu0f.3`).
+    let before_manufacturing = ledger
+        .state
+        .stocks(&[PhaseState::BEFORE_MANUFACTURING], hex, ruleset)
+        .remove(0);
 
     let sharing = Sharing::read(hex);
 
@@ -4020,7 +4166,7 @@ fn ledger_for_with_production<'a>(
             // The tools and the men this unit works with, as its month-long orders open. Not its
             // materials: those are read from `PhaseState` inside `produce`, which pools the hex's
             // shared stock and carries what earlier consumers in this pass already took.
-            let held = clamped_holdings(before_manufacturing.items_of(index));
+            let held = clamped_holdings(&before_manufacturing[index]);
             let pool = Pool {
                 hex,
                 sharing: &sharing,
@@ -4309,11 +4455,10 @@ pub(crate) struct UnitItemEffects {
 
 /// What each unit in a hex holds once its whole month has run, in `hex.units` order.
 ///
-/// The ledger's own `balance`, read back as item lists so [`UnitFacts::late`] can borrow from
-/// them, with each unit's headcount already derived from that list by
-/// `report::composition::men_in` (`ah-dxfd.1`). Built once per hex rather than per unit:
-/// `balance` is keyed by `(unit, tag)`, so one walk of it fills every unit's list, and a per-unit
-/// build would walk the whole hex's balance once per unit.
+/// One of the three projections [`PhaseHoldings`] holds: the ledger's own balances at one phase,
+/// read back as item lists so a [`PhaseFacts`] can borrow from them, with each unit's headcount
+/// already derived by [`men_from`] (`ah-dxfd.1`, `ah-728m.2.3`). Built once per hex rather than
+/// per unit: `balances` is keyed by `(unit, tag)`, so one walk of it fills every unit's list.
 ///
 /// Order within one unit's list does not matter and no consumer may come to depend on it: these
 /// come off `Ledger::balance`, a `BTreeMap`, so they are alphabetical by tag - `own_food_pass`
@@ -4322,80 +4467,29 @@ pub(crate) struct UnitItemEffects {
 struct LateHoldings(Vec<Holdings>);
 
 impl LateHoldings {
-    /// `name` comes from `item_name`, which prefers the catalogue and falls back to what some
-    /// unit in the hex calls the tag. Nothing in `silver.rs` reads an `ItemAmount::name` off
-    /// `facts`, so this is for the reader rather than for the arithmetic - but a list carrying the
-    /// tag in the name field is a trap for whoever adds the first such reader.
-    ///
-    /// `Ledger::balance` is keyed by unit id, so two report units sharing an id are conflated here,
-    /// the same caveat `forecast_hex` already documents for its own by-id lookups, and both read
-    /// the same shared total rather than splitting it.
-    fn read(
-        hex: &Hex<'_>,
-        balance: &BTreeMap<(String, String), i64>,
-        ruleset: Option<&Ruleset>,
-    ) -> Self {
-        let mut by_unit: BTreeMap<&str, Vec<ItemAmount>> = BTreeMap::new();
-        for ((unit_id, tag), amount) in balance {
-            if *amount <= 0 {
-                // The report never lists an empty stock, and neither does this projection of it.
-                continue;
-            }
-            by_unit
-                .entry(unit_id.as_str())
-                .or_default()
-                .push(ItemAmount {
-                    amount: *amount,
-                    name: item_name(tag, hex, ruleset),
-                    tag: tag.clone(),
-                });
-        }
-        let holdings = hex
-            .units
-            .iter()
-            .map(|ordered| {
-                let items = by_unit
-                    .get(ordered.unit.unit_id.as_str())
-                    .cloned()
-                    .unwrap_or_default();
-                // Not derived for a unit whose headcount is itself a guess - re-deriving from a
-                // list the catalogue cannot fully read is the guess `classify_unit` refuses to
-                // make, under another name. Only `BUY`/`SELL` of a man-tagged item can move a
-                // headcount any further than the early picture already has it - `PRODUCE`,
-                // `WITHDRAW` and trading in anything else leave a unit's own people untouched, so
-                // this compares man tags alone against the early picture rather than re-deriving
-                // from every item the ledger happens to be tracking.
-                let (men_by_race, men) = if ordered.unit.men_estimated {
-                    (ordered.unit.men_by_race.clone(), ordered.unit.men)
-                } else if let Some(ruleset) = ruleset {
-                    if same_men(&items, ordered.early_items(), ruleset) {
-                        (ordered.early_men_by_race().to_vec(), ordered.early_men())
-                    } else {
-                        composition::men_in(&items, ruleset)
-                    }
-                } else {
-                    (ordered.unit.men_by_race.clone(), ordered.unit.men)
-                };
-                Holdings {
+    /// One projection: one phase's stocks, with the headcounts every post-market phase shares.
+    fn assemble(stocks: Vec<Vec<ItemAmount>>, men: &[LateMen]) -> Self {
+        Self(
+            stocks
+                .into_iter()
+                .zip(men)
+                .map(|(items, men)| Holdings {
                     items,
-                    men,
-                    men_by_race,
-                }
-            })
-            .collect();
-        Self(holdings)
+                    men: men.men,
+                    men_by_race: men.men_by_race.clone(),
+                })
+                .collect(),
+        )
     }
 
-    /// One unit's late picture, by its index in `hex.units`.
+    /// One unit's picture of this one phase, by its index in `hex.units`.
     ///
     /// **The manufacturing input list falls back to this snapshot's own items, and that fallback
-    /// is only safe for a caller that never prices a `PRODUCE`.** It is *not* the safe fallback
-    /// [`UnitFacts::late`] makes: that one falls back to the *early* picture, while this snapshot
-    /// is usually the `Maintenance` index, which already carries a production's own material
-    /// debit, so pricing from it would apply that debit twice (`ah-l80z`). Today's three callers are
-    /// upkeep, the study ceiling and [`hex_facts`], none of which reach `forecast_unit`. A caller
-    /// that does reach it must hold a `BEFORE_MANUFACTURING` snapshot and use
-    /// [`LateHoldings::of_with`], as `forecast_hex` does.
+    /// is only safe for a projection that never prices a `PRODUCE`.** For the `study` and
+    /// `maintenance` projections it is never read at all; for `production` it is the right list by
+    /// construction, since that projection *is* the pre-manufacturing phase. A caller that reaches
+    /// `forecast_unit` supplies the clamped list and the settled shared materials through
+    /// [`PhaseHoldings::of_with`], as `forecast_hex` does (`ah-l80z`, `ah-728m.2.2`).
     fn of(&self, index: usize) -> LateFacts<'_> {
         self.of_with(index, self.items_of(index), &[])
     }
@@ -4431,7 +4525,7 @@ impl LateHoldings {
 /// production's - the same reading `capacity_after_orders` already documents (`ah-l80z`).
 ///
 /// **A guard rather than a live conversion.** Both of today's snapshots come from
-/// [`LateHoldings::read`], which already drops every entry at or below zero, so neither call site
+/// [`PhaseState::stocks`], which already drops every entry at or below zero, so neither call site
 /// can hand this function a negative amount. It is applied anyway, once per hex, so that the two
 /// surfaces are demonstrably given the same list and a snapshot built some other way cannot
 /// quietly reach `plan_production` unclamped.
@@ -4446,7 +4540,7 @@ fn clamped_holdings(items: &[ItemAmount]) -> Vec<ItemAmount> {
 }
 
 /// Whether two item lists carry the same man-tagged entries, regardless of order or of anything
-/// else either list holds. `Ledger::balance` is a `BTreeMap`, so `LateHoldings::read`'s lists come
+/// else either list holds. `PhaseState::balances` is a `BTreeMap`, so `PhaseState::stocks`'s lists come
 /// back alphabetical by tag rather than in the report's own order, and a same-multiset-different-
 /// order pair must not read as a change - and a `PRODUCE` or a `BUY`/`SELL` of ordinary goods must
 /// not either, which is why this looks at man tags alone.
@@ -4476,7 +4570,7 @@ fn same_men(a: &[ItemAmount], b: &[ItemAmount], ruleset: &Ruleset) -> bool {
 fn hex_facts<'a>(
     hex: &'a Hex<'_>,
     nothing: &'a Receipts,
-    late: Option<&'a LateHoldings>,
+    phases: Option<&'a PhaseHoldings>,
     ruleset: Option<&Ruleset>,
 ) -> Vec<UnitFacts<'a>> {
     hex.units
@@ -4487,7 +4581,7 @@ fn hex_facts<'a>(
                 hex,
                 ordered,
                 nothing,
-                late.map(|late| late.of(index)),
+                phases.map(|phases| phases.of(index)),
                 ruleset,
             )
         })
@@ -4503,7 +4597,7 @@ fn unit_facts<'a>(
     hex: &'a Hex<'_>,
     ordered: &'a Ordered<'_>,
     nothing: &'a Receipts,
-    late: Option<LateFacts<'a>>,
+    phases: Option<PhaseFacts<'a>>,
     ruleset: Option<&Ruleset>,
 ) -> UnitFacts<'a> {
     UnitFacts {
@@ -4529,7 +4623,7 @@ fn unit_facts<'a>(
         formed: ordered.formed.as_ref(),
         after_gifts_unknown: ordered.holdings_unknown(),
         food_uncertain: food_uncertain_after_gifts(ordered, ruleset),
-        late,
+        phases,
     }
 }
 
@@ -4550,20 +4644,18 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     // Built before anything below draws the balance down - see *Known traps*: `charge_upkeep`
     // mutates `balance` as it goes, and a `LateHoldings` read after that loop would price later
     // units against a balance earlier ones have already spent.
-    let late = ledger
-        .state
-        .late_holdings_at(StatePhase::Maintenance, hex, ledger.ruleset);
+    let phases = ledger.state.phase_holdings(hex, ledger.ruleset);
 
     // Step 2 of the payment order needs every unit's step-1 leftovers before it can settle any of
     // them, so this is two passes over one set of facts rather than one pass - built once here,
     // because two copies of the same literal are two things to keep in step.
     let nothing = Receipts::default();
-    let facts = hex_facts(hex, &nothing, Some(&late), ledger.ruleset);
+    let facts = hex_facts(hex, &nothing, Some(&phases), ledger.ruleset);
 
     // The same settlement `forecast_hex` prices the column from: `WORK` and `ENTERTAIN` reach both
     // surfaces through one `late_income`, so two settlements would be two answers to one question.
     let region = region_wages(hex, ledger.ruleset);
-    let shares = pool_shares_for(hex, region, Some(&late), ledger.ruleset).shares;
+    let shares = pool_shares_for(hex, region, Some(&phases), ledger.ruleset).shares;
 
     // The check and the Silver column read one fact, so they settle the hex's faction-food pool
     // the same way: warning that a unit cannot pay a fee its faction-mates' grain already paid is
@@ -6929,10 +7021,8 @@ fn feed_from_food_after_silver(
             continue;
         }
 
-        let late = ledger
-            .state
-            .late_holdings_at(StatePhase::Maintenance, hex, ledger.ruleset);
-        let facts = hex_facts(hex, &nothing, Some(&late), ledger.ruleset);
+        let phases = ledger.state.phase_holdings(hex, ledger.ruleset);
+        let facts = hex_facts(hex, &nothing, Some(&phases), ledger.ruleset);
         let claims: Vec<LateFoodClaim> = hex
             .units
             .iter()
@@ -7489,6 +7579,9 @@ fn judge_shortfalls(
         // The ledger is keyed by unit and then by tag, so this unit's entries are one contiguous
         // run of it. Scanning the whole map of balances once per unit would be quadratic in the
         // size of a hex, and a city holds a great many units.
+        // The one deliberate reader still naming a phase for itself: a shortfall is judged on the
+        // *final* balance, and `holdings_at` keeps the non-positive entries a shortfall is about -
+        // which is exactly what the `PhaseHoldings` projections drop (`ah-728m.2.3`).
         let mine: Vec<(String, String, i64)> = ledger
             .state
             .holdings_at(StatePhase::Maintenance, who)
@@ -9144,9 +9237,7 @@ fn check_studying(
         return;
     }
 
-    let late = ledger
-        .state
-        .late_holdings_at(StatePhase::Maintenance, hex, Some(ruleset));
+    let men = ledger.state.men_after_the_market(hex, Some(ruleset));
     for (index, ordered) in hex.units.iter().enumerate() {
         let Some((placed, studying)) = ordered.studies_placed() else {
             continue;
@@ -9171,7 +9262,7 @@ fn check_studying(
 
         // The composition the study month has, which `rules/sequenceofevents` puts after this
         // month's GIVE and TAKE - the same view `skills()` above was merged from.
-        let ceiling = study::study_ceiling(ruleset, late.of(index).men_by_race, skill);
+        let ceiling = study::study_ceiling(ruleset, &men[index].men_by_race, skill);
         if level >= ceiling.level() {
             findings.push(ordered.finding(
                 hex,
@@ -9261,7 +9352,7 @@ fn check_magic_study_composition(
 
     // Built on the first candidate rather than up front: most hexes contain nobody beginning
     // magic, and this runs on every keystroke (review finding 2).
-    let mut late: Option<LateHoldings> = None;
+    let mut men: Option<Vec<LateMen>> = None;
     for (index, ordered) in hex.units.iter().enumerate() {
         let Some((placed, studying)) = ordered.studies_placed() else {
             continue;
@@ -9276,19 +9367,14 @@ fn check_magic_study_composition(
         if ordered.unit.men_estimated || ordered.holdings_unknown() {
             continue;
         }
-        let facts = late
-            .get_or_insert_with(|| {
-                ledger
-                    .state
-                    .late_holdings_at(StatePhase::Maintenance, hex, Some(ruleset))
-            })
-            .of(index);
+        let all = men.get_or_insert_with(|| ledger.state.men_after_the_market(hex, Some(ruleset)));
+        let facts = &all[index];
         // F2 (`ah-ndp9`, round 3): a unit this document creates with `FORM` and has given nobody is
         // not judged, so a correct mage does not flash a warning between two lines being typed.
         if ordered.formed.is_some() && facts.men == 0 {
             continue;
         }
-        if magic::lone_leader(facts.men, facts.men_by_race) != Some(false) {
+        if magic::lone_leader(facts.men, &facts.men_by_race) != Some(false) {
             continue;
         }
 
@@ -11368,6 +11454,91 @@ mod tests {
             state.known_balance_at(StatePhase::Build, "1", "STON"),
             Ok(12)
         );
+    }
+
+    /// `ah-728m.2.3`: STUDY is priced before its own fee is taken, and maintenance is assessed
+    /// after it, so the two projections must be different pictures of the same unit.
+    #[test]
+    fn phase_holdings_separates_the_study_picture_from_the_maintenance_one() {
+        let hex_region = region(vec![with_silver(unit("1"), 1000)]);
+        let ordered = OrderedUnits::read("unit 1\nSTUDY COMB\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+        let phases = ledger.state.phase_holdings(&hex, Some(&rules));
+
+        let silver = |facts: LateFacts<'_>| {
+            facts
+                .items
+                .iter()
+                .find(|item| item.tag.eq_ignore_ascii_case(SILVER))
+                .map_or(0, |item| item.amount)
+        };
+        assert_eq!(silver(phases.study.of(0)), 1000);
+        assert!(
+            silver(phases.maintenance.of(0)) < 1000,
+            "the maintenance picture should already carry the study fee"
+        );
+    }
+
+    /// `ah-728m.2.3`: no phase after the market moves people, so one headcount is derived once and
+    /// shared - and it is the post-market figure, not the one the report printed.
+    #[test]
+    fn phase_holdings_gives_every_phase_one_headcount() {
+        let hex_region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![with_silver(unit("1"), 1000)])
+        };
+        let ordered = OrderedUnits::read("unit 1\nBUY 1 HUMN\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+        let phases = ledger.state.phase_holdings(&hex, Some(&rules));
+
+        assert_eq!(phases.maintenance.of(0).men, 2);
+        assert_eq!(phases.study.of(0).men, 2);
+        assert_eq!(phases.production.of(0).men, 2);
+        assert_eq!(
+            phases.study.of(0).men_by_race,
+            phases.maintenance.of(0).men_by_race
+        );
+    }
+
+    /// `ah-728m.2.3`: the two study checks read people alone, and they read them after the market.
+    #[test]
+    fn men_after_the_market_counts_a_recruit_the_report_never_printed() {
+        let hex_region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![with_silver(
+                with_race(unit("1"), 1, "leaders", "LEAD"),
+                1000,
+            )])
+        };
+        let ordered = OrderedUnits::read("unit 1\nBUY 1 HUMN\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+        let men = ledger.state.men_after_the_market(&hex, Some(&rules));
+
+        assert_eq!(men[0].men, 2);
+        assert!(men[0]
+            .men_by_race
+            .iter()
+            .any(|race| race.tag.eq_ignore_ascii_case("HUMN")));
+        assert!(men[0]
+            .men_by_race
+            .iter()
+            .any(|race| race.tag.eq_ignore_ascii_case("LEAD")));
     }
 
     /// `item_spellings` strips `wood elves` to `wood elv`, which the catalogue's `wood elf` does

@@ -682,7 +682,7 @@ pub struct PoolWants {
 /// What this unit asks of each of its region's contended pools.
 ///
 /// TAX is priced before the market opens, so it reads `facts.men`, the early picture; WORK and
-/// ENTERTAIN are priced after it, so they read `facts.late().men` instead
+/// ENTERTAIN are priced after it, so they read `facts.maintenance().men` instead
 /// (`rules/sequenceofevents`, `ah-dxfd.2`).
 #[must_use]
 pub fn pool_wants(
@@ -697,7 +697,7 @@ pub fn pool_wants(
     if taxes(facts.flags, facts.intents) {
         wants.tax = taxing_men(facts, ruleset).saturating_mul(TAX_PER_MAN);
     }
-    let late = facts.late();
+    let late = facts.maintenance();
     for placed in facts.intents {
         match &placed.intent {
             Intent::Tax => {}
@@ -868,7 +868,7 @@ pub struct UnitFacts<'a> {
     /// this month's `GIVE`/`TAKE` orders applied where `super::semantics` could follow them
     /// (`ah-dxfd.2`). `rules/sequenceofevents` settles TAX, PILLAGE and `Spells are CAST` before
     /// the market opens, so this is what those terms read; a term settled after the market reads
-    /// [`UnitFacts::late`] instead.
+    /// [`UnitFacts::maintenance`] instead.
     pub men: i64,
     /// The unit's headcount as the *report* printed it, before any of this month's orders.
     ///
@@ -926,8 +926,9 @@ pub struct UnitFacts<'a> {
     /// market and PILLAGE, TAX and `Spells are CAST` before it, so the two pictures are genuinely
     /// different and every term below says which it takes. `None` for a caller with no ledger to
     /// read one from - `semantics::pillagers_in` is the only one, and it consults nothing late.
-    /// Read it through [`UnitFacts::late`], never directly.
-    pub late: Option<LateFacts<'a>>,
+    /// Read it through [`UnitFacts::study`], [`UnitFacts::production`] or
+    /// [`UnitFacts::maintenance`], never directly.
+    pub phases: Option<PhaseFacts<'a>>,
 }
 
 /// One unit as the turn's late phases see it - the market, the withdrawals and this month's
@@ -967,18 +968,66 @@ pub struct LateFacts<'a> {
     pub shared_materials: &'a [(usize, Vec<ItemAmount>)],
 }
 
-impl<'a> UnitFacts<'a> {
-    /// The unit as the late phases see it, falling back to the early picture for a caller that has
-    /// no ledger to read a late picture from.
+/// One unit as each of the phases after the market sees it.
+///
+/// `rules/sequenceofevents` runs STUDY, then manufacturing PRODUCE, then BUILD, then primary
+/// PRODUCE, ENTERTAIN and WORK, and assesses maintenance last, so a term must say which picture it
+/// takes rather than sharing one "late" view with terms phases away from it (`ah-728m.2.3`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PhaseFacts<'a> {
+    /// What STUDY sees: the market has run, no study fee has been taken.
+    pub study: LateFacts<'a>,
+    /// What a PRODUCE run sees, and the only picture carrying `before_manufacturing` and
+    /// `shared_materials`.
+    pub production: LateFacts<'a>,
+    /// What maintenance, WORK and ENTERTAIN see.
+    pub maintenance: LateFacts<'a>,
+}
+
+impl<'a> PhaseFacts<'a> {
+    /// Every phase reading one picture - for a test that does not care which phase it is in. The
+    /// production path never uses it.
     #[must_use]
-    pub fn late(&self) -> LateFacts<'a> {
-        self.late.unwrap_or(LateFacts {
+    pub fn uniform(facts: LateFacts<'a>) -> Self {
+        Self {
+            study: facts,
+            production: facts,
+            maintenance: facts,
+        }
+    }
+}
+
+impl<'a> UnitFacts<'a> {
+    /// The unit as STUDY sees it.
+    #[must_use]
+    pub fn study(&self) -> LateFacts<'a> {
+        self.phases
+            .map_or_else(|| self.early(), |phases| phases.study)
+    }
+
+    /// The unit as a PRODUCE run sees it.
+    #[must_use]
+    pub fn production(&self) -> LateFacts<'a> {
+        self.phases
+            .map_or_else(|| self.early(), |phases| phases.production)
+    }
+
+    /// The unit as maintenance, WORK and ENTERTAIN see it.
+    #[must_use]
+    pub fn maintenance(&self) -> LateFacts<'a> {
+        self.phases
+            .map_or_else(|| self.early(), |phases| phases.maintenance)
+    }
+
+    /// The early picture, for a caller that has no ledger to read a late one from.
+    fn early(&self) -> LateFacts<'a> {
+        LateFacts {
             men: self.men,
             men_by_race: self.men_by_race,
             items: self.items,
             before_manufacturing: self.items,
             shared_materials: &[],
-        })
+        }
     }
 }
 
@@ -1365,7 +1414,7 @@ pub fn forecast_unit(
     // the first consumed - exactly as the ITEMS ledger keeps its own (`ah-l80z`). Already clamped
     // at zero by `forecast_hex`, so this arm clamps nothing itself and the two surfaces cannot
     // clamp differently.
-    let mut manufacturing_items = facts.late().before_manufacturing.to_vec();
+    let mut manufacturing_items = facts.production().before_manufacturing.to_vec();
 
     // `rules/sequenceofevents` fixes the order the turn runs the block in, and the order the
     // player wrote it in does not change it (`ah-gdd3.1`).
@@ -1476,7 +1525,7 @@ pub fn forecast_unit(
                 // bring, not only what the report printed (`ah-dxfd.2`).
                 //
                 // **Materials and tools are the pre-manufacturing balance**, which is the
-                // mid-month picture `facts.late().before_manufacturing` now carries: every market
+                // mid-month picture `facts.production().before_manufacturing` now carries: every market
                 // effect applied, no PRODUCE charged. `semantics::produce` reads exactly the same
                 // phase for the ITEMS column, so the two surfaces answer one order identically
                 // (`rules/sequenceofevents`, `ah-l80z`). Not `facts.items`, which is the
@@ -1500,7 +1549,7 @@ pub fn forecast_unit(
                             ruleset,
                             skill,
                             tag,
-                            facts.late().men,
+                            facts.production().men,
                             facts.production_skills,
                             &manufacturing_items,
                         )
@@ -1521,7 +1570,7 @@ pub fn forecast_unit(
                 // number yet here (`ah-npab`); a unit too poor to pay for its shopping is too poor
                 // to fund a recipe either way, so this is the reading before `ah-omn7` unchanged.
                 // The materials this run may spend, which in a hex that shares is more than this
-                // unit's own list: `facts.late().shared_materials` is what `semantics::produce`
+                // unit's own list: `facts.production().shared_materials` is what `semantics::produce`
                 // priced the very same order against, so the two columns cannot drift (the
                 // invariant this comment block has always claimed, and which pooling would
                 // otherwise have broken - `ah-728m.2.2`). Empty for a hex that shares nothing and
@@ -1529,7 +1578,7 @@ pub fn forecast_unit(
                 // it always was.
                 let priced_against = pooled_materials(
                     &manufacturing_items,
-                    materials_for_line(facts.late().shared_materials, placed.line),
+                    materials_for_line(facts.production().shared_materials, placed.line),
                     &lookups.item_name,
                 );
                 let (priced, plan) = price_production(
@@ -1575,7 +1624,7 @@ pub fn forecast_unit(
                         // that *gains* men produces more, which needs no sentence (`ah-qct4`).
                         // Set here rather than before the `match`, so it stays `0` for a unit
                         // whose PRODUCE the ruleset cannot price, exactly as `produced` does.
-                        production_men_left = (facts.men_reported - facts.late().men).max(0);
+                        production_men_left = (facts.men_reported - facts.production().men).max(0);
                         // Only when the region is what bound, so the value and the sentence it
                         // feeds cannot disagree. `None` for a unit whose `PRODUCE` the ruleset
                         // cannot price, exactly as `produced` and `production_men_left` are.
@@ -1599,7 +1648,7 @@ pub fn forecast_unit(
                 let cost = ruleset
                     .and_then(|ruleset| ruleset.find_skill(skill))
                     .and_then(|skill| skill.cost);
-                let priced = price_study(cost, facts.late().men);
+                let priced = price_study(cost, facts.study().men);
                 expense = expense.saturating_add(priced.spends);
                 if priced.spends > 0 {
                     spent_on = spent_on.or(Some(SilverSpender::Study));
@@ -2108,7 +2157,7 @@ struct OwnFoodPass {
 /// Step 1 of the maintenance payment order - the unit's own food - and what it leaves behind.
 ///
 /// Maintenance is assessed after the market, the withdrawals and this month's production have run
-/// (`rules/sequenceofevents`), so this reads `facts.late()` throughout (`ah-dxfd.2`).
+/// (`rules/sequenceofevents`), so this reads `facts.maintenance()` throughout (`ah-dxfd.2`).
 ///
 /// `None` for a headcount that is itself a guess: charge nothing rather than a guess.
 fn own_food_pass(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<OwnFoodPass> {
@@ -2117,7 +2166,7 @@ fn own_food_pass(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Own
     if facts.men_estimated || facts.food_uncertain {
         return None;
     }
-    let late = facts.late();
+    let late = facts.maintenance();
 
     let leaders = late
         .men_by_race
@@ -5959,7 +6008,7 @@ mod tests {
             skills_unknown: false,
             production_skills: &[],
             production_skills_unknown: false,
-            late: None,
+            phases: None,
         }
     }
 
@@ -6213,13 +6262,13 @@ mod tests {
                 items: &items,
                 skills: &smith,
                 production_skills: &smith,
-                late: Some(LateFacts {
+                phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 3,
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
                     shared_materials: &[],
-                }),
+                })),
                 ..facts(3, &intents, &receipts)
             },
             paying("$12.0", None),
@@ -6233,6 +6282,77 @@ mod tests {
 
         assert_eq!(unit.production_men_left, 5);
         assert_eq!(unit.produced, 3);
+    }
+
+    /// `ah-728m.2.3`: each term takes the picture its own phase has. The real builder gives all
+    /// three projections one headcount - no phase after the market moves people - so the pictures
+    /// are deliberately separated here, which is the only way to catch a term wired to the wrong
+    /// one.
+    #[test]
+    fn each_late_reader_takes_its_own_phase_picture() {
+        let receipts = Receipts::default();
+        let intents = [
+            placed(Intent::Produce {
+                requested: None,
+                item: "SWOR".to_string(),
+            }),
+            placed(Intent::Study {
+                skill: "COMB".to_string(),
+            }),
+            placed(Intent::Work),
+        ];
+        let items = [ItemAmount {
+            amount: 20,
+            name: "iron".into(),
+            tag: "IRON".into(),
+        }];
+        let smith = [skill("WEAP", 1)];
+        let rules = ruleset();
+        let picture = |men: i64| LateFacts {
+            men,
+            men_by_race: &[],
+            items: &items,
+            before_manufacturing: &items,
+            shared_materials: &[],
+        };
+        let facts = UnitFacts {
+            men_reported: 9,
+            held: 100_000,
+            items: &items,
+            skills: &smith,
+            production_skills: &smith,
+            phases: Some(PhaseFacts {
+                study: picture(3),
+                production: picture(5),
+                maintenance: picture(7),
+            }),
+            ..facts(9, &intents, &receipts)
+        };
+
+        // WORK is priced from the maintenance picture, the phase it runs beside.
+        let region = paying("$12.0", None);
+        assert_eq!(pool_wants(&facts, region, Some(&rules)).wages, 7 * 12);
+
+        let cost = rules
+            .find_skill("COMB")
+            .and_then(|skill| skill.cost)
+            .expect("the committed ruleset prices combat");
+        let unit = forecast_unit(
+            facts,
+            region,
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&rules),
+        );
+
+        // The PRODUCE workforce and the men it says are gone both read the production picture.
+        assert_eq!(unit.produced, 5);
+        assert_eq!(unit.production_men_left, 4);
+        // The study fee reads the study picture, which predates the fee itself.
+        assert_eq!(unit.expense, Some(cost * 3));
     }
 
     /// `ah-gdd3.2`. Materials in these four are exactly one catapult's, so `by_materials` is 1 and
@@ -6298,13 +6418,13 @@ mod tests {
                 items: &items,
                 skills: &carpenters,
                 production_skills: &carpenters,
-                late: Some(LateFacts {
+                phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 4,
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
                     shared_materials: &[],
-                }),
+                })),
                 ..facts(4, &intents, &receipts)
             },
             paying("$5.0", None),
@@ -6345,13 +6465,13 @@ mod tests {
                 items: &items,
                 skills: &carpenters,
                 production_skills: &carpenters,
-                late: Some(LateFacts {
+                phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 4,
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
                     shared_materials: &[],
-                }),
+                })),
                 ..facts(4, &intents, &receipts)
             },
             paying("$5.0", None),
@@ -6378,13 +6498,13 @@ mod tests {
                 items: &items,
                 skills: &carpenters,
                 production_skills: &carpenters,
-                late: Some(LateFacts {
+                phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 4,
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
                     shared_materials: &[],
-                }),
+                })),
                 ..facts(4, &alone, &receipts)
             },
             paying("$5.0", None),
@@ -6421,13 +6541,13 @@ mod tests {
                 items: &items,
                 skills: &carpenters,
                 production_skills: &carpenters,
-                late: Some(LateFacts {
+                phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 4,
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
                     shared_materials: &[],
-                }),
+                })),
                 ..facts(4, &intents, &receipts)
             },
             paying("$5.0", None),
@@ -6462,13 +6582,13 @@ mod tests {
                 items: &items,
                 skills: &smith,
                 production_skills: &smith,
-                late: Some(LateFacts {
+                phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 8,
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
                     shared_materials: &[],
-                }),
+                })),
                 ..facts(8, &intents, &receipts)
             },
             paying("$12.0", None),
@@ -6498,13 +6618,13 @@ mod tests {
             UnitFacts {
                 men_reported: 8,
                 items: &items,
-                late: Some(LateFacts {
+                phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 3,
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
                     shared_materials: &[],
-                }),
+                })),
                 ..facts(3, &[], &receipts)
             },
             paying("$12.0", None),
@@ -9079,7 +9199,7 @@ mod tests {
             skills_unknown: false,
             production_skills: &[],
             production_skills_unknown: false,
-            late: None,
+            phases: None,
         }
     }
 
@@ -9687,7 +9807,7 @@ mod combat_ready_tests {
             skills_unknown: false,
             production_skills: skills,
             production_skills_unknown: false,
-            late: None,
+            phases: None,
         }
     }
 
