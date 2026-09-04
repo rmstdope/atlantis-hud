@@ -78,10 +78,21 @@ describe("resourceChecksOf (ah-rx0r.2)", () => {
     expect(resourceChecksOf(region, anIndex()).map((check) => check.tag)).toEqual(["MUSH"]);
   });
 
-  it("says nothing about a resource this terrain cannot hold", () => {
+  it("says nothing about a terrain the rules table does not name", () => {
     const region = aReportRegion({ terrain: "mountain", units: [hunter(3)] });
 
     expect(resourceChecksOf(region, anIndex())).toEqual([]);
+  });
+
+  it("says nothing about a resource this terrain cannot hold", () => {
+    // The terrain is in the table; it simply does not list a resource anything reveals, so the
+    // hunter standing here must not put `0 floater hide` on a mountain.
+    const index = anIndex({
+      terrainResources: new Map([["mountain", ["IRON", "STON"]]])
+    });
+    const region = aReportRegion({ terrain: "mountain", units: [hunter(3)] });
+
+    expect(resourceChecksOf(region, index)).toEqual([]);
   });
 
   it("accepts a level above the one the skill states", () => {
