@@ -307,7 +307,6 @@ export function parseMovementRules(html: string): MovementRules {
   };
 }
 
-
 /** What one unit of food is worth against maintenance, and which foods the page names. */
 export type FoodMaintenance = {
   /** Silver of maintenance one unit of food pays. */

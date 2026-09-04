@@ -2,8 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildRuleset, type Ruleset } from "./build";
-import { newAgeDataPage, parseNewAgeDatabase } from "./newage";
-import { WORLDS } from "./worlds";
+import { catalogueDataPage, WORLDS, worldById } from "./worlds";
 
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../../${relative}`, import.meta.url)), "utf8");
@@ -20,11 +19,7 @@ describe("the committed rulesets", () => {
   it.each([...WORLDS])(
     "$id is exactly what the scraper produces from its committed fixtures",
     (world) => {
-      const catalogueText = read(world.catalogueFixture);
-      const dataHtml =
-        world.catalogueSource === "database"
-          ? newAgeDataPage(parseNewAgeDatabase(catalogueText))
-          : catalogueText;
+      const dataHtml = catalogueDataPage(world.catalogueSource, read(world.catalogueFixture));
       const committed = JSON.parse(read(world.rulesetPath)) as Ruleset;
 
       const built = buildRuleset({
@@ -288,5 +283,17 @@ describe("the committed rulesets", () => {
     }
     // An ordinary item the page never calls food carries no value at all.
     expect(COMMITTED.items.IRON).not.toHaveProperty("maintenanceValue");
+  });
+});
+
+describe("worldById", () => {
+  it("finds a world by the id its ruleset file is named for", () => {
+    expect(worldById("newage-arcanum")?.rulesetPath).toBe(
+      "config/public/ruleset-newage-arcanum.json"
+    );
+  });
+
+  it("answers null for a world this repository does not commit", () => {
+    expect(worldById("newage-atlantis")).toBeNull();
   });
 });

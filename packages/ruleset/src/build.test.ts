@@ -74,7 +74,7 @@ describe("buildRuleset", () => {
     expect(ruleset.items.MANN.maintenanceValue).toBe(45);
   });
 
-  it("refuses a New Origins catalogue missing an overridden food", () => {
+  it("refuses a catalogue missing a food the rules page prices", () => {
     const data = DATA_HTML.replace(
       "fish [FISH], weight 1, costs 75 silver to withdraw. This item is a\n  trade resource. This item can be eaten to provide 30 silver towards\n  a unit's maintenance cost.",
       ""

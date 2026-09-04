@@ -27,7 +27,7 @@ import { isAbsolute, resolve } from "node:path";
 import { argv, exit, pid } from "node:process";
 import { pathToFileURL } from "node:url";
 import { buildRuleset } from "./build";
-import { newAgeDataPage, parseNewAgeDatabase } from "./newage";
+import { catalogueDataPage } from "./worlds";
 import { RulesetScrapeError } from "./rules";
 
 const DEFAULT_OUTPUT = new URL("../../../config/public/ruleset.json", import.meta.url);
@@ -71,7 +71,8 @@ async function load(location: string): Promise<string> {
   return readFile(isAbsolute(location) ? location : new URL(location, REPOSITORY_ROOT), "utf8");
 }
 
-async function main(): Promise<void> {
+/** The whole of the command, exported so `cli.test.ts` can drive it with a stubbed `argv`. */
+export async function main(): Promise<void> {
   const rulesUrl = readArgument("rules");
   const dataUrl = readArgument("data");
   const databaseUrl = readArgument("database");
@@ -96,10 +97,13 @@ async function main(): Promise<void> {
     );
   }
 
-  // One of the two, guarded above.
-  const catalogueUrl = (dataUrl ?? databaseUrl) as string;
+  const catalogueUrl = dataUrl ?? databaseUrl;
+  if (!catalogueUrl) {
+    throw new Error("--data or --database is required");
+  }
+
   const [rulesHtml, catalogueText] = await Promise.all([load(rulesUrl), load(catalogueUrl)]);
-  const dataHtml = databaseUrl ? newAgeDataPage(parseNewAgeDatabase(catalogueText)) : catalogueText;
+  const dataHtml = catalogueDataPage(databaseUrl ? "database" : "data-page", catalogueText);
 
   const ruleset = buildRuleset({
     rulesHtml,
@@ -139,14 +143,17 @@ async function main(): Promise<void> {
   console.log(`  items: ${items}`);
 }
 
-main().catch((error: unknown) => {
-  if (error instanceof RulesetScrapeError) {
-    // The page did not say what we needed. Naming the value is the whole point: the fix is to
-    // update the pattern in rules.ts, never to invent a number.
-    console.error(`ruleset scrape failed: ${error.message}`);
-    console.error("config/public/ruleset.json was left untouched.");
-  } else {
-    console.error(error instanceof Error ? error.message : String(error));
-  }
-  exit(1);
-});
+// Only when run as the command, so importing this module in a test does not scrape anything.
+if (argv[1] !== undefined && import.meta.url === pathToFileURL(argv[1]).href) {
+  main().catch((error: unknown) => {
+    if (error instanceof RulesetScrapeError) {
+      // The page did not say what we needed. Naming the value is the whole point: the fix is to
+      // update the pattern in rules.ts, never to invent a number.
+      console.error(`ruleset scrape failed: ${error.message}`);
+      console.error("the ruleset was left untouched.");
+    } else {
+      console.error(error instanceof Error ? error.message : String(error));
+    }
+    exit(1);
+  });
+}

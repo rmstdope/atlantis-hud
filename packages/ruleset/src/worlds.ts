@@ -6,6 +6,8 @@
  * and in the scrape commands.
  */
 
+import { newAgeDataPage, parseNewAgeDatabase } from "./newage";
+
 /** Where a world's catalogue comes from: an HTML data page, or a JSON database. */
 export type CatalogueSource = "data-page" | "database";
 
@@ -54,7 +56,18 @@ export const WORLDS: readonly ScrapedWorld[] = [
     catalogueFixture: "tests/fixtures/ruleset/newage-trident-database.json",
     rulesetPath: "config/public/ruleset-newage-trident.json"
   }
-] as const;
+];
+
+/**
+ * A world's catalogue as a data page, whichever way that world serves it.
+ *
+ * The scraper reads a data page and nothing else, so a world serving a JSON database is converted
+ * here - in one place, called by the CLI and by the committed-ruleset test alike, so the test
+ * cannot pass over a conversion the CLI would get wrong.
+ */
+export function catalogueDataPage(source: CatalogueSource, catalogue: string): string {
+  return source === "database" ? newAgeDataPage(parseNewAgeDatabase(catalogue)) : catalogue;
+}
 
 /** The world with this id, or `null`. */
 export function worldById(id: string): ScrapedWorld | null {
