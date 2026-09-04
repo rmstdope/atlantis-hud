@@ -23,6 +23,7 @@ import {
   shareOf,
   REORDERABLE_COLUMNS,
   sharesFor,
+  unitRowKey,
   EXTRA_COLUMN_SHARES,
   type SortState,
   type UnitColumn
@@ -413,6 +414,21 @@ describe("silverShown", () => {
     // With the setting off an unpriceable upkeep is not consulted at all.
     expect(silverShown(forecast(100, null), false)).toBe(100);
     expect(silverShown(null, true)).toBeNull();
+  });
+});
+
+/** `ah-9o0c.2`: a row that spans hexes is identified by its hex and its unit number. */
+describe("unitRowKey", () => {
+  it("is the same for the same hex and unit", () => {
+    expect(unitRowKey("1:7,53", "new-1")).toBe(unitRowKey("1:7,53", "new-1"));
+  });
+
+  it("tells two hexes' unit apart even though the alias is the same", () => {
+    expect(unitRowKey("1:7,53", "new-1")).not.toBe(unitRowKey("1:8,53", "new-1"));
+  });
+
+  it("tells two units in the same hex apart", () => {
+    expect(unitRowKey("1:7,53", "new-1")).not.toBe(unitRowKey("1:7,53", "new-2"));
   });
 });
 

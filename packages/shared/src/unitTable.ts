@@ -362,12 +362,27 @@ export function silverShown(silver: UnitSilver | null, countUpkeep: boolean): nu
 }
 
 /**
+ * A unit's identity across a list that spans hexes: the hex it stands in, then its number.
+ *
+ * A unit *number* is not unique report-wide. The core mints a unit a `FORM` created this month as
+ * `new-{alias}`, and `rules/form` scopes an alias to its region - so two hexes may each write
+ * `FORM 1` and both units are called `new-1`. Anything that keys a row, a React child, a pick or
+ * a lookup while spanning hexes keys on this pair (`ah-jw85`, `ah-9o0c.2`).
+ *
+ * The separator is a NUL, which no region id or unit id can contain, so no pair of inputs can
+ * produce the same key as a different pair.
+ */
+export function unitRowKey(regionId: string, unitId: string): string {
+  return `${regionId}\0${unitId}`;
+}
+
+/**
  * A silver forecast is found by hex and unit, because `new-1` is unique to a hex, not to a turn:
  * two hexes can each hold a unit a `FORM 1` created this month (`ah-jw85`), and a lookup keyed on
  * the unit id alone would hand one hex's figure to the other's row.
  */
 export function silverKey(regionId: string, unitId: string): string {
-  return `${regionId} ${unitId}`;
+  return unitRowKey(regionId, unitId);
 }
 
 export const DEFAULT_COLUMN_SHARES: Record<UnitColumn, number> = {
