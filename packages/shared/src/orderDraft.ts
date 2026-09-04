@@ -28,6 +28,12 @@ export type DraftKey = { factionId: string; turnNumber: number };
  * A report missing either half cannot be filed. That is the same refusal `rememberTurn` already
  * makes about a report that does not name its faction, and for the same reason: a key invented
  * here would put this turn's orders somewhere the next launch will not look.
+ *
+ * The missing-faction half of that is unreachable from either import door since ah-brd:
+ * `judgeReportUsable` (`reportLoadDecision.ts`) refuses such a report, and both `routeReport` and
+ * `prepareBatch` run it first. A missing turn number is a separate case and is not covered by it.
+ * Kept as defence for any future caller, and pinned by "the import doors refuse a report that
+ * names no faction" in this module's test file.
  */
 export function draftKeyFor(parsed: ParsedReport | null): DraftKey | null {
   const factionId = parsed?.header.factionId;

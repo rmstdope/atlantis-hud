@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { readReport } from "@atlantis/fixtures";
-import { MOVEMENT_ORDER_COMMANDS } from "@atlantis/core-client";
+import {
+  MOVEMENT_ORDER_COMMANDS,
+  aParsedReport,
+  aReportHeaderInfo,
+  aReportRegion
+} from "@atlantis/core-client";
+import { REPORT_NAMES_NO_FACTION, judgeReportUsable } from "./reportLoadDecision";
 import { isOrdersFile } from "./ordersImport";
 import {
   applyUnitOrders,
@@ -713,6 +719,19 @@ describe("seedOrdersDocument", () => {
 
   it("seeds nothing when the report names no faction", () => {
     expect(seedOrdersDocument("", null)).toBe("");
+  });
+
+  // seedOrdersDocument's null-faction branch is defence only: the doors refuse such a report
+  // first (ah-brd). If this ever goes green-to-red, the doc comment above that branch is wrong.
+  it("the import doors refuse a report that names no faction", () => {
+    expect(
+      judgeReportUsable(
+        aParsedReport({
+          header: aReportHeaderInfo({ factionId: null, month: "January" }),
+          regions: [aReportRegion()]
+        })
+      )
+    ).toEqual({ ok: false, reason: REPORT_NAMES_NO_FACTION });
   });
 
   it("the seeded document is still recognised as an orders file and still takes a password", () => {

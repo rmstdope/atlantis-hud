@@ -8,6 +8,7 @@ import {
   saveDraft,
   type SaveState
 } from "./orderDraft";
+import { REPORT_NAMES_NO_FACTION, judgeReportUsable } from "./reportLoadDecision";
 
 function report(factionId: string | null, turnNumber: number | null): ParsedReport {
   return aParsedReport({ header: aReportHeaderInfo({ factionId, turnNumber, month: "February", year: 1 }) });
@@ -48,6 +49,15 @@ describe("which draft a document is", () => {
    */
   it("refuses a report that does not name its faction", () => {
     expect(draftKeyFor(report(null, 71))).toBeNull();
+  });
+
+  // Only the faction half of draftKeyFor's refusal is unreachable; a report with no turn number
+  // is a live case. See the doc comment on draftKeyFor.
+  it("the import doors refuse a report that names no faction", () => {
+    expect(judgeReportUsable(report(null, 71))).toEqual({
+      ok: false,
+      reason: REPORT_NAMES_NO_FACTION
+    });
   });
 
   it("refuses a report that does not name its turn", () => {
