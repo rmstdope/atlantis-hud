@@ -2590,6 +2590,9 @@ export function AppShell({
           return describeError(error);
         }
         setGames(result.games);
+        // The game is gone, so its token has nothing left to authenticate. Memory only either
+        // way, but a session outliving the game it belongs to is not what this map is for.
+        setNewAgeSessions((sessions) => withoutNewAgeSession(sessions, gameId));
         if (result.closedOpenGame) {
           if (result.opened) {
             enterGame(result.opened);
@@ -3423,6 +3426,13 @@ export function AppShell({
     signInAbort.current = null;
     setSignInPhase(null);
   }, []);
+
+  // A dialog belongs to the game it was opened over. Switching game closes it and aborts anything
+  // in flight: without this the phase survives, and coming back to the game would pop the dialog
+  // open uninvited - the failure `openPopover` already guards against.
+  useEffect(() => {
+    dismissSignIn();
+  }, [openGameId, dismissSignIn]);
 
   /** Forgets this game's token. Nothing to revoke: the world has no logout endpoint. */
   const signOutOfNewAge = useCallback(() => {
