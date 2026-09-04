@@ -1313,8 +1313,10 @@ impl Working {
             return;
         };
 
-        let parent_index = parent;
-        let parent = &self.units[parent_index].unit;
+        // The parent's start-of-turn flags, cloned out before the row is borrowed: what a `FORM`
+        // in this block inherits, per `rules/sequenceofevents`.
+        let parent_flags = self.units[parent].reported_flags.clone();
+        let parent = &self.units[parent].unit;
         let key = (parent.region_id.clone(), alias.to_string());
         if self.by_alias.contains_key(&key) {
             // The alias is taken, so the server would refuse this FORM; its block is swallowed
@@ -1323,8 +1325,6 @@ impl Working {
             return;
         }
 
-        let parent_flags = self.units[parent_index].reported_flags.clone();
-        let parent = &self.units[parent_index].unit;
         let unit = formed_unit(parent, alias, &parent_flags);
 
         let reported = unit.structure_id.clone();
