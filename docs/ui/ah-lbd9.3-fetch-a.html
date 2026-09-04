@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lbd9.3 — A: fetch from the world popover</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; --warn:#d9a441; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1280px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  b.opt { color:var(--brass); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .ui { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+        font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; padding:11px; }
+  .ui label { display:block; color:var(--ink-soft); margin-bottom:3px; }
+  .ui .field { margin-bottom:9px; }
+  .ui input[type=text], .ui input[type=password] { width:100%; background:var(--panel); border:1px solid var(--edge);
+     color:var(--ink); border-radius:4px; padding:4px 6px; font:inherit; }
+  .ui input:disabled { opacity:.5; }
+  .ui .hint { color:var(--ink-dim); margin:6px 0 8px; }
+  .ui .btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink); border-radius:4px; padding:4px 10px; display:inline-block; }
+  .ui .btn.primary { border-color:var(--brass); color:var(--brass); }
+  .ui .btn.off { opacity:.45; }
+  .ui .foot { display:flex; gap:8px; justify-content:flex-end; margin-top:10px; }
+  .ui .err { color:var(--danger); margin-top:2px; }
+  .ui .soft { color:var(--ink-soft); margin-top:2px; }
+  .hdr { display:flex; align-items:center; gap:9px; justify-content:flex-end; background:var(--panel);
+         border:1px solid var(--edge); border-radius:6px; padding:8px 10px; font-family:system-ui,sans-serif; font-size:12.5px; }
+  .hdr .chip { border:1px solid var(--edge); background:var(--raised); border-radius:4px; padding:3px 9px; color:var(--ink); }
+  .hdr .chip.brassy { border-color:var(--brass); color:var(--brass); }
+  .hdr .chip.dim { color:var(--ink-soft); opacity:.5; }
+  .pop { margin-top:6px; margin-left:auto; width:300px; background:#0b0f14; border:1px solid var(--edge);
+         border-radius:6px; padding:9px 10px; font-family:system-ui,sans-serif; font-size:12px; color:var(--ink-soft); }
+  .pop b { color:var(--ink); font-weight:600; }
+  .pop .item { display:block; width:100%; text-align:left; border:1px solid var(--edge); background:var(--panel);
+     color:var(--ink); border-radius:4px; padding:5px 8px; margin:8px 0; }
+  .pop .item.brassy { border-color:var(--brass); color:var(--brass); }
+  .pop .item.off { opacity:.45; }
+  .status { font-family:system-ui,sans-serif; font-size:12px; background:var(--panel); border:1px solid var(--edge);
+     border-top:none; border-radius:0 0 6px 6px; padding:6px 10px; color:var(--ink-soft); }
+  .status.ok { color:var(--ok); } .status.bad { color:var(--danger); } .status.warn { color:var(--warn); }
+  .caption { color:var(--ink-dim); font-size:11.5px; margin-top:8px; font-family:system-ui,sans-serif; }
+  .tag { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim);
+         font-family:system-ui,sans-serif; display:block; margin:12px 0 5px; }
+  .fixed { border-left:2px solid var(--brass); padding-left:12px; margin-top:14px; color:var(--ink-soft); font-size:13px; max-width:96ch; }
+  .modal { background:rgba(0,0,0,.45); border-radius:6px; padding:14px; }
+  table { border-collapse:collapse; width:100%; font-family:system-ui,sans-serif; font-size:12.5px; margin-top:8px; }
+  td,th { border:1px solid var(--edge); padding:6px 9px; text-align:left; vertical-align:top; }
+  th { color:var(--brass); font-weight:600; }
+  td.w { color:var(--ink); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lbd9.3 — <span>Option A: fetch from the world popover</span></h1>
+  <p>Today a New Age turn report reaches Atlantis HUD only because you downloaded it from the web site and
+  dropped the file on the window. Signed in (ah-lbd9.2), the HUD can fetch it itself. This page is one of two
+  shapes for the control that does it. In <b class="opt">A</b> there is <b>no new header button</b>: fetching is an
+  item inside the world popover you already have, it runs with no dialog, and the result lands in the ordinary
+  status line exactly as a dropped file's does.
+  <b>Compare with Option B</b>, where fetching is its own header button and opens a dialog first.</p>
+  <div class="fixed">
+    <b>Already decided and not being reopened:</b> credentials are <b>never stored</b>; New Age is
+    <b>desktop only</b>; there is no refresh endpoint, so an expired token means signing in again; and when a
+    session runs out, <b>the surface you are already in asks for it</b> (E1) rather than sending you back to the
+    header.
+  </div>
+<p style="color:#4fb783;margin-top:12px;font-size:14px"><b>Chosen (2026-09-04):</b> A &mdash; the popover item, no dialog on the happy path; <b>T1</b> &mdash; this turn only; the fetched report goes through <b>exactly the same routing a dropped file does</b>; and an expired session is asked for in a small dialog whose button reads <b>Sign in and fetch</b>. Option B is <code>ah-lbd9.3-fetch-b.html</code>.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · Where it lives</h3>
+<p>The header keeps the five controls ah-lbd9.2 left it with — Import · Export · New Age · Send · ⚙. The
+world chip's popover gains one item.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>signed in</em>The popover, with the new item</h2>
+    <p class="concept">One click on the chip, one on the item. Nothing new in the header itself.</p>
+    <div class="hdr">
+      <span class="chip">Import</span><span class="chip">Export ▾</span>
+      <span class="chip brassy">Merchant Guild ▾</span><span class="chip">Send</span><span class="chip">⚙</span>
+    </div>
+    <div class="pop">
+      <b>Signed in to New Age: Arcanum as Merchant Guild (27).</b>
+      <button class="item brassy">Fetch this turn&rsquo;s report</button>
+      Nothing is stored: closing Atlantis HUD signs you out.
+      <button class="item">Sign out</button>
+    </div>
+    <p class="caption">The fetch item is first because it is the thing you came here to do; Sign out stays last.</p>
+  </div>
+  <div class="card">
+    <h2><em>signed out</em>Nothing to fetch with</h2>
+    <p class="concept">The chip is still the sign-in, and there is no second thing to explain.</p>
+    <div class="hdr">
+      <span class="chip">Import</span><span class="chip">Export ▾</span>
+      <span class="chip brassy">Sign in to Arcanum</span><span class="chip">Send</span><span class="chip">⚙</span>
+    </div>
+    <p class="caption">Clicking it opens the sign-in dialog, as it does today. The popover — and so the fetch —
+    exists only once there is a session.</p>
+  </div>
+</div>
+
+<h3 class="sec">2 · What happens when you click it</h3>
+<p>The popover closes at once, the header goes busy exactly as an import does, and the status line
+carries the whole story. There is no dialog on the happy path at all.</p>
+<div class="cards3">
+  <div class="card">
+    <h2><em>in flight</em>Fetching</h2>
+    <div class="hdr">
+      <span class="chip dim">Import</span><span class="chip dim">Export ▾</span>
+      <span class="chip brassy">Merchant Guild ▾</span><span class="chip dim">Send</span><span class="chip dim">⚙</span>
+    </div>
+    <div class="status">Fetching turn from atlantis-newage.com&hellip;</div>
+    <p class="caption">Same busy flag the Import button uses, so nothing else can be started underneath it.</p>
+  </div>
+  <div class="card">
+    <h2><em>done</em>Loaded</h2>
+    <div class="status ok">Fetched turn 83 &middot; 42 regions &middot; 118 units</div>
+    <p class="caption">Word for word the counts line a dropped file produces, with <code>Fetched turn 83 &middot; </code>
+    in front so you can tell where it came from.</p>
+  </div>
+  <div class="card">
+    <h2><em>nothing there</em>No report yet</h2>
+    <div class="status bad">could not fetch the report: the world has no report for you yet</div>
+    <p class="caption">The world answers an empty body until the turn has run. Same red status a file that
+    would not parse gets.</p>
+  </div>
+</div>
+
+<h3 class="sec">3 · When you already have a report loaded</h3>
+<p>A fetched report is handed to <b>exactly the same routing a dropped file goes through</b>. Nothing about
+arriving over the network changes what it does to what is on screen.</p>
+<div class="cards3">
+  <div class="card">
+    <h2><em>the usual case</em>Newer turn, your faction</h2>
+    <p class="concept">Turn 83 arrives over turn 82. It simply loads, as the file would.</p>
+    <div class="status ok">Fetched turn 83 &middot; 42 regions &middot; 118 units</div>
+  </div>
+  <div class="card">
+    <h2><em>same turn again</em>Already have it</h2>
+    <p class="concept">You click it twice, or the turn has not run. Turn 83 over turn 83 is not older,
+    so it loads again — and your saved orders survive, because saved orders always beat the report&rsquo;s
+    template.</p>
+    <div class="status ok">Fetched turn 83 &middot; 42 regions &middot; 118 units</div>
+  </div>
+  <div class="card">
+    <h2><em>rare</em>Older than what you have</h2>
+    <p class="concept">Only reachable with the turn list (section 5). The existing rule stores it for
+    turn comparison and does not put it on screen.</p>
+    <div class="status warn">turn 81 stored for comparison; turn 83 stays on screen</div>
+  </div>
+</div>
+
+<h3 class="sec">4 · When the session has run out</h3>
+<p>The one place a dialog appears. There is no refresh endpoint, so the token simply stops working —
+and E1 says the surface you are in asks for it rather than sending you back to the header.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>E1</em>Sign in and it carries on</h2>
+    <div class="modal">
+    <div class="ui" style="max-width:340px">
+      <div style="font-size:14px;color:var(--ink);margin-bottom:2px">Fetch this turn&rsquo;s report</div>
+      <div class="soft" style="margin-bottom:8px">atlantis-newage.com &middot; New Age: Arcanum</div>
+      <div class="err" style="margin-bottom:8px">Your session has ended. Sign in again to continue.</div>
+      <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+      <div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div>
+      <div class="hint">Kept only while the app is open. Nothing is written to this machine.</div>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Sign in and fetch</span></div>
+    </div>
+    </div>
+    <p class="caption">The same two fields ah-lbd9.2 exported for this. Signing in here fetches
+    straight away — you never have to ask for the report a second time.</p>
+  </div>
+  <div class="card">
+    <h2><em>and if the world is simply unreachable</em></h2>
+    <div class="status bad">could not fetch the report: could not reach atlantis-newage.com. Nothing was sent.</div>
+    <p class="caption">No dialog: nothing about your session is in doubt, so there is nothing to retype.
+    The same sentence the sign-in already uses for an unreachable world.</p>
+  </div>
+</div>
+
+<h3 class="sec">5 · One turn, or a list of them?</h3>
+<p>The world can also list the turns it still holds. This is a separate question from A vs B — both shapes
+can carry either answer.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>T1</em>This turn only</h2>
+    <p class="concept">One item, one call, one sentence to explain. An older turn is still reachable the
+    way it is today: download it from the site and drop it in.</p>
+    <div class="pop" style="margin-left:0">
+      <b>Signed in to New Age: Arcanum as Merchant Guild (27).</b>
+      <button class="item brassy">Fetch this turn&rsquo;s report</button>
+      Nothing is stored: closing Atlantis HUD signs you out.
+      <button class="item">Sign out</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2><em>T2</em>This turn, or an earlier one</h2>
+    <p class="concept">A second item opens a list of the turns the world still holds. An earlier one is
+    stored for turn comparison rather than shown, by the rule in section 3. Costs a second endpoint,
+    a list state, and its own empty and failure sentences.</p>
+    <div class="pop" style="margin-left:0">
+      <b>Signed in to New Age: Arcanum as Merchant Guild (27).</b>
+      <button class="item brassy">Fetch this turn&rsquo;s report</button>
+      <button class="item">Fetch an earlier turn&hellip;</button>
+      Nothing is stored: closing Atlantis HUD signs you out.
+      <button class="item">Sign out</button>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">6 · Every word this option would ship</h3>
+<table>
+  <tr><th>Where</th><th>Text</th></tr>
+  <tr><td>Popover item</td><td class="w">Fetch this turn&rsquo;s report</td></tr>
+  <tr><td>Status, in flight</td><td class="w">Fetching turn from atlantis-newage.com&hellip;</td></tr>
+  <tr><td>Status, loaded</td><td class="w">Fetched turn 83 &middot; 42 regions &middot; 118 units</td></tr>
+  <tr><td>Failure prefix</td><td class="w">could not fetch the report: &hellip;</td></tr>
+  <tr><td>No report yet</td><td class="w">the world has no report for you yet</td></tr>
+  <tr><td>Unreachable</td><td class="w">could not reach atlantis-newage.com. Nothing was sent.</td></tr>
+  <tr><td>Session ended</td><td class="w">Your session has ended. Sign in again to continue.</td></tr>
+  <tr><td>Retry dialog heading</td><td class="w">Fetch this turn&rsquo;s report</td></tr>
+  <tr><td>Retry dialog button</td><td class="w">Sign in and fetch</td></tr>
+</table>
+
+</main>
+</body>
+</html>
