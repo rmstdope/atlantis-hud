@@ -7,6 +7,8 @@ import {
   type AlliedMageRecord,
   type ArmyRecord,
   sortAlliedMages,
+  sortStudyPlans,
+  type StudyPlanRecord,
   type CoreAdapter,
   type GameManifest,
   type HexNoteRecord,
@@ -155,6 +157,8 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     deleteArmy: vi.fn().mockResolvedValue(undefined),
     listAlliedMages: vi.fn().mockResolvedValue([]),
     saveAlliedMages: vi.fn().mockResolvedValue(undefined),
+    listStudyPlans: vi.fn().mockResolvedValue([]),
+    saveStudyPlans: vi.fn().mockResolvedValue(undefined),
     ...overrides
   };
 }
@@ -531,6 +535,52 @@ describe("createCoreClient", () => {
       ["21", "10"],
       ["21", "9"]
     ]);
+  });
+
+  it("orders study plans whatever order the adapter answered in", async () => {
+    const unordered = [aPlan("21", "9"), aPlan("21", "10"), aPlan("2", "9001")];
+    const fake = fakeAdapter({ listStudyPlans: vi.fn().mockResolvedValue(unordered) });
+    const client = createCoreClient(fake);
+
+    const listed = await client.listStudyPlans("db", "g");
+
+    expect(listed.map((one) => [one.factionId, one.unitId])).toEqual([
+      ["2", "9001"],
+      ["21", "10"],
+      ["21", "9"]
+    ]);
+  });
+});
+
+/** A study plan carrying only what the ordering reads. */
+function aPlan(factionId: string, unitId: string): StudyPlanRecord {
+  return {
+    factionId,
+    unitId,
+    skill: "FORC",
+    targetLevel: 4,
+    comment: "",
+    updatedAt: "2026-08-07T12:00:00Z"
+  };
+}
+
+describe("sortStudyPlans", () => {
+  it("orders by faction id, then by unit number, both as text", () => {
+    const plans = [aPlan("21", "9"), aPlan("2", "9001"), aPlan("21", "10")];
+
+    expect(sortStudyPlans(plans).map((one) => [one.factionId, one.unitId])).toEqual([
+      ["2", "9001"],
+      ["21", "10"],
+      ["21", "9"]
+    ]);
+  });
+
+  it("leaves what it was given alone", () => {
+    const plans = [aPlan("21", "9"), aPlan("2", "9001")];
+
+    sortStudyPlans(plans);
+
+    expect(plans.map((one) => one.factionId)).toEqual(["21", "2"]);
   });
 });
 

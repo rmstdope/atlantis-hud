@@ -12,7 +12,7 @@ use atlantis_hud_core::backup::{
     ManifestEdit,
 };
 /// The stored row and its key. The core owns both because the backup carries them too.
-pub use atlantis_hud_core::backup::{AlliedMage, AlliedMageKey};
+pub use atlantis_hud_core::backup::{AlliedMage, AlliedMageKey, StudyPlan, StudyPlanKey};
 use atlantis_hud_core::movement::graph::MapGeometry;
 // The row and the order it is listed in are the core's, so both platforms answer alike
 // (`ah-8z4y.3.2`). Re-exported here because this is where every caller already reaches for it.
@@ -24,7 +24,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 10;
+pub const CURRENT_SCHEMA_VERSION: u32 = 11;
 /// The manifest file inside a game's directory. The directory is named after the game's id, so the
 /// file itself does not have to be, and a game can be found without parsing any filename.
 pub const GAME_MANIFEST_FILE_NAME: &str = "game.json";
@@ -41,13 +41,14 @@ const MIGRATION_0007_MERGED_REPORTS: &str = include_str!("../migrations/0007_mer
 const MIGRATION_0008_HEX_NOTES: &str = include_str!("../migrations/0008_hex_notes.sql");
 const MIGRATION_0009_ARMIES: &str = include_str!("../migrations/0009_armies.sql");
 const MIGRATION_0010_ALLIED_MAGES: &str = include_str!("../migrations/0010_allied_mages.sql");
+const MIGRATION_0011_STUDY_PLANS: &str = include_str!("../migrations/0011_study_plans.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 10] = [
+const MIGRATIONS: [Migration; 11] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -87,6 +88,10 @@ const MIGRATIONS: [Migration; 10] = [
     Migration {
         version: 10,
         sql: MIGRATION_0010_ALLIED_MAGES,
+    },
+    Migration {
+        version: 11,
+        sql: MIGRATION_0011_STUDY_PLANS,
     },
 ];
 
@@ -743,6 +748,24 @@ fn read_backup_collections(
         )
         .collect::<Result<Vec<_>, serde_json::Error>>()?;
 
+    let mut study_plan_rows = connection.prepare(
+        "SELECT faction_id, unit_id, skill, target_level, comment, updated_at
+           FROM study_plans
+          WHERE game_id = ?1",
+    )?;
+    let study_plans = study_plan_rows
+        .query_map(params![game_id], |row| {
+            Ok(StudyPlan {
+                faction_id: row.get::<_, String>(0)?,
+                unit_id: row.get::<_, String>(1)?,
+                skill: row.get::<_, Option<String>>(2)?,
+                target_level: row.get::<_, Option<u32>>(3)?,
+                comment: row.get::<_, String>(4)?,
+                updated_at: row.get::<_, String>(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
     Ok(EncodedGameBackupCollections {
         imported_turns,
         order_drafts,
@@ -751,6 +774,7 @@ fn read_backup_collections(
         hex_notes,
         armies,
         allied_mages,
+        study_plans,
     })
 }
 
@@ -828,6 +852,7 @@ fn write_backup_collections(
         hex_notes,
         armies,
         allied_mages,
+        study_plans,
     } = collections;
 
     for turn in &imported_turns {
@@ -992,6 +1017,29 @@ fn write_backup_collections(
                 serde_json::to_string(&mage.unit)?.as_str(),
                 mage.sheet_turn,
                 mage.received_at.as_str(),
+            ],
+        )?;
+    }
+
+    for plan in &study_plans {
+        transaction.execute(
+            "INSERT INTO study_plans (
+                    game_id,
+                    faction_id,
+                    unit_id,
+                    skill,
+                    target_level,
+                    comment,
+                    updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                game_id,
+                plan.faction_id.as_str(),
+                plan.unit_id.as_str(),
+                plan.skill.as_deref(),
+                plan.target_level,
+                plan.comment.as_str(),
+                plan.updated_at.as_str(),
             ],
         )?;
     }
@@ -2095,6 +2143,104 @@ pub fn save_allied_mages(
     Ok(())
 }
 
+/// Every study plan of one game. Ordering is the client's (`sortStudyPlans`), not this store's.
+///
+/// # Errors
+///
+/// Returns an error when the database is missing or cannot be read.
+pub fn list_study_plans(
+    database_path: &Path,
+    game_id: &str,
+) -> Result<Vec<StudyPlan>, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    let mut statement = connection.prepare(
+        "SELECT faction_id, unit_id, skill, target_level, comment, updated_at
+           FROM study_plans
+          WHERE game_id = ?1",
+    )?;
+    let rows = statement.query_map(params![game_id], |row| {
+        Ok(StudyPlan {
+            faction_id: row.get::<_, String>(0)?,
+            unit_id: row.get::<_, String>(1)?,
+            skill: row.get::<_, Option<String>>(2)?,
+            target_level: row.get::<_, Option<u32>>(3)?,
+            comment: row.get::<_, String>(4)?,
+            updated_at: row.get::<_, String>(5)?,
+        })
+    })?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(PersistenceError::from)
+}
+
+/// Writes one decision's worth of change in a single transaction: `removed` first, then `plans`.
+///
+/// Both halves in one call because a pane's save is one decision, and a crash between two calls
+/// would leave a faction half-updated. `removed` before `plans`, so a unit named in both ends up
+/// present; a caller naming one in both is a caller bug, and this says which way it resolves.
+///
+/// # Errors
+///
+/// Returns an error when the database is missing or cannot be written.
+pub fn save_study_plans(
+    database_path: &Path,
+    game_id: &str,
+    plans: &[StudyPlan],
+    removed: &[StudyPlanKey],
+) -> Result<(), PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    let transaction = connection.transaction()?;
+    for key in removed {
+        transaction.execute(
+            "DELETE FROM study_plans WHERE game_id = ?1 AND faction_id = ?2 AND unit_id = ?3",
+            params![game_id, key.faction_id.as_str(), key.unit_id.as_str()],
+        )?;
+    }
+    for plan in plans {
+        transaction.execute(
+            "INSERT INTO study_plans (
+                game_id,
+                faction_id,
+                unit_id,
+                skill,
+                target_level,
+                comment,
+                updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(game_id, faction_id, unit_id) DO UPDATE SET
+                skill = excluded.skill,
+                target_level = excluded.target_level,
+                comment = excluded.comment,
+                updated_at = excluded.updated_at",
+            params![
+                game_id,
+                plan.faction_id.as_str(),
+                plan.unit_id.as_str(),
+                plan.skill.as_deref(),
+                plan.target_level,
+                plan.comment.as_str(),
+                plan.updated_at.as_str(),
+            ],
+        )?;
+    }
+    transaction.commit()?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2960,8 +3106,8 @@ mod tests {
 
         assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
-            created.schema_version, 10,
-            "storing an ally's mages added migration 10"
+            created.schema_version, 11,
+            "storing a mage's study plan added migration 11"
         );
     }
 
@@ -3454,6 +3600,209 @@ mod tests {
             list_allied_mages(&restored.database_path, GAME_ID).expect("list should succeed");
 
         assert_eq!(listed, vec![mage], "an allied mage survives the round trip");
+    }
+
+    fn a_plan(unit_id: &str, skill: Option<&str>, target_level: Option<u32>) -> StudyPlan {
+        StudyPlan {
+            faction_id: "21".to_string(),
+            unit_id: unit_id.to_string(),
+            skill: skill.map(str::to_string),
+            target_level,
+            comment: "heading for Gate Lore".to_string(),
+            updated_at: "2026-08-01T09:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn study_plans_round_trip_by_faction_and_unit() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+
+        let first = a_plan("9001", Some("FORC"), Some(4));
+        let second = StudyPlan {
+            comment: String::new(),
+            ..a_plan("9002", None, None)
+        };
+        save_study_plans(
+            &created.database_path,
+            GAME_ID,
+            &[first.clone(), second.clone()],
+            &[],
+        )
+        .expect("plans should persist");
+
+        let mut listed =
+            list_study_plans(&created.database_path, GAME_ID).expect("list should succeed");
+        listed.sort_by(|a, b| a.unit_id.cmp(&b.unit_id));
+        assert_eq!(
+            listed,
+            vec![first.clone(), second.clone()],
+            "both plans come back whole, a chosen skill and a bare note alike"
+        );
+
+        let newer = a_plan("9001", Some("PATT"), None);
+        save_study_plans(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&newer),
+            &[],
+        )
+        .expect("second save should persist");
+        let mut listed_after =
+            list_study_plans(&created.database_path, GAME_ID).expect("list should succeed");
+        listed_after.sort_by(|a, b| a.unit_id.cmp(&b.unit_id));
+        assert_eq!(
+            listed_after,
+            vec![newer.clone(), second.clone()],
+            "the same unit is replaced rather than duplicated, target level cleared and all"
+        );
+
+        save_study_plans(
+            &created.database_path,
+            GAME_ID,
+            &[],
+            &[StudyPlanKey {
+                faction_id: "21".to_string(),
+                unit_id: "9002".to_string(),
+            }],
+        )
+        .expect("removal should persist");
+        assert_eq!(
+            list_study_plans(&created.database_path, GAME_ID).expect("list should succeed"),
+            vec![newer],
+            "only the plan named in `removed` is dropped"
+        );
+    }
+
+    /// The documented resolution when a caller names one unit in both halves of the same save:
+    /// `removed` runs first, so the plan ends up present.
+    #[test]
+    fn a_plan_named_in_both_halves_of_one_save_survives() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let plan = a_plan("9001", Some("FORC"), Some(4));
+
+        save_study_plans(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&plan),
+            &[StudyPlanKey {
+                faction_id: "21".to_string(),
+                unit_id: "9001".to_string(),
+            }],
+        )
+        .expect("save should succeed");
+
+        assert_eq!(
+            list_study_plans(&created.database_path, GAME_ID).expect("list should succeed"),
+            vec![plan],
+            "`removed` is applied before `plans`, so a unit named in both is stored"
+        );
+    }
+
+    #[test]
+    fn list_study_plans_returns_only_the_given_games_plans() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let mine = a_plan("9001", Some("FORC"), Some(4));
+        let theirs = a_plan("9002", Some("PATT"), None);
+        save_study_plans(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&mine),
+            &[],
+        )
+        .expect("plan should persist");
+        save_study_plans(&created.database_path, "other-game", &[theirs], &[])
+            .expect("other game's plan should persist");
+
+        let listed =
+            list_study_plans(&created.database_path, GAME_ID).expect("list should succeed");
+
+        assert_eq!(listed, vec![mine]);
+    }
+
+    /// The migration path a real database takes: version 10 with data in it, opened by this build.
+    #[test]
+    fn upgrading_from_version_ten_gains_study_plans_and_keeps_allied_mages() {
+        let dir = tempdir().expect("tempdir");
+        let manifest = fixture_manifest();
+        let home = dir.path().join(GAME_ID);
+        fs::create_dir_all(&home).expect("game home");
+        save_game_manifest(&home.join(GAME_MANIFEST_FILE_NAME), &manifest)
+            .expect("manifest save should succeed");
+
+        let database_path = home.join("game.sqlite");
+        let connection = Connection::open(&database_path).expect("db should open");
+        let unit_json = serde_json::to_string(&a_mage("9001", "Adept", 23).unit)
+            .expect("unit should serialise");
+        connection
+            .execute_batch(&format!(
+                "{MIGRATION_0001_INITIAL}
+                 {MIGRATION_0002_IMPORTED_TURNS}
+                 {MIGRATION_0003_ORDER_DRAFTS}
+                 {MIGRATION_0004_REGION_SIGHTINGS}
+                 {MIGRATION_0005_RENAME_PROJECT_TO_GAME}
+                 {MIGRATION_0006_ISO_IMPORT_TIMESTAMPS}
+                 {MIGRATION_0007_MERGED_REPORTS}
+                 {MIGRATION_0008_HEX_NOTES}
+                 {MIGRATION_0009_ARMIES}
+                 {MIGRATION_0010_ALLIED_MAGES}
+                 INSERT INTO schema_migrations (version)
+                     VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10);
+                 INSERT INTO allied_mages
+                     (game_id, faction_id, unit_id, faction_name, unit_json, sheet_turn, received_at)
+                 VALUES ('faction-12', '21', '9001', 'Borg', '{unit_json}', 23,
+                         '2026-08-01T09:00:00Z');"
+            ))
+            .expect("legacy version 10 setup should succeed");
+        drop(connection);
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("upgrade should succeed");
+
+        assert_eq!(reopened.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(
+            list_allied_mages(&reopened.database_path, GAME_ID)
+                .expect("list should succeed")
+                .len(),
+            1,
+            "an allied mage written before the migration survives it"
+        );
+        assert!(
+            list_study_plans(&reopened.database_path, GAME_ID)
+                .expect("the study_plans table exists after the upgrade")
+                .is_empty(),
+            "the upgraded database has a study_plans table, and it is empty"
+        );
+    }
+
+    #[test]
+    fn export_and_import_carry_study_plans() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let plan = a_plan("9001", Some("FORC"), Some(4));
+        save_study_plans(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&plan),
+            &[],
+        )
+        .expect("plan should persist");
+
+        let exported = export_game(dir.path(), GAME_ID, "2026-08-05T09:00:00Z")
+            .expect("export should succeed");
+        let restored_root = tempdir().expect("tempdir");
+        let restored = import_game(restored_root.path(), &exported, "2026-08-06T09:00:00Z")
+            .expect("import should succeed");
+
+        let listed =
+            list_study_plans(&restored.database_path, GAME_ID).expect("list should succeed");
+
+        assert_eq!(listed, vec![plan], "a study plan survives the round trip");
     }
 
     #[test]
@@ -4301,6 +4650,7 @@ mod region_sighting_tests {
                 hex_notes: Vec::new(),
                 armies: Vec::new(),
                 allied_mages: Vec::new(),
+                study_plans: Vec::new(),
             },
         })
         .expect("serialize backup");
@@ -4347,6 +4697,7 @@ mod region_sighting_tests {
                 hex_notes: Vec::new(),
                 armies: Vec::new(),
                 allied_mages: Vec::new(),
+                study_plans: Vec::new(),
             },
         })
         .expect("serialize backup");

@@ -650,6 +650,33 @@ export type AlliedMageKey = {
   unitId: string;
 };
 
+/**
+ * One mage's plan for next turn: what he is to study, and what the player wants to remember.
+ *
+ * There is no `gameId`: every call that reads or writes these rows is scoped to one game and
+ * takes it as a parameter, as `AlliedMageRecord` is.
+ */
+export type StudyPlanRecord = {
+  /** Whose mage this is - the player's own faction, or an ally's. */
+  factionId: string;
+  /** The unit number, as the report writes it. */
+  unitId: string;
+  /** The skill tag, upper-cased (`"FORC"`); null when the row is a note with no study chosen. */
+  skill: string | null;
+  /** `STUDY <skill> <level>`'s optional level; null when the order names no level. */
+  targetLevel: number | null;
+  /** The player's free text. Never null: an absent note is the empty string. */
+  comment: string;
+  /** When the row was last written, ISO 8601, from the caller's clock. */
+  updatedAt: string;
+};
+
+/** One stored plan's identity: whose mage, and which unit of his. */
+export type StudyPlanKey = {
+  factionId: string;
+  unitId: string;
+};
+
 export type ImportedTurnRecord = {
   key: OrderDraftKey;
   rawReport: string;
@@ -861,6 +888,13 @@ export interface CoreAdapter {
     mages: readonly AlliedMageRecord[],
     removed: readonly AlliedMageKey[]
   ): Promise<void>;
+  listStudyPlans(databasePath: string, gameId: string): Promise<StudyPlanRecord[]>;
+  saveStudyPlans(
+    databasePath: string,
+    gameId: string,
+    plans: readonly StudyPlanRecord[],
+    removed: readonly StudyPlanKey[]
+  ): Promise<void>;
 }
 
 /**
@@ -923,6 +957,24 @@ export function sortAlliedMages(mages: readonly AlliedMageRecord[]): AlliedMageR
     }
     const left = a.unit.unitId;
     const right = b.unit.unitId;
+    return left < right ? -1 : left > right ? 1 : 0;
+  });
+}
+
+/**
+ * A game's study plans by faction id, then unit number, both as text. The one place this order
+ * is written; both adapters return their rows in no particular order.
+ *
+ * As text rather than as numbers, which is the collation every other sort in this file uses -
+ * so "10" comes before "9", consistently with `sortAlliedMages`.
+ */
+export function sortStudyPlans(plans: readonly StudyPlanRecord[]): StudyPlanRecord[] {
+  return [...plans].sort((a, b) => {
+    if (a.factionId !== b.factionId) {
+      return a.factionId < b.factionId ? -1 : 1;
+    }
+    const left = a.unitId;
+    const right = b.unitId;
     return left < right ? -1 : left > right ? 1 : 0;
   });
 }
@@ -1009,6 +1061,9 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     },
     async listAlliedMages(databasePath, gameId) {
       return sortAlliedMages(await adapter.listAlliedMages(databasePath, gameId));
+    },
+    async listStudyPlans(databasePath, gameId) {
+      return sortStudyPlans(await adapter.listStudyPlans(databasePath, gameId));
     }
   };
 }

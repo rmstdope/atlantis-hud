@@ -17,6 +17,8 @@ export * from "./armies";
 export * from "./armiesStore";
 export * from "./alliedMages";
 export * from "./alliedMagesStore";
+export * from "./studyPlans";
+export * from "./studyPlansStore";
 export * from "./hexNotes";
 export * from "./hexNotesStore";
 export * from "./orderDraft";

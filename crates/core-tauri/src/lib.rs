@@ -24,13 +24,14 @@ use atlantis_hud_core::{
 use atlantis_hud_core_persistence::{
     create_game, delete_army, delete_game, delete_hex_note, export_game, import_game,
     insert_imported_turn, list_allied_mages, list_armies, list_games, list_hex_notes,
-    list_imported_turns, load_imported_turn, load_imported_turn_stamps, load_latest_imported_turn,
-    load_merged_reports, load_order_draft, load_region_sightings, open_game, preview_imported_turn,
-    reset_game, save_allied_mages, set_active_faction, set_game_map, set_game_name,
-    set_game_ruleset, upsert_army, upsert_hex_note, upsert_imported_turn, upsert_merged_report,
-    upsert_order_draft, upsert_region_sightings, AlliedMage, AlliedMageKey, Army, ArmyMember,
-    HexNote, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord,
-    OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError,
+    list_imported_turns, list_study_plans, load_imported_turn, load_imported_turn_stamps,
+    load_latest_imported_turn, load_merged_reports, load_order_draft, load_region_sightings,
+    open_game, preview_imported_turn, reset_game, save_allied_mages, save_study_plans,
+    set_active_faction, set_game_map, set_game_name, set_game_ruleset, upsert_army,
+    upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
+    upsert_region_sightings, AlliedMage, AlliedMageKey, Army, ArmyMember, HexNote, ImportedTurnKey,
+    ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey,
+    OrderDraftRecord, PersistenceError, StudyPlan, StudyPlanKey,
 };
 /// The manifest types cross to the shell as themselves: `core-tauri` used to carry a field-for-field
 /// `…Dto` copy of each, whose own comments said so (ah-8z4y.2).
@@ -743,6 +744,41 @@ pub mod commands {
             .map_err(|error| error.to_string())
     }
 
+    /// Every study plan of one game, in the store's order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the game's database cannot be read.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "list_study_plans")
+    )]
+    pub fn command_list_study_plans(
+        database_path: &str,
+        game_id: &str,
+    ) -> Result<Vec<StudyPlan>, String> {
+        list_study_plans(Path::new(database_path), game_id).map_err(|error| error.to_string())
+    }
+
+    /// Stores study plans and drops the rows the player cleared, in one transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the game's database cannot be written.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "save_study_plans")
+    )]
+    pub fn command_save_study_plans(
+        database_path: &str,
+        game_id: &str,
+        plans: Vec<StudyPlan>,
+        removed: Vec<StudyPlanKey>,
+    ) -> Result<(), String> {
+        save_study_plans(Path::new(database_path), game_id, &plans, &removed)
+            .map_err(|error| error.to_string())
+    }
+
     /// Loads one imported turn payload for the Tauri command surface.
     #[cfg_attr(
         feature = "tauri",
@@ -1215,14 +1251,15 @@ pub use commands::{
     command_commit_report_import, command_completions_at_caret, command_delete_army,
     command_delete_hex_note, command_export_mage_sheet, command_export_map,
     command_get_engine_info, command_known_map, command_list_allied_mages, command_list_armies,
-    command_list_hex_notes, command_list_imported_turns, command_load_imported_turn,
-    command_load_latest_imported_turn, command_load_merged_reports, command_load_order_draft,
-    command_load_region_sightings, command_merge_report, command_order_argument_completions,
-    command_order_commands, command_order_vocabulary, command_parse_report,
-    command_parse_report_classified, command_parse_report_full, command_plan_route,
-    command_preview_orders, command_preview_report_import, command_roster_skills,
-    command_save_allied_mages, command_save_army, command_save_hex_note, command_save_order_draft,
-    command_trace_move_orders, command_trade_routes, command_validate_orders,
+    command_list_hex_notes, command_list_imported_turns, command_list_study_plans,
+    command_load_imported_turn, command_load_latest_imported_turn, command_load_merged_reports,
+    command_load_order_draft, command_load_region_sightings, command_merge_report,
+    command_order_argument_completions, command_order_commands, command_order_vocabulary,
+    command_parse_report, command_parse_report_classified, command_parse_report_full,
+    command_plan_route, command_preview_orders, command_preview_report_import,
+    command_roster_skills, command_save_allied_mages, command_save_army, command_save_hex_note,
+    command_save_order_draft, command_save_study_plans, command_trace_move_orders,
+    command_trade_routes, command_validate_orders,
 };
 
 /// Creates a game under the application's games directory and applies migrations.
@@ -2532,6 +2569,54 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
                 .expect("list mages")
                 .is_empty(),
             "a mage named in `removed` is gone"
+        );
+    }
+
+    #[test]
+    fn study_plan_commands_round_trip() {
+        let dir = tempdir().expect("tempdir");
+        let created = command_create_game(
+            dir.path().to_str().expect("a path"),
+            a_manifest("faction-12", "Faction 12"),
+        )
+        .expect("create game");
+
+        let plan = StudyPlan {
+            faction_id: "21".to_string(),
+            unit_id: "9001".to_string(),
+            skill: Some("FORC".to_string()),
+            target_level: Some(4),
+            comment: "heading for Gate Lore".to_string(),
+            updated_at: "2026-08-07T12:00:00Z".to_string(),
+        };
+
+        command_save_study_plans(
+            &created.database_path,
+            "faction-12",
+            vec![plan.clone()],
+            vec![],
+        )
+        .expect("save plans");
+        assert_eq!(
+            command_list_study_plans(&created.database_path, "faction-12").expect("list plans"),
+            vec![plan]
+        );
+
+        command_save_study_plans(
+            &created.database_path,
+            "faction-12",
+            vec![],
+            vec![StudyPlanKey {
+                faction_id: "21".to_string(),
+                unit_id: "9001".to_string(),
+            }],
+        )
+        .expect("remove plan");
+        assert!(
+            command_list_study_plans(&created.database_path, "faction-12")
+                .expect("list plans")
+                .is_empty(),
+            "a plan named in `removed` is gone"
         );
     }
 

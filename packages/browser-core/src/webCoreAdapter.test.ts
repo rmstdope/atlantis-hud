@@ -5,6 +5,7 @@ import {
   type GameManifest,
   type ManifestEdit,
   type AlliedMageRecord,
+  type StudyPlanRecord,
   type ArmyRecord,
   type HexNoteRecord,
   type ImportedTurnSummary,
@@ -1055,6 +1056,55 @@ describe("web core adapter", () => {
     ).toBe("9002");
   });
 
+  it("stores a mage's study plan and lists it back whole", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const plan = aStudyPlan("9001");
+
+    await adapter.saveStudyPlans(DB, "p", [plan], []);
+
+    expect(await adapter.listStudyPlans(DB, "p")).toEqual([plan]);
+  });
+
+  it("removes the study plans named in the same call that stores the rest", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await adapter.saveStudyPlans(DB, "p", [aStudyPlan("9001"), aStudyPlan("9002")], []);
+
+    await adapter.saveStudyPlans(
+      DB,
+      "p",
+      [aStudyPlan("9003")],
+      [{ factionId: "21", unitId: "9002" }]
+    );
+
+    const listed = (await adapter.listStudyPlans(DB, "p")) as StudyPlanRecord[];
+    expect(listed.map((plan) => plan.unitId).sort()).toEqual(["9001", "9003"]);
+  });
+
+  // The same resolution the desktop store documents and pins: `removed` is applied first, so a
+  // unit named in both halves of one call ends up present. Both platforms must answer alike.
+  it("stores a study plan named in both halves of the same call", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const plan = aStudyPlan("9001");
+
+    await adapter.saveStudyPlans(DB, "p", [plan], [{ factionId: "21", unitId: "9001" }]);
+
+    expect(await adapter.listStudyPlans(DB, "p")).toEqual([plan]);
+  });
+
+  it("keeps study plans apart per database", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await adapter.saveStudyPlans("idb://campaign-a", "p", [aStudyPlan("9001")], []);
+    await adapter.saveStudyPlans("idb://campaign-b", "p", [aStudyPlan("9002")], []);
+
+    expect(
+      ((await adapter.listStudyPlans("idb://campaign-a", "p")) as StudyPlanRecord[])[0].unitId
+    ).toBe("9001");
+    expect(
+      ((await adapter.listStudyPlans("idb://campaign-b", "p")) as StudyPlanRecord[])[0].unitId
+    ).toBe("9002");
+  });
+
   it("keeps Armies apart per database", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
@@ -1801,6 +1851,18 @@ describe("merging an allied report", () => {
     await expect(adapter.loadMergedReports("/db", "p", "95", 71)).resolves.toEqual([]);
   });
 });
+
+/** One mage's plan for next turn, as the planner will write it. */
+function aStudyPlan(unitId: string, factionId = "21"): StudyPlanRecord {
+  return {
+    factionId,
+    unitId,
+    skill: "FORC",
+    targetLevel: 4,
+    comment: "heading for Gate Lore",
+    updatedAt: "2026-08-07T12:00:00Z"
+  };
+}
 
 /** An allied mage, as a sheet described him. */
 function aMage(unitId: string, factionId = "21"): AlliedMageRecord {
