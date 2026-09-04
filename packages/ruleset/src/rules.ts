@@ -15,6 +15,7 @@ export type { MovementRules } from "./generated/MovementRules";
 export type { OceanRule } from "./generated/OceanRule";
 export type { RoadRule } from "./generated/RoadRule";
 export type { SailingRule } from "./generated/SailingRule";
+export type { Gap } from "./generated/Gap";
 export type { TerrainCosts } from "./generated/TerrainCosts";
 
 import type { MovementMode } from "./generated/MovementMode";
@@ -305,3 +306,33 @@ export function parseMovementRules(html: string): MovementRules {
   };
 }
 
+
+/** What one unit of food is worth against maintenance, and which foods the page names. */
+export type FoodMaintenance = {
+  /** Silver of maintenance one unit of food pays. */
+  value: number;
+  /** The food names the sentence lists, lower-cased and in the page's order. */
+  foods: string[];
+};
+
+/**
+ * Reads `rules/economy_maintenance`'s substitution sentence.
+ *
+ * The number differs between servers - New Origins says 50 where both New Age worlds say 30 - so it
+ * is scraped rather than chosen, and a page that does not state it stops the run.
+ */
+export function parseFoodMaintenance(html: string): FoodMaintenance {
+  const match = requireMatch(
+    htmlToText(html),
+    "foodMaintenance",
+    /Units may substitute one unit of ([^.]+?) for each (\d+) silver \(or fraction thereof\) of maintenance owed\./i
+  );
+
+  return {
+    value: Number.parseInt(match[2], 10),
+    foods: match[1]
+      .split(/,\s*|\s+or\s+/)
+      .map((food) => food.trim().toLowerCase())
+      .filter((food) => food.length > 0)
+  };
+}

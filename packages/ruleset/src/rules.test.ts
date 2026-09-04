@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseMovementRules, RulesetScrapeError } from "./rules";
+import { parseFoodMaintenance, parseMovementRules, RulesetScrapeError } from "./rules";
 
 const RULES_HTML = readFileSync(
   fileURLToPath(new URL("../../../tests/fixtures/ruleset/neworigins-rules.html", import.meta.url)),
@@ -309,5 +309,31 @@ describe("parseMovementRules", () => {
 
     expect(() => parseMovementRules(reworded)).toThrowError(/does not know: fifteen/);
     expect(() => parseMovementRules(reworded)).toThrowError(/extend NUMBER_WORDS/);
+  });
+});
+
+describe("parseFoodMaintenance", () => {
+  it("reads the food maintenance value and the foods it applies to", () => {
+    expect(parseFoodMaintenance(RULES_HTML)).toEqual({
+      value: 50,
+      foods: ["grain", "livestock", "fish", "meals"]
+    });
+    expect(parseFoodMaintenance(ARCANUM_RULES_HTML)).toEqual({
+      value: 30,
+      foods: ["grain", "livestock", "fish", "meals"]
+    });
+    expect(parseFoodMaintenance(TRIDENT_RULES_HTML)).toEqual({
+      value: 30,
+      foods: ["grain", "livestock", "fish", "meals"]
+    });
+  });
+
+  it("refuses a rules page that never prices food", () => {
+    expect(() =>
+      parseFoodMaintenance("<html><body>a page about something else</body></html>")
+    ).toThrowError(RulesetScrapeError);
+    expect(() =>
+      parseFoodMaintenance("<html><body>a page about something else</body></html>")
+    ).toThrowError(/foodMaintenance/);
   });
 });
