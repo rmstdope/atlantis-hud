@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.4 — where the study-order export lives</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:98ch; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:18px; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px;
+         text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+
+  .pane { width:900px; max-width:100%; background:var(--raised); border:1px solid var(--edge);
+          border-radius:6px; box-shadow:0 14px 40px #000a; overflow:hidden;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane.small { width:520px; }
+  .pane .top { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  .pane .top .name { color:var(--ink-soft); }
+  .pane .top .tabs { display:flex; gap:4px; }
+  .pane .top .tab { border-radius:4px; padding:2px 7px; color:var(--ink-soft); }
+  .pane .top .tab.on { background:#1b2735; color:var(--ink); box-shadow:inset 0 -2px 0 var(--select); }
+  .pane .top .sp { margin-left:auto; }
+  .pane .sub { padding:6px 12px; border-bottom:1px solid var(--edge-soft); color:var(--ink-dim); font-size:11.5px; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.done { color:var(--ok); border-color:#2c4a3e; }
+  .btn.dim { opacity:.4; }
+  .body { padding:12px; display:grid; gap:14px; max-height:430px; overflow:auto; }
+  .grp { border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  .grp .hd { display:flex; align-items:center; gap:8px; padding:5px 10px; background:#141a23;
+             color:var(--brass); font-size:11.5px; letter-spacing:0.5px; }
+  .grp .hd .sp { margin-left:auto; }
+  .grp .hd .age { color:var(--brass-bright); }
+  pre { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.5;
+        color:var(--ink); padding:10px; margin:0; white-space:pre; }
+  pre .c { color:var(--ink-dim); }
+  pre .k { color:var(--brass-bright); }
+  .menu { width:190px; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:4px;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; box-shadow:0 10px 30px #000a; }
+  .menu .it { padding:3px 8px; border-radius:4px; color:var(--ink); }
+  .menu .it.on { background:#1b2735; }
+  .menu .it.dim { opacity:.4; }
+  .hdrbar { display:flex; align-items:center; gap:10px; padding:6px 12px; background:var(--raised);
+            border:1px solid var(--edge); border-radius:5px; font:13px/1.5 'Helvetica Neue',Arial,sans-serif;
+            color:var(--ink-soft); width:640px; max-width:100%; }
+  .hdrbar .sp { margin-left:auto; }
+  .cols3 { display:grid; gap:22px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.4 — <span>where the study-order export lives</span></h1>
+  <p>Three placements for the same thing: turning next turn's plan into <code>STUDY</code> and
+  <code>TEACH</code> lines, grouped by faction, for the clipboard or a file. The text itself is the
+  other mockup (<code>ah-lyg6.4-format.html</code>); ignore its exact wording here and look only at
+  where the control is and how much you see before you send it.</p>
+</header>
+
+<main>
+  <h3 class="sec">A — a third view inside the study planner</h3>
+  <p>F4 opens the planner; a third tab beside <em>All mages</em> and <em>Schedule</em> shows the
+  generated text, one section per faction, each with its own <em>Copy</em> button and a
+  <em>Save…</em> beside it.</p>
+  <div class="card">
+    <h2><em>A</em> Orders tab</h2>
+    <div class="concept">You read what you are about to send, per faction, and copy one ally's block
+    at a time straight into the mail you are writing them.</div>
+    <div class="stage">
+      <div class="pane">
+        <div class="top">
+          <span class="name">Study planner</span>
+          <span class="tabs">
+            <span class="tab">All mages</span>
+            <span class="tab">Schedule</span>
+            <span class="tab on">Orders</span>
+          </span>
+          <span class="sp"></span>
+          <span class="btn">Close</span>
+        </div>
+        <div class="sub">Turn 72 — 7 mages, 3 yours, 4 from 2 allies</div>
+        <div class="body">
+          <div class="grp">
+            <div class="hd">
+              <span>Borg TNG (95) — your faction</span>
+              <span class="sp"></span>
+              <span class="btn done">Copied</span>
+              <span class="btn">Save…</span>
+            </div>
+<pre><span class="c">; Borg TNG (95) — your faction, turn 72</span>
+<span class="k">UNIT</span> 1234
+  <span class="k">STUDY</span> FORC 4
+<span class="k">UNIT</span> 1250
+  <span class="k">TEACH</span> 1234
+<span class="c">; Vess (1263) — nothing planned</span></pre>
+          </div>
+          <div class="grp">
+            <div class="hd">
+              <span>Creeping Death (17)</span>
+              <span class="age">— sheet of turn 70, 2 turns old</span>
+              <span class="sp"></span>
+              <span class="btn">Copy</span>
+              <span class="btn">Save…</span>
+            </div>
+<pre><span class="c">; Creeping Death (17), turn 72</span>
+<span class="k">UNIT</span> 4021
+  <span class="k">STUDY</span> PATT 3
+<span class="k">UNIT</span> 4044
+  <span class="k">TEACH</span> 4021</pre>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>You see the text before it leaves; a wrong plan is caught here rather than in an ally's inbox.</li>
+        <li>One ally's block copies alone — which is how it is actually sent.</li>
+        <li class="con">A third tab in a pane that already has two, and the widest change of the three.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="sec">B — an item in the header's Export menu</h3>
+  <p>Beside <em>Export mage sheet</em>. One press writes a file holding every faction's block; no
+  preview, and the clipboard is not offered at all.</p>
+  <div class="card">
+    <h2><em>B</em> Export ▸ Export study orders</h2>
+    <div class="concept">The same place the mage sheet already goes out from, so the whole magic
+    exchange is one menu.</div>
+    <div class="stage">
+      <div class="menu">
+        <div class="it">Export orders</div>
+        <div class="it">Export orders (long)</div>
+        <div class="it">Export map…</div>
+        <div class="it">Export mage sheet</div>
+        <div class="it on">Export study orders</div>
+      </div>
+      <ul class="notes">
+        <li>No new surface at all, and it sits with the export it belongs beside.</li>
+        <li class="con">You send it unseen; the first look at what was planned is the file.</li>
+        <li class="con">Everybody's orders in one file — an ally gets the others' too, or you edit it by hand.</li>
+        <li class="con">Reachable while the planner is shut, which is the wrong end of the workflow.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="sec">C — two buttons on the Schedule view's header</h3>
+  <p>No new view. The Schedule already shows the six turns; its header gains <em>Copy orders</em>
+  and <em>Save orders…</em>, acting on the first column.</p>
+  <div class="card">
+    <h2><em>C</em> Buttons on the Schedule</h2>
+    <div class="concept">Cheapest of the three, and the grid above the buttons is the preview.</div>
+    <div class="stage">
+      <div class="hdrbar">
+        <span>Study planner</span>
+        <span class="btn">All mages</span>
+        <span class="btn" style="color:var(--ink)">Schedule</span>
+        <span class="sp"></span>
+        <span class="btn">Copy orders</span>
+        <span class="btn">Save orders…</span>
+        <span class="btn">Close</span>
+      </div>
+      <ul class="notes">
+        <li>No third view, and the plan is on screen while you press it.</li>
+        <li class="con">The grid is not the text — a skill's abbreviation, a refused student and a
+        mage with nothing planned are all invisible until the file is open.</li>
+        <li class="con">Still all factions in one blob: no way to copy one ally's block.</li>
+        <li class="con">Two more controls on a header that already carries three.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+</body>
+</html>

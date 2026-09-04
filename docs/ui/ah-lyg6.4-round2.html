@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.4 — the Orders tab, round two</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:98ch; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:16px; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:1080px) { .cols { grid-template-columns:1fr; } }
+
+  .pane { width:900px; max-width:100%; background:var(--raised); border:1px solid var(--edge);
+          border-radius:6px; box-shadow:0 14px 40px #000a; overflow:hidden;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane .top { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  .pane .top .name { color:var(--ink-soft); }
+  .pane .top .tabs { display:flex; gap:4px; }
+  .pane .top .tab { border-radius:4px; padding:2px 7px; color:var(--ink-soft); }
+  .pane .top .tab.on { background:#1b2735; color:var(--ink); box-shadow:inset 0 -2px 0 var(--select); }
+  .pane .top .sp { margin-left:auto; }
+  .pane .sub { padding:6px 12px; border-bottom:1px solid var(--edge-soft); color:var(--ink-dim); font-size:11.5px; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; display:inline-block; }
+  .btn.done { color:var(--ok); border-color:#2c4a3e; }
+  .btn.dim { opacity:.35; }
+  .body { padding:12px; display:grid; gap:14px; max-height:440px; overflow:auto; }
+  .grp { border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  .grp .hd { display:flex; align-items:center; gap:8px; padding:5px 10px; background:#141a23;
+             color:var(--brass); font-size:11.5px; letter-spacing:0.4px; }
+  .grp .hd .sp { margin-left:auto; }
+  .grp .hd .age { color:var(--brass-bright); }
+  pre { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.55;
+        color:var(--ink); padding:10px; margin:0; white-space:pre; overflow:auto; }
+  pre .c { color:var(--ink-dim); }
+  pre .k { color:var(--brass-bright); }
+  .empty { font:13px/1.6 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft);
+           border:1px dashed var(--edge); border-radius:6px; padding:26px; text-align:center; margin:12px; }
+  .empty b { display:block; color:var(--ink); font-size:14px; margin-bottom:5px; font-weight:600; }
+  .turnbar { display:flex; align-items:center; gap:6px; }
+  .turnbar .t { border:1px solid var(--edge); border-radius:4px; padding:1px 7px; color:var(--ink-dim); font-size:11.5px; }
+  .turnbar .t.on { background:#1b2735; color:var(--ink); border-color:var(--select); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.4 — <span>the Orders tab, round two</span></h1>
+  <p>Round one chose <b>A</b>, an Orders tab inside the study planner, with <b>F2</b>'s annotated
+  text, a named comment for a mage with nothing planned, and a refused <code>TEACH</code> commented
+  out with its reason. This is that design drawn properly, and the four things still open.</p>
+</header>
+
+<main>
+  <h3 class="sec">The tab as chosen</h3>
+  <p>Turn 72. Three own mages (Ereb 1234, Sable 1250, Vess 1263) and one ally whose sheet is two
+  turns old.</p>
+  <div class="card">
+    <div class="stage">
+      <div class="pane">
+        <div class="top">
+          <span class="name">Study planner</span>
+          <span class="tabs">
+            <span class="tab">All mages</span>
+            <span class="tab">Schedule</span>
+            <span class="tab on">Orders</span>
+          </span>
+          <span class="sp"></span>
+          <span class="btn">Close</span>
+        </div>
+        <div class="sub">Orders for turn 72 — 3 mages studying, 1 teaching, 1 with nothing planned</div>
+        <div class="body">
+          <div class="grp">
+            <div class="hd">
+              <span>Borg TNG (95) — your faction, turn 72</span>
+              <span class="sp"></span>
+              <span class="btn done">Copied</span>
+              <span class="btn">Save…</span>
+            </div>
+<pre><span class="c">; Borg TNG (95) — study orders for turn 72, from Atlantis HUD</span>
+<span class="k">UNIT</span> 1234              <span class="c">; Ereb</span>
+  <span class="k">STUDY</span> FORC 4          <span class="c">; force 3 -&gt; 4, taught by Sable</span>
+<span class="k">UNIT</span> 1250              <span class="c">; Sable</span>
+  <span class="k">TEACH</span> 1234            <span class="c">; teaches Ereb</span>
+<span class="c">; Vess (1263) — nothing planned for this turn</span></pre>
+          </div>
+          <div class="grp">
+            <div class="hd">
+              <span>Creeping Death (17)</span>
+              <span class="age">— sheet of turn 70, 2 turns old</span>
+              <span class="sp"></span>
+              <span class="btn">Copy</span>
+              <span class="btn">Save…</span>
+            </div>
+<pre><span class="c">; Creeping Death (17) — study orders for turn 72, from Atlantis HUD</span>
+<span class="c">; From their mage sheet of turn 70; two months of study since are estimated.</span>
+<span class="k">UNIT</span> 4021              <span class="c">; Thessaly</span>
+  <span class="k">STUDY</span> PATT 3          <span class="c">; pattern 2 -&gt; 3</span>
+<span class="k">UNIT</span> 4044              <span class="c">; Marek</span>
+  <span class="c">; TEACH 4021 — Thessaly is in another hex; nothing to teach</span></pre>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li class="n">The line marked <code>estimated</code> is question S below.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="sec">T — which turn the tab covers</h3>
+  <p>The Schedule plans six turns. The bead says "next turn's orders".</p>
+  <div class="cols">
+    <div class="card">
+      <h2><em>T1</em> Next turn only, fixed</h2>
+      <div class="concept">No control at all. The sub-line says which turn it is, and that is the
+      only turn there is.</div>
+      <div class="stage">
+        <div class="pane" style="width:auto">
+          <div class="sub">Orders for turn 72 — 3 mages studying, 1 teaching, 1 with nothing planned</div>
+        </div>
+        <ul class="notes">
+          <li>Nothing to get wrong: you cannot mail an ally turn 75's orders by accident.</li>
+          <li>No new control, and the tab is one press from the plan.</li>
+          <li class="con">A player who wants to warn an ally about turn 73 has to wait a month.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <h2><em>T2</em> A turn picker across the top</h2>
+      <div class="concept">Six chips, next turn selected; the text below follows.</div>
+      <div class="stage">
+        <div class="pane" style="width:auto">
+          <div class="sub turnbar">
+            <span>Orders for</span>
+            <span class="t on">72</span><span class="t">73</span><span class="t">74</span>
+            <span class="t">75</span><span class="t">76</span><span class="t">77</span>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>The whole plan is exportable, not only its first month.</li>
+          <li class="con">A new control, and a state that can be left somewhere surprising — the
+          Copy button then means a different turn than the tab last showed.</li>
+          <li class="con">A projected turn is a guess; turn 77's orders are much less true than
+          turn 72's, and nothing in the file says so.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="sec">O — your own faction's orders</h3>
+  <p>The application already has an orders editor holding your real orders document.</p>
+  <div class="cols">
+    <div class="card">
+      <h2><em>O1</em> Clipboard and file only</h2>
+      <div class="concept">Your own block behaves exactly like an ally's. You paste it into your
+      orders yourself.</div>
+      <div class="stage">
+        <div class="pane" style="width:auto">
+          <div class="grp"><div class="hd"><span>Borg TNG (95) — your faction, turn 72</span>
+          <span class="sp"></span><span class="btn">Copy</span><span class="btn">Save…</span></div></div>
+        </div>
+        <ul class="notes">
+          <li>One rule for every faction, and nothing writes into your orders behind your back.</li>
+          <li class="con">The commonest case — your own mages — is the clumsiest.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <h2><em>O2</em> A third button on your own block</h2>
+      <div class="concept">"Put into my orders" merges the lines into the orders document, under the
+      right <code>UNIT</code> headings.</div>
+      <div class="stage">
+        <div class="pane" style="width:auto">
+          <div class="grp"><div class="hd"><span>Borg TNG (95) — your faction, turn 72</span>
+          <span class="sp"></span><span class="btn" style="color:var(--ink)">Put into my orders</span>
+          <span class="btn">Copy</span><span class="btn">Save…</span></div></div>
+        </div>
+        <ul class="notes">
+          <li>The planner actually finishes the job for your own faction.</li>
+          <li class="con">Much the biggest piece of work here: it must merge rather than append,
+          replace a <code>STUDY</code> the unit already has, and be undoable.</li>
+          <li class="con">It writes to a document you have been editing by hand — the one place in
+          this application where that has never happened.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="sec">V — saving to a file</h3>
+  <div class="cols">
+    <div class="card">
+      <h2><em>V1</em> Per faction only</h2>
+      <div class="concept">Each section's own <code>Save…</code>, writing
+      <code>study-orders-Creeping-Death-turn-72.txt</code>. No whole-document save.</div>
+      <ul class="notes">
+        <li>A file you send is a file for one recipient — which is how it is actually used.</li>
+        <li class="con">Four allies is four saves.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2><em>V2</em> Per faction, plus a Save all… in the tab header</h2>
+      <div class="concept">The same, and one more button writing every section into
+      <code>study-orders-turn-72.txt</code> as a single file.</div>
+      <ul class="notes">
+        <li>One press for a record of the whole turn's magic plan.</li>
+        <li class="con">A file holding every ally's orders is the one thing you must not send to any
+        of them — and it is the easiest one to attach by mistake.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="sec">S — the stale-sheet caveat in an ally's block</h3>
+  <p>An ally's mages come from a sheet that may be several turns old; the planner estimates their
+  progress since (<code>ah-lyg6.2.2</code>, S3). Does the exported file say so?</p>
+  <div class="cols">
+    <div class="card">
+      <h2><em>S1</em> Say it, as a comment</h2>
+<pre><span class="c">; Creeping Death (17) — study orders for turn 72, from Atlantis HUD</span>
+<span class="c">; From their mage sheet of turn 70; two months of study since are estimated.</span>
+<span class="k">UNIT</span> 4021              <span class="c">; Thessaly</span>
+  <span class="k">STUDY</span> PATT 3          <span class="c">; pattern 2 -&gt; 3</span></pre>
+      <ul class="notes">
+        <li>The recipient is told the level we assumed is a guess, and can check it in one glance.</li>
+        <li class="con">One more line on every allied block, including ones that are fresh.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2><em>S2</em> Say nothing in the file</h2>
+<pre><span class="c">; Creeping Death (17) — study orders for turn 72, from Atlantis HUD</span>
+<span class="k">UNIT</span> 4021              <span class="c">; Thessaly</span>
+  <span class="k">STUDY</span> PATT 3          <span class="c">; pattern 2 -&gt; 3</span></pre>
+      <ul class="notes">
+        <li>Shorter, and the age is already on the section heading in the tab.</li>
+        <li class="con">The heading stays behind when the text is copied; the recipient never sees it.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+</body>
+</html>
