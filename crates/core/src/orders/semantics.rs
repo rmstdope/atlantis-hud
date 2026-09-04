@@ -46,8 +46,7 @@ use crate::orders::silver::{
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
     MarketFunds, MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
     PurchaseAnswer, Receipts, RegionShare, RegionWages, SaleAnswer, SharedMarket, SilverDoubt,
-    TransferShape,
-    Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+    TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -16720,7 +16719,11 @@ mod tests {
                         .map(|m| m.delta)
                 };
                 assert_eq!(delta("2"), Some(2));
-                assert_eq!(delta("3"), Some(2), "the first buyer did not shrink the purse");
+                assert_eq!(
+                    delta("3"),
+                    Some(2),
+                    "the first buyer did not shrink the purse"
+                );
             });
 
             // ... and the hex is still warned about on paper, with today's figures (W1).
@@ -16765,7 +16768,11 @@ mod tests {
                 .find(|row| row.unit_id == "1")
                 .expect("the buyer is forecast");
             assert_eq!(column.expense, Some(300), "three swords, not five");
-            assert_eq!(column.wanted_for_orders, Some(500), "the whole ask survives");
+            assert_eq!(
+                column.wanted_for_orders,
+                Some(500),
+                "the whole ask survives"
+            );
             assert_eq!(column.at_month_end, Some(-300));
             // The ITEMS ledger cuts the same purchase to the same three swords -
             // `a_shared_purse_pays_for_what_one_buy_can_reach`, on this hex.
@@ -19671,7 +19678,11 @@ mod tests {
         let purse = market_purse_of(&hex_region, "");
 
         assert_eq!(purse.adds_for(0), Some(500), "both sharers lend the buyer");
-        assert_eq!(purse.adds_for(1), Some(200), "a sharer never counts its own");
+        assert_eq!(
+            purse.adds_for(1),
+            Some(200),
+            "a sharer never counts its own"
+        );
         assert_eq!(purse.adds_for(2), Some(300));
     }
 
