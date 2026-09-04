@@ -20,3 +20,12 @@ export {
   type RoadRule,
   type TerrainCosts
 } from "./rules";
+export {
+  newAgeDataPage,
+  parseNewAgeDatabase,
+  type NewAgeDatabase,
+  type NewAgeItem,
+  type NewAgeObject,
+  type NewAgeSkill,
+  type NewAgeSkillLevel
+} from "./newage";
