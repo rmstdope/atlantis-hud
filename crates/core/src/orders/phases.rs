@@ -29,18 +29,28 @@ pub(crate) enum StatePhase {
     Study,
     Manufacturing,
     Build,
+    /// Primary PRODUCE - a recipe taking no item inputs, which draws on the region's resources
+    /// rather than on goods. `rules/sequenceofevents` runs it *after* BUILD, which is the whole
+    /// reason it is a phase of its own: an output credited here is invisible to BUILD, while one
+    /// credited at [`StatePhase::Manufacturing`] is not (`ah-728m.2.2`).
+    ///
+    /// [`phase_of`] never answers it, because classifying a PRODUCE needs the recipe and this
+    /// module has no ruleset. [`super::semantics`] classifies it where it has one.
+    PrimaryProduction,
     Wages,
     Maintenance,
 }
 
 impl StatePhase {
-    pub(crate) const COUNT: usize = 13;
+    pub(crate) const COUNT: usize = 14;
 }
 
 /// Every phase an order can settle in, in the turn's order.
 ///
 /// [`StatePhase::Maintenance`] is absent: it carries no order, only the upkeep charge assessed
-/// after every order has run.
+/// after every order has run. So is [`StatePhase::PrimaryProduction`]: [`phase_of`] cannot answer
+/// it without a ruleset, and [`super::semantics`] runs both PRODUCE passes outside this walk
+/// anyway (`ah-728m.2.2`).
 pub(crate) const ORDER: [StatePhase; 12] = [
     StatePhase::Instant,
     StatePhase::Claim,

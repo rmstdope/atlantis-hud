@@ -5324,6 +5324,136 @@ mod tests {
             change(unit, "items");
         }
 
+        /// A hex that `SHARE`s settles a BUILD's material as one pool, and the goods leave the
+        /// rows that actually held them - so no projected inventory still shows stock the month
+        /// has already consumed (`ah-728m.2.2`, `docs/ui/ah-728m.2.2-attribution.html`).
+        fn a_sharing_hex_with_a_builder(first: i64, second: i64) -> String {
+            [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  Southeast : plain (2,2) in Nowhere.",
+                "",
+                "+ Building [4] : Stockade, needs 45.",
+                "  * Builders (900), Foo (1), behind, 10 humans [HUMN], 5 wood [WOOD]. \
+                 Weight: 1050. Capacity: 0/0/120/0. Skills: building [BUIL] 3 (250).",
+                "",
+                &format!(
+                    "* Stores (901), Foo (1), sharing, 1 humans [HUMN], {first} wood [WOOD]. \
+                     Weight: 10. Capacity: 0/0/15/0. Skills: none."
+                ),
+                &format!(
+                    "* Reserve (902), Foo (1), sharing, 1 humans [HUMN], {second} wood [WOOD]. \
+                     Weight: 10. Capacity: 0/0/15/0. Skills: none."
+                ),
+                "",
+            ]
+            .join("\n")
+        }
+
+        fn wood_of(response: &OrdersPreviewResponse, unit_id: &str) -> i64 {
+            response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == unit_id)
+                .map_or(0, |unit| {
+                    unit.unit
+                        .items
+                        .iter()
+                        .find(|item| item.tag == "WOOD")
+                        .map_or(0, |item| item.amount)
+                })
+        }
+
+        #[test]
+        fn shared_build_material_leaves_the_supplying_rows() {
+            let response = preview_over(&a_sharing_hex_with_a_builder(20, 25), "unit 900\nBUILD\n");
+
+            assert_eq!(
+                wood_of(&response, "900"),
+                0,
+                "the builder spends its own five before borrowing anything"
+            );
+            assert_eq!(
+                wood_of(&response, "901"),
+                0,
+                "the higher supplying row is emptied next"
+            );
+            assert_eq!(
+                wood_of(&response, "902"),
+                20,
+                "the last row gives only the exact remainder of the thirty"
+            );
+            let builder = response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == "900")
+                .expect("the builder is previewed");
+            assert_eq!(
+                builder.built.iter().map(|spend| spend.amount).sum::<i64>(),
+                30,
+                "the work itself stays on the unit that ordered it"
+            );
+            assert_eq!(
+                wood_of(&response, "900")
+                    + wood_of(&response, "901")
+                    + wood_of(&response, "902")
+                    + 30,
+                50,
+                "nothing is created or lost: what is left plus what was spent is what was held"
+            );
+        }
+
+        #[test]
+        fn shared_production_material_leaves_the_supplying_rows() {
+            let report = [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  Southeast : plain (2,2) in Nowhere.",
+                "",
+                "* Carpenters (900), Foo (1), 15 humans [HUMN], 3 wood [WOOD]. Weight: 1530. \
+                 Capacity: 0/0/225/0. Skills: carpenter [CARP] 1 (30).",
+                "* Stores (901), Foo (1), sharing, 1 humans [HUMN], 10 wood [WOOD]. Weight: 110. \
+                 Capacity: 0/0/15/0. Skills: none.",
+                "* Reserve (902), Foo (1), sharing, 1 humans [HUMN], 10 wood [WOOD]. Weight: 110. \
+                 Capacity: 0/0/15/0. Skills: none.",
+                "",
+            ]
+            .join("\n");
+            let response = preview_over(&report, "unit 900\nPRODUCE wagon\n");
+
+            assert_eq!(wood_of(&response, "900"), 0, "its own three go first");
+            assert_eq!(wood_of(&response, "901"), 0, "then the higher sharing row");
+            assert_eq!(
+                wood_of(&response, "902"),
+                8,
+                "the last row gives only the two the run still needed"
+            );
+            let maker = response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == "900")
+                .expect("the producer is previewed");
+            assert_eq!(
+                maker
+                    .unit
+                    .items
+                    .iter()
+                    .find(|item| item.tag == "WAGO")
+                    .map(|item| item.amount),
+                Some(15),
+                "what was made stays on the unit that made it"
+            );
+        }
+
         #[test]
         fn a_material_spent_to_nothing_disappears_from_the_previewed_list() {
             let hex_region = [
