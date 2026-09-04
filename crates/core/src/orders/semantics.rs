@@ -3588,7 +3588,7 @@ struct LateMen {
 struct PhaseHoldings {
     /// What STUDY sees: what [`StatePhase::Movement`] leaves, before this month's study fees.
     study: LateHoldings,
-    /// What manufacturing PRODUCE sees: what [`PhaseState::BEFORE_MANUFACTURING`] leaves.
+    /// What manufacturing PRODUCE sees: what [`StatePhase::Study`] leaves.
     production: LateHoldings,
     /// What maintenance, WORK and ENTERTAIN see.
     maintenance: LateHoldings,
@@ -3625,8 +3625,8 @@ impl PhaseHoldings {
 
 /// The headcount every post-market phase shares, derived from one phase's stocks.
 ///
-/// Lifted out of the old `LateHoldings::read` unchanged (`ah-728m.2.3`): a unit whose headcount is itself
-/// a guess keeps the parser's figures, a caller with a ruleset short-circuits through `same_men`
+/// Lifted out of the old `LateHoldings::read` unchanged (`ah-728m.2.3`): a unit whose headcount
+/// is itself a guess keeps the parser's figures, a caller with a ruleset short-circuits through `same_men`
 /// against the early picture, and a caller with none keeps the report's own figures.
 fn men_from(hex: &Hex<'_>, stocks: &[Vec<ItemAmount>], ruleset: Option<&Ruleset>) -> Vec<LateMen> {
     hex.units
@@ -4143,7 +4143,8 @@ fn ledger_for_with_production<'a>(
     // walk rather than what puts it after the market. The same treatment BUILD has directly below.
     //
     // One walk of the whole hex's balances, not one per PRODUCE order: this path runs on every
-    // keystroke, and `PhaseState::stocks` reads every unit and every tag (`ah-1ad6.2`, `ah-lu0f.3`).
+    // keystroke, and `PhaseState::stocks` reads every unit and every tag (`ah-1ad6.2`,
+    // `ah-lu0f.3`).
     let before_manufacturing = ledger
         .state
         .stocks(&[PhaseState::BEFORE_MANUFACTURING], hex, ruleset)
@@ -4540,7 +4541,8 @@ fn clamped_holdings(items: &[ItemAmount]) -> Vec<ItemAmount> {
 }
 
 /// Whether two item lists carry the same man-tagged entries, regardless of order or of anything
-/// else either list holds. `PhaseState::balances` is a `BTreeMap`, so `PhaseState::stocks`'s lists come
+/// else either list holds. `PhaseState::balances` is a `BTreeMap`, so `PhaseState::stocks`'s
+/// lists come
 /// back alphabetical by tag rather than in the report's own order, and a same-multiset-different-
 /// order pair must not read as a change - and a `PRODUCE` or a `BUY`/`SELL` of ordinary goods must
 /// not either, which is why this looks at man tags alone.
