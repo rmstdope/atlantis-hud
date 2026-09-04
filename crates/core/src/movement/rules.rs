@@ -575,6 +575,13 @@ pub struct Production {
     /// was scraped and for cooking, whose output the page states as a formula.
     #[serde(default)]
     pub outputs: Option<u32>,
+    /// Whether a unit at this level can also tell whether a region holds this item at all, as
+    /// `data/skills` states it: `A unit with this skill is able to determine if a region contains
+    /// floater hides.` Nine recipes carry it in every committed world; every other recipe is
+    /// `false`, and so is every recipe in a ruleset generated before this was scraped - which
+    /// reads as "this catalogue cannot say", the same direction `damages_enemies` takes.
+    #[serde(default)]
+    pub reveals_region: bool,
 }
 
 /// A skill a unit must already have, at a level, before it may begin to study another.

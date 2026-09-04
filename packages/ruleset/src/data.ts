@@ -801,6 +801,12 @@ const PRODUCED_TAG = /\[([A-Z0-9]{2,6})\]/;
 const ANY_OF = /^any of /i;
 /** `a number of meals [MEAL] equal to skill level divided by 2, rounded up` - a formula, not a count. */
 const FORMULA_OUTPUT = /\bequal to\b/i;
+/**
+ * `data/skills`' one wording for a resource a skill can detect: `A unit with this skill is able to
+ * determine if a region contains floater hides.` Nine skill levels carry it across all three
+ * committed worlds, and each of those paragraphs states exactly one production.
+ */
+const REVEALS_REGION = /is able to determine if a region contains/i;
 
 /**
  * What one level's paragraph says the skill may produce, or `[]` when it says nothing - true of
@@ -818,8 +824,14 @@ const FORMULA_OUTPUT = /\bequal to\b/i;
  * first-occurrence split that gave the right answer by luck).
  */
 function readProduction(tag: string, paragraph: string, level: number): Production[] {
+  const reveals = REVEALS_REGION.test(paragraph);
   const clause = paragraph.match(PRODUCTION);
   if (!clause) {
+    if (reveals) {
+      throw new RulesetScrapeError(
+        `skill ${tag} at level ${level} says it reveals a region but states no production`
+      );
+    }
     return [];
   }
 
@@ -854,12 +866,23 @@ function readProduction(tag: string, paragraph: string, level: number): Producti
       inputs,
       inputsAreAlternatives,
       manMonths: manMonths === undefined ? 1 : Number.parseInt(manMonths, 10),
-      outputs: FORMULA_OUTPUT.test(head) ? null : 1
+      outputs: FORMULA_OUTPUT.test(head) ? null : 1,
+      revealsRegion: false
     });
   }
 
   if (made.length === 0) {
     throw new RulesetScrapeError(`could not read what skill ${tag} produces from "${clause[0]}"`);
+  }
+  if (reveals) {
+    // The sentence names no tag of its own, so the paragraph's single production is what it must
+    // mean. Two productions and there is nothing to choose between them: stop rather than guess.
+    if (made.length !== 1) {
+      throw new RulesetScrapeError(
+        `skill ${tag} at level ${level} says it reveals a region but states ${made.length} productions`
+      );
+    }
+    made[0].revealsRegion = true;
   }
   return made;
 }
