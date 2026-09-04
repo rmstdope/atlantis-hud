@@ -425,7 +425,7 @@ export function CellPopover({
           onEvent({ kind: "cancelled" });
         } else if (action === "set" && chosen !== undefined) {
           event.preventDefault();
-          onSet({ skill: chosen.skill, targetLevel: mode.targetLevel });
+          onSet({ kind: "study" as const, skill: chosen.skill, targetLevel: mode.targetLevel });
         }
       }}
     >
@@ -511,7 +511,7 @@ export function CellPopover({
           onClick={() =>
             chosen === undefined
               ? undefined
-              : onSet({ skill: chosen.skill, targetLevel: mode.targetLevel })
+              : onSet({ kind: "study" as const, skill: chosen.skill, targetLevel: mode.targetLevel })
           }
         >
           Set

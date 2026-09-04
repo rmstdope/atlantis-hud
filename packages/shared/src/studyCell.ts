@@ -148,9 +148,9 @@ export function goalsAfterSet(
   const firstTurn = row.cells.findIndex(
     (one) => one.kind === "study" && one.goalIndex === cell.goalIndex
   );
-  if (running !== undefined && firstTurn !== turnIndex) {
+  if (running !== undefined && running.kind === "study" && firstTurn !== turnIndex) {
     const reached = row.standings[turnIndex]?.get(running.skill)?.level ?? null;
-    kept.push({ skill: running.skill, targetLevel: reached });
+    kept.push({ kind: "study" as const, skill: running.skill, targetLevel: reached });
   }
   kept.push(goal);
   return kept;
@@ -172,9 +172,9 @@ export function goalsAfterClear(
   const firstTurn = row.cells.findIndex(
     (one) => one.kind === "study" && one.goalIndex === cell.goalIndex
   );
-  if (running !== undefined && firstTurn !== turnIndex) {
+  if (running !== undefined && running.kind === "study" && firstTurn !== turnIndex) {
     const reached = row.standings[turnIndex]?.get(running.skill)?.level ?? null;
-    kept.push({ skill: running.skill, targetLevel: reached });
+    kept.push({ kind: "study" as const, skill: running.skill, targetLevel: reached });
   }
   return kept;
 }

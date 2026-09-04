@@ -156,6 +156,9 @@ export function projectMage(input: {
   const dropSatisfied = () => {
     while (index < input.goals.length) {
       const goal = input.goals[index];
+      if (goal.kind === "teach") {
+        break;
+      }
       const level = held.get(goal.skill)?.level ?? 0;
       if (goal.targetLevel === null || level < goal.targetLevel) {
         break;
@@ -173,6 +176,14 @@ export function projectMage(input: {
     }
 
     const goal = input.goals[index];
+    if (goal.kind === "teach") {
+      // Teaching is projected by `projectAll` in ah-lyg6.3; this per-mage projection cannot see
+      // the other mages a teach month depends on, so it spends the month and draws nothing.
+      cells.push({ kind: "idle" });
+      index += 1;
+      dropSatisfied();
+      continue;
+    }
     const node = input.tree.byTag.get(goal.skill);
     const name = node?.name ?? goal.skill.toLowerCase();
     const before = held.get(goal.skill) ?? { level: 0, points: 0 };
@@ -229,6 +240,9 @@ export function goalQueueText(goals: readonly StudyGoal[], tree: MagicTree): str
     return null;
   }
   const parts = goals.map((goal) => {
+    if (goal.kind === "teach") {
+      return `teach ${goal.students.length} mages`;
+    }
     const name = tree.byTag.get(goal.skill)?.name ?? goal.skill.toLowerCase();
     return goal.targetLevel === null ? `${name}, one month` : `${name} → ${goal.targetLevel}`;
   });

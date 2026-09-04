@@ -4,6 +4,7 @@ import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
 import { cellMenu, cellWarning, goalsAfterClear, goalsAfterSet } from "./studyCell";
 import { projectMage, type ScheduleRow, type SkillPoints } from "./studySchedule";
+import type { StudyGoal } from "@atlantis/core-client";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
 const tree = buildMagicTree(index);
@@ -94,7 +95,7 @@ describe("cellWarning", () => {
 });
 
 /** A row projected from `start` and `goals`, as the Schedule draws it. */
-function rowOf(start: SkillPoints, goals: { skill: string; targetLevel: number | null }[]): ScheduleRow {
+function rowOf(start: SkillPoints, goals: StudyGoal[]): ScheduleRow {
   const { cells, standings } = projectMage({ start, goals, tree, turnCount: 6 });
   return {
     key: "21/2431",
@@ -113,60 +114,61 @@ function rowOf(start: SkillPoints, goals: { skill: string; targetLevel: number |
 
 describe("goalsAfterSet", () => {
   // force 3 at 270 reaches 4 on the first turn and 5 on the sixth.
-  const goals = [{ skill: "FORC", targetLevel: 5 }];
+  const goals = [{ kind: "study" as const, skill: "FORC", targetLevel: 5 }];
   const row = rowOf(at({ FORC: [3, 270] }), goals);
 
   it("truncates the running goal to the level he holds at that turn", () => {
-    expect(goalsAfterSet(goals, row, 2, { skill: "PATT", targetLevel: 3 })).toEqual([
-      { skill: "FORC", targetLevel: 4 },
-      { skill: "PATT", targetLevel: 3 }
+    expect(goalsAfterSet(goals, row, 2, { kind: "study" as const, skill: "PATT", targetLevel: 3 })).toEqual([
+      { kind: "study" as const, skill: "FORC", targetLevel: 4 },
+      { kind: "study" as const, skill: "PATT", targetLevel: 3 }
     ]);
   });
 
   it("drops the running goal entirely when the cell is its first turn", () => {
-    expect(goalsAfterSet(goals, row, 0, { skill: "PATT", targetLevel: 3 })).toEqual([
-      { skill: "PATT", targetLevel: 3 }
+    expect(goalsAfterSet(goals, row, 0, { kind: "study" as const, skill: "PATT", targetLevel: 3 })).toEqual([
+      { kind: "study" as const, skill: "PATT", targetLevel: 3 }
     ]);
   });
 
   it("drops everything after the cell", () => {
     const queue = [
-      { skill: "FORC", targetLevel: 4 },
-      { skill: "PATT", targetLevel: 3 },
-      { skill: "SPIR", targetLevel: 2 }
+      { kind: "study" as const, skill: "FORC", targetLevel: 4 },
+      { kind: "study" as const, skill: "PATT", targetLevel: 3 },
+      { kind: "study" as const, skill: "SPIR", targetLevel: 2 }
     ];
     const reflowed = rowOf(at({ FORC: [3, 270], PATT: [2, 100] }), queue);
 
-    expect(goalsAfterSet(queue, reflowed, 1, { skill: "SPIR", targetLevel: 1 })).toEqual([
-      { skill: "FORC", targetLevel: 4 },
-      { skill: "SPIR", targetLevel: 1 }
+    expect(goalsAfterSet(queue, reflowed, 1, { kind: "study" as const, skill: "SPIR", targetLevel: 1 })).toEqual([
+      { kind: "study" as const, skill: "FORC", targetLevel: 4 },
+      { kind: "study" as const, skill: "SPIR", targetLevel: 1 }
     ]);
   });
 
   it("simply appends on an idle cell", () => {
-    const short = rowOf(at({ FORC: [3, 270] }), [{ skill: "FORC", targetLevel: 4 }]);
+    const short = rowOf(at({ FORC: [3, 270] }), [{ kind: "study" as const, skill: "FORC", targetLevel: 4 }]);
 
     expect(
-      goalsAfterSet([{ skill: "FORC", targetLevel: 4 }], short, 3, {
+      goalsAfterSet([{ kind: "study" as const, skill: "FORC", targetLevel: 4 }], short, 3, {
+        kind: "study",
         skill: "PATT",
         targetLevel: 2
       })
     ).toEqual([
-      { skill: "FORC", targetLevel: 4 },
-      { skill: "PATT", targetLevel: 2 }
+      { kind: "study" as const, skill: "FORC", targetLevel: 4 },
+      { kind: "study" as const, skill: "PATT", targetLevel: 2 }
     ]);
   });
 });
 
 describe("goalsAfterClear", () => {
   const goals = [
-    { skill: "FORC", targetLevel: 5 },
-    { skill: "PATT", targetLevel: 3 }
+    { kind: "study" as const, skill: "FORC", targetLevel: 5 },
+    { kind: "study" as const, skill: "PATT", targetLevel: 3 }
   ];
   const row = rowOf(at({ FORC: [3, 270] }), goals);
 
   it("drops the tail and keeps what is drawn to the left", () => {
-    expect(goalsAfterClear(goals, row, 2)).toEqual([{ skill: "FORC", targetLevel: 4 }]);
+    expect(goalsAfterClear(goals, row, 2)).toEqual([{ kind: "study" as const, skill: "FORC", targetLevel: 4 }]);
   });
 
   it("empties the queue when the cell is the first goal's first turn", () => {
@@ -174,10 +176,10 @@ describe("goalsAfterClear", () => {
   });
 
   it("leaves an idle cell's queue alone", () => {
-    const short = rowOf(at({ FORC: [3, 270] }), [{ skill: "FORC", targetLevel: 4 }]);
+    const short = rowOf(at({ FORC: [3, 270] }), [{ kind: "study" as const, skill: "FORC", targetLevel: 4 }]);
 
-    expect(goalsAfterClear([{ skill: "FORC", targetLevel: 4 }], short, 4)).toEqual([
-      { skill: "FORC", targetLevel: 4 }
+    expect(goalsAfterClear([{ kind: "study" as const, skill: "FORC", targetLevel: 4 }], short, 4)).toEqual([
+      { kind: "study" as const, skill: "FORC", targetLevel: 4 }
     ]);
   });
 });

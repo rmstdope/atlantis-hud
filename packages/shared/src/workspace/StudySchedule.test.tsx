@@ -54,7 +54,7 @@ const rows = scheduleRows({
     {
       factionId: "12",
       unitId: "2431",
-      goals: [{ skill: "FORC", targetLevel: 5 }],
+      goals: [{ kind: "study" as const, skill: "FORC", targetLevel: 5 }],
       comment: "heading for Gate Lore",
       updatedAt: "2026-01-01T00:00:00.000Z"
     }

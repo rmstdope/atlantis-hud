@@ -48,7 +48,7 @@ describe("projectMage", () => {
   it("raises a skill towards its goal, a month at a time", () => {
     // force 3 is 180 points; 4 is 300 and 5 is 450, so a 30-point month reaches 4 on the first
     // turn (300) and 5 on the sixth (450).
-    const { cells } = project(at({ FORC: [3, 270] }), [{ skill: "FORC", targetLevel: 5 }]);
+    const { cells } = project(at({ FORC: [3, 270] }), [{ kind: "study" as const, skill: "FORC", targetLevel: 5 }]);
 
     expect(said(cells)).toEqual([
       "force 4",
@@ -71,15 +71,15 @@ describe("projectMage", () => {
   it("runs out when the goal is reached, and idles after it", () => {
     // force 1 is 30 points; 2 is 90 and 3 is 180. From 40, the second month reaches 100 (level 2)
     // and the fifth 190 (level 3).
-    const { cells } = project(at({ FORC: [1, 40] }), [{ skill: "FORC", targetLevel: 3 }]);
+    const { cells } = project(at({ FORC: [1, 40] }), [{ kind: "study" as const, skill: "FORC", targetLevel: 3 }]);
 
     expect(said(cells)).toEqual(["force 1", "force 2", "force 2", "force 2", "force 3", "-"]);
   });
 
   it("gives a goal with no level exactly one turn", () => {
     const { cells } = project(at({ FORC: [3, 270], PATT: [1, 40] }), [
-      { skill: "FORC", targetLevel: null },
-      { skill: "PATT", targetLevel: 2 }
+      { kind: "study" as const, skill: "FORC", targetLevel: null },
+      { kind: "study" as const, skill: "PATT", targetLevel: 2 }
     ]);
 
     expect(said(cells).slice(0, 3)).toEqual(["force 4", "pattern 1", "pattern 2"]);
@@ -87,8 +87,8 @@ describe("projectMage", () => {
 
   it("re-flows the queue: the next goal begins the turn the one before it arrives", () => {
     const { cells } = project(at({ FORC: [3, 270], PATT: [2, 100] }), [
-      { skill: "FORC", targetLevel: 4 },
-      { skill: "PATT", targetLevel: 3 }
+      { kind: "study" as const, skill: "FORC", targetLevel: 4 },
+      { kind: "study" as const, skill: "PATT", targetLevel: 3 }
     ]);
 
     expect(said(cells)).toEqual([
@@ -103,8 +103,8 @@ describe("projectMage", () => {
 
   it("skips a goal already satisfied at the start, and it costs no column", () => {
     const { cells } = project(at({ FORC: [4, 300], PATT: [2, 100] }), [
-      { skill: "FORC", targetLevel: 4 },
-      { skill: "PATT", targetLevel: 3 }
+      { kind: "study" as const, skill: "FORC", targetLevel: 4 },
+      { kind: "study" as const, skill: "PATT", targetLevel: 3 }
     ]);
 
     expect(said(cells)[0]).toBe("pattern 2");
@@ -113,8 +113,8 @@ describe("projectMage", () => {
   it("warns once about an impossible goal and moves on, without running out of cells", () => {
     // Summoning is locked without spirit; the mage holds only force.
     const { cells } = project(at({ FORC: [2, 100] }), [
-      { skill: "SUSK", targetLevel: 2 },
-      { skill: "FORC", targetLevel: 3 }
+      { kind: "study" as const, skill: "SUSK", targetLevel: 2 },
+      { kind: "study" as const, skill: "FORC", targetLevel: 3 }
     ]);
 
     expect(cells).toHaveLength(SCHEDULE_TURNS);
@@ -125,12 +125,12 @@ describe("projectMage", () => {
   });
 
   it("says a maxed skill is already as high as it goes", () => {
-    const { cells } = project(at({ FORC: [5, 450] }), [{ skill: "FORC", targetLevel: 5 }]);
+    const { cells } = project(at({ FORC: [5, 450] }), [{ kind: "study" as const, skill: "FORC", targetLevel: 5 }]);
 
     // The goal is satisfied, so nothing is planned at all - the queue is empty from the start.
     expect(said(cells)[0]).toBe("-");
 
-    const anyway = project(at({ FORC: [5, 450] }), [{ skill: "FORC", targetLevel: null }]);
+    const anyway = project(at({ FORC: [5, 450] }), [{ kind: "study" as const, skill: "FORC", targetLevel: null }]);
     const cell = anyway.cells[0];
     expect(cell.kind === "study" && cell.blocked).toBe(
       "force is already at 5, the highest there is."
@@ -138,7 +138,7 @@ describe("projectMage", () => {
   });
 
   it("records where he stands before each turn, and after the last", () => {
-    const { standings } = project(at({ FORC: [3, 270] }), [{ skill: "FORC", targetLevel: 5 }]);
+    const { standings } = project(at({ FORC: [3, 270] }), [{ kind: "study" as const, skill: "FORC", targetLevel: 5 }]);
 
     expect(standings).toHaveLength(SCHEDULE_TURNS + 1);
     expect(standings[0].get("FORC")).toEqual({ level: 3, points: 270 });
@@ -151,8 +151,8 @@ describe("goalQueueText", () => {
     expect(
       goalQueueText(
         [
-          { skill: "FORC", targetLevel: 4 },
-          { skill: "PATT", targetLevel: 3 }
+          { kind: "study" as const, skill: "FORC", targetLevel: 4 },
+          { kind: "study" as const, skill: "PATT", targetLevel: 3 }
         ],
         tree
       )
@@ -160,7 +160,7 @@ describe("goalQueueText", () => {
   });
 
   it("names one goal alone", () => {
-    expect(goalQueueText([{ skill: "FORC", targetLevel: 4 }], tree)).toBe("force → 4");
+    expect(goalQueueText([{ kind: "study" as const, skill: "FORC", targetLevel: 4 }], tree)).toBe("force → 4");
   });
 
   it("is null for an empty queue", () => {
@@ -176,8 +176,8 @@ describe("scheduleSummary", () => {
       scheduleSummary({
         start,
         goals: [
-          { skill: "FORC", targetLevel: 5 },
-          { skill: "PATT", targetLevel: 3 }
+          { kind: "study" as const, skill: "FORC", targetLevel: 5 },
+          { kind: "study" as const, skill: "PATT", targetLevel: 3 }
         ],
         tree
       })
@@ -192,7 +192,7 @@ describe("scheduleSummary", () => {
     expect(
       scheduleSummary({
         start: at({ FORC: [4, 300] }),
-        goals: [{ skill: "FORC", targetLevel: 4 }],
+        goals: [{ kind: "study" as const, skill: "FORC", targetLevel: 4 }],
         tree
       })
     ).toBe("force 4 · goal reached");
@@ -241,7 +241,7 @@ describe("scheduleRows", () => {
         {
           factionId: "21",
           unitId: "2431",
-          goals: [{ skill: "FORC", targetLevel: 4 }],
+          goals: [{ kind: "study" as const, skill: "FORC", targetLevel: 4 }],
           comment: "heading for Gate Lore",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
@@ -286,7 +286,7 @@ describe("hoverCard", () => {
         {
           factionId: "21",
           unitId: "2431",
-          goals: [{ skill: "FORC", targetLevel: 5 }],
+          goals: [{ kind: "study" as const, skill: "FORC", targetLevel: 5 }],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
@@ -323,7 +323,7 @@ describe("hoverCard", () => {
         {
           factionId: "21",
           unitId: "2431",
-          goals: [{ skill: "PATT", targetLevel: 1 }],
+          goals: [{ kind: "study" as const, skill: "PATT", targetLevel: 1 }],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
