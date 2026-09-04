@@ -1314,7 +1314,8 @@ impl Working {
         };
 
         // The parent's start-of-turn flags, cloned out before the row is borrowed: what a `FORM`
-        // in this block inherits, per `rules/sequenceofevents`.
+        // in this block inherits (`rules/form`), read from the report rather than the walked copy
+        // because `rules/sequenceofevents` runs every FORM before this month's flag orders.
         let parent_flags = self.units[parent].reported_flags.clone();
         let parent = &self.units[parent].unit;
         let key = (parent.region_id.clone(), alias.to_string());
