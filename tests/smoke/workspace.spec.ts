@@ -4348,7 +4348,11 @@ test("a bought item marks the ITEMS cell as a projection", async ({ page }) => {
   await selectUnit(page, OWN_UNIT);
 
   const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
-  await fillOrders(page, "BUY 1 PERF");
+  // The CLAIM pays for it. 18642 holds no silver of its own and is the only own unit in this hex,
+  // so since `ah-szye` its BUY is capped by a shared purse of nothing and buys none - `rules/buy`
+  // buys as many as the unit can afford. `rules/claim` runs before the market, so one line funds
+  // the purchase this test is actually about.
+  await fillOrders(page, "CLAIM 500\nBUY 1 PERF");
 
   // No other order is on this unit's block, so the ITEMS cell is the only predicted cell in the
   // row - the same locator the NAME case above uses.
@@ -4366,7 +4370,8 @@ test("All my units shows the coming month too", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
-  await fillOrders(page, "BUY 1 PERF");
+  // The CLAIM funds the purchase - see the ITEMS-projection test above (`ah-szye`).
+  await fillOrders(page, "CLAIM 500\nBUY 1 PERF");
 
   await page.getByTestId("unit-source-own").click();
 
@@ -4388,7 +4393,8 @@ test("a transported item marks the ITEMS cell as a projection", async ({ page })
   await selectUnit(page, OWN_UNIT);
 
   const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
-  await fillOrders(page, "BUY 2 PERF\nTRANSPORT 14451 1 PERF");
+  // The CLAIM funds the purchase - see the ITEMS-projection test above (`ah-szye`).
+  await fillOrders(page, "CLAIM 500\nBUY 2 PERF\nTRANSPORT 14451 1 PERF");
 
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toHaveAttribute("title", /^was: /);
@@ -4958,7 +4964,7 @@ test("the silver column forecasts our own units and sorts on the figure", async 
   // nobody, and a dissolved unit has no row to carry a figure (`ah-dhga`). A recruit rather than a
   // gift of men: 18642 has studied a Foundation, and `rules/magic` forbids a mage to GIVE men
   // (`ah-t8ei`). Inholm's market sells 482 hill dwarves, so the line is served.
-  await fillOrders(page, "@study obse\nFORM 1\nBUY 1 HDWA\nEND\n");
+  await fillOrders(page, "@study obse\nCLAIM 200\nFORM 1\nBUY 1 HDWA\nEND\n");
   const formedRow = page.getByTestId("unit-row-new-1");
   await expect(formedRow).toBeVisible();
   await expect(formedRow.locator("td").last()).toHaveText(/^-?\d+$/);
