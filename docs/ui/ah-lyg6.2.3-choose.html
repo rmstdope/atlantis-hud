@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.2.3 — choosing next turn's study: where the control lives</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+    --known-fill:#1b2c26; --known-ink:#7fcaa5; --known-edge:#2c4a3e;
+    --ceil-fill:#2e2718; --ceil-ink:#d9a441; --ceil-edge:#4a3d21;
+    --maxed-fill:#232a38; --maxed-ink:#8fb4e0; --maxed-edge:#33455f;
+    --open-fill:#141a23; --open-ink:#a3b0c0; --open-edge:#2b3644;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:98ch; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:18px; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:1000px) { .cols { grid-template-columns:1fr; } }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px;
+         text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+
+  /* --- the pane, as ah-lyg6.2.2 draws it --- */
+  .pane { width:900px; max-width:100%; background:var(--raised); border:1px solid var(--edge);
+          border-radius:6px; box-shadow:0 14px 40px #000a; overflow:hidden;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane.narrow { width:auto; }
+  .pane .top { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  .pane .top h4 { font:600 13.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .pane .top .key { color:var(--ink-dim); font-size:11.5px; }
+  .pane .top .sp { margin-left:auto; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.foc { outline:2px solid var(--select); outline-offset:1px; }
+  .pane .sub { padding:6px 12px; border-bottom:1px solid var(--edge-soft); color:var(--ink-dim); font-size:11.5px; }
+  .md { display:grid; grid-template-columns:272px 1fr; }
+  .md .list { border-right:1px solid var(--edge); max-height:470px; overflow:auto; }
+  .md .list .row { padding:6px 12px; border-bottom:1px solid var(--edge-soft); }
+  .md .list .row.on { background:#1b2735; box-shadow:inset 2px 0 0 var(--select); }
+  .md .list .row.kbd { outline:1px dashed var(--select); outline-offset:-2px; }
+  .md .list .row .nm { font-size:12.5px; }
+  .md .list .row .sub2 { color:var(--ink-dim); font-size:11px; }
+  .md .list .row .plan { color:var(--ok); font-size:11px; }
+  .md .list .row .note { color:var(--ink-dim); font-size:11px; font-style:italic; }
+  .md .list .hd { padding:6px 12px; color:var(--brass); font-size:11px; letter-spacing:0.6px;
+                  text-transform:uppercase; background:#141a23; position:sticky; top:0; }
+  .md .list .hd .age { color:var(--brass-bright); text-transform:none; letter-spacing:0; }
+  .md .list .row.stale { background:#191612; }
+  .md .list .row.stale.on { background:#241d15; box-shadow:inset 2px 0 0 var(--select); }
+  .md .det { padding:14px 16px; max-height:470px; overflow:auto; }
+  .md .det h5 { font:600 14px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .md .det .meta { color:var(--ink-dim); font-size:11.5px; margin:2px 0 12px; }
+  .md .det .grp2 { color:var(--ink-dim); font-size:11px; letter-spacing:0.6px; text-transform:uppercase; margin:14px 0 6px; }
+  .warnline { border-left:2px solid var(--ceil-edge); padding:4px 0 4px 8px; color:var(--brass-bright);
+              font-size:11.5px; margin-bottom:4px; }
+  .chip { display:inline-block; border-radius:3px; padding:0 5px; font-size:11.5px; margin:0 4px 4px 0;
+          border:1px solid var(--known-edge); background:var(--known-fill); color:var(--known-ink); }
+  .chip.ceil { border-color:var(--ceil-edge); background:var(--ceil-fill); color:var(--ceil-ink); }
+  .chip.maxed { border-color:var(--maxed-edge); background:var(--maxed-fill); color:var(--maxed-ink); }
+  .chip.open { border-color:var(--open-edge); background:var(--open-fill); color:var(--open-ink); }
+  .chip.pick { cursor:pointer; }
+  .chip.chosen { outline:2px solid var(--select); outline-offset:1px; }
+  .chip.locked { border-color:#232a33; background:#12161c; color:#5b6674; }
+  .up { color:var(--brass-bright); }
+  .more { color:var(--ink-dim); font-size:11.5px; }
+
+  /* --- the editing block --- */
+  .plan-box { border:1px solid var(--edge); border-radius:5px; background:#141a23; padding:10px 12px; }
+  .plan-box .hdr { display:flex; align-items:baseline; gap:8px; margin-bottom:8px; }
+  .plan-box .hdr .t { font:600 11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px;
+                      text-transform:uppercase; color:var(--brass); }
+  .plan-box .hdr .st { margin-left:auto; font-size:11px; color:var(--ink-dim); }
+  .plan-box .hdr .st.saved { color:var(--ok); }
+  .plan-box .hdr .st.err { color:var(--danger); }
+  .fields { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  select, input[type=text], input[type=number], textarea {
+    background:var(--ground); border:1px solid var(--edge); color:var(--ink); border-radius:4px;
+    padding:4px 7px; font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  select { min-width:15rem; }
+  textarea { width:100%; resize:vertical; }
+  .focus { outline:2px solid var(--select); outline-offset:1px; }
+  .fieldlbl { color:var(--ink-dim); font-size:11.5px; }
+  .count { color:var(--ink-dim); font-size:11px; text-align:right; }
+  .count.warn { color:var(--brass-bright); }
+  .orderline { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ok); }
+  .kbdkey { display:inline-block; border:1px solid var(--edge); border-radius:3px; padding:0 5px;
+            font-size:11px; color:var(--ink-soft); background:var(--ground); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.2.3 — <span>choosing next turn's study</span>: where the control lives</h1>
+  <p>The pane is the one you chose in <code>ah-lyg6.2.2</code> — the mage list beside a mage detail,
+  grouped by faction, your own first. It is read-only today. This bead makes it a planner: each mage
+  gains <strong>next turn's STUDY</strong> — a skill, and optionally the level it is being studied
+  towards — and a <strong>free-text note</strong> saying where his studies are heading. Both are kept
+  in the storage that merged as <code>ah-lyg6.2.1</code>, so they survive a reload and are there for
+  <code>ah-lyg6.4</code> to export grouped by faction.</p>
+  <p>The game is the same fiction the 2.2 mockups used: your faction <em>Wardens of the North (12)</em>
+  on turn 23, an ally <em>Borg (21)</em> level with you, an ally <em>Selado (34)</em> whose newest
+  sheet is turn 20. Skill names are drawn lower case, verbatim from the ruleset, as the magic tree
+  draws them — that was settled in 2.2.</p>
+  <p style="color:var(--brass-bright)"><strong>Question 1 of this round: which of A, B or C.</strong>
+  The other three questions are in the second file, <code>ah-lyg6.2.3-detail.html</code>.</p>
+</header>
+<main>
+
+<h3 class="sec">Variant A — the chips are the picker</h3>
+<p>Nothing new is added to the detail. The chips already on screen under <em>Knows</em> and
+<em>Can study now</em> become choosable: click one (or press Enter on it) and it is next turn's study.
+The chosen chip is ringed, and one line at the top of the detail says what the plan now is.</p>
+<div class="card">
+  <h2><em>A</em> Choose by ringing a chip</h2>
+  <p class="concept">The pane gains one line and one note box, and no new control at all. What a mage
+  may study is already drawn; A says the drawing <em>is</em> the menu.</p>
+  <div class="stage">
+    <div class="pane">
+      <div class="top"><h4>Study planner</h4><span class="key">F4</span><span class="sp"></span><button class="btn">Close</button></div>
+      <div class="sub">7 mages — 3 yours, 4 from 2 allies · 4 planned</div>
+      <div class="md">
+        <div class="list">
+          <div class="hd">Wardens of the North (12)</div>
+          <div class="row on"><div class="nm">Ereb <span class="sub2">(2431)</span></div>
+            <div class="sub2">force 3 · 12 can study</div>
+            <div class="plan">→ force, to 4</div></div>
+          <div class="row"><div class="nm">Sable <span class="sub2">(2517)</span></div>
+            <div class="sub2">force 1 · 4 can study</div>
+            <div class="plan">→ pattern</div></div>
+          <div class="row"><div class="nm">Kestrel <span class="sub2">(2688)</span></div>
+            <div class="sub2">apprentice · 3 can study</div>
+            <div class="sub2">no study planned</div></div>
+          <div class="hd">Borg (21) <span class="age">· turn 23</span></div>
+          <div class="row"><div class="nm">Uln <span class="sub2">(3012)</span></div>
+            <div class="sub2">pattern 4 · 9 can study</div>
+            <div class="plan">→ spirit, to 3</div></div>
+          <div class="row"><div class="nm">Vess <span class="sub2">(3104)</span></div>
+            <div class="sub2">spirit 2 · 6 can study</div>
+            <div class="sub2">no study planned</div></div>
+          <div class="hd">Selado (34) <span class="age">· turn 20 · 3 turns old</span></div>
+          <div class="row stale"><div class="nm">Mordoc <span class="sub2">(4501)</span></div>
+            <div class="sub2">spirit 3 · 7 can study</div>
+            <div class="plan">→ necromancy</div></div>
+          <div class="row stale"><div class="nm">Ilyth <span class="sub2">(4522)</span></div>
+            <div class="sub2">apprentice · 3 can study</div>
+            <div class="sub2">no study planned</div></div>
+        </div>
+        <div class="det">
+          <h5>Ereb (2431)</h5>
+          <div class="meta">Wardens of the North (12) · Ardun (1:7,53) · from this turn's report</div>
+
+          <div class="plan-box">
+            <div class="hdr"><span class="t">Next turn</span><span class="st saved">saved</span></div>
+            <div class="orderline">STUDY force 4</div>
+            <div style="color:var(--ink-dim);font-size:11.5px;margin-top:4px">Chosen by ringing a chip below. <a href="#" style="color:var(--select)">Clear</a></div>
+            <div class="grp2" style="margin-top:10px">Note</div>
+            <textarea rows="2" class="focus">Towards dragon lore — needs force 4 first.</textarea>
+            <div class="count">78 / 500</div>
+          </div>
+
+          <div class="grp2">Knows</div>
+          <div>
+            <span class="chip pick chosen">force 3</span>
+            <span class="chip ceil pick">pattern 2</span>
+            <span class="chip pick">spirit 1</span>
+            <span class="chip pick">fire 1</span>
+          </div>
+          <div class="grp2">Can study now — 12</div>
+          <div>
+            <span class="chip open pick">earth lore</span><span class="chip open pick">weather lore</span>
+            <span class="chip open pick">wolf lore</span><span class="chip open pick">bird lore</span>
+            <span class="chip open pick">dragon lore</span><span class="chip open pick">necromancy</span>
+            <span class="chip open pick">demon lore</span><span class="chip open pick">illusion</span>
+            <span class="chip open pick">artifact lore</span><span class="chip open pick">gate lore</span>
+            <span class="chip open pick">farsight</span><span class="chip open pick">portal lore</span>
+          </div>
+          <div class="grp2">Held back</div>
+          <div class="meta" style="margin:0">pattern — at 2, held by force</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>No new control: one click on something already in front of you.</li>
+    <li>You cannot pick a skill he cannot study, because only his own chips are on the page.</li>
+    <li>The whole choice is visible at once — you see the alternatives while you choose.</li>
+    <li class="con">A chip is now both a fact and a button; clicking one to read it changes the plan.</li>
+    <li class="con">There is nowhere to put the target level except a second control anyway (see the level question).</li>
+    <li class="con">Twelve chips is a wide target on screen but a poor one for the keyboard — tabbing through twelve chips to reach the note.</li>
+  </ul>
+</div>
+
+<h3 class="sec">Variant B — a Next turn block, and the chips stay facts</h3>
+<p>A block at the top of the detail owns the plan: a skill menu, a level, a Clear button and the note.
+The chips below it are untouched — they stay the read-only picture <code>ah-lyg6.2.2</code> landed.</p>
+<div class="card">
+  <h2><em>B</em> One block that owns the plan</h2>
+  <p class="concept">The menu lists what he may study, in two groups — the skills he already holds and
+  could raise, then the ones he could begin. Everything about the plan is in one rectangle, and
+  <span class="kbdkey">Tab</span> walks it: skill, level, note.</p>
+  <div class="stage">
+    <div class="pane">
+      <div class="top"><h4>Study planner</h4><span class="key">F4</span><span class="sp"></span><button class="btn">Close</button></div>
+      <div class="sub">7 mages — 3 yours, 4 from 2 allies · 4 planned</div>
+      <div class="md">
+        <div class="list">
+          <div class="hd">Wardens of the North (12)</div>
+          <div class="row on"><div class="nm">Ereb <span class="sub2">(2431)</span></div>
+            <div class="sub2">force 3 · 12 can study</div>
+            <div class="plan">→ force, to 4</div></div>
+          <div class="row"><div class="nm">Sable <span class="sub2">(2517)</span></div>
+            <div class="sub2">force 1 · 4 can study</div><div class="plan">→ pattern</div></div>
+          <div class="row"><div class="nm">Kestrel <span class="sub2">(2688)</span></div>
+            <div class="sub2">apprentice · 3 can study</div><div class="sub2">no study planned</div></div>
+          <div class="hd">Borg (21) <span class="age">· turn 23</span></div>
+          <div class="row"><div class="nm">Uln <span class="sub2">(3012)</span></div>
+            <div class="sub2">pattern 4 · 9 can study</div><div class="plan">→ spirit, to 3</div></div>
+          <div class="row"><div class="nm">Vess <span class="sub2">(3104)</span></div>
+            <div class="sub2">spirit 2 · 6 can study</div><div class="sub2">no study planned</div></div>
+          <div class="hd">Selado (34) <span class="age">· turn 20 · 3 turns old</span></div>
+          <div class="row stale"><div class="nm">Mordoc <span class="sub2">(4501)</span></div>
+            <div class="sub2">spirit 3 · 7 can study</div><div class="plan">→ necromancy</div></div>
+          <div class="row stale"><div class="nm">Ilyth <span class="sub2">(4522)</span></div>
+            <div class="sub2">apprentice · 3 can study</div><div class="sub2">no study planned</div></div>
+        </div>
+        <div class="det">
+          <h5>Ereb (2431)</h5>
+          <div class="meta">Wardens of the North (12) · Ardun (1:7,53) · from this turn's report</div>
+
+          <div class="plan-box">
+            <div class="hdr"><span class="t">Next turn</span><span class="st saved">saved</span></div>
+            <div class="fields">
+              <select class="focus">
+                <option>force — raise from 3</option>
+                <option>spirit — raise from 1</option>
+                <option>fire — raise from 1</option>
+                <option>earth lore — begin</option>
+                <option>weather lore — begin</option>
+                <option>necromancy — begin</option>
+              </select>
+              <span class="fieldlbl">to level</span>
+              <select style="min-width:4.8rem"><option>4</option></select>
+              <button class="btn">Clear</button>
+            </div>
+            <div class="orderline" style="margin-top:8px">STUDY force 4</div>
+            <div class="grp2" style="margin-top:10px">Note</div>
+            <textarea rows="2">Towards dragon lore — needs force 4 first.</textarea>
+            <div class="count">78 / 500</div>
+          </div>
+
+          <div class="grp2">Knows</div>
+          <div><span class="chip">force 3</span><span class="chip ceil">pattern 2</span>
+               <span class="chip">spirit 1</span><span class="chip">fire 1</span></div>
+          <div class="grp2">Can study now — 12</div>
+          <div><span class="chip open">earth lore</span><span class="chip open">weather lore</span>
+               <span class="chip open">wolf lore</span><span class="chip open">bird lore</span>
+               <span class="chip open">dragon lore</span><span class="chip open">necromancy</span>
+               <span class="chip open">demon lore</span><span class="chip open">illusion</span>
+               <span class="chip open">artifact lore</span><span class="chip open">gate lore</span>
+               <span class="chip open">farsight</span><span class="chip open">portal lore</span></div>
+          <div class="grp2">Held back</div>
+          <div class="meta" style="margin:0">pattern — at 2, held by force</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>One rectangle holds the whole plan; <span class="kbdkey">Tab</span> walks skill → level → note in three stops.</li>
+    <li>The chips keep meaning exactly what they meant yesterday: facts, not buttons.</li>
+    <li>The target level has an obvious home, and so does <em>Clear</em>.</li>
+    <li>A native menu is one keystroke to open and type-ahead searchable — twelve or seventy entries cost the same.</li>
+    <li class="con">The alternatives are behind a closed menu; you cannot compare them while choosing.</li>
+    <li class="con">The detail's first 130 pixels are a form, so the mage's own facts start lower down.</li>
+  </ul>
+</div>
+
+<h3 class="sec">Variant C — the block, and the chips are a shortcut into it</h3>
+<p>B's block, plus A's clickable chips: clicking a chip fills the menu rather than being the only way
+to choose. The menu is the truth; a chip is a fast route to it.</p>
+<div class="card">
+  <h2><em>C</em> Both, with the block as the truth</h2>
+  <p class="concept">Drawn here mid-click: <em>necromancy</em> has just been clicked in
+  <em>Can study now</em>, so the menu has moved to it and the level has emptied — a skill he does not
+  hold yet is begun, so there is no level to keep.</p>
+  <div class="stage">
+    <div class="pane">
+      <div class="top"><h4>Study planner</h4><span class="key">F4</span><span class="sp"></span><button class="btn">Close</button></div>
+      <div class="sub">7 mages — 3 yours, 4 from 2 allies · 4 planned</div>
+      <div class="md">
+        <div class="list">
+          <div class="hd">Wardens of the North (12)</div>
+          <div class="row on"><div class="nm">Ereb <span class="sub2">(2431)</span></div>
+            <div class="sub2">force 3 · 12 can study</div><div class="plan">→ necromancy</div></div>
+          <div class="row"><div class="nm">Sable <span class="sub2">(2517)</span></div>
+            <div class="sub2">force 1 · 4 can study</div><div class="plan">→ pattern</div></div>
+          <div class="row"><div class="nm">Kestrel <span class="sub2">(2688)</span></div>
+            <div class="sub2">apprentice · 3 can study</div><div class="sub2">no study planned</div></div>
+          <div class="hd">Borg (21) <span class="age">· turn 23</span></div>
+          <div class="row"><div class="nm">Uln <span class="sub2">(3012)</span></div>
+            <div class="sub2">pattern 4 · 9 can study</div><div class="plan">→ spirit, to 3</div></div>
+        </div>
+        <div class="det">
+          <h5>Ereb (2431)</h5>
+          <div class="meta">Wardens of the North (12) · Ardun (1:7,53) · from this turn's report</div>
+          <div class="plan-box">
+            <div class="hdr"><span class="t">Next turn</span><span class="st">saving…</span></div>
+            <div class="fields">
+              <select><option>necromancy — begin</option></select>
+              <span class="fieldlbl">to level</span>
+              <select style="min-width:4.8rem"><option>—</option></select>
+              <button class="btn">Clear</button>
+            </div>
+            <div class="orderline" style="margin-top:8px">STUDY necromancy</div>
+            <div class="grp2" style="margin-top:10px">Note</div>
+            <textarea rows="2">Towards dragon lore — needs force 4 first.</textarea>
+            <div class="count">78 / 500</div>
+          </div>
+          <div class="grp2">Knows</div>
+          <div><span class="chip pick">force 3</span><span class="chip ceil pick">pattern 2</span>
+               <span class="chip pick">spirit 1</span><span class="chip pick">fire 1</span></div>
+          <div class="grp2">Can study now — 12</div>
+          <div><span class="chip open pick">earth lore</span><span class="chip open pick">weather lore</span>
+               <span class="chip open pick">wolf lore</span><span class="chip open pick">bird lore</span>
+               <span class="chip open pick">dragon lore</span><span class="chip open pick chosen">necromancy</span>
+               <span class="chip open pick">demon lore</span><span class="chip open pick">illusion</span>
+               <span class="chip open pick">artifact lore</span><span class="chip open pick">gate lore</span>
+               <span class="chip open pick">farsight</span><span class="chip open pick">portal lore</span></div>
+          <div class="grp2">Held back</div>
+          <div class="meta" style="margin:0">pattern — at 2, held by force</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Both habits work: point at what you can see, or type into the menu.</li>
+    <li>The level and Clear still have one home, so nothing is ambiguous.</li>
+    <li class="con">Two ways to do one thing is two things to keep in step, and twice the surface to test.</li>
+    <li class="con">A chip that is sometimes a button is still a chip that is sometimes a button.</li>
+  </ul>
+</div>
+
+<h3 class="sec">What every variant shares</h3>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">The list row says what is planned</p>
+      <div class="stage">
+        <div class="pane narrow">
+          <div class="md" style="grid-template-columns:272px">
+            <div class="list" style="border-right:none">
+              <div class="hd">Wardens of the North (12)</div>
+              <div class="row on"><div class="nm">Ereb <span class="sub2">(2431)</span></div>
+                <div class="sub2">force 3 · 12 can study</div><div class="plan">→ force, to 4</div></div>
+              <div class="row"><div class="nm">Sable <span class="sub2">(2517)</span></div>
+                <div class="sub2">force 1 · 4 can study</div><div class="plan">→ pattern</div></div>
+              <div class="row"><div class="nm">Kestrel <span class="sub2">(2688)</span></div>
+                <div class="sub2">apprentice · 3 can study</div><div class="sub2">no study planned</div></div>
+              <div class="row"><div class="nm">Nym <span class="sub2">(2702)</span></div>
+                <div class="sub2">spirit 2 · 5 can study</div><div class="note">note only</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>A third line per row: the plan, or <em>no study planned</em>, or <em>note only</em> when there is a note and no skill.</li>
+        <li>The sub-line above the list counts them: <em>7 mages — 3 yours, 4 from 2 allies · 4 planned</em>.</li>
+      </ul>
+    </div>
+    <div>
+      <p class="lbl">Nothing else about the pane changes</p>
+      <div class="stage" style="min-height:150px">
+        <p style="color:var(--ink-soft);font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif">
+        <span class="kbdkey">F4</span> still opens it and still closes it. <span class="kbdkey">Esc</span>
+        still closes it and returns focus. The arrow keys still walk the list — but only while the list
+        itself has focus; inside the note box an arrow key moves the cursor, as it must.<br><br>
+        The groups, the headings, the staleness tint, the <em>Knows</em> / <em>Can study now</em> /
+        <em>Held back</em> sections and every string in them are exactly what
+        <code>ah-lyg6.2.2</code> lands. This bead adds the plan and nothing else.<br><br>
+        Teaching, and the warnings about hexes and seats, are <code>ah-lyg6.3</code>. Turning these
+        plans into order lines you can paste or save is <code>ah-lyg6.4</code>. The
+        <code>STUDY force 4</code> line drawn in each block above is a <em>preview</em> of what
+        <code>ah-lyg6.4</code> will export, not an export.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+</body>
+</html>
