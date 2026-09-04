@@ -1238,10 +1238,13 @@ impl Working {
     /// exactly that reason - applying one again here would move it twice (`ah-3mwm`).
     fn apply_item_effects(
         &mut self,
-        effects: &BTreeMap<String, super::semantics::UnitItemEffects>,
+        effects: &BTreeMap<super::semantics::UnitKey, super::semantics::UnitItemEffects>,
     ) {
         for unit in &mut self.units {
-            let Some(effect) = effects.get(&unit.unit.unit_id) else {
+            let Some(effect) = effects.get(&super::semantics::unit_key(
+                &unit.unit.region_id,
+                &unit.unit.unit_id,
+            )) else {
                 continue;
             };
             for movement in &effect.moved {
@@ -3726,6 +3729,59 @@ mod tests {
             "a GIVE from another hex must not reach it: {:?}",
             formed.unit.items
         );
+    }
+
+    /// `rules/form` scopes an alias to its region, so two hexes may each write `FORM 1`. Each
+    /// formed unit buys for itself: the two are different units and only share a name.
+    #[test]
+    fn two_hexes_forming_the_same_alias_each_buy_for_themselves() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 5 humans [HUMN] at $38.",
+            "",
+            "* Alpha (900), Foo (1), 10 humans [HUMN], 4000 silver [SILV]. Weight: 100. \
+             Capacity: 0/0/150/0.",
+            "",
+            "plain (3,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 5 humans [HUMN] at $38.",
+            "",
+            "* Beta (902), Foo (1), 10 humans [HUMN], 4000 silver [SILV]. Weight: 100. \
+             Capacity: 0/0/150/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 900\nFORM 1\nBUY 1 HUMN\nEND\nGIVE NEW 1 500 SILV\n\
+             unit 902\nFORM 1\nBUY 4 HUMN\nEND\nGIVE NEW 1 500 SILV\n",
+        );
+
+        for (region_id, expected) in [("1:1,1", 1), ("1:3,1", 4)] {
+            let region = response
+                .regions
+                .iter()
+                .find(|region| region.region_id == region_id)
+                .unwrap_or_else(|| panic!("no preview for {region_id}"));
+            let formed: Vec<_> = region
+                .units
+                .iter()
+                .filter(|unit| unit.status == UnitPreviewStatus::Formed)
+                .collect();
+            assert_eq!(formed.len(), 1, "one formed unit in {region_id}");
+            let bought = formed[0]
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "HUMN")
+                .map_or(0, |item| item.amount);
+            assert_eq!(
+                bought, expected,
+                "the formed unit in {region_id} buys only its own hex's HUMN: {:?}",
+                formed[0].unit.items
+            );
+        }
     }
 
     #[test]

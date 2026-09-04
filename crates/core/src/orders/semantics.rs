@@ -292,6 +292,17 @@ pub struct Finding {
 
 /// Where the report shows each unit, by unit number, across every region it covers.
 ///
+/// A unit's identity across the whole report: the hex it stands in, then its number.
+///
+/// A unit *number* is not unique report-wide. `effects::formed_unit` mints a formed unit as
+/// `new-{alias}`, and `rules/form` scopes an alias to its region - so two hexes may each write
+/// `FORM 1` and both units are called `new-1`. Every map that spans hexes keys on this pair.
+pub(crate) type UnitKey = (String, String);
+
+pub(crate) fn unit_key(region_id: &str, unit_id: &str) -> UnitKey {
+    (region_id.to_string(), unit_id.to_string())
+}
+
 /// Built once for the whole report rather than per hex, because the point of the lookup is to tell
 /// a mistyped unit number from a real unit standing somewhere else, and only the second of those
 /// is answerable from outside the hex. Every unit the report prints is in here, ours and any
@@ -4334,11 +4345,11 @@ pub(crate) fn item_effects(
     report: &ParsedReport,
     orders_document: &str,
     ruleset: Option<&Ruleset>,
-) -> BTreeMap<String, UnitItemEffects> {
+) -> BTreeMap<UnitKey, UnitItemEffects> {
     let ordered = OrderedUnits::read(orders_document);
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
-    let mut result: BTreeMap<String, UnitItemEffects> = BTreeMap::new();
+    let mut result: BTreeMap<UnitKey, UnitItemEffects> = BTreeMap::new();
 
     // The units this month's `FORM` orders create, built before `hexes` below so they outlive
     // every `Hex<'_>` that borrows from them. A formed unit's own `BUY` has to be priced here, or
@@ -4394,7 +4405,7 @@ pub(crate) fn item_effects(
                 if let Some(people) = recruited_people(ordered, &ledger, ruleset) {
                     if !people.is_empty() {
                         result
-                            .entry(ordered.unit.unit_id.clone())
+                            .entry(unit_key(&hex.region.region_id, &ordered.unit.unit_id))
                             .or_default()
                             .recruited = people;
                     }
@@ -4404,13 +4415,15 @@ pub(crate) fn item_effects(
 
         for movement in ledger.movements {
             result
-                .entry(movement.unit_id.clone())
+                .entry(unit_key(&hex.region.region_id, &movement.unit_id))
                 .or_default()
                 .moved
                 .push(movement);
         }
         for (unit_id, lines) in ledger.uncounted {
-            let entry = result.entry(unit_id).or_default();
+            let entry = result
+                .entry(unit_key(&hex.region.region_id, &unit_id))
+                .or_default();
             for line_no in lines {
                 // `PlacedIntent::line` is 1-based.
                 let Some(text) = orders_document.lines().nth(line_no.saturating_sub(1)) else {
@@ -4423,7 +4436,10 @@ pub(crate) fn item_effects(
             }
         }
         for (unit_id, spends) in ledger.built {
-            result.entry(unit_id).or_default().built = spends;
+            result
+                .entry(unit_key(&hex.region.region_id, &unit_id))
+                .or_default()
+                .built = spends;
         }
     }
 
@@ -11368,6 +11384,19 @@ mod tests {
     use crate::orders::silver::plan_cast;
     use crate::report::model::{level_for_points, Exit, Skill};
 
+    /// The item effects of the unit with this number, whatever hex it stands in. [`item_effects`]
+    /// keys on [`UnitKey`] because two hexes may each hold a `new-1` (`rules/form`); a test whose
+    /// fixture holds one such unit only can still ask by number.
+    fn effects_for<'a>(
+        effects: &'a BTreeMap<UnitKey, UnitItemEffects>,
+        unit_id: &str,
+    ) -> Option<&'a UnitItemEffects> {
+        effects
+            .iter()
+            .find(|((_, id), _)| id == unit_id)
+            .map(|(_, effects)| effects)
+    }
+
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
     /// `ah-v9p2`. The Silver column's warning marker is a property of the finding, declared beside
@@ -16713,11 +16742,11 @@ mod tests {
         /// What the ITEMS column shows this unit making, which is the `produced` movements of the
         /// goods summed - the same figure the SILVER column's `produced` states.
         fn produced_in_items(
-            effects: &BTreeMap<String, UnitItemEffects>,
+            effects: &BTreeMap<UnitKey, UnitItemEffects>,
             id: &str,
             tag: &str,
         ) -> i64 {
-            effects.get(id).map_or(0, |unit| {
+            effects_for(effects, id).map_or(0, |unit| {
                 unit.moved
                     .iter()
                     .filter(|movement| movement.produced && movement.tag == tag)
@@ -20155,8 +20184,7 @@ BUILD
         assert_eq!(forecast.production_wanted, 0, "{forecast:?}");
 
         let effects = item_effects(&report, orders, Some(&ruleset()));
-        let moved = effects
-            .get("683")
+        let moved = effects_for(&effects, "683")
             .map(|unit| unit.moved.clone())
             .unwrap_or_default();
         assert!(
@@ -20192,9 +20220,11 @@ BUILD
         };
         let report = report(vec![hex_region]);
 
-        let replaced = item_effects(&report, "unit 900\nBUILD\nENTERTAIN\n", Some(&ruleset()))
-            .get("900")
-            .cloned()
+        let replaced = effects_for(
+            &item_effects(&report, "unit 900\nBUILD\nENTERTAIN\n", Some(&ruleset())),
+            "900",
+        )
+        .cloned()
             .unwrap_or_default();
         assert!(
             replaced.built.is_empty(),
@@ -20209,9 +20239,11 @@ BUILD
 
         // The reverse order, so the assertions above are about the replacement and not about a
         // fixture that never built anything.
-        let winning = item_effects(&report, "unit 900\nENTERTAIN\nBUILD\n", Some(&ruleset()))
-            .get("900")
-            .cloned()
+        let winning = effects_for(
+            &item_effects(&report, "unit 900\nENTERTAIN\nBUILD\n", Some(&ruleset())),
+            "900",
+        )
+        .cloned()
             .unwrap_or_default();
         assert_eq!(winning.built.len(), 1, "{:?}", winning.built);
         assert_eq!(winning.built[0].tag, "WOOD");
@@ -21914,8 +21946,7 @@ BUILD
         let orders = "unit 12881\nGIVE 12882 3000 SILV\nPRODUCE catapult\n";
 
         let effects = item_effects(&hex, orders, Some(&ruleset()));
-        let moved = effects
-            .get("12881")
+        let moved = effects_for(&effects, "12881")
             .map(|unit| unit.moved.clone())
             .unwrap_or_default();
         assert!(
@@ -21927,8 +21958,7 @@ BUILD
         // and the assertion above is not passing on a fixture that could never produce.
         let funded = report(vec![region(vec![carpenters(3000, 9999), unit("12882")])]);
         let effects = item_effects(&funded, "unit 12881\nPRODUCE catapult\n", Some(&ruleset()));
-        let moved = effects
-            .get("12881")
+        let moved = effects_for(&effects, "12881")
             .map(|unit| unit.moved.clone())
             .unwrap_or_default();
         assert!(
@@ -26038,7 +26068,7 @@ BUILD
         let orders = "unit 4021\nFORM 1\nBUILD Mine\nEND\nunit 4117\nBUILD HELP NEW 1\n";
 
         let effects = item_effects(&report, orders, Some(&ruleset()));
-        let helper = effects.get("4117").expect("the helper is priced");
+        let helper = effects_for(&effects, "4117").expect("the helper is priced");
 
         assert_eq!(
             helper.built,
@@ -26087,7 +26117,7 @@ BUILD
         );
 
         let effects = item_effects(&report(regions), orders, Some(&ruleset()));
-        let helper = effects.get("4117").expect("the helper is read");
+        let helper = effects_for(&effects, "4117").expect("the helper is read");
         assert_eq!(
             helper.uncounted,
             vec!["BUILD HELP NEW 2".to_string()],
