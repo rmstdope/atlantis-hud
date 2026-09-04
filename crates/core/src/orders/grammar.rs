@@ -980,6 +980,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_synonym_names_a_canonical_word_in_its_own_table() {
+        fn check(argument: &Arg) {
+            match argument {
+                Arg::OneOfAliased(list) => {
+                    for keyword in *list {
+                        let Some(canonical) = keyword.same_as else {
+                            continue;
+                        };
+                        assert!(
+                            list.iter()
+                                .any(|other| other.word == canonical && other.same_as.is_none()),
+                            "{} is a synonym for {canonical}, which is not a canonical word in \
+                             the same table",
+                            keyword.word
+                        );
+                    }
+                }
+                Arg::Rest(inner) | Arg::Repeat(inner) => check(inner),
+                _ => {}
+            }
+        }
+
+        for order in GRAMMAR {
+            for form in order.forms {
+                for argument in *form {
+                    check(argument);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn the_table_names_each_order_once() {
         let mut names: Vec<&str> = order_commands();
         names.sort_unstable();
