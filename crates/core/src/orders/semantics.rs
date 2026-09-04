@@ -306,6 +306,19 @@ fn where_the_report_shows_each_unit(report: &ParsedReport) -> BTreeMap<&str, &Re
     located
 }
 
+/// A unit's identity across the whole report: the hex it stands in, then its number.
+///
+/// A unit *number* is not unique report-wide. `effects::formed_unit` mints a formed unit as
+/// `new-{alias}`, and `rules/form` scopes an alias to its region - so two hexes may each write
+/// `FORM 1` and both units are called `new-1`. Every map that spans hexes keys on this pair
+/// (`ah-9o0c.1`).
+pub(crate) type UnitKey = (String, String);
+
+/// One unit's [`UnitKey`]: the hex it stands in, then its number.
+pub(crate) fn unit_key(region_id: &str, unit_id: &str) -> UnitKey {
+    (region_id.to_string(), unit_id.to_string())
+}
+
 /// Every unit the report prints, by unit number - the unit itself rather than its region.
 ///
 /// A `FORM` block's synthetic unit is built by cloning its parent's own fields (`effects.rs`'s
@@ -648,9 +661,9 @@ pub fn review_turn(
 /// step 7.
 struct Relief<'a> {
     /// Step 4: silver from other own units in the same hex (`ah-e66j`).
-    shared_silver: &'a BTreeMap<String, i64>,
+    shared_silver: &'a BTreeMap<UnitKey, i64>,
     /// Steps 5 and 6: the unit's own food, then its hex's faction food (`ah-eacd`).
-    food: &'a BTreeMap<String, LateFoodRelief>,
+    food: &'a BTreeMap<UnitKey, LateFoodRelief>,
     /// Step 7: the faction's unclaimed fund, which is faction-wide (`ah-fjty`).
     settlement: &'a UpkeepSettlement,
 }
@@ -1364,7 +1377,7 @@ fn forecast_hex(
     // The hex and the ledger built from it, as `review_turn` already holds them - one argument
     // rather than two, which is also what keeps a hex from being priced against another's ledger.
     (hex, ledger): &(Hex<'_>, Ledger<'_>),
-    receipts: &BTreeMap<String, Receipts>,
+    receipts: &BTreeMap<UnitKey, Receipts>,
     _purse: FactionPurse,
     ruleset: Option<&Ruleset>,
     relief: &Relief<'_>,
@@ -1538,7 +1551,9 @@ fn forecast_hex(
                 .skills_before_the_market()
                 .unwrap_or(&ordered.unit.skills),
             intents: &ordered.intents,
-            receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
+            receipts: receipts
+                .get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
+                .unwrap_or(&nothing),
             formed: ordered.formed.as_ref(),
             after_gifts_unknown: ordered.holdings_unknown(),
             food_uncertain: food_uncertain_after_gifts(ordered, ruleset),
@@ -1643,7 +1658,7 @@ fn forecast_hex(
             continue;
         };
         let covered = shared_silver
-            .get(&ordered.unit.unit_id)
+            .get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
             .copied()
             .unwrap_or_default();
         forecast.shared_silver_covered = covered;
@@ -1660,7 +1675,8 @@ fn forecast_hex(
             // A doubted fee stays doubted: food cannot settle a number nothing knows.
             continue;
         };
-        let Some(relief) = food_relief.get(&ordered.unit.unit_id) else {
+        let Some(relief) = food_relief.get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
+        else {
             continue;
         };
         forecast.food_contended = relief.contended;
@@ -1728,18 +1744,22 @@ fn class_carries_silver(class: &str, ruleset: Option<&Ruleset>) -> Option<bool> 
 /// A receipt this pass cannot count - from another hex, from a foreign unit, or of an `ALL` amount
 /// whose source it cannot price - is silently absent rather than doubted, which understates income
 /// and never overstates it.
-fn gather_receipts(hexes: &[Hex<'_>]) -> BTreeMap<String, Receipts> {
-    let mut result: BTreeMap<String, Receipts> = BTreeMap::new();
+fn gather_receipts(hexes: &[Hex<'_>]) -> BTreeMap<UnitKey, Receipts> {
+    let mut result: BTreeMap<UnitKey, Receipts> = BTreeMap::new();
     for hex in hexes {
         for ordered in &hex.units {
             let receipts = &ordered.transfer_receipts;
             if receipts == &Receipts::default() {
                 continue;
             }
-            // Merged rather than inserted: a formed unit's id is the synthetic `new-{alias}`,
-            // which is per-hex, so two regions can each hold a unit of that name. Replacing the
-            // entry would silently drop one region's receipts.
-            let entry = result.entry(ordered.unit.unit_id.clone()).or_default();
+            // Keyed on the hex as well as the unit, because a formed unit's id is the synthetic
+            // `new-{alias}` and `rules/form` scopes an alias to its region - so two regions can
+            // each hold a unit of that name and they are different units (`ah-9o0c.1`). The merge
+            // below is a no-op under that key and is kept only so the arithmetic stays where the
+            // per-unit receipts are built.
+            let entry = result
+                .entry(unit_key(&hex.region.region_id, &ordered.unit.unit_id))
+                .or_default();
             entry.silver = entry.silver.saturating_add(receipts.silver);
             entry.taken = entry.taken.saturating_add(receipts.taken);
             entry.taken_unshown = entry.taken_unshown.saturating_add(receipts.taken_unshown);
@@ -4334,11 +4354,11 @@ pub(crate) fn item_effects(
     report: &ParsedReport,
     orders_document: &str,
     ruleset: Option<&Ruleset>,
-) -> BTreeMap<String, UnitItemEffects> {
+) -> BTreeMap<UnitKey, UnitItemEffects> {
     let ordered = OrderedUnits::read(orders_document);
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
-    let mut result: BTreeMap<String, UnitItemEffects> = BTreeMap::new();
+    let mut result: BTreeMap<UnitKey, UnitItemEffects> = BTreeMap::new();
 
     // The units this month's `FORM` orders create, built before `hexes` below so they outlive
     // every `Hex<'_>` that borrows from them. A formed unit's own `BUY` has to be priced here, or
@@ -4394,7 +4414,7 @@ pub(crate) fn item_effects(
                 if let Some(people) = recruited_people(ordered, &ledger, ruleset) {
                     if !people.is_empty() {
                         result
-                            .entry(ordered.unit.unit_id.clone())
+                            .entry(unit_key(&hex.region.region_id, &ordered.unit.unit_id))
                             .or_default()
                             .recruited = people;
                     }
@@ -4404,13 +4424,15 @@ pub(crate) fn item_effects(
 
         for movement in ledger.movements {
             result
-                .entry(movement.unit_id.clone())
+                .entry(unit_key(&hex.region.region_id, &movement.unit_id))
                 .or_default()
                 .moved
                 .push(movement);
         }
         for (unit_id, lines) in ledger.uncounted {
-            let entry = result.entry(unit_id).or_default();
+            let entry = result
+                .entry(unit_key(&hex.region.region_id, &unit_id))
+                .or_default();
             for line_no in lines {
                 // `PlacedIntent::line` is 1-based.
                 let Some(text) = orders_document.lines().nth(line_no.saturating_sub(1)) else {
@@ -4423,7 +4445,10 @@ pub(crate) fn item_effects(
             }
         }
         for (unit_id, spends) in ledger.built {
-            result.entry(unit_id).or_default().built = spends;
+            result
+                .entry(unit_key(&hex.region.region_id, &unit_id))
+                .or_default()
+                .built = spends;
         }
     }
 
@@ -4703,7 +4728,7 @@ fn check_resources(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
-    receipts: &BTreeMap<String, Receipts>,
+    receipts: &BTreeMap<UnitKey, Receipts>,
     findings: &mut Vec<Finding>,
 ) {
     report_shortfalls(ledger, hex, ruleset, plurals, options, receipts, findings);
@@ -6944,8 +6969,8 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
 /// cover every claimant lends all of it anyway and returns nothing for it: the total is exact even
 /// though which unit the engine feeds is not, and understating what step 4 paid would send a claim
 /// to the unclaimed fund that step 4 had already met.
-fn share_silver_for_upkeep(hexes: &mut [(Hex<'_>, Ledger<'_>)]) -> BTreeMap<String, i64> {
-    let mut covered: BTreeMap<String, i64> = BTreeMap::new();
+fn share_silver_for_upkeep(hexes: &mut [(Hex<'_>, Ledger<'_>)]) -> BTreeMap<UnitKey, i64> {
+    let mut covered: BTreeMap<UnitKey, i64> = BTreeMap::new();
 
     for (hex, ledger) in hexes {
         let claims = unpayable_upkeep(hex, ledger);
@@ -6988,7 +7013,9 @@ fn share_silver_for_upkeep(hexes: &mut [(Hex<'_>, Ledger<'_>)]) -> BTreeMap<Stri
             left -= relieved;
             *ledger.upkeep_relieved.entry(unit_id.clone()).or_default() += relieved;
             if !short {
-                *covered.entry(unit_id.clone()).or_default() += relieved;
+                *covered
+                    .entry(unit_key(&hex.region.region_id, unit_id))
+                    .or_default() += relieved;
             }
         }
         if short {
@@ -7018,8 +7045,8 @@ fn share_silver_for_upkeep(hexes: &mut [(Hex<'_>, Ledger<'_>)]) -> BTreeMap<Stri
 /// it.
 fn feed_from_food_after_silver(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
-) -> BTreeMap<String, LateFoodRelief> {
-    let mut all: BTreeMap<String, LateFoodRelief> = BTreeMap::new();
+) -> BTreeMap<UnitKey, LateFoodRelief> {
+    let mut all: BTreeMap<UnitKey, LateFoodRelief> = BTreeMap::new();
     let nothing = Receipts::default();
 
     for (hex, ledger) in hexes {
@@ -7065,7 +7092,11 @@ fn feed_from_food_after_silver(
                     .or_insert(0) += relieved;
             }
         }
-        all.extend(relief);
+        all.extend(
+            relief
+                .into_iter()
+                .map(|(unit_id, fed)| (unit_key(&hex.region.region_id, &unit_id), fed)),
+        );
     }
     all
 }
@@ -7731,7 +7762,7 @@ fn report_shortfalls(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
-    receipts: &BTreeMap<String, Receipts>,
+    receipts: &BTreeMap<UnitKey, Receipts>,
     findings: &mut Vec<Finding>,
 ) {
     let sharing = Sharing::read(hex);
@@ -7776,7 +7807,9 @@ fn report_shortfalls(
             // Both figures count what the unit was given this month, exactly as `short` already
             // does through the ledger's own `apply` - a unit given 100 and told to spend 200 reads
             // "can have $100 and its orders spend $200", not "$0 ... $100" (M2, `ah-jw85`).
-            let received = receipts.get(unit_id).map_or(0, |receipts| receipts.silver);
+            let received = receipts
+                .get(&unit_key(&hex.region.region_id, unit_id))
+                .map_or(0, |receipts| receipts.silver);
             // `rules/buy` buys as many as the unit can afford, so the sentence goes on to say
             // what it gets instead of what it asked for. Appended rather than replacing anything,
             // so the figures a player already reads stay where they are (`ah-omn7`, Q1).
@@ -11368,6 +11401,22 @@ mod tests {
     use crate::orders::silver::plan_cast;
     use crate::report::model::{level_for_points, Exit, Skill};
 
+    /// The item effects of the unit with this number, whatever hex it stands in. [`item_effects`]
+    /// keys on [`UnitKey`] because two hexes may each hold a `new-1` (`rules/form`); a test whose
+    /// fixture holds one such unit only can still ask by number.
+    fn effects_for<'a>(
+        effects: &'a BTreeMap<UnitKey, UnitItemEffects>,
+        unit_id: &str,
+    ) -> Option<&'a UnitItemEffects> {
+        let mut matching = effects.iter().filter(|((_, id), _)| id == unit_id);
+        let first = matching.next();
+        assert!(
+            matching.next().is_none(),
+            "two hexes hold a unit numbered {unit_id}; ask by hex instead"
+        );
+        first.map(|(_, effects)| effects)
+    }
+
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
     /// `ah-v9p2`. The Silver column's warning marker is a property of the finding, declared beside
@@ -12870,6 +12919,8 @@ mod tests {
 
     /// The receipts one hex's settled transfers produce - `gather_receipts` reading exactly what
     /// `apply_transfers` moved, which is how `review_turn` reaches them too.
+    /// Keyed by unit number alone: [`gather_receipts`] keys on [`UnitKey`], but this helper walks
+    /// one hex, so the region half is the same for every entry and carries no information.
     fn receipts_in(region: &ReportRegion, orders: &str) -> BTreeMap<String, Receipts> {
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
@@ -12882,6 +12933,9 @@ mod tests {
             &BTreeSet::new(),
         );
         gather_receipts(std::slice::from_ref(&hex))
+            .into_iter()
+            .map(|((_, unit_id), receipts)| (unit_id, receipts))
+            .collect()
     }
 
     /// `ah-awcm`: a `TAKE` of a stated quantity from a unit the report shows in this hex is the
@@ -16713,11 +16767,11 @@ mod tests {
         /// What the ITEMS column shows this unit making, which is the `produced` movements of the
         /// goods summed - the same figure the SILVER column's `produced` states.
         fn produced_in_items(
-            effects: &BTreeMap<String, UnitItemEffects>,
+            effects: &BTreeMap<UnitKey, UnitItemEffects>,
             id: &str,
             tag: &str,
         ) -> i64 {
-            effects.get(id).map_or(0, |unit| {
+            effects_for(effects, id).map_or(0, |unit| {
                 unit.moved
                     .iter()
                     .filter(|movement| movement.produced && movement.tag == tag)
@@ -19254,6 +19308,16 @@ BUILD
 
     /// A region with the given id, so a test can order things in several at once.
     fn region_at(id: &str, x: i32, y: i32, units: Vec<ReportUnit>) -> ReportRegion {
+        // `unit` hard-codes the default region's id, so a unit placed here would otherwise claim
+        // to stand in the region `region` builds. That is load-bearing now that report-wide maps
+        // key on [`UnitKey`].
+        let units = units
+            .into_iter()
+            .map(|mut unit| {
+                unit.region_id = id.to_string();
+                unit
+            })
+            .collect();
         ReportRegion {
             region_id: id.to_string(),
             coordinate: Coordinate { x, y, z: 1 },
@@ -20155,8 +20219,7 @@ BUILD
         assert_eq!(forecast.production_wanted, 0, "{forecast:?}");
 
         let effects = item_effects(&report, orders, Some(&ruleset()));
-        let moved = effects
-            .get("683")
+        let moved = effects_for(&effects, "683")
             .map(|unit| unit.moved.clone())
             .unwrap_or_default();
         assert!(
@@ -20192,10 +20255,12 @@ BUILD
         };
         let report = report(vec![hex_region]);
 
-        let replaced = item_effects(&report, "unit 900\nBUILD\nENTERTAIN\n", Some(&ruleset()))
-            .get("900")
-            .cloned()
-            .unwrap_or_default();
+        let replaced = effects_for(
+            &item_effects(&report, "unit 900\nBUILD\nENTERTAIN\n", Some(&ruleset())),
+            "900",
+        )
+        .cloned()
+        .unwrap_or_default();
         assert!(
             replaced.built.is_empty(),
             "a replaced BUILD spends nothing: {:?}",
@@ -20209,10 +20274,12 @@ BUILD
 
         // The reverse order, so the assertions above are about the replacement and not about a
         // fixture that never built anything.
-        let winning = item_effects(&report, "unit 900\nENTERTAIN\nBUILD\n", Some(&ruleset()))
-            .get("900")
-            .cloned()
-            .unwrap_or_default();
+        let winning = effects_for(
+            &item_effects(&report, "unit 900\nENTERTAIN\nBUILD\n", Some(&ruleset())),
+            "900",
+        )
+        .cloned()
+        .unwrap_or_default();
         assert_eq!(winning.built.len(), 1, "{:?}", winning.built);
         assert_eq!(winning.built[0].tag, "WOOD");
         assert!(
@@ -21914,8 +21981,7 @@ BUILD
         let orders = "unit 12881\nGIVE 12882 3000 SILV\nPRODUCE catapult\n";
 
         let effects = item_effects(&hex, orders, Some(&ruleset()));
-        let moved = effects
-            .get("12881")
+        let moved = effects_for(&effects, "12881")
             .map(|unit| unit.moved.clone())
             .unwrap_or_default();
         assert!(
@@ -21927,8 +21993,7 @@ BUILD
         // and the assertion above is not passing on a fixture that could never produce.
         let funded = report(vec![region(vec![carpenters(3000, 9999), unit("12882")])]);
         let effects = item_effects(&funded, "unit 12881\nPRODUCE catapult\n", Some(&ruleset()));
-        let moved = effects
-            .get("12881")
+        let moved = effects_for(&effects, "12881")
             .map(|unit| unit.moved.clone())
             .unwrap_or_default();
         assert!(
@@ -26038,7 +26103,7 @@ BUILD
         let orders = "unit 4021\nFORM 1\nBUILD Mine\nEND\nunit 4117\nBUILD HELP NEW 1\n";
 
         let effects = item_effects(&report, orders, Some(&ruleset()));
-        let helper = effects.get("4117").expect("the helper is priced");
+        let helper = effects_for(&effects, "4117").expect("the helper is priced");
 
         assert_eq!(
             helper.built,
@@ -26087,7 +26152,7 @@ BUILD
         );
 
         let effects = item_effects(&report(regions), orders, Some(&ruleset()));
-        let helper = effects.get("4117").expect("the helper is read");
+        let helper = effects_for(&effects, "4117").expect("the helper is read");
         assert_eq!(
             helper.uncounted,
             vec!["BUILD HELP NEW 2".to_string()],
@@ -33655,6 +33720,16 @@ BUILD
             .expect("every own unit is forecast")
     }
 
+    /// The forecast for one unit **in one hex**. [`forecast`] matches on the number alone, which
+    /// two hexes' `new-1` rows both answer to (`rules/form`).
+    fn forecast_in<'a>(review: &'a TurnReview, region_id: &str, id: &str) -> &'a UnitSilver {
+        review
+            .silver
+            .iter()
+            .find(|unit| unit.unit_id == id && unit.region_id == region_id)
+            .unwrap_or_else(|| panic!("no forecast for {id} in {region_id}: {:?}", review.silver))
+    }
+
     /// The half of M2 (`ah-jw85`) that is not about `FORM`: a reported unit given silver has that
     /// silver counted into both figures the shortfall message prints, not only into `short`.
     #[test]
@@ -33818,6 +33893,65 @@ BUILD
                 formed.received, 0,
                 "the gift was written by a unit standing in a different hex from the one that \
                  formed new-1: it names a unit that does not exist there"
+            );
+        }
+
+        /// Two hexes may each write `FORM 1` (`rules/form` scopes an alias to its region), and
+        /// each formed unit is credited only what its own hex's gift gave it.
+        #[test]
+        fn two_hexes_forming_the_same_alias_are_credited_their_own_gifts() {
+            let here = region(vec![with_silver(unit("1922"), 1000)]);
+            let there = region_at("1:8,53", 8, 53, vec![with_silver(unit("2000"), 1000)]);
+            let review = review_turn(
+                &report(vec![here, there]),
+                "unit 1922\nGIVE NEW 1 100 SILV\nFORM 1\nEND\n\
+                 unit 2000\nGIVE NEW 1 900 SILV\nFORM 1\nEND\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert_eq!(
+                forecast_in(&review, "1:7,53", "new-1").received,
+                100,
+                "the first hex's formed unit is credited its own hex's gift only"
+            );
+            assert_eq!(
+                forecast_in(&review, "1:8,53", "new-1").received,
+                900,
+                "the second hex's formed unit is credited its own hex's gift only"
+            );
+        }
+
+        /// A hex that has nothing spare lends nothing, and its formed unit must not read the
+        /// relief a different hex's identically numbered one was lent (`rules/form`, `ah-e66j`).
+        #[test]
+        fn a_formed_unit_reads_only_its_own_hexs_shared_silver() {
+            // No silver at all in the first hex; plenty in the second. Two men each, so each
+            // parent has one to hand over.
+            let poor = region(vec![with_men(unit("1922"), 2)]);
+            let rich = region_at(
+                "1:8,53",
+                8,
+                53,
+                vec![with_silver(with_men(unit("2000"), 2), 1000)],
+            );
+            let review = review_turn(
+                &report(vec![poor, rich]),
+                "unit 1922\nFORM 1\nEND\nGIVE NEW 1 1 HUMN\n\
+                 unit 2000\nFORM 1\nEND\nGIVE NEW 1 1 HUMN\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert!(
+                forecast_in(&review, "1:8,53", "new-1").shared_silver_covered > 0,
+                "the control: the rich hex does lend its formed unit something - {:?}",
+                forecast_in(&review, "1:8,53", "new-1")
+            );
+            assert_eq!(
+                forecast_in(&review, "1:7,53", "new-1").shared_silver_covered,
+                0,
+                "the poor hex has nothing to lend, so its formed unit is covered by nothing"
             );
         }
 
