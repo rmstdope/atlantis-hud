@@ -31,7 +31,7 @@ use atlantis_hud_core_persistence::{
     upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
     upsert_region_sightings, AlliedMage, AlliedMageKey, Army, ArmyMember, HexNote, ImportedTurnKey,
     ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey,
-    OrderDraftRecord, PersistenceError, StudyPlan, StudyPlanKey,
+    OrderDraftRecord, PersistenceError, StudyGoal, StudyPlan, StudyPlanKey,
 };
 /// The manifest types cross to the shell as themselves: `core-tauri` used to carry a field-for-field
 /// `…Dto` copy of each, whose own comments said so (ah-8z4y.2).
@@ -2584,8 +2584,16 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let plan = StudyPlan {
             faction_id: "21".to_string(),
             unit_id: "9001".to_string(),
-            skill: Some("FORC".to_string()),
-            target_level: Some(4),
+            goals: vec![
+                StudyGoal {
+                    skill: "FORC".to_string(),
+                    target_level: Some(4),
+                },
+                StudyGoal {
+                    skill: "PATT".to_string(),
+                    target_level: None,
+                },
+            ],
             comment: "heading for Gate Lore".to_string(),
             updated_at: "2026-08-07T12:00:00Z".to_string(),
         };
