@@ -4,9 +4,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import {
+  ALLOW_EXTERNAL_EXPORT_DIR,
   compareTrees,
   describeDivergence,
   describeUncommitted,
+  CRATE_RELATIVE_EXPORT_DIR,
   EXPORT_DIR,
   exportCommand,
   GENERATED_DIRS,
@@ -205,6 +207,14 @@ describe("exportCommand", () => {
     expect(args).toEqual(["test", "-p", "atlantis-hud-core", "--lib", "export_bindings_"]);
   });
 
+  it("tells the Rust guard that the temporary tree is deliberate", () => {
+    // The temporary tree is outside the checkout, which is exactly the shape
+    // `export_bindings_stay_inside_this_workspace` refuses; this is how it says so on purpose.
+    const { env } = exportCommand("/tmp/x");
+
+    expect(env[ALLOW_EXTERNAL_EXPORT_DIR]).toBe("1");
+  });
+
   it("tells the reader to run exactly what it runs itself", () => {
     const { command, args } = exportCommand("/tmp/x");
 
@@ -225,12 +235,18 @@ describe("exportCommand", () => {
  * *main checkout's* root from inside a worktree (see its doc comment, and ah-gdp) - that would ask
  * this question of the wrong tree.
  */
+describe("CRATE_RELATIVE_EXPORT_DIR", () => {
+  it("is EXPORT_DIR spelled from the crate, so the temporary tree keeps its depth", () => {
+    expect(CRATE_RELATIVE_EXPORT_DIR).toBe(`../../${EXPORT_DIR}`);
+  });
+});
+
 describe("EXPORT_DIR", () => {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const config = readFileSync(join(root, ".cargo", "config.toml"), "utf8");
   const entry = config.match(/^\s*TS_RS_EXPORT_DIR\s*=\s*\{([^}]*)\}/mu);
 
-  it("is the directory .cargo/config.toml points TS_RS_EXPORT_DIR at", () => {
+  it("is the directory .cargo/config.toml points TS_RS_EXPORT_DIR at, spelled from crates/core", () => {
     // Thrown rather than expected: `not.toBeNull()` does not stop the test, so a null would reach
     // the match below and fail there instead, with a message about the wrong thing.
     if (entry === null) {
@@ -241,7 +257,19 @@ describe("EXPORT_DIR", () => {
       throw new Error(`the TS_RS_EXPORT_DIR table names no value: {${entry[1]}}`);
     }
 
-    expect(value[1]).toBe(EXPORT_DIR);
+    expect(value[1]).toBe(CRATE_RELATIVE_EXPORT_DIR);
+  });
+
+  it("is anchored to the crate, not to the working directory", () => {
+    if (entry === null) {
+      throw new Error("the cargo config sets no TS_RS_EXPORT_DIR table at all");
+    }
+
+    // `relative = true` made cargo resolve the value against the directory holding the config it
+    // found by walking up from the WORKING DIRECTORY, so a run against a worktree manifest wrote
+    // that worktree's bindings into the outer checkout (ah-16pb).
+    expect(entry[1]).toContain("relative = false");
+    expect(entry[1]).not.toContain("relative = true");
   });
 
   it("refuses a forced TS_RS_EXPORT_DIR, which would stop the gate ever failing", () => {
