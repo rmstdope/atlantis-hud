@@ -801,9 +801,11 @@ mod tests {
         assert!(!text.contains("Miner"), "{text}");
     }
 
-    /// The comment line a person reads when the file arrives in their mail. Every case is pinned
-    /// because the navigator settled them one at a time; the fifth - a name with no id - is mine,
-    /// and follows the id-only case in naming the half that identifies the faction.
+    /// The comment line a person reads when the file arrives in their mail.
+    ///
+    /// Every one of the four faction shapes is pinned against both a known and an unknown turn,
+    /// because the navigator settled the cases one at a time; the name-with-no-id shape is mine,
+    /// and follows the id-only case in naming whichever half identifies the faction.
     #[test]
     fn the_human_comment_names_whichever_of_the_faction_and_the_turn_is_known() {
         let note = |name: Option<&str>, id: Option<&str>, turn: Option<u32>| {
@@ -836,5 +838,7 @@ mod tests {
             Some("; Borg, turn 23"),
             "a name with no id still names the sender"
         );
+        assert_eq!(note(None, Some("21"), None).as_deref(), Some("; (21)"));
+        assert_eq!(note(Some("Borg"), None, None).as_deref(), Some("; Borg"));
     }
 }
