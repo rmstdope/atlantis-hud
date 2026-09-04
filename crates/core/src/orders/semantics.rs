@@ -10287,6 +10287,15 @@ fn trade_allowance(report: &ParsedReport) -> Option<(i64, bool)> {
     labelled("Regions").map(|entry| (entry.maximum, true))
 }
 
+/// Whether this unit's orders spend one of the faction's monthly allowances.
+///
+/// Every report unit does. A unit this month's `FORM` creates does too - `rules/form` lets the
+/// orders inside the block act for it - unless it still has nobody after projected gifts, takes
+/// and recruitment, in which case `rules/form` dissolves it and its orders never run.
+fn spends_faction_allowance(ordered: &Ordered<'_>) -> bool {
+    ordered.formed.is_none() || ordered.men_after_orders > 0
+}
+
 /// `PRODUCE: Faction can't produce in that many regions.` A faction may only conduct trade
 /// activity - which the rules define to include producing - in so many regions a month. Order
 /// production in one region too many and the engine refuses that whole region's PRODUCE orders.
@@ -10313,7 +10322,7 @@ fn check_trade_regions(
 
     let mut producing: BTreeSet<&str> = BTreeSet::new();
     let mut taxing: BTreeSet<&str> = BTreeSet::new();
-    let mut first_produce: Option<(&str, &str, &PlacedIntent)> = None;
+    let mut first_produce: Option<(&Hex<'_>, &Ordered<'_>, &PlacedIntent)> = None;
 
     let by_coordinate: HashMap<Coordinate, &ReportRegion> = hexes
         .iter()
@@ -10323,7 +10332,7 @@ fn check_trade_regions(
         for ordered_unit in hex
             .units
             .iter()
-            .filter(|unit| unit.formed.is_none() && unit.unit.own)
+            .filter(|unit| spends_faction_allowance(unit) && unit.unit.own)
         {
             let unit = &ordered_unit.unit;
             let region_id = hex.region.region_id.as_str();
@@ -10346,7 +10355,7 @@ fn check_trade_regions(
                             .as_ref()
                             .is_none_or(|(_, _, first)| placed.line < first.line);
                         if earlier {
-                            first_produce = Some((region_id, unit.unit_id.as_str(), placed));
+                            first_produce = Some((hex, ordered_unit, placed));
                         }
                     }
                     // Counted once per unit above, flag or order alike.
@@ -10357,7 +10366,7 @@ fn check_trade_regions(
         }
     }
 
-    let Some((region_id, unit_id, placed)) = first_produce else {
+    let Some((produced_in, producer, placed)) = first_produce else {
         return;
     };
 
@@ -10390,16 +10399,12 @@ fn check_trade_regions(
         }
     };
 
-    findings.push(Finding {
-        code: codes::TOO_MANY_TRADE_REGIONS,
+    findings.push(producer.finding(
+        produced_in,
+        codes::TOO_MANY_TRADE_REGIONS,
         message,
-        region_id: region_id.to_string(),
-        unit_id: Some(unit_id.to_string()),
-        line: Some(placed.line),
-        column_start: Some(placed.column_start),
-        column_end: Some(placed.column_end),
-        formed: None,
-    });
+        Some(placed),
+    ));
 }
 
 /// `STUDY: Can't have another quartermaster.` A faction may hold only so many at once, and the
@@ -10439,54 +10444,51 @@ fn check_quartermasters(
     let free_places = (entry.maximum - entry.used).max(0);
 
     // The settled hexes rather than the raw document: a STUDY that lost the unit's month never
-    // runs, so it asks for no quartermaster place (`ah-rzkm`). Reported units only, as before -
-    // a unit this month's FORM creates is out of this check's scope.
-    let mut candidates: Vec<(&ReportUnit, &PlacedIntent)> = hexes
+    // runs, so it asks for no quartermaster place (`ah-rzkm`). A unit this month's FORM creates
+    // counts too, once it will have people to study with.
+    let mut candidates: Vec<(&Hex<'_>, &Ordered<'_>, &PlacedIntent)> = hexes
         .iter()
-        .flat_map(|(hex, _)| hex.units.iter())
-        .filter(|ordered| ordered.formed.is_none() && ordered.unit.own)
-        .map(|ordered| (ordered.unit, &ordered.intents))
-        .filter(|(unit, _)| {
-            !unit
+        .flat_map(|(hex, _)| hex.units.iter().map(move |ordered| (hex, ordered)))
+        .filter(|(_, ordered)| spends_faction_allowance(ordered) && ordered.unit.own)
+        .map(|(hex, ordered)| (hex, ordered, &ordered.intents))
+        .filter(|(_, ordered, _)| {
+            !ordered
+                .unit
                 .skills
                 .iter()
                 .any(|held| held.tag.eq_ignore_ascii_case(&skill.tag))
         })
-        .filter_map(|(unit, intents)| {
+        .filter_map(|(hex, ordered, intents)| {
             // The first STUDY order wins, the same as `Ordered::studies()` reads it - a unit that
             // writes several is not asking to be counted once per line.
             let placed = intents.iter().find_map(|placed| match &placed.intent {
                 Intent::Study { skill: studied } => Some((placed, studied)),
                 _ => None,
             })?;
-            Some((unit, placed))
+            Some((hex, ordered, placed))
         })
-        .filter(|(_, (_, studied))| {
+        .filter(|(_, _, (_, studied))| {
             ruleset
                 .find_skill(studied)
                 .is_some_and(|found| found.tag.eq_ignore_ascii_case(&skill.tag))
         })
-        .map(|(unit, (placed, _))| (unit, placed))
+        .map(|(hex, ordered, (placed, _))| (hex, ordered, placed))
         .collect();
 
-    candidates.sort_by_key(|(_, placed)| placed.line);
+    candidates.sort_by_key(|(_, _, placed)| placed.line);
 
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     let free_places = free_places as usize;
-    for (unit, placed) in candidates.into_iter().skip(free_places) {
-        findings.push(Finding {
-            code: codes::TOO_MANY_QUARTERMASTERS,
-            message: format!(
+    for (hex, ordered, placed) in candidates.into_iter().skip(free_places) {
+        findings.push(ordered.finding(
+            hex,
+            codes::TOO_MANY_QUARTERMASTERS,
+            format!(
                 "your faction already has its {} quartermasters",
                 entry.maximum
             ),
-            region_id: unit.region_id.clone(),
-            unit_id: Some(unit.unit_id.clone()),
-            line: Some(placed.line),
-            column_start: Some(placed.column_start),
-            column_end: Some(placed.column_end),
-            formed: None,
-        });
+            Some(placed),
+        ));
     }
 }
 
@@ -31825,6 +31827,112 @@ mod tests {
 
             let silver = forecast(&review, "new-1");
             assert_eq!(silver.formed, Some(expected));
+        }
+
+        #[test]
+        fn a_staffed_formed_unit_studying_quartermaster_spends_the_allowance() {
+            let review = review_turn(
+                &report_with_status(
+                    "Quartermasters",
+                    1,
+                    1,
+                    vec![region(vec![with_men(unit("1922"), 2)])],
+                ),
+                "unit 1922\nFORM 1\nSTUDY QUAM\nEND\nGIVE NEW 1 1 HUMN\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let finding = review
+                .findings
+                .iter()
+                .find(|finding| finding.code == codes::TOO_MANY_QUARTERMASTERS)
+                .expect("a staffed formed unit spends a quartermaster allowance");
+            assert_eq!(finding.unit_id.as_deref(), Some("new-1"));
+            assert_eq!(finding.line, Some(3));
+            assert_eq!(
+                finding.formed,
+                Some(FormedSubject {
+                    alias: "1".to_string(),
+                    formed_by: "1922".to_string()
+                })
+            );
+        }
+
+        #[test]
+        fn a_staffed_formed_producer_spends_a_trade_region() {
+            let review = review_turn(
+                &report_with_status(
+                    "Trade Regions",
+                    0,
+                    1,
+                    vec![
+                        region(vec![with_men(unit("1922"), 2)]),
+                        region_at("1:8,53", 8, 53, vec![unit("2000")]),
+                    ],
+                ),
+                "unit 1922\nFORM 1\nPRODUCE grain\nEND\nGIVE NEW 1 1 HUMN\nunit 2000\nPRODUCE grain\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let finding = review
+                .findings
+                .iter()
+                .find(|finding| finding.code == codes::TOO_MANY_TRADE_REGIONS)
+                .expect("two producing regions exceed the allowance");
+            assert_eq!(finding.unit_id.as_deref(), Some("new-1"));
+            assert_eq!(finding.line, Some(3));
+            assert_eq!(
+                finding.formed,
+                Some(FormedSubject {
+                    alias: "1".to_string(),
+                    formed_by: "1922".to_string()
+                })
+            );
+            assert_eq!(finding.message, "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production will be refused");
+        }
+
+        #[test]
+        fn an_unstaffed_formed_unit_spends_no_faction_allowance() {
+            // Two blocks rather than one: a single block carrying both a STUDY and a PRODUCE
+            // loses its month to `two-month-long-orders`, and a lost month asks for no
+            // quartermaster place (`ah-rzkm`) - so the quartermaster half of this guard would be
+            // inert for a reason that has nothing to do with dissolution.
+            let mut report = report_with_status(
+                "Quartermasters",
+                1,
+                1,
+                vec![region(vec![with_men(unit("1922"), 2)])],
+            );
+            report.header.faction_status.entries.extend(
+                report_with_status("Trade Regions", 0, 0, Vec::new())
+                    .header
+                    .faction_status
+                    .entries,
+            );
+
+            let review = review_turn(
+                &report,
+                "unit 1922\nFORM 1\nSTUDY QUAM\nEND\nFORM 2\nPRODUCE grain\nEND\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert!(
+                !review
+                    .findings
+                    .iter()
+                    .any(|finding| finding.code == codes::TOO_MANY_QUARTERMASTERS),
+                "a dissolved formed unit spends no quartermaster allowance"
+            );
+            assert!(
+                !review
+                    .findings
+                    .iter()
+                    .any(|finding| finding.code == codes::TOO_MANY_TRADE_REGIONS),
+                "a dissolved formed unit spends no trade region"
+            );
         }
 
         /// A nested `FORM`'s parent is the *outer* formed unit's synthetic id, which the report's
