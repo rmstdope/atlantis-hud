@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 
 /// The snapshot a membership carries. The core owns it because the backup carries it too.
 pub use atlantis_hud_core::backup::ArmyMember;
+/// The stored row and its key. The core owns both because the backup carries them too.
+pub use atlantis_hud_core::backup::{AlliedMage, AlliedMageKey};
 use atlantis_hud_core::backup::{
     apply_manifest_edit, encode_game_backup, DecodedGameBackupCollections,
     EncodedGameBackupCollections, GameBackupArmy, GameBackupContent, GameBackupHexNote,
@@ -22,7 +24,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 9;
+pub const CURRENT_SCHEMA_VERSION: u32 = 10;
 /// The manifest file inside a game's directory. The directory is named after the game's id, so the
 /// file itself does not have to be, and a game can be found without parsing any filename.
 pub const GAME_MANIFEST_FILE_NAME: &str = "game.json";
@@ -38,13 +40,14 @@ const MIGRATION_0006_ISO_IMPORT_TIMESTAMPS: &str =
 const MIGRATION_0007_MERGED_REPORTS: &str = include_str!("../migrations/0007_merged_reports.sql");
 const MIGRATION_0008_HEX_NOTES: &str = include_str!("../migrations/0008_hex_notes.sql");
 const MIGRATION_0009_ARMIES: &str = include_str!("../migrations/0009_armies.sql");
+const MIGRATION_0010_ALLIED_MAGES: &str = include_str!("../migrations/0010_allied_mages.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 9] = [
+const MIGRATIONS: [Migration; 10] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -80,6 +83,10 @@ const MIGRATIONS: [Migration; 9] = [
     Migration {
         version: 9,
         sql: MIGRATION_0009_ARMIES,
+    },
+    Migration {
+        version: 10,
+        sql: MIGRATION_0010_ALLIED_MAGES,
     },
 ];
 
@@ -706,6 +713,36 @@ fn read_backup_collections(
         })
         .collect::<Result<Vec<_>, serde_json::Error>>()?;
 
+    let mut allied_mage_rows = connection.prepare(
+        "SELECT faction_id, faction_name, unit_json, sheet_turn, received_at
+           FROM allied_mages
+          WHERE game_id = ?1",
+    )?;
+    let allied_mages = allied_mage_rows
+        .query_map(params![game_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, u32>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(
+            |(faction_id, faction_name, unit_json, sheet_turn, received_at)| {
+                Ok(AlliedMage {
+                    faction_id,
+                    faction_name,
+                    unit: serde_json::from_str(&unit_json)?,
+                    sheet_turn,
+                    received_at,
+                })
+            },
+        )
+        .collect::<Result<Vec<_>, serde_json::Error>>()?;
+
     Ok(EncodedGameBackupCollections {
         imported_turns,
         order_drafts,
@@ -713,6 +750,7 @@ fn read_backup_collections(
         merged_reports,
         hex_notes,
         armies,
+        allied_mages,
     })
 }
 
@@ -789,6 +827,7 @@ fn write_backup_collections(
         merged_reports,
         hex_notes,
         armies,
+        allied_mages,
     } = collections;
 
     for turn in &imported_turns {
@@ -930,6 +969,29 @@ fn write_backup_collections(
                 serde_json::to_string(&army.members)?.as_str(),
                 army.created_at.as_str(),
                 army.updated_at.as_str(),
+            ],
+        )?;
+    }
+
+    for mage in &allied_mages {
+        transaction.execute(
+            "INSERT INTO allied_mages (
+                    game_id,
+                    faction_id,
+                    unit_id,
+                    faction_name,
+                    unit_json,
+                    sheet_turn,
+                    received_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                game_id,
+                mage.faction_id.as_str(),
+                mage.unit.unit_id.as_str(),
+                mage.faction_name.as_deref(),
+                serde_json::to_string(&mage.unit)?.as_str(),
+                mage.sheet_turn,
+                mage.received_at.as_str(),
             ],
         )?;
     }
@@ -1921,10 +1983,122 @@ pub fn delete_army(
     Ok(rows_affected > 0)
 }
 
+/// Every allied mage stored for one game, in whatever order SQLite produced them.
+///
+/// Ordering is the client's (`sortAlliedMages`), exactly as it is for Armies.
+///
+/// # Errors
+///
+/// Returns an error when the database is missing, cannot be read, or holds a `unit_json` that is
+/// not a `ReportUnit` - a mage that silently vanished looks to the player like a sheet that was
+/// never taken in, and this is the layer that can still tell the difference.
+pub fn list_allied_mages(
+    database_path: &Path,
+    game_id: &str,
+) -> Result<Vec<AlliedMage>, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    let mut statement = connection.prepare(
+        "SELECT faction_id, faction_name, unit_json, sheet_turn, received_at
+           FROM allied_mages
+          WHERE game_id = ?1",
+    )?;
+    let rows = statement.query_map(params![game_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, u32>(3)?,
+            row.get::<_, String>(4)?,
+        ))
+    })?;
+
+    let mut mages = Vec::new();
+    for row in rows {
+        let (faction_id, faction_name, unit_json, sheet_turn, received_at) = row?;
+        mages.push(AlliedMage {
+            faction_id,
+            faction_name,
+            unit: serde_json::from_str(&unit_json)?,
+            sheet_turn,
+            received_at,
+        });
+    }
+    Ok(mages)
+}
+
+/// Writes one sheet's worth of change in a single transaction: `removed` first, then `mages`.
+///
+/// Both halves in one call because taking a sheet in is one decision - the mages it carries are
+/// stored and the mages the player discarded are dropped, and a crash between two calls would
+/// leave a faction half-updated. `removed` before `mages`, so a unit named in both ends up
+/// present; a caller naming one in both is a caller bug, and this says which way it resolves.
+///
+/// # Errors
+///
+/// Returns an error when the database is missing or cannot be written.
+pub fn save_allied_mages(
+    database_path: &Path,
+    game_id: &str,
+    mages: &[AlliedMage],
+    removed: &[AlliedMageKey],
+) -> Result<(), PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    let transaction = connection.transaction()?;
+    for key in removed {
+        transaction.execute(
+            "DELETE FROM allied_mages WHERE game_id = ?1 AND faction_id = ?2 AND unit_id = ?3",
+            params![game_id, key.faction_id.as_str(), key.unit_id.as_str()],
+        )?;
+    }
+    for mage in mages {
+        transaction.execute(
+            "INSERT INTO allied_mages (
+                game_id,
+                faction_id,
+                unit_id,
+                faction_name,
+                unit_json,
+                sheet_turn,
+                received_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(game_id, faction_id, unit_id) DO UPDATE SET
+                faction_name = excluded.faction_name,
+                unit_json = excluded.unit_json,
+                sheet_turn = excluded.sheet_turn,
+                received_at = excluded.received_at",
+            params![
+                game_id,
+                mage.faction_id.as_str(),
+                mage.unit.unit_id.as_str(),
+                mage.faction_name.as_deref(),
+                serde_json::to_string(&mage.unit)?.as_str(),
+                mage.sheet_turn,
+                mage.received_at.as_str(),
+            ],
+        )?;
+    }
+    transaction.commit()?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use atlantis_hud_core::report::model::{CombatSpell, ItemAmount, Skill};
+    use atlantis_hud_core::report::model::{CombatSpell, ItemAmount, ReportUnit, Skill};
     use rusqlite::Connection;
     use tempfile::tempdir;
 
@@ -2786,8 +2960,8 @@ mod tests {
 
         assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
-            created.schema_version, 9,
-            "storing Armies added migration 9"
+            created.schema_version, 10,
+            "storing an ally's mages added migration 10"
         );
     }
 
@@ -3029,6 +3203,215 @@ mod tests {
             matches!(listed, Err(PersistenceError::Serialization(_))),
             "unreadable members are reported, not rounded down to an empty Army"
         );
+    }
+
+    fn a_mage(unit_id: &str, name: &str, sheet_turn: u32) -> AlliedMage {
+        AlliedMage {
+            faction_id: "21".to_string(),
+            faction_name: Some("Borg".to_string()),
+            unit: ReportUnit {
+                unit_id: unit_id.to_string(),
+                name: name.to_string(),
+                region_id: "1:7,53".to_string(),
+                faction_id: Some("21".to_string()),
+                faction_name: Some("Borg".to_string()),
+                own: false,
+                on_guard: false,
+                flags: vec![],
+                items: vec![ItemAmount {
+                    amount: 1,
+                    name: "leader".to_string(),
+                    tag: "LEAD".to_string(),
+                }],
+                skills: vec![Skill {
+                    name: "force".to_string(),
+                    tag: "FORC".to_string(),
+                    level: 3,
+                    points: 180,
+                }],
+                combat_spell: Some(CombatSpell {
+                    name: "fire".to_string(),
+                    tag: "FIRE".to_string(),
+                }),
+                men: 1,
+                men_estimated: true,
+                men_by_race: vec![],
+                weight: None,
+                capacity: None,
+                movement: None,
+                structure_id: None,
+            },
+            sheet_turn,
+            received_at: "2026-08-01T09:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn allied_mages_round_trip_by_faction_and_unit() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+
+        let first = a_mage("9001", "Adept", 23);
+        let second = a_mage("9002", "Mage", 23);
+        save_allied_mages(
+            &created.database_path,
+            GAME_ID,
+            &[first.clone(), second.clone()],
+            &[],
+        )
+        .expect("mages should persist");
+
+        let mut listed =
+            list_allied_mages(&created.database_path, GAME_ID).expect("list should succeed");
+        listed.sort_by(|a, b| a.unit.unit_id.cmp(&b.unit.unit_id));
+        assert_eq!(
+            listed,
+            vec![first.clone(), second.clone()],
+            "both mages come back whole, items and skills intact"
+        );
+
+        let newer = a_mage("9001", "Adept", 24);
+        save_allied_mages(&created.database_path, GAME_ID, &[newer.clone()], &[])
+            .expect("second save should persist");
+        let mut listed_after =
+            list_allied_mages(&created.database_path, GAME_ID).expect("list should succeed");
+        listed_after.sort_by(|a, b| a.unit.unit_id.cmp(&b.unit.unit_id));
+        assert_eq!(
+            listed_after,
+            vec![newer.clone(), second.clone()],
+            "the same unit is replaced rather than duplicated"
+        );
+
+        save_allied_mages(
+            &created.database_path,
+            GAME_ID,
+            &[],
+            &[AlliedMageKey {
+                faction_id: "21".to_string(),
+                unit_id: "9002".to_string(),
+            }],
+        )
+        .expect("removal should persist");
+        assert_eq!(
+            list_allied_mages(&created.database_path, GAME_ID).expect("list should succeed"),
+            vec![newer],
+            "only the mage named in `removed` is dropped"
+        );
+    }
+
+    #[test]
+    fn list_allied_mages_returns_only_the_given_games_mages() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let mine = a_mage("9001", "Mine", 23);
+        let theirs = a_mage("9002", "Theirs", 23);
+        save_allied_mages(&created.database_path, GAME_ID, &[mine.clone()], &[])
+            .expect("mage should persist");
+        save_allied_mages(&created.database_path, "other-game", &[theirs], &[])
+            .expect("other game's mage should persist");
+
+        let listed =
+            list_allied_mages(&created.database_path, GAME_ID).expect("list should succeed");
+
+        assert_eq!(listed, vec![mine]);
+    }
+
+    /// A mage that silently vanished looks to the player like a sheet that was never taken in, so
+    /// an unreadable payload is an error rather than a missing row.
+    #[test]
+    fn malformed_stored_unit_payload_is_an_error_rather_than_a_missing_mage() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let connection = Connection::open(&created.database_path).expect("open database");
+        connection
+            .execute(
+                "INSERT INTO allied_mages
+                     (game_id, faction_id, unit_id, faction_name, unit_json, sheet_turn, received_at)
+                 VALUES (?1, '21', '9001', 'Borg', '{', 23, ?2)",
+                params![GAME_ID, CREATED_AT],
+            )
+            .expect("insert should succeed");
+
+        let listed = list_allied_mages(&created.database_path, GAME_ID);
+
+        assert!(
+            matches!(listed, Err(PersistenceError::Serialization(_))),
+            "an unreadable payload is reported, not skipped"
+        );
+    }
+
+    /// The migration path a real database takes: version 9 with data in it, opened by this build.
+    #[test]
+    fn upgrading_from_version_nine_gains_allied_mages_and_keeps_armies() {
+        let dir = tempdir().expect("tempdir");
+        let manifest = fixture_manifest();
+        let home = dir.path().join(GAME_ID);
+        fs::create_dir_all(&home).expect("game home");
+        save_game_manifest(&home.join(GAME_MANIFEST_FILE_NAME), &manifest)
+            .expect("manifest save should succeed");
+
+        let database_path = home.join("game.sqlite");
+        let connection = Connection::open(&database_path).expect("db should open");
+        connection
+            .execute_batch(&format!(
+                "{MIGRATION_0001_INITIAL}
+                 {MIGRATION_0002_IMPORTED_TURNS}
+                 {MIGRATION_0003_ORDER_DRAFTS}
+                 {MIGRATION_0004_REGION_SIGHTINGS}
+                 {MIGRATION_0005_RENAME_PROJECT_TO_GAME}
+                 {MIGRATION_0006_ISO_IMPORT_TIMESTAMPS}
+                 {MIGRATION_0007_MERGED_REPORTS}
+                 {MIGRATION_0008_HEX_NOTES}
+                 {MIGRATION_0009_ARMIES}
+                 INSERT INTO schema_migrations (version)
+                     VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9);
+                 INSERT INTO armies (id, game_id, name, members_json, created_at, updated_at)
+                 VALUES ('army-1', 'faction-12', 'Kept', '[]',
+                         '2026-08-01T09:00:00Z', '2026-08-01T09:00:00Z');"
+            ))
+            .expect("legacy version 9 setup should succeed");
+        drop(connection);
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("upgrade should succeed");
+
+        assert_eq!(reopened.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(
+            list_armies(&reopened.database_path, GAME_ID)
+                .expect("list should succeed")
+                .len(),
+            1,
+            "an Army written before the migration survives it"
+        );
+        assert!(
+            list_allied_mages(&reopened.database_path, GAME_ID)
+                .expect("the allied_mages table exists after the upgrade")
+                .is_empty(),
+            "the upgraded database has an allied_mages table, and it is empty"
+        );
+    }
+
+    #[test]
+    fn export_and_import_carry_allied_mages() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let mage = a_mage("9001", "Adept", 23);
+        save_allied_mages(&created.database_path, GAME_ID, &[mage.clone()], &[])
+            .expect("mage should persist");
+
+        let exported = export_game(dir.path(), GAME_ID, "2026-08-05T09:00:00Z")
+            .expect("export should succeed");
+        let restored_root = tempdir().expect("tempdir");
+        let restored = import_game(restored_root.path(), &exported, "2026-08-06T09:00:00Z")
+            .expect("import should succeed");
+
+        let listed =
+            list_allied_mages(&restored.database_path, GAME_ID).expect("list should succeed");
+
+        assert_eq!(listed, vec![mage], "an allied mage survives the round trip");
     }
 
     #[test]
@@ -3875,6 +4258,7 @@ mod region_sighting_tests {
                 merged_reports: Vec::new(),
                 hex_notes: Vec::new(),
                 armies: Vec::new(),
+                allied_mages: Vec::new(),
             },
         })
         .expect("serialize backup");
@@ -3920,6 +4304,7 @@ mod region_sighting_tests {
                 merged_reports: Vec::new(),
                 hex_notes: Vec::new(),
                 armies: Vec::new(),
+                allied_mages: Vec::new(),
             },
         })
         .expect("serialize backup");
