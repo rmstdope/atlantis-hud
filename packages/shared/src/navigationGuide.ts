@@ -72,6 +72,13 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
     keys: chord("magicTree")
   },
   {
+    id: "studyPlanner",
+    group: EVERYWHERE,
+    description: "See every mage you know of, your own and your allies', and where each stands",
+    mouse: null,
+    keys: chord("studyPlanner")
+  },
+  {
     id: "dismiss",
     group: EVERYWHERE,
     description: "Close whatever is open on top",

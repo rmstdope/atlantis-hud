@@ -40,6 +40,8 @@ export type PlannerMage = {
   /** `${factionId}/${unitId}` - unique across the pane, and what the selection holds. */
   key: string;
   factionId: string;
+  /** The group's own label: "Borg TNG (95)", "Faction 17", or "Your faction". */
+  factionLabel: string;
   unitId: string;
   name: string;
   regionId: string;
@@ -135,6 +137,7 @@ function strongest(knows: readonly KnownSkill[]): KnownSkill | null {
 function plannerMage(input: {
   standing: MageStanding;
   factionId: string;
+  factionLabel: string;
   tree: MagicTree;
   skills: readonly SkillInfo[] | null;
   sheetTurn: number | null;
@@ -147,6 +150,7 @@ function plannerMage(input: {
   return {
     key: `${input.factionId}/${input.standing.unitId}`,
     factionId: input.factionId,
+    factionLabel: input.factionLabel,
     unitId: input.standing.unitId,
     name: input.standing.name,
     regionId: input.standing.regionId,
@@ -190,6 +194,7 @@ export function plannerGroups(input: {
         plannerMage({
           standing,
           factionId: input.report?.header.factionId ?? "",
+          factionLabel: label,
           tree: input.tree,
           skills: null,
           sheetTurn: null,
@@ -211,6 +216,7 @@ export function plannerGroups(input: {
         plannerMage({
           standing: standingOf(record.unit, input.tree, input.index),
           factionId: record.factionId,
+          factionLabel: row.factionLabel,
           tree: input.tree,
           skills: record.unit.skills,
           sheetTurn: record.sheetTurn,
