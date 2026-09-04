@@ -44,6 +44,7 @@ import {
   orderOf,
   silverKey,
   unitRowKey,
+  unitRowSelector,
   silverShown,
   type ColumnShares,
   type ExtraColumn,
@@ -51,6 +52,7 @@ import {
   type SortState,
   type UnitColumn
 } from "../unitTable";
+import { isCursorRow, unitCursor } from "./unitCursor";
 import {
   changeFor,
   formatItems,
@@ -267,6 +269,15 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     ref
   ) {
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
+  const selectedUnitRegionId = useWorkspaceStore((state) => state.selectedUnitRegionId);
+  /**
+   * The cursor as a pair. Memoised rather than selected: a zustand selector building a fresh object
+   * re-renders for ever under `useSyncExternalStore` (`ah-bubf`).
+   */
+  const cursor = useMemo(
+    () => unitCursor({ selectedUnitId, selectedUnitRegionId }),
+    [selectedUnitId, selectedUnitRegionId]
+  );
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
   const columnShares = useWorkspaceStore((state) => state.unitColumnShares);
   const setColumnShares = useWorkspaceStore((state) => state.setUnitColumnShares);
@@ -469,8 +480,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     [visible]
   );
   const selectedIndex = useMemo(
-    () => visible.findIndex((unit) => unit.unitId === selectedUnitId),
-    [visible, selectedUnitId]
+    () => visible.findIndex((unit) => isCursorRow(cursor, unit.regionId, unit.unitId)),
+    [visible, cursor]
   );
 
   /**
@@ -496,7 +507,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     // also the cursor, so the Unit panel fills in at once.
     const first = visible[0];
     if (first) {
-      selectUnit(first.unitId);
+      selectUnit(first.unitId, first.regionId);
       // The existing scroll-into-view-then-focus machinery, not a second focus effect.
       refocusWanted.current = true;
     } else {
@@ -594,17 +605,17 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   // Arrowing to a row that was outside the window selects it before it exists, so the focus has to
   // wait for the render that brings it in.
   useEffect(() => {
-    if (!refocusWanted.current || !scroller || !selectedUnitId) {
+    if (!refocusWanted.current || !scroller || !cursor) {
       return;
     }
     const row = scroller.querySelector<HTMLElement>(
-      `[data-testid="unit-row-${CSS.escape(selectedUnitId)}"]`
+      unitRowSelector(cursor.regionId, cursor.unitId)
     );
     if (row) {
       refocusWanted.current = false;
       row.focus();
     }
-  }, [scroller, selectedUnitId, start, end]);
+  }, [scroller, cursor, start, end]);
 
   /**
    * The row the pointer has rested on, and where it rested.
@@ -692,16 +703,18 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     // Arrowing past either end lands on the row already selected. Asking for it again re-renders
     // nothing, so the effect above would never run to spend the focus this arms — it would be left
     // owing, and go to whichever row was selected next, including one chosen with the mouse.
-    if (target.unitId !== selectedUnitId) {
+    if (!isCursorRow(cursor, target.regionId, target.unitId)) {
       refocusWanted.current = true;
-      selectUnit(target.unitId);
+      selectUnit(target.unitId, target.regionId);
     }
   };
 
   /** Picks a row alone and puts the cursor on it - what a click, Enter and Space all mean. */
-  const settleOn = (pickNext: UnitPick, rowTarget: string) => {
+  const settleOn = (pickNext: UnitPick, rowTarget: string, rowRegionId: string) => {
     setPick(pickNext);
-    selectUnit(rowTarget);
+    // The row's own hex, even when `rowTarget` is the unit that wrote the FORM: `rules/form` puts a
+    // formed unit "in the same region as the unit which formed it".
+    selectUnit(rowTarget, rowRegionId);
   };
 
   /**
@@ -743,7 +756,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         return;
       }
       // Choosing a row from the keyboard collapses a pick exactly as a plain click does.
-      settleOn(afterGesture(pick, { kind: "plain", rowKey: hereKey }, rowKeys), here);
+      settleOn(afterGesture(pick, { kind: "plain", rowKey: hereKey }, rowKeys), here, hereRow.regionId);
       if (travel) {
         travelTo(here);
       }
@@ -819,8 +832,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   });
 
   const selectedUnit = useMemo(
-    () => visible.find((entry) => entry.unitId === selectedUnitId) ?? null,
-    [visible, selectedUnitId]
+    () => visible.find((entry) => isCursorRow(cursor, entry.regionId, entry.unitId)) ?? null,
+    [visible, cursor]
   );
   /**
    * The rows a bulk action acts on: the pick when it is two or more, the cursor row otherwise.
@@ -858,7 +871,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     const outcome = onPress(pick, unitRowKey(unit.regionId, unit.unitId), modifiers, rowKeys);
     if (outcome.now) {
       if (plain) {
-        settleOn(outcome.now, rowTarget);
+        settleOn(outcome.now, rowTarget, unit.regionId);
         travelTo(rowTarget);
       } else {
         setPick(outcome.now);
@@ -879,7 +892,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       unit,
       deferred
         ? () => {
-            settleOn(deferred, rowTarget);
+            settleOn(deferred, rowTarget, unit.regionId);
             travelTo(rowTarget);
           }
         : undefined
@@ -1015,7 +1028,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       rowKeys
     );
     if (outcome.now) {
-      settleOn(outcome.now, rowTarget);
+      settleOn(outcome.now, rowTarget, unit.regionId);
     }
     setMenu({ at: "pointer", point: { x: event.clientX, y: event.clientY } });
   };
@@ -1381,7 +1394,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                   drawn={drawn}
                   index={start + offset}
                   rowHeight={rowHeight}
-                  selected={unit.unitId === selectedUnitId}
+                  selected={isCursorRow(cursor, unit.regionId, unit.unitId)}
                   picked={pick.ids.has(unitRowKey(unit.regionId, unit.unitId))}
                   onSelect={selectUnit}
                   onPress={pressRow}
@@ -1852,7 +1865,12 @@ function UnitRow({
   picked: boolean;
   /** Highlights a unit. Called with the formed unit's own id, or, for a formed row, its parent's
    * (`ah-jw85`) - `UnitRow` decides which, since only it knows a formed row from an ordinary one. */
-  onSelect: (unitId: string) => void;
+  /**
+   * Selects a unit. Takes the row's own hex too, because a unit number is not unique across a
+   * report (`ah-bubf`) - and it is the row's hex even when `rowTarget` is the unit that wrote the
+   * FORM: `rules/form` puts a formed unit "in the same region as the unit which formed it".
+   */
+  onSelect: (unitId: string, regionId: string) => void;
   /**
    * A press on the row, which is where selection now happens - `onClick` would be too late for a
    * press that may become a drag. Handed the row's own unit and the id the cursor should land on,
@@ -1957,7 +1975,7 @@ function UnitRow({
       <Td className={unit.own ? "text-select" : "text-unit-foreign/70"}>
         <button
           type="button"
-          onClick={() => onSelect(rowTarget)}
+          onClick={() => onSelect(rowTarget, regionId)}
           aria-label={`unit ${rowTarget}`}
           tabIndex={-1}
           className="focus-visible:outline focus-visible:outline-1 focus-visible:outline-select"

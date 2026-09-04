@@ -24,6 +24,7 @@ import {
   REORDERABLE_COLUMNS,
   sharesFor,
   unitRowKey,
+  unitRowSelector,
   EXTRA_COLUMN_SHARES,
   type SortState,
   type UnitColumn
@@ -860,5 +861,17 @@ describe("the source-dependent columns (ah-1mpx.2)", () => {
         )
       )
     ).toEqual(["2", "1"]);
+  });
+});
+
+describe("unitRowSelector", () => {
+  it("names a row by its hex as well as its number", () => {
+    expect(unitRowSelector("1:6,52", "new-1")).toBe(
+      '[data-testid="unit-row-new-1"][data-region-id="1:6,52"]'
+    );
+    expect(unitRowSelector("1:8,53", "new-1")).not.toBe(unitRowSelector("1:6,52", "new-1"));
+    expect(unitRowSelector('1:6,52', 'ne"w')).toBe(
+      '[data-testid="unit-row-ne\\"w"][data-region-id="1:6,52"]'
+    );
   });
 });
