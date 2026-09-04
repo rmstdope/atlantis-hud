@@ -1,7 +1,5 @@
-import {
-  forgetConfirmText,
-  type MageSheetRow
-} from "../alliedMageChip";
+import { useEffect } from "react";
+import { forgetConfirmText, type MageSheetRow } from "../alliedMageChip";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { POPOVER_BODY_MAX_H } from "./primitives";
 import { PopoverFrame } from "./popover";
@@ -110,6 +108,19 @@ export function ForgetSheetConfirm({
   onCancel: () => void;
 }) {
   useEscapeToDismiss(onCancel);
+
+  // The confirm took the focus when it appeared, so leaving it must hand the focus back rather
+  // than drop it on a detached node - a keyboard user's next Tab would otherwise restart from the
+  // top of the document. On unmount rather than in `onCancel`, so Escape and Cancel both do it;
+  // after a Forget the row is gone and this finds nothing, which is the right answer.
+  useEffect(
+    () => () => {
+      document
+        .querySelector<HTMLElement>(`[data-testid="forget-mage-sheet-${row.factionId}"]`)
+        ?.focus();
+    },
+    [row.factionId]
+  );
 
   return (
     <div

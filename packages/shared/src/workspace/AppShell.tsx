@@ -3571,17 +3571,23 @@ export function AppShell({
    */
   const mageSheets = useMemo(
     () => heldMageSheetRows(alliedMages, parsed?.header.turnNumber ?? null),
-    [alliedMages, parsed]
+    [alliedMages, parsed?.header.turnNumber]
   );
   const mageSheetChipLabel = useMemo(() => mageSheetChip(mageSheets), [mageSheets]);
 
   // An armed Forget belongs to an open popover: closing it any way at all - the chip, Escape, a
-  // press outside, a game switch that takes the chip away - disarms.
+  // press outside - disarms. A game switch disarms too, and does not go through the popover: the
+  // header popover stays open across one, so an arm against faction 17 in the game being left
+  // would otherwise stand against faction 17 of the game being entered.
   useEffect(() => {
     if (openPopover !== "mageSheets") {
       setForgettingSheet(null);
     }
   }, [openPopover]);
+
+  useEffect(() => {
+    setForgettingSheet(null);
+  }, [openGameId, gameEpoch]);
 
   /**
    * Forgets one faction's whole sheet, kept-stale mages included: the popover's unit is a faction.

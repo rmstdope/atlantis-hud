@@ -56,7 +56,12 @@ describe("MageSheetsPanel", () => {
 
   it("marks a sheet behind the viewed turn, and leaves a current one alone", () => {
     const markup = draw(null);
-    expect(markup).toContain("text-danger");
-    expect(markup).toContain("turn 23");
+    // The turn span itself, not merely the word somewhere in the markup: every row's Forget button
+    // carries `hover:text-danger`, so a bare `toContain("text-danger")` holds even with the rule
+    // deleted.
+    expect(markup).toContain(
+      '<span class="ml-auto text-danger">turn 21 · 2 turns old</span>'
+    );
+    expect(markup).toContain('<span class="ml-auto text-ink-dim">turn 23</span>');
   });
 });
