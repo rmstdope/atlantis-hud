@@ -30,7 +30,11 @@ describe("the export menu's mage sheet entry", () => {
   });
 
   it("greys the mage sheet out when it cannot fire", () => {
-    expect(draw(false)).toContain('data-testid="export-mage-sheet" disabled=""');
-    expect(draw(true)).not.toContain('data-testid="export-mage-sheet" disabled=""');
+    // Matched loosely rather than on the exact attribute string: React emits attributes in JSX
+    // order, and a prop inserted between the two would break a test about neither of them. The
+    // `=""` is what tells the attribute from Tailwind's `disabled:` class variants on the same tag.
+    const greyed = /export-mage-sheet[^>]*\sdisabled=""/u;
+    expect(draw(false)).toMatch(greyed);
+    expect(draw(true)).not.toMatch(greyed);
   });
 });

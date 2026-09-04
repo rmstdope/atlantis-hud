@@ -1015,6 +1015,25 @@ pub mod commands {
     ///
     /// Returns an error when the remembered regions or the request cannot be read. An empty rectangle
     /// is a successful answer carrying a header and no regions.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "export_map")
+    )]
+    pub fn command_export_map(
+        raw_report: &str,
+        remembered_json: &str,
+        request_json: &str,
+    ) -> Result<String, String> {
+        atlantis_hud_core::cache::with_global(|cache| {
+            atlantis_hud_core::report::export::export_map_text(
+                cache,
+                raw_report,
+                remembered_json,
+                request_json,
+            )
+        })
+    }
+
     /// Writes every named unit out as a report fragment an ally can read back.
     ///
     /// # Errors
@@ -1034,25 +1053,6 @@ pub mod commands {
                 cache,
                 raw_report,
                 unit_ids_json,
-            )
-        })
-    }
-
-    #[cfg_attr(
-        feature = "tauri",
-        tauri::command(rename_all = "snake_case", rename = "export_map")
-    )]
-    pub fn command_export_map(
-        raw_report: &str,
-        remembered_json: &str,
-        request_json: &str,
-    ) -> Result<String, String> {
-        atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::report::export::export_map_text(
-                cache,
-                raw_report,
-                remembered_json,
-                request_json,
             )
         })
     }

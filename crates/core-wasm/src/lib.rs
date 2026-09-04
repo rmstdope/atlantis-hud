@@ -495,6 +495,24 @@ pub fn trade_routes_state(
 /// The browser twin of the desktop command, calling the same core entry so a map exported in the
 /// browser and the same map exported on the desktop come out byte for byte identical. The text is
 /// the whole answer: the core never touches a filesystem, so saving it is the shell's business.
+#[wasm_bindgen]
+pub fn export_map_state(
+    raw_report: String,
+    remembered_json: String,
+    request_json: String,
+) -> Result<JsValue, JsValue> {
+    let text = atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::report::export::export_map_text(
+            cache,
+            &raw_report,
+            &remembered_json,
+            &request_json,
+        )
+    })
+    .map_err(|error| JsValue::from_str(&error))?;
+    to_js(&text)
+}
+
 /// Writes every named unit out as a report fragment an ally can read back.
 ///
 /// The browser twin of the desktop command, calling the same core entry so a sheet exported in the
@@ -509,24 +527,6 @@ pub fn export_mage_sheet_state(
             cache,
             &raw_report,
             &unit_ids_json,
-        )
-    })
-    .map_err(|error| JsValue::from_str(&error))?;
-    to_js(&text)
-}
-
-#[wasm_bindgen]
-pub fn export_map_state(
-    raw_report: String,
-    remembered_json: String,
-    request_json: String,
-) -> Result<JsValue, JsValue> {
-    let text = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::report::export::export_map_text(
-            cache,
-            &raw_report,
-            &remembered_json,
-            &request_json,
         )
     })
     .map_err(|error| JsValue::from_str(&error))?;

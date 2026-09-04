@@ -673,6 +673,9 @@ mod tests {
         "\n",
         "+ Tower [500] : Tower.\n",
         "  * Housed Mage (302), Borg (21), behind, 1 leader [LEAD]. Skills: force [FORC] 2 (105).\n",
+        "\n",
+        "+ Shed [501] : Shaft.\n",
+        "  * Miner (303), Borg (21), behind, 1 leader [LEAD]. Skills: mining [MINI] 1 (30).\n",
     );
 
     fn mage_ids() -> BTreeSet<String> {
@@ -779,5 +782,59 @@ mod tests {
         );
 
         assert!(export_mage_sheet_text(&mut cache, MAGE_REPORT, "{").is_err());
+    }
+
+    /// The buildings are the player's secret as much as the market is: a structure nobody named
+    /// stands in has no business appearing in a file about mages.
+    #[test]
+    fn a_mage_sheet_leaves_out_a_structure_holding_no_named_unit() {
+        let text = export_mage_sheet(&parse_report_full(MAGE_REPORT), &mage_ids());
+
+        assert!(
+            text.contains("Tower [500]"),
+            "the mage's own tower:\n{text}"
+        );
+        assert!(
+            !text.contains("Shed [501]"),
+            "a building with no named mage in it is not shared:\n{text}"
+        );
+        assert!(!text.contains("Miner"), "{text}");
+    }
+
+    /// The comment line a person reads when the file arrives in their mail. Every case is pinned
+    /// because the navigator settled them one at a time; the fifth - a name with no id - is mine,
+    /// and follows the id-only case in naming the half that identifies the faction.
+    #[test]
+    fn the_human_comment_names_whichever_of_the_faction_and_the_turn_is_known() {
+        let note = |name: Option<&str>, id: Option<&str>, turn: Option<u32>| {
+            let header = ReportHeader {
+                faction_name: name.map(str::to_string),
+                faction_id: id.map(str::to_string),
+                turn_number: turn,
+                ..ReportHeader::default()
+            };
+            mage_sheet_note(&header)
+        };
+
+        assert_eq!(
+            note(Some("Borg"), Some("21"), Some(23)).as_deref(),
+            Some("; Borg (21), turn 23")
+        );
+        assert_eq!(
+            note(Some("Borg"), Some("21"), None).as_deref(),
+            Some("; Borg (21)")
+        );
+        assert_eq!(note(None, None, Some(23)).as_deref(), Some("; turn 23"));
+        assert_eq!(note(None, None, None), None, "nothing to say, so no line");
+        assert_eq!(
+            note(None, Some("21"), Some(23)).as_deref(),
+            Some("; (21), turn 23"),
+            "the id is the half that identifies a faction"
+        );
+        assert_eq!(
+            note(Some("Borg"), None, Some(23)).as_deref(),
+            Some("; Borg, turn 23"),
+            "a name with no id still names the sender"
+        );
     }
 }

@@ -28,6 +28,15 @@ test("writes every mage out as a sheet an ally can read", async ({ page }, testI
   const text = readFileSync(path, "utf8");
   expect(text.startsWith("; Mage sheet from Atlantis HUD")).toBe(true);
   expect(download.suggestedFilename()).toMatch(/^mages-.+-turn-71\.txt$/u);
+
+  // The mages actually reached the core. Without this the three assertions below all hold for an
+  // empty sheet, which is exactly the failure this spec exists to catch: the shell sending an
+  // empty `mages` list produces a file that looks right and shares nothing.
+  // A unit inside a structure is written indented, so both depths count.
+  const unitLines = text.split("\n").filter((line) => /^ *- /u.test(line));
+  expect(unitLines.length).toBeGreaterThanOrEqual(5);
+  expect(text).toContain("One of Seven (20)");
+  expect(text).toMatch(/Skills:.*\[(?:FORC|PATT|SPIR)\]/u);
   // The sheet is about somebody else's mages, so no line may claim them as the reader's own.
-  expect(text.split("\n").some((line) => line.startsWith("* "))).toBe(false);
+  expect(text.split("\n").some((line) => /^ *\* /u.test(line))).toBe(false);
 });
