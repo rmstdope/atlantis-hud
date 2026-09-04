@@ -57,6 +57,8 @@ export * from "./workspace/sendOrdersView";
 export * from "./workspace/sendOrders";
 export * from "./workspace/mapMarquee";
 export * from "./workspace/OrdersPanel";
+export * from "./workspace/httpTransport";
+export * from "./workspace/newAgeApi";
 export * from "./workspace/ordersUpload";
 export * from "./workspace/RegionPanel";
 export * from "./workspace/SettingsDialog";

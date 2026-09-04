@@ -22,6 +22,7 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { fetch } from "@tauri-apps/plugin-http";
+import type { HttpReply, HttpRequest } from "@atlantis/shared";
 import { hasTauriRuntime } from "./desktopCore";
 
 /** What the shell asks of Tauri's plugins - the whole of it, so a stand-in is three functions. */
@@ -32,18 +33,17 @@ export type DesktopPlugins = {
   }): Promise<string | null>;
   writeTextFile(path: string, text: string): Promise<void>;
   /**
-   * One POST, answered with the status and the body as text.
+   * One request, answered with the status and the body as text.
    *
-   * Only the desktop has this: `atlantis-pbem.com` sends no `Access-Control-Allow-Origin`, so a
-   * browser could send the form and never read what came back. The body it answers with is secret -
-   * it echoes the orders document, faction password and all - so nothing here logs it or keeps it.
+   * Only the desktop has this, and for two servers' worth of reason: `atlantis-pbem.com` sends no
+   * `Access-Control-Allow-Origin`, so a browser could send the orders form and never read what came
+   * back, and `atlantis-newage.com` allowlists CORS origins and does not carry the web deploy. One
+   * call rather than one per shape - a GET with a bearer token and two POST bodies go through here.
+   *
+   * The body it answers with is secret - it can echo the orders document, faction password and all
+   * - so nothing here logs it or keeps it.
    */
-  httpPost(
-    url: string,
-    contentType: string,
-    body: string,
-    signal: AbortSignal
-  ): Promise<{ status: number; body: string }>;
+  httpRequest(request: HttpRequest, signal: AbortSignal): Promise<HttpReply>;
 };
 
 declare global {
@@ -67,11 +67,11 @@ export function desktopPlugins(): DesktopPlugins | undefined {
   return {
     save,
     writeTextFile,
-    async httpPost(url, contentType, body, signal) {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": contentType },
-        body,
+    async httpRequest(request, signal) {
+      const response = await fetch(request.url, {
+        method: request.method,
+        headers: request.headers,
+        body: request.body,
         signal
       });
       return { status: response.status, body: await response.text() };
