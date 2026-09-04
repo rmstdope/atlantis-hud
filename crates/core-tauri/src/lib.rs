@@ -31,7 +31,7 @@ use atlantis_hud_core_persistence::{
     upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
     upsert_region_sightings, AlliedMage, AlliedMageKey, Army, ArmyMember, HexNote, ImportedTurnKey,
     ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey,
-    OrderDraftRecord, PersistenceError, StudyGoal, StudyPlan, StudyPlanKey,
+    OrderDraftRecord, PersistenceError, StudyPlan, StudyPlanKey,
 };
 /// The manifest types cross to the shell as themselves: `core-tauri` used to carry a field-for-field
 /// `…Dto` copy of each, whose own comments said so (ah-8z4y.2).
@@ -2246,6 +2246,7 @@ mod merge_tests {
 mod tests {
     use super::test_support::{a_manifest, IMPORTED_AT, OPENED_AT};
     use super::*;
+    use atlantis_hud_core::backup::StudyGoal;
     use atlantis_hud_core::report::model::ReportUnit;
     use tempfile::tempdir;
 

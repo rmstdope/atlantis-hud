@@ -773,17 +773,15 @@ fn read_backup_collections(
         })?
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
-        .map(
-            |(faction_id, unit_id, goals_json, comment, updated_at)| {
-                Ok(StudyPlan {
-                    faction_id,
-                    unit_id,
-                    goals: serde_json::from_str(&goals_json)?,
-                    comment,
-                    updated_at,
-                })
-            },
-        )
+        .map(|(faction_id, unit_id, goals_json, comment, updated_at)| {
+            Ok(StudyPlan {
+                faction_id,
+                unit_id,
+                goals: serde_json::from_str(&goals_json)?,
+                comment,
+                updated_at,
+            })
+        })
         .collect::<Result<Vec<_>, serde_json::Error>>()?;
 
     Ok(EncodedGameBackupCollections {
@@ -3907,13 +3905,22 @@ mod tests {
             comment: String::new(),
             updated_at: "2026-08-01T09:00:00Z".to_string(),
         };
-        save_study_plans(&created.database_path, GAME_ID, &[plan.clone()], &[])
-            .expect("save should succeed");
+        save_study_plans(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&plan),
+            &[],
+        )
+        .expect("save should succeed");
 
         let listed =
             list_study_plans(&created.database_path, GAME_ID).expect("list should succeed");
 
-        assert_eq!(listed, vec![plan], "the queue comes back in the order stored");
+        assert_eq!(
+            listed,
+            vec![plan],
+            "the queue comes back in the order stored"
+        );
     }
 
     #[test]

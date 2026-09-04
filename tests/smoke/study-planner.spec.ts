@@ -82,7 +82,10 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await expect(popover).toHaveCount(0);
   await expect(cell).toContainText("force");
 
+  // The reload has to finish restoring the game before F4 means anything: the shortcut is
+  // ignored while there is no report, exactly as `persistence.spec.ts` waits for this line.
   await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
   await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("force");
