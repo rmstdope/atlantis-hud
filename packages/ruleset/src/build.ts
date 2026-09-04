@@ -10,7 +10,6 @@ export type { Gap } from "./generated/Gap";
 export type { RiskThresholds } from "./generated/RiskThresholds";
 export type { Ruleset } from "./generated/Ruleset";
 
-import type { Gap } from "./generated/Gap";
 import type { RiskThresholds } from "./generated/RiskThresholds";
 import type { Ruleset } from "./generated/Ruleset";
 import {

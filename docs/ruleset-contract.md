@@ -16,6 +16,15 @@ Two engine-generated pages, complementary and both required:
 Both are prose. The scraper anchors on the engine's own sentences and records, for every movement
 value, the sentence it was read from.
 
+The food-maintenance value is read off the rules page too, from
+`rules/economy_maintenance`'s substitution sentence, and applied to the foods that sentence names -
+New Origins says 50 silver where both New Age worlds say 30, so the number is scraped rather than
+chosen. Where the data page's own item descriptions state a different figure, the rules page wins,
+and a page naming a food the catalogue does not carry stops the run.
+
+A world serving its catalogue as a JSON database rather than as an HTML data page is read with
+`--database`, which converts it to a data page before anything else happens.
+
 Race entries also carry the ceilings defined by `rules/skills_limitations` and
 `rules/tableraces`. The data-page forms are represented in each race item's optional `skillLimits`
 block: `specializedSkills` preserves the listed skill tags, `specializedLevel` is their ceiling, and
@@ -30,11 +39,30 @@ pnpm --filter @atlantis/ruleset scrape -- \
   --data  https://atlantis-pbem.com/data
 ```
 
-Writes `config/public/ruleset.json`. Either argument may be a local file instead of a URL; a relative path
-resolves against the repository root. The committed file is built from the fixture pages under
-`tests/fixtures/ruleset/`, and `packages/ruleset/src/committed.test.ts` fails if it is not —
-regenerate rather than edit. The script is run deliberately, never as part of a build, and
-never in CI — `config/public/ruleset.json` is committed so that a fresh clone and CI need no network.
+Writes `config/public/ruleset.json`. Any argument may be a local file instead of a URL; a relative
+path resolves against the repository root. A world whose catalogue is a JSON database is scraped
+with `--database` instead of `--data`, and needs `--out`, because without one it would overwrite the
+standard ruleset every shell fetches at startup:
+
+```
+pnpm --filter @atlantis/ruleset scrape -- \
+  --rules    tests/fixtures/ruleset/newage-arcanum-rules.html \
+  --database tests/fixtures/ruleset/newage-arcanum-database.json \
+  --out      config/public/ruleset-newage-arcanum.json
+```
+
+Three worlds are committed, and `packages/ruleset/src/worlds.ts` is the table naming them:
+
+| World | Rules fixture | Catalogue fixture | Committed ruleset |
+| --- | --- | --- | --- |
+| New Origins | `tests/fixtures/ruleset/neworigins-rules.html` | `tests/fixtures/ruleset/neworigins-data.html` | `config/public/ruleset.json` |
+| New Age: Arcanum | `tests/fixtures/ruleset/newage-arcanum-rules.html` | `tests/fixtures/ruleset/newage-arcanum-database.json` | `config/public/ruleset-newage-arcanum.json` |
+| New Age: Trident | `tests/fixtures/ruleset/newage-trident-rules.html` | `tests/fixtures/ruleset/newage-trident-database.json` | `config/public/ruleset-newage-trident.json` |
+
+Each committed file is built from its own fixtures, and
+`packages/ruleset/src/committed.test.ts` fails if one is not - regenerate rather than edit. The
+script is run deliberately, never as part of a build, and never in CI - the rulesets are committed
+so that a fresh clone and CI need no network.
 
 The script is named `scrape` rather than `fetch` because `pnpm fetch` is a builtin command that
 would shadow it.
@@ -162,6 +190,13 @@ A walker has 2 movement points and a mountain costs 2, so 2 is exactly enough �
 must push a mountain to **at least 3**. The page gives no multiplier, no list of affected terrain,
 and no way to tell which months are winter in a given world; turn reports carry no weather line
 either. So there is nothing to scrape and nothing to infer.
+
+**The gap is scraped, not assumed.** `parseWeatherGap` reads what the page says about weather: a
+page proving an unstated winter rule, as New Origins' does, produces the gap above, while a page
+ruling weather out of movement outright - "Weather is reported for every region, but in this world
+it is description only: it never changes movement costs, sailing speed, or anything else", which is
+what both New Age worlds say - produces `modelled: true` and no consequence. A page that says
+neither stops the scrape, so a third wording is a pattern to add rather than a gap to guess at.
 
 The consequence, stated plainly: **a route planned across a winter month is under-costed**, and
 under-costing is the failure direction that matters, because it makes a journey look achievable

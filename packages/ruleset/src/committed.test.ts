@@ -8,8 +8,6 @@ import { WORLDS } from "./worlds";
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../../${relative}`, import.meta.url)), "utf8");
 
-const RULES_HTML = read("tests/fixtures/ruleset/neworigins-rules.html");
-const DATA_HTML = read("tests/fixtures/ruleset/neworigins-data.html");
 const COMMITTED = JSON.parse(read("config/public/ruleset.json")) as Ruleset;
 
 /**
