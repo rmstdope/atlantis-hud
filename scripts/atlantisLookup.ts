@@ -261,6 +261,10 @@ export function rulesProvenance(html: string): { edition: string | null; lastCha
   const heading = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
   const edition = heading ? heading[1].replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim() : null;
 
+  // Anchored on the text rather than on the element, because the two servers put it in different
+  // ones - an `<h3>` on New Origins and a `<p>` on a New Age world. The first occurrence is taken
+  // to be the banner's; a page that discussed the phrase in prose above its banner would report
+  // that instead, which is why this is a courtesy line and never something a fact is cited from.
   const change = html.match(/Last Change:\s*([^<]*)/);
   const lastChange = change ? change[1].replace(/\s+/g, " ").trim() : null;
 

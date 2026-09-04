@@ -157,6 +157,16 @@ describe("run — a New Age world named on the command line", () => {
     expect(err.join("\n")).toContain("pnpm run atlantis check");
   });
 
+  it("prints the command table rather than 'unknown command undefined' for a bare world", async () => {
+    const { io, err } = fakeIo();
+
+    const code = await run(["newage", "arcanum"], io);
+
+    expect(code).toBe(1);
+    expect(err.join("\n")).toContain("atlantis newage <world> rules <anchor>");
+    expect(err.join("\n")).not.toContain("undefined");
+  });
+
   it("answers a data lookup from the named world's database", async () => {
     const entries = dataEntries(preformattedText(newAgeDataPage(parseNewAgeDatabase(ARCANUM_DB))));
     const item = entries.find((entry) => entry.section === "items");
@@ -445,12 +455,18 @@ describe("run — refresh", () => {
   });
 
   it("rewrites every world's sources once all three scrape", async () => {
-    const { io, files } = fakeIo({ fetchText: servingCommitted, scrape: () => {} });
+    // Every source is served with a marker appended, so a fixture still holding the committed
+    // bytes is a write that did not happen rather than a page that did not move.
+    const moved = (text: string) => `${text}<!-- moved -->`;
+    const { io, files } = fakeIo({
+      fetchText: async (url) => moved(await servingCommitted(url)),
+      scrape: () => {}
+    });
 
     const code = await run(["refresh"], io);
 
     expect(code).toBe(0);
-    for (const [path, contents] of [
+    for (const [path, committed] of [
       [RULES_FIXTURE, RULES_HTML],
       [DATA_FIXTURE, DATA_HTML],
       [ARCANUM_RULES_FIXTURE, ARCANUM_RULES_HTML],
@@ -458,7 +474,7 @@ describe("run — refresh", () => {
       [TRIDENT_RULES_FIXTURE, TRIDENT_RULES_HTML],
       [TRIDENT_DB_FIXTURE, TRIDENT_DB]
     ] as const) {
-      expect(files.get(path)).toBe(contents);
+      expect(files.get(path)).toBe(moved(committed));
     }
   });
 

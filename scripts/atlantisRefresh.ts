@@ -44,7 +44,7 @@ function sourceLabel(source: string): string {
 
 /** The pull request's title, given what moved. A title listing three worlds would not fit. */
 export function refreshPullRequestTitle(outcome: Refreshed): string {
-  if (outcome.worlds.length !== 1) {
+  if (outcome.worlds.length > 1) {
     return `Atlantis rules refresh: ${outcome.worlds.length} worlds changed`;
   }
   const [world] = outcome.worlds;

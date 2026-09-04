@@ -137,19 +137,19 @@ function messageOf(error: unknown): string {
 const HELP_TEXT = [
   "pnpm run atlantis <command>",
   "",
-  "Looks a fact up on the Atlantis rules or data page instead of recalling it. Both pages are",
-  "committed to this repository under tests/fixtures/ruleset/ and read from there.",
+  "Looks a fact up in a committed Atlantis ruleset instead of recalling it. Every world's sources",
+  "are committed to this repository under tests/fixtures/ruleset/ and read from there.",
   "",
   "  atlantis rules <anchor>                    the rendered section, under a provenance header",
-  "  atlantis newage <world> rules <anchor>      the same, from a committed New Age world",
-  "  atlantis newage <world> data <term>         the same, from that world's own catalogue",
+  "  atlantis newage <world> rules <anchor>     the same, from a committed New Age world",
+  "  atlantis newage <world> data <term>        the same, from that world's own catalogue",
   "  atlantis rules --list                       all anchor names, one per line",
   "  atlantis rules --search <term>               anchors whose text contains the term",
   "  atlantis data <term>                        full entries for one name, or an index for several",
   "  atlantis data --list skills|items|objects   one line per distinct name in that section",
-  "  atlantis verify                             compares the committed ruleset to generated output",
-  "  atlantis check                              fetches both pages, compares bytes to the fixtures",
-  "  atlantis refresh                            re-fetches, rewrites the fixtures and the ruleset",
+  "  atlantis verify                             every world's committed ruleset vs generated output",
+  "  atlantis check                              fetches every world's sources, compares their bytes",
+  "  atlantis refresh                            re-fetches, rewrites every world's sources and ruleset",
   "  atlantis refresh --json                     same, but prints the outcome as one JSON object",
   "",
   "A plain lookup answers from New Origins and ends with a line naming the other committed worlds;",
@@ -157,7 +157,9 @@ const HELP_TEXT = [
   "",
   "verify compares only what the scraper models — items, skills, buildings and movement — not prose.",
   "Verification uses committed rules and data pages plus documented overrides: regenerate with",
-  "'atlantis refresh', never edit config/public/ruleset.json by hand. --json is for scheduled refresh."
+  "'atlantis refresh', never edit a ruleset.json by hand. refresh is all-or-nothing across the",
+  "worlds: one world the scraper cannot read leaves every world's files untouched. --json is for the",
+  "scheduled refresh."
 ].join("\n");
 
 function printRulesHeader(anchor: string, html: string, world: ScrapedWorld, io: Io): void {
@@ -620,9 +622,7 @@ async function runRefresh(io: Io, json: boolean): Promise<number> {
         rulesetChanges: changes.map((line) => line.trim())
       });
       prose.push(
-        `${world.id}: ${changedSources
-          .map((source) => `${source === "rules" ? "rules" : source} changed`)
-          .join(", ")}`
+        `${world.id}: ${changedSources.map((source) => `${source} changed`).join(", ")}`
       );
     } else {
       prose.push(`${world.id}: unchanged`);
@@ -661,6 +661,14 @@ export async function run(argv: string[], io: Io): Promise<number> {
   }
   const { world, rest: resolved, explicit } = chosen;
   const [command, ...rest] = resolved;
+
+  // `newage <world>` with nothing after it: the outer guard above saw `newage`, not a command, so
+  // this is where a world named on its own lands. Printing the table beats `unknown command
+  // 'undefined'`.
+  if (command === undefined) {
+    io.err(HELP_TEXT);
+    return 1;
+  }
 
   // verify, check and refresh are about the repository rather than about one world, so naming a
   // world before them is refused rather than silently scoped.
