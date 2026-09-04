@@ -283,4 +283,30 @@ describe("parseMovementRules", () => {
       parseMovementRules(ARCANUM_RULES_HTML).terrainCosts
     );
   });
+
+  /**
+   * A terrain named in two tiers at two prices cannot happen on either page today; it can only
+   * mean the sentence was misread, and reading it wrongly silently is the failure to avoid.
+   */
+  it("fails loudly when one terrain is priced in two tiers at once", () => {
+    const reworded = ARCANUM_RULES_HTML.replace(
+      "movement points for volcano.",
+      "movement points for volcano and forest."
+    );
+    expect(reworded).not.toBe(ARCANUM_RULES_HTML);
+
+    expect(() => parseMovementRules(reworded)).toThrowError(RulesetScrapeError);
+    expect(() => parseMovementRules(reworded)).toThrowError(/forest is priced at both 2 and 4/);
+  });
+
+  /**
+   * A tier priced with a number word the scraper has not been taught must point at the one-line
+   * fix, not at the sentence's grammar, which is a different repair entirely.
+   */
+  it("names NUMBER_WORDS when a tier is priced with a word it does not know", () => {
+    const reworded = ARCANUM_RULES_HTML.replace("chasm; 4\n", "chasm; fifteen\n");
+    expect(reworded).not.toBe(ARCANUM_RULES_HTML);
+
+    expect(() => parseMovementRules(reworded)).toThrowError(/extend NUMBER_WORDS/);
+  });
 });

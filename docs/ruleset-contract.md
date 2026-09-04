@@ -72,7 +72,9 @@ tier**. Atlantis New Age does, in a single sentence: "Moving from one region to 
 takes one movement point, except for the following terrain types, which cost a riding or walking
 unit more to enter: 2 movement points for forest, mountain, hill, swamp, jungle, tundra, cavern,
 underforest, tunnels, grotto, deepforest and chasm; 4 movement points for volcano." A volcano at
-four has nowhere to go in a shape that models one premium. `skills` is its own block rather than merged into `items` because ten tags mean one thing
+four has nowhere to go in a shape that models one premium.
+
+`skills` is its own block rather than merged into `items` because ten tags mean one thing
 as a skill and another as an item (`FISH`, `HERB`).
 
 `items.*.skillLimits` is optional for backward compatibility and tolerance. It is absent from old
@@ -117,8 +119,8 @@ the served file and reloading — no rebuild, which is the whole reason it is a 
 `Ruleset::from_json` in `crates/core/src/movement/rules.rs` distinguishes two failures.
 **Malformed** means the text is not a ruleset, and carries serde's own message, which names the
 field it wanted. **Unusable** means it parsed but says something no route could be costed against:
-a zero movement allowance, a terrain that costs zero, or a named premium cheaper than ordinary
-going, a road divisor of zero, a water rule naming no
+a zero movement allowance, a terrain that costs zero, a named premium cheaper than ordinary going,
+a road divisor of zero, a water rule naming no
 terrain, risk thresholds the wrong way round, or a catalogue with no races in it. Each of those is
 well-formed JSON, which is exactly why serde alone is not enough.
 

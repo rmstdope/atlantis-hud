@@ -103,8 +103,14 @@ const TIERED_PREMIUMS = new RegExp(
   "i"
 );
 
-/** `2 movement points for forest, mountain` - one clause of the tiered wording. */
-const TIER_CLAUSE = new RegExp(`^\\s*${NUMBER_PATTERN} movement points? for (.+)$`, "i");
+/**
+ * `2 movement points for forest, mountain` - one clause of the tiered wording.
+ *
+ * The cost is captured as a bare token rather than as `NUMBER_PATTERN`, so a clause whose number
+ * is a word the scraper has not been taught fails with the message that names the fix
+ * (`extend NUMBER_WORDS`) rather than with one about the sentence's grammar.
+ */
+const TIER_CLAUSE = /^\s*(\S+) movement points? for (.+)$/i;
 
 /**
  * Reads whichever terrain sentence the page states, or stops the run naming the value.
@@ -130,7 +136,7 @@ function readTerrainSentence(text: string): {
       const cost = toNumber(parsed[1]);
       if (cost === null) {
         throw new RulesetScrapeError(
-          `could not read terrainCosts: ${clause.trim()} is not a cost and a list of terrain`
+          "the rules page used a number word the scraper does not know; extend NUMBER_WORDS"
         );
       }
       return { cost, list: parsed[2] };
@@ -250,7 +256,11 @@ export function parseMovementRules(html: string): MovementRules {
     );
   }
 
-  const premiums: Record<string, number> = {};
+  // A null prototype, not `{}`: a terrain named `__proto__` on a plain object would set the
+  // prototype rather than an own property and vanish from `Object.keys`, which is exactly the
+  // silent under-costing this shape exists to prevent. `constructor` and friends would likewise
+  // read back as inherited functions in the duplicate-price check below.
+  const premiums: Record<string, number> = Object.create(null) as Record<string, number>;
   for (const tier of terrain.tiers) {
     for (const name of tier.list
       .split(/,| and /i)
