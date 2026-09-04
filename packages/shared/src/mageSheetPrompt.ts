@@ -8,6 +8,7 @@
  */
 
 import type { PendingMissingMages } from "./mageSheetImport";
+import type { BatchStep } from "./reportBatch";
 import { count } from "./plural";
 
 /** What one sheet's arrival did, for the status line under the header. */
@@ -112,4 +113,18 @@ export function missingMagesCopy(pending: PendingMissingMages): MissingMagesCopy
     discardLabel: one ? "Discard him" : "Discard them",
     keepLabel: "Keep as stale"
   };
+}
+
+/** The summary line for one mage sheet a batch took in. */
+export function mageSheetBatchLine(step: Extract<BatchStep, { kind: "mageSheet" }>): string {
+  const stem = `${step.fileName} — mage sheet from ${step.factionLabel}, turn ${step.turnNumber}: `;
+  if (step.mageCount === 0) {
+    return `${stem}no mages in it`;
+  }
+  const taken = `${count(step.mageCount, "mage")} taken in`;
+  // A batch never asks, so a discard here is the agreed default having applied on its own - which
+  // is exactly why the line says so.
+  return step.discarded === null || step.discarded === 0
+    ? `${stem}${taken}`
+    : `${stem}${taken}, ${step.discarded} no longer in the sheet discarded`;
 }

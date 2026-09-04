@@ -1,10 +1,11 @@
 import type { CoreClient, OpenedGame, ParsedReport, ReportHeaderInfo } from "@atlantis/core-client";
-import { aParsedReport, aReportHeaderInfo, aReportRegion } from "@atlantis/core-client";
+import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import { batchSummary, prepareBatch, viewerFactionOptions, walkBatch, type ChosenFile } from "./batchImport";
 import type { BatchCandidate } from "./reportBatch";
 import { REPORT_HAS_NOTHING_IN_IT, judgeReportUsable } from "./reportLoadDecision";
 import { MAP_EXPORT_MARKER, classifyReportImport, type ReportImportSource } from "./mapExportImport";
+import { MAGE_SHEET_MARKER, mageSheetIsOlder } from "./mageSheetImport";
 
 /**
  * A candidate as `prepareBatch` builds one from a successfully parsed file: `usable` is what
@@ -419,5 +420,90 @@ describe("batchSummary", () => {
     );
     expect(batchSummary(walk, null).viewerFactionLabel).toBe("an unnamed faction");
     expect(batchSummary(walk, null).finalTurn).toBeNull();
+  });
+});
+
+describe("walkBatch, given a mage sheet", () => {
+  const mage = (unitId: string) => aReportUnit({ unitId, name: `Mage ${unitId}`, own: false });
+
+  const sheet = (fileName: string, factionId: string, turnNumber: number, unitIds: string[]) =>
+    candidateFor(
+      fileName,
+      classifyReportImport(
+        aParsedReport({
+          header: aReportHeaderInfo({ month: "January", factionId, factionName: "Borg", turnNumber }),
+          regions: [aReportRegion({ units: unitIds.map(mage) })]
+        }),
+        MAGE_SHEET_MARKER
+      )
+    );
+
+  const held = (factionId: string, unitId: string, sheetTurn: number) => ({
+    factionId,
+    factionName: "Borg",
+    unit: mage(unitId),
+    sheetTurn,
+    receivedAt: "2026-01-01T00:00:00.000Z"
+  });
+
+  it("stores the sheet's mages and discards the ones it leaves out", async () => {
+    const core = client({
+      listAlliedMages: vi.fn().mockResolvedValue([held("21", "1204", 21), held("21", "1301", 21)]),
+      saveAlliedMages: vi.fn().mockResolvedValue(undefined)
+    });
+    const batch = { candidates: [sheet("mages.txt", "21", 23, ["1301"])] };
+
+    const walk = await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
+
+    expect(core.saveAlliedMages).toHaveBeenCalledWith(
+      "p.sqlite",
+      "aug-2026",
+      [expect.objectContaining({ factionId: "21", sheetTurn: 23 })],
+      [{ factionId: "21", unitId: "1204" }]
+    );
+    expect(walk.landed).toEqual([expect.objectContaining({ kind: "mageSheet", discarded: 1 })]);
+    expect(walk.skipped).toEqual([]);
+    // A sheet is not an account of a hex, and never a turn.
+    expect(core.mergeReport).not.toHaveBeenCalled();
+    expect(core.commitReportImport).not.toHaveBeenCalled();
+  });
+
+  it("refuses a sheet older than one already stored, in the store's own words", async () => {
+    const core = client({
+      listAlliedMages: vi.fn().mockResolvedValue([held("21", "1204", 25)]),
+      saveAlliedMages: vi.fn().mockResolvedValue(undefined)
+    });
+    const batch = { candidates: [sheet("old.txt", "21", 23, ["1204"])] };
+
+    const walk = await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
+
+    expect(walk.skipped).toEqual([
+      { index: 0, fileName: "old.txt", reason: mageSheetIsOlder("Borg (21)", 25) }
+    ]);
+    expect(core.saveAlliedMages).not.toHaveBeenCalled();
+  });
+
+  it("reads what is stored once, however many sheets the batch carries", async () => {
+    const core = client({
+      listAlliedMages: vi.fn().mockResolvedValue([]),
+      saveAlliedMages: vi.fn().mockResolvedValue(undefined)
+    });
+    const batch = {
+      candidates: [sheet("a.txt", "21", 23, ["1204"]), sheet("b.txt", "42", 19, ["9"])]
+    };
+
+    await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
+
+    expect(core.listAlliedMages).toHaveBeenCalledTimes(1);
+    expect(core.saveAlliedMages).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not read the store at all when the batch carries no sheet", async () => {
+    const core = client({ listAlliedMages: vi.fn().mockResolvedValue([]) });
+    const batch = { candidates: [candidateFor("turn.rep", classifyReportImport(report({ factionId: "95", turnNumber: 71 }), "text"))] };
+
+    await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
+
+    expect(core.listAlliedMages).not.toHaveBeenCalled();
   });
 });

@@ -11,6 +11,14 @@
  * is left with the doing - reading the files, walking the steps, and saying what happened.
  */
 
+import { factionLabelOf } from "./factionLabel";
+import {
+  MAGE_SHEET_IS_YOUR_OWN,
+  MAGE_SHEET_NAMES_NO_FACTION,
+  MAGE_SHEET_NAMES_NO_TURN,
+  MAGE_SHEET_NEEDS_A_GAME,
+  mageSheetIsOlder
+} from "./mageSheetImport";
 import {
   MAP_EXPORT_NEEDS_A_MAP,
   judgeMapExportUsable,
@@ -71,6 +79,26 @@ export type BatchStep =
        * by `walkBatch` from the merge's own `newRegionCount`.
        */
       hexesAdded: number | null;
+    }
+  /**
+   * An ally's mage sheet: its mages are stored, and nothing about the turn on screen moves. Never
+   * an `import` and never a `merge`, whoever wrote it - a sheet is not an account of a hex.
+   */
+  | {
+      kind: "mageSheet";
+      index: number;
+      fileName: string;
+      /** The turn the sheet was written on. */
+      turnNumber: number;
+      factionId: string;
+      factionLabel: string;
+      /** How many mages it carries. */
+      mageCount: number;
+      /**
+       * How many held mages it left out and the batch therefore discarded. `null` from the
+       * planner, which cannot know what is stored - filled in by `walkBatch`.
+       */
+      discarded: number | null;
     };
 
 /**
@@ -84,7 +112,10 @@ export type BatchStep =
 export type BatchSkip = { index: number; fileName: string; reason: string };
 
 export type ReportBatchPlan = {
-  /** Oldest turn first, and within a turn the viewer's own report before its allies. */
+  /**
+   * Oldest turn first, and within a turn the viewer's own report before its allies: own turns,
+   * then allies', then map exports, then mage sheets.
+   */
   steps: BatchStep[];
   /** In the order the files were chosen: the player is looking for the one they recognise. */
   skipped: BatchSkip[];
@@ -131,7 +162,10 @@ export function chooseViewerFaction(
     const header = candidate.source?.report.header;
     const factionId = header?.factionId ?? null;
     const turnNumber = header?.turnNumber ?? null;
-    if (factionId === null || turnNumber === null) {
+    // A mage sheet names a faction and a turn just as a report does, and it is always an ally's -
+    // so counted, two sheets can outvote the player's own turns and make them the visitor in their
+    // own map.
+    if (factionId === null || turnNumber === null || candidate.source?.kind === "mageSheet") {
       continue;
     }
     const seen = counts.get(factionId) ?? { count: 0, newestTurn: -Infinity };
@@ -191,8 +225,51 @@ export function planReportBatch(
   // here, because the last of those questions - is there any turn at all to add hexes to - is
   // answered by `ceiling` below, which is not known until every report has been looked at.
   const mapExports: { index: number; candidate: BatchCandidate; turnNumber: number }[] = [];
+  // Mage sheets that named a faction and a turn and are not the viewer's own. Held back for the
+  // same reason map exports are: whether one is superseded depends on every other sheet in the
+  // batch, which is not known until they have all been looked at.
+  const mageSheets: {
+    index: number;
+    candidate: BatchCandidate;
+    factionId: string;
+    factionLabel: string;
+    turnNumber: number;
+    mageCount: number;
+  }[] = [];
 
   for (const [index, candidate] of candidates.entries()) {
+    // Before the map-export branch and before `judgeReportUsable`, for the reason that branch
+    // gives about itself: a mage sheet has five refusals of its own, and one of the generic report
+    // sentences would send the player looking for the wrong thing.
+    if (candidate.source !== null && candidate.source.kind === "mageSheet") {
+      const header = candidate.source.report.header;
+      if (viewer.factionId === null) {
+        skipped.push({ index, fileName: candidate.fileName, reason: MAGE_SHEET_NEEDS_A_GAME });
+        continue;
+      }
+      if (header.factionId === null) {
+        skipped.push({ index, fileName: candidate.fileName, reason: MAGE_SHEET_NAMES_NO_FACTION });
+        continue;
+      }
+      if (header.turnNumber === null) {
+        skipped.push({ index, fileName: candidate.fileName, reason: MAGE_SHEET_NAMES_NO_TURN });
+        continue;
+      }
+      if (header.factionId === viewer.factionId) {
+        skipped.push({ index, fileName: candidate.fileName, reason: MAGE_SHEET_IS_YOUR_OWN });
+        continue;
+      }
+      mageSheets.push({
+        index,
+        candidate,
+        factionId: header.factionId,
+        // Never null: the header names a faction id.
+        factionLabel: factionLabelOf(candidate.source.report) as string,
+        turnNumber: header.turnNumber,
+        mageCount: candidate.source.report.regions.flatMap((region) => region.units).length
+      });
+      continue;
+    }
     // A map export takes its own branch *before* `judgeReportUsable`'s verdict is read: those
     // sentences are about reports, and a player told "the report does not name its faction" about
     // a map export goes looking for the wrong thing. `judgeMapExportUsable`'s refusals are the
@@ -300,6 +377,35 @@ export function planReportBatch(
     });
   }
 
+  // A sheet a newer one in the same batch speaks past. Strictly newer: two sheets of one turn are
+  // both kept, the second simply rewriting what the first wrote, and inventing a message for a
+  // duplicate that costs nothing would be a sentence the player has to think about.
+  for (const entry of mageSheets) {
+    const newer = mageSheets.find(
+      (other) => other.factionId === entry.factionId && other.turnNumber > entry.turnNumber
+    );
+    if (newer) {
+      skipped.push({
+        index: entry.index,
+        fileName: entry.candidate.fileName,
+        reason: mageSheetIsOlder(newer.factionLabel, newer.turnNumber)
+      });
+      continue;
+    }
+    // No `ceiling` test, for the reason a map export has none: a sheet is not an account of a
+    // turn, so "newer than your own turn" is not a thing that can be true of one.
+    steps.push({
+      kind: "mageSheet",
+      index: entry.index,
+      fileName: entry.candidate.fileName,
+      turnNumber: entry.turnNumber,
+      factionId: entry.factionId,
+      factionLabel: entry.factionLabel,
+      mageCount: entry.mageCount,
+      discarded: null
+    });
+  }
+
   // Ordered by turn, then own report before its allies, then by the order the files were chosen.
   //
   // That last clause is spelled out rather than left to the sort being stable. It is - the language
@@ -308,6 +414,19 @@ export function planReportBatch(
   // the one the database keeps and the one put on screen. A reader should be able to see that the
   // order is decided here rather than have to remember a property of `sort`.
   steps.sort((left, right) => {
+    // Mage sheets last of all, after the map exports: they are filed under no turn, and the walk
+    // reads what is already stored once before it starts on them.
+    const mageSheetOrder =
+      (left.kind === "mageSheet" ? 1 : 0) - (right.kind === "mageSheet" ? 1 : 0);
+    if (mageSheetOrder !== 0) {
+      return mageSheetOrder;
+    }
+    if (left.kind === "mageSheet" && right.kind === "mageSheet") {
+      // Oldest sheet first, so a run of one faction's sheets lands in order and the newest wins.
+      return left.turnNumber !== right.turnNumber
+        ? left.turnNumber - right.turnNumber
+        : left.index - right.index;
+    }
     // Map exports last, whatever turn they name: they are not part of the run of turns, and the
     // walk needs the viewer's own turns to have landed before it adds hexes to the map they make.
     const mapExportOrder =

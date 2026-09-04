@@ -12,7 +12,12 @@
  * this move.
  */
 
-import type { CoreClient, OpenedGame, ParsedReport } from "@atlantis/core-client";
+import type {
+  AlliedMageRecord,
+  CoreClient,
+  OpenedGame,
+  ParsedReport
+} from "@atlantis/core-client";
 import { commitMerge, commitTurn } from "./gameMemory";
 import { classifyReportImport, type ReportImportSource } from "./mapExportImport";
 import {
@@ -25,6 +30,12 @@ import {
 import type { ImportSummary } from "./importSummary";
 import { factionLabelOf } from "./reportLoad";
 import { judgeReportUsable } from "./reportLoadDecision";
+import {
+  heldTurnsByFaction,
+  keyOf,
+  mageSheetIsOlder,
+  missingFromSheet
+} from "./mageSheetImport";
 import { describeError } from "./workspace/shellAction";
 
 /**
@@ -164,6 +175,16 @@ export async function walkBatch(
 
   /** How many hexes each landed map export added, keyed by the chosen file's index. */
   const hexesAdded = new Map<number, number>();
+  /** How many held mages each landed sheet left out and the batch therefore discarded. */
+  const discardedBy = new Map<number, number>();
+
+  // Read once, and kept in step in memory as sheets land: a re-read per step would be a round trip
+  // per file for a number this loop already knows. Nothing is read at all for a batch with no
+  // sheet in it.
+  let heldMages: AlliedMageRecord[] = plan.steps.some((step) => step.kind === "mageSheet")
+    ? await client.listAlliedMages(game.databasePath, game.manifest.metadata.gameId)
+    : [];
+  let heldTurns = heldTurnsByFaction(heldMages);
   const failures: BatchSkip[] = [];
   let done = 0;
   for (const step of plan.steps) {
@@ -195,6 +216,43 @@ export async function walkBatch(
         if (committed.warning !== null) {
           throw new Error(committed.warning);
         }
+      } else if (step.kind === "mageSheet") {
+        // The store-based half of the older-than-you-hold refusal, which the planner cannot make:
+        // it can compare a sheet with the others in the batch, never with what is already stored.
+        const heldTurn = heldTurns.get(step.factionId);
+        if (heldTurn !== undefined && heldTurn > step.turnNumber) {
+          throw new Error(mageSheetIsOlder(step.factionLabel, heldTurn));
+        }
+        const mages = source.report.regions.flatMap((region) => region.units);
+        const missing = missingFromSheet(heldMages, step.factionId, mages);
+        const rows = mages.map((unit) => ({
+          factionId: step.factionId,
+          // The sender's identity is the sheet's header, never a unit line: a sheet's units are
+          // written with `own` cleared and no faction of their own.
+          factionName: source.report.header.factionName,
+          unit,
+          sheetTurn: step.turnNumber,
+          receivedAt: now()
+        }));
+        // A batch never asks, so the agreed default applies and the summary says what it did.
+        await client.saveAlliedMages(
+          game.databasePath,
+          game.manifest.metadata.gameId,
+          rows,
+          missing.map(keyOf)
+        );
+        discardedBy.set(step.index, missing.length);
+        const dropped = new Set(missing.map((row) => `${row.factionId} ${row.unit.unitId}`));
+        const carried = new Set(rows.map((row) => `${row.factionId} ${row.unit.unitId}`));
+        heldMages = [
+          ...heldMages.filter(
+            (row) =>
+              !dropped.has(`${row.factionId} ${row.unit.unitId}`) &&
+              !carried.has(`${row.factionId} ${row.unit.unitId}`)
+          ),
+          ...rows
+        ];
+        heldTurns = heldTurnsByFaction(heldMages);
       } else if (step.kind === "mapExport") {
         // The same call an ally's report takes: the core recognises the text as a map export and
         // routes it to the per-hex merge itself (`plan_merge`, ah-jpcj.1), so there is no second
@@ -246,7 +304,11 @@ export async function walkBatch(
     // The count is only knowable here, from the merge's own answer, so it is filled in on the way
     // out rather than guessed by the planner.
     .map((step) =>
-      step.kind === "mapExport" ? { ...step, hexesAdded: hexesAdded.get(step.index) ?? 0 } : step
+      step.kind === "mapExport"
+        ? { ...step, hexesAdded: hexesAdded.get(step.index) ?? 0 }
+        : step.kind === "mageSheet"
+          ? { ...step, discarded: discardedBy.get(step.index) ?? 0 }
+          : step
     );
 
   // The *last* report of the final turn, not the first. Two files can describe one turn - the same
