@@ -1077,7 +1077,8 @@ describe("parseSkillReference", () => {
       inputs: [],
       inputsAreAlternatives: false,
       manMonths: 1,
-      outputs: 1
+      outputs: 1,
+      revealsRegion: false
     });
   });
 
@@ -1267,6 +1268,55 @@ describe("parseSkillReference", () => {
     const html =
       "<html><body><pre>broken [BROK] 1: A unit with this skill may PRODUCE something odd " +
       "at a rate of 1 per man-month.</pre></body></html>";
+
+    expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
+  });
+
+  it("marks the nine productions that also reveal a region", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.HUNT.produces.find((p) => p.tag === "FLOA")).toMatchObject({
+      level: 3,
+      revealsRegion: true
+    });
+    expect(skills.HUNT.produces.find((p) => p.tag === "FUR")).toMatchObject({
+      revealsRegion: false
+    });
+
+    const revealing: string[] = [];
+    for (const [tag, skill] of Object.entries(skills)) {
+      for (const made of skill.produces) {
+        if (made.revealsRegion) {
+          revealing.push(`${tag} ${made.level} ${made.tag}`);
+        }
+      }
+    }
+    expect(revealing.sort()).toEqual([
+      "FISH 3 TURT",
+      "HERB 3 MUSH",
+      "HORS 5 WING",
+      "HUNT 3 FLOA",
+      "LUMB 3 IRWD",
+      "LUMB 5 YEW",
+      "MINI 3 MITH",
+      "MINI 5 ADMT",
+      "QUAR 3 ROOT"
+    ]);
+  });
+
+  it("refuses a reveal sentence with no production", () => {
+    const html =
+      "<html><body><pre>hunting [HUNT] 3: A unit with this skill is able to determine if a " +
+      "region contains floater hides.</pre></body></html>";
+
+    expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
+  });
+
+  it("refuses a reveal sentence beside two productions", () => {
+    const html =
+      "<html><body><pre>hunting [HUNT] 3: A unit with this skill may PRODUCE furs [FUR] at a " +
+      "rate of 1 per man-month, floater hides [FLOA] at a rate of 1 per man-month. A unit with " +
+      "this skill is able to determine if a region contains floater hides.</pre></body></html>";
 
     expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
   });

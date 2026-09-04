@@ -4693,6 +4693,7 @@ mod production_tests {
             inputs_are_alternatives: false,
             man_months: Some(4),
             outputs: Some(1),
+            reveals_region: false,
         }
     }
 
@@ -4840,6 +4841,7 @@ mod production_tests {
             inputs_are_alternatives: false,
             man_months: Some(3),
             outputs: Some(1),
+            reveals_region: false,
         }
     }
 
@@ -4899,6 +4901,7 @@ mod production_tests {
             inputs_are_alternatives: false,
             man_months: Some(1),
             outputs: Some(1),
+            reveals_region: false,
         }
     }
 
@@ -5176,6 +5179,7 @@ mod production_tests {
             inputs_are_alternatives: false,
             man_months: Some(1),
             outputs: Some(1),
+            reveals_region: false,
         };
         let plan = plan_production(
             &sword,
@@ -5207,6 +5211,7 @@ mod production_tests {
             inputs_are_alternatives: false,
             man_months: Some(1),
             outputs: Some(1),
+            reveals_region: false,
         }
     }
 
@@ -5355,6 +5360,7 @@ mod production_tests {
             inputs_are_alternatives: true,
             man_months: Some(1),
             outputs: Some(1),
+            reveals_region: false,
         };
         assert_eq!(
             plan_production(

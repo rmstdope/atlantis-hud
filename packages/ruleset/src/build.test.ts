@@ -190,3 +190,54 @@ stone [STON], weight 50, costs 75 silver to withdraw. This item is a trade resou
     ).toThrowError(/movementPoints/);
   });
 });
+
+describe("buildRuleset and the terrain table", () => {
+  it("carries a terrain named after a prototype member all the way through", () => {
+    const rulesHtml = RULES_HTML.replace("                  ocean\n", "                  __proto__\n");
+
+    const ruleset = buildRuleset({
+      rulesHtml,
+      dataHtml: DATA_HTML,
+      rulesUrl: "https://example.test/rules",
+      dataUrl: "https://example.test/data",
+      fetchedAt: "2026-01-01T00:00:00Z"
+    });
+
+    expect(Object.keys(ruleset.terrainResources)).toContain("__proto__");
+    expect(ruleset.terrainResources["__proto__"]).toEqual(["FISH", "TURT"]);
+  });
+
+  it("refuses a resource name the catalogue gives to two items", () => {
+    // A plain lists `horse (100%)`, and the catalogue is doctored so CAME carries that name too:
+    // resolving to either tag would be a guess. CAME rather than WING, so that nothing the terrain
+    // table names is *removed* by the doctoring - the ambiguity is the only thing that has changed.
+    const dataHtml = DATA_HTML.replace("camel [CAME], weight 50", "horse [CAME], weight 50");
+
+    expect(() =>
+      buildRuleset({
+        rulesHtml: RULES_HTML,
+        dataHtml,
+        rulesUrl: "https://example.test/rules",
+        dataUrl: "https://example.test/data",
+        fetchedAt: "2026-01-01T00:00:00Z"
+      })
+    ).toThrowError(/names twice/);
+  });
+
+  it("refuses a terrain resource the catalogue does not name", () => {
+    const rulesHtml = RULES_HTML.replace(
+      "horse (100%), winged horse (20%).",
+      "horse (100%), unobtanium (10%)."
+    );
+
+    expect(() =>
+      buildRuleset({
+        rulesHtml,
+        dataHtml: DATA_HTML,
+        rulesUrl: "https://example.test/rules",
+        dataUrl: "https://example.test/data",
+        fetchedAt: "2026-01-01T00:00:00Z"
+      })
+    ).toThrowError(/plain[\s\S]*unobtanium|unobtanium[\s\S]*plain/);
+  });
+});

@@ -24,4 +24,12 @@ manMonths: number | null,
  * How many the recipe makes per `man_months`. `None` both for a ruleset generated before this
  * was scraped and for cooking, whose output the page states as a formula.
  */
-outputs: number | null, };
+outputs: number | null, 
+/**
+ * Whether a unit at this level can also tell whether a region holds this item at all, as
+ * `data/skills` states it: `A unit with this skill is able to determine if a region contains
+ * floater hides.` Nine recipes carry it in every committed world; every other recipe is
+ * `false`, and so is every recipe in a ruleset generated before this was scraped - which
+ * reads as "this catalogue cannot say", the same direction `damages_enemies` takes.
+ */
+revealsRegion: boolean, };

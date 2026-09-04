@@ -575,6 +575,13 @@ pub struct Production {
     /// was scraped and for cooking, whose output the page states as a formula.
     #[serde(default)]
     pub outputs: Option<u32>,
+    /// Whether a unit at this level can also tell whether a region holds this item at all, as
+    /// `data/skills` states it: `A unit with this skill is able to determine if a region contains
+    /// floater hides.` Nine recipes carry it in every committed world; every other recipe is
+    /// `false`, and so is every recipe in a ruleset generated before this was scraped - which
+    /// reads as "this catalogue cannot say", the same direction `damages_enemies` takes.
+    #[serde(default)]
+    pub reveals_region: bool,
 }
 
 /// A skill a unit must already have, at a level, before it may begin to study another.
@@ -759,6 +766,15 @@ pub struct Ruleset {
     /// the restriction and is silent otherwise.
     #[serde(default)]
     pub ungiveable_items: Vec<String>,
+    /// What each terrain may hold, keyed by the terrain word a region report prints (`swamp`,
+    /// `mountain`, `underforest`) and holding item tags in the page's own order, from
+    /// `rules/region_resources`.
+    ///
+    /// Empty for a ruleset generated before this was scraped, which reads as "this catalogue
+    /// cannot say what a terrain holds" - never as "this terrain holds nothing". A terrain the
+    /// table does not list (the Nexus) is absent for the same reason.
+    #[serde(default)]
+    pub terrain_resources: BTreeMap<String, Vec<String>>,
 }
 
 /// One of the classes `GIVE [unit] ALL [item class]` accepts, as `rules/give` enumerates them.

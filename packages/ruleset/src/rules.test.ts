@@ -4,9 +4,11 @@ import { describe, expect, it } from "vitest";
 import {
   parseFoodMaintenance,
   parseMovementRules,
+  parseRegionResources,
   parseWeatherGap,
   RulesetScrapeError
 } from "./rules";
+import { anchoredTableRows } from "./html";
 
 const RULES_HTML = readFileSync(
   fileURLToPath(new URL("../../../tests/fixtures/ruleset/neworigins-rules.html", import.meta.url)),
@@ -368,5 +370,84 @@ describe("parseWeatherGap", () => {
     expect(() => parseWeatherGap("<html><body>no weather here</body></html>")).toThrowError(
       /weatherRule/
     );
+  });
+});
+
+describe("parseRegionResources", () => {
+  it("refuses a page with no region resources table", () => {
+    const html = "<html><body><p>no table here</p></body></html>";
+
+    expect(() => parseRegionResources(html)).toThrowError(RulesetScrapeError);
+  });
+
+  it("keeps a terrain named after a prototype member", () => {
+    const odd = RULES_HTML.replace("                  ocean\n", "                  __proto__\n");
+
+    const resources = parseRegionResources(odd);
+
+    expect(Object.keys(resources)).toContain("__proto__");
+    expect(resources["__proto__"]).toEqual(["fish", "giant turtle"]);
+  });
+
+  it("refuses a table stating one terrain twice", () => {
+    const twice = RULES_HTML.replace(
+      "                  jungle\n",
+      "                  swamp\n"
+    );
+
+    expect(() => parseRegionResources(twice)).toThrowError(/swamp/);
+  });
+
+  it("reads the region resources table", () => {
+    const resources = parseRegionResources(RULES_HTML);
+
+    expect(Object.keys(resources)).toEqual([
+      "ocean",
+      "plain",
+      "forest",
+      "mountain",
+      "swamp",
+      "jungle",
+      "desert",
+      "tundra",
+      "volcano"
+    ]);
+    expect(resources.swamp).toEqual(["wood", "floater hide", "herb", "mushroom"]);
+    expect(resources.mountain).toEqual(["iron", "stone", "mithril", "rootstone", "admantium"]);
+  });
+
+  it("refuses a resource cell it cannot read", () => {
+    const broken = RULES_HTML.replace(
+      "wood (100%), floater hide (40%), herb (100%), mushroom (30%).",
+      "wood (100%), floater hide, herb (100%), mushroom (30%)."
+    );
+
+    expect(() => parseRegionResources(broken)).toThrowError(/swamp/);
+  });
+});
+
+describe("anchoredTableRows", () => {
+  it("reads a table's cells row by row", () => {
+    const rows = anchoredTableRows(RULES_HTML, "region_resources");
+
+    expect(rows[0]).toEqual(["Region type", "Resources"]);
+    expect(rows[1]).toEqual(["ocean", "fish (100%), giant turtle (30%)."]);
+  });
+
+  it("answers nothing for an anchor the page does not carry", () => {
+    expect(anchoredTableRows(RULES_HTML, "no_such_anchor")).toEqual([]);
+  });
+
+  it("takes the anchor literally rather than as a pattern", () => {
+    const html =
+      '<html><body><a name="abc"></a><table><tr><td>x</td></tr></table></body></html>';
+
+    expect(anchoredTableRows(html, "a.c")).toEqual([]);
+  });
+
+  it("answers nothing for an anchor with no table after it", () => {
+    const html = '<html><body><a name="lonely"></a><p>prose only</p></body></html>';
+
+    expect(anchoredTableRows(html, "lonely")).toEqual([]);
   });
 });

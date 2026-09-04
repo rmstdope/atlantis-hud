@@ -19,8 +19,14 @@ import {
   parseSkillReference,
   ungiveableItemsOf
 } from "./data";
-import { parseFoodMaintenance, parseMovementRules, parseWeatherGap, RulesetScrapeError } from "./rules";
-import type { FoodMaintenance } from "./rules";
+import {
+  parseFoodMaintenance,
+  parseMovementRules,
+  parseRegionResources,
+  parseWeatherGap,
+  RulesetScrapeError
+} from "./rules";
+import type { FoodMaintenance, RegionResources } from "./rules";
 import type { ItemReference } from "./data";
 
 export type BuildInput = {
@@ -67,12 +73,66 @@ function applyFoodMaintenance(items: ItemReference, maintenance: FoodMaintenance
   }
 }
 
+/**
+ * The terrain table's resource names as item tags.
+ *
+ * Matched on the catalogue's own `name`, lower-cased, exactly - every one of the names the three
+ * committed worlds print resolves that way, so a name that does not is a page or a catalogue that
+ * has moved, and a terrain silently short of a resource is exactly the wrong answer for a feature
+ * about telling absence from ignorance.
+ */
+function resolveRegionResources(
+  resources: RegionResources,
+  items: ItemReference
+): Record<string, string[]> {
+  // A name two tags share cannot be resolved, and picking the first would put a wrong tag in a
+  // terrain's list - the silent-wrong-answer this bead exists to avoid. No collision exists in the
+  // three committed catalogues, so the ambiguity is recorded and only refused if a terrain asks
+  // for that name.
+  const byName = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const [tag, item] of Object.entries(items)) {
+    const name = item.name.toLowerCase();
+    if (byName.has(name)) {
+      ambiguous.add(name);
+    } else {
+      byName.set(name, tag);
+    }
+  }
+
+  // A null prototype for the same reason `parseRegionResources` uses one: a terrain named
+  // `__proto__` must survive resolution as an own key rather than vanish into the prototype.
+  const resolved: Record<string, string[]> = Object.create(null) as Record<string, string[]>;
+  for (const [terrain, names] of Object.entries(resources)) {
+    const tags: string[] = [];
+    for (const name of names) {
+      if (ambiguous.has(name)) {
+        throw new RulesetScrapeError(
+          `terrain ${terrain} lists resource "${name}", which the item catalogue names twice`
+        );
+      }
+      const tag = byName.get(name);
+      if (tag === undefined) {
+        throw new RulesetScrapeError(
+          `terrain ${terrain} lists resource "${name}", which the item catalogue does not name`
+        );
+      }
+      if (!tags.includes(tag)) {
+        tags.push(tag);
+      }
+    }
+    resolved[terrain] = tags;
+  }
+  return resolved;
+}
+
 export function buildRuleset(input: BuildInput): Ruleset {
   // Movement first: it is the part that stops the run, and there is no point reading a catalogue
   // for a ruleset we are going to refuse anyway.
   const movement = parseMovementRules(input.rulesHtml);
   const maintenance = parseFoodMaintenance(input.rulesHtml);
   const weather = parseWeatherGap(input.rulesHtml);
+  const regionResources = parseRegionResources(input.rulesHtml);
   const items = parseItemReference(input.dataHtml);
   // Buildings come from the data page too - the game's own object list, not the rules page's
   // generic table - so this reads after the items and before the race check below, which is the
@@ -128,6 +188,7 @@ export function buildRuleset(input: BuildInput): Ruleset {
     skills,
     buildings,
     itemClasses: itemClassesOf(items),
-    ungiveableItems: ungiveableItemsOf(items)
+    ungiveableItems: ungiveableItemsOf(items),
+    terrainResources: resolveRegionResources(regionResources, items)
   };
 }

@@ -155,7 +155,8 @@ const HELP_TEXT = [
   "A plain lookup answers from New Origins and ends with a line naming the other committed worlds;",
   "verify, check and refresh cover every committed world and take no world of their own.",
   "",
-  "verify compares only what the scraper models — items, skills, buildings and movement — not prose.",
+  "verify compares only what the scraper models — items, skills, buildings, region resources and",
+  "movement — not prose.",
   "Verification uses committed rules and data pages plus documented overrides: regenerate with",
   "'atlantis refresh', never edit a ruleset.json by hand. refresh is all-or-nothing across the",
   "worlds: one world the scraper cannot read leaves every world's files untouched. --json is for the",
@@ -379,7 +380,13 @@ function verifyWorld(world: ScrapedWorld, io: Io): boolean {
 
   io.out(`${world.id}:`);
 
-  for (const collection of ["items", "skills", "buildings", "itemClasses"] as const) {
+  for (const collection of [
+    "items",
+    "skills",
+    "buildings",
+    "itemClasses",
+    "terrainResources"
+  ] as const) {
     const { agree, total } = compareCollection(
       collection,
       built[collection] as unknown as Record<string, unknown>,
