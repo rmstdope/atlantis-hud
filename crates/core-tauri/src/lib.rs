@@ -2586,11 +2586,11 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             faction_id: "21".to_string(),
             unit_id: "9001".to_string(),
             goals: vec![
-                StudyGoal {
+                StudyGoal::Study {
                     skill: "FORC".to_string(),
                     target_level: Some(4),
                 },
-                StudyGoal {
+                StudyGoal::Study {
                     skill: "PATT".to_string(),
                     target_level: None,
                 },
