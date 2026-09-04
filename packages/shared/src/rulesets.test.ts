@@ -59,6 +59,9 @@ describe("rulesets", () => {
     const served = (url: string) => fileURLToPath(new URL(`../../../config/public${url}`, import.meta.url));
 
     for (const ruleset of RULESETS) {
+      // The resolution below assumes a root-relative path; asserting it makes a query string or an
+      // absolute URL fail here rather than as a file that is mysteriously missing.
+      expect(ruleset.url, `${ruleset.id} is served from this build`).toMatch(/^\/[\w.-]+$/);
       expect(existsSync(served(ruleset.url)), `${ruleset.id} points at ${ruleset.url}`).toBe(true);
     }
   });

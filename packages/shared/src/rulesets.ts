@@ -7,7 +7,9 @@
  * matter of editing the served file, rather than migrating every game that was created before the
  * correction.
  *
- * Adding a variant is a scrape and a line here.
+ * Adding a variant is a scrape, a line here, and an entry in `packages/ruleset/src/worlds.ts`
+ * whose id this one must match - the two tables are deliberately separate (`@atlantis/shared` does
+ * not depend on the scraper), and `rulesets.test.ts`'s served-file guard is what catches a typo.
  */
 import type { MapShape } from "@atlantis/core-client";
 
