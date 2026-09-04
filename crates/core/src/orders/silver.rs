@@ -2387,8 +2387,9 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
 /// Splits a contended regional pool between the units that asked for it.
 ///
 /// Returns one share per claim, **index-aligned with `wants`** - not keyed by unit id, for the
-/// reason [`feed_from_faction_food`] gives: two units in one hex may carry the same id, and a map
-/// would silently merge them.
+/// reason [`feed_from_faction_food`] gives: the division is positional, over the claims as they
+/// were pushed. Unit ids are distinct anyway - one unit number is one row in a region block,
+/// because `parse_region_block` refuses a repeat (`ah-bm0d`).
 ///
 /// When the pool covers every claim, each unit gets exactly what it asked for and nothing is
 /// divided. When it does not, each gets `pool * wants[i] / total`, **rounded down** - so the

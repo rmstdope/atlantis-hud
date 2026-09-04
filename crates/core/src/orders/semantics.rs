@@ -789,7 +789,9 @@ fn pool_shares_for(
 /// Keyed by canonical item tag **and side**: a unit selling horses and a unit buying horses draw
 /// on two different pools - the `Wanted` and `For Sale` lists - which the report prints as two
 /// lines. Each vector is index-aligned with `hex.units`, as the tax shares are and for the same
-/// reason: two units may carry the same id, and a map keyed by id would merge them.
+/// reason: the settlement is positional, and a claim is named by where its unit sits in the report.
+/// Unit ids would serve too - one unit number is one row in a region block, because
+/// `parse_region_block` refuses a repeat (`ah-bm0d`) - but the index is what orders the pass.
 ///
 /// [`PoolShare::Unknowable`] has no counterpart here. A market claim is counted in goods and does
 /// not multiply out by headcount, so a guessed headcount tells us nothing about it.
@@ -957,9 +959,8 @@ struct ProductionRegionAnswer {
 /// the units already producing there have to be settled against it - which no per-hex pass can do.
 ///
 /// Keyed by the unit's **report-origin coordinate**, and each vector is index-aligned with that
-/// origin's `hex.units`, as the market shares are and for the same reason: two units may carry the
-/// same id, and a map keyed by id would merge them. The inner map is keyed by canonical uppercase
-/// item tag.
+/// origin's `hex.units`, as the market shares are and for the same reason: the settlement is
+/// positional. The inner map is keyed by canonical uppercase item tag.
 ///
 /// An absent answer is [`RegionShare::Unlimited`]: either no regional pool applies at all, or the
 /// sail cannot be followed through the report and the destination is unknowable.
@@ -1607,8 +1608,9 @@ fn forecast_hex(
     }
 
     // One claim was pushed per unit, in the same loop that pushed its forecast, so the two are
-    // index-aligned - which is also what keeps two units sharing an id from being confused for one
-    // another, as a lookup by id could not.
+    // index-aligned - the ordering this settlement needs, and it does not depend on unit ids being
+    // distinct. They are: one unit number is one row in a region block, because
+    // `parse_region_block` refuses a repeat (`ah-bm0d`).
     let settled = feed_from_faction_food(&claims).settled;
     for (claim, forecast) in claims.iter().zip(into[start..].iter_mut()) {
         let Some(upkeep) = settled.get(&claim.unit_id).copied() else {
@@ -1632,8 +1634,9 @@ fn forecast_hex(
     // Step 4, decided per hex before this one was priced and only applied here - and before the
     // step-5/6 pass below, which is the payment order's own sequence.
     //
-    // The walk is positional over `hex.units` but the lookup is by id, so two report units sharing
-    // an id are conflated here; the same caveat, and the same reason, as the pass below.
+    // The walk is positional over `hex.units` but the lookup is by id. That is sound because one
+    // unit number is one row in a region block: `parse_region_block` refuses a repeat (`ah-bm0d`),
+    // so no hex can hold two rows for one id.
     for (ordered, forecast) in hex.units.iter().zip(into[start..].iter_mut()) {
         let Some(owed) = forecast.upkeep else {
             // A doubted fee stays doubted: a neighbour cannot settle a number nothing knows.
@@ -1649,9 +1652,9 @@ fn forecast_hex(
 
     // Steps 5 and 6, decided per hex before this one was priced and only applied here.
     //
-    // The walk is positional over `hex.units` but the lookup is by id, so - unlike the food pass
-    // above - two report units sharing an id are conflated here. That is exactly what
-    // `Ledger.balance` already does with such a pair, so this adds no hazard it does not have.
+    // The walk is positional over `hex.units` but the lookup is by id, as `Ledger.balance`'s own
+    // lookups are. Both are sound for the same reason: one unit number is one row in a region
+    // block, because `parse_region_block` refuses a repeat (`ah-bm0d`).
     for (ordered, forecast) in hex.units.iter().zip(into[start..].iter_mut()) {
         let Some(owed) = forecast.upkeep else {
             // A doubted fee stays doubted: food cannot settle a number nothing knows.
@@ -1672,10 +1675,10 @@ fn forecast_hex(
     // Step 7, in a second pass for the same reason the first one exists: the settlement is
     // faction-wide, so it is decided before any hex is priced and only applied here.
     //
-    // The walk is positional over `hex.units` but the lookup is by id, so - unlike the food pass
-    // above - two report units sharing an id are conflated here. That is exactly what
-    // `Ledger.balance` already does with such a pair, so this adds no hazard it does not have; it
-    // is written down because the difference from the pass above is invisible until it is not.
+    // The walk is positional over `hex.units` but the lookup is by id, as `Ledger.balance`'s own
+    // lookups are. Both are sound for the same reason: one unit number is one row in a region
+    // block, because `parse_region_block` refuses a repeat (`ah-bm0d`). The difference from the
+    // index-aligned pass above is invisible until it is not, so it is written down.
     for (ordered, forecast) in hex.units.iter().zip(into[start..].iter_mut()) {
         let Some(owed) = forecast.upkeep else {
             // A fee that is already doubted stays doubted: the fund cannot settle a number
@@ -3784,7 +3787,8 @@ struct Ledger<'a> {
     /// How many of one tag a unit's own `SELL` lines have already moved this month, and how many of
     /// those lines moved any. A block may name the same goods twice, and the second line can only
     /// draw on what the first left of the unit's settled share of the market line (`ah-vw8e`). Keyed
-    /// as `balance` is, and with the same caveat: two units carrying one id share an entry.
+    /// as `balance` is, which is sound because one unit number is one row in a region block:
+    /// `parse_region_block` refuses a repeat (`ah-bm0d`).
     sold: BTreeMap<(String, String), SoldSoFar>,
     /// Every `SELL` line that found none of its goods left when it ran, recorded where the running
     /// total already lives so `check_emptied_sales` need not compute the same fact a second time
@@ -3792,8 +3796,8 @@ struct Ledger<'a> {
     dead_sales: Vec<DeadSale>,
     /// How many of one tag a unit's own `BUY` lines have already taken out of its settled share
     /// this month. A block may name the same goods twice, and the second line can only buy what
-    /// the first left (`ah-lauy`). Keyed as `balance` is, and with the same caveat: two units
-    /// carrying one id share an entry.
+    /// the first left (`ah-lauy`). Keyed as `balance` is, which is sound because one unit number is
+    /// one row in a region block: `parse_region_block` refuses a repeat (`ah-bm0d`).
     bought: BTreeMap<(String, String), i64>,
     /// Every `BUY` line that found none of its goods left when it ran, recorded where the running
     /// total already lives so `check_emptied_buys` need not compute the same fact a second time
@@ -6012,9 +6016,9 @@ impl HexStanding<'_> {
     /// this market does not trade, or a hex that could not be settled at all. The caller then falls
     /// back to what the market line itself says.
     ///
-    /// Index-aligned rather than keyed by unit id, because two units may carry the same id and a
-    /// map would merge them - the same reason [`market_shares_for`] builds it that way, and the
-    /// same lookup the Silver column's `market_share` closure makes.
+    /// Index-aligned rather than keyed by unit id, because the settlement is positional - the same
+    /// reason [`market_shares_for`] builds it that way, and the same lookup the Silver column's
+    /// `market_share` closure makes.
     fn market_share_of(&self, tag: &str, side: MarketSide) -> Option<i64> {
         self.market
             .get(&(tag.to_ascii_uppercase(), side))
@@ -7115,8 +7119,9 @@ fn charge(
 
 /// One unit's share of a material a production or a BUILD consumed, by its index in `hex.units`.
 ///
-/// The index rather than the id: two report units can carry the same id, and this list is what
-/// says *whose* goods left (`ah-728m.2.2`).
+/// The index rather than the id: report order is what says *whose* goods left, and in what order
+/// they left (`ah-728m.2.2`). It does not depend on unit ids being distinct, and they are: one unit
+/// number is one row in a region block, because `parse_region_block` refuses a repeat (`ah-bm0d`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SharedDebit {
     supplier_index: usize,
@@ -7134,11 +7139,11 @@ struct Pool<'a> {
     /// Where the consuming unit sits in `hex.units` - report order, and the tie-break
     /// `rules/sequenceofevents` states for units within one phase.
     ///
-    /// The index is what decides *order* and what a [`SharedDebit`] names, so two report rows
-    /// sharing an id are never confused for one another here. Their *balances* still are:
-    /// [`PhaseState`] is keyed by unit id, so a duplicate id is one balance read and charged once
-    /// per row. That is the ledger's own limit and predates this bead (`ah-bm0d`); carrying the
-    /// index is what leaves it fixable in one place when `PhaseState` is rekeyed.
+    /// The index is what decides *order* and what a [`SharedDebit`] names - report order is the
+    /// settlement's own sequence, so the index is carried for that reason rather than as a guard
+    /// against duplicate ids. There are none to guard against: one unit number is one row in a
+    /// region block, because `parse_region_block` refuses a repeat (`ah-bm0d`), so [`PhaseState`]'s
+    /// keying by unit id is sound by construction.
     actor_index: usize,
 }
 
@@ -7295,9 +7300,10 @@ enum Reading {
 struct Sharing<'a> {
     /// The units carrying `sharing`, in hex order, each with its index into `hex.units`.
     ///
-    /// The index rather than the id, and kept beside the unit rather than looked up again: two
-    /// report units can carry the same id, so an id-keyed claimant vector confuses them for one
-    /// another - the same reason [`SharingPurse`] is index-aligned (`ah-728m.2.2`).
+    /// The index rather than the id, and kept beside the unit rather than looked up again, so a
+    /// claimant is named by where it sits in the report - the same reason [`SharingPurse`] is
+    /// index-aligned (`ah-728m.2.2`). Unit ids are distinct anyway: one unit number is one row in a
+    /// region block, because `parse_region_block` refuses a repeat (`ah-bm0d`).
     sharers: Vec<(usize, &'a Ordered<'a>)>,
 }
 
@@ -7457,8 +7463,10 @@ impl MarketPurse {
 /// none is credited and every figure stays pessimistic. A player then sees a shortfall that is
 /// real for *somebody* rather than a guess about who.
 ///
-/// Both vectors are index-aligned with `hex.units`, which is what keeps two report units sharing an
-/// id from being confused for one another - a lookup by id could not.
+/// Both vectors are index-aligned with `hex.units`, so a claimant is named by where it sits in the
+/// report rather than by a lookup. That does not depend on unit ids being distinct, and they are:
+/// one unit number is one row in a region block, because `parse_region_block` refuses a repeat
+/// (`ah-bm0d`).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct SharingPurse {
     /// What the purse lends each unit for its orders. `0` for a sharer - a sharer's own overdraft
@@ -10374,7 +10382,8 @@ fn check_mage_arrivals(
     }
 
     // One pass, resolving the unit by id: nested in the loop above it would be O(units x
-    // refusals) and would emit twice for two rows sharing an id (review finding 5).
+    // refusals). Resolving by id is sound because one unit number is one row in a region block:
+    // `parse_region_block` refuses a repeat (`ah-bm0d`).
     for recruit in &ledger.refused_recruits {
         let Some(ordered) = hex
             .units
