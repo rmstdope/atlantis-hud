@@ -3532,15 +3532,21 @@ struct Ledger<'a> {
     /// did. **Per phase, not per tag**: a spend at `Manufacturing` cannot have consumed an output
     /// credited at `PrimaryProduction`, which is two phases later (`ah-728m.2.2`).
     produced: BTreeMap<(String, String), [i64; StatePhase::COUNT]>,
-    /// What each unit's `PRODUCE` was priced against, material by material - the pooled
-    /// availability `material_available_at` answered at that unit's turn in the report-order pass.
+    /// What each `PRODUCE` was priced against, material by material - the pooled availability
+    /// `material_available_at` answered at that order's turn in the report-order pass.
+    ///
+    /// Keyed by unit and then **by the line the order was written on**, not by unit alone: a unit
+    /// can carry a manufacturing PRODUCE and a primary one, which run two phases apart and see
+    /// different pools, and a second manufacturing line sees what the first consumed. One entry
+    /// per unit would let the last order written silently reprice every earlier one - and a
+    /// primary PRODUCE, whose recipe has no inputs, would blank the entry altogether.
     ///
     /// Handed to the SILVER column through [`LateFacts::shared_materials`], so its cap sentence
-    /// speaks of the same materials the ITEMS ledger spent. Two surfaces reading one settlement
-    /// rather than each deriving it: the drift `ah-ycuj` and `ah-abwx` were both filed for, and
-    /// which pooling would otherwise have reopened - the ITEMS cell saying a unit makes 36 swords
-    /// while the hover said it had materials for 16 (`ah-728m.2.2`).
-    production_materials: BTreeMap<String, Vec<ItemAmount>>,
+    /// speaks of the same materials the ITEMS ledger spent for the same order. Two surfaces
+    /// reading one settlement rather than each deriving it: the drift `ah-ycuj` and `ah-abwx` were
+    /// both filed for, and which pooling would otherwise have reopened - the ITEMS cell saying a
+    /// unit makes 36 swords while the hover said it had materials for 16 (`ah-728m.2.2`).
+    production_materials: BTreeMap<String, Vec<(usize, Vec<ItemAmount>)>>,
     spent_after_production: BTreeMap<(String, String), [i64; StatePhase::COUNT]>,
     /// Units whose sums cannot be trusted, and which are therefore not judged at all.
     ///
@@ -4378,7 +4384,7 @@ impl LateHoldings {
         &'a self,
         index: usize,
         before_manufacturing: &'a [ItemAmount],
-        shared_materials: &'a [ItemAmount],
+        shared_materials: &'a [(usize, Vec<ItemAmount>)],
     ) -> LateFacts<'a> {
         let holdings = &self.0[index];
         LateFacts {
@@ -6000,7 +6006,9 @@ fn produce(
         }
         ledger
             .production_materials
-            .insert(who.clone(), pooled.clone());
+            .entry(who.clone())
+            .or_default()
+            .push((placed.line, pooled.clone()));
     }
     let (priced, plan) = price_production(recipe, work, &pooled, purse, requested, region);
     let Some(plan) = plan else {

@@ -953,12 +953,17 @@ pub struct LateFacts<'a> {
     /// above is what `workforce_for` reads, so no unit is ever given a faction-mate's hammers
     /// (`ah-728m.2.2`).
     ///
-    /// Empty for a caller with no ledger to read it from, and for a unit whose `PRODUCE` the
-    /// ruleset cannot price - in which case the `PRODUCE` arm falls back to
-    /// `before_manufacturing`, which is what it always read. It carries an entry per *recipe
-    /// input*, not per held tag, and is computed by `semantics::produce` itself, so the two
-    /// surfaces cannot answer one order differently by construction rather than by agreement.
-    pub shared_materials: &'a [ItemAmount],
+    /// **One entry per `PRODUCE` line**, paired with the line it was written on, because a unit's
+    /// two PRODUCE orders can see two different pools: a manufacturing one and a primary one run
+    /// two phases apart, and a second manufacturing line sees what the first consumed. The arm
+    /// looks its own line up rather than taking the unit's first or last.
+    ///
+    /// Empty for a caller with no ledger to read it from, and carrying no entry for a line whose
+    /// `PRODUCE` the ruleset cannot price - in which case the `PRODUCE` arm falls back to
+    /// `before_manufacturing`, which is what it always read. Each entry carries an amount per
+    /// *recipe input*, not per held tag, and is computed by `semantics::produce` itself, so the
+    /// two surfaces cannot answer one order differently by construction rather than by agreement.
+    pub shared_materials: &'a [(usize, Vec<ItemAmount>)],
 }
 
 impl<'a> UnitFacts<'a> {
@@ -1523,7 +1528,7 @@ pub fn forecast_unit(
                 // it always was.
                 let priced_against = pooled_materials(
                     &manufacturing_items,
-                    facts.late().shared_materials,
+                    materials_for_line(facts.late().shared_materials, placed.line),
                     &lookups.item_name,
                 );
                 let (priced, plan) = price_production(
@@ -3614,6 +3619,47 @@ pub fn price_study(cost: Option<i64>, men: i64) -> Priced {
     }
 }
 
+/// [`LateFacts::before_manufacturing`] with each shared material's amount put in its place.
+///
+/// An override rather than a sum: `shared_materials` is already the whole amount the run may
+/// spend, own stock included, as `semantics::material_available_at` computes it. Summing would
+/// count this unit's own holding twice.
+/// The materials the ITEMS ledger priced the order on `line` against, if it priced one.
+///
+/// By line, not by unit: see [`LateFacts::shared_materials`] for why one entry per unit would let
+/// a unit's last `PRODUCE` reprice its first.
+fn materials_for_line(shared: &[(usize, Vec<ItemAmount>)], line: usize) -> &[ItemAmount] {
+    shared
+        .iter()
+        .find(|(at, _)| *at == line)
+        .map_or(&[][..], |(_, materials)| materials.as_slice())
+}
+
+fn pooled_materials(
+    own: &[ItemAmount],
+    shared: &[ItemAmount],
+    name_of: &dyn Fn(&str) -> String,
+) -> Vec<ItemAmount> {
+    if shared.is_empty() {
+        return own.to_vec();
+    }
+    let mut items = own.to_vec();
+    for material in shared {
+        match items
+            .iter_mut()
+            .find(|item| item.tag.eq_ignore_ascii_case(&material.tag))
+        {
+            Some(item) => item.amount = material.amount,
+            None => items.push(ItemAmount {
+                amount: material.amount,
+                name: name_of(&material.tag),
+                tag: material.tag.to_ascii_uppercase(),
+            }),
+        }
+    }
+    items
+}
+
 /// What a `PRODUCE` costs, and the run it describes.
 ///
 /// Returns the plan as well as the price because the two surfaces need different parts of it: the
@@ -3823,36 +3869,6 @@ impl Workforce {
 /// `men` is the caller's because the two surfaces read different headcounts; everything else is
 /// computed here exactly once, so the level and the tools cannot drift between them.
 #[must_use]
-/// [`LateFacts::before_manufacturing`] with each shared material's amount put in its place.
-///
-/// An override rather than a sum: `shared_materials` is already the whole amount the run may
-/// spend, own stock included, as `semantics::material_available_at` computes it. Summing would
-/// count this unit's own holding twice.
-fn pooled_materials(
-    own: &[ItemAmount],
-    shared: &[ItemAmount],
-    name_of: &dyn Fn(&str) -> String,
-) -> Vec<ItemAmount> {
-    if shared.is_empty() {
-        return own.to_vec();
-    }
-    let mut items = own.to_vec();
-    for material in shared {
-        match items
-            .iter_mut()
-            .find(|item| item.tag.eq_ignore_ascii_case(&material.tag))
-        {
-            Some(item) => item.amount = material.amount,
-            None => items.push(ItemAmount {
-                amount: material.amount,
-                name: name_of(&material.tag),
-                tag: material.tag.to_ascii_uppercase(),
-            }),
-        }
-    }
-    items
-}
-
 pub fn workforce_for(
     ruleset: Option<&Ruleset>,
     skill: &SkillEntry,
@@ -5471,6 +5487,87 @@ mod cast_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The pooled-material seam `ah-728m.2.2` opened between the two production surfaces.
+    mod shared_materials {
+        use super::*;
+
+        fn item(amount: i64, tag: &str) -> ItemAmount {
+            ItemAmount {
+                amount,
+                name: tag.to_ascii_lowercase(),
+                tag: tag.to_string(),
+            }
+        }
+
+        fn named(tag: &str) -> String {
+            format!("a {}", tag.to_ascii_lowercase())
+        }
+
+        #[test]
+        fn a_shared_material_replaces_the_units_own_figure_rather_than_adding_to_it() {
+            let own = vec![item(16, "IRON"), item(11, "HAMM")];
+            let shared = vec![item(36, "IRON")];
+            assert_eq!(
+                pooled_materials(&own, &shared, &named),
+                vec![item(36, "IRON"), item(11, "HAMM")],
+                "`material_available_at` already counts the actor's own stock, so summing would \
+                 count these sixteen twice - and the tools are left alone, because `rules/share` \
+                 lends resources and not equipment"
+            );
+        }
+
+        #[test]
+        fn a_material_the_unit_holds_none_of_is_added() {
+            let pooled = pooled_materials(&[item(11, "HAMM")], &[item(20, "IRON")], &named);
+            assert_eq!(
+                pooled,
+                vec![
+                    item(11, "HAMM"),
+                    ItemAmount {
+                        amount: 20,
+                        name: "a iron".to_string(),
+                        tag: "IRON".to_string(),
+                    }
+                ],
+                "a smith carrying no iron of its own may still forge from the hex's"
+            );
+        }
+
+        #[test]
+        fn tags_are_matched_whatever_their_case() {
+            assert_eq!(
+                pooled_materials(&[item(5, "iron")], &[item(20, "IRON")], &named),
+                vec![ItemAmount {
+                    amount: 20,
+                    name: "iron".to_string(),
+                    tag: "iron".to_string(),
+                }],
+                "one entry, raised - not a second one beside it"
+            );
+        }
+
+        #[test]
+        fn a_hex_that_shares_nothing_leaves_the_list_byte_for_byte() {
+            let own = vec![item(16, "IRON"), item(11, "HAMM")];
+            assert_eq!(pooled_materials(&own, &[], &named), own);
+        }
+
+        /// One entry per unit would let a unit's last `PRODUCE` reprice its first - and a primary
+        /// PRODUCE, whose recipe has no inputs, would blank the entry for a manufacturing one
+        /// written above it.
+        #[test]
+        fn each_produce_line_reads_the_pool_its_own_order_was_priced_against() {
+            let shared = vec![(4, vec![item(36, "IRON")]), (5, Vec::new())];
+            assert_eq!(materials_for_line(&shared, 4), &[item(36, "IRON")]);
+            assert_eq!(materials_for_line(&shared, 5), &[]);
+            assert_eq!(
+                materials_for_line(&shared, 9),
+                &[],
+                "a line the ledger could not price falls back to the unit's own list"
+            );
+        }
+    }
 
     #[test]
     fn reads_the_shape_of_a_transfer() {

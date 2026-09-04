@@ -176,3 +176,85 @@ fn the_items_column_and_its_warning_agree_with_it() {
         );
     }
 }
+
+// --- the two columns in a hex that shares (`ah-728m.2.2`) ---------------------------------------
+
+/// `ah-728m.2.2` made the ITEMS ledger pool a hex's `SHARE`d materials for manufacturing PRODUCE.
+/// The SILVER column prices the same order and must reach the same figure, or its hover contradicts
+/// the cell beside it - which is exactly what happened while this file had no sharing case:
+/// "Includes 36 SWOR this unit will produce" over "This unit has materials for 16 swords".
+///
+/// The committed turn 42 already carries the case, so it is asserted against a real hex rather than
+/// a fixture written to pass. `mountain (36,4)` shares, and `Smiths (2964)` - 14 orcs at
+/// `weaponsmith [WEAP] 2` with 11 hammers - carries 16 iron of its own beside `MinersA (5105)`'s
+/// 20, which `rules/share` lends it and `rules/sequenceofevents` runs manufacturing PRODUCE early
+/// enough to use.
+///
+/// **The orders are the report's own template with the smith's block appended**, which is what the
+/// application actually prices: the rest of the hex keeps its template orders, and one of them is
+/// the `GIVE` of iron that makes up the difference between the twenty the miners share and the
+/// thirty-six the smith forges. A bare block for one unit prices a different month.
+///
+/// The seam that carries the pool between the two columns is keyed by unit *and line*, and that is
+/// a guard rather than a case reachable here: `settle_effective_month_intents` leaves a unit one
+/// month-long order, so a manufacturing and a primary PRODUCE in one block never both run.
+/// `orders::silver::tests::shared_materials::each_produce_line_reads_the_pool_its_own_order_was_priced_against`
+/// is what pins the guard.
+mod a_hex_that_shares {
+    use super::*;
+
+    const SMITH: &str = "2964";
+
+    fn columns(script: &str) -> (i64, i64, Option<ProductionCap>, i64) {
+        let text = atlantis_hud_fixtures::G3_F42_T42.text;
+        let template = extract_orders_template(text)
+            .map(|template| template.text)
+            .unwrap_or_default();
+        let orders = format!("{template}\nunit {SMITH}\n{script}\n");
+
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            atlantis_hud_fixtures::RULESET_JSON,
+            text,
+            "[]",
+            &orders,
+        )
+        .expect("the ruleset loads");
+        let items: i64 = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .find(|unit| unit.unit.unit_id == SMITH)
+            .expect("the smith is on the ITEMS surface")
+            .produced
+            .iter()
+            .filter(|produced| produced.tag == "SWOR")
+            .map(|produced| produced.amount)
+            .sum();
+
+        let mut parsed = parse_report_full(text);
+        classify_units(&mut parsed, &ruleset());
+        let review = review_turn(&parsed, &orders, Some(&ruleset()), CheckOptions::default());
+        let unit = review
+            .silver
+            .iter()
+            .find(|silver| silver.unit_id == SMITH)
+            .expect("the smith is on the SILVER surface");
+
+        (
+            items,
+            unit.produced,
+            unit.production_capped_by,
+            unit.production_wanted,
+        )
+    }
+
+    #[test]
+    fn both_columns_price_one_produce_against_the_hexs_shared_materials() {
+        let (items, silver, capped_by, wanted) = columns("PRODUCE sword");
+        assert_eq!(items, 36, "the ITEMS ledger forges from the hex's iron");
+        assert_eq!(silver, items, "and the SILVER column says the same number");
+        assert_eq!(capped_by, Some(ProductionCap::Materials));
+        assert_eq!(wanted, 39, "what its skill and tools alone could make");
+    }
+}
