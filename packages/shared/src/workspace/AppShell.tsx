@@ -1430,7 +1430,11 @@ export function AppShell({
       if (source.kind !== "mageSheet" || game === null) {
         return alliedMages;
       }
-      if (useAlliedMagesStore.getState().status !== "ready") {
+      // The store's own contract is `gameId` as well as `status`: rows for another game are stale
+      // and are not read. The mount effect makes a ready-but-wrong-game window hard to reach, but
+      // the guard says the invariant rather than relying on effect ordering to keep it.
+      const cache = useAlliedMagesStore.getState();
+      if (cache.status !== "ready" || cache.gameId !== game.manifest.metadata.gameId) {
         await useAlliedMagesStore.getState().load(client, game);
       }
       const state = useAlliedMagesStore.getState();
@@ -1493,7 +1497,7 @@ export function AppShell({
         }
       });
     },
-    [client, game, alliedMages]
+    [client, game]
   );
 
   const loadReport = useCallback(
