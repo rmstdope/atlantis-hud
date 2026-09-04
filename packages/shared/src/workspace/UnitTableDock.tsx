@@ -463,7 +463,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     [units, filter, sort, structures, longOrders, silverByUnit, sourced.seen, derivedSkills]
   );
   /** The unit numbers the table is drawing, in the order it is drawing them. */
-  const rowIds = useMemo(() => visible.map((unit) => unit.unitId), [visible]);
+  const rowKeys = useMemo(
+    () => visible.map((unit) => unitRowKey(unit.regionId, unit.unitId)),
+    [visible]
+  );
   const selectedIndex = useMemo(
     () => visible.findIndex((unit) => unit.unitId === selectedUnitId),
     [visible, selectedUnitId]
@@ -505,8 +508,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   // own. `narrowedTo` answers with the identical object when nothing was dropped, so this settles
   // in one render.
   useEffect(() => {
-    setPick((current) => narrowedTo(current, rowIds));
-  }, [rowIds]);
+    setPick((current) => narrowedTo(current, rowKeys));
+  }, [rowKeys]);
 
   // Round 3, G1: changing the source clears the pick outright. Not merely narrowed - two sources
   // can share rows (every `This hex` row is also an `All my units` row), and a pick that survived
@@ -678,8 +681,11 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     setPick((current) =>
       afterGesture(
         current,
-        { kind: options.extend ? "extend" : "plain", unitId: target.unitId },
-        rowIds
+        {
+          kind: options.extend ? "extend" : "plain",
+          rowKey: unitRowKey(target.regionId, target.unitId)
+        },
+        rowKeys
       )
     );
     // Arrowing past either end lands on the row already selected. Asking for it again re-renders
@@ -724,16 +730,19 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     // keys. It is deliberately not a shortcut in `shortcuts.ts` for that reason.
     if ((isMac ? event.metaKey : event.ctrlKey) && event.key.toLowerCase() === "a") {
       event.preventDefault();
-      setPick((current) => afterGesture(current, { kind: "all" }, rowIds));
+      setPick((current) => afterGesture(current, { kind: "all" }, rowKeys));
       return;
     }
     const here = visible[index]?.unitId ?? null;
+    // The pick is keyed on the row, the cursor on the unit: two hexes may hold the same number.
+    const hereRow = visible[index];
+    const hereKey = hereRow ? unitRowKey(hereRow.regionId, hereRow.unitId) : null;
     const chose = (travel: boolean) => {
       if (here === null) {
         return;
       }
       // Choosing a row from the keyboard collapses a pick exactly as a plain click does.
-      settleOn(afterGesture(pick, { kind: "plain", unitId: here }, rowIds), here);
+      settleOn(afterGesture(pick, { kind: "plain", rowKey: hereKey ?? here }, rowKeys), here);
       if (travel) {
         travelTo(here);
       }
@@ -754,8 +763,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
        * the focus this handler needs. Neither branch changes the source.
        */
       Escape: () => {
-        if (pick.ids.size >= 2 && here !== null) {
-          setPick(afterGesture(pick, { kind: "plain", unitId: here }, rowIds));
+        if (pick.ids.size >= 2 && hereKey !== null) {
+          setPick(afterGesture(pick, { kind: "plain", rowKey: hereKey }, rowKeys));
           return;
         }
         setPin(null);
@@ -845,7 +854,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     // (`ah-y9hx` P1): a five-unit pick across four hexes would otherwise throw the map four times,
     // and one Shift+click adding ten rows would send it to the last of them.
     const plain = !modifiers.shift && !modifiers.mod;
-    const outcome = onPress(pick, unit.unitId, modifiers, rowIds);
+    const outcome = onPress(pick, unitRowKey(unit.regionId, unit.unitId), modifiers, rowKeys);
     if (outcome.now) {
       if (plain) {
         settleOn(outcome.now, rowTarget);
@@ -908,7 +917,9 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         // Resolved once, as the drag begins: a press on a row outside the pick carries that row
         // alone, and a press on one inside it carries the whole pick (E2).
         carried =
-          pick.ids.has(unit.unitId) && pick.ids.size >= 2 ? pickedIn(pick, visible) : [unit];
+          pick.ids.has(unitRowKey(unit.regionId, unit.unitId)) && pick.ids.size >= 2
+            ? pickedIn(pick, visible)
+            : [unit];
         const carriedIds = carried.map((one) => one.unitId);
         // W2: the count for a pick, the unit's own name for one - `Vanguard`, never `1 unit`.
         chip = createUnitDragChip(
@@ -996,7 +1007,12 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     rowTarget: string
   ) => {
     event.preventDefault();
-    const outcome = onPress(pick, unit.unitId, { shift: false, mod: false }, rowIds);
+    const outcome = onPress(
+      pick,
+      unitRowKey(unit.regionId, unit.unitId),
+      { shift: false, mod: false },
+      rowKeys
+    );
     if (outcome.now) {
       settleOn(outcome.now, rowTarget);
     }
@@ -1360,7 +1376,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                   index={start + offset}
                   rowHeight={rowHeight}
                   selected={unit.unitId === selectedUnitId}
-                  picked={pick.ids.has(unit.unitId)}
+                  picked={pick.ids.has(unitRowKey(unit.regionId, unit.unitId))}
                   onSelect={selectUnit}
                   onPress={pressRow}
                   onContextMenu={contextRow}

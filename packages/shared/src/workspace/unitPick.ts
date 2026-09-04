@@ -3,19 +3,22 @@
  *
  * The whole selection model lives here rather than in `UnitTableDock`, for the reason
  * `testing/README.md` states: `packages/shared` has no jsdom, so a rule reachable only through a
- * render is a rule with no unit test. Every gesture below is arithmetic over a list of unit
- * numbers; the dock's job is to say which gesture happened.
+ * render is a rule with no unit test. Every gesture below is arithmetic over a list of row
+ * keys; the dock's job is to say which gesture happened.
  *
  * **The pick is not the cursor.** `selectedUnitId` stays exactly what it was - one row, driving
  * the Unit panel and the map. This sits beside it.
  */
 
 import type { ReportUnit } from "@atlantis/core-client";
+import { unitRowKey } from "../unitTable";
 
 /**
  * Which rows are picked, and where a Shift range extends from.
  *
- * Keyed on `ReportUnit.unitId` - the row's own unit - and deliberately NOT on the dock's
+ * Keyed on the row's own `unitRowKey(regionId, unitId)` - a unit number is unique inside a hex
+ * only, so a list spanning hexes can draw two rows both called `new-1` (`ah-9o0c.2`) - and
+ * deliberately NOT on the dock's
  * `rowTarget`, which is `silver?.formed?.formedBy ?? unit.unitId` (`UnitTableDock.tsx`) and so can
  * name a different unit than the row it is drawn on. The cursor keeps using `rowTarget`; the pick
  * never does, or a picked row would add a different unit to the Army.
@@ -30,22 +33,22 @@ export const NO_PICK: UnitPick = { ids: new Set(), anchor: null };
 
 export type PickGesture =
   /** Click, Escape, and a press that resolved without a drag: this row alone. */
-  | { kind: "plain"; unitId: string }
+  | { kind: "plain"; rowKey: string }
   /** Ctrl/Cmd+click: add or remove one row. */
-  | { kind: "toggle"; unitId: string }
+  | { kind: "toggle"; rowKey: string }
   /** Shift+click and Shift+Arrow: replace the pick with the run from the anchor to here. */
-  | { kind: "extend"; unitId: string }
+  | { kind: "extend"; rowKey: string }
   /** Ctrl/Cmd+A: every row the filter is currently showing. */
   | { kind: "all" };
 
-const alone = (unitId: string): UnitPick => ({ ids: new Set([unitId]), anchor: unitId });
+const alone = (rowKey: string): UnitPick => ({ ids: new Set([rowKey]), anchor: rowKey });
 
 /**
- * The pick after one gesture, over `rows` - the unit numbers the table is drawing right now, in
+ * The pick after one gesture, over `rows` - the row keys the table is drawing right now, in
  * the order it is drawing them.
  *
  * The order matters: `extend` takes the slice between the anchor and the target, which is a run on
- * screen and not a run of unit numbers.
+ * screen and not a run of row keys.
  *
  * `extend` with no anchor, or with an anchor `rows` no longer holds, falls back to `plain`.
  * `all` keeps the anchor when `rows` still holds it and takes `rows[0]` otherwise.
@@ -62,20 +65,20 @@ export function afterGesture(
     return { ids: new Set(rows), anchor };
   }
   if (gesture.kind === "plain") {
-    return alone(gesture.unitId);
+    return alone(gesture.rowKey);
   }
   if (gesture.kind === "toggle") {
     const ids = new Set(pick.ids);
-    if (!ids.delete(gesture.unitId)) {
-      ids.add(gesture.unitId);
+    if (!ids.delete(gesture.rowKey)) {
+      ids.add(gesture.rowKey);
     }
-    return { ids, anchor: gesture.unitId };
+    return { ids, anchor: gesture.rowKey };
   }
 
   const from = pick.anchor === null ? -1 : rows.indexOf(pick.anchor);
-  const to = rows.indexOf(gesture.unitId);
+  const to = rows.indexOf(gesture.rowKey);
   if (from === -1 || to === -1) {
-    return alone(gesture.unitId);
+    return alone(gesture.rowKey);
   }
   const run = rows.slice(Math.min(from, to), Math.max(from, to) + 1);
   return { ids: new Set(run), anchor: pick.anchor };
@@ -92,7 +95,7 @@ export function afterGesture(
  */
 export function narrowedTo(pick: UnitPick, rows: readonly string[]): UnitPick {
   const drawn = new Set(rows);
-  const kept = [...pick.ids].filter((unitId) => drawn.has(unitId));
+  const kept = [...pick.ids].filter((rowKey) => drawn.has(rowKey));
   const anchorHeld = pick.anchor !== null && drawn.has(pick.anchor);
   if (kept.length === pick.ids.size && (pick.anchor === null || anchorHeld)) {
     return pick;
@@ -102,7 +105,7 @@ export function narrowedTo(pick: UnitPick, rows: readonly string[]): UnitPick {
 
 /** The picked rows, in the order the table is drawing them. */
 export function pickedIn(pick: UnitPick, rows: readonly ReportUnit[]): ReportUnit[] {
-  return rows.filter((unit) => pick.ids.has(unit.unitId));
+  return rows.filter((unit) => pick.ids.has(unitRowKey(unit.regionId, unit.unitId)));
 }
 
 /** What one press means, before anything is known about whether it becomes a drag. */
@@ -132,26 +135,26 @@ export type PressOutcome = {
  */
 export function onPress(
   pick: UnitPick,
-  unitId: string,
+  rowKey: string,
   modifiers: { readonly shift: boolean; readonly mod: boolean },
   rows: readonly string[]
 ): PressOutcome {
   if (modifiers.shift) {
     return {
-      now: afterGesture(pick, { kind: "extend", unitId }, rows),
+      now: afterGesture(pick, { kind: "extend", rowKey }, rows),
       onRelease: null,
       draggable: false
     };
   }
   if (modifiers.mod) {
     return {
-      now: afterGesture(pick, { kind: "toggle", unitId }, rows),
+      now: afterGesture(pick, { kind: "toggle", rowKey }, rows),
       onRelease: null,
       draggable: false
     };
   }
-  if (pick.ids.has(unitId) && pick.ids.size >= 2) {
-    return { now: null, onRelease: alone(unitId), draggable: true };
+  if (pick.ids.has(rowKey) && pick.ids.size >= 2) {
+    return { now: null, onRelease: alone(rowKey), draggable: true };
   }
-  return { now: alone(unitId), onRelease: null, draggable: true };
+  return { now: alone(rowKey), onRelease: null, draggable: true };
 }
