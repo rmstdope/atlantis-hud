@@ -623,6 +623,33 @@ export type ArmyRecord = {
   updatedAt: string;
 };
 
+/**
+ * One mage an ally shared, as the sheet that carried him described him.
+ *
+ * The unit is kept whole because the study planner reads an allied mage through `standingOf`,
+ * which takes a `ReportUnit` - a narrower row would need a conversion back and a second
+ * definition of what a mage is. There is no `gameId`: every call that reads or writes these rows
+ * is scoped to one game and takes it as a parameter.
+ */
+export type AlliedMageRecord = {
+  /** The sending faction, from the sheet's own header - never from a unit line. */
+  factionId: string;
+  /** The sender's name from that header; null when the header carried an id and no name. */
+  factionName: string | null;
+  /** The parsed unit. `unit.unitId` is the row's key half; there is no second copy of it. */
+  unit: ReportUnit;
+  /** The turn of the sheet this row came from. Staleness is this against the faction's newest. */
+  sheetTurn: number;
+  /** When the sheet was taken in, ISO 8601, from the caller's clock. */
+  receivedAt: string;
+};
+
+/** One stored mage's identity: which ally, and which unit of his. */
+export type AlliedMageKey = {
+  factionId: string;
+  unitId: string;
+};
+
 export type ImportedTurnRecord = {
   key: OrderDraftKey;
   rawReport: string;
@@ -827,6 +854,13 @@ export interface CoreAdapter {
   listArmies(databasePath: string, gameId: string): Promise<ArmyRecord[]>;
   saveArmy(databasePath: string, army: ArmyRecord): Promise<ArmyRecord>;
   deleteArmy(databasePath: string, gameId: string, armyId: string): Promise<void>;
+  listAlliedMages(databasePath: string, gameId: string): Promise<AlliedMageRecord[]>;
+  saveAlliedMages(
+    databasePath: string,
+    gameId: string,
+    mages: readonly AlliedMageRecord[],
+    removed: readonly AlliedMageKey[]
+  ): Promise<void>;
 }
 
 /**
@@ -872,6 +906,24 @@ export function sortArmies(armies: readonly ArmyRecord[]): ArmyRecord[] {
       return a.name < b.name ? -1 : 1;
     }
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+/**
+ * A game's allied mages by faction id, then unit number, both as text. The one place this order
+ * is written; both adapters return their rows in no particular order.
+ *
+ * As text rather than as numbers, which is the collation every other sort in this file uses -
+ * so "10" comes before "9", consistently with `sortImportedTurnSummaries`.
+ */
+export function sortAlliedMages(mages: readonly AlliedMageRecord[]): AlliedMageRecord[] {
+  return [...mages].sort((a, b) => {
+    if (a.factionId !== b.factionId) {
+      return a.factionId < b.factionId ? -1 : 1;
+    }
+    const left = a.unit.unitId;
+    const right = b.unit.unitId;
+    return left < right ? -1 : left > right ? 1 : 0;
   });
 }
 
@@ -954,6 +1006,9 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     },
     async listArmies(databasePath, gameId) {
       return sortArmies(await adapter.listArmies(databasePath, gameId));
+    },
+    async listAlliedMages(databasePath, gameId) {
+      return sortAlliedMages(await adapter.listAlliedMages(databasePath, gameId));
     }
   };
 }

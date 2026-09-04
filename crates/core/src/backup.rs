@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::movement::graph::MapGeometry;
 
-use crate::report::model::{CombatSpell, ItemAmount, Skill};
+use crate::report::model::{CombatSpell, ItemAmount, ReportUnit, Skill};
 use crate::report::sighting::{sighting_from_payload, RegionSighting};
 
 pub const GAME_BACKUP_FORMAT: &str = "atlantis-hud-game-backup";
@@ -256,6 +256,34 @@ pub struct GameBackupArmy {
     pub updated_at: String,
 }
 
+/// One mage an ally shared, as the sheet that carried him described him.
+///
+/// The unit is kept whole rather than flattened: the study planner reads an allied mage through
+/// `standing_of`'s TypeScript counterpart, which takes a `ReportUnit`, so a narrower row would
+/// need a conversion back and a second definition of what a mage is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlliedMage {
+    /// The sending faction, from the sheet's own header - never from a unit line.
+    pub faction_id: String,
+    /// The sender's name from that header; `None` when the header carried an id and no name.
+    pub faction_name: Option<String>,
+    /// The parsed unit. Its `unit_id` is the row's key half; there is no second copy of it.
+    pub unit: ReportUnit,
+    /// The turn of the sheet this row came from. Staleness is this against the faction's newest.
+    pub sheet_turn: u32,
+    /// When the sheet was taken in, ISO 8601, from the caller's clock.
+    pub received_at: String,
+}
+
+/// One stored mage's identity: which ally, and which unit of his.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlliedMageKey {
+    pub faction_id: String,
+    pub unit_id: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameBackupCollections<ImportedTurn, RegionSighting> {
@@ -267,6 +295,8 @@ pub struct GameBackupCollections<ImportedTurn, RegionSighting> {
     pub hex_notes: Vec<GameBackupHexNote>,
     #[serde(default)]
     pub armies: Vec<GameBackupArmy>,
+    #[serde(default)]
+    pub allied_mages: Vec<AlliedMage>,
 }
 
 pub type EncodedGameBackupCollections =
@@ -285,8 +315,9 @@ pub struct GameBackupContent {
 
 /// The document as written: the envelope around the content. `#[serde(default)]` on
 /// `exported_at` (a file written by hand may omit it; nothing reads it back), on `hex_notes`
-/// (absent in a backup written before ah-o1t.1) and on `armies` (absent in one written before
-/// ah-1mpx.1); such a backup still imports.
+/// (absent in a backup written before ah-o1t.1), on `armies` (absent in one written before
+/// ah-1mpx.1) and on `allied_mages` (absent in one written before ah-lyg6.1.2.1); such a backup
+/// still imports.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameBackup {
@@ -424,11 +455,16 @@ fn sort_key_army(army: &GameBackupArmy) -> (String, String) {
     (army.name.clone(), army.id.clone())
 }
 
+fn sort_key_allied_mage(mage: &AlliedMage) -> (String, String) {
+    (mage.faction_id.clone(), mage.unit.unit_id.clone())
+}
+
 /// One game -> one document. Sorts every table so two exports of the same game are byte-identical
 /// whichever platform wrote them: turns by (faction_id, turn_number); drafts by (faction_id,
 /// turn_number); sightings by (faction_id, region_id); merged reports by (faction_id,
 /// turn_number, merged_at, merged_faction_id); hex notes by (created_at, id) - the same keys the
-/// desktop's five ORDER BYs used - and Armies by (name, id), which is `sortArmies`' order.
+/// desktop's five ORDER BYs used; Armies by (name, id), which is `sortArmies`' order; and allied
+/// mages by (faction_id, unit.unit_id), which is `sortAlliedMages`' order.
 /// Pretty-printed with two-space indent.
 pub fn encode_game_backup(
     content: GameBackupContent,
@@ -445,6 +481,7 @@ pub fn encode_game_backup(
         mut merged_reports,
         mut hex_notes,
         mut armies,
+        mut allied_mages,
     } = collections;
 
     imported_turns.sort_by_key(sort_key_turn);
@@ -453,6 +490,7 @@ pub fn encode_game_backup(
     merged_reports.sort_by_key(sort_key_merge);
     hex_notes.sort_by_key(sort_key_note);
     armies.sort_by_key(sort_key_army);
+    allied_mages.sort_by_key(sort_key_allied_mage);
 
     let backup = GameBackup {
         format: GAME_BACKUP_FORMAT.to_string(),
@@ -466,6 +504,7 @@ pub fn encode_game_backup(
             merged_reports,
             hex_notes,
             armies,
+            allied_mages,
         },
     };
 
@@ -547,6 +586,7 @@ pub fn decode_game_backup(
         merged_reports,
         hex_notes,
         armies,
+        allied_mages,
     } = collections;
     let imported_turns = encoded_imported_turns
         .into_iter()
@@ -596,6 +636,7 @@ pub fn decode_game_backup(
             merged_reports,
             hex_notes,
             armies,
+            allied_mages,
         },
     })
 }
@@ -811,6 +852,7 @@ mod tests {
                 merged_reports: merges,
                 hex_notes: notes,
                 armies: vec![],
+                allied_mages: vec![],
             },
         }
     }
@@ -876,6 +918,7 @@ mod tests {
             "mergedReports",
             "hexNotes",
             "armies",
+            "alliedMages",
         ] {
             assert!(object.contains_key(key), "missing flattened key {key}");
         }
@@ -886,6 +929,7 @@ mod tests {
         let old_object = old_value.as_object_mut().expect("object");
         old_object.remove("hexNotes");
         old_object.remove("armies");
+        old_object.remove("alliedMages");
         let decoded = decode_game_backup(
             &serde_json::to_string(&old_value).expect("serializes"),
             "2026-01-07T00:00:00Z",
@@ -893,6 +937,7 @@ mod tests {
         .expect("old backup decodes");
         assert!(decoded.collections.hex_notes.is_empty());
         assert!(decoded.collections.armies.is_empty());
+        assert!(decoded.collections.allied_mages.is_empty());
     }
 
     #[test]
@@ -1097,6 +1142,59 @@ mod tests {
     }
 
     #[test]
+    fn allied_mages_survive_encode_and_decode() {
+        let mage = AlliedMage {
+            faction_id: "21".to_string(),
+            faction_name: Some("Borg".to_string()),
+            unit: ReportUnit {
+                unit_id: "9001".to_string(),
+                name: "Sweep Mage".to_string(),
+                region_id: "1:7,53".to_string(),
+                faction_id: Some("21".to_string()),
+                faction_name: Some("Borg".to_string()),
+                own: false,
+                on_guard: false,
+                flags: vec![],
+                items: vec![ItemAmount {
+                    amount: 1,
+                    name: "leader".to_string(),
+                    tag: "LEAD".to_string(),
+                }],
+                skills: vec![Skill {
+                    name: "force".to_string(),
+                    tag: "FORC".to_string(),
+                    level: 3,
+                    points: 180,
+                }],
+                combat_spell: Some(CombatSpell {
+                    name: "fire".to_string(),
+                    tag: "FIRE".to_string(),
+                }),
+                men: 1,
+                men_estimated: true,
+                men_by_race: vec![],
+                weight: None,
+                capacity: None,
+                movement: None,
+                structure_id: None,
+            },
+            sheet_turn: 23,
+            received_at: "2026-01-05T00:00:00Z".to_string(),
+        };
+        let mut content = content_with(vec![], vec![], vec![], vec![], vec![]);
+        content.collections.allied_mages = vec![mage.clone()];
+        let encoded = encode_game_backup(content, "2026-01-06T00:00:00Z").expect("encodes");
+
+        let decoded = decode_game_backup(&encoded, "2026-02-01T00:00:00Z").expect("decodes");
+
+        assert_eq!(
+            decoded.collections.allied_mages,
+            vec![mage],
+            "the whole parsed unit comes back, skills and combat spell included"
+        );
+    }
+
+    #[test]
     fn decode_stamps_the_manifest_with_the_opening_time() {
         let content = content_with(vec![], vec![], vec![], vec![], vec![]);
         let encoded = encode_game_backup(content, "2026-01-03T00:00:00Z").expect("encodes");
@@ -1250,6 +1348,7 @@ mod tests {
                 merged_reports: vec![],
                 hex_notes: vec![],
                 armies: vec![],
+                allied_mages: vec![],
             },
         };
         let encoded = encode_game_backup(content, "2026-01-03T00:00:00Z").expect("encodes");

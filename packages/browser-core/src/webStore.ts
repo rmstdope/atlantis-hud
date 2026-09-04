@@ -13,12 +13,20 @@
  * something to list without opening any game.
  */
 
-import type { ArmyRecord, HexNoteRecord } from "@atlantis/core-client";
+import type {
+  AlliedMageKey,
+  AlliedMageRecord,
+  ArmyRecord,
+  HexNoteRecord
+} from "@atlantis/core-client";
 
 const REGISTRY_DATABASE_NAME = "atlantis-hud";
 const REGISTRY_DATABASE_VERSION = 4;
-/** 4 since ah-1mpx.1 added the Armies store. See `openGameDatabase` for what a bump costs. */
-const GAME_DATABASE_VERSION = 4;
+/**
+ * 5 since `ah-lyg6.1.2.1` added the allied-mages store. See `openGameDatabase` for what a bump
+ * costs.
+ */
+const GAME_DATABASE_VERSION = 5;
 
 const GAME_STORE = "games";
 const IMPORTED_TURN_STORE = "importedTurns";
@@ -27,6 +35,7 @@ const REGION_SIGHTING_STORE = "regionSightings";
 const MERGED_REPORT_STORE = "mergedReports";
 const HEX_NOTE_STORE = "hexNotes";
 const ARMY_STORE = "armies";
+const ALLIED_MAGE_STORE = "alliedMages";
 
 /** Opaque payload of one stored turn import. Mirrors `ImportedTurnSnapshot` in the Rust core. */
 export type StoredTurnSnapshot = {
@@ -101,6 +110,8 @@ export type StoredHexNote = { databasePath: string } & HexNoteRecord;
 
 export type StoredArmy = { databasePath: string } & ArmyRecord;
 
+export type StoredAlliedMage = { databasePath: string } & AlliedMageRecord;
+
 export type StoredGame = {
   gameId: string;
   databasePath: string;
@@ -163,6 +174,14 @@ export interface WebStore {
   putArmy(army: StoredArmy): Promise<void>;
   /** Resolves to whether a row existed. */
   deleteArmy(databasePath: string, gameId: string, armyId: string): Promise<boolean>;
+  /** A game's allied mages, in no particular order; the client orders them. */
+  getAlliedMages(databasePath: string, gameId: string): Promise<StoredAlliedMage[]>;
+  /** Removes `removed`, then stores `mages`, in one transaction. */
+  putAlliedMages(
+    databasePath: string,
+    mages: readonly StoredAlliedMage[],
+    removed: readonly AlliedMageKey[]
+  ): Promise<void>;
 }
 
 /**
@@ -246,6 +265,7 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
       create(MERGED_REPORT_STORE, ["factionId", "turnNumber", "mergedFactionId"]);
       create(HEX_NOTE_STORE, ["id"]);
       create(ARMY_STORE, ["id"]);
+      create(ALLIED_MAGE_STORE, ["factionId", "unit.unitId"]);
     };
 
     // An upgrade waits for every other connection to the database to close, and a second tab
@@ -298,6 +318,25 @@ export function createIndexedDbWebStore(): WebStore {
     const database = await gameDatabase(databasePath);
     const transaction = database.transaction(storeName, "readwrite");
     transaction.objectStore(storeName).put(value);
+    await settle(transaction);
+  };
+
+  /** Deletes each key and then stores each value, in one readwrite transaction. */
+  const writeMany = async (
+    databasePath: string,
+    storeName: string,
+    values: readonly unknown[],
+    keys: readonly IDBValidKey[]
+  ): Promise<void> => {
+    const database = await gameDatabase(databasePath);
+    const transaction = database.transaction(storeName, "readwrite");
+    const store = transaction.objectStore(storeName);
+    for (const key of keys) {
+      store.delete(key);
+    }
+    for (const value of values) {
+      store.put(value);
+    }
     await settle(transaction);
   };
 
@@ -431,7 +470,16 @@ export function createIndexedDbWebStore(): WebStore {
     deleteHexNote: (databasePath, _gameId, noteId) => remove(databasePath, HEX_NOTE_STORE, noteId),
     getArmies: (databasePath, _gameId) => readStore<StoredArmy>(databasePath, ARMY_STORE),
     putArmy: (army) => write(army.databasePath, ARMY_STORE, army),
-    deleteArmy: (databasePath, _gameId, armyId) => remove(databasePath, ARMY_STORE, armyId)
+    deleteArmy: (databasePath, _gameId, armyId) => remove(databasePath, ARMY_STORE, armyId),
+    getAlliedMages: (databasePath, _gameId) =>
+      readStore<StoredAlliedMage>(databasePath, ALLIED_MAGE_STORE),
+    putAlliedMages: (databasePath, mages, removed) =>
+      writeMany(
+        databasePath,
+        ALLIED_MAGE_STORE,
+        mages,
+        removed.map((key) => [key.factionId, key.unitId])
+      )
   };
 }
 
@@ -449,12 +497,17 @@ export function createMemoryWebStore(): WebStore {
   const merges = new Map<string, StoredMergedReport>();
   const hexNotes = new Map<string, StoredHexNote>();
   const armies = new Map<string, StoredArmy>();
+  const alliedMages = new Map<string, StoredAlliedMage>();
 
   // The database handle leads the key here for the same reason it selects the database in the
   // IndexedDB store: it is what keeps one game's records out of another's.
   const composite = (databasePath: string, factionId: string, turnNumber: number) =>
     JSON.stringify([databasePath, factionId, turnNumber]);
   const notesComposite = (databasePath: string, id: string) => JSON.stringify([databasePath, id]);
+  // Three parts rather than the two `notesComposite` takes: a mage is identified by his faction as
+  // well as his unit number.
+  const mageComposite = (databasePath: string, factionId: string, unitId: string) =>
+    JSON.stringify([databasePath, factionId, unitId]);
 
   const dropDatabase = (map: Map<string, { databasePath: string }>, databasePath: string) => {
     for (const [key, value] of map) {
@@ -489,6 +542,7 @@ export function createMemoryWebStore(): WebStore {
       dropDatabase(merges, databasePath);
       dropDatabase(hexNotes, databasePath);
       dropDatabase(armies, databasePath);
+      dropDatabase(alliedMages, databasePath);
     },
     async putImportedTurn(turn) {
       turns.set(composite(turn.databasePath, turn.factionId, turn.turnNumber), turn);
@@ -572,6 +626,19 @@ export function createMemoryWebStore(): WebStore {
       const existed = armies.has(key);
       armies.delete(key);
       return existed;
+    },
+    async getAlliedMages(databasePath, _gameId) {
+      return [...alliedMages.values()].filter((mage) => mage.databasePath === databasePath);
+    },
+    async putAlliedMages(databasePath, mages, removed) {
+      for (const key of removed) {
+        alliedMages.delete(mageComposite(databasePath, key.factionId, key.unitId));
+      }
+      for (const mage of mages) {
+        // The handle comes from the parameter for both halves, as it does for the removals above:
+        // one transaction must not read it from two places.
+        alliedMages.set(mageComposite(databasePath, mage.factionId, mage.unit.unitId), mage);
+      }
     }
   };
 }

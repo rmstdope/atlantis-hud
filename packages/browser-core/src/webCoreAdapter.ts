@@ -14,6 +14,8 @@ import type {
   ManifestEdit,
   MapShape,
   MergedReportRecord,
+  AlliedMageKey,
+  AlliedMageRecord,
   ArmyRecord,
   HexNoteRecord,
   KnownMap,
@@ -230,6 +232,8 @@ type DecodedGameBackup = {
   hexNotes: Array<Omit<HexNoteRecord, "gameId">>;
   // Same for an Army: the game is the document's, not the row's.
   armies: Array<Omit<ArmyRecord, "gameId">>;
+  // No `Omit`: an allied mage row carries no gameId to strip.
+  alliedMages: AlliedMageRecord[];
 };
 
 /**
@@ -634,15 +638,23 @@ export function createWebCoreAdapter(
         throw new Error(`no game with id ${gameId}`);
       }
 
-      const [importedTurns, orderDrafts, regionSightings, mergedReports, hexNotes, armies] =
-        await Promise.all([
-          store.getImportedTurns(game.databasePath, gameId),
-          store.getOrderDrafts(game.databasePath, gameId),
-          store.getAllRegionSightings(game.databasePath, gameId),
-          store.getAllMergedReports(game.databasePath, gameId),
-          store.getHexNotes(game.databasePath, gameId),
-          store.getArmies(game.databasePath, gameId)
-        ]);
+      const [
+        importedTurns,
+        orderDrafts,
+        regionSightings,
+        mergedReports,
+        hexNotes,
+        armies,
+        alliedMages
+      ] = await Promise.all([
+        store.getImportedTurns(game.databasePath, gameId),
+        store.getOrderDrafts(game.databasePath, gameId),
+        store.getAllRegionSightings(game.databasePath, gameId),
+        store.getAllMergedReports(game.databasePath, gameId),
+        store.getHexNotes(game.databasePath, gameId),
+        store.getArmies(game.databasePath, gameId),
+        store.getAlliedMages(game.databasePath, gameId)
+      ]);
 
       try {
         // The store's own records go over as they are (`databasePath`, `gameId` and all); the
@@ -657,7 +669,8 @@ export function createWebCoreAdapter(
             regionSightings,
             mergedReports,
             hexNotes,
-            armies
+            armies,
+            alliedMages
           }),
           exportedAt
         );
@@ -846,6 +859,11 @@ export function createWebCoreAdapter(
               updatedAt: army.updatedAt
             })
           )
+        );
+        await store.putAlliedMages(
+          databasePath,
+          decoded.alliedMages.map((mage) => ({ databasePath, ...mage })),
+          []
         );
       } catch (error) {
         await store.deleteGame(gameId).catch(() => null);
@@ -1111,6 +1129,24 @@ export function createWebCoreAdapter(
 
     async deleteArmy(databasePath: string, gameId: string, armyId: string) {
       await store.deleteArmy(databasePath, gameId, armyId);
+    },
+
+    async listAlliedMages(databasePath: string, gameId: string) {
+      const mages = await store.getAlliedMages(databasePath, gameId);
+      return mages.map(({ databasePath: _databasePath, ...mage }) => mage);
+    },
+
+    async saveAlliedMages(
+      databasePath: string,
+      gameId: string,
+      mages: readonly AlliedMageRecord[],
+      removed: readonly AlliedMageKey[]
+    ) {
+      await store.putAlliedMages(
+        databasePath,
+        mages.map((mage) => ({ databasePath, ...mage })),
+        removed
+      );
     }
   };
 }

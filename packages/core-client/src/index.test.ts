@@ -4,7 +4,9 @@ import {
   createCoreClient,
   createTauriAdapter,
   sortArmies,
+  type AlliedMageRecord,
   type ArmyRecord,
+  sortAlliedMages,
   type CoreAdapter,
   type GameManifest,
   type HexNoteRecord,
@@ -151,6 +153,8 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     listArmies: vi.fn().mockResolvedValue([army]),
     saveArmy: vi.fn().mockResolvedValue(army),
     deleteArmy: vi.fn().mockResolvedValue(undefined),
+    listAlliedMages: vi.fn().mockResolvedValue([]),
+    saveAlliedMages: vi.fn().mockResolvedValue(undefined),
     ...overrides
   };
 }
@@ -513,6 +517,70 @@ describe("createCoreClient", () => {
     const listed = await client.listArmies("db", "g");
 
     expect(listed.map((one) => one.id)).toEqual(["a", "c", "b"]);
+  });
+
+  it("orders allied mages whatever order the adapter answered in", async () => {
+    const unordered = [aMage("21", "9"), aMage("21", "10"), aMage("2", "9001")];
+    const fake = fakeAdapter({ listAlliedMages: vi.fn().mockResolvedValue(unordered) });
+    const client = createCoreClient(fake);
+
+    const listed = await client.listAlliedMages("db", "g");
+
+    expect(listed.map((one) => [one.factionId, one.unit.unitId])).toEqual([
+      ["2", "9001"],
+      ["21", "10"],
+      ["21", "9"]
+    ]);
+  });
+});
+
+/** An allied mage carrying only what the ordering reads. */
+function aMage(factionId: string, unitId: string): AlliedMageRecord {
+  return {
+    factionId,
+    factionName: "Borg",
+    unit: {
+      unitId,
+      name: "Mage",
+      regionId: "1:7,53",
+      factionId,
+      factionName: "Borg",
+      own: false,
+      onGuard: false,
+      flags: [],
+      items: [],
+      skills: [],
+      combatSpell: null,
+      men: 1,
+      menEstimated: true,
+      menByRace: [],
+      weight: null,
+      capacity: null,
+      movement: null,
+      structureId: null
+    },
+    sheetTurn: 23,
+    receivedAt: "2026-08-07T12:00:00Z"
+  };
+}
+
+describe("sortAlliedMages", () => {
+  it("orders by faction id, then by unit number, both as text", () => {
+    const mages = [aMage("21", "9"), aMage("2", "9001"), aMage("21", "10")];
+
+    expect(sortAlliedMages(mages).map((one) => [one.factionId, one.unit.unitId])).toEqual([
+      ["2", "9001"],
+      ["21", "10"],
+      ["21", "9"]
+    ]);
+  });
+
+  it("leaves what it was given alone", () => {
+    const mages = [aMage("21", "9"), aMage("2", "9001")];
+
+    sortAlliedMages(mages);
+
+    expect(mages.map((one) => one.factionId)).toEqual(["21", "2"]);
   });
 });
 
