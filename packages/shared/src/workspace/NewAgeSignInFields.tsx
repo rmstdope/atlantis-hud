@@ -18,6 +18,7 @@ import {
  * panel does not resize under the pointer.
  */
 export function NewAgeSignInFields({
+  asksToSignIn,
   factionNumber,
   password,
   phase,
@@ -25,6 +26,14 @@ export function NewAgeSignInFields({
   onFactionNumber,
   onPassword
 }: {
+  /**
+   * Whether these fields are asking for a sign-in, or only for a password.
+   *
+   * Absent or true is the sign-in: the faction number, the password, and the note saying nothing
+   * is written to this machine. False is the send dialog with a session already in hand - the
+   * password alone, and no note, because nothing is being kept.
+   */
+  asksToSignIn?: boolean;
   factionNumber: string;
   password: string;
   phase: NewAgeSignInPhase;
@@ -33,25 +42,28 @@ export function NewAgeSignInFields({
   onFactionNumber: (value: string) => void;
   onPassword: (value: string) => void;
 }) {
+  const asks = asksToSignIn !== false;
   const busy = phase.kind === "signingIn";
   // A blank field the player has not finished typing in is not nagged at.
   const problem = factionNumberProblem(factionNumber, { blankIsAProblem: false });
 
   return (
     <>
-      <label className="flex flex-col gap-1">
-        <span className="text-ink-soft">Faction number</span>
-        <input
-          data-testid="newage-faction-number"
-          aria-label="Faction number"
-          type="text"
-          inputMode="numeric"
-          value={factionNumber}
-          disabled={busy}
-          onChange={(event) => onFactionNumber(event.target.value)}
-          className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
-        />
-      </label>
+      {!asks ? null : (
+        <label className="flex flex-col gap-1">
+          <span className="text-ink-soft">Faction number</span>
+          <input
+            data-testid="newage-faction-number"
+            aria-label="Faction number"
+            type="text"
+            inputMode="numeric"
+            value={factionNumber}
+            disabled={busy}
+            onChange={(event) => onFactionNumber(event.target.value)}
+            className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+          />
+        </label>
+      )}
 
       <label className="flex flex-col gap-1">
         <span className="text-ink-soft">Faction password</span>
@@ -69,9 +81,9 @@ export function NewAgeSignInFields({
         />
       </label>
 
-      <p className="text-ink-dim">{SIGN_IN_NOTE}</p>
+      {!asks ? null : <p className="text-ink-dim">{SIGN_IN_NOTE}</p>}
 
-      {problem === null ? null : (
+      {!asks || problem === null ? null : (
         <p data-testid="newage-signin-problem" className="text-danger">
           {problem}
         </p>

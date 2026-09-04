@@ -170,6 +170,7 @@ import { ArmyExportDialog } from "./ArmyExportDialog";
 import { MapExportDialog } from "./MapExportDialog";
 import { SendOrdersDialog } from "./SendOrdersDialog";
 import { NewAgeSignInDialog } from "./NewAgeSignInDialog";
+import { NewAgeSendDialog } from "./NewAgeSendDialog";
 import type { HttpTransport } from "./httpTransport";
 import { newAgeClient } from "./newAgeApi";
 import { newAgeWorldFor } from "./newAgeWorlds";
@@ -189,8 +190,11 @@ import {
   withoutNewAgeSession,
   type NewAgeSessions
 } from "./newAgeSession";
+import { performNewAgeSend } from "./newAgeSend";
+import type { NewAgeSendPhase } from "./newAgeSendView";
 import {
   NEW_AGE_HOST,
+  SESSION_ENDED,
   signInFailure,
   signedInLabel,
   signedInSummary,
@@ -3325,6 +3329,19 @@ export function AppShell({
   const [sendPhase, setSendPhase] = useState<SendOrdersPhase | null>(null);
   const sendAbort = useRef<AbortController | null>(null);
 
+  /** Where a New Age send has got to, or null when its dialog is closed. */
+  const [newAgeSendPhase, setNewAgeSendPhase] = useState<NewAgeSendPhase | null>(null);
+  /**
+   * Whether that dialog is asking for a faction number as well as a password.
+   *
+   * Held here rather than derived from `newAgeSession`, which changes under the dialog: a session
+   * stored mid-send would otherwise take the faction-number field away while the request is in
+   * flight and resize the panel under the pointer. Set when the dialog opens and again when a
+   * token runs out; never cleared while it is open.
+   */
+  const [newAgeSendAsksSignIn, setNewAgeSendAsksSignIn] = useState(false);
+  const newAgeSendAbort = useRef<AbortController | null>(null);
+
   /**
    * Signed-in New Age sessions, one per game. Memory only: nothing is persisted, so a reload signs
    * the player out - the navigator's decision on ah-lbd9, made mechanical.
@@ -3355,14 +3372,21 @@ export function AppShell({
   );
   // A plain number, because that is all the server's form accepts: `#atlantis foo` names no faction
   // it could file the turn under, so the control stays off rather than failing at the last step.
+  //
+  // A New Age world takes the other road - the REST API rather than an upload form - so it needs
+  // no `ordersUploadUrl`. On the web build `newAgeTransport` is absent, so `newAgeApi` is null and
+  // this is false, which is still the whole of what keeps New Age out of that bundle.
+  /** Whether this game could be sent to over the New Age API, session or no session. */
+  const newAgeSendable = newAgeApi !== null && newAgeWorld !== null && openGameId !== null;
   const canSendOrders =
-    uploadOrders !== undefined &&
     ordersDocument.length > 0 &&
     sendFactionId !== null &&
     /^\d+$/.test(sendFactionId) &&
-    uploadUrl !== null;
+    ((uploadOrders !== undefined && uploadUrl !== null) || newAgeSendable);
 
-  const sendOffReason = sendDisabledReason({ hasUploadAddress: uploadUrl !== null });
+  const sendOffReason = sendDisabledReason({
+    hasUploadAddress: uploadUrl !== null || newAgeSendable
+  });
 
   const sendOrders = useCallback(
     async (password: string) => {
@@ -3447,6 +3471,14 @@ export function AppShell({
     setFetchPhase(null);
   }, []);
 
+  /** Cancel, Escape and the backdrop. Aborts a sign-in or a send, whichever is in flight. */
+  const dismissNewAgeSend = useCallback(() => {
+    newAgeSendAbort.current?.abort();
+    newAgeSendAbort.current = null;
+    setNewAgeSendPhase(null);
+    setNewAgeSendAsksSignIn(false);
+  }, []);
+
   // A dialog belongs to the game and the world it was opened over. Switching either closes it and
   // aborts anything in flight: without this the phase survives, and coming back would pop the
   // dialog open uninvited - the failure `openPopover` already guards against. The ruleset can
@@ -3455,7 +3487,8 @@ export function AppShell({
   useEffect(() => {
     dismissSignIn();
     dismissFetch();
-  }, [openGameId, newAgeWorld?.worldId, dismissSignIn, dismissFetch]);
+    dismissNewAgeSend();
+  }, [openGameId, newAgeWorld?.worldId, dismissSignIn, dismissFetch, dismissNewAgeSend]);
 
   /** Forgets this game's token. Nothing to revoke: the world has no logout endpoint. */
   const signOutOfNewAge = useCallback(() => {
@@ -3548,6 +3581,86 @@ export function AppShell({
       setFetchPhase({ kind: "reauth", signIn: { kind: "failed", message, retype } });
     },
     [newAgeApi, openGameId, newAgeWorld, fetchNewAgeReportWith]
+  );
+
+  /**
+   * One send to a New Age world, signing in first when there is no token.
+   *
+   * The navigator's chosen shape on ah-lbd9.4: one step, and the dialog then shows what came back.
+   * The token is held in a local rather than read back out of state, for the reason
+   * `fetchNewAgeReportWith` takes its own as an argument: `setNewAgeSessions` is asynchronous.
+   *
+   * The password reaches `newAgeApi.login` and `performNewAgeSend` and is kept nowhere.
+   */
+  const sendToNewAge = useCallback(
+    async (factionNumber: string, password: string) => {
+      if (newAgeApi === null || newAgeWorld === null || openGameId === null) {
+        return;
+      }
+      const controller = new AbortController();
+      newAgeSendAbort.current = controller;
+
+      let token = newAgeSession?.token ?? null;
+      if (token === null) {
+        setNewAgeSendPhase({ kind: "signingIn" });
+        const login = await newAgeApi.login(factionNumber, password, controller.signal);
+        if (newAgeSendAbort.current !== controller) {
+          return;
+        }
+        if (login.kind !== "ok") {
+          newAgeSendAbort.current = null;
+          const { message, retype } = signInFailure(login, NEW_AGE_HOST);
+          setNewAgeSendPhase({ kind: "failed", message, retype });
+          return;
+        }
+        token = login.value.accessToken;
+        setNewAgeSessions((sessions) =>
+          withNewAgeSession(sessions, openGameId, {
+            worldId: newAgeWorld.worldId,
+            factionId: String(login.value.faction.id),
+            factionName: login.value.faction.name,
+            token: login.value.accessToken
+          })
+        );
+      }
+
+      setNewAgeSendPhase({ kind: "sending" });
+      const bound = token;
+      const outcome = await performNewAgeSend({
+        flush,
+        upload: (text, boundary, signal) => newAgeApi.uploadOrders(bound, text, boundary, signal),
+        // The unit descriptions are left out, exactly as the New Origins send does: the Export
+        // menu's "keep the descriptions" choice is about a file for a person to read.
+        ordersText: ordersExportText(ordersDocument, ordersTemplateText, false),
+        password,
+        boundary: `----atlantis-hud-${crypto.randomUUID()}`,
+        signal: controller.signal
+      });
+      // An aborted send closed the dialog, and an aborted upload may still have reached the world -
+      // so nothing is claimed about what happened to it.
+      if (newAgeSendAbort.current !== controller) {
+        return;
+      }
+      newAgeSendAbort.current = null;
+      if (outcome.kind === "expired") {
+        // The token is dead, so it is dropped before anything else: the header chip goes back to
+        // `Sign in to Arcanum` and no later action can present it again.
+        setNewAgeSessions((sessions) => withoutNewAgeSession(sessions, openGameId));
+        setNewAgeSendAsksSignIn(true);
+        setNewAgeSendPhase({ kind: "ready", notice: SESSION_ENDED });
+        return;
+      }
+      setNewAgeSendPhase(outcome);
+    },
+    [
+      newAgeApi,
+      newAgeWorld,
+      openGameId,
+      newAgeSession,
+      flush,
+      ordersDocument,
+      ordersTemplateText
+    ]
   );
 
   /** Cancel, Escape and the backdrop all mean the same thing: stop, and close. */
@@ -4271,7 +4384,20 @@ export function AppShell({
         progress={importProgress}
         onExportOrders={exportOrders}
         canExport={ordersDocument.length > 0}
-        onSendOrders={uploadOrders === undefined ? undefined : () => setSendPhase({ kind: "ready" })}
+        // A game is one road or the other and never both: `newAgeSendable` is true only for a
+        // ruleset in `NEW_AGE_WORLDS`, and those declare no `ordersUploadUrl`.
+        onSendOrders={
+          uploadOrders === undefined && !newAgeSendable
+            ? undefined
+            : () => {
+                if (newAgeSendable) {
+                  setNewAgeSendAsksSignIn(newAgeSession === null);
+                  setNewAgeSendPhase({ kind: "ready", notice: null });
+                  return;
+                }
+                setSendPhase({ kind: "ready" });
+              }
+        }
         canSend={canSendOrders}
         sendDisabledReason={sendOffReason}
         newAge={
@@ -4708,6 +4834,25 @@ export function AppShell({
           phase={sendPhase}
           onSend={(password) => void sendOrders(password)}
           onDismiss={dismissSend}
+        />
+      )}
+      {newAgeSendPhase === null || newAgeWorld === null ? null : (
+        <NewAgeSendDialog
+          worldName={newAgeWorld.worldName}
+          // No report on screen means no faction name to show, but the orders still name an id -
+          // and that id is what the world files the turn under, so it is the honest label.
+          factionLabel={factionLabel ?? `Faction ${sendFactionId ?? "?"}`}
+          turnNumber={parsed?.header.turnNumber ?? null}
+          host={NEW_AGE_HOST}
+          asksSignIn={newAgeSendAsksSignIn}
+          suggestedFactionNumber={
+            parsed?.header.factionId && /^\d+$/.test(parsed.header.factionId)
+              ? parsed.header.factionId
+              : null
+          }
+          phase={newAgeSendPhase}
+          onSend={(factionNumber, password) => void sendToNewAge(factionNumber, password)}
+          onDismiss={dismissNewAgeSend}
         />
       )}
       {signInPhase === null || newAgeWorld === null ? null : (
