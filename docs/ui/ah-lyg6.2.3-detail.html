@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.2.3 — the level, what may be chosen, and when it is written</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+    --known-fill:#1b2c26; --known-ink:#7fcaa5; --known-edge:#2c4a3e;
+    --ceil-fill:#2e2718; --ceil-ink:#d9a441; --ceil-edge:#4a3d21;
+    --maxed-fill:#232a38; --maxed-ink:#8fb4e0; --maxed-edge:#33455f;
+    --open-fill:#141a23; --open-ink:#a3b0c0; --open-edge:#2b3644;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:98ch; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:18px; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:1000px) { .cols { grid-template-columns:1fr; } }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px;
+         text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+
+  /* --- the pane, as ah-lyg6.2.2 draws it --- */
+  .pane { width:900px; max-width:100%; background:var(--raised); border:1px solid var(--edge);
+          border-radius:6px; box-shadow:0 14px 40px #000a; overflow:hidden;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane.narrow { width:auto; }
+  .pane .top { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  .pane .top h4 { font:600 13.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .pane .top .key { color:var(--ink-dim); font-size:11.5px; }
+  .pane .top .sp { margin-left:auto; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.foc { outline:2px solid var(--select); outline-offset:1px; }
+  .pane .sub { padding:6px 12px; border-bottom:1px solid var(--edge-soft); color:var(--ink-dim); font-size:11.5px; }
+  .md { display:grid; grid-template-columns:272px 1fr; }
+  .md .list { border-right:1px solid var(--edge); max-height:470px; overflow:auto; }
+  .md .list .row { padding:6px 12px; border-bottom:1px solid var(--edge-soft); }
+  .md .list .row.on { background:#1b2735; box-shadow:inset 2px 0 0 var(--select); }
+  .md .list .row.kbd { outline:1px dashed var(--select); outline-offset:-2px; }
+  .md .list .row .nm { font-size:12.5px; }
+  .md .list .row .sub2 { color:var(--ink-dim); font-size:11px; }
+  .md .list .row .plan { color:var(--ok); font-size:11px; }
+  .md .list .row .note { color:var(--ink-dim); font-size:11px; font-style:italic; }
+  .md .list .hd { padding:6px 12px; color:var(--brass); font-size:11px; letter-spacing:0.6px;
+                  text-transform:uppercase; background:#141a23; position:sticky; top:0; }
+  .md .list .hd .age { color:var(--brass-bright); text-transform:none; letter-spacing:0; }
+  .md .list .row.stale { background:#191612; }
+  .md .list .row.stale.on { background:#241d15; box-shadow:inset 2px 0 0 var(--select); }
+  .md .det { padding:14px 16px; max-height:470px; overflow:auto; }
+  .md .det h5 { font:600 14px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .md .det .meta { color:var(--ink-dim); font-size:11.5px; margin:2px 0 12px; }
+  .md .det .grp2 { color:var(--ink-dim); font-size:11px; letter-spacing:0.6px; text-transform:uppercase; margin:14px 0 6px; }
+  .warnline { border-left:2px solid var(--ceil-edge); padding:4px 0 4px 8px; color:var(--brass-bright);
+              font-size:11.5px; margin-bottom:4px; }
+  .chip { display:inline-block; border-radius:3px; padding:0 5px; font-size:11.5px; margin:0 4px 4px 0;
+          border:1px solid var(--known-edge); background:var(--known-fill); color:var(--known-ink); }
+  .chip.ceil { border-color:var(--ceil-edge); background:var(--ceil-fill); color:var(--ceil-ink); }
+  .chip.maxed { border-color:var(--maxed-edge); background:var(--maxed-fill); color:var(--maxed-ink); }
+  .chip.open { border-color:var(--open-edge); background:var(--open-fill); color:var(--open-ink); }
+  .chip.pick { cursor:pointer; }
+  .chip.chosen { outline:2px solid var(--select); outline-offset:1px; }
+  .chip.locked { border-color:#232a33; background:#12161c; color:#5b6674; }
+  .up { color:var(--brass-bright); }
+  .more { color:var(--ink-dim); font-size:11.5px; }
+
+  /* --- the editing block --- */
+  .plan-box { border:1px solid var(--edge); border-radius:5px; background:#141a23; padding:10px 12px; }
+  .plan-box .hdr { display:flex; align-items:baseline; gap:8px; margin-bottom:8px; }
+  .plan-box .hdr .t { font:600 11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px;
+                      text-transform:uppercase; color:var(--brass); }
+  .plan-box .hdr .st { margin-left:auto; font-size:11px; color:var(--ink-dim); }
+  .plan-box .hdr .st.saved { color:var(--ok); }
+  .plan-box .hdr .st.err { color:var(--danger); }
+  .fields { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  select, input[type=text], input[type=number], textarea {
+    background:var(--ground); border:1px solid var(--edge); color:var(--ink); border-radius:4px;
+    padding:4px 7px; font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  select { min-width:15rem; }
+  textarea { width:100%; resize:vertical; }
+  .focus { outline:2px solid var(--select); outline-offset:1px; }
+  .fieldlbl { color:var(--ink-dim); font-size:11.5px; }
+  .count { color:var(--ink-dim); font-size:11px; text-align:right; }
+  .count.warn { color:var(--brass-bright); }
+  .orderline { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ok); }
+  .kbdkey { display:inline-block; border:1px solid var(--edge); border-radius:3px; padding:0 5px;
+            font-size:11px; color:var(--ink-soft); background:var(--ground); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.2.3 — <span>the level, what may be chosen, and when it is written</span></h1>
+  <p>Three more questions about the same pane. The blocks below are drawn in variant <strong>B</strong>'s
+  shape for clarity, but every one of them applies whichever of A, B or C you pick in the first file
+  (<code>ah-lyg6.2.3-choose.html</code>).</p>
+  <p><strong>The rule this rests on</strong> — <code>rules/study</code>, quoted: <em>"STUDY [skill]
+  … STUDY [skill] [level] … Spend the month studying the specified skill. A level may be specified
+  which means that study will be continued from turn to turn until the unit reaches that skill
+  level."</em> So a level is optional in the game itself, and it means <em>keep going until you get
+  there</em> — not <em>this month only</em>.</p>
+  <p style="color:var(--ink-soft)">Two facts about the application as it stands, because they bear on
+  questions 2 and 4. There is <strong>no numeric input anywhere in Atlantis HUD</strong>, so the level
+  is drawn here as a small menu rather than a spinner. And <strong>every free-text field that is
+  stored today commits explicitly</strong> — a hex note has a Save button, &#8984;&#8629; and Esc, and
+  no field in the application saves itself while you type.</p>
+</header>
+<main>
+
+<h3 class="sec">Question 2 — the target level</h3>
+<p>Every plan names a skill. Does it also have to name a level?</p>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">L1 — a level is always chosen</p>
+      <div class="stage">
+        <div class="plan-box" style="max-width:520px">
+          <div class="hdr"><span class="t">Next turn</span><span class="st saved">saved</span></div>
+          <div class="fields">
+            <select><option>force — raise from 3</option></select>
+            <span class="fieldlbl">to level</span>
+            <select style="min-width:4.8rem"><option>4</option></select>
+            <button class="btn">Clear</button>
+          </div>
+          <div class="orderline" style="margin-top:8px">STUDY force 4</div>
+          <div style="color:var(--ink-dim);font-size:11.5px;margin-top:6px">Defaults to one level above
+          where he stands, and can be raised to 5.</div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Every exported line is a standing order — he keeps studying until he arrives, with no
+          gap on a turn you forget to plan.</li>
+        <li>One less decision per mage: the default is right almost always.</li>
+        <li class="con">There is no way to say "one month of this, then I will think again",
+          which the game does allow.</li>
+        <li class="con">A level on a skill he has not begun means "study it until 3" — correct,
+          but it reads like a claim he is already at 2.</li>
+      </ul>
+    </div>
+    <div>
+      <p class="lbl">L2 — the level is optional, and blank is the default</p>
+      <div class="stage">
+        <div class="plan-box" style="max-width:520px">
+          <div class="hdr"><span class="t">Next turn</span><span class="st saved">saved</span></div>
+          <div class="fields">
+            <select><option>force — raise from 3</option></select>
+            <span class="fieldlbl">to level</span>
+            <select style="min-width:4.8rem"><option>any</option></select>
+            <button class="btn">Clear</button>
+          </div>
+          <div class="orderline" style="margin-top:8px">STUDY force</div>
+          <div style="color:var(--ink-dim);font-size:11.5px;margin-top:6px">Leave it empty for a single
+          month. Fill it in to keep studying until he reaches that level.</div>
+        </div>
+        <div class="plan-box" style="max-width:520px;margin-top:10px">
+          <div class="hdr"><span class="t">Next turn</span><span class="st saved">saved</span></div>
+          <div class="fields">
+            <select><option>force — raise from 3</option></select>
+            <span class="fieldlbl">to level</span>
+            <select style="min-width:4.8rem"><option>4</option></select>
+            <button class="btn">Clear</button>
+          </div>
+          <div class="orderline" style="margin-top:8px">STUDY force 4</div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Both of the game's two forms are reachable, and the pane teaches which is which.</li>
+        <li>An empty box is honest: most turns you really are deciding one month at a time.</li>
+        <li class="con">One more field to think about per mage, and an empty one looks unfinished.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">Question 3 — what may be chosen</h3>
+<p>The mage's standing already says which skills he holds, which he may begin, and which are locked
+behind a prerequisite. A plan, though, is about <em>next</em> turn — and by next turn he may have
+finished the study that unlocks the thing you want him on.</p>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">E1 — only what he may study now</p>
+      <div class="stage">
+        <div class="plan-box" style="max-width:520px">
+          <div class="hdr"><span class="t">Next turn</span></div>
+          <div class="fields"><select class="focus"><option>— choose a skill —</option></select></div>
+          <div style="margin-top:10px;background:var(--ground);border:1px solid var(--edge);border-radius:4px;padding:6px 0;max-width:22rem">
+            <div style="color:var(--ink-dim);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;padding:2px 10px">Raise</div>
+            <div style="padding:3px 10px">force — from 3</div>
+            <div style="padding:3px 10px">spirit — from 1</div>
+            <div style="padding:3px 10px">fire — from 1</div>
+            <div style="color:var(--ink-dim);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;padding:6px 10px 2px">Begin</div>
+            <div style="padding:3px 10px">earth lore</div>
+            <div style="padding:3px 10px">necromancy</div>
+            <div style="padding:3px 10px">wolf lore</div>
+            <div style="color:var(--ink-dim);padding:3px 10px">…9 more</div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Nothing you can choose is wrong. The menu is short.</li>
+        <li class="con"><em>pattern</em> is missing from the menu, and he is one month of force away
+          from being able to raise it — which is exactly the plan you wanted to write.</li>
+        <li class="con">An ally's mage from a three-turn-old sheet has an out-of-date menu, so the
+          skill you know he now holds cannot be planned at all.</li>
+      </ul>
+    </div>
+    <div>
+      <p class="lbl">E3 — every magic skill, and the impossible ones say why</p>
+      <div class="stage">
+        <div class="plan-box" style="max-width:520px">
+          <div class="hdr"><span class="t">Next turn</span><span class="st saved">saved</span></div>
+          <div class="fields">
+            <select><option>pattern — raise from 2</option></select>
+            <span class="fieldlbl">to level</span><select style="min-width:4.8rem"><option>3</option></select>
+            <button class="btn">Clear</button>
+          </div>
+          <div class="orderline" style="margin-top:8px">STUDY pattern 3</div>
+          <div class="warnline" style="margin-top:8px">He cannot raise pattern past 2 until force
+            reaches 3. Planned anyway.</div>
+          <div style="margin-top:10px;background:var(--ground);border:1px solid var(--edge);border-radius:4px;padding:6px 0;max-width:22rem">
+            <div style="color:var(--ink-dim);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;padding:2px 10px">Raise</div>
+            <div style="padding:3px 10px">force — from 3</div>
+            <div style="padding:3px 10px;color:var(--brass-bright)">pattern — from 2, held by force</div>
+            <div style="color:var(--ink-dim);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;padding:6px 10px 2px">Begin</div>
+            <div style="padding:3px 10px">earth lore</div>
+            <div style="color:var(--ink-dim);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;padding:6px 10px 2px">Not yet possible</div>
+            <div style="padding:3px 10px;color:#5b6674">summoning — needs spirit 3</div>
+            <div style="padding:3px 10px;color:#5b6674">banishing — needs spirit 3</div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>You can plan the turn after next: put him on force now and pattern queued behind it.</li>
+        <li>The reason is on the row and in a warning line, so nothing is silently wrong.</li>
+        <li>An ally's stale mage can be planned from what you know rather than from an old sheet.</li>
+        <li class="con">A plan that cannot be carried out can be saved, and only a warning stops you.</li>
+      </ul>
+      <p class="lbl" style="margin-top:14px">E2 — every skill listed, impossible ones refused</p>
+      <p style="color:var(--ink-soft);font-size:12.5px">The same menu as E3, but the greyed rows cannot
+      be chosen at all — they are shown so you know they exist and why they are out of reach. No
+      warning line is ever needed, because no impossible plan can be saved.</p>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">Question 4 — when the plan is written to storage</h3>
+<p>The skill, the level and the note all live in the same stored row. The question is what a keystroke
+in the note box costs.</p>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">W1 — it saves itself</p>
+      <div class="stage">
+        <div class="plan-box" style="max-width:520px">
+          <div class="hdr"><span class="t">Next turn</span><span class="st">saving…</span></div>
+          <div class="fields">
+            <select><option>force — raise from 3</option></select>
+            <span class="fieldlbl">to level</span><select style="min-width:4.8rem"><option>4</option></select>
+            <button class="btn">Clear</button>
+          </div>
+          <div class="grp2" style="margin-top:10px">Note</div>
+          <textarea rows="2" class="focus">Towards dragon lore — needs force 4 fir</textarea>
+          <div class="count">70 / 500</div>
+        </div>
+        <div class="plan-box" style="max-width:520px;margin-top:10px">
+          <div class="hdr"><span class="t">Next turn</span><span class="st saved">saved</span></div>
+          <div class="fields"><select><option>force — raise from 3</option></select>
+            <span class="fieldlbl">to level</span><select style="min-width:4.8rem"><option>4</option></select>
+            <button class="btn">Clear</button></div>
+          <div class="grp2" style="margin-top:10px">Note</div>
+          <textarea rows="2">Towards dragon lore — needs force 4 first.</textarea>
+          <div class="count">78 / 500</div>
+        </div>
+        <div class="plan-box" style="max-width:520px;margin-top:10px">
+          <div class="hdr"><span class="t">Next turn</span><span class="st err">not saved</span></div>
+          <div class="fields"><select><option>force — raise from 3</option></select>
+            <span class="fieldlbl">to level</span><select style="min-width:4.8rem"><option>4</option></select>
+            <button class="btn">Clear</button></div>
+          <div class="warnline" style="border-left-color:#7a3b3b;color:var(--danger);margin-top:8px">
+            This plan could not be written. <a href="#" style="color:var(--select)">Try again</a></div>
+          <div class="grp2" style="margin-top:10px">Note</div>
+          <textarea rows="2">Towards dragon lore — needs force 4 first.</textarea>
+          <div class="count">78 / 500</div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>You never lose a note by walking away — clicking the next mage, or Escape, keeps it.</li>
+        <li>The skill and level save the moment they change; the note saves when you stop typing,
+          and at once when you leave the box or the mage.</li>
+        <li class="con">A failed write needs a place to be reported, and the three words in the corner
+          are the only thing telling you it happened.</li>
+      </ul>
+    </div>
+    <div>
+      <p class="lbl">W2 — Save and Revert</p>
+      <div class="stage">
+        <div class="plan-box" style="max-width:520px">
+          <div class="hdr"><span class="t">Next turn</span><span class="st">unsaved changes</span></div>
+          <div class="fields"><select><option>force — raise from 3</option></select>
+            <span class="fieldlbl">to level</span><select style="min-width:4.8rem"><option>4</option></select></div>
+          <div class="grp2" style="margin-top:10px">Note</div>
+          <textarea rows="2" class="focus">Towards dragon lore — needs force 4 first.</textarea>
+          <div class="count">78 / 500</div>
+          <div class="fields" style="margin-top:8px">
+            <button class="btn">Save</button><button class="btn">Revert</button>
+            <button class="btn" style="margin-left:auto">Clear plan</button>
+          </div>
+        </div>
+        <div class="stage" style="border:none;background:none;padding:14px 0 0">
+          <div style="border:1px solid var(--ceil-edge);background:var(--ceil-fill);border-radius:5px;padding:10px 12px;max-width:520px">
+            <div style="color:var(--brass-bright);font-size:12.5px">Ereb's plan has unsaved changes.</div>
+            <div class="fields" style="margin-top:8px"><button class="btn">Save and move on</button>
+              <button class="btn">Discard</button><button class="btn">Stay here</button></div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Nothing is written until you say so, and Revert always undoes.</li>
+        <li>One obvious place for a failure to be reported: the Save you just pressed.</li>
+        <li class="con">Every mage costs an extra keystroke, and planning eight mages costs eight.</li>
+        <li class="con">Leaving a mage with unsaved work needs the dialog drawn below it — a second
+          modal on top of a modal — or it silently throws your note away.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">The states, in whichever variant you pick</h3>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">A mage with nothing planned</p>
+      <div class="stage">
+        <div class="plan-box" style="max-width:520px">
+          <div class="hdr"><span class="t">Next turn</span></div>
+          <div class="fields"><select><option>— nothing planned —</option></select>
+            <span class="fieldlbl">to level</span><select style="min-width:4.8rem" disabled><option>—</option></select>
+            <button class="btn" disabled>Clear</button></div>
+          <div style="color:var(--ink-dim);font-size:11.5px;margin-top:6px">He will study nothing next
+            turn unless you choose a skill.</div>
+          <div class="grp2" style="margin-top:10px">Note</div>
+          <textarea rows="2" placeholder="Where his studies are heading."></textarea>
+          <div class="count">0 / 500</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="lbl">An ally's mage, from a sheet three turns old</p>
+      <div class="stage">
+        <div class="plan-box" style="max-width:520px">
+          <div class="hdr"><span class="t">Next turn</span><span class="st saved">saved</span></div>
+          <div class="warnline">From a mage sheet of turn 20, 3 turns old. What he may study is the
+            sheet's, not today's.</div>
+          <div class="fields" style="margin-top:8px"><select><option>necromancy — begin</option></select>
+            <span class="fieldlbl">to level</span><select style="min-width:4.8rem"><option>—</option></select>
+            <button class="btn">Clear</button></div>
+          <div class="grp2" style="margin-top:10px">Note</div>
+          <textarea rows="2">Ask Selado whether he finished spirit 4.</textarea>
+          <div class="count">40 / 500</div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li class="n">Whether a stale mage may be planned at all, and how loudly it is said, is the
+          question I will ask next — this draws the "plan him, and say so" answer.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</main>
+</body>
+</html>

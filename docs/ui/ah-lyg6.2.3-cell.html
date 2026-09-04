@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.2.3 — round two: the cell menu, the note, and the turn rolling over</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+    --known-fill:#1b2c26; --known-ink:#7fcaa5; --known-edge:#2c4a3e;
+    --ceil-fill:#2e2718; --ceil-ink:#d9a441; --ceil-edge:#4a3d21;
+    --maxed-fill:#232a38; --maxed-ink:#8fb4e0; --maxed-edge:#33455f;
+    --open-fill:#141a23; --open-ink:#a3b0c0; --open-edge:#2b3644;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:98ch; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:18px; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:1000px) { .cols { grid-template-columns:1fr; } }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px;
+         text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+
+  /* --- the pane, as ah-lyg6.2.2 draws it --- */
+  .pane { width:900px; max-width:100%; background:var(--raised); border:1px solid var(--edge);
+          border-radius:6px; box-shadow:0 14px 40px #000a; overflow:hidden;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane.narrow { width:auto; }
+  .pane .top { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  .pane .top h4 { font:600 13.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .pane .top .key { color:var(--ink-dim); font-size:11.5px; }
+  .pane .top .sp { margin-left:auto; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.foc { outline:2px solid var(--select); outline-offset:1px; }
+  .pane .sub { padding:6px 12px; border-bottom:1px solid var(--edge-soft); color:var(--ink-dim); font-size:11.5px; }
+  .md { display:grid; grid-template-columns:272px 1fr; }
+  .md .list { border-right:1px solid var(--edge); max-height:470px; overflow:auto; }
+  .md .list .row { padding:6px 12px; border-bottom:1px solid var(--edge-soft); }
+  .md .list .row.on { background:#1b2735; box-shadow:inset 2px 0 0 var(--select); }
+  .md .list .row.kbd { outline:1px dashed var(--select); outline-offset:-2px; }
+  .md .list .row .nm { font-size:12.5px; }
+  .md .list .row .sub2 { color:var(--ink-dim); font-size:11px; }
+  .md .list .row .plan { color:var(--ok); font-size:11px; }
+  .md .list .row .note { color:var(--ink-dim); font-size:11px; font-style:italic; }
+  .md .list .hd { padding:6px 12px; color:var(--brass); font-size:11px; letter-spacing:0.6px;
+                  text-transform:uppercase; background:#141a23; position:sticky; top:0; }
+  .md .list .hd .age { color:var(--brass-bright); text-transform:none; letter-spacing:0; }
+  .md .list .row.stale { background:#191612; }
+  .md .list .row.stale.on { background:#241d15; box-shadow:inset 2px 0 0 var(--select); }
+  .md .det { padding:14px 16px; max-height:470px; overflow:auto; }
+  .md .det h5 { font:600 14px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .md .det .meta { color:var(--ink-dim); font-size:11.5px; margin:2px 0 12px; }
+  .md .det .grp2 { color:var(--ink-dim); font-size:11px; letter-spacing:0.6px; text-transform:uppercase; margin:14px 0 6px; }
+  .warnline { border-left:2px solid var(--ceil-edge); padding:4px 0 4px 8px; color:var(--brass-bright);
+              font-size:11.5px; margin-bottom:4px; }
+  .chip { display:inline-block; border-radius:3px; padding:0 5px; font-size:11.5px; margin:0 4px 4px 0;
+          border:1px solid var(--known-edge); background:var(--known-fill); color:var(--known-ink); }
+  .chip.ceil { border-color:var(--ceil-edge); background:var(--ceil-fill); color:var(--ceil-ink); }
+  .chip.maxed { border-color:var(--maxed-edge); background:var(--maxed-fill); color:var(--maxed-ink); }
+  .chip.open { border-color:var(--open-edge); background:var(--open-fill); color:var(--open-ink); }
+  .chip.pick { cursor:pointer; }
+  .chip.chosen { outline:2px solid var(--select); outline-offset:1px; }
+  .chip.locked { border-color:#232a33; background:#12161c; color:#5b6674; }
+  .up { color:var(--brass-bright); }
+  .more { color:var(--ink-dim); font-size:11.5px; }
+
+  /* --- the editing block --- */
+  .plan-box { border:1px solid var(--edge); border-radius:5px; background:#141a23; padding:10px 12px; }
+  .plan-box .hdr { display:flex; align-items:baseline; gap:8px; margin-bottom:8px; }
+  .plan-box .hdr .t { font:600 11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px;
+                      text-transform:uppercase; color:var(--brass); }
+  .plan-box .hdr .st { margin-left:auto; font-size:11px; color:var(--ink-dim); }
+  .plan-box .hdr .st.saved { color:var(--ok); }
+  .plan-box .hdr .st.err { color:var(--danger); }
+  .fields { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  select, input[type=text], input[type=number], textarea {
+    background:var(--ground); border:1px solid var(--edge); color:var(--ink); border-radius:4px;
+    padding:4px 7px; font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  select { min-width:15rem; }
+  textarea { width:100%; resize:vertical; }
+  .focus { outline:2px solid var(--select); outline-offset:1px; }
+  .fieldlbl { color:var(--ink-dim); font-size:11.5px; }
+  .count { color:var(--ink-dim); font-size:11px; text-align:right; }
+  .count.warn { color:var(--brass-bright); }
+  .orderline { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ok); }
+  .kbdkey { display:inline-block; border:1px solid var(--edge); border-radius:3px; padding:0 5px;
+            font-size:11px; color:var(--ink-soft); background:var(--ground); }
+</style>
+<style>
+  .switch { display:inline-flex; border:1px solid var(--edge); border-radius:4px; overflow:hidden; }
+  .switch button { background:var(--ground); border:none; color:var(--ink-dim); padding:3px 12px;
+                   font:12px/1.5 'Helvetica Neue',Arial,sans-serif; border-right:1px solid var(--edge); }
+  .switch button:last-child { border-right:none; }
+  .switch button.on { background:#1b2735; color:var(--ink); box-shadow:inset 0 -2px 0 var(--select); }
+  .gridwrap { overflow:auto; max-height:470px; }
+  table.sched { border-collapse:separate; border-spacing:0; font:12px/1.45 'Helvetica Neue',Arial,sans-serif; width:100%; }
+  table.sched th { position:sticky; top:0; background:var(--raised); color:var(--ink-dim); font-weight:400;
+        font-size:10.5px; letter-spacing:0.8px; text-transform:uppercase; text-align:left;
+        padding:6px 8px; border-bottom:1px solid var(--edge); white-space:nowrap; }
+  table.sched th.next { color:var(--brass); }
+  table.sched th.who, table.sched td.who { position:sticky; left:0; background:var(--raised); z-index:2;
+        min-width:14rem; border-right:1px solid var(--edge); }
+  table.sched td { padding:5px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; white-space:nowrap; }
+  table.sched tr.grp td { background:#141a23; color:var(--brass); font-size:11px; letter-spacing:0.5px;
+        text-transform:uppercase; position:sticky; left:0; }
+  table.sched tr.grp td .age { color:var(--brass-bright); text-transform:none; letter-spacing:0; }
+  td.who .nm { color:var(--ink); }
+  td.who .un { color:var(--ink-dim); font-size:11px; margin-left:5px; }
+  td.who .now { color:var(--ink-dim); font-size:11px; }
+  .cell { display:inline-block; border-radius:3px; padding:1px 6px; border:1px solid transparent; }
+  .cell.study { color:var(--ink-soft); }
+  .cell.up { border-color:var(--known-edge); background:var(--known-fill); color:var(--known-ink); }
+  .cell.teach { border-color:var(--maxed-edge); background:var(--maxed-fill); color:var(--maxed-ink); }
+  .cell.none { color:#4d5867; }
+  .cell.hov { outline:2px solid var(--select); outline-offset:1px; }
+  .cell.pick { cursor:pointer; }
+  .cell.ghost { color:#5b6674; border:1px dashed #2b3644; }
+  tr.stale td.who { background:#191612; }
+  tr.stale td { background:#15120f; }
+  .hovercard { position:relative; border:1px solid var(--edge); background:var(--panel); border-radius:5px;
+        box-shadow:0 10px 26px #000b; padding:9px 11px; width:19rem; font:12px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .hovercard .h { font-weight:600; font-size:12.5px; }
+  .hovercard .s { color:var(--ink-dim); font-size:11px; margin-bottom:7px; }
+  .hovercard .line { display:flex; justify-content:space-between; padding:1.5px 0; color:var(--ink-soft); }
+  .hovercard .line.on { color:var(--known-ink); font-weight:600; }
+  .hovercard .line.on .r { color:var(--brass-bright); font-weight:400; }
+  .hovercard .line .r { color:var(--ink-dim); }
+  .hovercard .foot { color:var(--ink-dim); font-size:11px; border-top:1px solid var(--edge-soft); margin-top:7px; padding-top:6px; }
+  .goalcol { min-width:13rem; }
+  .goal { display:inline-block; border:1px solid var(--known-edge); background:var(--known-fill);
+          color:var(--known-ink); border-radius:3px; padding:0 6px; font-size:11.5px; margin:0 4px 3px 0; }
+  .goal .x { color:var(--ink-dim); margin-left:5px; }
+  .goal.add { border-style:dashed; border-color:#2b3644; background:transparent; color:var(--ink-dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.2.3 — <span>round two</span>: inside G2</h1>
+  <p>You chose <strong>G2</strong> — the grid is the planner, a mage's plan is a queue of goals, and
+  clicking a cell says what he studies from that turn on. Six turn columns, no money column. One bead.
+  Round one is still at
+  <a style="color:var(--select)" href="ah-lyg6.2.3-schedule.html">ah-lyg6.2.3-schedule.html</a>.</p>
+  <p>Four things that choice leaves open. Everything else I am deciding myself and writing into the
+  plan where you can overrule it in a sentence — including these two, which follow the habits the
+  application already has: <strong>a cell menu commits on <em>Set</em></strong> and nothing is stored
+  until you press it, and <strong>the free-text note commits like a hex note does</strong> — a Save
+  button, &#8984;&#8629;, and Esc to abandon.</p>
+</header>
+<main>
+
+<h3 class="sec">Question 1 — what a cell menu offers, four turns out</h3>
+<p>A cell on turn 27 is asking what he studies <em>then</em>, and by then he may hold skills he does
+not hold today. The menu has to be built against the projected mage, not the reported one — the
+question is what it does with a skill the projection says he still cannot touch.</p>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">C1 — only what the projection allows</p>
+      <div class="stage">
+        <div style="background:var(--panel);border:1px solid var(--edge);border-radius:5px;padding:9px 11px;width:21rem">
+          <div style="color:var(--ink-dim);font-size:11px;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:2px">From turn 27, Ereb studies</div>
+          <div style="color:var(--ink-dim);font-size:11px;margin-bottom:7px">He will be force 4, pattern 2 by then.</div>
+          <div style="background:var(--ground);border:1px solid var(--edge);border-radius:4px;padding:5px 0">
+            <div style="color:var(--ink-dim);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;padding:2px 10px">Raise</div>
+            <div style="padding:3px 10px">force — from 4</div>
+            <div style="padding:3px 10px">pattern — from 2</div>
+            <div style="padding:3px 10px">spirit — from 1</div>
+            <div style="color:var(--ink-dim);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;padding:6px 10px 2px">Begin</div>
+            <div style="padding:3px 10px">dragon lore</div>
+            <div style="padding:3px 10px">necromancy</div>
+            <div style="color:var(--ink-dim);padding:3px 10px">…11 more</div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Nothing you can pick is impossible, given the plan above it.</li>
+        <li>The menu grows as the plan grows: pattern is offered on turn 27 precisely because force 4 lands on turn 24.</li>
+        <li class="con">Change an earlier cell and a later goal can become impossible; something has to happen to it, and you did not ask for it.</li>
+      </ul>
+    </div>
+    <div>
+      <p class="lbl">C2 — everything, and the impossible ones say why</p>
+      <div class="stage">
+        <div style="background:var(--panel);border:1px solid var(--edge);border-radius:5px;padding:9px 11px;width:21rem">
+          <div style="color:var(--ink-dim);font-size:11px;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:2px">From turn 27, Ereb studies</div>
+          <div style="color:var(--ink-dim);font-size:11px;margin-bottom:7px">He will be force 4, pattern 2 by then.</div>
+          <div style="background:var(--ground);border:1px solid var(--edge);border-radius:4px;padding:5px 0">
+            <div style="color:var(--ink-dim);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;padding:2px 10px">Raise</div>
+            <div style="padding:3px 10px">force — from 4</div>
+            <div style="padding:3px 10px">pattern — from 2</div>
+            <div style="color:var(--ink-dim);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;padding:6px 10px 2px">Begin</div>
+            <div style="padding:3px 10px">dragon lore</div>
+            <div style="color:var(--ink-dim);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;padding:6px 10px 2px">Not by turn 27</div>
+            <div style="padding:3px 10px;color:#5b6674">summoning — needs spirit 3, he will have 1</div>
+            <div style="padding:3px 10px;color:#5b6674">gate lore — needs pattern 3, he will have 2</div>
+          </div>
+          <div class="warnline" style="margin-top:8px">Chosen anyway: he cannot begin summoning on turn 27
+            unless something else changes.</div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>You can write the plan you mean and let the warning stand — useful when a teacher or an item you have not modelled will close the gap.</li>
+        <li>The reason is spelled out with the numbers, so nothing is silently wrong.</li>
+        <li>A plan that goes stale when you edit an earlier cell just gains a warning; nothing is deleted behind your back.</li>
+        <li class="con">A schedule can contain turns that cannot happen, and the export would carry them.</li>
+      </ul>
+      <p class="lbl" style="margin-top:12px">C3 — everything listed, impossible ones refused</p>
+      <p style="color:var(--ink-soft);font-size:12.5px">The same menu, but the greyed rows cannot be
+      chosen at all. No warning is ever needed and no impossible schedule can exist — at the price of
+      C1's problem in a louder form: editing an earlier cell has to do something to a later goal that
+      is now illegal.</p>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">Question 2 — does a goal always name a level?</h3>
+<p><code>rules/study</code>: <em>"STUDY [skill] [level] … A level may be specified which means that
+study will be continued from turn to turn until the unit reaches that skill level."</em> In a queue,
+the level is also what decides how many columns a goal occupies before the next one starts.</p>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">K1 — a goal is always skill + level</p>
+      <div class="stage">
+        <div style="background:var(--panel);border:1px solid var(--edge);border-radius:5px;padding:9px 11px;width:21rem">
+          <div style="color:var(--ink-dim);font-size:11px;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:6px">From turn 27, Ereb studies</div>
+          <div class="fields"><select style="min-width:11rem"><option>pattern — from 2</option></select>
+            <span class="fieldlbl">to</span><select style="min-width:4.2rem"><option>3</option></select></div>
+          <div class="orderline" style="margin-top:8px">STUDY pattern 3</div>
+          <div style="color:var(--ink-dim);font-size:11px;margin-top:5px">Occupies turns 27–29, then the
+            next goal begins.</div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Every goal has an end, so the queue always knows where the next one starts.</li>
+        <li>Every exported line is a standing order — no turn is ever missed because you forgot to replan.</li>
+        <li class="con">"One month of this, then I will think again" cannot be said, though the game allows it.</li>
+      </ul>
+    </div>
+    <div>
+      <p class="lbl">K2 — the level is optional; blank means one month</p>
+      <div class="stage">
+        <div style="background:var(--panel);border:1px solid var(--edge);border-radius:5px;padding:9px 11px;width:21rem">
+          <div style="color:var(--ink-dim);font-size:11px;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:6px">From turn 27, Ereb studies</div>
+          <div class="fields"><select style="min-width:11rem"><option>pattern — from 2</option></select>
+            <span class="fieldlbl">to</span><select style="min-width:5.4rem"><option>one month</option></select></div>
+          <div class="orderline" style="margin-top:8px">STUDY pattern</div>
+          <div style="color:var(--ink-dim);font-size:11px;margin-top:5px">Occupies turn 27 only; the next
+            goal begins on turn 28.</div>
+        </div>
+        <div class="stage" style="border:none;background:none;padding:12px 0 0">
+          <table class="sched" style="width:auto">
+            <tr><td class="who" style="min-width:9rem"><span class="nm">Ereb</span></td>
+              <td><span class="cell up">force 4</span></td><td><span class="cell study">force 4</span></td>
+              <td><span class="cell study">force 4</span></td><td><span class="cell study">pattern 2</span></td>
+              <td><span class="cell study">spirit 1</span></td><td><span class="cell up">spirit 2</span></td></tr>
+          </table>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Both of the game's two forms of STUDY are reachable, and a one-month dabble is a first-class plan.</li>
+        <li>Lets a queue mix "get to force 4" with "then one month of pattern while I decide".</li>
+        <li class="con">One more thing to choose per goal, and a menu whose default has to be picked.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">Question 3 — where the per-mage note lives</h3>
+<p>The bead asks for a free-text note per mage, saying where his studies are heading. In G2 the grid
+has no room for a paragraph, so it has to live somewhere.</p>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">N1 — in All mages, and a mark in the grid</p>
+      <div class="stage">
+        <table class="sched" style="width:auto">
+          <thead><tr><th class="who">Mage</th><th class="next">24 · next</th><th>25</th><th>26</th></tr></thead>
+          <tr><td class="who"><span class="nm">Ereb</span><span class="un">(2431)</span>
+              <span style="color:var(--brass);margin-left:6px" title="has a note">&#9998;</span>
+              <div class="now">force 3</div></td>
+            <td><span class="cell up">force 4</span></td><td><span class="cell study">force 4</span></td>
+            <td><span class="cell study">force 4</span></td></tr>
+          <tr><td class="who"><span class="nm">Sable</span><span class="un">(2517)</span>
+              <div class="now">force 1</div></td>
+            <td><span class="cell study">force 1</span></td><td><span class="cell up">force 2</span></td>
+            <td><span class="cell study">force 2</span></td></tr>
+        </table>
+      </div>
+      <ul class="notes">
+        <li>The grid stays a grid. A pencil beside the name says a note exists; the note itself is one switch away.</li>
+        <li>The All mages view keeps a reason to exist beyond the depth view.</li>
+        <li class="con">Writing a note means leaving the view you are planning in.</li>
+      </ul>
+    </div>
+    <div>
+      <p class="lbl">N2 — a Note column at the right of the grid</p>
+      <div class="stage">
+        <table class="sched" style="width:auto">
+          <thead><tr><th class="who">Mage</th><th class="next">24</th><th>25</th><th>26</th><th style="min-width:16rem">Note</th></tr></thead>
+          <tr><td class="who"><span class="nm">Ereb</span><span class="un">(2431)</span><div class="now">force 3</div></td>
+            <td><span class="cell up">force 4</span></td><td><span class="cell study">force 4</span></td>
+            <td><span class="cell study">force 4</span></td>
+            <td style="white-space:normal;color:var(--ink-soft)">Towards dragon lore — needs force 4 first.</td></tr>
+          <tr><td class="who"><span class="nm">Sable</span><span class="un">(2517)</span><div class="now">force 1</div></td>
+            <td><span class="cell study">force 1</span></td><td><span class="cell up">force 2</span></td>
+            <td><span class="cell study">force 2</span></td>
+            <td style="white-space:normal;color:#4d5867">—</td></tr>
+        </table>
+      </div>
+      <ul class="notes">
+        <li>Everything about a mage's plan on one row, and you never leave the view.</li>
+        <li>Notes are readable side by side, which is how you actually compare intentions.</li>
+        <li class="con">A column of paragraphs makes rows different heights and eats the turns' room.</li>
+        <li class="con">Editing multi-line text inside a table cell needs a popover anyway.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">Question 4 — the next turn's report arrives</h3>
+<p>You planned turns 24–29. Turn 24 is now played and its report is loaded, so the columns should read
+25–30. Ereb was told to reach force 5 and did reach force 4 on the way. What happens to the plan?</p>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">R1 — goals are kept and re-measured</p>
+      <div class="stage">
+        <table class="sched" style="width:auto">
+          <thead><tr><th class="who">Mage</th><th class="next">25 · next</th><th>26</th><th>27</th><th>28</th></tr></thead>
+          <tr><td class="who"><span class="nm">Ereb</span><span class="un">(2431)</span>
+              <div class="now">force 4 · force → 5, then pattern → 3</div></td>
+            <td><span class="cell study">force 4</span></td><td><span class="cell study">force 4</span></td>
+            <td><span class="cell study">force 4</span></td><td><span class="cell up">force 5</span></td></tr>
+          <tr><td class="who"><span class="nm">Kestrel</span><span class="un">(2688)</span>
+              <div class="now">pattern 1 · <span style="color:var(--ok)">goal reached</span></div></td>
+            <td><span class="cell none">+</span></td><td><span class="cell none">+</span></td>
+            <td><span class="cell none">+</span></td><td><span class="cell none">+</span></td></tr>
+        </table>
+      </div>
+      <ul class="notes">
+        <li>The queue is your standing intention; a new report only sharpens where he actually is.</li>
+        <li>A goal he has reached drops off by itself, and the mage's row says so.</li>
+        <li>Nothing to do each turn but plan the mages that ran out.</li>
+        <li class="con">A goal you set for a specific turn silently slides when a study was slower than projected.</li>
+      </ul>
+    </div>
+    <div>
+      <p class="lbl">R2 — the plan is pinned to turns and is flagged, never moved</p>
+      <div class="stage">
+        <table class="sched" style="width:auto">
+          <thead><tr><th class="who">Mage</th><th class="next">25 · next</th><th>26</th><th>27</th><th>28</th></tr></thead>
+          <tr><td class="who"><span class="nm">Ereb</span><span class="un">(2431)</span>
+              <div class="now">force 4 · as planned</div></td>
+            <td><span class="cell study">force 4</span></td><td><span class="cell study">force 4</span></td>
+            <td><span class="cell hov" style="border-color:var(--ceil-edge);background:var(--ceil-fill);color:var(--ceil-ink)">pattern 2</span></td>
+            <td><span class="cell study">pattern 2</span></td></tr>
+          <tr><td class="who" colspan="5" style="white-space:normal">
+            <div class="warnline" style="margin:4px 0 0">Ereb was to be force 5 by turn 27 and will be
+              force 4. His turn-27 goal starts anyway. <a href="#" style="color:var(--select)">Re-flow his plan</a></div></td></tr>
+        </table>
+      </div>
+      <ul class="notes">
+        <li>What you wrote for turn 27 happens on turn 27; the planner never rewrites your schedule.</li>
+        <li>Where reality and the plan diverge, it is stated, with one click to reconcile.</li>
+        <li class="con">Every turn brings a crop of warnings to clear by hand.</li>
+        <li class="con">Two ideas of a plan at once — the turns you pinned and the goals behind them.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">Decided by me unless you say otherwise</h3>
+<div class="card">
+  <ul class="notes">
+    <li class="n">A cell menu writes nothing until <em>Set</em>; <em>Cancel</em> and Escape close it and change nothing; <em>Clear from here</em> drops that goal and everything after it.</li>
+    <li class="n">The note commits the way a hex note does — a Save button, &#8984;&#8629; to save, Esc to abandon — because that is the only habit the application has for stored free text.</li>
+    <li class="n">Arrow keys walk the grid cell by cell, Enter opens the cell's menu, and the hover card is what Enter-less focus shows; the list's keyboard from <code>ah-lyg6.2.2</code> is unchanged in All mages.</li>
+    <li class="n">The view you were last in is remembered while the game is open and forgotten when it closes.</li>
+    <li class="n">No cell offers TEACH in this bead — <code>ah-lyg6.3</code> adds that — but the cell already knows how to draw one, so nothing is reshaped when it lands.</li>
+    <li class="n">An ally's mage from a stale sheet is planned exactly like your own, from his sheet's projection, and his row is tinted as it is in All mages.</li>
+  </ul>
+</div>
+
+</main>
+</body>
+</html>
