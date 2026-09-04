@@ -23,14 +23,14 @@ use atlantis_hud_core::{
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_army, delete_game, delete_hex_note, export_game, import_game,
-    insert_imported_turn, list_armies, list_games, list_hex_notes, list_imported_turns,
-    load_imported_turn, load_imported_turn_stamps, load_latest_imported_turn, load_merged_reports,
-    load_order_draft, load_region_sightings, open_game, preview_imported_turn, reset_game,
-    set_active_faction, set_game_map, set_game_name, set_game_ruleset, upsert_army,
-    upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
-    upsert_region_sightings, Army, ArmyMember, HexNote, ImportedTurnKey, ImportedTurnPreview,
-    ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey, OrderDraftRecord,
-    PersistenceError,
+    insert_imported_turn, list_allied_mages, list_armies, list_games, list_hex_notes,
+    list_imported_turns, load_imported_turn, load_imported_turn_stamps, load_latest_imported_turn,
+    load_merged_reports, load_order_draft, load_region_sightings, open_game, preview_imported_turn,
+    reset_game, save_allied_mages, set_active_faction, set_game_map, set_game_name,
+    set_game_ruleset, upsert_army, upsert_hex_note, upsert_imported_turn, upsert_merged_report,
+    upsert_order_draft, upsert_region_sightings, AlliedMage, AlliedMageKey, Army, ArmyMember,
+    HexNote, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord,
+    OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError,
 };
 /// The manifest types cross to the shell as themselves: `core-tauri` used to carry a field-for-field
 /// `…Dto` copy of each, whose own comments said so (ah-8z4y.2).
@@ -708,6 +708,41 @@ pub mod commands {
         delete_army(Path::new(database_path), game_id, army_id).map_err(|error| error.to_string())
     }
 
+    /// Lists a game's allied mages for the Tauri command surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the game's database cannot be read.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "list_allied_mages")
+    )]
+    pub fn command_list_allied_mages(
+        database_path: &str,
+        game_id: &str,
+    ) -> Result<Vec<AlliedMage>, String> {
+        list_allied_mages(Path::new(database_path), game_id).map_err(|error| error.to_string())
+    }
+
+    /// Stores one sheet's mages and drops the ones the player discarded, in one transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the game's database cannot be written.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "save_allied_mages")
+    )]
+    pub fn command_save_allied_mages(
+        database_path: &str,
+        game_id: &str,
+        mages: Vec<AlliedMage>,
+        removed: Vec<AlliedMageKey>,
+    ) -> Result<(), String> {
+        save_allied_mages(Path::new(database_path), game_id, &mages, &removed)
+            .map_err(|error| error.to_string())
+    }
+
     /// Loads one imported turn payload for the Tauri command surface.
     #[cfg_attr(
         feature = "tauri",
@@ -1179,13 +1214,15 @@ pub mod commands {
 pub use commands::{
     command_commit_report_import, command_completions_at_caret, command_delete_army,
     command_delete_hex_note, command_export_mage_sheet, command_export_map,
-    command_get_engine_info, command_known_map, command_list_armies, command_list_hex_notes,
+    command_get_engine_info, command_known_map, command_list_allied_mages, command_list_armies,
+    command_list_hex_notes,
     command_list_imported_turns, command_load_imported_turn, command_load_latest_imported_turn,
     command_load_merged_reports, command_load_order_draft, command_load_region_sightings,
     command_merge_report, command_order_argument_completions, command_order_commands,
     command_order_vocabulary, command_parse_report, command_parse_report_classified,
     command_parse_report_full, command_plan_route, command_preview_orders,
-    command_preview_report_import, command_roster_skills, command_save_army, command_save_hex_note,
+    command_preview_report_import, command_roster_skills, command_save_allied_mages,
+    command_save_army, command_save_hex_note,
     command_save_order_draft, command_trace_move_orders, command_trade_routes,
     command_validate_orders,
 };
@@ -2174,6 +2211,7 @@ mod merge_tests {
 mod tests {
     use super::test_support::{a_manifest, IMPORTED_AT, OPENED_AT};
     use super::*;
+    use atlantis_hud_core::report::model::ReportUnit;
     use tempfile::tempdir;
 
     #[test]
@@ -2430,6 +2468,72 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             !command_delete_army(&created.database_path, "faction-12", "army-1")
                 .expect("delete army"),
             "deleting an already-deleted Army reports false"
+        );
+    }
+
+    #[test]
+    fn allied_mage_commands_round_trip() {
+        let dir = tempdir().expect("tempdir");
+        let created = command_create_game(
+            dir.path().to_str().expect("a path"),
+            a_manifest("faction-12", "Faction 12"),
+        )
+        .expect("create game");
+
+        let mage = AlliedMage {
+            faction_id: "21".to_string(),
+            faction_name: Some("Borg".to_string()),
+            unit: ReportUnit {
+                unit_id: "9001".to_string(),
+                name: "Sweep Mage".to_string(),
+                region_id: "1:7,53".to_string(),
+                faction_id: Some("21".to_string()),
+                faction_name: Some("Borg".to_string()),
+                own: false,
+                on_guard: false,
+                flags: vec![],
+                items: vec![],
+                skills: vec![],
+                combat_spell: None,
+                men: 1,
+                men_estimated: true,
+                men_by_race: vec![],
+                weight: None,
+                capacity: None,
+                movement: None,
+                structure_id: None,
+            },
+            sheet_turn: 23,
+            received_at: "2026-08-07T12:00:00Z".to_string(),
+        };
+
+        command_save_allied_mages(
+            &created.database_path,
+            "faction-12",
+            vec![mage.clone()],
+            vec![],
+        )
+        .expect("save mages");
+        assert_eq!(
+            command_list_allied_mages(&created.database_path, "faction-12").expect("list mages"),
+            vec![mage]
+        );
+
+        command_save_allied_mages(
+            &created.database_path,
+            "faction-12",
+            vec![],
+            vec![AlliedMageKey {
+                faction_id: "21".to_string(),
+                unit_id: "9001".to_string(),
+            }],
+        )
+        .expect("remove mage");
+        assert!(
+            command_list_allied_mages(&created.database_path, "faction-12")
+                .expect("list mages")
+                .is_empty(),
+            "a mage named in `removed` is gone"
         );
     }
 
