@@ -55,6 +55,7 @@ export const UNIT_COLUMNS = [
   "faction",
   "men",
   "movement",
+  "flags",
   "skills",
   "items",
   "structure",
@@ -77,6 +78,7 @@ export const COLUMN_LABELS: Partial<Record<UnitColumn, string>> = {
   faction: "Faction",
   men: "Men",
   movement: "Move",
+  flags: "Flags",
   skills: "Skills",
   items: "Items",
   structure: "Structure",
@@ -392,8 +394,9 @@ export const DEFAULT_COLUMN_SHARES: Record<UnitColumn, number> = {
   faction: 192 / NOMINAL_TABLE_PX,
   men: 64 / NOMINAL_TABLE_PX,
   movement: 64 / NOMINAL_TABLE_PX,
-  skills: 220 / NOMINAL_TABLE_PX,
-  items: 220 / NOMINAL_TABLE_PX,
+  flags: 80 / NOMINAL_TABLE_PX,
+  skills: 180 / NOMINAL_TABLE_PX,
+  items: 180 / NOMINAL_TABLE_PX,
   structure: 208 / NOMINAL_TABLE_PX,
   longOrder: 144 / NOMINAL_TABLE_PX,
   silver: 96 / NOMINAL_TABLE_PX
@@ -550,24 +553,21 @@ export function orderOf(order: ColumnOrder | null): ColumnOrder {
 }
 
 /**
- * A stored order, rejected whole if anything about it is wrong.
+ * A stored order, repaired where a later build added a column and rejected whole where anything
+ * about it is actually wrong.
  *
- * All-or-nothing rather than repaired: a partial reorder is not obviously better than the shipped
- * order, and guessing where a missing column belongs is worse than just starting over. A stored
- * order missing a column that a later build added is exactly the case that tempts a patch.
+ * The policy used to be all-or-nothing with one hard-coded migration for `movement`. That cannot
+ * survive a second added column: every stored order would be rejected — and every player's column
+ * order silently reset — on each release that adds one. So a column this build knows and the stored
+ * order lacks is inserted immediately after the column that precedes it in `UNIT_COLUMNS`, which
+ * reproduces the old `movement` behaviour exactly and generalises to whatever comes next. An
+ * unknown column, a duplicate, a non-string entry or an over-long order is still rejected outright.
  */
 export function columnOrderFromStorage(stored: unknown): ColumnOrder | null {
-  if (!Array.isArray(stored)) {
+  if (!Array.isArray(stored) || stored.length > UNIT_COLUMNS.length) {
     return null;
   }
   const known = new Set<string>(UNIT_COLUMNS);
-  const isLegacy = stored.length === UNIT_COLUMNS.length - 1;
-  if (stored.length !== UNIT_COLUMNS.length && !isLegacy) {
-    return null;
-  }
-  if (isLegacy) {
-    known.delete("movement");
-  }
   const seen = new Set<string>();
   for (const entry of stored) {
     if (typeof entry !== "string" || !known.has(entry) || seen.has(entry)) {
@@ -575,13 +575,23 @@ export function columnOrderFromStorage(stored: unknown): ColumnOrder | null {
     }
     seen.add(entry);
   }
-  if (isLegacy) {
-    const order = [...stored] as UnitColumn[];
-    const menIndex = order.indexOf("men");
-    order.splice(menIndex + 1, 0, "movement");
-    return order;
+  if (seen.size === UNIT_COLUMNS.length) {
+    return stored as ColumnOrder;
   }
-  return stored as ColumnOrder;
+  const order = [...stored] as UnitColumn[];
+  UNIT_COLUMNS.forEach((column, index) => {
+    if (seen.has(column)) {
+      return;
+    }
+    const predecessor = index === 0 ? undefined : UNIT_COLUMNS[index - 1];
+    // -1 for the first column, whose predecessor is `undefined`; every later column's predecessor
+    // has already been spliced in by the time it is considered, because this walk is in
+    // `UNIT_COLUMNS` order. So `at + 1` is the front in that one case and the right place in all
+    // the others.
+    const at = predecessor === undefined ? -1 : order.indexOf(predecessor);
+    order.splice(at + 1, 0, column);
+  });
+  return order as ColumnOrder;
 }
 
 /**

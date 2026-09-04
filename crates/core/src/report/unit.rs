@@ -31,6 +31,8 @@ const KNOWN_FLAGS: &[&str] = &[
     "guarding",
     "taxing",
     "no aid",
+    "receiving no aid",
+    "won't cross water",
     "consuming unit's food",
     "consuming faction's food",
     "sailing battle spoils",
@@ -235,6 +237,41 @@ fn count_men(items: &[ItemAmount]) -> i64 {
 mod tests {
     use super::*;
     use crate::report::model::CombatSpell;
+
+    #[test]
+    fn keeps_the_no_cross_flag() {
+        let unit = parse_unit(
+            "* Smidrir (9217), The Disinherited Knights (42), avoiding, behind, holding, \
+             won't cross water, orc [ORC], 5 mithril [MITH].",
+            true,
+            "1:7,53",
+            None,
+        )
+        .expect("unit should parse");
+
+        assert_eq!(
+            unit.flags,
+            vec!["avoiding", "behind", "holding", "won't cross water"]
+        );
+        let tags: Vec<&str> = unit.items.iter().map(|item| item.tag.as_str()).collect();
+        assert_eq!(tags, vec!["ORC", "MITH"]);
+    }
+
+    #[test]
+    fn keeps_the_receiving_no_aid_flag() {
+        let unit = parse_unit(
+            "* Woodsmen (9431), The Disinherited Knights (42), avoiding, behind, revealing faction, \
+             receiving no aid, weightless battle spoils, 10 high elves [HELF], 20 wood [WOOD].",
+            true,
+            "1:7,53",
+            None,
+        )
+        .expect("unit should parse");
+
+        assert!(unit.flags.iter().any(|flag| flag == "receiving no aid"));
+        let tags: Vec<&str> = unit.items.iter().map(|item| item.tag.as_str()).collect();
+        assert_eq!(tags, vec!["HELF", "WOOD"]);
+    }
 
     #[test]
     fn reads_an_own_unit_with_skills_and_weight() {

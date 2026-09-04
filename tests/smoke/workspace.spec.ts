@@ -2800,6 +2800,33 @@ test("column widths are dragged, survive a reload, and can never push a column o
 });
 
 /**
+ * The Flags column: each flag the report printed drawn as one letter, unbroken (ah-5wbc).
+ */
+test("the flags column shows each flag as a letter", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  await expect(
+    // exact-selector-exempt: a columnheader's accessible name is built from everything inside it,
+    // and each header holds a reorder grip labelled "Move the Flags column" - so this cell's name
+    // can never be exactly "Flags".
+    page.getByTestId("panel-units").getByRole("columnheader", { name: "Flags" })
+  ).toBeVisible();
+
+  // Positional, like the assertions above: `flags` is the seventh column and this only holds while
+  // nothing has been reordered. The cell holds the words for a screen reader as well as the letters
+  // for the eye, so the assertion is on the visible span rather than on the cell's whole text.
+  //
+  // Over an own unit alone: the hex source draws every unit in the region, foreign ones included,
+  // but the table is windowed (`visible.slice(start, end)`) and own units sort first, so a foreign
+  // row in a hex this busy has no DOM node until it is scrolled to. The single-flag and no-flags
+  // cases are pinned by the unit tests on `flagLetters` instead.
+  await expect(
+    page.locator("[data-testid='unit-row-18642'] td:nth-child(7) span[aria-hidden]")
+  ).toHaveText("ABHRS");
+});
+
+/**
  * The units table's reorderable columns, and the feedback that is the whole point of them
  * (ah-1owr.3).
  *

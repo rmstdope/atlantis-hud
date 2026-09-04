@@ -575,7 +575,6 @@ describe("columnOrderFromStorage", () => {
   it("rejects a stored order that does not fit this build", () => {
     expect(columnOrderFromStorage(null)).toBeNull();
     expect(columnOrderFromStorage("own,name")).toBeNull();
-    expect(columnOrderFromStorage(UNIT_COLUMNS.slice(0, 3))).toBeNull();
     expect(columnOrderFromStorage([...UNIT_COLUMNS, "extra"])).toBeNull();
     expect(
       columnOrderFromStorage(UNIT_COLUMNS.map((column) => (column === "men" ? "retired" : column)))
@@ -601,12 +600,41 @@ describe("columnOrderFromStorage", () => {
       "faction",
       "men",
       "movement",
+      "flags",
       "skills",
       "items",
       "structure",
       "longOrder",
       "silver"
     ]);
+  });
+
+  it("inserts a column this build added where it ships, keeping the stored order of the rest", () => {
+    const stored = UNIT_COLUMNS.filter((column) => column !== "flags").filter(
+      (column) => column !== "silver"
+    ) as UnitColumn[];
+    stored.splice(stored.indexOf("name") + 1, 0, "silver");
+    const migrated = columnOrderFromStorage(stored);
+    expect(migrated).not.toBeNull();
+    expect(migrated?.[migrated.indexOf("movement") + 1]).toBe("flags");
+    expect(migrated?.filter((column) => column !== "flags")).toEqual(stored);
+  });
+
+  it("inserts several missing columns at once", () => {
+    const stored = UNIT_COLUMNS.filter(
+      (column) => column !== "movement" && column !== "flags"
+    ) as UnitColumn[];
+    expect(columnOrderFromStorage(stored)).toEqual([...UNIT_COLUMNS]);
+  });
+
+  it("puts a missing first column at the front, having no predecessor to follow", () => {
+    const stored = UNIT_COLUMNS.filter((column) => column !== "own") as UnitColumn[];
+    expect(columnOrderFromStorage(stored)).toEqual([...UNIT_COLUMNS]);
+  });
+
+  it("still rejects a duplicate and an unknown column in a repairable-looking order", () => {
+    expect(columnOrderFromStorage(["own", "name", "name"])).toBeNull();
+    expect(columnOrderFromStorage(["own", "retired"])).toBeNull();
   });
 
   it("falls back to the shipped order when nothing is stored, or when what is does not fit", () => {
@@ -636,6 +664,7 @@ describe("dragColumnOrder", () => {
       "name",
       "men",
       "movement",
+      "flags",
       "skills",
       "items",
       "structure",
@@ -649,6 +678,7 @@ describe("dragColumnOrder", () => {
       "men",
       "name",
       "movement",
+      "flags",
       "skills",
       "items",
       "structure",
@@ -665,6 +695,7 @@ describe("dragColumnOrder", () => {
       "faction",
       "men",
       "movement",
+      "flags",
       "skills",
       "items",
       "structure",
@@ -714,6 +745,14 @@ describe("dropBoundaryX", () => {
     const order = [...UNIT_COLUMNS] as UnitColumn[];
     const farLeft = ["name", ...order.filter((column) => column !== "name")] as UnitColumn[];
     expect(dropBoundaryX(order, farLeft, "name", widthPxOf)).toBe(0);
+  });
+});
+
+describe("the Flags column (ah-5wbc)", () => {
+  it("has a label, and ships between Move and Skills", () => {
+    expect(COLUMN_LABELS.flags).toBe("Flags");
+    expect(UNIT_COLUMNS[UNIT_COLUMNS.indexOf("movement") + 1]).toBe("flags");
+    expect(UNIT_COLUMNS[UNIT_COLUMNS.indexOf("flags") + 1]).toBe("skills");
   });
 });
 

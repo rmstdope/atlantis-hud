@@ -250,6 +250,49 @@ describe("draws its header and its rows from the column list", () => {
   });
 });
 
+describe("the Flags column (ah-5wbc)", () => {
+  it("draws a unit's flags as one run of letters", () => {
+    const markup = draw(
+      hex({
+        region: region({
+          units: [
+            unit({
+              unitId: "1",
+              own: true,
+              flags: [
+                "avoiding",
+                "behind",
+                "revealing faction",
+                "holding",
+                "sharing",
+                "sailing battle spoils"
+              ]
+            })
+          ]
+        }),
+        ownUnitCount: 1,
+        foreignUnitCount: 0
+      })
+    );
+
+    expect(markup).toContain(">ABHRS<");
+    expect(markup).toContain("avoiding · behind · revealing faction · holding · sharing");
+  });
+
+  it("draws a dim dash for a unit with no flags", () => {
+    const markup = draw(
+      hex({
+        region: region({ units: [unit({ unitId: "1", own: true, flags: [] })] }),
+        ownUnitCount: 1,
+        foreignUnitCount: 0
+      })
+    );
+
+    expect(markup).toContain("No flags set");
+    expect(markup).toMatch(/text-ink-dim[^>]*>\s*—/);
+  });
+});
+
 describe("column widths (ah-1owr.2)", () => {
   const withUnits = () =>
     hex({ region: region({ units: [unit({ unitId: "1", own: true })] }), ownUnitCount: 1, foreignUnitCount: 0 });

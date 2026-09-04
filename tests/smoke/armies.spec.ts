@@ -96,8 +96,8 @@ test("choosing an Army shows its units, and the pane says so", async ({ page }) 
   const headers = page.getByTestId("panel-units").locator("thead th");
   await expect(headers).toContainText(["Hex"]);
   await expect(headers).toContainText(["Seen"]);
-  // The trailing action column: an extra header cell beyond the eleven the table always draws.
-  await expect(headers).toHaveCount(14);
+  // The trailing action column: an extra header cell beyond the twelve the table always draws.
+  await expect(headers).toHaveCount(15);
 });
 
 test("clicking a hex while an Army is the source keeps the Army and lights This hex", async ({
@@ -122,8 +122,8 @@ test("clicking a hex while an Army is the source keeps the Army and lights This 
 test("This hex draws exactly the columns it drew before", async ({ page }) => {
   await workspace(page);
 
-  // The Move column is part of the persisted table layout.
-  await expect(page.getByTestId("panel-units").locator("thead th")).toHaveCount(11);
+  // The Move and Flags columns are part of the persisted table layout.
+  await expect(page.getByTestId("panel-units").locator("thead th")).toHaveCount(12);
 });
 
 test("deleting an Army asks first, and Cancel leaves it there", async ({ page }) => {
