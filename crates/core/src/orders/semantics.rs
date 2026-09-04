@@ -371,7 +371,7 @@ fn formed_units(report: &ParsedReport, source: &str) -> Vec<Formed> {
                 .get(block.formed_by.as_str())
                 .copied()
                 .or_else(|| minted.get(block.formed_by.as_str()))?;
-            let unit = effects::formed_unit(parent, &block.alias);
+            let unit = effects::formed_unit(parent, &block.alias, &parent.flags);
             minted.insert(unit.unit_id.clone(), unit.clone());
             Some(Formed { unit, block })
         })
@@ -18673,6 +18673,29 @@ mod tests {
             .collect()
     }
 
+    /// `rules/form`: the new unit inherits its parent's flags "with the exception of the guard and
+    /// autotax flags" - so a formed unit is never told it is set to tax, whatever its parent is.
+    #[test]
+    fn a_formed_unit_is_not_told_its_parents_autotax_loses_the_month() {
+        let findings = two_month_long(check_months(
+            vec![region(vec![with_flag(unit("900"), "taxing"), unit("901")])],
+            "unit 900\nFORM 1\nSTUDY COMBAT\nEND\nTAX\nunit 901\nMOVE N\nSTUDY COMBAT\n",
+        ));
+
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.unit_id == Some("901".to_string())),
+            "the control unit proves the check is on: {findings:?}"
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.unit_id == Some("new-1".to_string())),
+            "the formed unit inherits no autotax, so its STUDY beats nothing: {findings:?}"
+        );
+    }
+
     #[test]
     fn an_earlier_month_long_order_is_marked_naming_the_final_one() {
         let finding = only(two_month_long(check_months(
@@ -19532,6 +19555,43 @@ mod tests {
                 short: 30,
                 claims_pool: true,
             }]
+        );
+    }
+
+    /// `rules/form`: a formed unit inherits its parent's flags, `sharing` among them - so its
+    /// overdraft is the hex's to answer, exactly as its parent's would be.
+    ///
+    /// Swords rather than silver, to mirror the two tests above; the reading being pinned is
+    /// `Ordered::shares` on a projected unit, which is tag-blind.
+    #[test]
+    fn a_formed_unit_that_inherits_sharing_defers_its_shortfall_to_the_pool() {
+        let orders = "unit 5\nFORM 1\nGIVE 0 30 swords\nEND\n";
+        let parsed = report(vec![region(vec![
+            sharing(unit("5")),
+            sharing(with_item(unit("7"), 20, "swords", "SWOR")),
+            an_ally("9"),
+        ])]);
+        // `verdicts` reads a hex with no formed units at all, which is the whole subject here.
+        let ordered = OrderedUnits::read(orders);
+        let formed = formed_units(&parsed, orders);
+        let hex = Hex::read(&parsed.regions[0], &ordered, &formed);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+        let sharing = Sharing::read(&hex);
+        let found = judge_shortfalls(&hex, &ledger, &sharing, Some(&rules));
+
+        // `claims_pool` is what discriminates: the hex shares either way, so an overdrawn
+        // *non*-sharer would be a claim against the purse (`claims_pool: true`), while a sharer's
+        // own overdraft is already inside the purse's sum and claims nothing.
+        assert_eq!(
+            found,
+            vec![Verdict::DeferredToPool {
+                unit_id: "new-1".to_string(),
+                tag: "SWOR".to_string(),
+                short: 30,
+                claims_pool: false,
+            }],
+            "the formed unit inherited sharing, so the hex answers for it and it claims nothing"
         );
     }
 

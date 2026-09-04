@@ -595,14 +595,41 @@ fn aboard_label(
     Some(format!("{} [{}]", structure.name, structure.structure_id))
 }
 
+/// The flags a `FORM`ed unit inherits from the unit that formed it.
+///
+/// `rules/form`: the new unit inherits its parent's flags "with the exception of the guard and
+/// autotax flags". Both spellings of each are dropped, matched case-insensitively the way every
+/// other flag reader in this crate matches. `under strength` goes too: it is a state the engine
+/// prints about a unit rather than a flag a player sets, and a unit created this month has no such
+/// history.
+pub(crate) fn inherited_flags(parent_flags: &[String]) -> Vec<String> {
+    parent_flags
+        .iter()
+        .filter(|flag| {
+            !crate::report::unit::GUARD_FLAGS
+                .iter()
+                .chain(crate::orders::silver::TAXING_FLAGS.iter())
+                .chain(std::iter::once(&"under strength"))
+                .any(|excluded| excluded.eq_ignore_ascii_case(flag))
+        })
+        .cloned()
+        .collect()
+}
+
 /// The unit a `FORM n` creates, as it stands at the start of the turn.
 ///
-/// No items, no skills, no men: everything it comes to hold arrives through this month's orders,
+/// No items, no skills, no men - flags are the one thing it does carry over, because `rules/form`
+/// says the new unit inherits its parent's, less the guard and autotax pair. Everything else it
+/// comes to hold arrives through this month's orders,
 /// exactly as it does for a unit the report shows. That is the whole of what makes it an ordinary
 /// unit to the checks, and it is why `semantics` builds it with this function rather than with one
 /// of its own - two readings of which units a document forms, and of what they are called, is how
 /// the table's rows and the column's figures come to disagree about one turn.
-pub(crate) fn formed_unit(parent: &ReportUnit, alias: &str) -> ReportUnit {
+pub(crate) fn formed_unit(
+    parent: &ReportUnit,
+    alias: &str,
+    reported_flags: &[String],
+) -> ReportUnit {
     ReportUnit {
         unit_id: format!("new-{alias}"),
         name: format!("Unit (new {alias})"),
@@ -611,7 +638,7 @@ pub(crate) fn formed_unit(parent: &ReportUnit, alias: &str) -> ReportUnit {
         faction_name: parent.faction_name.clone(),
         own: true,
         on_guard: false,
-        flags: Vec::new(),
+        flags: inherited_flags(reported_flags),
         items: Vec::new(),
         skills: Vec::new(),
         // A newly formed unit has cast nothing and been set to cast nothing.
@@ -637,6 +664,14 @@ struct WorkingUnit {
     /// Where this unit stood before any of its boarding orders ran: the report's answer, or for a
     /// formed unit the structure its parent stood in when the FORM was read.
     reported: Option<String>,
+    /// The unit's flags as the report showed them at the start of the turn - what a `FORM` in this
+    /// unit's block inherits.
+    ///
+    /// Kept rather than read from `unit.flags`, because the walk mutates those as it reads
+    /// `GUARD`/`AVOID`/`BEHIND`, and `rules/sequenceofevents` processes every `FORM` before any of
+    /// those orders. A formed unit's own entry holds the set it inherited, so a nested `FORM`
+    /// inherits the same thing whatever its block wrote above it.
+    reported_flags: Vec<String>,
     /// The unit's ENTER and LEAVE orders so far, in the order they were written.
     ///
     /// Kept rather than applied as they are read, because what they mean together is
@@ -1002,6 +1037,7 @@ impl Working {
                 formed: false,
                 move_steps: None,
                 reported: unit.structure_id.clone(),
+                reported_flags: unit.flags.clone(),
                 boardings: Vec::new(),
                 given: Vec::new(),
                 uncounted: Vec::new(),
@@ -1277,6 +1313,10 @@ impl Working {
             return;
         };
 
+        // The parent's start-of-turn flags, cloned out before the row is borrowed: what a `FORM`
+        // in this block inherits (`rules/form`), read from the report rather than the walked copy
+        // because `rules/sequenceofevents` runs every FORM before this month's flag orders.
+        let parent_flags = self.units[parent].reported_flags.clone();
         let parent = &self.units[parent].unit;
         let key = (parent.region_id.clone(), alias.to_string());
         if self.by_alias.contains_key(&key) {
@@ -1286,9 +1326,10 @@ impl Working {
             return;
         }
 
-        let unit = formed_unit(parent, alias);
+        let unit = formed_unit(parent, alias, &parent_flags);
 
         let reported = unit.structure_id.clone();
+        let reported_flags = unit.flags.clone();
         let index = self.units.len();
         self.by_alias.insert(key, index);
         self.units.push(WorkingUnit {
@@ -1297,6 +1338,7 @@ impl Working {
             formed: true,
             move_steps: None,
             reported,
+            reported_flags,
             boardings: Vec::new(),
             given: Vec::new(),
             uncounted: Vec::new(),
@@ -3748,6 +3790,123 @@ mod tests {
     }
 
     #[test]
+    fn inherited_flags_drops_guard_and_autotax_and_keeps_the_rest() {
+        let parent: Vec<String> = [
+            "behind",
+            "avoiding",
+            "revealing faction",
+            "sharing",
+            "on guard",
+            "guarding",
+            "taxing",
+            "autotax",
+            "under strength",
+            "holding",
+            "no aid",
+            "consuming unit's food",
+            "riding battle spoils",
+        ]
+        .iter()
+        .map(|flag| flag.to_string())
+        .collect();
+
+        assert_eq!(
+            inherited_flags(&parent),
+            vec![
+                "behind",
+                "avoiding",
+                "revealing faction",
+                "sharing",
+                "holding",
+                "no aid",
+                "consuming unit's food",
+                "riding battle spoils",
+            ],
+            "rules/form: everything but the guard and autotax flags, in the report's order"
+        );
+
+        let shouted: Vec<String> = ["ON GUARD", "Autotax"]
+            .iter()
+            .map(|flag| flag.to_string())
+            .collect();
+        assert!(
+            inherited_flags(&shouted).is_empty(),
+            "the exclusion matches however the flag is cased"
+        );
+    }
+
+    /// A report whose forming unit carries an inheritable flag pair and an excluded one each.
+    fn report_with_a_flagged_former() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Warden (900), Foo (1), behind, sharing, on guard, taxing, 2 leaders [LEAD], 100 silver [SILV]. Weight: 20. Capacity: 0/0/30/0.",
+            "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
+    #[test]
+    fn a_formed_unit_inherits_its_parents_flags_but_not_guard_or_autotax() {
+        // The leader is transferred so the formed unit survives dissolution (`rules/form`: a unit
+        // that gains nobody is removed), which is the only reason this block has a GIVE at all.
+        let response = preview_over(
+            &report_with_a_flagged_former(),
+            "unit 900\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n",
+        );
+
+        let formed = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.status == UnitPreviewStatus::Formed)
+            .expect("a formed unit");
+        assert_eq!(
+            formed.unit.flags,
+            vec!["behind", "sharing"],
+            "rules/form: inherited, less the guard and autotax flags"
+        );
+        assert!(!formed.unit.on_guard, "guard is never inherited");
+    }
+
+    /// `rules/sequenceofevents` processes "FORM orders" before "ADDRESS, ARMOR, AUTOTAX, AVOID,
+    /// BEHIND, ..." - so what a `FORM` inherits is the report's flags, never this month's own flag
+    /// orders, whichever side of the `FORM` they are written on.
+    #[test]
+    fn a_form_inherits_the_flags_the_report_showed_not_this_months_flag_orders() {
+        let response = preview_over(
+            &report_with_a_flagged_former(),
+            "unit 900\nBEHIND 0\nAVOID 1\nFORM 1\nBEHIND 1\nFORM 2\nEND\nEND\nGIVE NEW 1 1 LEAD\nGIVE NEW 2 1 LEAD\n",
+        );
+
+        let flags = |id: &str| {
+            response.regions[0]
+                .units
+                .iter()
+                .find(|unit| unit.unit.unit_id == id)
+                .unwrap_or_else(|| panic!("{id} is previewed"))
+                .unit
+                .flags
+                .clone()
+        };
+        assert_eq!(
+            flags("new-1"),
+            vec!["behind", "sharing"],
+            "the parent's BEHIND 0 and AVOID 1 are a later phase than the FORM"
+        );
+        assert_eq!(
+            flags("new-2"),
+            vec!["behind", "sharing"],
+            "and so is the outer formed unit's own BEHIND 1"
+        );
+    }
+
+    #[test]
     fn form_creates_a_provisional_unit_that_its_block_names() {
         let response =
             preview("unit 900\nFORM 1\nNAME UNIT \"Recruits\"\nBEHIND 1\nEND\nGIVE NEW 1 1 LEAD\n");
@@ -3760,6 +3919,9 @@ mod tests {
         assert_eq!(formed.unit.unit_id, "new-1");
         assert_eq!(formed.unit.name, "Recruits");
         assert!(formed.unit.own);
+        // Since `ah-8cjs` the parent's own `behind` is inherited too, so this no longer
+        // discriminates the block's `BEHIND 1`; `a_formed_unit_inherits_its_parents_flags_but_not_
+        // guard_or_autotax` is what pins the inheritance now.
         assert!(formed.unit.flags.iter().any(|flag| flag == "behind"));
         assert_eq!(
             formed.unit.men, 1,
