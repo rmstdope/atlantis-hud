@@ -296,9 +296,9 @@ pub struct FormedBlock {
 ///
 /// Mirrors [`super::effects::Working`]'s own walk exactly, so the table's rows and the Silver
 /// column's figures never disagree about which units a document forms: a `FORM` inside a `TURN`
-/// block forms nothing, an alias that is not a number of at least one forms nothing, an alias already taken in the
-/// same hex is swallowed, and a nested `FORM`'s orders belong to the innermost forming unit rather
-/// than the outer one. `regions` is where the report shows each existing unit - only a unit's
+/// block forms nothing, an alias that is not a number of at least one forms nothing, an alias
+/// already taken in the same hex is swallowed, and a nested `FORM`'s orders belong to the
+/// innermost forming unit rather than the outer one. `regions` is where the report shows each existing unit - only a unit's
 /// `region_id` is read from it, to key an alias to its hex without this module reaching into the
 /// report itself.
 #[must_use]
