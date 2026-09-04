@@ -11,6 +11,7 @@ export type ShortcutId =
   | "help"
   | "gameData"
   | "magicTree"
+  | "studyPlanner"
   | "nextUnit"
   | "prevUnit"
   | "nextDiagnostic"
@@ -55,6 +56,13 @@ export const SHORTCUTS: readonly ShortcutSpec[] = [
     description: "Read what each magic skill needs before it can be studied",
     mac: "F3",
     other: "F3"
+  },
+  {
+    id: "studyPlanner",
+    group: "Navigation",
+    description: "See every mage you know of, your own and your allies'",
+    mac: "F4",
+    other: "F4"
   },
   {
     id: "nextUnit",
@@ -132,6 +140,10 @@ export function matchShortcut(event: KeyChord, isMac: boolean): ShortcutId | nul
     return "magicTree";
   }
 
+  if (event.key === "F4" && noMod && !event.altKey && !event.shiftKey) {
+    return "studyPlanner";
+  }
+
   if (event.key === "F8" && noMod && !event.altKey) {
     return event.shiftKey ? "prevDiagnostic" : "nextDiagnostic";
   }
@@ -154,7 +166,13 @@ export function firesInContext(
   id: ShortcutId,
   target: { isTextInput: boolean; isOrdersEditor: boolean }
 ): boolean {
-  if (id === "palette" || id === "help" || id === "gameData" || id === "magicTree") {
+  if (
+    id === "palette" ||
+    id === "help" ||
+    id === "gameData" ||
+    id === "magicTree" ||
+    id === "studyPlanner"
+  ) {
     return true;
   }
   return !target.isTextInput || target.isOrdersEditor;
