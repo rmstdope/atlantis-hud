@@ -125,6 +125,12 @@ export type WorkspaceState = {
   selectedRegionId: string | null;
   selectedUnitId: string | null;
   /**
+   * The hex the selected unit stands in. Non-null exactly when `selectedUnitId` is: a unit number
+   * is not unique across a report - two hexes may each write `FORM 1` and both formed units are
+   * called `new-1` (`rules/form`) - so the cursor is the pair (`ah-bubf`).
+   */
+  selectedUnitRegionId: string | null;
+  /**
    * Counts user-initiated selection changes, so the map can replay its lock-on pulse exactly once
    * per change. A restored selection (app load) does not bump it - see `restoreSelection` - which
    * is what keeps the pulse from firing on every launch.
@@ -236,7 +242,7 @@ export type WorkspaceState = {
    * same way `selectRegion` does with no default, since a restored hex carries no unit of its own.
    */
   restoreSelection: (regionId: string | null) => void;
-  selectUnit: (unitId: string | null) => void;
+  selectUnit: (unitId: string | null, regionId: string | null) => void;
   setLevel: (level: number) => void;
   /** Records that the map committed a viewport for the open game on this level. */
   commitMapView: (viewport: Viewport, level: number) => void;
@@ -381,6 +387,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       game: null,
       selectedRegionId: null,
       selectedUnitId: null,
+      selectedUnitRegionId: null,
       selectionEpoch: 0,
       pickEpoch: 0,
       level: DEFAULT_LEVEL,
@@ -404,6 +411,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           level: saved?.level ?? DEFAULT_LEVEL,
           selectedRegionId: saved?.regionId ?? null,
           selectedUnitId: null,
+          selectedUnitRegionId: null,
           selectionEpoch: 0,
           mapView: mapViewOpened(game.gameId, saved)
         }),
@@ -413,6 +421,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           game: null,
           selectedRegionId: null,
           selectedUnitId: null,
+          selectedUnitRegionId: null,
           selectionEpoch: 0,
           mapView: NO_MAP_VIEW
         }),
@@ -459,6 +468,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           return {
             selectedRegionId: regionId,
             selectedUnitId: defaultUnitId,
+            selectedUnitRegionId: defaultUnitId === null ? null : regionId,
             selectionEpoch: state.selectionEpoch + 1,
             pickEpoch: options?.picked ? state.pickEpoch + 1 : state.pickEpoch,
             mapView: mapViewSelectionChanged(state.mapView, regionId)
@@ -469,10 +479,15 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set((state) => ({
           selectedRegionId: regionId,
           selectedUnitId: null,
+          selectedUnitRegionId: null,
           mapView: mapViewSelectionChanged(state.mapView, regionId)
         })),
 
-      selectUnit: (unitId) => set({ selectedUnitId: unitId }),
+      selectUnit: (unitId, regionId) =>
+        set({
+          selectedUnitId: unitId,
+          selectedUnitRegionId: unitId === null ? null : regionId
+        }),
 
       // Levels are separate maps, so a selection from one does not carry to another.
       setLevel: (level) =>
@@ -483,6 +498,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 level,
                 selectedRegionId: null,
                 selectedUnitId: null,
+                selectedUnitRegionId: null,
                 selectionEpoch: 0,
                 mapView: mapViewSelectionChanged(state.mapView, null)
               }
@@ -611,6 +627,7 @@ export function resetWorkspaceStore() {
     game: null,
     selectedRegionId: null,
     selectedUnitId: null,
+    selectedUnitRegionId: null,
     selectionEpoch: 0,
     pickEpoch: 0,
     level: DEFAULT_LEVEL,

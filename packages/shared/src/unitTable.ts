@@ -379,6 +379,19 @@ export function unitRowKey(regionId: string, unitId: string): string {
 }
 
 /**
+ * The DOM selector for one row of the units table: the number and the hex, because two hexes may
+ * each hold a `new-1` and `data-testid` alone matches both (`ah-9o0c.2`, `ah-bubf`).
+ *
+ * The values are quoted CSS strings rather than `CSS.escape`d: `CSS.escape` produces an
+ * *identifier* escape, so a region id such as `1:6,52` would come back as `1\:6\,52` and match
+ * nothing inside quotes. Only `\` and `"` need escaping in a CSS string, and no id contains either.
+ */
+export function unitRowSelector(regionId: string, unitId: string): string {
+  const quote = (value: string): string => value.replace(/[\\"]/g, "\\$&");
+  return `[data-testid="unit-row-${quote(unitId)}"][data-region-id="${quote(regionId)}"]`;
+}
+
+/**
  * A silver forecast is found by hex and unit, because `new-1` is unique to a hex, not to a turn:
  * two hexes can each hold a unit a `FORM 1` created this month (`ah-jw85`), and a lookup keyed on
  * the unit id alone would hand one hex's figure to the other's row.

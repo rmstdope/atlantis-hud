@@ -69,10 +69,41 @@ describe("renaming the open game", () => {
 describe("workspace selection", () => {
   beforeEach(resetWorkspaceStore);
 
+  it("remembers which hex the selected unit stands in", () => {
+    // A unit number is not unique across a report: two hexes may each write FORM 1 and both formed
+    // units are called `new-1` (`rules/form`), so the cursor is the pair (`ah-bubf`).
+    store().selectRegion("1:8,53");
+    store().selectUnit("new-1", "1:8,53");
+    expect(store().selectedUnitRegionId).toBe("1:8,53");
+
+    store().selectUnit(null, null);
+    expect(store().selectedUnitId).toBeNull();
+    expect(store().selectedUnitRegionId).toBeNull();
+
+    store().selectRegion("1:6,52", "18642");
+    expect(store().selectedUnitRegionId).toBe("1:6,52");
+
+    store().selectRegion("1:7,51");
+    expect(store().selectedUnitId).toBeNull();
+    expect(store().selectedUnitRegionId).toBeNull();
+
+    store().selectRegion("1:6,52", "18642");
+    store().setLevel(2);
+    expect(store().selectedUnitRegionId).toBeNull();
+
+    store().selectRegion("1:6,52", "18642");
+    store().restoreSelection("1:6,52");
+    expect(store().selectedUnitRegionId).toBeNull();
+
+    store().selectRegion("1:6,52", "18642");
+    store().closeGame();
+    expect(store().selectedUnitRegionId).toBeNull();
+  });
+
   it("abandons the selected unit when the hex changes", () => {
     // Keeping it would leave the detail panel describing a unit no longer in the list.
     store().selectRegion("1:7,53");
-    store().selectUnit("18642");
+    store().selectUnit("18642", "1:7,53");
     expect(store().selectedUnitId).toBe("18642");
 
     store().selectRegion("1:26,52");
@@ -100,7 +131,7 @@ describe("workspace selection", () => {
 
   it("keeps the selected unit when the same hex is chosen again", () => {
     store().selectRegion("1:7,53");
-    store().selectUnit("18642");
+    store().selectUnit("18642", "1:7,53");
 
     store().selectRegion("1:7,53");
 
@@ -109,7 +140,7 @@ describe("workspace selection", () => {
 
   it("clears both selections when the level changes", () => {
     store().selectRegion("1:7,53");
-    store().selectUnit("18642");
+    store().selectUnit("18642", "1:7,53");
 
     store().setLevel(2);
 
@@ -126,7 +157,7 @@ describe("workspace selection", () => {
 
   it("clears selections when a game is opened", () => {
     store().selectRegion("1:7,53");
-    store().selectUnit("18642");
+    store().selectUnit("18642", "1:7,53");
 
     store().openGame({
       gameId: "aug-2026",

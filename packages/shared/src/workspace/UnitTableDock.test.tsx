@@ -13,7 +13,7 @@ import type {
 import { aReportRegion, aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { DEFAULT_COLUMN_SHARES, silverKey, UNIT_COLUMNS, unitRowKey, type UnitColumn } from "../unitTable";
-import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
+import { renderWithStoreState, restoreStoresForTest, setStoreStateForTest } from "../testing/storeState";
 import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
 import { useArmiesStore } from "../armiesStore";
 import { UnitTableDock } from "./UnitTableDock";
@@ -1197,6 +1197,37 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
     );
   });
 
+  it("marks only the new unit in the cursor's own hex", () => {
+    // Two hexes may each write `FORM 1`, and both formed units are called `new-1` (`rules/form`),
+    // so the cursor is the pair - one row is the cursor row, not two (`ah-bubf`).
+    setStoreStateForTest(useWorkspaceStore, {
+      selectedUnitId: "new-1",
+      selectedUnitRegionId: "1:8,53"
+    });
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={withUnits()}
+        ownUnits={[
+          unit({ unitId: "new-1", regionId: "1:6,52" }),
+          unit({ unitId: "new-1", regionId: "1:8,53" })
+        ]}
+        currentTurn={71}
+        client={{} as never}
+        game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+        initialSource={{ kind: "own" }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [] }
+    );
+
+    // `rowFor` keys on `data-testid` alone and would match both rows, so match on the pair.
+    const rows = markup.match(/<tr[^>]*data-testid="unit-row-new-1"[^>]*>/g) ?? [];
+    expect(rows).toHaveLength(2);
+    const selected = rows.filter((row) => row.includes('data-selected="true"'));
+    expect(selected).toHaveLength(1);
+    expect(selected[0]).toContain('data-region-id="1:8,53"');
+  });
+
   it("All my units spans hexes and says so", () => {
     const markup = renderWithStoreState(
       <UnitTableDock
@@ -1655,7 +1686,7 @@ describe("picking several rows (ah-1mpx.4)", () => {
         }}
       />,
       useWorkspaceStore,
-      { selectedUnitId: "1" }
+      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" }
     );
 
     // Round 3's numbers exactly: the cursor keeps 25%, a merely picked row takes 15%.
@@ -1675,7 +1706,7 @@ describe("picking several rows (ah-1mpx.4)", () => {
         }}
       />,
       useWorkspaceStore,
-      { selectedUnitId: "1" }
+      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" }
     );
 
     // In a grid `aria-selected` is the selection and focus is the cursor, so both picked rows
@@ -1691,7 +1722,7 @@ describe("picking several rows (ah-1mpx.4)", () => {
     const one = renderWithStoreState(
       <UnitTableDock hex={twoRows()} preview={null} initialPick={{ ids: new Set([unitRowKey("1:6,52", "1")]), anchor: unitRowKey("1:6,52", "1") }} />,
       useWorkspaceStore,
-      { selectedUnitId: "1" }
+      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" }
     );
     const two = renderWithStoreState(
       <UnitTableDock
@@ -1703,7 +1734,7 @@ describe("picking several rows (ah-1mpx.4)", () => {
         }}
       />,
       useWorkspaceStore,
-      { selectedUnitId: "1" }
+      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" }
     );
 
     expect(one).not.toContain('data-testid="unit-bulk-line"');

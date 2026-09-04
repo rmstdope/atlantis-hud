@@ -43,6 +43,7 @@ import { isOrdersFile, routeOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
 import { rulesetById } from "../rulesets";
 import { silverKey } from "../unitTable";
+import { unitAtCursor, unitCursor } from "./unitCursor";
 import type { MapShape } from "@atlantis/core-client";
 import { mapShapeJson, mapShapeOfGame } from "../mapShape";
 import { ordersExportText } from "./ordersExport";
@@ -814,6 +815,15 @@ export function AppShell({
 
   const selectedRegionId = useWorkspaceStore((state) => state.selectedRegionId);
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
+  const selectedUnitRegionId = useWorkspaceStore((state) => state.selectedUnitRegionId);
+  /**
+   * The cursor as a pair. Memoised rather than selected: a zustand selector building a fresh object
+   * re-renders for ever under `useSyncExternalStore` (`ah-bubf`).
+   */
+  const cursor = useMemo(
+    () => unitCursor({ selectedUnitId, selectedUnitRegionId }),
+    [selectedUnitId, selectedUnitRegionId]
+  );
   const selectionEpoch = useWorkspaceStore((state) => state.selectionEpoch);
   const pickEpoch = useWorkspaceStore((state) => state.pickEpoch);
   const selectRegion = useWorkspaceStore((state) => state.selectRegion);
@@ -1032,13 +1042,20 @@ export function AppShell({
    * just drawn the row that was clicked (ah-0fa). The preview's `unit` is a whole `ReportUnit`, so
    * everything downstream is unchanged - and the report still wins, so a unit that is genuinely
    * standing here resolves to the reported one however the preview describes it.
+   *
+   * The hex guards it, because a unit number is not unique across a report: a hex-spanning list
+   * does not travel, so the cursor can be on another hex's `new-1` and drawing this hex's would be
+   * the wrong unit (`ah-bubf`).
    */
   const unit = useMemo(
     () =>
-      hex?.region?.units.find((candidate) => candidate.unitId === selectedUnitId) ??
-      hexPreview?.units.find((previewed) => previewed.unit.unitId === selectedUnitId)?.unit ??
-      null,
-    [hex, hexPreview, selectedUnitId]
+      unitAtCursor(
+        cursor,
+        hex?.regionId ?? null,
+        hex?.region?.units ?? [],
+        hexPreview?.units.map((previewed) => previewed.unit) ?? []
+      ),
+    [cursor, hex, hexPreview]
   );
 
   /**
@@ -1120,7 +1137,7 @@ export function AppShell({
       // And the unit itself, because `selectRegion` leaves the selection alone when the hex is
       // already the one on screen - which is exactly the case where a second message names a
       // different unit standing beside the first.
-      selectUnit(unitId);
+      selectUnit(unitId, regionId);
       // Whichever popover asked for the jump, rather than always the turn report: the region pane
       // is not a popover and closes nothing, and the palette closes itself.
       if (closing) {
@@ -2404,7 +2421,7 @@ export function AppShell({
         if (useWorkspaceStore.getState().selectedUnitId === null) {
           const firstUnit = firstUnitIn(restored.parsed, selected);
           if (firstUnit !== null) {
-            selectUnit(firstUnit);
+            selectUnit(firstUnit, selected);
           }
         }
       })
