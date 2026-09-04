@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-rx0r — Inline in the Products line</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  .panes { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .pane { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:14px 15px 16px; box-shadow:0 10px 30px rgba(0,0,0,.45); font-family:'Helvetica Neue',Arial,sans-serif; }
+  .pane h3 { font:13.5px/1.4 'Helvetica Neue',Arial,sans-serif; color:var(--ink); margin-bottom:2px; }
+  .pane .sub { color:var(--ink-dim); font-size:11.5px; margin-bottom:12px; }
+  .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; margin:14px 0 5px; border-top:1px solid var(--edge-soft); padding-top:10px; }
+  .sect:first-of-type { border-top:none; padding-top:0; }
+  .prose { color:var(--ink-soft); font-size:12.5px; line-height:1.65; }
+  .dim { color:var(--ink-dim); }
+  .zero { color:var(--ink-dim); font-style:italic; }
+  .zero b { color:var(--ink-soft); font-style:normal; font-weight:normal; }
+  .unk { color:#6f7c8d; font-style:italic; }
+  .dl { display:grid; grid-template-columns:auto 1fr; gap:2px 14px; font-size:12px; color:var(--ink-soft); }
+  .dl dt { color:var(--ink-dim); } .dl dd { text-align:right; font-variant-numeric:tabular-nums; }
+  .note { color:var(--ink-dim); font-size:11.5px; font-style:italic; margin-top:9px; line-height:1.5; }
+  .tag { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; color:var(--ink-dim); }
+  .flag { display:inline-block; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--brass); border:1px solid var(--edge); border-radius:3px; padding:1px 6px; margin-left:8px; }
+  .bad { border-color:#5a3a3a; color:#d99; }
+  .good { border-color:#3a5a48; color:var(--ok); }
+
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-rx0r</span> &mdash; Inline in the Products line</h1>
+  <p>Nine resources in this game are <strong>hidden until somebody with the skill looks</strong>.
+  <code>rules/region_resources</code> lists what each terrain may hold; <code>data/skills</code>
+  says, for nine of them, that &ldquo;a unit with this skill is able to determine if a region
+  contains&hellip;&rdquo; &mdash; <code>MINI&nbsp;3</code> mithril, <code>MINI&nbsp;5</code>
+  admantium, <code>LUMB&nbsp;3</code> ironwood, <code>LUMB&nbsp;5</code> yew,
+  <code>QUAR&nbsp;3</code> rootstone, <code>HUNT&nbsp;3</code> floater hides,
+  <code>FISH&nbsp;3</code> giant turtles, <code>HERB&nbsp;3</code> mushrooms,
+  <code>HORS&nbsp;5</code> winged horses.</p>
+  <p>So an empty row means two opposite things today. Every hex below is a <strong>real hex from a
+  committed turn</strong>, not an invention. <b>Inline in the Products line</b> is what this page proposes; the other
+  file proposes the alternative.</p>
+  <blockquote>&ldquo;after scouting a region for advances ressources, would be nice to show that
+  there are none. So if a unit with hunt3 entered a swamp, it would be great to show &lsquo;0
+  floa&rsquo; if there were no floater hides&rdquo;</blockquote>
+</header>
+<section><h2 class="rule"><em>The four cases</em> what the hex pane shows</h2>
+<div class="panes">
+<div class="pane">
+  <h3>swamp (36,46) in Pangmore</h3>
+  <div class="sub">turn 23 &middot; Borg (21) &middot; two <code>hunting [HUNT] 3</code> drones stand here</div>
+  <div class="sect">Products</div>
+  <p class="prose">12 <span>livestock</span> &middot; 16 <span>wood</span> &middot; 18 <span>herbs</span> &middot; <span class="zero"><b>0</b> floater hide</span> &middot; <span class="unk">mushroom?</span></p>
+  
+  <p class="note">The bead’s case, exactly. Two HUNT&nbsp;3 units looked; the report named no floater hides; the swamp has none. Mushrooms need HERB&nbsp;3 and the best here is HERB&nbsp;1.</p>
+</div>
+<div class="pane">
+  <h3>swamp (35,47) in Pangmore</h3>
+  <div class="sub">turn 23 &middot; one <code>hunting [HUNT] 3</code> drone stands here</div>
+  <div class="sect">Products</div>
+  <p class="prose">14 <span>grain</span> &middot; 12 <span>wood</span> &middot; 8 <span>floater hides</span> &middot; 14 <span>herbs</span> &middot; <span class="unk">mushroom?</span></p>
+  
+  <p class="note">The neighbouring swamp, one hex away, does have them. Nothing new is added to a resource the report already names.</p>
+</div>
+<div class="pane">
+  <h3>swamp (36,48) in Pangmore</h3>
+  <div class="sub">turn 23 &middot; one own drone, no revealing skill</div>
+  <div class="sect">Products</div>
+  <p class="prose">17 <span>grain</span> &middot; 17 <span>wood</span> &middot; 15 <span>herbs</span> &middot; <span class="unk">floater hide?</span> &middot; <span class="unk">mushroom?</span></p>
+  
+  <p class="note">Nobody looked. Today this hex and (36,46) read identically; under this change they must not.</p>
+</div>
+<div class="pane">
+  <h3>mountain (38,4) in Femont</h3>
+  <div class="sub">turn 41 &middot; The Disinherited Knights (42) &middot; <code>MINI 5</code> and <code>LUMB 5</code> stand here</div>
+  <div class="sect">Products</div>
+  <p class="prose">38 <span>livestock</span> &middot; 25 <span>iron</span> &middot; 10 <span>stone</span> &middot; <span class="zero"><b>0</b> mithril</span> &middot; <span class="zero"><b>0</b> admantium</span> &middot; <span class="unk">rootstone?</span></p>
+  
+  <p class="note">MINI&nbsp;5 covers mithril and admantium; rootstone needs QUAR&nbsp;3 and nobody here has it.</p>
+</div>
+</div>
+</section>
+<section><h2 class="rule"><em>Question 2</em> does the terrain filter the list?</h2>
+<p>Mountain (38,4) again. The <code>LUMB 5</code> woodsman standing there can tell you whether the
+hex holds ironwood and yew &mdash; and a mountain <em>never</em> holds either
+(<code>rules/region_resources</code>). Filtering by terrain costs one extra scrape of that table;
+leaving it out costs two dead rows here, and more on a hex where several skilled units are parked.</p>
+<div class="panes">
+<div class="pane">
+  <h3>Filtered by terrain</h3>
+  <div class="sub">only what a mountain may hold</div>
+  <div class="sect">Products</div>
+  <p class="prose">38 <span>livestock</span> &middot; 25 <span>iron</span> &middot; 10 <span>stone</span> &middot; <span class="zero"><b>0</b> mithril</span> &middot; <span class="zero"><b>0</b> admantium</span> &middot; <span class="unk">rootstone?</span></p>
+  
+  <p class="note">Two facts and one honest gap.</p>
+</div>
+<div class="pane">
+  <h3>Not filtered</h3>
+  <div class="sub">every resource a present skill reveals</div>
+  <div class="sect">Products</div>
+  <p class="prose">38 <span>livestock</span> &middot; 25 <span>iron</span> &middot; 10 <span>stone</span> &middot; <span class="zero"><b>0</b> mithril</span> &middot; <span class="zero"><b>0</b> admantium</span> &middot; <span class="zero"><b>0</b> ironwood</span> &middot; <span class="zero"><b>0</b> yew</span> &middot; <span class="unk">rootstone?</span></p>
+  
+  <p class="note">&ldquo;0 ironwood&rdquo; on a mountain is true and useless.</p>
+</div>
+</div>
+</section>
+<section><h2 class="rule"><em>Question 3</em> is &ldquo;nobody looked&rdquo; worth a line?</h2>
+<p>Swamp (36,46) again. Mushrooms may be there; the best herbalist standing in it is
+<code>HERB 1</code>. Saying so tells the player what to send; saying nothing keeps the pane short.</p>
+<div class="panes">
+<div class="pane">
+  <h3>With the gap named</h3>
+  <div class="sub">&ldquo;mushroom?&rdquo; in the line</div>
+  <div class="sect">Products</div>
+  <p class="prose">12 <span>livestock</span> &middot; 16 <span>wood</span> &middot; 18 <span>herbs</span> &middot; <span class="zero"><b>0</b> floater hide</span> &middot; <span class="unk">mushroom?</span></p>
+  
+  <p class="note">One more token per unchecked resource.</p>
+</div>
+<div class="pane">
+  <h3>Absences only</h3>
+  <div class="sub">silence where nobody looked</div>
+  <div class="sect">Products</div>
+  <p class="prose">12 <span>livestock</span> &middot; 16 <span>wood</span> &middot; 18 <span>herbs</span> &middot; <span class="zero"><b>0</b> floater hide</span></p>
+  
+  <p class="note">Shorter, and identical to the pane on a hex nobody skilled ever entered.</p>
+</div>
+</div>
+</section>
+</body>
+</html>
