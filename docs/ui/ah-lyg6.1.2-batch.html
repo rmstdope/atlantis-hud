@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A mage sheet in a pile of files</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  b { color:var(--ink); font-weight:600; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:20px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; overflow:auto; padding:16px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .hdr { display:flex; align-items:center; gap:9px; padding:9px 13px; background:var(--raised);
+         border:1px solid var(--edge); border-radius:7px 7px 0 0; font:13px/1.4 'Helvetica Neue',Arial,sans-serif; flex-wrap:wrap; }
+  .hdr .fac { color:var(--ink); font-weight:600; }
+  .hdr .turn { color:var(--ink-dim); font-size:12px; }
+  .hdr .sp { margin-left:auto; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px; padding:3px 10px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.prim { border-color:var(--brass); color:var(--brass); }
+  .prompt { border:1px solid var(--edge); border-top:0; background:var(--panel); padding:10px 13px;
+            font:13px/1.6 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); border-radius:0 0 7px 7px; }
+  .prompt p { max-width:70ch; }
+  .prompt .row { display:flex; gap:8px; margin-top:8px; }
+  .status { border:1px solid var(--edge); border-top:0; background:var(--raised); padding:6px 13px;
+            font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); border-radius:0 0 7px 7px; }
+  .status.ok { color:var(--ok); }
+  .status.warn { color:var(--brass-bright); }
+  .status.bad { color:var(--danger); }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+  .col { display:grid; gap:22px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:900px) { .two { grid-template-columns:1fr; } }
+  .dlg { width:470px; background:var(--panel); border:1px solid var(--edge); border-radius:8px; box-shadow:0 12px 40px #000a; }
+  .dlg .top { padding:9px 14px; border-bottom:1px solid var(--edge); background:var(--raised);
+              font:600 14px/1.3 'Helvetica Neue',Arial,sans-serif; color:var(--ink); }
+  .dlg ul { list-style:none; padding:10px 14px; font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); }
+  .dlg .foot { display:flex; gap:8px; justify-content:flex-end; padding:10px 14px; border-top:1px solid var(--edge-soft); }
+</style></head><body>
+<header>
+  <h1>A mage sheet in a pile of files — <span>what a batch import does with it</span></h1>
+  <p>Dropping twenty files at once already takes a road of its own: the batch decides for itself and never asks,
+  and tells you what it did in one summary dialog at the end. <b>A mage sheet dropped in that pile has to be
+  recognised whatever we do</b> — left alone it parses as a report and gets merged into your map as an ally's
+  turn, which would put phantom hexes on it. The question is only what the batch does once it has recognised one.</p>
+</header>
+<main>
+
+<h3 class="sec">Variant 1 — taken in, and named in the summary</h3>
+<div class="card">
+  <h2><em>VARIANT 1</em>The batch handles it</h2>
+  <div class="concept">A sheet in the pile is taken in like any other step, and the summary says so. The
+  refusals still apply — an own-faction or older sheet becomes a skipped line instead.</div>
+  <div class="stage">
+    <div class="dlg">
+      <div class="top">4 files: 1 turn imported, 1 report merged, 1 mage sheet taken in, 1 skipped</div>
+      <ul>
+        <li>knights-t23.rep — imported as turn 23</li>
+        <li>borg-t23.rep — merged into your map, turn 23</li>
+        <li>mages-Borg-turn-23.txt — mage sheet from Borg (21), turn 23: 6 mages taken in</li>
+        <li>mages-Borg-turn-21.txt — skipped: you already hold Borg (21)'s mages from turn 23, which is newer</li>
+      </ul>
+      <div class="foot"><span class="btn prim">Close</span></div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Dragging the whole email folder onto the window does the obvious thing to everything in it.</li>
+    <li>A sheet is never mistaken for a report, and the summary is the one place that already accounts for every file.</li>
+    <li class="con">Sheets are taken in with no chance to refuse, even if you chose Option A for a single file — a batch never asks, by design.</li>
+  </ul>
+</div>
+
+<h3 class="sec">Variant 2 — recognised, and skipped</h3>
+<div class="card">
+  <h2><em>VARIANT 2</em>One at a time, please</h2>
+  <div class="concept">The batch recognises a mage sheet, does nothing with it, and says why. You open it on its own.</div>
+  <div class="stage">
+    <div class="dlg">
+      <div class="top">4 files: 1 turn imported, 1 report merged, 2 skipped</div>
+      <ul>
+        <li>knights-t23.rep — imported as turn 23</li>
+        <li>borg-t23.rep — merged into your map, turn 23</li>
+        <li>mages-Borg-turn-23.txt — skipped: a mage sheet is taken in on its own, not with a batch of reports</li>
+        <li>mages-Borg-turn-21.txt — skipped: a mage sheet is taken in on its own, not with a batch of reports</li>
+      </ul>
+      <div class="foot"><span class="btn prim">Close</span></div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Whatever you chose for a single sheet, that is the only road a sheet ever takes — one behaviour, not two.</li>
+    <li>Less to build and less to get wrong.</li>
+    <li class="con">A player who drops the folder has to find the sheets again and open each one.</li>
+    <li class="con">Reads as a failure in the summary when nothing was actually wrong with the file.</li>
+  </ul>
+</div>
+</main>
+</body></html>
