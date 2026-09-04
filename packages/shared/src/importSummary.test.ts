@@ -271,3 +271,64 @@ describe("the file-by-file account of a map export", () => {
     ]);
   });
 });
+
+describe("a mage sheet in the summary", () => {
+  const sheet = (over: Partial<Extract<BatchStep, { kind: "mageSheet" }>> = {}) =>
+    ({
+      kind: "mageSheet" as const,
+      index: 0,
+      fileName: "mages-Borg-turn-23.txt",
+      turnNumber: 23,
+      factionId: "21",
+      factionLabel: "Borg (21)",
+      mageCount: 4,
+      discarded: 0,
+      ...over
+    });
+
+  it("names each sheet, and what it discarded", () => {
+    const copy = importSummaryCopy({
+      steps: [sheet()],
+      skipped: [],
+      finalTurn: null,
+      viewerFactionLabel: "Borg TNG (95)"
+    });
+
+    expect(copy.lines[0]?.text).toBe(
+      "mages-Borg-turn-23.txt — mage sheet from Borg (21), turn 23: 4 mages taken in"
+    );
+
+    const discarded = importSummaryCopy({
+      steps: [sheet({ discarded: 2 })],
+      skipped: [],
+      finalTurn: null,
+      viewerFactionLabel: "Borg TNG (95)"
+    });
+    expect(discarded.lines[0]?.text).toBe(
+      "mages-Borg-turn-23.txt — mage sheet from Borg (21), turn 23: 4 mages taken in, " +
+        "2 no longer in the sheet discarded"
+    );
+
+    const empty = importSummaryCopy({
+      steps: [sheet({ mageCount: 0 })],
+      skipped: [],
+      finalTurn: null,
+      viewerFactionLabel: "Borg TNG (95)"
+    });
+    expect(empty.lines[0]?.text).toBe(
+      "mages-Borg-turn-23.txt — mage sheet from Borg (21), turn 23: no mages in it"
+    );
+  });
+
+  it("counts the sheets in the headline, and never says nothing was imported", () => {
+    const copy = importSummaryCopy({
+      steps: [sheet()],
+      skipped: [],
+      finalTurn: null,
+      viewerFactionLabel: "Borg TNG (95)"
+    });
+
+    expect(copy.headline).toBe("1 mage sheet taken in.");
+    expect(copy.headline).not.toContain("Nothing was imported.");
+  });
+});

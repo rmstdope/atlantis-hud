@@ -11,6 +11,8 @@ import { clearGames, createGame, importReport } from "./gameSetup";
  * `map-export.spec.ts` exists, and where this spec's download helper comes from.
  */
 const TURN_71 = readReport("g7f95t71");
+/** An ally's report for the same turn: the workspace the sheet is read back into. */
+const ALLY_REPORT = readReport("g8f73t71");
 
 test("writes every mage out as a sheet an ally can read", async ({ page }, testInfo) => {
   await clearGames(page);
@@ -39,4 +41,42 @@ test("writes every mage out as a sheet an ally can read", async ({ page }, testI
   expect(text).toMatch(/Skills:.*\[(?:FORC|PATT|SPIR)\]/u);
   // The sheet is about somebody else's mages, so no line may claim them as the reader's own.
   expect(text.split("\n").some((line) => /^ *\* /u.test(line))).toBe(false);
+});
+
+/**
+ * Reading a sheet back in, in the other faction's workspace (`ah-lyg6.1.2.2`).
+ *
+ * The one thing that proves the marker in `crates/core/src/report/export.rs` and the one in
+ * `packages/shared/src/mageSheetImport.ts` still agree: a marker the shell does not recognise fails
+ * *silently*, the sheet parsing as a report and merging into the map as phantom hexes.
+ */
+test("takes an ally's mage sheet back in", async ({ page }, testInfo) => {
+  await clearGames(page);
+  await createGame(page, "Sheet writer");
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  await page.getByTestId("export-menu").click();
+  const downloading = page.waitForEvent("download");
+  await page.getByTestId("export-mage-sheet").click();
+  const download = await downloading;
+  const path = testInfo.outputPath("round-trip.txt");
+  await download.saveAs(path);
+  const sheet = readFileSync(path, "utf8");
+
+  // Back into the game it came from: your own mages are already in your own report.
+  await importReport(page, "mages-own.txt", sheet);
+  await expect(page.getByTestId("import-status")).toContainText(
+    "your own faction's mage sheet"
+  );
+
+  // And into an ally's workspace, where it is what the sheet was written for.
+  await page.getByTestId("game-indicator").click();
+  await page.getByTestId("new-game").click();
+  await createGame(page, "Sheet reader");
+  await importReport(page, "turn-71-ally.rep", ALLY_REPORT);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  await importReport(page, "mages-Borg-turn-71.txt", sheet);
+  await expect(page.getByTestId("import-status")).toContainText(/\d+ mages from .+, turn 71, taken in/u);
 });

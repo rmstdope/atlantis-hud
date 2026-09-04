@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { aParsedReport, aReportHeaderInfo, aReportRegion } from "@atlantis/core-client";
+import {
+  aParsedReport,
+  aReportHeaderInfo,
+  aReportRegion,
+  aReportUnit,
+  type ReportUnit
+} from "@atlantis/core-client";
 import { chooseViewerFaction, planReportBatch, type BatchCandidate } from "./reportBatch";
 import {
   REPORT_HAS_NOTHING_IN_IT,
@@ -13,21 +19,35 @@ import {
   MAP_EXPORT_NEEDS_A_MAP,
   type ReportImportSource
 } from "./mapExportImport";
+import {
+  MAGE_SHEET_IS_YOUR_OWN,
+  MAGE_SHEET_MARKER,
+  MAGE_SHEET_NAMES_NO_FACTION,
+  MAGE_SHEET_NAMES_NO_TURN,
+  MAGE_SHEET_NEEDS_A_GAME,
+  mageSheetIsOlder
+} from "./mageSheetImport";
 
 /** The classified source behind a candidate, built the way `classifyReportImport` would. */
 function reportSource(
-  kind: "report" | "mapExport",
+  kind: "report" | "mapExport" | "mageSheet",
   factionId: string | null,
   turnNumber: number | null,
-  hasRegions = true
+  hasRegions = true,
+  units: ReportUnit[] = []
 ): ReportImportSource {
   return {
     kind,
     report: aParsedReport({
       header: aReportHeaderInfo({ month: "January", factionId, turnNumber }),
-      regions: hasRegions ? [aReportRegion()] : []
+      regions: hasRegions ? [aReportRegion({ units })] : []
     }),
-    text: kind === "mapExport" ? "; Map export from Atlantis HUD" : "Atlantis Report For:"
+    text:
+      kind === "mapExport"
+        ? "; Map export from Atlantis HUD"
+        : kind === "mageSheet"
+          ? MAGE_SHEET_MARKER
+          : "Atlantis Report For:"
   };
 }
 
@@ -59,6 +79,22 @@ const mapExport = (
   over: { hasRegions?: boolean } = {}
 ): BatchCandidate => {
   const source = reportSource("mapExport", factionId, turnNumber, over.hasRegions ?? true);
+  return {
+    fileName,
+    source,
+    usable: judgeReportUsable(source.report),
+    unreadableCount: 0
+  };
+};
+
+/** An ally's mage sheet, as `prepareBatch` would have marked it. */
+const mageSheet = (
+  fileName: string,
+  factionId: string | null,
+  turnNumber: number | null,
+  units: ReportUnit[] = [aReportUnit({ unitId: "1204", name: "Alrik", own: false })]
+): BatchCandidate => {
+  const source = reportSource("mageSheet", factionId, turnNumber, true, units);
   return {
     fileName,
     source,
@@ -506,5 +542,100 @@ describe("planning a batch holding a map export", () => {
       ["mapExport", "second-map.txt"],
       ["mapExport", "first-map.txt"]
     ]);
+  });
+});
+
+describe("a mage sheet in a batch", () => {
+  it("plans a mage sheet as its own step, last, and never as an import", () => {
+    const plan = planReportBatch({ factionId: "95", turnNumber: 71 }, [
+      mageSheet("mages-Borg-turn-23.txt", "21", 23),
+      borg(71),
+      ally(71)
+    ]);
+
+    expect(plan.steps.map((step) => step.kind)).toEqual(["import", "merge", "mageSheet"]);
+    expect(plan.steps[2]).toEqual({
+      kind: "mageSheet",
+      index: 0,
+      fileName: "mages-Borg-turn-23.txt",
+      turnNumber: 23,
+      factionId: "21",
+      factionLabel: "Borg TNG (21)",
+      mageCount: 1,
+      discarded: null
+    });
+  });
+
+  it("sorts a run of sheets oldest first, whatever order they were chosen in", () => {
+    const plan = planReportBatch({ factionId: "95", turnNumber: 71 }, [
+      mageSheet("newer.txt", "42", 23),
+      mageSheet("older.txt", "21", 19)
+    ]);
+
+    expect(plan.steps.map((step) => step.fileName)).toEqual(["older.txt", "newer.txt"]);
+  });
+
+  it("is never held to the newer-than-your-own-turn rule", () => {
+    const plan = planReportBatch({ factionId: "95", turnNumber: 20 }, [
+      mageSheet("mages.txt", "21", 71)
+    ]);
+
+    expect(plan.steps.map((step) => step.kind)).toEqual(["mageSheet"]);
+    expect(plan.skipped).toEqual([]);
+  });
+
+  it("skips a sheet it cannot file, each in its own words", () => {
+    const plan = planReportBatch({ factionId: null, turnNumber: null }, [
+      mageSheet("nogame.txt", "21", 23)
+    ]);
+    expect(plan.skipped[0]?.reason).toBe(MAGE_SHEET_NEEDS_A_GAME);
+
+    const rest = planReportBatch({ factionId: "95", turnNumber: 71 }, [
+      mageSheet("nofaction.txt", null, 23),
+      mageSheet("noturn.txt", "21", null),
+      mageSheet("mine.txt", "95", 23)
+    ]);
+    expect(rest.steps).toEqual([]);
+    expect(rest.skipped.map((skip) => skip.reason)).toEqual([
+      MAGE_SHEET_NAMES_NO_FACTION,
+      MAGE_SHEET_NAMES_NO_TURN,
+      MAGE_SHEET_IS_YOUR_OWN
+    ]);
+  });
+
+  it("skips a sheet another in the same batch supersedes, and keeps both of one turn", () => {
+    const plan = planReportBatch({ factionId: "95", turnNumber: 71 }, [
+      mageSheet("mages-Borg-turn-21.txt", "21", 21),
+      mageSheet("mages-Borg-turn-23.txt", "21", 23)
+    ]);
+
+    expect(plan.steps.map((step) => step.fileName)).toEqual(["mages-Borg-turn-23.txt"]);
+    expect(plan.skipped).toEqual([
+      {
+        index: 0,
+        fileName: "mages-Borg-turn-21.txt",
+        reason: mageSheetIsOlder("Borg TNG (21)", 23)
+      }
+    ]);
+
+    const twins = planReportBatch({ factionId: "95", turnNumber: 71 }, [
+      mageSheet("first.txt", "21", 23),
+      mageSheet("second.txt", "21", 23)
+    ]);
+    expect(twins.steps.map((step) => step.fileName)).toEqual(["first.txt", "second.txt"]);
+    expect(twins.skipped).toEqual([]);
+  });
+
+  it("is not counted when the batch decides whose it is", () => {
+    // Two sheets and two of the player's own turns: a sheet is always an ally's, so counting them
+    // would make the player the visitor in their own map.
+    expect(
+      chooseViewerFaction(null, [
+        mageSheet("a.txt", "21", 23),
+        mageSheet("b.txt", "21", 22),
+        borg(70),
+        borg(71)
+      ])
+    ).toEqual({ kind: "decided", factionId: "95" });
   });
 });

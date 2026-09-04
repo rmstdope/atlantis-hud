@@ -11,6 +11,8 @@
  */
 
 import type { BatchSkip, BatchStep } from "./reportBatch";
+import { count } from "./plural";
+import { mageSheetBatchLine } from "./mageSheetPrompt";
 
 export type ImportSummary = {
   steps: BatchStep[];
@@ -63,22 +65,14 @@ function lineFor(step: BatchStep): string {
   if (step.kind === "merge") {
     return `${step.fileName} — merged into turn ${step.turnNumber}`;
   }
+  if (step.kind === "mageSheet") {
+    return mageSheetBatchLine(step);
+  }
   // The turn a map export names is not what it did: its hexes carry their own ages, so what is
   // worth saying is how many of them the map did not already have.
   return step.hexesAdded === null || step.hexesAdded === 0
     ? `${step.fileName} — map export, nothing new to your map`
     : `${step.fileName} — map export, ${count(step.hexesAdded, "hex", "hexes")} added`;
-}
-
-/**
- * `1 turn`, `2 turns` - and `2 hexes` for a noun whose plural is not simply an `s`.
- *
- * The one pluraliser these sentences have. `hex` is why it takes a plural at all: appending `s`
- * gives `hexs`, and a second helper beside this one is how two sentences about the same thing
- * drift apart.
- */
-function count(n: number, noun: string, plural = `${noun}s`): string {
-  return `${n} ${n === 1 ? noun : plural}`;
 }
 
 /**
@@ -97,7 +91,10 @@ export function importSummaryCopy(summary: ImportSummary): ImportSummaryCopy {
   const mapExports = steps.filter((step) => step.kind === "mapExport");
   const hexes = mapExports.reduce((total, step) => total + (step.hexesAdded ?? 0), 0);
 
-  const reports = steps.filter((step) => step.kind !== "mapExport");
+  const mageSheets = steps.filter((step) => step.kind === "mageSheet");
+  // The two kinds that are reports, named rather than excluded: a map export and a mage sheet each
+  // lack the `unreadableCount` this counts.
+  const reports = steps.filter((step) => step.kind === "import" || step.kind === "merge");
   const unreadableTotal = reports.reduce((total, step) => total + step.unreadableCount, 0);
   const unreadableFiles = reports.filter((step) => step.unreadableCount > 0).length;
 
@@ -110,8 +107,8 @@ export function importSummaryCopy(summary: ImportSummary): ImportSummaryCopy {
     // Nothing of the viewer's own, so no turn changed hands and there is nothing to announce
     // beyond a map that grew.
     sentences.push(`Merged ${count(merged, "allied report")} into ${viewerFactionLabel}’s map.`);
-  } else if (mapExports.length === 0) {
-    // Only when no map export landed either: a batch of nothing but map exports has its own
+  } else if (mapExports.length === 0 && mageSheets.length === 0) {
+    // Only when no map export and no mage sheet landed either: a batch of nothing but map exports has its own
     // sentence below and must not be told nothing happened.
     sentences.push("Nothing was imported.");
   }
@@ -125,6 +122,10 @@ export function importSummaryCopy(summary: ImportSummary): ImportSummaryCopy {
           `Nothing added to your map — the map export${mapExports.length === 1 ? "" : "s"} held ` +
           "nothing new."
     );
+  }
+
+  if (mageSheets.length > 0) {
+    sentences.push(`${count(mageSheets.length, "mage sheet")} taken in.`);
   }
 
   if (finalTurn !== null) {

@@ -23,6 +23,12 @@ import {
   classifyReportImport
 } from "./mapExportImport";
 import {
+  MAGE_SHEET_IS_YOUR_OWN,
+  MAGE_SHEET_MARKER,
+  MAGE_SHEET_NEEDS_A_GAME,
+  mageSheetIsOlder
+} from "./mageSheetImport";
+import {
   factionLabelOf,
   firstUnitIn,
   loadTurn,
@@ -377,7 +383,7 @@ describe("routeReport, given a map export", () => {
     const viewer = report({ turnNumber: 71 });
     const incoming = report({ turnNumber: 71 });
 
-    const route = routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set());
+    const route = routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set(), NO_SHEETS);
 
     expect(route.kind).toBe("mapExport");
   });
@@ -393,7 +399,8 @@ describe("routeReport, given a map export", () => {
       viewer,
       classifyReportImport(incoming, mapExportText()),
       "map.txt",
-      new Set(["1:4,50"])
+      new Set(["1:4,50"]),
+      NO_SHEETS
     );
 
     if (route.kind !== "mapExport") {
@@ -414,7 +421,7 @@ describe("routeReport, given a map export", () => {
     const viewer = report({ turnNumber: 71 });
     const incoming = report({ factionId: "42", factionName: "The Disinherited Knights", turnNumber: 40 });
 
-    const route = routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set());
+    const route = routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set(), NO_SHEETS);
 
     if (route.kind !== "mapExport") {
       throw new Error(`expected a map export route, got ${route.kind}`);
@@ -425,7 +432,7 @@ describe("routeReport, given a map export", () => {
 
   it("refuses one when there is no map to add it to", () => {
     expect(
-      routeReport(null, classifyReportImport(report(), mapExportText()), "map.txt", new Set())
+      routeReport(null, classifyReportImport(report(), mapExportText()), "map.txt", new Set(), NO_SHEETS)
     ).toEqual({
       kind: "reject",
       reason: MAP_EXPORT_NEEDS_A_MAP
@@ -437,7 +444,7 @@ describe("routeReport, given a map export", () => {
     const viewer = report({ factionId: "95", turnNumber: null, month: null, year: null });
 
     expect(
-      routeReport(viewer, classifyReportImport(report(), mapExportText()), "map.txt", new Set())
+      routeReport(viewer, classifyReportImport(report(), mapExportText()), "map.txt", new Set(), NO_SHEETS)
     ).toEqual({
       kind: "reject",
       reason: MAP_EXPORT_NEEDS_A_MAP
@@ -449,7 +456,7 @@ describe("routeReport, given a map export", () => {
     const incoming = report({ factionId: null, factionName: null });
 
     expect(
-      routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set())
+      routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set(), NO_SHEETS)
     ).toEqual({
       kind: "reject",
       reason: MAP_EXPORT_NAMES_NO_FACTION
@@ -465,7 +472,7 @@ describe("routeReport, given a map export", () => {
     const incoming = report({ turnNumber: null, month: null, year: null });
 
     expect(
-      routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set())
+      routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set(), NO_SHEETS)
     ).toEqual({
       kind: "reject",
       reason: MAP_EXPORT_NAMES_NO_TURN
@@ -477,7 +484,7 @@ describe("routeReport, given a map export", () => {
     const incoming = report({ turnNumber: 40 }, []);
 
     expect(
-      routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set())
+      routeReport(viewer, classifyReportImport(incoming, mapExportText()), "map.txt", new Set(), NO_SHEETS)
     ).toEqual({
       kind: "reject",
       reason: MAP_EXPORT_HAS_NO_HEXES
@@ -487,7 +494,7 @@ describe("routeReport, given a map export", () => {
 
 describe("routeReport", () => {
   it("loads when nothing is on screen", () => {
-    expect(routeReport(null, classifyReportImport(report(), "text"), "turn.rep", new Set())).toEqual({
+    expect(routeReport(null, classifyReportImport(report(), "text"), "turn.rep", new Set(), NO_SHEETS)).toEqual({
       kind: "load"
     });
   });
@@ -497,13 +504,13 @@ describe("routeReport", () => {
     const incoming = report({ factionId: null, factionName: null, turnNumber: null });
 
     expect(
-      routeReport(viewer, classifyReportImport(incoming, "junk"), "junk.rep", new Set())
+      routeReport(viewer, classifyReportImport(incoming, "junk"), "junk.rep", new Set(), NO_SHEETS)
     ).toEqual({
       kind: "reject",
       reason: REPORT_NAMES_NO_FACTION
     });
     expect(
-      routeReport(null, classifyReportImport(incoming, "junk"), "junk.rep", new Set())
+      routeReport(null, classifyReportImport(incoming, "junk"), "junk.rep", new Set(), NO_SHEETS)
     ).toEqual({
       kind: "reject",
       reason: REPORT_NAMES_NO_FACTION
@@ -514,13 +521,13 @@ describe("routeReport", () => {
     const incoming = report({ turnNumber: null });
 
     expect(
-      routeReport(null, classifyReportImport(incoming, "text"), "turn.rep", new Set())
+      routeReport(null, classifyReportImport(incoming, "text"), "turn.rep", new Set(), NO_SHEETS)
     ).toEqual({
       kind: "reject",
       reason: REPORT_NAMES_NO_TURN
     });
     expect(
-      routeReport(report({ turnNumber: 71 }), classifyReportImport(incoming, "text"), "turn.rep", new Set())
+      routeReport(report({ turnNumber: 71 }), classifyReportImport(incoming, "text"), "turn.rep", new Set(), NO_SHEETS)
     ).toEqual({
       kind: "reject",
       reason: REPORT_NAMES_NO_TURN
@@ -531,7 +538,7 @@ describe("routeReport", () => {
     const incoming = report({ turnNumber: 72 }, []);
 
     expect(
-      routeReport(report({ turnNumber: 71 }), classifyReportImport(incoming, "text"), "turn.rep", new Set())
+      routeReport(report({ turnNumber: 71 }), classifyReportImport(incoming, "text"), "turn.rep", new Set(), NO_SHEETS)
     ).toEqual({
       kind: "reject",
       reason: REPORT_HAS_NOTHING_IN_IT
@@ -543,7 +550,7 @@ describe("routeReport", () => {
     const incoming = report({ turnNumber: 71 });
 
     expect(
-      routeReport(viewer, classifyReportImport(incoming, "text"), "turn.rep", new Set())
+      routeReport(viewer, classifyReportImport(incoming, "text"), "turn.rep", new Set(), NO_SHEETS)
     ).toEqual({ kind: "load" });
   });
 
@@ -552,7 +559,7 @@ describe("routeReport", () => {
     const incoming = report({ turnNumber: 70 });
 
     expect(
-      routeReport(viewer, classifyReportImport(incoming, "text"), "turn.rep", new Set())
+      routeReport(viewer, classifyReportImport(incoming, "text"), "turn.rep", new Set(), NO_SHEETS)
     ).toEqual({
       kind: "storeOnly",
       currentTurn: 71
@@ -563,7 +570,7 @@ describe("routeReport", () => {
     const viewer = report({ factionId: "95", factionName: "Borg TNG", turnNumber: 71 });
     const incoming = report({ factionId: "73", factionName: null, turnNumber: 71 });
 
-    const route = routeReport(viewer, classifyReportImport(incoming, "text"), "ally.rep", new Set());
+    const route = routeReport(viewer, classifyReportImport(incoming, "text"), "ally.rep", new Set(), NO_SHEETS);
 
     expect(route).toEqual({
       kind: "ask",
@@ -582,7 +589,7 @@ describe("routeReport", () => {
     const viewer = report({ factionId: "95", turnNumber: 71 });
     const incoming = report({ factionId: "73", turnNumber: 72 });
 
-    const route = routeReport(viewer, classifyReportImport(incoming, "text"), "ally.rep", new Set());
+    const route = routeReport(viewer, classifyReportImport(incoming, "text"), "ally.rep", new Set(), NO_SHEETS);
 
     expect(route.kind).toBe("ask");
     expect(route.kind === "ask" && route.pending.canMerge).toBe(false);
@@ -626,5 +633,79 @@ describe("reportParser", () => {
 
     expect(core.parseReportFull).toHaveBeenCalledTimes(2);
     expect(core.parseReportClassified).not.toHaveBeenCalled();
+  });
+});
+
+/** No sheet held, a game open, and the viewer is faction 95 - the ordinary case. */
+const NO_SHEETS = {
+  viewerFactionId: "95",
+  hasGame: true,
+  heldTurnByFaction: new Map<string, number>()
+};
+
+/** A mage sheet's text: the marker is the whole test, so nothing else about it need be real. */
+function mageSheetText(): string {
+  return `${MAGE_SHEET_MARKER}\n; 1 mage\n\nAtlantis Report For:\n`;
+}
+
+describe("routeReport, given a mage sheet", () => {
+  const mage = aReportUnit({ unitId: "1204", name: "Alrik", own: false });
+  const sheet = () =>
+    report({ factionId: "21", factionName: "Borg", turnNumber: 23 }, [
+      aReportRegion({ units: [mage] })
+    ]);
+
+  it("routes a mage sheet away from the report path", () => {
+    const route = routeReport(
+      report({ turnNumber: 71 }),
+      classifyReportImport(sheet(), mageSheetText()),
+      "mages-Borg-turn-23.txt",
+      new Set(),
+      NO_SHEETS
+    );
+
+    expect(route.kind).toBe("mageSheet");
+    if (route.kind !== "mageSheet") {
+      return;
+    }
+    expect(route.pending).toEqual(
+      expect.objectContaining({
+        fileName: "mages-Borg-turn-23.txt",
+        factionId: "21",
+        factionLabel: "Borg (21)",
+        turnNumber: 23,
+        heldTurn: null,
+        mages: [mage]
+      })
+    );
+  });
+
+  it("refuses your own faction's sheet, an older one, and one with no game", () => {
+    const own = routeReport(
+      report({ turnNumber: 71 }),
+      classifyReportImport(report({ factionId: "95", turnNumber: 23 }), mageSheetText()),
+      "mine.txt",
+      new Set(),
+      NO_SHEETS
+    );
+    expect(own).toEqual({ kind: "reject", reason: MAGE_SHEET_IS_YOUR_OWN });
+
+    const older = routeReport(
+      report({ turnNumber: 71 }),
+      classifyReportImport(sheet(), mageSheetText()),
+      "old.txt",
+      new Set(),
+      { ...NO_SHEETS, heldTurnByFaction: new Map([["21", 25]]) }
+    );
+    expect(older).toEqual({ kind: "reject", reason: mageSheetIsOlder("Borg (21)", 25) });
+
+    const noGame = routeReport(
+      null,
+      classifyReportImport(sheet(), mageSheetText()),
+      "nogame.txt",
+      new Set(),
+      { ...NO_SHEETS, hasGame: false, viewerFactionId: null }
+    );
+    expect(noGame).toEqual({ kind: "reject", reason: MAGE_SHEET_NEEDS_A_GAME });
   });
 });

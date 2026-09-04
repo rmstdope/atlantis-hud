@@ -1,4 +1,5 @@
 import type {
+  AlliedMageRecord,
   CaretCompletions,
   ArmyRecord,
   CoreClient,
@@ -62,7 +63,7 @@ import {
   type MemoryOutcome
 } from "../gameMemory";
 import { isOlderTurn } from "../reportLoadDecision";
-import { classifyReportImport } from "../mapExportImport";
+import { classifyReportImport, type ReportImportSource } from "../mapExportImport";
 import {
   factionLabelOf,
   firstUnitIn,
@@ -72,6 +73,7 @@ import {
   routeReport,
   storeOlderTurn,
   type LoadedTurn,
+  type PendingMageSheet,
 } from "../reportLoad";
 import { chooseViewerFaction } from "../reportBatch";
 import {
@@ -120,6 +122,14 @@ import type { BackupImportMode } from "../gameBackup";
 import { DEFAULT_LEVEL, useWorkspaceStore, workspaceGameOf } from "../workspaceStore";
 import { useHexNotesStore } from "../hexNotesStore";
 import { useArmiesStore } from "../armiesStore";
+import { useAlliedMagesStore } from "../alliedMagesStore";
+import {
+  heldTurnsByFaction,
+  keyOf,
+  mageSheetRows,
+  missingFromSheet
+} from "../mageSheetImport";
+import { mageSheetStatus, sharedSheetTurn } from "../mageSheetPrompt";
 import { useBattleSkillsStore } from "../battleSkillsStore";
 import { derivedSkillsFor } from "../battleSkills";
 import { unitsByIdIn } from "../armies";
@@ -136,6 +146,7 @@ import type { OpenExternal } from "./openExternal";
 import { OPEN_EXTERNAL_IN_NEW_TAB } from "./openExternal";
 import { ForeignReportPrompt } from "./ForeignReportPrompt";
 import { MapExportPrompt } from "./MapExportPrompt";
+import { MissingMagesPrompt } from "./MissingMagesPrompt";
 import { ImportSummaryDialog } from "./ImportSummaryDialog";
 import { OrdersImportPrompt } from "./OrdersImportPrompt";
 import { OrdersImportSummaryDialog, type OrdersImportSummary } from "./OrdersImportSummaryDialog";
@@ -563,6 +574,13 @@ export function AppShell({
   const armiesStatus = useArmiesStore((state) => state.status);
   /** The same list `UnitTableDock` reads, for the export dialog's two pickers (`ah-1mpx.3`). */
   const armies = useArmiesStore((state) => state.armies);
+  /**
+   * The mages allies have shared (`ah-lyg6.1.2.2`).
+   *
+   * Subscribed rather than read through `getState()`: an arriving sheet is routed against what is
+   * held *right now*, so `loadReport` closes over this value and depends on it.
+   */
+  const alliedMages = useAlliedMagesStore((state) => state.mages);
   /** The combat skills recovered from this game's battle rosters (`ah-1mpx.6.2`). */
   const derivedSkills = useBattleSkillsStore((state) => state.skills);
   const derivedStatus = useBattleSkillsStore((state) => state.status);
@@ -641,6 +659,7 @@ export function AppShell({
   const pendingLoad = fileQuestion?.kind === "foreign-report" ? fileQuestion.pending : null;
   const pendingMapExport = fileQuestion?.kind === "map-export" ? fileQuestion.pending : null;
   const pendingOrdersImport = fileQuestion?.kind === "orders-import" ? fileQuestion.pending : null;
+  const pendingMissingMages = fileQuestion?.kind === "missing-mages" ? fileQuestion.pending : null;
   const [ordersImportSummary, setOrdersImportSummary] = useState<OrdersImportSummary | null>(null);
   const [mergedReports, setMergedReports] = useState<MergedReportRecord[]>([]);
   // A second, read-only turn held beside the working one (ah-jg6.3), and the picker that chooses
@@ -1399,6 +1418,88 @@ export function AppShell({
     [client, game, rulesetForThisLoad]
   );
 
+  /**
+   * What is stored for this game right now, for a mage sheet about to be judged.
+   *
+   * Loads the cache first when it is not the game's yet, and refuses outright when it still cannot
+   * be read: judging a sheet against rows that failed to load would silently let an older sheet
+   * overwrite newer mages.
+   */
+  const heldMagesFor = useCallback(
+    async (source: ReportImportSource): Promise<AlliedMageRecord[]> => {
+      if (source.kind !== "mageSheet" || game === null) {
+        return alliedMages;
+      }
+      // The store's own contract is `gameId` as well as `status`: rows for another game are stale
+      // and are not read. The mount effect makes a ready-but-wrong-game window hard to reach, but
+      // the guard says the invariant rather than relying on effect ordering to keep it.
+      const cache = useAlliedMagesStore.getState();
+      if (cache.status !== "ready" || cache.gameId !== game.manifest.metadata.gameId) {
+        await useAlliedMagesStore.getState().load(client, game);
+      }
+      const state = useAlliedMagesStore.getState();
+      if (state.status !== "ready") {
+        throw new Error("the mages you already hold could not be read");
+      }
+      return state.mages;
+    },
+    [client, game, alliedMages]
+  );
+
+  /**
+   * Takes an ally's mage sheet in: its mages are stored, and nothing else on screen moves.
+   *
+   * Stored *before* any question is asked about the mages it leaves out, which is what the mockup
+   * draws: the sheet is already in, and only the mages it left out are still undecided.
+   */
+  const takeInMageSheet = useCallback(
+    async (pending: PendingMageSheet) => {
+      // `game` is non-null: `MAGE_SHEET_NEEDS_A_GAME` refused the sheet otherwise.
+      const openGame = game as OpenedGame;
+      // The store's own rows rather than the subscribed value: `heldMagesFor` has just made sure
+      // they are the game's, and this must see exactly what the route was judged against.
+      const missing = missingFromSheet(
+        useAlliedMagesStore.getState().mages,
+        pending.factionId,
+        pending.mages
+      );
+      await useAlliedMagesStore
+        .getState()
+        .takeIn(client, openGame, mageSheetRows(pending, new Date().toISOString()));
+
+      const outcome = {
+        factionLabel: pending.factionLabel,
+        turnNumber: pending.turnNumber,
+        taken: pending.mages.length,
+        // Only a sheet this one is actually newer than: a corrected re-send for the turn already
+        // held would otherwise say it replaced turn 23 while being turn 23 itself.
+        replacedTurn: pending.heldTurn !== null && pending.heldTurn < pending.turnNumber
+          ? pending.heldTurn
+          : null
+      };
+      if (missing.length === 0) {
+        setStatus(noticeStatus(mageSheetStatus({ ...outcome, leftovers: { kind: "none" } })));
+        return;
+      }
+      // The one question a sheet ever asks, and it is asked once for the whole group. A player who
+      // closes the window instead of answering has kept them, and the next sheet asks again - which
+      // is what keeps staleness from accumulating unnoticed.
+      dispatchFileQuestion({
+        type: "opened",
+        question: {
+          kind: "missing-mages",
+          pending: {
+            factionLabel: pending.factionLabel,
+            sheetTurn: pending.turnNumber,
+            taken: pending.mages.length,
+            missing
+          }
+        }
+      });
+    },
+    [client, game]
+  );
+
   const loadReport = useCallback(
     (text: string, fileName: string) =>
       runReported(
@@ -1414,17 +1515,38 @@ export function AppShell({
 
           // The shell's own map answers "new to your map", so the prompt can say how much of the
           // file is worth adding before the player commits, with no second call into the core.
+          const source = classifyReportImport(report, text);
+
+          // A sheet is judged against what is *stored*, so the cache has to be the game's before
+          // the question "is this older than one I hold?" can be asked at all. `alliedMages` is
+          // empty while the store is idle, loading or in error, and a sheet judged against that
+          // empty answer would overwrite newer stored mages by key - the exact case the
+          // older-than-you-hold refusal exists to prevent. Only a mage sheet pays for this.
+          const held = await heldMagesFor(source);
+
           const route = routeReport(
             parsed,
-            classifyReportImport(report, text),
+            source,
             fileName,
-            new Set(model.hexes.map((hex) => hex.regionId))
+            new Set(model.hexes.map((hex) => hex.regionId)),
+            {
+              viewerFactionId: parsed?.header.factionId ?? null,
+              hasGame: game !== null,
+              heldTurnByFaction: heldTurnsByFaction(held)
+            }
           );
 
           if (route.kind === "reject") {
             // Thrown rather than reported here, so `runReported`'s `could not read <file>: …`
             // prefix and red status apply exactly as they do to a file that would not parse.
             throw new Error(route.reason);
+          }
+
+          if (route.kind === "mageSheet") {
+            // Taken in with no question, which is what the family agreed: nothing on screen moves
+            // when a sheet arrives, so there is nothing to be startled by and nothing to undo.
+            await takeInMageSheet(route.pending);
+            return;
           }
 
           if (route.kind === "mapExport") {
@@ -1457,8 +1579,68 @@ export function AppShell({
     // is null, and every report is parsed unclassified however long the ruleset took to arrive.
     // `parsed` because the routing above is decided against whatever is on screen, and `model`
     // because the map-export prompt counts its hexes against the map the player already has.
-    [client, ruleset, parsed, model, applyReport, storeReportOnly]
+    [client, ruleset, parsed, model, heldMagesFor, applyReport, storeReportOnly, takeInMageSheet]
   );
+
+  /**
+   * Discards the mages the sheet left out - the default, and what Escape does.
+   *
+   * The sheet itself is already stored, so nothing here is undone by a failure: only the discard
+   * can fail, and it is reported with no `could not read` prefix because nothing is being read.
+   */
+  const discardMissingMages = useCallback(() => {
+    const pending = pendingMissingMages;
+    if (!pending) {
+      return;
+    }
+    dispatchFileQuestion({ type: "closed" });
+    void runReported(
+      async () => {
+        await useAlliedMagesStore
+          .getState()
+          .discard(client, game as OpenedGame, pending.missing.map(keyOf));
+        setStatus(
+          noticeStatus(
+            mageSheetStatus({
+              factionLabel: pending.factionLabel,
+              turnNumber: pending.sheetTurn,
+              taken: pending.taken,
+              // Not read: `mageSheetStatus` names the sheet it replaced only when the arriving
+              // sheet left nothing out, and this line is about what it did leave out.
+              replacedTurn: null,
+              leftovers: { kind: "discarded", count: pending.missing.length }
+            })
+          )
+        );
+      },
+      (message) => setStatus(failedStatus(message)),
+      { busy: setBusy }
+    );
+  }, [client, game, pendingMissingMages]);
+
+  /** Keeps them, marked stale. Writes nothing at all: they are already stored. */
+  const keepMissingMages = useCallback(() => {
+    const pending = pendingMissingMages;
+    if (!pending) {
+      return;
+    }
+    dispatchFileQuestion({ type: "closed" });
+    setStatus(
+      noticeStatus(
+        mageSheetStatus({
+          factionLabel: pending.factionLabel,
+          turnNumber: pending.sheetTurn,
+          taken: pending.taken,
+          replacedTurn: null,
+          leftovers: {
+            kind: "kept",
+            count: pending.missing.length,
+            fromTurn: sharedSheetTurn(pending.missing)
+          }
+        })
+      )
+    );
+  }, [pendingMissingMages]);
 
   /** Opens the pending report as its own faction: today's behaviour, chosen rather than assumed. */
   const switchFaction = useCallback(() => {
@@ -1898,6 +2080,18 @@ export function AppShell({
       void useArmiesStore.getState().load(client, game);
     } else {
       useArmiesStore.getState().clear();
+    }
+  }, [client, openGameId, gameEpoch]);
+
+  /**
+   * The same for an ally's shared mages (ah-lyg6.1.2.2), keyed the same way and for the same
+   * reason: a stored mage belongs to the game and does not change because the game was renamed.
+   */
+  useEffect(() => {
+    if (game) {
+      void useAlliedMagesStore.getState().load(client, game);
+    } else {
+      useAlliedMagesStore.getState().clear();
     }
   }, [client, openGameId, gameEpoch]);
 
@@ -3748,6 +3942,19 @@ export function AppShell({
           busy={busy}
           onAdd={addMapExport}
           onCancel={() => dispatchFileQuestion({ type: "closed" })}
+        />
+      ) : null}
+
+      {/*
+        The mages a new sheet left out, asked about once for the whole group. The sheet itself is
+        already in: only these are still undecided.
+      */}
+      {pendingMissingMages ? (
+        <MissingMagesPrompt
+          pending={pendingMissingMages}
+          busy={busy}
+          onDiscard={discardMissingMages}
+          onKeep={keepMissingMages}
         />
       ) : null}
 

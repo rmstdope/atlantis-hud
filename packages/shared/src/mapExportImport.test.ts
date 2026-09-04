@@ -140,3 +140,11 @@ describe("judgeMapExportUsable", () => {
     });
   });
 });
+
+describe("a mage sheet", () => {
+  it("is not a map export", () => {
+    const sheet = ["; Mage sheet from Atlantis HUD", "", "Atlantis Report For:"].join("\n");
+    expect(isMapExport(sheet)).toBe(false);
+    expect(classifyReportImport(aParsedReport(), sheet).kind).toBe("mageSheet");
+  });
+});

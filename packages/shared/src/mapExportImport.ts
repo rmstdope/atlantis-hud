@@ -1,5 +1,6 @@
 /**
- * Recognising one of our own map exports on the way in, and saying what it is worth adding.
+ * Recognising one of our own files on the way in - a map export, or an ally's mage sheet - and
+ * saying what a map export is worth adding.
  *
  * A map export is written in the game's own syntax, so it parses as a report and would otherwise
  * take the report path - which replaces the turn on screen with a file that has no orders template,
@@ -8,6 +9,8 @@
  */
 
 import type { ParsedReport, ReportRegion } from "@atlantis/core-client";
+import { isMageSheet } from "./mageSheetImport";
+import { firstLineOf } from "./firstLine";
 
 /**
  * The first line every map export carries.
@@ -18,25 +21,6 @@ import type { ParsedReport, ReportRegion } from "@atlantis/core-client";
  * down the report path.
  */
 export const MAP_EXPORT_MARKER = "; Map export from Atlantis HUD";
-
-/**
- * The first line that is not blank, comments included.
- *
- * Deliberately *not* `firstNonBlankLine` from `./ordersImport`: that one skips every line starting
- * with `;` on its way to `#atlantis`, and our marker is a `;` line, so it would answer the first
- * region header and `isMapExport` would always be false. 24 of the 26 committed report fixtures
- * open with `;Treasury:`, so a real turn report's first line is usually a comment too - which is
- * why the test below is on the line's content and never on the semicolon.
- */
-function firstLineOf(text: string): string {
-  for (const raw of text.split("\n")) {
-    const line = raw.trim();
-    if (line !== "") {
-      return line;
-    }
-  }
-  return "";
-}
 
 /** Whether this file is one of our own map exports, judged on its first non-blank line. */
 export function isMapExport(text: string): boolean {
@@ -60,7 +44,8 @@ export const MAP_EXPORT_HAS_NO_HEXES = "the map export has no hexes in it";
  */
 export type ReportImportSource =
   | { kind: "report"; report: ParsedReport; text: string }
-  | { kind: "mapExport"; report: ParsedReport; text: string };
+  | { kind: "mapExport"; report: ParsedReport; text: string }
+  | { kind: "mageSheet"; report: ParsedReport; text: string };
 
 /** The narrowed half of {@link ReportImportSource} that only a map export can be. */
 export type MapExportImportSource = Extract<ReportImportSource, { kind: "mapExport" }>;
@@ -84,6 +69,11 @@ export type MapExportUsability =
  * classified source it returns, rather than re-reading the marker.
  */
 export function classifyReportImport(report: ParsedReport, text: string): ReportImportSource {
+  // The mage-sheet marker first: both markers are `;` lines on the first line, and only one of
+  // them can match, so the order is about reading rather than about correctness.
+  if (isMageSheet(text)) {
+    return { kind: "mageSheet", report, text };
+  }
   return isMapExport(text) ? { kind: "mapExport", report, text } : { kind: "report", report, text };
 }
 
