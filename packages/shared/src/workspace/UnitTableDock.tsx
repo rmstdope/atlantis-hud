@@ -42,6 +42,7 @@ import {
   columnWidthStyle,
   orderOf,
   silverKey,
+  unitRowKey,
   silverShown,
   type ColumnShares,
   type ExtraColumn,
@@ -1352,7 +1353,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
               <Spacer rows={start} rowHeight={rowHeight} columns={drawn.length} />
               {visible.slice(start, end).map((unit, offset) => (
                 <UnitRow
-                  key={unit.unitId}
+                  key={unitRowKey(unit.regionId, unit.unitId)}
                   unit={unit}
                   structureLabel={unitStructureLabel(unit.structureId, structuresById)}
                   drawn={drawn}
@@ -2191,6 +2192,8 @@ function UnitRow({
   return (
     <tr
       data-testid={`unit-row-${unit.unitId}`}
+      // Two hexes may each hold a `new-1`: the hex is what tells the two rows apart (`ah-9o0c.2`).
+      data-region-id={unit.regionId}
       data-selected={selected}
       data-picked={picked}
       data-preview-status={unit.previewStatus}

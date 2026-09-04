@@ -1339,6 +1339,41 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     expect(markup).toContain("unit-row-new-1");
     expect(markup).toContain(">new<");
   });
+
+  it("draws a row for each hex when two hexes form the same alias", () => {
+    const markup = drawOwn(
+      [unit({ unitId: "1", regionId: "1:6,52" })],
+      {
+        regions: [
+          {
+            regionId: "1:6,52",
+            units: [
+              previewed(
+                { unitId: "new-1", name: "Unit (new 1)", regionId: "1:6,52" },
+                { status: "formed" }
+              )
+            ]
+          },
+          {
+            regionId: "1:9,55",
+            units: [
+              previewed(
+                { unitId: "new-1", name: "Unit (new 1)", regionId: "1:9,55" },
+                { status: "formed" }
+              )
+            ]
+          }
+        ]
+      }
+    );
+
+    expect((markup.match(/data-testid="unit-row-new-1"/g) ?? []).length).toBe(2);
+    expect(markup).toContain('data-region-id="1:6,52"');
+    expect(markup).toContain('data-region-id="1:9,55"');
+    // The Hex column is what tells them apart on screen.
+    expect(markup).toContain("(6,52)");
+    expect(markup).toContain("(9,55)");
+  });
 });
 
 describe("the Other factions source (ah-1mpx.5)", () => {
