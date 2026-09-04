@@ -13,7 +13,12 @@
  * something to list without opening any game.
  */
 
-import type { AlliedMageKey, AlliedMageRecord, ArmyRecord, HexNoteRecord } from "@atlantis/core-client";
+import type {
+  AlliedMageKey,
+  AlliedMageRecord,
+  ArmyRecord,
+  HexNoteRecord
+} from "@atlantis/core-client";
 
 const REGISTRY_DATABASE_NAME = "atlantis-hud";
 const REGISTRY_DATABASE_VERSION = 4;
@@ -630,10 +635,9 @@ export function createMemoryWebStore(): WebStore {
         alliedMages.delete(mageComposite(databasePath, key.factionId, key.unitId));
       }
       for (const mage of mages) {
-        alliedMages.set(
-          mageComposite(mage.databasePath, mage.factionId, mage.unit.unitId),
-          mage
-        );
+        // The handle comes from the parameter for both halves, as it does for the removals above:
+        // one transaction must not read it from two places.
+        alliedMages.set(mageComposite(databasePath, mage.factionId, mage.unit.unitId), mage);
       }
     }
   };

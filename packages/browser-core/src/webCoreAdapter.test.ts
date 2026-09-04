@@ -1028,6 +1028,17 @@ describe("web core adapter", () => {
     expect(listed.map((mage) => mage.unit.unitId).sort()).toEqual(["9001", "9003"]);
   });
 
+  // The same resolution the desktop store documents and pins: `removed` is applied first, so a
+  // unit named in both halves of one call ends up present. Both platforms must answer alike.
+  it("stores a mage named in both halves of the same call", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const mage = aMage("9001");
+
+    await adapter.saveAlliedMages(DB, "p", [mage], [{ factionId: "21", unitId: "9001" }]);
+
+    expect(await adapter.listAlliedMages(DB, "p")).toEqual([mage]);
+  });
+
   it("keeps allied mages apart per database", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 

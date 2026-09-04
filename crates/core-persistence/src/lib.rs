@@ -3305,6 +3305,33 @@ mod tests {
         );
     }
 
+    /// The documented resolution when a caller names one unit in both halves of the same save:
+    /// `removed` runs first, so the mage ends up present. Swapping the two loops must fail here.
+    #[test]
+    fn a_mage_named_in_both_halves_of_one_save_survives() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let mage = a_mage("9001", "Adept", 23);
+
+        save_allied_mages(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&mage),
+            &[AlliedMageKey {
+                faction_id: "21".to_string(),
+                unit_id: "9001".to_string(),
+            }],
+        )
+        .expect("save should succeed");
+
+        assert_eq!(
+            list_allied_mages(&created.database_path, GAME_ID).expect("list should succeed"),
+            vec![mage],
+            "`removed` is applied before `mages`, so a unit named in both is stored"
+        );
+    }
+
     #[test]
     fn list_allied_mages_returns_only_the_given_games_mages() {
         let dir = tempdir().expect("tempdir");
