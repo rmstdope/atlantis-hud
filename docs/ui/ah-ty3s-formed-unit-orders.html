@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ah-ty3s — A formed unit's own orders</title><style>
+  :root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;
+        --ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;
+        --select:#4a9fd8;--ok:#4fb783;--danger:#d97070;--predict:#8fa3bb;}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,'Times New Roman',serif;padding:32px 24px 72px}
+  header,main,footer{max-width:1400px;margin:0 auto}
+  h1{font-size:26px;letter-spacing:.4px} h1 span{color:var(--brass)}
+  header p{color:var(--ink-soft);max-width:96ch;margin-top:10px;font-size:14px}
+  header p+p{margin-top:8px}
+  code,.mono{font-family:'SF Mono',Menlo,Consolas,monospace}
+  header code,p code,li code,td code,div.concept code{color:var(--brass-bright);font-size:12.5px}
+  h3.sec{margin:40px 0 4px;font-size:13px;letter-spacing:1.8px;text-transform:uppercase;color:var(--brass)}
+  h3.sec+p{color:var(--ink-soft);font-size:13px;margin-bottom:14px;max-width:96ch}
+  .card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:16px;margin-bottom:18px}
+  .card h2{font-size:16px;margin-bottom:5px}
+  .card h2 em{color:var(--brass);font-style:normal;font-size:11.5px;letter-spacing:1.5px;margin-right:8px}
+  .concept{color:var(--ink-soft);font-size:12.5px;margin-bottom:11px;max-width:96ch}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px}
+  .pane{background:var(--ground);border:1px solid var(--edge-soft);border-radius:8px;overflow:hidden}
+  .pane-head{display:flex;align-items:baseline;gap:8px;padding:5px 10px;border-bottom:1px solid var(--edge-soft);
+             font:12px/1.4 'Helvetica Neue',Arial,sans-serif;color:var(--ink)}
+  .pane-head .hint{color:var(--ink-dim);font-size:11.5px}
+  .ed{font:11.5px/1.62 'SF Mono',Menlo,Consolas,monospace;padding:6px 0 8px;white-space:pre}
+  .ed .l{display:flex;min-height:19px;align-items:center}
+  .ed .gut{flex:none;width:6px}
+  .ed .t{padding-right:10px}
+  .kw{color:var(--brass-bright)}
+  .ro{color:var(--ink-dim);opacity:.72}
+  .ro .kw{color:#9c8551}
+  .band{background:rgba(74,159,216,.10);border-left:3px solid var(--select)}
+  .band .gut{width:3px}
+  .caret{display:inline-block;width:1px;height:13px;background:var(--select);vertical-align:-2px;animation:none}
+  .fold{color:var(--ink-dim);font-style:italic}
+  .empty{color:var(--ink-dim);font-style:italic;padding:10px 12px;font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif}
+  ul.notes{list-style:none;font-size:12.5px;color:var(--ink-soft);display:grid;gap:4px;margin-top:11px}
+  ul.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+  ul.notes li.con::before{content:"\2212 ";color:var(--danger)}
+  ul.notes li.n::before{content:"\00b7 ";color:var(--ink-dim)}
+  table.units{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;
+              font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif;font-variant-numeric:tabular-nums}
+  table.units th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;
+                 color:var(--ink-soft);font-weight:400;padding:2px 8px;border-bottom:1px solid var(--edge)}
+  table.units td{padding:3px 8px;border-bottom:1px solid var(--edge-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  tr.sel td{background:rgba(74,159,216,.14)}
+  .own{color:var(--ok)} .uid{color:var(--select)} .num{text-align:right}
+  .warn{color:var(--danger)}
+  .verdict{background:var(--raised);border:1px solid var(--edge);border-left:3px solid var(--brass);
+           border-radius:6px;padding:12px 14px;font-size:13px;color:var(--ink-soft);margin-top:14px;max-width:110ch}
+  .verdict b{color:var(--ink)}
+  footer{margin-top:44px;color:var(--ink-dim);font-size:12.5px;border-top:1px solid var(--edge);padding-top:14px}
+  .tag{display:inline-block;font:10.5px/1 'Helvetica Neue',Arial,sans-serif;letter-spacing:.1em;
+       text-transform:uppercase;color:var(--ground);background:var(--brass);border-radius:3px;padding:3px 6px;vertical-align:2px}
+  .tag.mine{background:var(--edge);color:var(--ink-soft)}
+</style></head><body>
+
+<header>
+<h1>A formed unit shows <span>its own orders</span></h1>
+<p>Bead <code>ah-ty3s</code>, round 1. You reported: &ldquo;When a new unit is formed and that unit is
+selected in the units pane, it shall show that new unit's order, not as today that it (partially marks and)
+displays the creators orders, i.e. the FORM x, etc. Updating the orders of the new unit shall of course fill
+in those orders in the creators FORM/END block.&rdquo;</p>
+<p><b>Why it does that today.</b> Nothing is broken by accident — this is <code>ah-jw85</code> decision
+<b>C1</b>, which you chose: the row's Id, its <code>&#9888;</code> and its Problems entry all select
+<em>the forming unit</em>, because &ldquo;a unit that does not exist cannot be selected, and its orders are
+typed in its parent's block anyway&rdquo;. The rejected alternative was <b>C2</b> — the new unit is
+selectable like any unit — and its stated cost was exactly what you are now asking for: <em>&ldquo;a unit
+that does not exist becomes something the rest of the app can hold selected — the keyboard walk between
+units, the orders pane and the map marker all then meet it.&rdquo;</em> This bead is C2, done properly.</p>
+<p><b>And it can already go further than you saw.</b> The redirect is only on the <em>mouse</em>: arrowing
+onto a formed row (<code>UnitTableDock.tsx:689</code>) and the pin-focus jump (<code>:494</code>) both select
+the row's own <code>new-1</code>. The orders pane then finds no <code>unit new-1</code> block, shows an empty
+editor &mdash; and the first keystroke writes a real <code>unit new-1</code> block into the file, which the
+server would reject. Whatever you choose below, that stops happening.</p>
+<p><b>The hex used throughout.</b> <code>Tax Collector (1922)</code> in <code>plain (7,53)</code> holds 500,
+forms <code>NEW 1</code>, gives it 100, and the new unit buys five Plainsmen at 40. The document reads:</p>
+<div class="card" style="margin-top:12px"><div class="pane"><div class="ed">
+<div class="l"><span class="gut"></span><span class="t"><span class="kw">unit</span> 1922</span></div>
+<div class="l"><span class="gut"></span><span class="t">  @<span class="kw">tax</span></span></div>
+<div class="l"><span class="gut"></span><span class="t">  <span class="kw">form</span> 1</span></div>
+<div class="l"><span class="gut"></span><span class="t">    <span class="kw">name unit</span> "Recruits"</span></div>
+<div class="l"><span class="gut"></span><span class="t">    <span class="kw">buy</span> 5 plainsmen</span></div>
+<div class="l"><span class="gut"></span><span class="t">    <span class="kw">study</span> combat</span></div>
+<div class="l"><span class="gut"></span><span class="t">  <span class="kw">end</span></span></div>
+<div class="l"><span class="gut"></span><span class="t">  <span class="kw">give new</span> 1 100 silv</span></div>
+</div></div></div>
+</header>
+
+<main>
+
+<h3 class="sec">Question 1 <span class="tag">yours</span> &middot; What the orders pane shows for the new unit</h3>
+<p>The row <code>new-1</code> is selected in the units pane. Three ways to put its four inner lines in front
+of you. In all three the text is <b>spliced back between the <code>form 1</code> and the <code>end</code></b>
+in unit 1922's block, which is your second sentence and is not in question.</p>
+
+<div class="grid2">
+<div class="card"><h2><em>A1</em> The inner lines alone</h2>
+<div class="concept">The editor holds exactly what sits between <code>form 1</code> and <code>end</code> — the
+same relationship a unit's editor already has to its own <code>unit 1922</code> header line, which it also
+does not show. The panel's hint says whose block it lands in.</div>
+<div class="pane">
+  <div class="pane-head"><b>Orders</b><span class="hint">&mdash; new 1, in unit 1922's block</span></div>
+  <div class="ed">
+    <div class="l"><span class="gut"></span><span class="t"><span class="kw">name unit</span> "Recruits"</span></div>
+    <div class="l"><span class="gut"></span><span class="t"><span class="kw">buy</span> 5 plainsmen<span class="caret"></span></span></div>
+    <div class="l"><span class="gut"></span><span class="t"><span class="kw">study</span> combat</span></div>
+  </div>
+</div>
+<ul class="notes">
+  <li>Identical in shape to every other unit's editor: no line in it that cannot be typed over.</li>
+  <li>The indentation the file carries is the editor's own business, exactly as it is for a normal unit.</li>
+  <li class="con">Nothing on screen shows the <code>form 1</code> / <code>end</code> the lines live inside, so the file's real shape has to be remembered.</li>
+</ul></div>
+
+<div class="card"><h2><em>A2</em> The inner lines, framed by a read-only <code>form</code>/<code>end</code></h2>
+<div class="concept">The same editable region, with the two lines that bound it shown above and below it,
+dimmed and not editable — context, not text. The caret cannot enter them and typing cannot delete them.</div>
+<div class="pane">
+  <div class="pane-head"><b>Orders</b><span class="hint">&mdash; new 1, in unit 1922's block</span></div>
+  <div class="ed">
+    <div class="l ro"><span class="gut"></span><span class="t"><span class="kw">form</span> 1</span></div>
+    <div class="l"><span class="gut"></span><span class="t"><span class="kw">name unit</span> "Recruits"</span></div>
+    <div class="l"><span class="gut"></span><span class="t"><span class="kw">buy</span> 5 plainsmen<span class="caret"></span></span></div>
+    <div class="l"><span class="gut"></span><span class="t"><span class="kw">study</span> combat</span></div>
+    <div class="l ro"><span class="gut"></span><span class="t"><span class="kw">end</span></span></div>
+  </div>
+</div>
+<ul class="notes">
+  <li>The file's real shape is on screen; nobody has to hold it in their head.</li>
+  <li>The alias is visible, which is what <code>give new 1</code> elsewhere refers to.</li>
+  <li class="con">A read-only line inside a text editor is a thing this editor has never had — select-all, copy, the problem walk and Order&nbsp;OCD's indent pass all have to be taught about it.</li>
+  <li class="con">Two lines of the five are furniture, in a pane that is often four lines tall.</li>
+</ul></div>
+
+<div class="card"><h2><em>A3</em> The whole creator's block, with the <code>form</code> block banded</h2>
+<div class="concept">Today's text, made deliberate: selecting <code>new-1</code> keeps unit 1922's block in the
+editor and highlights the <code>form 1</code>…<code>end</code> run, putting the caret on its first line.</div>
+<div class="pane">
+  <div class="pane-head"><b>Orders</b><span class="hint">&mdash; unit 1922, at new 1</span></div>
+  <div class="ed">
+    <div class="l"><span class="gut"></span><span class="t">@<span class="kw">tax</span></span></div>
+    <div class="l band"><span class="gut"></span><span class="t"><span class="kw">form</span> 1</span></div>
+    <div class="l band"><span class="gut"></span><span class="t">  <span class="kw">name unit</span> "Recruits"<span class="caret"></span></span></div>
+    <div class="l band"><span class="gut"></span><span class="t">  <span class="kw">buy</span> 5 plainsmen</span></div>
+    <div class="l band"><span class="gut"></span><span class="t">  <span class="kw">study</span> combat</span></div>
+    <div class="l band"><span class="gut"></span><span class="t"><span class="kw">end</span></span></div>
+    <div class="l"><span class="gut"></span><span class="t"><span class="kw">give new</span> 1 100 silv</span></div>
+  </div>
+</div>
+<ul class="notes">
+  <li>Nothing new to build in the editor; the whole file is reachable from wherever you stand.</li>
+  <li>The <code>give new 1 100 silv</code> that pays for the purchase is on screen beside it.</li>
+  <li class="con">This is what you asked to be rid of: the pane says <em>new 1</em> and shows another unit's orders.</li>
+  <li class="con">Selecting 1922 and selecting new&nbsp;1 give the same editable text, so the two selections stop meaning different things.</li>
+</ul></div>
+</div>
+
+<h3 class="sec">Question 2 <span class="tag">yours</span> &middot; What unit 1922's <em>own</em> editor then shows</h3>
+<p>Whatever Question 1 decides, the four inner lines are physically inside unit 1922's block, and 1922's
+editor shows its block verbatim today. If they stay there, the same four lines are editable from two
+selections at once.</p>
+
+<div class="grid2">
+<div class="card"><h2><em>B1</em> Unchanged &mdash; 1922 keeps every line of its block</h2>
+<div class="concept">The editor is a view of a slice of the file, and this slice contains those lines. Both
+panes edit them; the last write wins, as with any two views of one document.</div>
+<div class="pane">
+  <div class="pane-head"><b>Orders</b><span class="hint">&mdash; unit 1922</span></div>
+  <div class="ed">
+    <div class="l"><span class="gut"></span><span class="t">@<span class="kw">tax</span></span></div>
+    <div class="l"><span class="gut"></span><span class="t"><span class="kw">form</span> 1</span></div>
+    <div class="l"><span class="gut"></span><span class="t">  <span class="kw">name unit</span> "Recruits"</span></div>
+    <div class="l"><span class="gut"></span><span class="t">  <span class="kw">buy</span> 5 plainsmen</span></div>
+    <div class="l"><span class="gut"></span><span class="t">  <span class="kw">study</span> combat</span></div>
+    <div class="l"><span class="gut"></span><span class="t"><span class="kw">end</span></span></div>
+    <div class="l"><span class="gut"></span><span class="t"><span class="kw">give new</span> 1 100 silv</span></div>
+  </div>
+</div>
+<ul class="notes">
+  <li>Nothing is hidden: the orders file you will send is the text you can see.</li>
+  <li>Deleting a new unit is just deleting its <code>form</code>…<code>end</code>, where you would look for it.</li>
+  <li>Nothing to build and nothing to explain.</li>
+  <li class="con">The same three lines are editable in two places, and the units pane offers both.</li>
+</ul></div>
+
+<div class="card"><h2><em>B2</em> Folded &mdash; 1922 shows the block as one line</h2>
+<div class="concept">The <code>form 1</code>…<code>end</code> run collapses to a single uneditable line naming
+the unit it forms. Clicking it selects <code>new-1</code>, which is where those orders are now edited.</div>
+<div class="pane">
+  <div class="pane-head"><b>Orders</b><span class="hint">&mdash; unit 1922</span></div>
+  <div class="ed">
+    <div class="l"><span class="gut"></span><span class="t">@<span class="kw">tax</span></span></div>
+    <div class="l ro"><span class="gut"></span><span class="t"><span class="kw">form</span> 1 <span class="fold">&mdash; 3 orders for new 1 &#8250;</span></span></div>
+    <div class="l"><span class="gut"></span><span class="t"><span class="kw">give new</span> 1 100 silv</span></div>
+  </div>
+</div>
+<ul class="notes">
+  <li>Each line of the file is editable in exactly one place.</li>
+  <li>1922's own month reads as its own month, undiluted by three units' worth of nesting.</li>
+  <li class="con">A fold in a plain-text editor: paste, select-all, undo and the Order&nbsp;OCD indent pass all have to respect it, and it is the largest thing on this page to build.</li>
+  <li class="con">Text you are about to send to the server is not on screen.</li>
+</ul></div>
+</div>
+
+<h3 class="sec">Question 3 <span class="tag">yours</span> &middot; Where the row's three clicks land</h3>
+<p>You chose <b>C1</b> and <b>I2</b> in <code>ah-jw85</code>: the Id cell, the Silver <code>&#9888;</code> and
+the Problems-panel entry all select unit 1922. If <code>new-1</code> becomes selectable, each of them can now
+mean itself.</p>
+<div class="grid2">
+<div class="card"><h2><em>D1</em> All three select <code>new-1</code></h2>
+<div class="concept">The click says <em>new 1</em> and arrives at new 1, in every one of the three places.</div>
+<table class="units">
+<tr><th style="width:60px">Id</th><th>Unit</th><th style="width:46px" class="num">Men</th><th style="width:110px">Items</th><th style="width:88px" class="num">Silver</th></tr>
+<tr><td><span class="own">*</span> <span class="uid">1922</span></td><td>Tax Collector</td><td class="num">8</td><td>400 SILV</td><td class="num">700</td></tr>
+<tr class="sel"><td><span class="own">*</span> <span class="uid">new-1</span></td><td>Unit (new 1)</td><td class="num">new</td><td>100 SILV</td><td class="num warn">&#9888; &minus;100</td></tr>
+</table>
+<ul class="notes">
+  <li>One rule, no exceptions to remember.</li>
+  <li>The Problems entry <code>&#9888; new 1 short $100</code> now opens the pane that can fix it.</li>
+  <li class="con">The <code>give new 1 100 silv</code> that would actually settle that shortfall is in 1922's block, one selection away.</li>
+</ul></div>
+<div class="card"><h2><em>D2</em> The Id selects <code>new-1</code>; <code>&#9888;</code> and Problems still go to 1922</h2>
+<div class="concept">The row's own identity is the new unit; the money findings keep going to the block where
+the silver is handed over, which is where the shortfall is actually fixed.</div>
+<table class="units">
+<tr><th style="width:60px">Id</th><th>Unit</th><th style="width:46px" class="num">Men</th><th style="width:110px">Items</th><th style="width:88px" class="num">Silver</th></tr>
+<tr><td><span class="own">*</span> <span class="uid">1922</span></td><td>Tax Collector</td><td class="num">8</td><td>400 SILV</td><td class="num">700</td></tr>
+<tr class="sel"><td><span class="own">*</span> <span class="uid">new-1</span></td><td>Unit (new 1)</td><td class="num">new</td><td>100 SILV</td><td class="num warn">&#9888; &minus;100</td></tr>
+</table>
+<ul class="notes">
+  <li>Each click lands where its own fix is typed.</li>
+  <li class="con">Two clicks on one row go to two different units, with nothing on screen saying why.</li>
+  <li class="con">Keeps half of the behaviour you reported as wrong.</li>
+</ul></div>
+</div>
+
+<h3 class="sec">Question 4 <span class="tag">yours</span> &middot; What an emptied editor does to the unit</h3>
+<p>Select <code>new-1</code>, select all, delete. The three inner lines go. The question is whether
+<code>form 1</code> and <code>end</code> go with them &mdash; because if they do, the unit stops existing and
+the row you were standing on disappears out from under you.</p>
+<div class="grid2">
+<div class="card"><h2><em>E1</em> The <code>form</code>/<code>end</code> pair stays</h2>
+<div class="concept">1922's block keeps an empty <code>form 1</code>…<code>end</code>. The row stays, selected,
+with nothing in its editor &mdash; exactly what an existing unit whose orders you deleted does.</div>
+<div class="grid2" style="grid-template-columns:1fr 1fr;gap:10px">
+<div class="pane"><div class="pane-head"><span class="hint">new 1</span></div><div class="empty">no orders</div></div>
+<div class="pane"><div class="pane-head"><span class="hint">unit 1922</span></div><div class="ed">
+  <div class="l"><span class="gut"></span><span class="t">@<span class="kw">tax</span></span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">form</span> 1</span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">end</span></span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">give new</span> 1 100 silv</span></div>
+</div></div>
+</div>
+<ul class="notes">
+  <li>Deleting orders never deletes a unit; the selection you are standing on survives the keystroke.</li>
+  <li>An empty <code>form 1</code>…<code>end</code> is a legal, harmless order that still forms a unit.</li>
+  <li class="con">Removing a new unit means going to 1922's block and deleting two lines by hand.</li>
+</ul></div>
+<div class="card"><h2><em>E2</em> The pair goes too, and the unit with it</h2>
+<div class="concept">Emptying the editor removes <code>form 1</code> and <code>end</code>. The <code>new-1</code>
+row vanishes on the next preview, and the selection falls back to the hex.</div>
+<div class="grid2" style="grid-template-columns:1fr 1fr;gap:10px">
+<div class="pane"><div class="pane-head"><span class="hint">no unit</span></div><div class="empty">Select a unit to write its orders.</div></div>
+<div class="pane"><div class="pane-head"><span class="hint">unit 1922</span></div><div class="ed">
+  <div class="l"><span class="gut"></span><span class="t">@<span class="kw">tax</span></span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">give new</span> 1 100 silv</span></div>
+</div></div>
+</div>
+<ul class="notes">
+  <li>One gesture removes a new unit, from the pane where it lives.</li>
+  <li class="con">A keystroke deletes a unit and moves the selection; the <code>give new 1</code> left behind is now an order to nobody.</li>
+  <li class="con">No other editor in the app destroys the thing it is editing when you clear it.</li>
+</ul></div>
+</div>
+
+<h3 class="sec">The states, whichever way it goes</h3>
+<p>These are what I would build under any of the answers above &mdash; shown so you can object now rather
+than at verification. Wording, sizes and colours here are mine unless you say otherwise.</p>
+<div class="grid2">
+<div class="card"><h2><em>S1</em> A <code>form</code> with nothing in it</h2>
+<div class="pane"><div class="pane-head"><b>Orders</b><span class="hint">&mdash; new 1, in unit 1922's block</span></div>
+<div class="ed"><div class="l"><span class="gut"></span><span class="t"><span class="caret"></span></span></div></div></div>
+<ul class="notes"><li class="n">An empty editable pane, not a notice. There is nothing wrong: this unit simply has no orders yet.</li></ul></div>
+
+<div class="card"><h2><em>S2</em> A <code>form</code> the file never closes</h2>
+<div class="concept">The document says <code>form 1</code> and no <code>end</code> before the next
+<code>unit</code> line. The server would reject the file; the editor still has to show something.</div>
+<div class="pane"><div class="pane-head"><b>Orders</b><span class="hint">&mdash; new 1, in unit 1922's block</span></div>
+<div class="ed">
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">buy</span> 5 plainsmen</span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">study</span> combat</span></div>
+</div></div>
+<ul class="notes"><li class="n">Everything to the end of 1922's block is the new unit's, and an edit writes back into that same run. The missing <code>end</code> is already an order-validation error against 1922's block and is reported there, not here.</li></ul></div>
+
+<div class="card"><h2><em>S3</em> Two hexes each forming <code>NEW 1</code></h2>
+<div class="concept">Legal &mdash; <code>rules/form</code> scopes an alias to the region. The selection is
+already a hex plus a unit, so each hex's <code>new-1</code> resolves inside its own hex and the two never
+meet. <code>ah-9o0c.2</code> is fixing the units table's own cross-hex list separately.</div>
+<ul class="notes"><li class="n">No new decision here; recorded so it is on the page rather than discovered later.</li></ul></div>
+
+<div class="card"><h2><em>S4</em> The unit whose <code>form</code> is inside another <code>form</code></h2>
+<div class="concept"><code>form 1</code> containing <code>form 2</code> forms two units, and the inner one's
+creator is <code>new-1</code> rather than a reported unit (the core already models this). Its editor holds
+the lines between <code>form 2</code> and its <code>end</code>, on the same rule as everything above.</div>
+<ul class="notes"><li class="n">Falls out of the design rather than needing one of its own &mdash; noted so the plan says so and it gets a test.</li></ul></div>
+</div>
+
+<div class="verdict"><b>My recommendation: A1, B1, D1, E1.</b>
+<b>A1</b> because it makes a formed unit's editor the same object as every other unit's editor &mdash; the
+<code>form 1</code> line is its header, and no unit's editor shows its header. <b>B1</b> because a fold is
+the one thing on this page that could hide text you are about to send to the server, and because deleting a
+new unit has to be possible somewhere. A1 with B1 does mean the three lines are editable from two
+selections; I think that is the honest description of a nested block, and it is what a text editor with two
+views of one file has always done. <b>D1</b> because one rule beats two, and because a click that says
+<em>new 1</em> and lands on 1922 is the report you filed. <b>E1</b> because no other editor here deletes its
+subject when you clear it, and because the selection surviving a delete matters more than saving two
+keystrokes.<br><br>
+The pairing I would warn against is <b>A2 with B1</b>: read-only lines in the formed unit's editor
+<em>and</em> the same lines fully editable in 1922's, one pane apart.</div>
+
+</main>
+<footer>Round 1 of the <code>ah-ty3s</code> planning discussion. Mockup:
+<code>docs/ui/ah-ty3s-formed-unit-orders.html</code>. Rules cited: <code>rules/form</code>.
+Prior decisions this revisits: <code>ah-jw85</code> C1, C2, I2, N2 &mdash;
+<code>docs/ui/ah-jw85-new-unit-warning.html</code> and <code>docs/ui/ah-jw85-which-checks.html</code>.</footer>
+</body></html>
