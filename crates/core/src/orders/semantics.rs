@@ -3672,8 +3672,6 @@ struct Ledger<'a> {
     ruleset: Option<&'a Ruleset>,
     /// What each unit would hold once its orders had run, keyed by unit and item tag.
     state: PhaseState,
-    /// Materials consumed by manufacturing after movement, keyed like `balance`.
-    manufacturing_spent: BTreeMap<(String, String), i64>,
     /// What each PRODUCE created, and what later orders then spent, keyed like `balance` and held
     /// per phase.
     ///
@@ -3751,15 +3749,6 @@ struct Ledger<'a> {
     /// handling this ledger cannot express, so recording either here would double-apply it
     /// (`ah-agbm`, `ah-3mwm`).
     pub(crate) movements: Vec<ItemMovement>,
-    /// Goods a resolvable, non-Nexus `WITHDRAW` order credited this month, keyed by unit and
-    /// normalized item tag exactly as `credit` normalizes them. Movement-phase state only
-    /// (`ah-0wpn`): `rules/withdraw` acquires the goods before movement, but `Ledger.balance` has
-    /// many readers outside movement - `PhaseState::stocks`, `judge_shortfalls`, recruitment,
-    /// production, study, maintenance and the Silver forecast all intentionally read that map as
-    /// their own phase model, and crediting it here would change every one of those. Read only by
-    /// `holdings_at_movement`, which is the sole inventory source for `weight_after_orders` and
-    /// `capacity_after_orders`.
-    pub(crate) withdrawn_for_movement: BTreeMap<(String, String), i64>,
     /// Lines whose effect on a unit's items could not be counted at all, by unit, in document
     /// order (`ah-agbm`).
     pub(crate) uncounted: BTreeMap<String, Vec<usize>>,
@@ -4030,7 +4019,6 @@ fn ledger_for_with_production<'a>(
     let mut ledger = Ledger {
         ruleset,
         state: PhaseState::from_hex(hex),
-        manufacturing_spent: BTreeMap::new(),
         produced: BTreeMap::new(),
         production_materials: BTreeMap::new(),
         spent_after_production: BTreeMap::new(),
@@ -4043,7 +4031,6 @@ fn ledger_for_with_production<'a>(
         maintenance_pooled: false,
         faction_food: FactionFoodPass::default(),
         movements: Vec::new(),
-        withdrawn_for_movement: BTreeMap::new(),
         uncounted: BTreeMap::new(),
         refused_recruits: Vec::new(),
         built: BTreeMap::new(),
@@ -5431,15 +5418,15 @@ fn apply(
         // and the Silver column only sets a flag for a hover sentence, so there is no shared
         // arithmetic for a `price_withdrawal` to hold.
         //
-        // A movement is still recorded, with no credit to `balance` (`ah-agbm`): crediting the
-        // goods here would change which units `not-enough-items` fires on, a shipped warning this
-        // bead was not asked to touch. Recording the movement without the credit gives the ITEMS
-        // column its projection and leaves every warning exactly as it is.
+        // `rules/sequenceofevents` places WITHDRAW before movement and before every month-long
+        // order, and `rules/withdraw` says a successful withdrawal acquires the goods - so the
+        // goods are credited from `StatePhase::Withdraw` onward and stand for the rest of the
+        // turn (`ah-728m.3`). That is what makes a PRODUCE or BUILD funded by a withdrawal stop
+        // being called short, and it is what lets movement read one phase model rather than a
+        // side map of its own.
         //
-        // `rules/sequenceofevents` places WITHDRAW before movement, and `rules/withdraw` says a
-        // successful withdrawal acquires the goods - so the movement-only holdings map is
-        // credited here, distinct from `balance`, purely so `holdings_at_movement` can see what
-        // this unit is carrying by the time MOVE is checked (`ah-0wpn`).
+        // Deliberately `apply` rather than `credit`: `credit` is the order-effect helper paired
+        // with `charge`, and nothing is charged here, so nothing may reach `Ledger.charged_at`.
         Intent::Withdraw { count, item } => {
             if withdrawal_refused(hex.region) {
                 return;
@@ -5453,11 +5440,15 @@ fn apply(
                     produced: false,
                     created: None,
                 });
-                let entry = ledger
-                    .withdrawn_for_movement
-                    .entry((who.clone(), tag.to_ascii_uppercase()))
-                    .or_insert(0);
-                *entry = entry.saturating_add(*count);
+                // Only what the catalogue prices a withdrawal of actually arrives.
+                // `rules/withdraw` acquires *basic items* with unclaimed funds, and a
+                // `withdraw_cost` is how the catalogue says an item is one; crediting anything
+                // else would silence a shortfall warning that is telling the player the truth,
+                // and `check_claims` skips the same order, so nothing else would speak up. With
+                // no ruleset there is no catalogue to ask, and the same answer follows.
+                if withdrawal_cost(item, ruleset).is_some() {
+                    ledger.state.apply(StatePhase::Withdraw, who, &tag, *count);
+                }
             }
         }
         // Wages and takings from entertaining are paid in the last phase of the turn, after study
@@ -6826,6 +6817,15 @@ fn known_balance_of<'a>(
         .known_balance_at(StatePhase::Maintenance, unit_id, tag)
 }
 
+/// What `StatePhase::Withdraw` itself added for this unit and tag: the withdrawal, and only the
+/// withdrawal, since no other order settles in that phase. `StatePhase::Market` is the slot
+/// immediately before it, so the difference is exactly what the WITHDRAW arm applied
+/// (`ah-728m.3`).
+fn withdrawn_this_month(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
+    ledger.state.balance_at(StatePhase::Withdraw, unit_id, tag)
+        - ledger.state.balance_at(StatePhase::Market, unit_id, tag)
+}
+
 fn balance_of(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
     ledger
         .state
@@ -7266,12 +7266,6 @@ fn charge_shared_material(
             .spent_after_production
             .entry((unit_id.clone(), tag.to_ascii_uppercase()))
             .or_insert([0; StatePhase::COUNT])[phase as usize] += debit.amount;
-        if phase == StatePhase::Manufacturing {
-            *ledger
-                .manufacturing_spent
-                .entry((unit_id.clone(), tag.to_ascii_uppercase()))
-                .or_insert(0) += debit.amount;
-        }
         ledger.movements.push(ItemMovement {
             unit_id,
             tag: tag.to_ascii_uppercase(),
@@ -7820,13 +7814,17 @@ fn report_shortfalls(
             )
         } else {
             let short_of = counted_item(short, tag, hex, ruleset, plurals);
+            // Both figures count what the unit withdrew this month, exactly as `short` already
+            // does through the phase model and as the silver arm above does with `receipts`
+            // (`ah-728m.3`).
+            let withdrawn = withdrawn_this_month(ledger, unit_id, tag);
             ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_ITEMS,
                 format!(
                     "short {short_of}: this unit can have {} and its orders spend {}",
-                    ordered.holding(tag),
-                    ordered.holding(tag) + short,
+                    ordered.holding(tag) + withdrawn,
+                    ordered.holding(tag) + withdrawn + short,
                 ),
                 at,
             )
@@ -9909,37 +9907,6 @@ fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
     )
 }
 
-/// This unit's item holdings once this month's orders have run, by normalized tag - the sole
-/// inventory source for `weight_after_orders` and `capacity_after_orders`, so load and allowance
-/// are always priced from the same set of items (`ah-0wpn`).
-///
-/// Starts from this unit's settled `Ledger.balance` entries (moved by GIVE/TAKE in phase 4 and
-/// BUY/SELL in phase 7) and adds `Ledger.withdrawn_for_movement`'s movement-only WITHDRAW credits.
-/// Deliberately not `Ledger.balance` itself, which many other readers use as their own phase model
-/// and which WITHDRAW must not disturb. A tag WITHDRAW adds that the unit did not already hold
-/// starts from the unit's reported (zero) holding of it.
-fn holdings_at_movement(ordered: &Ordered<'_>, ledger: &Ledger<'_>) -> BTreeMap<String, i64> {
-    let mut holdings: BTreeMap<String, i64> = BTreeMap::new();
-
-    holdings.extend(
-        ledger
-            .state
-            .holdings_at(StatePhase::Maintenance, &ordered.unit.unit_id),
-    );
-
-    for ((unit_id, tag), withdrawn) in &ledger.withdrawn_for_movement {
-        if unit_id != &ordered.unit.unit_id || *withdrawn == 0 {
-            continue;
-        }
-        let held = holdings
-            .entry(tag.clone())
-            .or_insert_with(|| ordered.holding(tag));
-        *held = held.saturating_add(*withdrawn);
-    }
-
-    holdings
-}
-
 /// What one unit weighs once this month's orders have run: the weight the report gave it, plus
 /// everything those orders move into or out of it that the ruleset can price.
 ///
@@ -9947,7 +9914,8 @@ fn holdings_at_movement(ordered: &Ordered<'_>, ledger: &Ledger<'_>) -> BTreeMap<
 /// runs before the fleet does: GIVE and TAKE in phase 4, SELL and BUY in phase 7, movement in
 /// phase 9. TAX, CLAIM, PILLAGE and STUDY move silver, which the ruleset weighs at 0. Per
 /// `rules/sequenceofevents`, manufacturing PRODUCE, BUILD and WORK are phase 10, after the fleet
-/// has gone; manufacturing material spend is added back below when reconstructing movement load.
+/// has gone, so neither their material spend nor a BUILD's has touched the `StatePhase::Movement`
+/// slot this reads (`ah-728m.3`).
 /// A production's *output* needs no such treatment: `produce` unwinds its own credit at
 /// `StatePhase::Wages`, so the balance read here never carried it (`ah-728m.2.2`).
 ///
@@ -9963,15 +9931,11 @@ fn weight_after_orders(
 ) -> Option<i64> {
     let mut weight = ordered.unit.weight?;
 
-    for (tag, holding) in holdings_at_movement(ordered, ledger) {
-        let manufacturing_spent = ledger
-            .manufacturing_spent
-            .get(&(ordered.unit.unit_id.clone(), tag.clone()))
-            .copied()
-            .unwrap_or_default();
-        let moved = holding
-            .saturating_add(manufacturing_spent)
-            .saturating_sub(ordered.holding(&tag));
+    for (tag, holding) in ledger
+        .state
+        .holdings_at(StatePhase::Movement, &ordered.unit.unit_id)
+    {
+        let moved = holding.saturating_sub(ordered.holding(&tag));
         if moved == 0 {
             continue;
         }
@@ -10016,7 +9980,10 @@ fn capacity_after_orders(
         .map(|item| (item.tag.to_ascii_uppercase(), item.amount))
         .collect();
 
-    for (tag, holding) in holdings_at_movement(ordered, ledger) {
+    for (tag, holding) in ledger
+        .state
+        .holdings_at(StatePhase::Movement, &ordered.unit.unit_id)
+    {
         let moved = holding - ordered.holding(&tag);
         if moved == 0 {
             continue;
@@ -18429,8 +18396,13 @@ BUILD
             with_ledger(hex_region, "unit 2390\nWITHDRAW 8 GRAI\n", |ledger| {
                 assert_eq!(
                     balance_of(ledger, "2390", "GRAI"),
-                    1,
-                    "the fund pays, not the unit - the fixture's starting grain is untouched"
+                    9,
+                    "the withdrawal arrives, per rules/withdraw"
+                );
+                assert_eq!(
+                    balance_of(ledger, "2390", SILVER),
+                    0,
+                    "the fund pays, not the unit - the fixture's silver is untouched"
                 );
                 assert!(
                     !ledger.doubted.contains("2390"),
@@ -18439,26 +18411,31 @@ BUILD
             });
         }
 
-        /// `ah-0wpn`. `rules/sequenceofevents` places WITHDRAW before movement, and
-        /// `rules/withdraw` acquires the goods on a success - but the shared resource `balance`
-        /// deliberately stays untouched (see `a_withdrawal_still_charges_the_unit_nothing`), so
-        /// the withdrawn goods must land somewhere else for `holdings_at_movement` to find them
-        /// before MOVE is checked.
+        /// `ah-728m.3`. `rules/sequenceofevents` places WITHDRAW before movement and before
+        /// every month-long order, and `rules/withdraw` acquires the goods on a success - so the
+        /// credit lands at `StatePhase::Withdraw` and stands for the rest of the turn.
         #[test]
-        fn withdrawn_goods_stay_out_of_the_resource_balance_but_enter_movement_holdings() {
+        fn withdrawn_goods_are_held_from_the_withdraw_phase_onward() {
             let hex_region = region(vec![unit("2390")]);
             with_ledger(hex_region, "unit 2390\nWITHDRAW 6 WSHD\n", |ledger| {
                 assert_eq!(
-                    balance_of(ledger, "2390", "WSHD"),
+                    ledger.state.balance_at(StatePhase::Market, "2390", "WSHD"),
                     0,
-                    "the resource balance must be unchanged by a movement-phase withdrawal"
+                    "the phase before the withdrawal has not seen the shields"
                 );
                 assert_eq!(
                     ledger
-                        .withdrawn_for_movement
-                        .get(&("2390".to_string(), "WSHD".to_string())),
-                    Some(&6),
-                    "the movement-phase holdings must contain the six withdrawn shields"
+                        .state
+                        .balance_at(StatePhase::Withdraw, "2390", "WSHD"),
+                    6,
+                    "the withdrawal's own phase holds the six shields"
+                );
+                assert_eq!(
+                    ledger
+                        .state
+                        .balance_at(StatePhase::Maintenance, "2390", "WSHD"),
+                    6,
+                    "and they stand for the rest of the turn"
                 );
                 assert_eq!(
                     ledger.movements,
@@ -18860,6 +18837,28 @@ BUILD
                     }])
                 );
             });
+        }
+
+        /// `ah-728m.3`. `rules/sequenceofevents` runs BUILD after movement, so the material a
+        /// BUILD consumes is still aboard when the MOVE is checked. Read straight off
+        /// `weight_after_orders`, because one block cannot hold both BUILD and MOVE.
+        #[test]
+        fn a_build_does_not_lighten_the_unit_that_moves() {
+            let mut hex_region = report_with_a_builder();
+            hex_region.units[0].weight = Some(1_500);
+            let ordered = OrderedUnits::read("unit 900\nBUILD\n");
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = ruleset();
+            let ledger = ledger_for(&hex, Some(&rules));
+            assert_eq!(
+                weight_after_orders(
+                    hex.find("900").expect("the builder is in the hex"),
+                    &ledger,
+                    Some(&rules)
+                ),
+                Some(1_500),
+                "BUILD settles after movement, so its 30 wood is still aboard when MOVE is checked",
+            );
         }
 
         #[test]
@@ -23620,6 +23619,79 @@ BUILD
         assert_eq!(
             finding.message,
             "short $100: this unit can have $600 and its orders spend $700"
+        );
+    }
+
+    /// `ah-728m.3`. `rules/sequenceofevents` runs WITHDRAW before movement and before every
+    /// month-long order, and `rules/withdraw` acquires the goods - so material a withdrawal
+    /// brought in this month funds the orders that spend it, and the shortfall warning that fires
+    /// today goes silent. The navigator chose this knowing that cost.
+    #[test]
+    fn an_order_funded_by_a_withdrawal_is_not_called_short() {
+        let regions = vec![region(vec![unit("2391"), unit("2392")])];
+
+        assert_eq!(
+            codes(&check(
+                regions,
+                "unit 2391\nWITHDRAW 5 IRON\nGIVE 2392 5 IRON\n"
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// `rules/withdraw` acquires *basic items* with unclaimed funds, and the catalogue says which
+    /// those are by carrying a `withdraw_cost` at all. An item it prices nowhere cannot be
+    /// withdrawn, so nothing may arrive - crediting it would silence a warning that is telling the
+    /// player the truth, and `check_claims` skips the same order, so nothing else would speak up
+    /// (`ah-728m.3`).
+    #[test]
+    fn an_unwithdrawable_item_credits_the_unit_nothing() {
+        let regions = vec![region(vec![unit("2391"), unit("2392")])];
+
+        let finding = only(check(
+            regions,
+            "unit 2391\nWITHDRAW 5 MITH\nGIVE 2392 5 MITH\n",
+        ));
+        assert_eq!(finding.code.as_str(), "not-enough-items");
+        assert_eq!(
+            finding.message,
+            "short 5 mithril: this unit can have 0 and its orders spend 5"
+        );
+    }
+
+    /// Silver carries no `withdraw_cost` either - `rules/withdraw` acquires items with unclaimed
+    /// funds, not more funds - so a silver withdrawal credits nothing and the `not-enough-silver`
+    /// figures stay the ones the silver arm already computes from `receipts` (`ah-728m.3`).
+    #[test]
+    fn a_silver_withdrawal_credits_the_unit_nothing() {
+        let regions = vec![region(vec![unit("2391"), unit("2392")])];
+
+        let finding = only(check(
+            regions,
+            "unit 2391\nWITHDRAW 500 SILV\nGIVE 2392 500 SILV\n",
+        ));
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert_eq!(
+            finding.message,
+            "short $500: this unit can have $0 and its orders spend $500"
+        );
+    }
+
+    /// The withdrawal is in both of the message's figures, exactly as a silver gift already is in
+    /// the `not-enough-silver` arm's - otherwise the sentence names a "can have" that does not
+    /// describe the orders behind the shortfall (`ah-728m.3`).
+    #[test]
+    fn a_shortfall_counts_the_withdrawal_in_its_figures() {
+        let regions = vec![region(vec![unit("2391"), unit("2392")])];
+
+        let finding = only(check(
+            regions,
+            "unit 2391\nWITHDRAW 5 IRON\nGIVE 2392 8 IRON\n",
+        ));
+        assert_eq!(finding.code.as_str(), "not-enough-items");
+        assert_eq!(
+            finding.message,
+            "short 3 iron: this unit can have 5 and its orders spend 8"
         );
     }
 
@@ -30457,6 +30529,27 @@ BUILD
         );
         assert_eq!(
             finding.message,
+            "this unit is overloaded: it carries 16 and the most it can move with is 15, so it \
+             will not move"
+        );
+    }
+
+    /// The whole point of the phase model (`ah-728m.3`): the order a player writes their block in
+    /// does not change the order `rules/sequenceofevents` runs it in, so a WITHDRAW written after
+    /// the MOVE still counts toward the load the MOVE is judged against.
+    #[test]
+    fn a_withdrawal_written_before_or_after_a_move_gives_the_same_load() {
+        let before = only(check(
+            vec![region(vec![one_human("12054")])],
+            "unit 12054\nWITHDRAW 6 WSHD\nMOVE N\n",
+        ));
+        let after = only(check(
+            vec![region(vec![one_human("12054")])],
+            "unit 12054\nMOVE N\nWITHDRAW 6 WSHD\n",
+        ));
+        assert_eq!(before.message, after.message);
+        assert_eq!(
+            after.message,
             "this unit is overloaded: it carries 16 and the most it can move with is 15, so it \
              will not move"
         );
