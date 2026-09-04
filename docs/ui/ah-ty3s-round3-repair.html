@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ah-ty3s — round 3: the rules of the repair</title><style>
+  :root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;
+        --ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;
+        --select:#4a9fd8;--ok:#4fb783;--danger:#d97070;--warn:#d9a441;}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,'Times New Roman',serif;padding:32px 24px 72px}
+  header,main,footer{max-width:1400px;margin:0 auto}
+  h1{font-size:26px;letter-spacing:.4px} h1 span{color:var(--brass)}
+  header p{color:var(--ink-soft);max-width:96ch;margin-top:10px;font-size:14px}
+  header p+p{margin-top:8px}
+  code{font-family:'SF Mono',Menlo,Consolas,monospace}
+  header code,p code,li code,td code,div.concept code{color:var(--brass-bright);font-size:12.5px}
+  h3.sec{margin:40px 0 4px;font-size:13px;letter-spacing:1.8px;text-transform:uppercase;color:var(--brass)}
+  h3.sec+p{color:var(--ink-soft);font-size:13px;margin-bottom:14px;max-width:96ch}
+  .card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:16px;margin-bottom:18px}
+  .card h2{font-size:16px;margin-bottom:5px}
+  .card h2 em{color:var(--brass);font-style:normal;font-size:11.5px;letter-spacing:1.5px;margin-right:8px}
+  .concept{color:var(--ink-soft);font-size:12.5px;margin-bottom:11px;max-width:96ch}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+  .pair{display:grid;grid-template-columns:1fr 24px 1fr;gap:8px;align-items:center}
+  .arrow{text-align:center;color:var(--brass);font-size:18px}
+  .pane{background:var(--ground);border:1px solid var(--edge-soft);border-radius:8px;overflow:hidden}
+  .pane-head{padding:4px 10px;border-bottom:1px solid var(--edge-soft);
+             font:11px/1.4 'Helvetica Neue',Arial,sans-serif;color:var(--ink-dim)}
+  .ed{font:11.5px/1.62 'SF Mono',Menlo,Consolas,monospace;padding:6px 10px 8px;white-space:pre;color:var(--ink-soft)}
+  .kw{color:var(--brass-bright)}
+  .gone{color:var(--danger);text-decoration:line-through;opacity:.65}
+  .new{color:var(--ok)}
+  ul.notes{list-style:none;font-size:12.5px;color:var(--ink-soft);display:grid;gap:4px;margin-top:11px}
+  ul.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+  ul.notes li.con::before{content:"\2212 ";color:var(--danger)}
+  ul.notes li.n::before{content:"\00b7 ";color:var(--ink-dim)}
+  .verdict{background:var(--raised);border:1px solid var(--edge);border-left:3px solid var(--brass);
+           border-radius:6px;padding:12px 14px;font-size:13px;color:var(--ink-soft);margin-top:14px;max-width:110ch}
+  .verdict b{color:var(--ink)}
+  .chosen{background:var(--raised);border:1px solid var(--edge);border-left:3px solid var(--ok);
+          border-radius:6px;padding:11px 14px;font-size:13px;color:var(--ink-soft);margin-top:14px;max-width:110ch}
+  .chosen b{color:var(--ink)}
+  table.d{border-collapse:collapse;font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif;color:var(--ink-soft);margin-top:8px;width:100%}
+  table.d td,table.d th{border:1px solid var(--edge);padding:5px 10px;text-align:left;vertical-align:top}
+  table.d th{color:var(--ink);font-weight:500;background:var(--raised)}
+  table.d code{color:var(--brass-bright);font-size:12px}
+  .hdr{background:var(--panel);border:1px solid var(--edge);border-radius:7px;padding:7px 12px;
+       font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif;display:flex;gap:10px;align-items:center}
+  .hdr .t-notice{color:var(--select)} .hdr .t-warning{color:var(--warn)} .hdr .t-routine{color:var(--ink-dim)}
+  footer{margin-top:44px;color:var(--ink-dim);font-size:12.5px;border-top:1px solid var(--edge);padding-top:14px}
+  .tag{display:inline-block;font:10.5px/1 'Helvetica Neue',Arial,sans-serif;letter-spacing:.1em;
+       text-transform:uppercase;color:var(--ground);background:var(--brass);border-radius:3px;padding:3px 6px;vertical-align:2px}
+  .tag.mine{background:var(--edge);color:var(--ink-soft)}
+</style></head><body>
+
+<header>
+<h1>Round 3 &mdash; <span>the rules of the repair</span></h1>
+<p>Bead <code>ah-ty3s</code>. Rounds 1 and 2:
+<code>docs/ui/ah-ty3s-formed-unit-orders.html</code>,
+<code>docs/ui/ah-ty3s-round2.html</code>.</p>
+<div class="chosen"><b>Settled so far:</b> <b>A1</b> the formed unit's editor holds the lines between
+<code>form n</code> and <code>end</code>. <b>B1</b> the creator's editor is unchanged. <b>D1</b> all three
+clicks select the formed unit. <b>E1</b> emptying it leaves the <code>form</code>/<code>end</code> standing.
+<b>F1</b> a finding is underlined only in the editor of the unit it names. <b>G3</b> a stale
+<code>unit new-n</code> block is folded back into its <code>form n</code> block on load.</div>
+<p><b>G3 is the one answer that needs its edges drawn before it can be built.</b> It rewrites a file the
+player saved, so an unattended implementer must not be left to invent what happens when the shape is not the
+clean one. Below: the cases I intend to settle myself, then the two I will not.</p>
+</header>
+
+<main>
+
+<h3 class="sec">What the repair does <span class="tag mine">mine, unless you object</span></h3>
+<p>Run once, on the document as it is loaded &mdash; a restored draft, a restored turn, or an imported orders
+file &mdash; and never again while typing. Both halves of an edit go through the same writer that typing does,
+so the repaired document is saved exactly as an edit would be.</p>
+<table class="d">
+<tr><th style="width:34%">The document says</th><th>What happens</th><th style="width:30%">Why</th></tr>
+<tr><td>One <code>unit new-1</code> block, and one <code>form 1</code> in the same region</td>
+    <td>Its lines are appended inside that <code>form 1</code> block, after whatever is already there, and the <code>unit new-1</code> header is removed.</td>
+    <td>The one case this is for.</td></tr>
+<tr><td>An <b>empty</b> <code>unit new-1</code> block</td>
+    <td>The header is removed. Nothing is moved.</td>
+    <td>There is nothing to move, and the header alone is what the server refuses.</td></tr>
+<tr><td>Two <code>form 1</code> blocks in the same region</td>
+    <td>The <b>first</b> one takes the lines.</td>
+    <td>The core swallows the second: an alias already taken in a region forms nothing (<code>intents.rs:414-418</code>, <code>rules/form</code>). The first is the unit the row belongs to.</td></tr>
+<tr><td>A <code>form 1</code> in <b>another</b> region</td>
+    <td>Not a match; the block is left alone (see Question 7).</td>
+    <td>An alias is scoped to its region (<code>rules/form</code>), so that <code>form 1</code> is a different unit.</td></tr>
+<tr><td>A <code>form 1</code> nested inside another <code>form</code></td>
+    <td>Matched like any other: the innermost <code>form 1</code> the core would count is the one.</td>
+    <td>Nesting is legal and the core already models it (<code>intents.rs:383-390</code>).</td></tr>
+<tr><td>A <code>unit new-1</code> block containing its own <code>form</code>&hellip;<code>end</code></td>
+    <td>Moved with everything else, verbatim.</td>
+    <td>The repair moves lines; it never reads them.</td></tr>
+<tr><td>Indentation of the moved lines</td>
+    <td>Left exactly as it was.</td>
+    <td>Whitespace is nothing to the server, and re-indenting is Order&nbsp;OCD's job and the player's setting.</td></tr>
+</table>
+
+<h3 class="sec">Question 7 <span class="tag">yours</span> &middot; A <code>unit new-1</code> with orders and nowhere to put them</h3>
+<p>The block has lines in it and there is no <code>form 1</code> in its region to fold them into &mdash; the
+player deleted the <code>form</code>, or the block was left behind by a turn that has since moved on.</p>
+<div class="grid2">
+<div class="card"><h2><em>H1</em> Left exactly as it is</h2>
+<div class="concept">The repair only ever <em>moves</em> lines. A block with nowhere to go is not touched, and
+stays in the file as it stands.</div>
+<div class="pair">
+<div class="pane"><div class="pane-head">before</div><div class="ed"><span class="kw">unit</span> 1922
+  @<span class="kw">tax</span>
+
+<span class="kw">unit new-</span>1
+  <span class="kw">buy</span> 5 plainsmen</div></div>
+<div class="arrow">&rarr;</div>
+<div class="pane"><div class="pane-head">after</div><div class="ed"><span class="kw">unit</span> 1922
+  @<span class="kw">tax</span>
+
+<span class="kw">unit new-</span>1
+  <span class="kw">buy</span> 5 plainsmen</div></div>
+</div>
+<ul class="notes">
+  <li>No line the player typed is ever lost, in any shape the file can be in.</li>
+  <li>One rule to state and to test: no <code>form</code>, no move.</li>
+  <li class="con">The file still exports and is still refused by the server, and nothing on screen says why &mdash; the exact gap G1 was rejected for.</li>
+</ul></div>
+
+<div class="card"><h2><em>H2</em> Left as it is, and the header says so</h2>
+<div class="concept">Same file, plus one line in the header the next time the game is opened, naming the block
+and where it is. Nothing is deleted, and nothing is silent.</div>
+<div class="pair">
+<div class="pane"><div class="pane-head">before</div><div class="ed"><span class="kw">unit</span> 1922
+  @<span class="kw">tax</span>
+
+<span class="kw">unit new-</span>1
+  <span class="kw">buy</span> 5 plainsmen</div></div>
+<div class="arrow">&rarr;</div>
+<div class="pane"><div class="pane-head">after &mdash; unchanged, and said aloud</div><div class="ed"><span class="kw">unit</span> 1922
+  @<span class="kw">tax</span>
+
+<span class="kw">unit new-</span>1
+  <span class="kw">buy</span> 5 plainsmen</div></div>
+</div>
+<div class="hdr" style="margin-top:10px"><span class="t-warning">&#9888;</span>
+<span class="t-warning">unit new-1 has orders but nothing forms it &mdash; the server will refuse this block</span></div>
+<ul class="notes">
+  <li>Nothing lost, and the one case the repair cannot fix is the one case you are told about.</li>
+  <li>A header line, not a check in the core &mdash; far less than round 2's G2.</li>
+  <li class="con">A warning about a line you cannot see and cannot click to.</li>
+</ul></div>
+</div>
+<div class="verdict"><b>My recommendation: H2.</b> H1 is the safe half of it and I would take it if the warning
+were expensive, but it is one status line on a path that is already computing exactly this fact. The
+objection &mdash; a warning you cannot click to &mdash; is real; if you would rather have silence than an
+unactionable warning, H1 is the honest choice and I will say so in the plan.</div>
+
+<h3 class="sec">Question 8 <span class="tag">yours</span> &middot; Whether the ordinary repair says anything</h3>
+<p>The clean case: two orders moved into <code>form 1</code>, the stale header gone, the file now valid. Your
+saved file has been changed by opening it.</p>
+<div class="grid2">
+<div class="card"><h2><em>J1</em> Silently</h2>
+<div class="concept">Nothing is said. The orders are where they belong and the pane shows them under
+<code>new 1</code>, which is the whole point.</div>
+<div class="hdr" style="margin-top:10px"><span class="t-routine">11 regions &middot; 42 units</span></div>
+<ul class="notes">
+  <li>Nothing to read on a load that went right.</li>
+  <li class="con">A file changed without being asked and without being told &mdash; my objection to G3, unanswered.</li>
+</ul></div>
+<div class="card"><h2><em>J2</em> One line in the header</h2>
+<div class="concept">A notice beside the turn counts, gone at the next thing you do. It names the unit and
+what moved.</div>
+<div class="hdr" style="margin-top:10px"><span class="t-notice">&#8505;</span>
+<span class="t-notice">Moved 2 orders into <code style="color:inherit">FORM 1</code> for new 1</span></div>
+<ul class="notes">
+  <li>The change is on the record at the moment it happens.</li>
+  <li>Reads as a repair rather than as an error, which is what it is.</li>
+  <li class="con">One more line on a load, for something that will stop happening once nobody has an old draft.</li>
+</ul></div>
+</div>
+<div class="verdict"><b>My recommendation: J2.</b> The wording, tone and plural handling are mine and will go in
+the plan's <i>Decided by me</i>; only whether it is said at all is yours. If both blocks and several regions
+are repaired at once it becomes one line naming the count &mdash; &ldquo;Moved 5 orders into 2 FORM blocks&rdquo;
+&mdash; rather than one line each.</div>
+
+</main>
+<footer>Round 3 of the <code>ah-ty3s</code> planning discussion. Rounds 1&ndash;2:
+<code>docs/ui/ah-ty3s-formed-unit-orders.html</code>,
+<code>docs/ui/ah-ty3s-round2.html</code>. Rules cited: <code>rules/form</code>. Code cited:
+<code>crates/core/src/orders/intents.rs:383-418</code>,
+<code>packages/shared/src/workspace/shellStatus.ts</code>.</footer>
+</body></html>

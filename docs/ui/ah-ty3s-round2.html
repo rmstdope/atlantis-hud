@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ah-ty3s — round 2: marks, and the block the bug left behind</title><style>
+  :root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;
+        --ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;
+        --select:#4a9fd8;--ok:#4fb783;--danger:#d97070;--warn:#d9a441;}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,'Times New Roman',serif;padding:32px 24px 72px}
+  header,main,footer{max-width:1400px;margin:0 auto}
+  h1{font-size:26px;letter-spacing:.4px} h1 span{color:var(--brass)}
+  header p{color:var(--ink-soft);max-width:96ch;margin-top:10px;font-size:14px}
+  header p+p{margin-top:8px}
+  code,.mono{font-family:'SF Mono',Menlo,Consolas,monospace}
+  header code,p code,li code,td code,div.concept code{color:var(--brass-bright);font-size:12.5px}
+  h3.sec{margin:40px 0 4px;font-size:13px;letter-spacing:1.8px;text-transform:uppercase;color:var(--brass)}
+  h3.sec+p{color:var(--ink-soft);font-size:13px;margin-bottom:14px;max-width:96ch}
+  .card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:16px;margin-bottom:18px}
+  .card h2{font-size:16px;margin-bottom:5px}
+  .card h2 em{color:var(--brass);font-style:normal;font-size:11.5px;letter-spacing:1.5px;margin-right:8px}
+  .concept{color:var(--ink-soft);font-size:12.5px;margin-bottom:11px;max-width:96ch}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+  .pane{background:var(--ground);border:1px solid var(--edge-soft);border-radius:8px;overflow:hidden;margin-bottom:8px}
+  .pane-head{display:flex;align-items:baseline;gap:8px;padding:5px 10px;border-bottom:1px solid var(--edge-soft);
+             font:12px/1.4 'Helvetica Neue',Arial,sans-serif;color:var(--ink)}
+  .pane-head .hint{color:var(--ink-dim);font-size:11.5px}
+  .pane-head .cnt{margin-left:auto;font-size:11px;color:var(--ink-dim)}
+  .ed{font:11.5px/1.62 'SF Mono',Menlo,Consolas,monospace;padding:6px 0 8px;white-space:pre}
+  .ed .l{display:flex;min-height:19px;align-items:center}
+  .ed .gut{flex:none;width:6px}
+  .ed .gut.bad{width:3px;background:var(--danger);margin-right:3px;height:15px;border-radius:1px}
+  .ed .t{padding-right:10px}
+  .kw{color:var(--brass-bright)}
+  .sq{text-decoration:underline wavy var(--danger);text-decoration-skip-ink:none;text-underline-offset:3px}
+  .diag{border-top:1px solid var(--edge-soft);color:var(--danger);font-size:10.5px;padding:3px 8px;
+        font-family:'Helvetica Neue',Arial,sans-serif}
+  ul.notes{list-style:none;font-size:12.5px;color:var(--ink-soft);display:grid;gap:4px;margin-top:11px}
+  ul.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+  ul.notes li.con::before{content:"\2212 ";color:var(--danger)}
+  ul.notes li.n::before{content:"\00b7 ";color:var(--ink-dim)}
+  .verdict{background:var(--raised);border:1px solid var(--edge);border-left:3px solid var(--brass);
+           border-radius:6px;padding:12px 14px;font-size:13px;color:var(--ink-soft);margin-top:14px;max-width:110ch}
+  .verdict b{color:var(--ink)}
+  .chosen{background:var(--raised);border:1px solid var(--edge);border-left:3px solid var(--ok);
+          border-radius:6px;padding:11px 14px;font-size:13px;color:var(--ink-soft);margin-top:14px;max-width:110ch}
+  .chosen b{color:var(--ink)}
+  footer{margin-top:44px;color:var(--ink-dim);font-size:12.5px;border-top:1px solid var(--edge);padding-top:14px}
+  .tag{display:inline-block;font:10.5px/1 'Helvetica Neue',Arial,sans-serif;letter-spacing:.1em;
+       text-transform:uppercase;color:var(--ground);background:var(--brass);border-radius:3px;padding:3px 6px;vertical-align:2px}
+  table.d{border-collapse:collapse;font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif;color:var(--ink-soft);margin-top:10px}
+  table.d td,table.d th{border:1px solid var(--edge);padding:4px 10px;text-align:left}
+  table.d th{color:var(--ink);font-weight:500}
+</style></head><body>
+
+<header>
+<h1>Round 2 &mdash; <span>the marks</span>, and the block the bug left behind</h1>
+<p>Bead <code>ah-ty3s</code>. Round 1 is
+<code>docs/ui/ah-ty3s-formed-unit-orders.html</code>.</p>
+<div class="chosen"><b>Settled in round 1:</b> <b>A1</b> &mdash; <code>new-1</code>'s editor holds exactly the
+lines between <code>form 1</code> and <code>end</code>, and nothing read-only. <b>B1</b> &mdash; unit 1922's
+editor is unchanged and still shows its whole block, those lines included. <b>D1</b> &mdash; the row's Id, its
+<code>&#9888;</code> and its Problems entry all select <code>new-1</code>. <b>E1</b> &mdash; emptying the
+editor leaves an empty <code>form 1</code>/<code>end</code> standing and the row selected.</div>
+<p><b>A1 with B1 opens one thing I should not settle alone</b>, and the bug opens another. Both are below. The
+hex is round 1's: <code>1922</code> forms <code>NEW 1</code>, gives it 100, and the new unit is told to buy
+five Plainsmen at 40 &mdash; 200, so it is 100 short.</p>
+</header>
+
+<main>
+
+<h3 class="sec">Question 5 <span class="tag">yours</span> &middot; Which editor underlines a new unit's problem</h3>
+<p>The shortfall belongs to <code>new-1</code> &mdash; the core names it, and names the line
+<code>buy 5 plainsmen</code>. Under B1 that line is on screen in <b>two</b> editors. A finding is placed by the
+unit it names, not by the line it fell on (<code>orderEditor.ts:147-150</code>), so as things stand it would
+appear in one of them and not the other.</p>
+<p><b>What happens today, for the record:</b> it appears in <em>neither</em>. The finding names
+<code>new-1</code>, <code>new-1</code> has no block, so its list is empty; and 1922's list drops it because
+the name does not match. That is the &ldquo;partially marks&rdquo; you saw.</p>
+
+<div class="grid2">
+<div class="card"><h2><em>F1</em> Only in the unit it names</h2>
+<div class="concept">The mark follows the name. <code>new-1</code>'s editor underlines it; 1922's editor shows
+that same line clean, and counts it only in its &ldquo;elsewhere&rdquo; total, exactly as it counts every other
+unit's problems.</div>
+<div class="pane"><div class="pane-head"><b>Orders</b><span class="hint">&mdash; new 1</span><span class="cnt">1 problem</span></div>
+<div class="ed">
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">name unit</span> "Recruits"</span></div>
+  <div class="l"><span class="gut bad"></span><span class="t"><span class="kw sq">buy</span><span class="sq"> 5 plainsmen</span></span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">study</span> combat</span></div>
+</div><div class="diag">new 1 short $100: this unit can have $100 and its orders spend $200</div></div>
+<div class="pane"><div class="pane-head"><b>Orders</b><span class="hint">&mdash; unit 1922</span><span class="cnt">no problems here &middot; 1 elsewhere</span></div>
+<div class="ed">
+  <div class="l"><span class="gut"></span><span class="t">@<span class="kw">tax</span></span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">form</span> 1</span></div>
+  <div class="l"><span class="gut"></span><span class="t">  <span class="kw">name unit</span> "Recruits"</span></div>
+  <div class="l"><span class="gut"></span><span class="t">  <span class="kw">buy</span> 5 plainsmen</span></div>
+  <div class="l"><span class="gut"></span><span class="t">  <span class="kw">study</span> combat</span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">end</span></span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">give new</span> 1 100 silv</span></div>
+</div></div>
+<ul class="notes">
+  <li>One rule for every unit in the app: your editor marks your problems.</li>
+  <li>1922's problem count means 1922's month, not its block's bytes.</li>
+  <li>The F8 problem walk visits each finding once, in one place.</li>
+  <li class="con">A line you can see, with something wrong with it, is not underlined &mdash; and nothing on that line says to go and look at <code>new-1</code>.</li>
+</ul></div>
+
+<div class="card"><h2><em>F2</em> In every editor the line is visible in</h2>
+<div class="concept">The mark follows the line. A finding is underlined wherever its line is on screen, so
+1922 shows it too &mdash; still worded as the new unit's, so it is never mistaken for 1922's own.</div>
+<div class="pane"><div class="pane-head"><b>Orders</b><span class="hint">&mdash; new 1</span><span class="cnt">1 problem</span></div>
+<div class="ed">
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">name unit</span> "Recruits"</span></div>
+  <div class="l"><span class="gut bad"></span><span class="t"><span class="kw sq">buy</span><span class="sq"> 5 plainsmen</span></span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">study</span> combat</span></div>
+</div><div class="diag">new 1 short $100: this unit can have $100 and its orders spend $200</div></div>
+<div class="pane"><div class="pane-head"><b>Orders</b><span class="hint">&mdash; unit 1922</span><span class="cnt">1 problem</span></div>
+<div class="ed">
+  <div class="l"><span class="gut"></span><span class="t">@<span class="kw">tax</span></span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">form</span> 1</span></div>
+  <div class="l"><span class="gut"></span><span class="t">  <span class="kw">name unit</span> "Recruits"</span></div>
+  <div class="l"><span class="gut bad"></span><span class="t">  <span class="kw sq">buy</span><span class="sq"> 5 plainsmen</span></span></div>
+  <div class="l"><span class="gut"></span><span class="t">  <span class="kw">study</span> combat</span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">end</span></span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">give new</span> 1 100 silv</span></div>
+</div><div class="diag">new 1 short $100: this unit can have $100 and its orders spend $200</div></div>
+<ul class="notes">
+  <li>Nothing wrong is ever on screen unmarked.</li>
+  <li>The <code>give new 1 100 silv</code> that would fix it is two lines below the underline that asks for it.</li>
+  <li class="con">One finding counted twice: 1922 says &ldquo;1 problem&rdquo; about a month that is fine, and the F8 walk stops on it twice.</li>
+  <li class="con">It is a second rule, applying to <code>form</code> blocks and to nothing else in the app.</li>
+</ul></div>
+</div>
+<div class="verdict"><b>My recommendation: F1.</b> The counter beside 1922's editor is read as &ldquo;is this unit's
+month all right&rdquo;, and F2 makes it say no when the answer is yes. The cost of F1 &mdash; a visibly wrong
+line left unmarked in the creator's editor &mdash; is real, but the units table's <code>&#9888;</code> on the
+<code>new-1</code> row and the Problems panel both already point at it, and under D1 both of them now open the
+editor that marks it.</div>
+
+<h3 class="sec">Question 6 <span class="tag">yours</span> &middot; A <code>unit new-1</code> block today's bug may already have written</h3>
+<p>Arrowing onto a formed row today selects <code>new-1</code> for real, the pane finds no block, and the
+first keystroke makes one: a literal <code>unit new-1</code> block at the top level of your orders file. No
+check names it &mdash; nothing in the core validates that a <code>unit</code> block matches a unit in the
+report &mdash; so it exports silently and the server rejects the file.</p>
+<p>Once this bead lands, <code>new-1</code> resolves to the <code>form 1</code> block instead, so any such
+block already sitting in a saved draft becomes text nothing on screen can reach.</p>
+<div class="grid2">
+<div class="card"><h2><em>G1</em> Leave it exactly where it is</h2>
+<div class="concept">Nothing touches the player's file. The stale block stays, unreachable, and still
+exports.</div>
+<div class="pane"><div class="pane-head"><span class="hint">the saved draft, unchanged</span></div><div class="ed">
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">unit</span> 1922</span></div>
+  <div class="l"><span class="gut"></span><span class="t">  <span class="kw">form</span> 1</span></div>
+  <div class="l"><span class="gut"></span><span class="t">  <span class="kw">end</span></span></div>
+  <div class="l"><span class="gut"></span><span class="t"></span></div>
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">unit new-</span>1</span></div>
+  <div class="l"><span class="gut"></span><span class="t">  <span class="kw">buy</span> 5 plainsmen</span></div>
+</div></div>
+<ul class="notes">
+  <li>The app never deletes a line the player typed.</li>
+  <li class="con">Orders the player wrote silently stop being reachable, and the file they send is refused with no warning.</li>
+</ul></div>
+
+<div class="card"><h2><em>G2</em> A check names it</h2>
+<div class="concept">A new order-validation finding on the <code>unit new-1</code> line: an error in the
+Problems panel and an underline in the export path, naming the block and saying to move its orders into the
+<code>form</code> block. Nothing is deleted; the player is told.</div>
+<div class="pane"><div class="pane-head"><span class="hint">Problems</span></div>
+<div class="ed"><div class="l"><span class="gut bad"></span><span class="t" style="font-family:'Helvetica Neue',Arial,sans-serif;color:var(--danger)">unit new-1 is not a unit the report shows</span></div></div>
+<div class="diag">A unit formed this month has no number yet. Its orders belong inside the <code>FORM 1</code> block that creates it. The server will refuse this block.</div></div>
+<ul class="notes">
+  <li>Nothing is destroyed and nothing is silent.</li>
+  <li>The check is general: it catches any <code>unit</code> block for a unit the report does not list, whatever wrote it.</li>
+  <li class="con">A check in the Rust core, its message, its code and its tests &mdash; the largest of the three, and about a block the app will never write again.</li>
+</ul></div>
+
+<div class="card"><h2><em>G3</em> Fold it back into the <code>form</code> block on load</h2>
+<div class="concept">When a draft is loaded and a <code>unit new-&lt;n&gt;</code> block is found beside a
+<code>form &lt;n&gt;</code> in the same region, its lines are moved inside that block and the stale block
+removed. A one-time repair, invisible unless you go looking.</div>
+<div class="pane"><div class="pane-head"><span class="hint">after loading</span></div><div class="ed">
+  <div class="l"><span class="gut"></span><span class="t"><span class="kw">unit</span> 1922</span></div>
+  <div class="l"><span class="gut"></span><span class="t">  <span class="kw">form</span> 1</span></div>
+  <div class="l"><span class="gut"></span><span class="t">    <span class="kw">buy</span> 5 plainsmen</span></div>
+  <div class="l"><span class="gut"></span><span class="t">  <span class="kw">end</span></span></div>
+</div></div>
+<ul class="notes">
+  <li>The orders end up where the player meant them, and the file is valid again.</li>
+  <li class="con">The app rewrites a saved file on load, with no undo and nothing said.</li>
+  <li class="con">Guesswork the moment it is not one clean pair &mdash; two <code>form 1</code>s, none at all, or a <code>unit new-1</code> in a region with no <code>form</code>.</li>
+</ul></div>
+</div>
+<div class="verdict"><b>My recommendation: G2.</b> G1 sends a refused file and says nothing, which is the worst of
+the three whatever it costs to avoid. G3 edits a saved file without being asked and has to guess as soon as
+the shape is not perfect. G2 is more work than either, but it is the only one that leaves the player's text
+alone <em>and</em> tells them &mdash; and the check earns its keep beyond this bead, on any <code>unit</code>
+block naming a unit the report does not list, however it got there (a hand edit, another client, a stale
+paste).<br><br><b>If you would rather keep this bead small</b>, say so and I will take <b>G1</b> and file the
+check as a bead of its own at P4 &mdash; that is the honest small version. I would not take G3.</div>
+
+</main>
+<footer>Round 2 of the <code>ah-ty3s</code> planning discussion. Round 1:
+<code>docs/ui/ah-ty3s-formed-unit-orders.html</code>. Rules cited: <code>rules/form</code>.
+Code cited: <code>packages/shared/src/orderEditor.ts:147-180</code>,
+<code>packages/shared/src/ordersDocument.ts:205-265</code>,
+<code>packages/shared/src/workspace/UnitTableDock.tsx:494,689</code>.</footer>
+</body></html>
