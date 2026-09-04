@@ -21,6 +21,7 @@ import {
   productionStatusSentence,
   productionMenSentence
 } from "./unitTooltip";
+import { unitRowKey } from "./unitTable";
 
 /**
  * How the orders preview folds into the units table.
@@ -122,13 +123,16 @@ function foldIn(units: ReportUnit[], previewed: readonly UnitPreview[]): Preview
     return units;
   }
 
-  const changed = new Map(previewed.map((unit) => [unit.unit.unitId, unit]));
+  const changed = new Map(
+    previewed.map((unit) => [unitRowKey(unit.unit.regionId, unit.unit.unitId), unit])
+  );
   const rows: PreviewedUnit[] = units.map((unit) => {
-    const found = changed.get(unit.unitId);
+    const key = unitRowKey(unit.regionId, unit.unitId);
+    const found = changed.get(key);
     if (!found) {
       return unit;
     }
-    changed.delete(unit.unitId);
+    changed.delete(key);
     return rowFor(found);
   });
 

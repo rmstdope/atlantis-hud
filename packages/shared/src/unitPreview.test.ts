@@ -257,6 +257,36 @@ describe("mergePreviewAcross", () => {
     expect(rows[0].departingTo).toBeNull();
   });
 
+  it("gives each hex its own unit when two hexes form the same alias", () => {
+    const rows = mergePreviewAcross(
+      [unit({ unitId: "8452", regionId: "1:36,4" })],
+      across([
+        {
+          regionId: "1:36,4",
+          units: [
+            previewed(
+              { unitId: "new-1", name: "Unit (new 1)", regionId: "1:36,4" },
+              { status: "formed" }
+            )
+          ]
+        },
+        {
+          regionId: "1:7,53",
+          units: [
+            previewed(
+              { unitId: "new-1", name: "Unit (new 1)", regionId: "1:7,53" },
+              { status: "formed" }
+            )
+          ]
+        }
+      ])
+    );
+
+    const formed = rows.filter((row) => row.unitId === "new-1");
+    expect(formed).toHaveLength(2);
+    expect(formed.map((row) => row.regionId).sort()).toEqual(["1:36,4", "1:7,53"]);
+  });
+
   it("appends a unit the report has no row for", () => {
     const rows = mergePreviewAcross(
       [unit({ unitId: "8452", regionId: "1:36,4" })],

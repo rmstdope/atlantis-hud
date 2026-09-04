@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { aReportUnit } from "@atlantis/core-client";
 import { NO_PICK, afterGesture, narrowedTo, onPress, pickedIn, type UnitPick } from "./unitPick";
+import { unitRowKey } from "../unitTable";
 
 const ROWS = ["1", "2", "3", "4", "5"];
 
@@ -13,14 +14,14 @@ const idsOf = (one: UnitPick) => [...one.ids].sort();
 
 describe("afterGesture", () => {
   it("a plain gesture picks that row alone and anchors on it", () => {
-    const next = afterGesture(pick(["1", "2"], "1"), { kind: "plain", unitId: "4" }, ROWS);
+    const next = afterGesture(pick(["1", "2"], "1"), { kind: "plain", rowKey: "4" }, ROWS);
 
     expect(idsOf(next)).toEqual(["4"]);
     expect(next.anchor).toBe("4");
   });
 
   it("extend takes the run between the anchor and the target, in the order the table draws them", () => {
-    const next = afterGesture(pick(["2"], "2"), { kind: "extend", unitId: "4" }, ROWS);
+    const next = afterGesture(pick(["2"], "2"), { kind: "extend", rowKey: "4" }, ROWS);
 
     expect(idsOf(next)).toEqual(["2", "3", "4"]);
     // The anchor does not move, so a second Shift+click re-extends from where it started.
@@ -28,41 +29,41 @@ describe("afterGesture", () => {
   });
 
   it("extend runs backwards from the anchor just as far", () => {
-    const next = afterGesture(pick(["4"], "4"), { kind: "extend", unitId: "2" }, ROWS);
+    const next = afterGesture(pick(["4"], "4"), { kind: "extend", rowKey: "2" }, ROWS);
 
     expect(idsOf(next)).toEqual(["2", "3", "4"]);
     expect(next.anchor).toBe("4");
   });
 
   it("extend replaces the pick rather than adding to it", () => {
-    const next = afterGesture(pick(["1", "5"], "5"), { kind: "extend", unitId: "4" }, ROWS);
+    const next = afterGesture(pick(["1", "5"], "5"), { kind: "extend", rowKey: "4" }, ROWS);
 
     expect(idsOf(next)).toEqual(["4", "5"]);
   });
 
   it("extend without an anchor behaves as a plain pick", () => {
-    const next = afterGesture(NO_PICK, { kind: "extend", unitId: "3" }, ROWS);
+    const next = afterGesture(NO_PICK, { kind: "extend", rowKey: "3" }, ROWS);
 
     expect(idsOf(next)).toEqual(["3"]);
     expect(next.anchor).toBe("3");
   });
 
   it("extend from an anchor the table no longer draws behaves as a plain pick", () => {
-    const next = afterGesture(pick(["9"], "9"), { kind: "extend", unitId: "3" }, ROWS);
+    const next = afterGesture(pick(["9"], "9"), { kind: "extend", rowKey: "3" }, ROWS);
 
     expect(idsOf(next)).toEqual(["3"]);
     expect(next.anchor).toBe("3");
   });
 
   it("toggle adds a row that was not picked", () => {
-    const next = afterGesture(pick(["1"], "1"), { kind: "toggle", unitId: "3" }, ROWS);
+    const next = afterGesture(pick(["1"], "1"), { kind: "toggle", rowKey: "3" }, ROWS);
 
     expect(idsOf(next)).toEqual(["1", "3"]);
     expect(next.anchor).toBe("3");
   });
 
   it("toggle removes a picked row and still anchors on it", () => {
-    const next = afterGesture(pick(["1", "3"], "1"), { kind: "toggle", unitId: "3" }, ROWS);
+    const next = afterGesture(pick(["1", "3"], "1"), { kind: "toggle", rowKey: "3" }, ROWS);
 
     expect(idsOf(next)).toEqual(["1"]);
     // Anchored even though the row left the pick, so a Shift+click straight afterwards extends
@@ -71,7 +72,7 @@ describe("afterGesture", () => {
   });
 
   it("toggle that empties the pick still anchors on the row toggled", () => {
-    const next = afterGesture(pick(["3"], "3"), { kind: "toggle", unitId: "3" }, ROWS);
+    const next = afterGesture(pick(["3"], "3"), { kind: "toggle", rowKey: "3" }, ROWS);
 
     expect(idsOf(next)).toEqual([]);
     expect(next.anchor).toBe("3");
@@ -129,7 +130,24 @@ describe("pickedIn", () => {
       aReportUnit({ unitId: "2", name: "Second" })
     ];
 
-    expect(pickedIn(pick(["1", "2"], "1"), rows).map((unit) => unit.unitId)).toEqual(["1", "2"]);
+    expect(
+      pickedIn(
+        pick([unitRowKey("1:7,53", "1"), unitRowKey("1:7,53", "2")], unitRowKey("1:7,53", "1")),
+        rows
+      ).map((unit) => unit.unitId)
+    ).toEqual(["1", "2"]);
+  });
+
+  it("returns only the picked hex's unit when two hexes hold the same number", () => {
+    const here = aReportUnit({ unitId: "new-1", regionId: "1:6,52" });
+    const there = aReportUnit({ unitId: "new-1", regionId: "1:9,55" });
+
+    const picked = pickedIn(
+      { ids: new Set([unitRowKey("1:9,55", "new-1")]), anchor: null },
+      [here, there]
+    );
+
+    expect(picked).toEqual([there]);
   });
 });
 

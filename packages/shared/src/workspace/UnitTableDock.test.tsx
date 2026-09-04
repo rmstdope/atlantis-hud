@@ -12,7 +12,7 @@ import type {
 } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
-import { DEFAULT_COLUMN_SHARES, silverKey, UNIT_COLUMNS, type UnitColumn } from "../unitTable";
+import { DEFAULT_COLUMN_SHARES, silverKey, UNIT_COLUMNS, unitRowKey, type UnitColumn } from "../unitTable";
 import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
 import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
 import { useArmiesStore } from "../armiesStore";
@@ -1339,6 +1339,86 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     expect(markup).toContain("unit-row-new-1");
     expect(markup).toContain(">new<");
   });
+
+  it("draws a row for each hex when two hexes form the same alias", () => {
+    const markup = drawOwn(
+      [unit({ unitId: "1", regionId: "1:6,52" })],
+      {
+        regions: [
+          {
+            regionId: "1:6,52",
+            units: [
+              previewed(
+                { unitId: "new-1", name: "Unit (new 1)", regionId: "1:6,52" },
+                { status: "formed" }
+              )
+            ]
+          },
+          {
+            regionId: "1:9,55",
+            units: [
+              previewed(
+                { unitId: "new-1", name: "Unit (new 1)", regionId: "1:9,55" },
+                { status: "formed" }
+              )
+            ]
+          }
+        ]
+      }
+    );
+
+    expect((markup.match(/data-testid="unit-row-new-1"/g) ?? []).length).toBe(2);
+    expect(markup).toContain('data-region-id="1:6,52"');
+    expect(markup).toContain('data-region-id="1:9,55"');
+    // The Hex column is what tells them apart on screen.
+    expect(markup).toContain("(6,52)");
+    expect(markup).toContain("(9,55)");
+  });
+
+  it("picks one hex's formed unit without picking the other's", () => {
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={null}
+        ownUnits={[unit({ unitId: "1", regionId: "1:6,52" })]}
+        ordersPreview={{
+          regions: [
+            {
+              regionId: "1:6,52",
+              units: [
+                previewed(
+                  { unitId: "new-1", name: "Unit (new 1)", regionId: "1:6,52" },
+                  { status: "formed" }
+                )
+              ]
+            },
+            {
+              regionId: "1:9,55",
+              units: [
+                previewed(
+                  { unitId: "new-1", name: "Unit (new 1)", regionId: "1:9,55" },
+                  { status: "formed" }
+                )
+              ]
+            }
+          ]
+        }}
+        currentTurn={42}
+        client={{} as never}
+        game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+        initialSource={{ kind: "own" }}
+        initialPick={{
+          ids: new Set([unitRowKey("1:9,55", "new-1")]),
+          anchor: unitRowKey("1:9,55", "new-1")
+        }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [] }
+    );
+
+    const pickedRows = markup.match(/<tr[^>]*data-picked="true"[^>]*>/g) ?? [];
+    expect(pickedRows).toHaveLength(1);
+    expect(pickedRows[0]).toContain('data-region-id="1:9,55"');
+  });
 });
 
 describe("the Other factions source (ah-1mpx.5)", () => {
@@ -1526,7 +1606,10 @@ describe("picking several rows (ah-1mpx.4)", () => {
       <UnitTableDock
         hex={twoRows()}
         preview={null}
-        initialPick={{ ids: new Set(["1", "2"]), anchor: "1" }}
+        initialPick={{
+          ids: new Set([unitRowKey("1:6,52", "1"), unitRowKey("1:6,52", "2")]),
+          anchor: unitRowKey("1:6,52", "1")
+        }}
       />,
       useWorkspaceStore,
       { selectedUnitId: "1" }
@@ -1543,7 +1626,10 @@ describe("picking several rows (ah-1mpx.4)", () => {
       <UnitTableDock
         hex={twoRows()}
         preview={null}
-        initialPick={{ ids: new Set(["1", "2"]), anchor: "1" }}
+        initialPick={{
+          ids: new Set([unitRowKey("1:6,52", "1"), unitRowKey("1:6,52", "2")]),
+          anchor: unitRowKey("1:6,52", "1")
+        }}
       />,
       useWorkspaceStore,
       { selectedUnitId: "1" }
@@ -1560,12 +1646,19 @@ describe("picking several rows (ah-1mpx.4)", () => {
 
   it("draws the bulk line only at two or more picked", () => {
     const one = renderWithStoreState(
-      <UnitTableDock hex={twoRows()} preview={null} initialPick={{ ids: new Set(["1"]), anchor: "1" }} />,
+      <UnitTableDock hex={twoRows()} preview={null} initialPick={{ ids: new Set([unitRowKey("1:6,52", "1")]), anchor: unitRowKey("1:6,52", "1") }} />,
       useWorkspaceStore,
       { selectedUnitId: "1" }
     );
     const two = renderWithStoreState(
-      <UnitTableDock hex={twoRows()} preview={null} initialPick={{ ids: new Set(["1", "2"]), anchor: "1" }} />,
+      <UnitTableDock
+        hex={twoRows()}
+        preview={null}
+        initialPick={{
+          ids: new Set([unitRowKey("1:6,52", "1"), unitRowKey("1:6,52", "2")]),
+          anchor: unitRowKey("1:6,52", "1")
+        }}
+      />,
       useWorkspaceStore,
       { selectedUnitId: "1" }
     );
