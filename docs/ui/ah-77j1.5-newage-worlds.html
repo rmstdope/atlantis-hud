@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-77j1.5 — playing a New Age world</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1280px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:3.2em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .ui { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+        font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; padding:11px; }
+  .ui label { display:block; color:var(--ink-soft); margin-bottom:3px; }
+  .ui .field { margin-bottom:9px; }
+  .ui select, .ui input[type=text] { width:100%; background:var(--panel); border:1px solid var(--edge);
+     color:var(--ink); border-radius:4px; padding:4px 6px; font:inherit; }
+  .ui fieldset { border:1px solid var(--edge); border-radius:4px; padding:9px; margin-top:4px; }
+  .ui legend { color:var(--ink-soft); padding:0 4px; }
+  .ui .row { display:flex; gap:8px; }
+  .ui .row > label { flex:1; }
+  .ui .hint { color:var(--ink-dim); margin:6px 0 8px; }
+  .ui .cb { display:flex; align-items:center; gap:6px; color:var(--ink-soft); margin-top:6px; }
+  .ui .btn { border:1px solid var(--edge); background:var(--panel); color:var(--brass);
+             border-radius:4px; padding:4px 10px; }
+  .hdr { display:flex; align-items:center; gap:8px; justify-content:flex-end; }
+  .hdr .btn.off { opacity:.5; color:var(--ink-soft); }
+  .tip { position:relative; display:inline-block; }
+  .tipbox { position:absolute; top:120%; right:0; width:270px; background:#0b0f14; border:1px solid var(--edge);
+            border-radius:4px; padding:6px 8px; color:var(--ink-soft); font-size:11.5px; line-height:1.45; }
+  .caption { color:var(--ink-dim); font-size:11.5px; margin-top:8px; font-family:system-ui,sans-serif; }
+  .tag { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim);
+         font-family:system-ui,sans-serif; display:block; margin:12px 0 5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-77j1.5 — <span>a game can be played under a New Age world</span></h1>
+  <p>Two worlds join the ruleset list: <b>New Age: Arcanum</b> and <b>New Age: Trident</b>, spelled
+  exactly as <code>packages/ruleset/src/worlds.ts</code> spells them. Everything below already exists —
+  the picker, the map fieldset, the per-game tab — so most of this page is <i>what those surfaces do
+  once a third and fourth entry appear</i>, and only the <b>Send</b> question at the bottom is a choice.</p>
+</header>
+
+<main>
+
+<h3 class="sec">What already happens, with nothing new built</h3>
+<p>Shown so the two decisions below are read against the real surfaces rather than a description of them.</p>
+<div class="cards3">
+
+  <div class="card">
+    <h2><em>1</em>Creating a game</h2>
+    <p class="concept">The picker lists every shipped ruleset. A world that declares no map prefills
+    nothing, and the existing hint already tells the player what to do about it.</p>
+    <div class="ui">
+      <div class="field"><label>Name</label><input type="text" value="Arcanum, faction 42"></div>
+      <div class="field"><label>Ruleset</label>
+        <select><option>New Origins</option><option selected>New Age: Arcanum</option><option>New Age: Trident</option></select>
+      </div>
+      <fieldset><legend>Map</legend>
+        <p class="hint">How far the map runs, and where it joins back onto itself. Clear these if you do not know.</p>
+        <div class="row">
+          <label>Width<input type="text" value=""></label>
+          <label>Height<input type="text" value=""></label>
+        </div>
+        <div class="cb"><input type="checkbox"> Wraps east to west</div>
+        <div class="cb"><input type="checkbox"> Wraps north to south</div>
+      </fieldset>
+      <p style="margin-top:9px"><span class="btn">Create game</span></p>
+    </div>
+    <p class="caption">Empty, not 72×96 — <code>mapDraftFor</code> already refills on every change of
+    ruleset, precisely so a standard-variant size never sits under a New Age world looking deliberate.</p>
+  </div>
+
+  <div class="card">
+    <h2><em>2</em>Settings › Per game</h2>
+    <p class="concept">A New Age game with no declared map gets the sentence the app already has for
+    exactly this case. No new wording, no new control.</p>
+    <div class="ui">
+      <p style="color:var(--ink-soft);margin-bottom:8px">Arcanum, faction 42</p>
+      <div class="field"><label>Ruleset</label>
+        <select><option selected>New Age: Arcanum</option></select></div>
+      <fieldset><legend>Map</legend>
+        <p class="hint">Neither this game nor its ruleset names a map, so routes into unexplored
+        country are drawn without wrapping.</p>
+        <div class="row">
+          <label>Width<input type="text" value=""></label>
+          <label>Height<input type="text" value=""></label>
+        </div>
+        <div class="cb"><input type="checkbox"> Wraps east to west</div>
+        <div class="cb"><input type="checkbox"> Wraps north to south</div>
+      </fieldset>
+    </div>
+    <p class="caption">If instead you know Arcanum's dimensions, this reads
+    <i>“Assumed from the ruleset — nobody has confirmed them for this game.”</i> with the numbers filled in.</p>
+  </div>
+
+  <div class="card">
+    <h2><em>3</em>Settings › About</h2>
+    <p class="concept">The Variants row is read from the ruleset list, so it grows on its own.</p>
+    <div class="ui">
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--ink-soft)">Version</span><span>0.14.0</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--ink-soft)">Build</span><span>Desktop</span></div>
+      <div style="display:flex;justify-content:space-between;gap:12px"><span style="color:var(--ink-soft)">Variants</span>
+        <span style="text-align:right">New Origins, New Age: Arcanum, New Age: Trident</span></div>
+    </div>
+    <p class="caption">Nothing to build here; it is listed so the growth is not a surprise.</p>
+  </div>
+
+</div>
+
+<h3 class="sec">The decision — Send, on a desktop build, for a New Age game</h3>
+<p><b>Send</b> posts orders to the New Origins web form. A New Age world posts orders through a REST
+API with a bearer token instead, which is a separate bead (<code>ah-lbd9</code>) and is not built. So
+until it is, a New Age game has nowhere for this button to send to. The button already exists only on
+the desktop build, and already knows how to be off; the question is whether it should be <i>off</i> or
+<i>absent</i>.</p>
+<div class="cards2">
+
+  <div class="card">
+    <h2><em>A</em>Off, and it says why</h2>
+    <p class="concept">The button stays where it is, greyed, and hovering it explains. Same treatment
+    the app already gives orders with no <code>#atlantis</code> line.</p>
+    <span class="tag">Header, right end</span>
+    <div class="ui">
+      <div class="hdr">
+        <span class="btn">Export ▾</span>
+        <span class="tip"><span class="btn off">Send</span>
+          <span class="tipbox">Sending orders to an Atlantis New Age world is not supported yet. Export the orders and upload them yourself.</span>
+        </span>
+        <span class="btn">⚙</span>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>The player finds out why, at the moment they look for it.</li>
+      <li>One string; no layout moves when a game is switched.</li>
+      <li class="con">A permanently dead control in the header of every New Age game.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>Not there at all</h2>
+    <p class="concept">Open a New Age game and Send is gone; open a New Origins game and it is back.
+    Export still carries the orders out.</p>
+    <span class="tag">Header, right end</span>
+    <div class="ui">
+      <div class="hdr">
+        <span class="btn">Export ▾</span>
+        <span class="btn">⚙</span>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>No dead control; the header only offers what works.</li>
+      <li class="con">Nothing says why it vanished, and a player who used it yesterday on another
+      game may read it as a bug.</li>
+      <li class="con">The header's contents change as games are switched.</li>
+    </ul>
+  </div>
+
+</div>
+
+</main>
+</body>
+</html>
