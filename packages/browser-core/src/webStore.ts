@@ -17,16 +17,18 @@ import type {
   AlliedMageKey,
   AlliedMageRecord,
   ArmyRecord,
-  HexNoteRecord
+  HexNoteRecord,
+  StudyPlanKey,
+  StudyPlanRecord
 } from "@atlantis/core-client";
 
 const REGISTRY_DATABASE_NAME = "atlantis-hud";
 const REGISTRY_DATABASE_VERSION = 4;
 /**
- * 5 since `ah-lyg6.1.2.1` added the allied-mages store. See `openGameDatabase` for what a bump
- * costs.
+ * 6 since `ah-lyg6.2.1` added the study-plans store, 5 since `ah-lyg6.1.2.1` added the
+ * allied-mages store. See `openGameDatabase` for what a bump costs.
  */
-const GAME_DATABASE_VERSION = 5;
+const GAME_DATABASE_VERSION = 6;
 
 const GAME_STORE = "games";
 const IMPORTED_TURN_STORE = "importedTurns";
@@ -36,6 +38,7 @@ const MERGED_REPORT_STORE = "mergedReports";
 const HEX_NOTE_STORE = "hexNotes";
 const ARMY_STORE = "armies";
 const ALLIED_MAGE_STORE = "alliedMages";
+const STUDY_PLAN_STORE = "studyPlans";
 
 /** Opaque payload of one stored turn import. Mirrors `ImportedTurnSnapshot` in the Rust core. */
 export type StoredTurnSnapshot = {
@@ -112,6 +115,8 @@ export type StoredArmy = { databasePath: string } & ArmyRecord;
 
 export type StoredAlliedMage = { databasePath: string } & AlliedMageRecord;
 
+export type StoredStudyPlan = { databasePath: string } & StudyPlanRecord;
+
 export type StoredGame = {
   gameId: string;
   databasePath: string;
@@ -181,6 +186,14 @@ export interface WebStore {
     databasePath: string,
     mages: readonly StoredAlliedMage[],
     removed: readonly AlliedMageKey[]
+  ): Promise<void>;
+  /** A game's study plans, in no particular order; the client orders them. */
+  getStudyPlans(databasePath: string, gameId: string): Promise<StoredStudyPlan[]>;
+  /** Removes `removed`, then stores `plans`, in one transaction. */
+  putStudyPlans(
+    databasePath: string,
+    plans: readonly StoredStudyPlan[],
+    removed: readonly StudyPlanKey[]
   ): Promise<void>;
 }
 
@@ -266,6 +279,7 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
       create(HEX_NOTE_STORE, ["id"]);
       create(ARMY_STORE, ["id"]);
       create(ALLIED_MAGE_STORE, ["factionId", "unit.unitId"]);
+      create(STUDY_PLAN_STORE, ["factionId", "unitId"]);
     };
 
     // An upgrade waits for every other connection to the database to close, and a second tab
@@ -479,6 +493,15 @@ export function createIndexedDbWebStore(): WebStore {
         ALLIED_MAGE_STORE,
         mages,
         removed.map((key) => [key.factionId, key.unitId])
+      ),
+    getStudyPlans: (databasePath, _gameId) =>
+      readStore<StoredStudyPlan>(databasePath, STUDY_PLAN_STORE),
+    putStudyPlans: (databasePath, plans, removed) =>
+      writeMany(
+        databasePath,
+        STUDY_PLAN_STORE,
+        plans,
+        removed.map((key) => [key.factionId, key.unitId])
       )
   };
 }
@@ -498,6 +521,7 @@ export function createMemoryWebStore(): WebStore {
   const hexNotes = new Map<string, StoredHexNote>();
   const armies = new Map<string, StoredArmy>();
   const alliedMages = new Map<string, StoredAlliedMage>();
+  const studyPlans = new Map<string, StoredStudyPlan>();
 
   // The database handle leads the key here for the same reason it selects the database in the
   // IndexedDB store: it is what keeps one game's records out of another's.
@@ -505,7 +529,8 @@ export function createMemoryWebStore(): WebStore {
     JSON.stringify([databasePath, factionId, turnNumber]);
   const notesComposite = (databasePath: string, id: string) => JSON.stringify([databasePath, id]);
   // Three parts rather than the two `notesComposite` takes: a mage is identified by his faction as
-  // well as his unit number.
+  // well as his unit number. It serves two stores - allied mages and study plans - which key
+  // alike.
   const mageComposite = (databasePath: string, factionId: string, unitId: string) =>
     JSON.stringify([databasePath, factionId, unitId]);
 
@@ -543,6 +568,7 @@ export function createMemoryWebStore(): WebStore {
       dropDatabase(hexNotes, databasePath);
       dropDatabase(armies, databasePath);
       dropDatabase(alliedMages, databasePath);
+      dropDatabase(studyPlans, databasePath);
     },
     async putImportedTurn(turn) {
       turns.set(composite(turn.databasePath, turn.factionId, turn.turnNumber), turn);
@@ -638,6 +664,19 @@ export function createMemoryWebStore(): WebStore {
         // The handle comes from the parameter for both halves, as it does for the removals above:
         // one transaction must not read it from two places.
         alliedMages.set(mageComposite(databasePath, mage.factionId, mage.unit.unitId), mage);
+      }
+    },
+    async getStudyPlans(databasePath, _gameId) {
+      return [...studyPlans.values()].filter((plan) => plan.databasePath === databasePath);
+    },
+    async putStudyPlans(databasePath, plans, removed) {
+      for (const key of removed) {
+        studyPlans.delete(mageComposite(databasePath, key.factionId, key.unitId));
+      }
+      for (const plan of plans) {
+        // The handle comes from the parameter for both halves, as it does for the removals above:
+        // one transaction must not read it from two places.
+        studyPlans.set(mageComposite(databasePath, plan.factionId, plan.unitId), plan);
       }
     }
   };

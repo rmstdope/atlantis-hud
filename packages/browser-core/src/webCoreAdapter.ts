@@ -15,6 +15,8 @@ import type {
   MapShape,
   MergedReportRecord,
   AlliedMageKey,
+  StudyPlanKey,
+  StudyPlanRecord,
   AlliedMageRecord,
   ArmyRecord,
   HexNoteRecord,
@@ -234,6 +236,8 @@ type DecodedGameBackup = {
   armies: Array<Omit<ArmyRecord, "gameId">>;
   // No `Omit`: an allied mage row carries no gameId to strip.
   alliedMages: AlliedMageRecord[];
+  // Same for a study plan.
+  studyPlans: StudyPlanRecord[];
 };
 
 /**
@@ -645,7 +649,8 @@ export function createWebCoreAdapter(
         mergedReports,
         hexNotes,
         armies,
-        alliedMages
+        alliedMages,
+        studyPlans
       ] = await Promise.all([
         store.getImportedTurns(game.databasePath, gameId),
         store.getOrderDrafts(game.databasePath, gameId),
@@ -653,7 +658,8 @@ export function createWebCoreAdapter(
         store.getAllMergedReports(game.databasePath, gameId),
         store.getHexNotes(game.databasePath, gameId),
         store.getArmies(game.databasePath, gameId),
-        store.getAlliedMages(game.databasePath, gameId)
+        store.getAlliedMages(game.databasePath, gameId),
+        store.getStudyPlans(game.databasePath, gameId)
       ]);
 
       try {
@@ -670,7 +676,8 @@ export function createWebCoreAdapter(
             mergedReports,
             hexNotes,
             armies,
-            alliedMages
+            alliedMages,
+            studyPlans
           }),
           exportedAt
         );
@@ -863,6 +870,11 @@ export function createWebCoreAdapter(
         await store.putAlliedMages(
           databasePath,
           decoded.alliedMages.map((mage) => ({ databasePath, ...mage })),
+          []
+        );
+        await store.putStudyPlans(
+          databasePath,
+          decoded.studyPlans.map((plan) => ({ databasePath, ...plan })),
           []
         );
       } catch (error) {
@@ -1145,6 +1157,24 @@ export function createWebCoreAdapter(
       await store.putAlliedMages(
         databasePath,
         mages.map((mage) => ({ databasePath, ...mage })),
+        removed
+      );
+    },
+
+    async listStudyPlans(databasePath: string, gameId: string) {
+      const plans = await store.getStudyPlans(databasePath, gameId);
+      return plans.map(({ databasePath: _databasePath, ...plan }) => plan);
+    },
+
+    async saveStudyPlans(
+      databasePath: string,
+      gameId: string,
+      plans: readonly StudyPlanRecord[],
+      removed: readonly StudyPlanKey[]
+    ) {
+      await store.putStudyPlans(
+        databasePath,
+        plans.map((plan) => ({ databasePath, ...plan })),
         removed
       );
     }
