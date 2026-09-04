@@ -136,7 +136,8 @@ function readTerrainSentence(text: string): {
       const cost = toNumber(parsed[1]);
       if (cost === null) {
         throw new RulesetScrapeError(
-          "the rules page used a number word the scraper does not know; extend NUMBER_WORDS"
+          `the rules page used a number word the scraper does not know: ${parsed[1]}; ` +
+            `extend NUMBER_WORDS`
         );
       }
       return { cost, list: parsed[2] };

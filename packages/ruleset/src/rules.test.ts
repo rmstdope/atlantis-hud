@@ -307,6 +307,7 @@ describe("parseMovementRules", () => {
     const reworded = ARCANUM_RULES_HTML.replace("chasm; 4\n", "chasm; fifteen\n");
     expect(reworded).not.toBe(ARCANUM_RULES_HTML);
 
+    expect(() => parseMovementRules(reworded)).toThrowError(/does not know: fifteen/);
     expect(() => parseMovementRules(reworded)).toThrowError(/extend NUMBER_WORDS/);
   });
 });
