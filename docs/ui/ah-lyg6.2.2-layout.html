@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.2.2 — the study planner pane: how the mages are laid out</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+    --known-fill:#1b2c26; --known-ink:#7fcaa5; --known-edge:#2c4a3e;
+    --ceil-fill:#2e2718; --ceil-ink:#d9a441; --ceil-edge:#4a3d21;
+    --maxed-fill:#232a38; --maxed-ink:#8fb4e0; --maxed-edge:#33455f;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:98ch; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:18px; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+
+  /* --- the pane frame, as GameDataDialog/MagicTreeDialog draw it --- */
+  .pane { width:900px; max-width:100%; background:var(--raised); border:1px solid var(--edge);
+          border-radius:6px; box-shadow:0 14px 40px #000a; overflow:hidden;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane .top { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  .pane .top h4 { font:600 13.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .pane .top .key { color:var(--ink-dim); font-size:11.5px; }
+  .pane .top .sp { margin-left:auto; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.foc { outline:2px solid var(--select); outline-offset:1px; }
+  .pane .sub { padding:6px 12px; border-bottom:1px solid var(--edge-soft); color:var(--ink-dim); font-size:11.5px; }
+  .pane .body { max-height:430px; overflow:auto; }
+
+  table { width:100%; border-collapse:separate; border-spacing:0; font-size:12.5px; }
+  th { text-align:left; font-weight:400; color:var(--ink-dim); font-size:11px; letter-spacing:0.6px;
+       text-transform:uppercase; padding:6px 12px; border-bottom:1px solid var(--edge); background:var(--raised);
+       position:sticky; top:0; }
+  td { padding:6px 12px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  tr.grp td { background:#141a23; color:var(--brass); font-size:11.5px; letter-spacing:0.4px; padding:7px 12px; }
+  tr.grp td .old { color:var(--brass-bright); }
+  tr.grp td .mine { color:var(--ink-dim); }
+  td.mage .nm { color:var(--ink); }
+  td.mage .un { color:var(--ink-dim); font-size:11.5px; margin-left:5px; }
+  td.where { color:var(--ink-soft); }
+  td.may { color:var(--ink-soft); white-space:nowrap; }
+  .chip { display:inline-block; border-radius:3px; padding:0 5px; font-size:11.5px; margin:0 4px 3px 0;
+          border:1px solid var(--known-edge); background:var(--known-fill); color:var(--known-ink); }
+  .chip.ceil { border-color:var(--ceil-edge); background:var(--ceil-fill); color:var(--ceil-ink); }
+  .chip.maxed { border-color:var(--maxed-edge); background:var(--maxed-fill); color:var(--maxed-ink); }
+  .more { color:var(--ink-dim); font-size:11.5px; }
+  .appr { color:var(--ink-dim); font-style:italic; }
+  tr.stale td { background:#191612; }
+  .asof { color:var(--brass-bright); font-size:11px; border:1px solid #4a3d21; border-radius:3px; padding:0 5px; margin-left:6px; }
+  .empty { padding:26px 16px; color:var(--ink-dim); font-size:12.5px; text-align:center; }
+  .err { padding:14px 16px; color:var(--danger); font-size:12.5px; }
+
+  /* master/detail */
+  .md { display:grid; grid-template-columns:250px 1fr; }
+  .md .list { border-right:1px solid var(--edge); max-height:430px; overflow:auto; }
+  .md .list .row { padding:6px 12px; border-bottom:1px solid var(--edge-soft); cursor:default; }
+  .md .list .row.on { background:#1b2735; box-shadow:inset 2px 0 0 var(--select); }
+  .md .list .row .nm { font-size:12.5px; }
+  .md .list .row .sub2 { color:var(--ink-dim); font-size:11px; }
+  .md .list .hd { padding:6px 12px; color:var(--brass); font-size:11px; letter-spacing:0.6px;
+                  text-transform:uppercase; background:#141a23; }
+  .md .det { padding:14px 16px; max-height:430px; overflow:auto; }
+  .md .det h5 { font:600 14px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .md .det .meta { color:var(--ink-dim); font-size:11.5px; margin:2px 0 12px; }
+  .md .det .grp2 { color:var(--ink-dim); font-size:11px; letter-spacing:0.6px; text-transform:uppercase; margin:12px 0 6px; }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:960px) { .cols { grid-template-columns:1fr; } }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px;
+         text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.2.2 — <span>the study planner pane</span>: how every mage is laid out</h1>
+  <p>A pane of its own listing every mage in one place — your own from the loaded report, every ally's
+  from the mage sheets you have taken in. <strong>Read-only in this bead.</strong> Choosing next turn's
+  study and writing a per-mage note is <code>ah-lyg6.2.3</code>; teaching is <code>ah-lyg6.3</code>;
+  the export is <code>ah-lyg6.4</code> — but the layout chosen here is the one those three build on,
+  so a Study column and a Note column will join whichever shape you pick.</p>
+  <p>The depth view already exists: <code>F3</code>, the magic tree, tinted for one mage at a time.
+  This pane is the breadth view — everyone at once — which is why none of the variants below tries to
+  redraw seventy skills.</p>
+  <p>The same fictional game throughout: your faction <em>Wardens of the North (12)</em> on turn 23,
+  an ally <em>Borg (21)</em> whose sheet is also turn 23, and an ally <em>Selado (34)</em> whose
+  newest sheet is turn 20.</p>
+  <p style="color:#eebe63"><strong>Chosen: variant C</strong>, the mage list beside a mage detail — with A's faction grouping kept inside its list. A and B were rejected for the room the detail gives, knowing that ah-lyg6.2.3's per-mage note then becomes one visit per mage. The empty, loading and error wording below was chosen as drawn. The interview is recorded in bead ah-lyg6.2.2's design field.</p>
+</header>
+
+<main>
+
+<h3 class="sec">Variant A — grouped by faction</h3>
+<p>A section per faction, yours first, each headed with whose mages these are and which turn they were
+last heard of. One row per mage.</p>
+<div class="card">
+  <h2><em>A</em> Faction sections, one row per mage</h2>
+  <p class="concept">The grouping is the same one <code>ah-lyg6.4</code> exports by, so what you see
+  is what a sent order file will be grouped into. Staleness belongs to a faction, so it is stated once
+  in the section head rather than repeated on every row.</p>
+  <div class="stage">
+    <div class="pane">
+      <div class="top">
+        <h4>Study planner</h4><span class="key">F4</span>
+        <span class="sp"></span><button class="btn foc">Close</button>
+      </div>
+      <div class="sub">7 mages — 3 yours, 4 from 2 allies</div>
+      <div class="body">
+        <table>
+          <thead><tr><th>Mage</th><th>Where</th><th>Knows</th><th style="text-align:right">May begin</th></tr></thead>
+          <tbody>
+            <tr class="grp"><td colspan="4">Wardens of the North (12) <span class="mine">— your faction, turn 23</span></td></tr>
+            <tr><td class="mage"><span class="nm">Ereb</span><span class="un">(2431)</span></td>
+                <td class="where">Ardun (1:7,53)</td>
+                <td><span class="chip">Force 3</span><span class="chip ceil">Pattern 2</span><span class="chip">Spirit 1</span><span class="more">+1</span></td>
+                <td class="may" style="text-align:right">12</td></tr>
+            <tr><td class="mage"><span class="nm">Sable</span><span class="un">(2517)</span></td>
+                <td class="where">Mielad (1:9,51)</td>
+                <td><span class="chip">Force 1</span></td>
+                <td class="may" style="text-align:right">4</td></tr>
+            <tr><td class="mage"><span class="nm">Kestrel</span><span class="un">(2688)</span></td>
+                <td class="where">Ardun (1:7,53)</td>
+                <td><span class="chip">Manipulation 3</span> <span class="appr">apprentice</span></td>
+                <td class="may" style="text-align:right">3</td></tr>
+
+            <tr class="grp"><td colspan="4">Borg (21) <span class="mine">— sheet from turn 23</span></td></tr>
+            <tr><td class="mage"><span class="nm">Uln</span><span class="un">(3012)</span></td>
+                <td class="where">Tarnach (1:12,44)</td>
+                <td><span class="chip">Pattern 4</span><span class="chip">Force 2</span><span class="chip maxed">Earth Lore 5</span></td>
+                <td class="may" style="text-align:right">9</td></tr>
+            <tr><td class="mage"><span class="nm">Vess</span><span class="un">(3104)</span></td>
+                <td class="where">Tarnach (1:12,44)</td>
+                <td><span class="chip">Spirit 2</span></td>
+                <td class="may" style="text-align:right">6</td></tr>
+
+            <tr class="grp"><td colspan="4">Selado (34) <span class="mine">— sheet from turn 20</span><span class="asof">3 turns old</span></td></tr>
+            <tr class="stale"><td class="mage"><span class="nm">Mordoc</span><span class="un">(4501)</span></td>
+                <td class="where">Kelmar (2:3,17)</td>
+                <td><span class="chip">Spirit 3</span><span class="chip">Force 1</span></td>
+                <td class="may" style="text-align:right">7</td></tr>
+            <tr class="stale"><td class="mage"><span class="nm">Ilyth</span><span class="un">(4522)</span></td>
+                <td class="where">Kelmar (2:3,17)</td>
+                <td><span class="chip">Manipulation 3</span> <span class="appr">apprentice</span></td>
+                <td class="may" style="text-align:right">3</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Reads as the order file <code>ah-lyg6.4</code> will write: faction by faction.</li>
+    <li>Staleness said once, where it is true — of a faction's whole sheet, not of one mage.</li>
+    <li class="con">No way to answer "which of all my mages could begin Earth Lore" — the sections fix the order.</li>
+    <li class="n">A faction with many mages pushes the next faction off screen; the section heads stick as you scroll.</li>
+  </ul>
+</div>
+
+<h3 class="sec">Variant B — one table, sortable</h3>
+<p>Every mage in one list with a Faction column, and clickable headers. Opens sorted the way A groups.</p>
+<div class="card">
+  <h2><em>B</em> One flat table</h2>
+  <p class="concept">The same rows, ungrouped, with staleness carried on the row instead of a section
+  head. Clicking a column head re-sorts — so "everyone who may begin something new, most first" is one
+  click away, and so is "all my Spirit mages".</p>
+  <div class="stage">
+    <div class="pane">
+      <div class="top">
+        <h4>Study planner</h4><span class="key">F4</span>
+        <span class="sp"></span><button class="btn foc">Close</button>
+      </div>
+      <div class="sub">7 mages — 3 yours, 4 from 2 allies · sorted by faction</div>
+      <div class="body">
+        <table>
+          <thead><tr><th>Mage</th><th>Faction &#9660;</th><th>Where</th><th>Knows</th><th style="text-align:right">May begin</th></tr></thead>
+          <tbody>
+            <tr><td class="mage"><span class="nm">Ereb</span><span class="un">(2431)</span></td>
+                <td class="where">yours</td><td class="where">Ardun (1:7,53)</td>
+                <td><span class="chip">Force 3</span><span class="chip ceil">Pattern 2</span><span class="more">+2</span></td>
+                <td class="may" style="text-align:right">12</td></tr>
+            <tr><td class="mage"><span class="nm">Sable</span><span class="un">(2517)</span></td>
+                <td class="where">yours</td><td class="where">Mielad (1:9,51)</td>
+                <td><span class="chip">Force 1</span></td><td class="may" style="text-align:right">4</td></tr>
+            <tr><td class="mage"><span class="nm">Kestrel</span><span class="un">(2688)</span></td>
+                <td class="where">yours</td><td class="where">Ardun (1:7,53)</td>
+                <td><span class="chip">Manipulation 3</span> <span class="appr">apprentice</span></td>
+                <td class="may" style="text-align:right">3</td></tr>
+            <tr><td class="mage"><span class="nm">Uln</span><span class="un">(3012)</span></td>
+                <td class="where">Borg (21)</td><td class="where">Tarnach (1:12,44)</td>
+                <td><span class="chip">Pattern 4</span><span class="chip">Force 2</span><span class="chip maxed">Earth Lore 5</span></td>
+                <td class="may" style="text-align:right">9</td></tr>
+            <tr><td class="mage"><span class="nm">Vess</span><span class="un">(3104)</span></td>
+                <td class="where">Borg (21)</td><td class="where">Tarnach (1:12,44)</td>
+                <td><span class="chip">Spirit 2</span></td><td class="may" style="text-align:right">6</td></tr>
+            <tr class="stale"><td class="mage"><span class="nm">Mordoc</span><span class="un">(4501)</span></td>
+                <td class="where">Selado (34)<span class="asof">turn 20</span></td><td class="where">Kelmar (2:3,17)</td>
+                <td><span class="chip">Spirit 3</span><span class="chip">Force 1</span></td>
+                <td class="may" style="text-align:right">7</td></tr>
+            <tr class="stale"><td class="mage"><span class="nm">Ilyth</span><span class="un">(4522)</span></td>
+                <td class="where">Selado (34)<span class="asof">turn 20</span></td><td class="where">Kelmar (2:3,17)</td>
+                <td><span class="chip">Manipulation 3</span> <span class="appr">apprentice</span></td>
+                <td class="may" style="text-align:right">3</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>One question the grouping cannot answer — "who could begin something new" — is one click.</li>
+    <li>The same row shape as the units table, which this application already asks you to read.</li>
+    <li class="con">"Turn 20" is repeated on every one of a faction's rows.</li>
+    <li class="con">A sort you left on is a sort <code>ah-lyg6.4</code>'s grouped export no longer matches.</li>
+  </ul>
+</div>
+
+<h3 class="sec">Variant C — list and detail</h3>
+<p>The mages down the left, everything about the chosen one on the right — the shape the magic tree's
+mage picker already uses.</p>
+<div class="card">
+  <h2><em>C</em> Mage list, mage detail</h2>
+  <p class="concept">Room on the right for the whole of one mage: what he knows, what he may begin now,
+  and — when <code>ah-lyg6.2.3</code> lands — the study he is set and the note about him.</p>
+  <div class="stage">
+    <div class="pane">
+      <div class="top">
+        <h4>Study planner</h4><span class="key">F4</span>
+        <span class="sp"></span><button class="btn foc">Close</button>
+      </div>
+      <div class="md">
+        <div class="list">
+          <div class="hd">Wardens of the North (12)</div>
+          <div class="row on"><div class="nm">Ereb <span class="sub2">(2431)</span></div><div class="sub2">Force 3 · 12 may begin</div></div>
+          <div class="row"><div class="nm">Sable <span class="sub2">(2517)</span></div><div class="sub2">Force 1 · 4 may begin</div></div>
+          <div class="row"><div class="nm">Kestrel <span class="sub2">(2688)</span></div><div class="sub2">apprentice · 3 may begin</div></div>
+          <div class="hd">Borg (21) — turn 23</div>
+          <div class="row"><div class="nm">Uln <span class="sub2">(3012)</span></div><div class="sub2">Pattern 4 · 9 may begin</div></div>
+          <div class="row"><div class="nm">Vess <span class="sub2">(3104)</span></div><div class="sub2">Spirit 2 · 6 may begin</div></div>
+          <div class="hd">Selado (34) — turn 20<span class="asof">3 turns old</span></div>
+          <div class="row"><div class="nm">Mordoc <span class="sub2">(4501)</span></div><div class="sub2">Spirit 3 · 7 may begin</div></div>
+          <div class="row"><div class="nm">Ilyth <span class="sub2">(4522)</span></div><div class="sub2">apprentice · 3 may begin</div></div>
+        </div>
+        <div class="det">
+          <h5>Ereb (2431)</h5>
+          <div class="meta">Wardens of the North (12) · Ardun (1:7,53) · from this turn's report</div>
+          <div class="grp2">Knows</div>
+          <div><span class="chip">Force 3</span><span class="chip ceil">Pattern 2</span><span class="chip">Spirit 1</span><span class="chip">Fire 1</span></div>
+          <div class="grp2">May begin now — 12</div>
+          <div><span class="chip">Earth Lore</span><span class="chip">Weather Lore</span><span class="chip">Wolf Lore</span>
+               <span class="chip">Bird Lore</span><span class="chip">Dragon Lore</span><span class="more">+7</span></div>
+          <div class="grp2">Held back</div>
+          <div class="meta" style="margin:0">Pattern is stuck at 2 until Force reaches 3 · <a href="#" style="color:var(--select)">open in the magic tree (F3)</a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Room to say everything about one mage without a second window.</li>
+    <li class="con">You cannot see two mages at once — which is exactly what planning a faction's study is.</li>
+    <li class="con">Nearly the magic tree's own picker, one key away; two surfaces that do almost the same.</li>
+    <li class="con"><code>ah-lyg6.2.3</code>'s per-mage note becomes seven visits instead of one pass down a column.</li>
+  </ul>
+</div>
+
+<h3 class="sec">The states that are not the happy path</h3>
+<p>Drawn for variant A; the wording is the same whichever spine you pick.</p>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">No report and no sheets</p>
+      <div class="stage">
+        <div class="pane" style="width:auto">
+          <div class="top"><h4>Study planner</h4><span class="key">F4</span><span class="sp"></span><button class="btn foc">Close</button></div>
+          <div class="empty">No mages yet.<br><br>Your own mages appear when a report is loaded.
+          An ally's appear when you open a mage sheet they sent you.</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="lbl">A report with no mages in it</p>
+      <div class="stage">
+        <div class="pane" style="width:auto">
+          <div class="top"><h4>Study planner</h4><span class="key">F4</span><span class="sp"></span><button class="btn foc">Close</button></div>
+          <div class="empty">No mage in this faction has begun a magic skill.<br><br>
+          A leader who studies a foundation becomes one.</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="lbl">The stored sheets could not be read</p>
+      <div class="stage">
+        <div class="pane" style="width:auto">
+          <div class="top"><h4>Study planner</h4><span class="key">F4</span><span class="sp"></span><button class="btn foc">Close</button></div>
+          <div class="sub">3 mages — 3 yours</div>
+          <div class="err">Your allies' mage sheets could not be read. Your own mages are listed below.</div>
+          <div class="body"><table><tbody>
+            <tr class="grp"><td colspan="4">Wardens of the North (12) <span class="mine">— your faction, turn 23</span></td></tr>
+            <tr><td class="mage"><span class="nm">Ereb</span><span class="un">(2431)</span></td><td class="where">Ardun (1:7,53)</td>
+                <td><span class="chip">Force 3</span><span class="more">+3</span></td><td class="may" style="text-align:right">12</td></tr>
+          </tbody></table></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="lbl">Still loading them</p>
+      <div class="stage">
+        <div class="pane" style="width:auto">
+          <div class="top"><h4>Study planner</h4><span class="key">F4</span><span class="sp"></span><button class="btn foc">Close</button></div>
+          <div class="sub">3 mages — 3 yours</div>
+          <div class="err" style="color:var(--ink-dim)">Loading your allies' mages&hellip;</div>
+          <div class="body"><table><tbody>
+            <tr class="grp"><td colspan="4">Wardens of the North (12) <span class="mine">— your faction, turn 23</span></td></tr>
+            <tr><td class="mage"><span class="nm">Ereb</span><span class="un">(2431)</span></td><td class="where">Ardun (1:7,53)</td>
+                <td><span class="chip">Force 3</span><span class="more">+3</span></td><td class="may" style="text-align:right">12</td></tr>
+          </tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+</body>
+</html>

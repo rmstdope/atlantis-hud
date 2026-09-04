@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.2.2 round 2 — inside the chosen list-and-detail pane</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+    --known-fill:#1b2c26; --known-ink:#7fcaa5; --known-edge:#2c4a3e;
+    --ceil-fill:#2e2718; --ceil-ink:#d9a441; --ceil-edge:#4a3d21;
+    --maxed-fill:#232a38; --maxed-ink:#8fb4e0; --maxed-edge:#33455f;
+    --open-fill:#191f28; --open-ink:#a3b0c0; --open-edge:#2b3644;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:96ch; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:18px; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px;
+         text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+
+  .pane { width:880px; max-width:100%; background:var(--raised); border:1px solid var(--edge);
+          border-radius:6px; box-shadow:0 14px 40px #000a; overflow:hidden;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane .top { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  .pane .top h4 { font:600 13.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .pane .top .key { color:var(--ink-dim); font-size:11.5px; }
+  .pane .top .sp { margin-left:auto; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.foc { outline:2px solid var(--select); outline-offset:1px; }
+  .md { display:grid; grid-template-columns:264px 1fr; }
+  .list { border-right:1px solid var(--edge); max-height:420px; overflow:auto; }
+  .list .hd { padding:6px 12px; color:var(--brass); font-size:11px; letter-spacing:0.6px;
+              text-transform:uppercase; background:#141a23; position:sticky; top:0; }
+  .list .hd .age { color:var(--brass-bright); text-transform:none; letter-spacing:0; font-size:11px; }
+  .list .row { padding:6px 12px; border-bottom:1px solid var(--edge-soft); }
+  .list .row.on { background:#1b2735; box-shadow:inset 2px 0 0 var(--select); }
+  .list .row.kbd { outline:1px dashed var(--select); outline-offset:-2px; }
+  .list .row .nm { font-size:12.5px; }
+  .list .row .sub2 { color:var(--ink-dim); font-size:11px; }
+  .list .row.stale { background:#191612; }
+  .list .row.stale.on { background:#241d15; box-shadow:inset 2px 0 0 var(--select); }
+  .det { padding:14px 16px; max-height:420px; overflow:auto; }
+  .det h5 { font:600 14.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .det .meta { color:var(--ink-dim); font-size:11.5px; margin:2px 0 0; }
+  .det .warnline { color:var(--brass-bright); font-size:11.5px; margin:8px 0 0;
+                   border-left:2px solid #4a3d21; padding-left:8px; }
+  .det .grp2 { color:var(--ink-dim); font-size:11px; letter-spacing:0.6px; text-transform:uppercase; margin:14px 0 6px; }
+  .chip { display:inline-block; border-radius:3px; padding:0 5px; font-size:11.5px; margin:0 4px 4px 0;
+          border:1px solid var(--known-edge); background:var(--known-fill); color:var(--known-ink); }
+  .chip.ceil { border-color:var(--ceil-edge); background:var(--ceil-fill); color:var(--ceil-ink); }
+  .chip.maxed { border-color:var(--maxed-edge); background:var(--maxed-fill); color:var(--maxed-ink); }
+  .chip.open { border-color:var(--open-edge); background:var(--open-fill); color:var(--open-ink); }
+  .chip .up { color:var(--brass-bright); }
+  .more { color:var(--ink-dim); font-size:11.5px; }
+  .lnk { color:var(--select); font-size:11.5px; }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:980px) { .cols { grid-template-columns:1fr; } }
+  .kbdkey { border:1px solid var(--edge); border-radius:3px; padding:0 5px; font-size:11px; color:var(--ink-soft); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.2.2 round 2 — <span>inside the pane you chose</span></h1>
+  <p>You picked <strong>C</strong>, the mage list beside a mage detail, and <strong>S3</strong>, the
+  estimate counted from the sheet's own point numbers at thirty a month. This page settles what is
+  left: what the detail says, how far the estimate is allowed to reach, and how the list is walked.</p>
+  <p>Same game as before: your turn 23 report, <em>Borg (21)</em>'s sheet also turn 23, and
+  <em>Selado (34)</em>'s newest sheet turn 20 — so Mordoc has three unreported months.
+  His sheet said <code>spirit [SPIR] 3 (270)</code> and <code>force [FORC] 1 (30)</code>.</p>
+  <p style="color:#eebe63"><strong>Chosen: P1</strong> (the estimate decorates what he knows and stops there), <strong>arrow keys</strong> to walk the list, and <strong>J3</strong> — no link to the magic tree in this bead. P2, a filter box, mouse-only selection, J1 and J2 were all rejected. The interview is recorded in bead ah-lyg6.2.2's design field.</p>
+</header>
+
+<main>
+
+<h3 class="sec">P1 — the estimate decorates what he knows, and stops there</h3>
+<p>Levels the sheet stated, each with the level three more months could have reached. "May begin"
+stays exactly the sheet's, because a skill only he could have unlocked is a guess about a guess.</p>
+<div class="card">
+  <h2><em>P1</em> Arrows on <span style="color:var(--ink)">Knows</span> only</h2>
+  <div class="stage">
+    <div class="pane">
+      <div class="top"><h4>Study planner</h4><span class="key">F4</span>
+        <span class="sp"></span><button class="btn foc">Close</button></div>
+      <div class="md">
+        <div class="list">
+          <div class="hd">Wardens of the North (12)</div>
+          <div class="row"><div class="nm">Ereb <span class="sub2">(2431)</span></div><div class="sub2">Force 3 · 12 may begin</div></div>
+          <div class="row"><div class="nm">Sable <span class="sub2">(2517)</span></div><div class="sub2">Force 1 · 4 may begin</div></div>
+          <div class="row"><div class="nm">Kestrel <span class="sub2">(2688)</span></div><div class="sub2">apprentice · 3 may begin</div></div>
+          <div class="hd">Borg (21)</div>
+          <div class="row"><div class="nm">Uln <span class="sub2">(3012)</span></div><div class="sub2">Pattern 4 · 9 may begin</div></div>
+          <div class="row"><div class="nm">Vess <span class="sub2">(3104)</span></div><div class="sub2">Spirit 2 · 6 may begin</div></div>
+          <div class="hd">Selado (34) <span class="age">· turn 20</span></div>
+          <div class="row stale on"><div class="nm">Mordoc <span class="sub2">(4501)</span></div><div class="sub2">Spirit 3 · 7 may begin</div></div>
+          <div class="row stale"><div class="nm">Ilyth <span class="sub2">(4522)</span></div><div class="sub2">apprentice · 3 may begin</div></div>
+        </div>
+        <div class="det">
+          <h5>Mordoc (4501)</h5>
+          <div class="meta">Selado (34) · Kelmar (2:3,17)</div>
+          <div class="warnline">From a mage sheet of turn 20, 3 turns old. Up to 3 months of study
+            since it are estimated below and marked <span class="up" style="color:var(--brass-bright)">&#8594;</span>.</div>
+          <div class="grp2">Knows</div>
+          <div><span class="chip">Spirit 3 <span class="up">&#8594; up to 4</span></span><span class="chip">Force 1 <span class="up">&#8594; up to 2</span></span></div>
+          <div class="grp2">May begin now — 7 <span style="text-transform:none;letter-spacing:0">(as the sheet reported)</span></div>
+          <div><span class="chip open">Earth Lore</span><span class="chip open">Weather Lore</span><span class="chip open">Wolf Lore</span>
+               <span class="chip open">Bird Lore</span><span class="chip open">Necromancy</span><span class="more">+2</span></div>
+          <div class="grp2">Held back</div>
+          <div class="meta" style="margin:0">Nothing he holds is at a prerequisite's ceiling.</div>
+          <div class="grp2">&nbsp;</div>
+          <a href="#" class="lnk">Open in the magic tree (F3)</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Exactly one kind of claim on screen: "this level may have risen".</li>
+    <li>"May begin" is a fact from a sheet an ally wrote, never arithmetic on arithmetic.</li>
+    <li class="con">Spirit could be 4 by now, and 4 unlocks skills the list still calls locked.</li>
+  </ul>
+</div>
+
+<h3 class="sec">P2 — the estimate is the mage, and the whole detail follows it</h3>
+<p>The projected levels are fed back through the same standing arithmetic your own mages use, so what
+he may begin, and what is stuck at a ceiling, are computed from the estimate too.</p>
+<div class="card">
+  <h2><em>P2</em> One estimated mage, consistently drawn</h2>
+  <div class="stage">
+    <div class="pane">
+      <div class="top"><h4>Study planner</h4><span class="key">F4</span>
+        <span class="sp"></span><button class="btn foc">Close</button></div>
+      <div class="md">
+        <div class="list">
+          <div class="hd">Selado (34) <span class="age">· turn 20</span></div>
+          <div class="row stale on"><div class="nm">Mordoc <span class="sub2">(4501)</span></div>
+            <div class="sub2">Spirit <span style="color:var(--brass-bright)">up to 4</span> · <span style="color:var(--brass-bright)">up to 9</span> may begin</div></div>
+          <div class="row stale"><div class="nm">Ilyth <span class="sub2">(4522)</span></div><div class="sub2">apprentice · 3 may begin</div></div>
+        </div>
+        <div class="det">
+          <h5>Mordoc (4501)</h5>
+          <div class="meta">Selado (34) · Kelmar (2:3,17)</div>
+          <div class="warnline">From a mage sheet of turn 20, 3 turns old. Everything below assumes
+            up to 3 months of study since, at most in any one skill — it is the best he could be,
+            not what he is.</div>
+          <div class="grp2">Knows</div>
+          <div><span class="chip">Spirit 3 <span class="up">&#8594; up to 4</span></span><span class="chip">Force 1 <span class="up">&#8594; up to 2</span></span></div>
+          <div class="grp2">May begin — up to 9</div>
+          <div><span class="chip open">Earth Lore</span><span class="chip open">Weather Lore</span><span class="chip open">Wolf Lore</span>
+               <span class="chip open">Bird Lore</span><span class="chip open">Necromancy</span>
+               <span class="chip open" style="border-color:#4a3d21;color:var(--brass-bright)">Summoning &#8594;</span>
+               <span class="chip open" style="border-color:#4a3d21;color:var(--brass-bright)">Banishing &#8594;</span><span class="more">+2</span></div>
+          <div class="grp2">Held back</div>
+          <div class="meta" style="margin:0">Nothing he holds is at a prerequisite's ceiling.</div>
+          <div class="grp2">&nbsp;</div>
+          <a href="#" class="lnk">Open in the magic tree (F3)</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>One coherent picture: the mage he could be, drawn the way a real mage is drawn.</li>
+    <li>Two skills he could plausibly begin next month are not hidden from you.</li>
+    <li class="con">A skill he cannot in fact begin sits in the same list as six he can, one arrow apart.</li>
+    <li class="con">Every count in the pane becomes "up to", including the list row.</li>
+  </ul>
+</div>
+
+<h3 class="sec">Walking the list, and leaving the pane</h3>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">Keyboard, as drawn in both variants above</p>
+      <div class="stage">
+        <div class="pane" style="width:auto">
+          <div class="top"><h4>Study planner</h4><span class="key">F4</span>
+            <span class="sp"></span><button class="btn">Close</button></div>
+          <div class="md">
+            <div class="list">
+              <div class="hd">Wardens of the North (12)</div>
+              <div class="row on kbd"><div class="nm">Ereb <span class="sub2">(2431)</span></div><div class="sub2">Force 3 · 12 may begin</div></div>
+              <div class="row"><div class="nm">Sable <span class="sub2">(2517)</span></div><div class="sub2">Force 1 · 4 may begin</div></div>
+              <div class="row"><div class="nm">Kestrel <span class="sub2">(2688)</span></div><div class="sub2">apprentice · 3 may begin</div></div>
+            </div>
+            <div class="det">
+              <h5>Ereb (2431)</h5>
+              <div class="meta">Wardens of the North (12) · Ardun (1:7,53) · from this turn's report</div>
+              <div class="grp2">Knows</div>
+              <div><span class="chip">Force 3</span><span class="chip ceil">Pattern 2</span><span class="chip">Spirit 1</span><span class="chip">Fire 1</span></div>
+              <div class="grp2">May begin now — 12</div>
+              <div><span class="chip open">Earth Lore</span><span class="chip open">Weather Lore</span><span class="chip open">Wolf Lore</span>
+                   <span class="chip open">Bird Lore</span><span class="chip open">Dragon Lore</span><span class="more">+7</span></div>
+              <div class="grp2">Held back</div>
+              <div class="meta" style="margin:0">Pattern is stuck at 2 until Force reaches 3.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li><span class="kbdkey">&#8593;</span> <span class="kbdkey">&#8595;</span> move down the list across faction headings; the detail follows at once.</li>
+        <li><span class="kbdkey">Esc</span> closes the pane and puts focus back where F4 was pressed.</li>
+        <li class="n">The list is one focus stop; the detail's link is the next.</li>
+      </ul>
+    </div>
+    <div>
+      <p class="lbl">What "Open in the magic tree" does</p>
+      <div class="stage" style="min-height:120px">
+        <p style="color:var(--ink-soft);font:12.5px/1.6 'Helvetica Neue',Arial,sans-serif">
+          The magic tree (<code>F3</code>) already draws all seventy skills tinted for one mage. The
+          planner's detail can hand it this mage — but the two panes cannot both be open, so
+          something has to give:<br><br>
+          <strong style="color:var(--ink)">J1</strong> — the planner closes and the tree opens on this
+          mage. Escape from the tree returns to the map, as it does today.<br><br>
+          <strong style="color:var(--ink)">J2</strong> — the planner closes and the tree opens on this
+          mage, and Escape from the tree <em>reopens the planner</em> where you left it.<br><br>
+          <strong style="color:var(--ink)">J3</strong> — no link at all in this bead. The tree is one
+          key away and already has its own mage picker.
+        </p>
+      </div>
+      <ul class="notes">
+        <li class="n">The tree's picker lists your own mages only today; handing it an ally's mage is work either way.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</main>
+</body>
+</html>

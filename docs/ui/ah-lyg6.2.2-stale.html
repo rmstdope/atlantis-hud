@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.2.2 — a mage whose sheet is older than the turn on screen</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+    --known-fill:#1b2c26; --known-ink:#7fcaa5; --known-edge:#2c4a3e;
+    --ceil-fill:#2e2718; --ceil-ink:#d9a441; --ceil-edge:#4a3d21;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1160px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:96ch; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:18px; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pane { width:820px; max-width:100%; background:var(--raised); border:1px solid var(--edge);
+          border-radius:6px; overflow:hidden; font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  table { width:100%; border-collapse:separate; border-spacing:0; font-size:12.5px; }
+  th { text-align:left; font-weight:400; color:var(--ink-dim); font-size:11px; letter-spacing:0.6px;
+       text-transform:uppercase; padding:6px 12px; border-bottom:1px solid var(--edge); }
+  td { padding:6px 12px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  tr.grp td { background:#141a23; color:var(--brass); font-size:11.5px; padding:7px 12px; }
+  tr.grp td .mine { color:var(--ink-dim); }
+  tr.grp td .why { color:var(--ink-dim); display:block; margin-top:2px; font-size:11px; }
+  td .nm { color:var(--ink); } td .un { color:var(--ink-dim); font-size:11.5px; margin-left:5px; }
+  td.where { color:var(--ink-soft); }
+  .chip { display:inline-block; border-radius:3px; padding:0 5px; font-size:11.5px; margin:0 4px 3px 0;
+          border:1px solid var(--known-edge); background:var(--known-fill); color:var(--known-ink); }
+  .chip.ceil { border-color:var(--ceil-edge); background:var(--ceil-fill); color:var(--ceil-ink); }
+  .chip .up { color:var(--brass-bright); }
+  .asof { color:var(--brass-bright); font-size:11px; border:1px solid #4a3d21; border-radius:3px;
+          padding:0 5px; margin-left:6px; }
+  tr.stale td { background:#191612; }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:900px) { .cols { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.2.2 — <span>a mage you have not heard about this turn</span></h1>
+  <p>Your report is turn 23. The newest mage sheet <em>Selado (34)</em> ever sent you is turn 20, so
+  three months of Mordoc's studying have happened that no sheet describes. The bead says such a mage
+  is <strong>shown and flagged, never dropped, and his progress since his sheet's turn estimated</strong>
+  — and leaves what "estimated" means on screen to this conversation.</p>
+  <p>What the game actually lets us say (<code>rules/skills_studying</code>): level 1 costs one month
+  of study, level 2 two more, level 3 three more, and so on. What the published rules do
+  <em>not</em> say is how many of a report's point numbers — <code>spirit [SPIR] 3 (180)</code> —
+  one month is worth. Every variant below is a different answer to that gap.</p>
+  <p style="color:#eebe63"><strong>Chosen: S3</strong>, the estimate counted from the report's own point numbers at thirty a month. S1 (no projection) and S2 (the rules' month arithmetic alone) were rejected for the sharper estimate, knowing that thirty points a month is inferred from the fixtures and not published in the rules. The interview is recorded in bead ah-lyg6.2.2's design field.</p>
+</header>
+
+<main>
+
+<h3 class="sec">S1 — say what is not known, and no more</h3>
+<p>The levels are exactly the ones the sheet carried. Nothing is projected.</p>
+<div class="card">
+  <h2><em>S1</em> The sheet's own numbers, plainly dated</h2>
+  <p class="concept">The section head carries the age and the size of the gap; the rows are tinted so
+  a mage from an old sheet cannot be mistaken for one from this turn's report.</p>
+  <div class="stage">
+    <div class="pane">
+      <table>
+        <thead><tr><th>Mage</th><th>Where</th><th>Knows</th><th style="text-align:right">May begin</th></tr></thead>
+        <tbody>
+          <tr class="grp"><td colspan="4">Selado (34) <span class="mine">— sheet from turn 20</span><span class="asof">3 turns old</span>
+            <span class="why">Up to 3 months of study since are not in it.</span></td></tr>
+          <tr class="stale"><td><span class="nm">Mordoc</span><span class="un">(4501)</span></td>
+              <td class="where">Kelmar (2:3,17)</td>
+              <td><span class="chip">Spirit 3</span><span class="chip">Force 1</span></td>
+              <td style="text-align:right;color:var(--ink-soft)">7</td></tr>
+          <tr class="stale"><td><span class="nm">Ilyth</span><span class="un">(4522)</span></td>
+              <td class="where">Kelmar (2:3,17)</td>
+              <td><span class="chip">Manipulation 3</span></td>
+              <td style="text-align:right;color:var(--ink-soft)">3</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Nothing on the screen can ever be wrong: every number came from a sheet an ally wrote.</li>
+    <li>One sentence carries the whole story, and it is where the staleness actually lives.</li>
+    <li class="con">Does not answer "is he past Spirit 3 by now" — you do the arithmetic in your head.</li>
+    <li class="con">The parent bead asked for an estimate; this is a refusal to give one.</li>
+  </ul>
+</div>
+
+<h3 class="sec">S2 — the rules' own month arithmetic, as a ceiling</h3>
+<p>Each skill he holds gains "up to <em>N</em>" where <em>N</em> is the highest level those unreported
+months could have bought, counting from the level the sheet stated.</p>
+<div class="card">
+  <h2><em>S2</em> "Spirit 3 → up to 4"</h2>
+  <p class="concept">Three unreported months. Spirit 3 → 4 needs four months, so Spirit cannot have
+  moved; Force 1 → 2 needs two, and 2 → 3 another three, so Force could be 2. Every arrow is an
+  <strong>upper bound</strong> and the header says so once.</p>
+  <div class="stage">
+    <div class="pane">
+      <table>
+        <thead><tr><th>Mage</th><th>Where</th><th>Knows</th><th style="text-align:right">May begin</th></tr></thead>
+        <tbody>
+          <tr class="grp"><td colspan="4">Selado (34) <span class="mine">— sheet from turn 20</span><span class="asof">3 turns old</span>
+            <span class="why">3 months of study since. An arrow is the most those months could have bought, never what happened.</span></td></tr>
+          <tr class="stale"><td><span class="nm">Mordoc</span><span class="un">(4501)</span></td>
+              <td class="where">Kelmar (2:3,17)</td>
+              <td><span class="chip">Spirit 3</span><span class="chip">Force 1 <span class="up">&#8594; up to 2</span></span></td>
+              <td style="text-align:right;color:var(--ink-soft)">7</td></tr>
+          <tr class="stale"><td><span class="nm">Ilyth</span><span class="un">(4522)</span></td>
+              <td class="where">Kelmar (2:3,17)</td>
+              <td><span class="chip">Manipulation 3</span></td>
+              <td style="text-align:right;color:var(--ink-soft)">3</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>An estimate the rules page can be held to: only <code>rules/skills_studying</code>'s months are used.</li>
+    <li>Understates rather than overstates — a mage part-way through a level is treated as if he were at its start.</li>
+    <li class="con">Two numbers per skill on every stale row; the eye has to sort the real from the possible.</li>
+    <li class="con">"Up to 2" on a mage who has in fact been mining for three months is noise.</li>
+  </ul>
+</div>
+
+<h3 class="sec">S3 — the same, from the report's point numbers</h3>
+<p>A report writes <code>stealth [STEA] 5 (450)</code>, and 450 is fifteen months at thirty a month —
+so the application could count part-finished levels too, if it asserts that rate.</p>
+<div class="card">
+  <h2><em>S3</em> "Spirit 3 (180) → 4 next month"</h2>
+  <p class="concept">Mordoc's sheet said <code>spirit 3 (270)</code> — ninety points past level 3, so
+  three more months puts him at 360, which is level 4. The estimate becomes exact, at the price of a
+  number the published rules never state.</p>
+  <div class="stage">
+    <div class="pane">
+      <table>
+        <thead><tr><th>Mage</th><th>Where</th><th>Knows</th><th style="text-align:right">May begin</th></tr></thead>
+        <tbody>
+          <tr class="grp"><td colspan="4">Selado (34) <span class="mine">— sheet from turn 20</span><span class="asof">3 turns old</span>
+            <span class="why">3 months of study since, counted at thirty points a month from what the sheet reported.</span></td></tr>
+          <tr class="stale"><td><span class="nm">Mordoc</span><span class="un">(4501)</span></td>
+              <td class="where">Kelmar (2:3,17)</td>
+              <td><span class="chip">Spirit 3 <span class="up">&#8594; up to 4</span></span><span class="chip">Force 1 <span class="up">&#8594; up to 2</span></span></td>
+              <td style="text-align:right;color:var(--ink-soft)">7</td></tr>
+          <tr class="stale"><td><span class="nm">Ilyth</span><span class="un">(4522)</span></td>
+              <td class="where">Kelmar (2:3,17)</td>
+              <td><span class="chip">Manipulation 3 <span class="up">&#8594; up to 4</span></span></td>
+              <td style="text-align:right;color:var(--ink-soft)">3</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>The sharpest estimate available, and it uses a number every report already prints.</li>
+    <li class="con">Thirty points a month is <strong>inferred from an example</strong>, not published. A ruleset that
+    changes it makes every arrow on this screen quietly wrong.</li>
+    <li class="con">More skills gain an arrow than in S2, so more of the row is speculation.</li>
+  </ul>
+</div>
+
+<h3 class="sec">And when the ally is not behind at all</h3>
+<p>Whatever you choose above, a faction whose newest sheet is the turn on screen is drawn with no age,
+no tint and no arrow — the case this pane is in most of the time.</p>
+<div class="card">
+  <div class="stage">
+    <div class="pane">
+      <table>
+        <thead><tr><th>Mage</th><th>Where</th><th>Knows</th><th style="text-align:right">May begin</th></tr></thead>
+        <tbody>
+          <tr class="grp"><td colspan="4">Borg (21) <span class="mine">— sheet from turn 23</span></td></tr>
+          <tr><td><span class="nm">Uln</span><span class="un">(3012)</span></td>
+              <td class="where">Tarnach (1:12,44)</td>
+              <td><span class="chip">Pattern 4</span><span class="chip ceil">Force 2</span></td>
+              <td style="text-align:right;color:var(--ink-soft)">9</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</main>
+</body>
+</html>
