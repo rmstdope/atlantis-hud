@@ -43,6 +43,11 @@ import {
   type MapExportImportSource,
   type ReportImportSource
 } from "./mapExportImport";
+import {
+  judgeMageSheetUsable,
+  type MageSheetContext,
+  type UsableMageSheet
+} from "./mageSheetImport";
 import { sortUnitsForDisplay } from "./hexMapModel";
 import { countsStatus, noticeStatus, warningStatus } from "./workspace/shellStatus";
 import { seedOrdersDocument } from "./ordersDocument";
@@ -269,15 +274,24 @@ export type PendingMapExport = {
   viewer: { factionId: string; factionLabel: string; turnNumber: number };
 };
 
+/**
+ * A mage sheet from an ally, judged and ready to take in.
+ *
+ * Deliberately {@link UsableMageSheet} plus the file's name, so it can be handed straight to
+ * `mageSheetRows` without a second conversion.
+ */
+export type PendingMageSheet = UsableMageSheet & { fileName: string };
+
 export type ReportRoute =
   | { kind: "reject"; reason: string }
   | { kind: "load" }
   | { kind: "storeOnly"; currentTurn: number }
   | { kind: "ask"; pending: PendingReportLoad }
-  | { kind: "mapExport"; pending: PendingMapExport };
+  | { kind: "mapExport"; pending: PendingMapExport }
+  | { kind: "mageSheet"; pending: PendingMageSheet };
 
 /**
- * Where a parsed report goes: `judgeReportUsable` first - the one answer to whether a report can be
+ * Where a parsed report goes: a mage sheet and a map export first, then `judgeReportUsable` - the one answer to whether a report can be
  * imported at all, shared with the batch importer - then `decideReportLoad` and the foreign-report
  * prompt's snapshot, whose viewer identity is taken here, when the question is raised, never when it
  * is answered.
@@ -286,8 +300,19 @@ export function routeReport(
   viewer: ParsedReport | null,
   source: ReportImportSource,
   fileName: string,
-  knownRegionIds: ReadonlySet<string>
+  knownRegionIds: ReadonlySet<string>,
+  sheets: MageSheetContext
 ): ReportRoute {
+  // Before the map-export branch and before `judgeReportUsable`, and for the reason that branch
+  // gives about itself: the generic report refusals name the wrong thing to go looking for, and a
+  // mage sheet has five refusals of its own that say exactly what is wrong with it.
+  if (source.kind === "mageSheet") {
+    const usable = judgeMageSheetUsable(source, sheets);
+    return usable.ok
+      ? { kind: "mageSheet", pending: { ...usable.value, fileName } }
+      : { kind: "reject", reason: usable.reason };
+  }
+
   // Before `judgeReportUsable`, so a map export never collects one of the generic report refusals:
   // they name the wrong thing to go looking for, and one of them ("the report does not name its
   // faction") is the very message our own broken exports used to produce.

@@ -15,6 +15,8 @@ export * from "./gameMemory";
 export * from "./gameSession";
 export * from "./armies";
 export * from "./armiesStore";
+export * from "./alliedMages";
+export * from "./alliedMagesStore";
 export * from "./hexNotes";
 export * from "./hexNotesStore";
 export * from "./orderDraft";

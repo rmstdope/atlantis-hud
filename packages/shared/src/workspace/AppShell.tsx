@@ -72,6 +72,7 @@ import {
   routeReport,
   storeOlderTurn,
   type LoadedTurn,
+  type PendingMageSheet,
 } from "../reportLoad";
 import { chooseViewerFaction } from "../reportBatch";
 import {
@@ -120,6 +121,14 @@ import type { BackupImportMode } from "../gameBackup";
 import { DEFAULT_LEVEL, useWorkspaceStore, workspaceGameOf } from "../workspaceStore";
 import { useHexNotesStore } from "../hexNotesStore";
 import { useArmiesStore } from "../armiesStore";
+import { useAlliedMagesStore } from "../alliedMagesStore";
+import {
+  heldTurnsByFaction,
+  keyOf,
+  mageSheetRows,
+  missingFromSheet
+} from "../mageSheetImport";
+import { mageSheetStatus } from "../mageSheetPrompt";
 import { useBattleSkillsStore } from "../battleSkillsStore";
 import { derivedSkillsFor } from "../battleSkills";
 import { unitsByIdIn } from "../armies";
@@ -563,6 +572,13 @@ export function AppShell({
   const armiesStatus = useArmiesStore((state) => state.status);
   /** The same list `UnitTableDock` reads, for the export dialog's two pickers (`ah-1mpx.3`). */
   const armies = useArmiesStore((state) => state.armies);
+  /**
+   * The mages allies have shared (`ah-lyg6.1.2.2`).
+   *
+   * Subscribed rather than read through `getState()`: an arriving sheet is routed against what is
+   * held *right now*, so `loadReport` closes over this value and depends on it.
+   */
+  const alliedMages = useAlliedMagesStore((state) => state.mages);
   /** The combat skills recovered from this game's battle rosters (`ah-1mpx.6.2`). */
   const derivedSkills = useBattleSkillsStore((state) => state.skills);
   const derivedStatus = useBattleSkillsStore((state) => state.status);
@@ -1399,6 +1415,46 @@ export function AppShell({
     [client, game, rulesetForThisLoad]
   );
 
+  /**
+   * Takes an ally's mage sheet in: its mages are stored, and nothing else on screen moves.
+   *
+   * Stored *before* any question is asked about the mages it leaves out, which is what the mockup
+   * draws: the sheet is already in, and only the mages it left out are still undecided.
+   */
+  const takeInMageSheet = useCallback(
+    async (pending: PendingMageSheet) => {
+      // `game` is non-null: `MAGE_SHEET_NEEDS_A_GAME` refused the sheet otherwise.
+      const openGame = game as OpenedGame;
+      const missing = missingFromSheet(alliedMages, pending.factionId, pending.mages);
+      await useAlliedMagesStore
+        .getState()
+        .takeIn(client, openGame, mageSheetRows(pending, new Date().toISOString()));
+
+      const outcome = {
+        factionLabel: pending.factionLabel,
+        turnNumber: pending.turnNumber,
+        taken: pending.mages.length,
+        replacedTurn: pending.heldTurn
+      };
+      if (missing.length === 0) {
+        setStatus(noticeStatus(mageSheetStatus({ ...outcome, leftovers: { kind: "none" } })));
+        return;
+      }
+      // Discard is the default the family agreed, and asking about it is `ah-lyg6.1.2.2`'s third
+      // increment; until then the default simply applies.
+      await useAlliedMagesStore.getState().discard(client, openGame, missing.map(keyOf));
+      setStatus(
+        noticeStatus(
+          mageSheetStatus({
+            ...outcome,
+            leftovers: { kind: "discarded", count: missing.length }
+          })
+        )
+      );
+    },
+    [client, game, alliedMages]
+  );
+
   const loadReport = useCallback(
     (text: string, fileName: string) =>
       runReported(
@@ -1418,13 +1474,25 @@ export function AppShell({
             parsed,
             classifyReportImport(report, text),
             fileName,
-            new Set(model.hexes.map((hex) => hex.regionId))
+            new Set(model.hexes.map((hex) => hex.regionId)),
+            {
+              viewerFactionId: parsed?.header.factionId ?? null,
+              hasGame: game !== null,
+              heldTurnByFaction: heldTurnsByFaction(alliedMages)
+            }
           );
 
           if (route.kind === "reject") {
             // Thrown rather than reported here, so `runReported`'s `could not read <file>: …`
             // prefix and red status apply exactly as they do to a file that would not parse.
             throw new Error(route.reason);
+          }
+
+          if (route.kind === "mageSheet") {
+            // Taken in with no question, which is what the family agreed: nothing on screen moves
+            // when a sheet arrives, so there is nothing to be startled by and nothing to undo.
+            await takeInMageSheet(route.pending);
+            return;
           }
 
           if (route.kind === "mapExport") {
@@ -1457,7 +1525,7 @@ export function AppShell({
     // is null, and every report is parsed unclassified however long the ruleset took to arrive.
     // `parsed` because the routing above is decided against whatever is on screen, and `model`
     // because the map-export prompt counts its hexes against the map the player already has.
-    [client, ruleset, parsed, model, applyReport, storeReportOnly]
+    [client, ruleset, parsed, model, alliedMages, applyReport, storeReportOnly, takeInMageSheet]
   );
 
   /** Opens the pending report as its own faction: today's behaviour, chosen rather than assumed. */
@@ -1898,6 +1966,18 @@ export function AppShell({
       void useArmiesStore.getState().load(client, game);
     } else {
       useArmiesStore.getState().clear();
+    }
+  }, [client, openGameId, gameEpoch]);
+
+  /**
+   * The same for an ally's shared mages (ah-lyg6.1.2.2), keyed the same way and for the same
+   * reason: a stored mage belongs to the game and does not change because the game was renamed.
+   */
+  useEffect(() => {
+    if (game) {
+      void useAlliedMagesStore.getState().load(client, game);
+    } else {
+      useAlliedMagesStore.getState().clear();
     }
   }, [client, openGameId, gameEpoch]);
 
