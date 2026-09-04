@@ -45,7 +45,8 @@ use crate::orders::silver::{
     transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
     MarketFunds, MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
-    PurchaseAnswer, Receipts, RegionShare, RegionWages, SaleAnswer, SilverDoubt, TransferShape,
+    PurchaseAnswer, Receipts, RegionShare, RegionWages, SaleAnswer, SharedMarket, SilverDoubt,
+    TransferShape,
     Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
@@ -1379,9 +1380,11 @@ fn forecast_hex(
         settlement,
     } = relief;
     let region = region_wages(hex, ruleset);
-    // A shared purse is settled after this pass, so a bounded `BUY` in a sharing hex is not capped
-    // at all (`ah-omn7`, and `ah-szye` owns the settlement).
-    let sharers_in_hex = !Sharing::read(hex).sharers.is_empty();
+    // What the market lent each unit, as the ledger measured it when the market opened. Read from
+    // the ledger rather than rebuilt here: this pass runs after the market-phase balances have
+    // already been drawn down by the very purchases being sized, and the column and the ITEMS
+    // ledger must cut one `BUY` to one quantity (`ah-lu0f.2`, `ah-szye`).
+    let market_purse = &ledger.market_purse;
     let nothing = Receipts::default();
     // The ledger is already complete by the time the column prices a hex - `review_turn` builds
     // every hex's ledger before it forecasts any of them - so the late picture is read once here
@@ -1565,7 +1568,10 @@ fn forecast_hex(
                 give_reach: &give_reach_of,
                 uncertain_after_gifts: &uncertain_after_gifts,
             },
-            sharers_in_hex,
+            match market_purse.adds_for(index) {
+                Some(adds) => SharedMarket::Adds(adds),
+                None => SharedMarket::Unmeasured,
+            },
             ruleset,
         ));
     }
@@ -16685,6 +16691,35 @@ mod tests {
                 "the units in this hex are short $60 between them: they can have $100 \
                  and their orders spend $160"
             );
+        }
+
+        /// The SILVER column reads the ledger's own market-open snapshot, so the two surfaces cut
+        /// one shared `BUY` to one quantity (`ah-lu0f.2`, `ah-szye`).
+        #[test]
+        fn the_column_and_the_ledger_agree_about_a_shared_purchase() {
+            let hex = ReportRegion {
+                for_sale: vec![line(10, 100, "sword", "SWOR")],
+                ..region(vec![
+                    with_silver(unit("1"), 0),
+                    sharing(with_silver(unit("2"), 300)),
+                ])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 1\nBUY 5 sword\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let column = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast");
+            assert_eq!(column.expense, Some(300), "three swords, not five");
+            assert_eq!(column.wanted_for_orders, Some(500), "the whole ask survives");
+            assert_eq!(column.at_month_end, Some(-300));
+            // The ITEMS ledger cuts the same purchase to the same three swords -
+            // `a_shared_purse_pays_for_what_one_buy_can_reach`, on this hex.
         }
 
         /// The purse is read at the market phase, so a tax credited earlier in the month pays for

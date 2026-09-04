@@ -477,7 +477,8 @@ pub struct BuyAllShown {
     /// `available`. Zero for the first such line, which is what keeps every shipped sentence
     /// unchanged (`ah-lauy`).
     pub already_bought: i64,
-    /// What the unit holds when this line is reached, for the "cannot afford one" sentence.
+    /// What the unit can have when this line is reached - its own silver, plus what the hex's
+    /// `SHARE` flags lend the market (`ah-szye`) - for the "cannot afford one" sentence.
     pub silver_available: i64,
     /// The line's unit price, for the same sentence.
     pub price: i64,
@@ -1151,9 +1152,9 @@ pub fn forecast_unit(
     purse: FactionPurse,
     shared_for_orders: i64,
     lookups: Lookups<'_>,
-    // Whether any own unit in this hex has `SHARE` set. A shared purse is settled after this
-    // pass, so a bounded `BUY` in such a hex is not capped at all (`ah-szye`).
-    sharers_in_hex: bool,
+    // What this hex's `SHARE` flags lend this unit's market purse, as the ledger snapshotted it
+    // when the market opened (`ah-szye`).
+    shared_market: SharedMarket,
     ruleset: Option<&Ruleset>,
 ) -> UnitSilver {
     let sale = lookups.sale;
@@ -1852,16 +1853,22 @@ pub fn forecast_unit(
         // one - the ledger's reading, not the column's settled `shares.tax` - so both surfaces
         // settle one quantity; the money columns keep the settled figure (`ah-omn7`).
         market_expense = 0;
+        // `rules/share` funds a `BUY` from a faction-mate's purse, undecremented by any other
+        // buyer in the hex - the ledger's `MarketPurse` snapshot, read here so both surfaces
+        // settle one quantity (`ah-szye`).
+        let shared_adds = match shared_market {
+            SharedMarket::Adds(adds) => adds,
+            SharedMarket::Unmeasured => 0,
+        };
         let mut funds = running.saturating_add(hopeful_tax);
         for buy in &exact_buys {
             let line = price_purchase(
                 buy.count,
                 buy.price,
                 buy.allowed,
-                if sharers_in_hex {
-                    MarketFunds::Unmeasured
-                } else {
-                    MarketFunds::Silver(funds)
+                match shared_market {
+                    SharedMarket::Adds(adds) => MarketFunds::Silver(funds.saturating_add(adds)),
+                    SharedMarket::Unmeasured => MarketFunds::Unmeasured,
                 },
             );
             market_expense = market_expense.saturating_add(line.spends);
@@ -1884,7 +1891,12 @@ pub fn forecast_unit(
             // `market_has` is a real quantity of goods, so a unit that has already bought
             // the line cannot buy it again whether a share was settled or not.
             let available = share.unwrap_or(*market_has);
-            let (priced, plan) = price_buy_all(running, *price, available, *market_has, already);
+            // `rules/share` funds a `BUY ALL` as it funds a bounded one, and an untrusted purse
+            // adds nothing rather than lifting the cap: a `BUY ALL` has always been silver-capped
+            // (`ah-szye`).
+            let buy_all_silver = running.saturating_add(shared_adds);
+            let (priced, plan) =
+                price_buy_all(buy_all_silver, *price, available, *market_has, already);
             buy_all.push(BuyAllShown {
                 bought_named: (lookups.counted_or_none)(plan.bought, tag),
                 market_named: (lookups.counted_or_none)(plan.market_has, tag),
@@ -1893,7 +1905,7 @@ pub fn forecast_unit(
                 available: plan.available,
                 market_has: plan.market_has,
                 already_bought: plan.already_bought,
-                silver_available: running,
+                silver_available: buy_all_silver,
                 price: *price,
                 capped_by: plan.capped_by,
             });
@@ -3265,6 +3277,20 @@ pub fn price_pillage(
 #[must_use]
 pub fn quantity_bought(count: i64, allowed: i64) -> i64 {
     count.min(allowed).max(0)
+}
+
+/// What this hex's `SHARE` flags add to one unit's market purse (`ah-szye`).
+///
+/// Supplied by `semantics::forecast_hex` from the ledger's own market-open snapshot, so the SILVER
+/// column and the ITEMS ledger cut one `BUY` to one quantity (`ah-lu0f.2`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SharedMarket {
+    /// What every *other* sharing unit in the region holds as the market opens. `0` where nothing
+    /// shares, or where every sharer is spent up.
+    Adds(i64),
+    /// A sharer's balance could not be priced. No bounded `BUY` is capped, and a `BUY ALL` is
+    /// capped by the unit's own silver alone.
+    Unmeasured,
 }
 
 /// What a bounded `BUY` has to spend when the market opens.
@@ -5900,7 +5926,7 @@ mod tests {
             purse,
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             None,
         )
     }
@@ -5922,7 +5948,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset()),
         );
 
@@ -5983,7 +6009,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset()),
         )
     }
@@ -6043,7 +6069,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset()),
         );
 
@@ -6129,7 +6155,7 @@ mod tests {
             },
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset()),
         );
 
@@ -6173,7 +6199,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset()),
         );
 
@@ -6205,7 +6231,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset()),
         );
         assert_eq!(unit.produced, 1);
@@ -6247,7 +6273,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset()),
         );
 
@@ -6287,7 +6313,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset()),
         );
 
@@ -6322,7 +6348,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset()),
         );
 
@@ -6482,7 +6508,7 @@ mod tests {
                 FactionPurse::default(),
                 0,
                 no_market(),
-                false,
+                SharedMarket::Adds(0),
                 Some(&ruleset),
             )
         };
@@ -6527,7 +6553,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset),
         );
 
@@ -6607,7 +6633,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             None,
         )
     }
@@ -6691,7 +6717,7 @@ mod tests {
                     sale: &unknown_goods,
                     ..no_market()
                 },
-                false,
+                SharedMarket::Adds(0),
                 None,
             )
             .doubt
@@ -6925,7 +6951,7 @@ mod tests {
                 purchase: &sells(12, 40),
                 ..no_market()
             },
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset),
         );
         assert_eq!(unit.income, Some(5000));
@@ -7111,7 +7137,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             None,
         );
         assert_eq!(unit.income, Some(72));
@@ -7137,7 +7163,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             None,
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::EstimatedMen));
@@ -7167,7 +7193,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset),
         );
         assert_eq!(unit.expense, Some(60));
@@ -7192,7 +7218,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset),
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::UnpricedSkill));
@@ -7216,7 +7242,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             None,
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::EstimatedMen));
@@ -7246,7 +7272,7 @@ mod tests {
                 sale,
                 ..no_market()
             },
-            false,
+            SharedMarket::Adds(0),
             None,
         )
     }
@@ -7308,7 +7334,7 @@ mod tests {
                 market_share: share,
                 ..no_market()
             },
-            false,
+            SharedMarket::Adds(0),
             None,
         )
     }
@@ -7448,7 +7474,7 @@ mod tests {
                 sale: &sale,
                 ..no_market()
             },
-            false,
+            SharedMarket::Adds(0),
             None,
         );
         assert_eq!(unit.income, Some(30));
@@ -7493,7 +7519,7 @@ mod tests {
                 sale: &sale,
                 ..no_market()
             },
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset),
         );
 
@@ -7527,7 +7553,7 @@ mod tests {
                 },
                 0,
                 no_market(),
-                false,
+                SharedMarket::Adds(0),
                 Some(&ruleset),
             )
             .cast_made
@@ -7570,7 +7596,7 @@ mod tests {
                 purchase: &purchase,
                 ..no_market()
             },
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset),
         );
 
@@ -7694,7 +7720,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             None,
         )
     }
@@ -7749,7 +7775,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset),
         )
     }
@@ -7815,7 +7841,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(ruleset),
         )
     }
@@ -7914,7 +7940,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             None,
         );
         assert_eq!(unit.income, Some(200));
@@ -7939,7 +7965,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             None,
         );
         assert_eq!(unit.income, Some(100));
@@ -7964,7 +7990,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             None,
         );
         assert_eq!(unit.income, Some(100));
@@ -7989,7 +8015,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             None,
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::TakesAllFromAnother));
@@ -8012,7 +8038,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             None,
         );
         assert_eq!(unit.income, Some(600));
@@ -8049,7 +8075,7 @@ mod tests {
                 sale: &wanted(24, 40, 40),
                 ..no_market()
             },
-            false,
+            SharedMarket::Adds(0),
             None,
         );
         assert_eq!(unit.income, Some(240));
@@ -8069,7 +8095,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             None,
         );
         assert_eq!(unit.held, 600);
@@ -8110,7 +8136,7 @@ mod tests {
                 purchase,
                 ..no_market()
             },
-            false,
+            SharedMarket::Adds(0),
             ruleset,
         )
     }
@@ -8177,7 +8203,7 @@ mod tests {
                 purchase: &purchase,
                 ..no_market()
             },
-            false,
+            SharedMarket::Adds(0),
             None,
         );
         // the column settles the tax at its share
@@ -8301,7 +8327,7 @@ mod tests {
                 market_share: &market_share,
                 ..no_market()
             },
-            false,
+            SharedMarket::Adds(0),
             None,
         )
     }
@@ -8606,7 +8632,7 @@ mod tests {
                 class_carries_silver: &carries_silver,
                 ..no_market()
             },
-            false,
+            SharedMarket::Adds(0),
             Some(&rules),
         );
         assert_eq!(unit.doubt, None);
@@ -8640,7 +8666,7 @@ mod tests {
                 class_carries_silver: &carries_silver,
                 ..no_market()
             },
-            false,
+            SharedMarket::Adds(0),
             Some(&rules),
         );
         assert_eq!(unit.doubt, None);
@@ -8673,7 +8699,7 @@ mod tests {
                 class_carries_silver: &carries_silver,
                 ..no_market()
             },
-            false,
+            SharedMarket::Adds(0),
             Some(&rules),
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::GivesAWholeClass));
@@ -8703,7 +8729,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset),
         );
         assert_eq!(unit.expense, Some(200));
@@ -9037,7 +9063,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             None,
         );
         assert_eq!(unit.upkeep, Some(50));
@@ -9053,7 +9079,7 @@ mod tests {
             FactionPurse::default(),
             0,
             no_market(),
-            false,
+            SharedMarket::Adds(0),
             Some(&ruleset()),
         )
     }
