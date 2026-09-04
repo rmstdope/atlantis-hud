@@ -27,9 +27,16 @@ export type NewAgeDatabase = {
   objects: NewAgeObject[];
 };
 
-/** `parseItemReference`'s own opening pattern (`data.ts:296`), anchored to a description. */
+/**
+ * `parseItemReference`'s own opening pattern (`data.ts:296`), anchored to a description, and the
+ * name and tag shapes `parseSkillReference` (`data.ts:477`) and `parseBuildingReference` need. An
+ * entry breaking one of these is *skipped silently* downstream rather than refused, so every
+ * section is checked here — a catalogue quietly one entry short is the failure these convert into a
+ * message.
+ */
 const ITEM_OPENING = /^[^.:[\]]{1,40} \[[A-Z0-9]{2,6}\][,.] /;
-const OBJECT_NAME = /^[^.:[\]]{1,40}$/;
+const ENTRY_NAME = /^[^.:[\]]{1,40}$/;
+const ENTRY_TAG = /^[A-Z0-9]{2,6}$/;
 
 const WRAP_COLUMNS = 72;
 const CONTINUATION_INDENT = "  ";
@@ -58,14 +65,24 @@ function readSkill(raw: unknown, world: string, index: number): NewAgeSkill {
   if (!isNonEmptyString(entry.name) || !isNonEmptyString(entry.tag)) {
     throw new RulesetScrapeError(`the ${world} database has a skill at ${where} with no name or tag`);
   }
+  if (!ENTRY_NAME.test(entry.name) || !ENTRY_TAG.test(entry.tag)) {
+    throw new RulesetScrapeError(
+      `the ${world} database has a skill ${entry.tag} whose name or tag a skill entry cannot carry`
+    );
+  }
   if (!Array.isArray(entry.levels) || entry.levels.length === 0) {
     throw new RulesetScrapeError(`the ${world} database has a skill ${entry.tag} with no levels`);
   }
   const levels = entry.levels.map((rawLevel, levelIndex) => {
     const level = asRecord(rawLevel, world, `skill ${entry.tag} levels`, levelIndex);
-    if (typeof level.level !== "number" || !Number.isFinite(level.level) || !isNonEmptyString(level.description)) {
+    if (
+      typeof level.level !== "number" ||
+      !Number.isInteger(level.level) ||
+      level.level < 0 ||
+      !isNonEmptyString(level.description)
+    ) {
       throw new RulesetScrapeError(
-        `the ${world} database has a level of skill ${entry.tag} with no level number or description`
+        `the ${world} database has a level of skill ${entry.tag} with no whole level number or description`
       );
     }
     return { level: level.level, description: level.description };
@@ -90,7 +107,7 @@ function readItem(raw: unknown, world: string, index: number): NewAgeItem {
 function readObject(raw: unknown, world: string, index: number): NewAgeObject {
   const entry = asRecord(raw, world, "objects", index);
   const where = isNonEmptyString(entry.name) ? entry.name : `index ${index}`;
-  if (!isNonEmptyString(entry.name) || !OBJECT_NAME.test(entry.name)) {
+  if (!isNonEmptyString(entry.name) || !ENTRY_NAME.test(entry.name)) {
     throw new RulesetScrapeError(`the ${world} database has an object at ${where} with no usable name`);
   }
   if (!isNonEmptyString(entry.description)) {
