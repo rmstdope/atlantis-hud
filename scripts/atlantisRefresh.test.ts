@@ -9,36 +9,57 @@ import {
 } from "./atlantisRefresh";
 
 describe("refreshPullRequestTitle", () => {
-  it("names both pages in the title when both moved", () => {
+  it("titles one world's refresh with the sources that moved", () => {
     const title = refreshPullRequestTitle({
       kind: "refreshed",
-      changedPages: ["rules", "data"],
-      rulesetChanges: []
+      worlds: [{ world: "neworigins", changedSources: ["rules", "data"], rulesetChanges: [] }]
     });
 
-    expect(title).toContain("rules");
-    expect(title).toContain("data");
+    expect(title).toBe("Atlantis rules refresh: neworigins's rules page and data page changed");
+  });
+
+  it("titles a multi-world refresh by the count", () => {
+    const title = refreshPullRequestTitle({
+      kind: "refreshed",
+      worlds: [
+        { world: "newage-arcanum", changedSources: ["database"], rulesetChanges: [] },
+        { world: "newage-trident", changedSources: ["rules"], rulesetChanges: [] }
+      ]
+    });
+
+    expect(title).toBe("Atlantis rules refresh: 2 worlds changed");
   });
 });
 
 describe("refreshIssueBody", () => {
-  it("puts the scraper's own message in the issue body", () => {
-    const body = refreshIssueBody("cannot find the sentence …");
+  it("names the world in the issue body", () => {
+    const body = refreshIssueBody("newage-trident", "cannot find the sentence …");
 
+    expect(body).toContain("newage-trident's ruleset");
     expect(body).toContain("cannot find the sentence …");
+    expect(body).toContain("Nothing on disk was changed.");
   });
 });
 
 describe("refreshPullRequestBody", () => {
-  it("lists every ruleset field that changed", () => {
+  it("gives every changed world its own block in the body", () => {
     const body = refreshPullRequestBody({
       kind: "refreshed",
-      changedPages: ["rules", "data"],
-      rulesetChanges: ["items.MSWO.weight 2 → 3", "skills.MINI.cost 10 → 12"]
+      worlds: [
+        {
+          world: "neworigins",
+          changedSources: ["rules", "data"],
+          rulesetChanges: ["items.MSWO.weight 2 → 3", "skills.MINI.cost 10 → 12"]
+        },
+        { world: "newage-arcanum", changedSources: ["database"], rulesetChanges: [] }
+      ]
     });
 
+    expect(body).toContain("neworigins");
     expect(body).toContain("items.MSWO.weight 2 → 3");
     expect(body).toContain("skills.MINI.cost 10 → 12");
+    expect(body).toContain("newage-arcanum");
+    expect(body).toContain("No ruleset field changed — only the page text moved.");
     expect(body).toContain("These are numbers the route planner uses — read the diff before merging.");
   });
 });
