@@ -7,7 +7,7 @@ import { cellMenu } from "../studyCell";
 import { hoverCard, scheduleRows, scheduleTurns, type ScheduleRow } from "../studySchedule";
 import type { PlannerGroup } from "../studyPlanner";
 import { STANDING_CHIP } from "./standingChip";
-import { CellPopover, ScheduleGrid, ScheduleHoverCard } from "./StudySchedule";
+import { CellPopover, ScheduleGrid, ScheduleHoverCard, StudySchedule } from "./StudySchedule";
 import type { CellMode } from "./studyCellState";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
@@ -127,6 +127,36 @@ describe("ScheduleGrid", () => {
     const cell = markup.slice(markup.indexOf('study-schedule-cell-2431-24'));
 
     expect(cell.slice(0, 200)).toContain('aria-expanded="true"');
+  });
+});
+
+describe("StudySchedule", () => {
+  function schedule(drawn: readonly number[]) {
+    return renderToStaticMarkup(
+      <StudySchedule
+        rows={rows}
+        groups={groups}
+        turns={drawn}
+        tree={tree}
+        mode={{ kind: "idle" }}
+        onEvent={() => {}}
+        onCommit={() => {}}
+        saveError={null}
+      />
+    );
+  }
+
+  it("says what to do when no report is loaded, rather than disabling the view", () => {
+    const markup = schedule([]);
+
+    expect(markup).toContain("Load a report and the coming six turns appear here.");
+    expect(markup).not.toContain("study-schedule-cell-");
+  });
+
+  // The hook that holds the pointed-at cell sits above that guard. Below it, loading a report
+  // while the planner is open would change this component's hook count and React would throw.
+  it("draws the grid once a report is loaded, from the same component", () => {
+    expect(schedule(turns)).toContain("study-schedule-cell-2431-24");
   });
 });
 

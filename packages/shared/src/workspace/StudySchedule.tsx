@@ -50,6 +50,14 @@ export function StudySchedule({
   /** `Could not save this plan.`, or null. */
   saveError: string | null;
 }) {
+  // The card follows the *focused* cell as well as the hovered one, or it would be unreachable
+  // without a mouse - and the grid is walked with the arrow keys, which is what moves focus.
+  //
+  // Above the `turns.length === 0` guard, and it must stay there: `scheduleTurns(null)` is empty,
+  // so a report loaded or cleared while the planner is open would otherwise change this
+  // component's hook count and React would throw rather than re-render.
+  const [at, setAt] = useState<{ rowKey: string; turnIndex: number } | null>(null);
+
   if (turns.length === 0) {
     return (
       <div data-testid="study-schedule" className="min-h-0 overflow-auto p-3">
@@ -58,9 +66,6 @@ export function StudySchedule({
     );
   }
 
-  // The card follows the *focused* cell as well as the hovered one, or it would be unreachable
-  // without a mouse - and the grid is walked with the arrow keys, which is what moves focus.
-  const [at, setAt] = useState<{ rowKey: string; turnIndex: number } | null>(null);
   const hovered = at === null ? null : rows.find((row) => row.key === at.rowKey) ?? null;
   const card =
     hovered === null || at === null
@@ -185,7 +190,13 @@ export function ScheduleGrid({
   const byKey = new Map(rows.map((row) => [row.key, row]));
   // Arrow keys walk the grid cell by cell; `Enter` is the button's own. Delegated from the table
   // rather than bound per cell, which is one listener instead of mages x turns of them.
-  const walk = (event: { key: string; target: EventTarget | null; preventDefault: () => void }) => {
+  const indexOfRow = new Map(rows.map((row, index) => [row.key, index]));
+  const walk = (event: {
+    key: string;
+    target: EventTarget | null;
+    currentTarget: EventTarget | null;
+    preventDefault: () => void;
+  }) => {
     const step = GRID_STEPS[event.key];
     if (step === undefined) {
       return;
@@ -195,17 +206,14 @@ export function ScheduleGrid({
       return;
     }
     const [rowIndex, turnIndex] = from.split(":").map(Number);
-    const row = rows[rowIndex + step.row];
-    if (row === undefined) {
-      return;
-    }
-    const turn = turns[turnIndex + step.turn];
-    if (turn === undefined) {
+    if (rows[rowIndex + step.row] === undefined || turns[turnIndex + step.turn] === undefined) {
       return;
     }
     event.preventDefault();
-    document
-      .querySelector<HTMLButtonElement>(
+    // Scoped to this table rather than the document: a second grid on the page would otherwise
+    // steal the focus.
+    (event.currentTarget as HTMLElement | null)
+      ?.querySelector<HTMLButtonElement>(
         `[data-cell="${rowIndex + step.row}:${turnIndex + step.turn}"]`
       )
       ?.focus();
@@ -242,7 +250,7 @@ export function ScheduleGrid({
             mode={mode}
             onEvent={onEvent}
             onAt={onAt}
-            rows={rows}
+            indexOfRow={indexOfRow}
           />
         ))}
       </tbody>
@@ -261,7 +269,7 @@ const GRID_STEPS: Record<string, { row: number; turn: number }> = {
 function FactionRows({
   group,
   byKey,
-  rows,
+  indexOfRow,
   turns,
   mode,
   onEvent,
@@ -269,7 +277,8 @@ function FactionRows({
 }: {
   group: PlannerGroup;
   byKey: ReadonlyMap<string, ScheduleRow>;
-  rows: readonly ScheduleRow[];
+  /** Each row's position in the whole grid, for the arrow keys' `data-cell` address. */
+  indexOfRow: ReadonlyMap<string, number>;
   turns: readonly number[];
   mode: CellMode;
   onEvent: (event: CellEvent) => void;
@@ -316,7 +325,7 @@ function FactionRows({
                   <button
                     type="button"
                     data-testid={`study-schedule-cell-${row.unitId}-${turn}`}
-                    data-cell={`${rows.indexOf(row)}:${index}`}
+                    data-cell={`${indexOfRow.get(row.key) ?? 0}:${index}`}
                     aria-expanded={open}
                     onMouseEnter={() => onAt?.({ rowKey: row.key, turnIndex: index })}
                     onFocus={() => onAt?.({ rowKey: row.key, turnIndex: index })}
