@@ -21,6 +21,8 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
       onStopComparing={() => {}}
       mergedCount={0}
       mergedPanel={null}
+      mageSheetChip={null}
+      mageSheetsPanel={null}
       factionPanel={null}
       status={null}
       counts={null}
@@ -367,5 +369,38 @@ describe("AppHeader, one chip for everything the turn wants checked (ah-30hg.2)"
 
   it("has no chip at all until a report is loaded", () => {
     expect(draw({ counts: null })).not.toContain('data-testid="turn-report-chip"');
+  });
+});
+
+describe("AppHeader mage-sheet chip", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("counts the sheets, and how many are behind the turn", () => {
+    expect(draw()).not.toContain('data-testid="mage-sheets-chip"');
+
+    const plain = draw({ mageSheetChip: { text: "2 mage sheets", stale: false } });
+    expect(plain).toContain('data-testid="mage-sheets-chip"');
+    expect(plain).toContain("2 mage sheets");
+    expect(plain).not.toContain("border-danger");
+
+    const stale = draw({ mageSheetChip: { text: "2 mage sheets \u00b7 1 old", stale: true } });
+    expect(stale).toContain("border-danger");
+    expect(stale).toContain("text-danger");
+  });
+
+  it("its panel renders only while it is the open popover", () => {
+    const shut = draw({
+      openPopover: "faction",
+      mageSheetChip: { text: "1 mage sheet", stale: false },
+      mageSheetsPanel: <div data-testid="p-mage-sheets" />
+    });
+    expect(shut).not.toContain("p-mage-sheets");
+
+    const open = draw({
+      openPopover: "mageSheets",
+      mageSheetChip: { text: "1 mage sheet", stale: false },
+      mageSheetsPanel: <div data-testid="p-mage-sheets" />
+    });
+    expect(open).toContain("p-mage-sheets");
   });
 });

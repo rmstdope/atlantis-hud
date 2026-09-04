@@ -80,3 +80,56 @@ test("takes an ally's mage sheet back in", async ({ page }, testInfo) => {
   await importReport(page, "mages-Borg-turn-71.txt", sheet);
   await expect(page.getByTestId("import-status")).toContainText(/\d+ mages from .+, turn 71, taken in/u);
 });
+
+/**
+ * Saying whose sheets you hold, and forgetting one (`ah-lyg6.1.3`).
+ *
+ * The chip, the popover, the confirm, its Cancel and the deletion are the whole of this bead's
+ * interaction, and none of it can be reached from a `packages/shared` test: the popover frame takes
+ * focus on mount, so it holds a hook, so the element-tree walk cannot render it.
+ */
+test("says whose sheets you hold, and forgets one", async ({ page }, testInfo) => {
+  await clearGames(page);
+  await createGame(page, "Sheet writer");
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  await page.getByTestId("export-menu").click();
+  const downloading = page.waitForEvent("download");
+  await page.getByTestId("export-mage-sheet").click();
+  const download = await downloading;
+  const path = testInfo.outputPath("held.txt");
+  await download.saveAs(path);
+  const sheet = readFileSync(path, "utf8");
+
+  await page.getByTestId("game-indicator").click();
+  await page.getByTestId("new-game").click();
+  await createGame(page, "Sheet holder");
+  await importReport(page, "turn-71-ally.rep", ALLY_REPORT);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+  await importReport(page, "mages-Borg-turn-71.txt", sheet);
+  await expect(page.getByTestId("import-status")).toContainText("taken in");
+
+  const chip = page.getByTestId("mage-sheets-chip");
+  await expect(chip).toHaveText(/1 mage sheet/u);
+  await chip.click();
+
+  const panel = page.getByTestId("mage-sheets");
+  await expect(panel).toContainText(/\(95\)/u);
+  await expect(panel).toContainText(/\d+ mages?/u);
+  await expect(panel).toContainText("turn 71");
+
+  await panel.getByTestId("forget-mage-sheet-95").click();
+  await expect(page.getByTestId("forget-mage-sheet-confirm-95")).toContainText("Forget");
+  await page
+    .getByTestId("forget-mage-sheet-confirm-95")
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
+  await expect(page.getByTestId("forget-mage-sheet-confirm-95")).toHaveCount(0);
+  await expect(page.getByTestId("mage-sheet-95")).toBeVisible();
+
+  await panel.getByTestId("forget-mage-sheet-95").click();
+  await page.getByTestId("forget-mage-sheet-do-95").click();
+  await expect(page.getByTestId("import-status")).toContainText("forgotten");
+  await expect(page.getByTestId("mage-sheets-chip")).toHaveCount(0);
+});

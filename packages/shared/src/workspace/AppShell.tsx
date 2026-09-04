@@ -124,6 +124,16 @@ import { useHexNotesStore } from "../hexNotesStore";
 import { useArmiesStore } from "../armiesStore";
 import { useAlliedMagesStore } from "../alliedMagesStore";
 import {
+  forgetFailedText,
+  forgottenStatusText,
+  keysForFaction,
+  mageSheetChip,
+  // `mageSheetImport` already exports a `mageSheetRows` - a pending sheet's storage rows, which
+  // is a different thing from the popover's one-row-per-faction list.
+  mageSheetRows as heldMageSheetRows
+} from "../alliedMageChip";
+import { MageSheetsPanel } from "./MageSheetsPanel";
+import {
   heldTurnsByFaction,
   keyOf,
   mageSheetRows,
@@ -587,6 +597,8 @@ export function AppShell({
   const unreadTurns = useBattleSkillsStore((state) => state.unreadTurns);
   /** Which header popover is open - one at a time, by construction. Dialogs keep their own flags. */
   const [openPopover, setOpenPopover] = useState<HeaderPopoverId | null>(null);
+  /** Which faction's Forget is armed in the mage-sheets popover, or null (ah-lyg6.1.3). */
+  const [forgettingSheet, setForgettingSheet] = useState<string | null>(null);
   /** Closes the named popover if it is the open one, and touches nothing otherwise. */
   const closePopover = useCallback(
     (id: HeaderPopoverId) => setOpenPopover((open) => (open === id ? null : open)),
@@ -3552,6 +3564,63 @@ export function AppShell({
   }, [changesOpen, comparison, game, client, comparedOrders]);
 
   /**
+   * Whose mage sheets are held, and how old each is (ah-lyg6.1.3).
+   *
+   * Against the *loaded* turn, never the compared one: stepping back to compare turn 21 must not
+   * turn every held sheet into news. Derived rather than stored - the rows are the store's.
+   */
+  const mageSheets = useMemo(
+    () => heldMageSheetRows(alliedMages, parsed?.header.turnNumber ?? null),
+    [alliedMages, parsed?.header.turnNumber]
+  );
+  const mageSheetChipLabel = useMemo(() => mageSheetChip(mageSheets), [mageSheets]);
+
+  // An armed Forget belongs to an open popover: closing it any way at all - the chip, Escape, a
+  // press outside - disarms. A game switch disarms too, and does not go through the popover: the
+  // header popover stays open across one, so an arm against faction 17 in the game being left
+  // would otherwise stand against faction 17 of the game being entered.
+  useEffect(() => {
+    if (openPopover !== "mageSheets") {
+      setForgettingSheet(null);
+    }
+  }, [openPopover]);
+
+  useEffect(() => {
+    setForgettingSheet(null);
+  }, [openGameId, gameEpoch]);
+
+  /**
+   * Forgets one faction's whole sheet, kept-stale mages included: the popover's unit is a faction.
+   *
+   * The write happens first and the status line is written from its outcome, as `discard` rethrows
+   * on a failed write - a sheet that storage still holds must not read as forgotten.
+   */
+  const handleForgetMageSheet = useCallback(
+    async (factionId: string) => {
+      const row = mageSheets.find((candidate) => candidate.factionId === factionId);
+      if (!game || !row) {
+        setForgettingSheet(null);
+        return;
+      }
+      try {
+        await useAlliedMagesStore
+          .getState()
+          .discard(client, game, keysForFaction(alliedMages, factionId));
+        setStatus(noticeStatus(forgottenStatusText(row)));
+        // The chip is about to disappear from under the open popover.
+        if (mageSheets.length === 1) {
+          closePopover("mageSheets");
+        }
+      } catch {
+        setStatus(failedStatus(forgetFailedText(row)));
+      } finally {
+        setForgettingSheet(null);
+      }
+    },
+    [alliedMages, client, closePopover, game, mageSheets]
+  );
+
+  /**
    * What changed between the working turn and the compared one, oriented lower turn number ->
    * higher regardless of which side is the working one - `diffTurns`/`diffOrders` are symmetric
    * in neither direction, so the orientation is this shell's call, made once, here.
@@ -3807,6 +3876,20 @@ export function AppShell({
           setComparison(null);
           closePopover("turns");
         }}
+        mageSheetChip={mageSheetChipLabel}
+        mageSheetsPanel={
+          <MageSheetsPanel
+            rows={mageSheets}
+            armedFactionId={forgettingSheet}
+            onArm={setForgettingSheet}
+            onCancel={() => setForgettingSheet(null)}
+            onForget={(factionId) => void handleForgetMageSheet(factionId)}
+            onDismiss={() => {
+              setForgettingSheet(null);
+              closePopover("mageSheets");
+            }}
+          />
+        }
         mergedCount={mergedReports.length}
         mergedPanel={
           <MergedFactionsPanel
