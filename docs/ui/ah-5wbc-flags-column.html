@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-5wbc — A flags column in the units pane</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  p.note { color:var(--ink-soft); font-size:13.5px; max-width:92ch; margin:8px 0; }
+  p.note b { color:var(--ink); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:16px; margin-bottom:10px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:0; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+
+  table.units { width:100%; border-collapse:separate; border-spacing:0;
+                font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font:10.5px/1 system-ui,sans-serif; letter-spacing:0.06em;
+                   text-transform:uppercase; color:var(--ink-soft); font-weight:500;
+                   padding:6px 8px; border-bottom:1px solid var(--edge); background:var(--panel); }
+  table.units td { padding:2px 8px; height:24px; white-space:nowrap; overflow:hidden;
+                   text-overflow:ellipsis; border-bottom:1px solid var(--edge-soft); }
+  td.marker { width:24px; color:var(--brass); }
+  td.name, th.name { }
+  .flags { letter-spacing:0.02em; }
+  .dim { color:var(--ink-dim); }
+  .fl-combat { color:var(--ink); }
+  .fl-econ { color:var(--brass); }
+  .fl-see { color:var(--ink-dim); }
+  .legend { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:2px 18px;
+            font-size:12.5px; margin-top:6px; }
+  .legend div { display:flex; gap:10px; align-items:baseline; }
+  .legend b { font:13px ui-monospace,Menlo,monospace; color:var(--brass-bright); min-width:2.4em; }
+  .legend span.o { color:var(--ink-dim); font-size:11.5px; }
+  .pair { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .pair > div { flex:1 1 380px; }
+  .pair h4 { font-size:12.5px; color:var(--brass); margin-bottom:6px; letter-spacing:0.06em; text-transform:uppercase; }
+  .tip { display:inline-block; background:var(--raised); border:1px solid var(--edge);
+         border-radius:5px; padding:4px 9px; font:12px system-ui,sans-serif; color:var(--ink-soft); }
+</style>
+</head>
+<body>
+
+<header>
+<h1>ah-5wbc — <span>A flags column in the units pane</span></h1>
+<p class="note"><b>Chosen: 1A one plain letter &middot; 2-out spoils left out &middot; 3-dash a dim em dash &middot;
+4 keep C and F separate.</b> So the shipped alphabet is <b>eleven</b> letters &mdash;
+<code>A B G H N X R S T C F</code>, drawn always in that order &mdash; and the <code>P</code> in the
+legend below is <em>not</em> shipped. Tinting by kind (1B) was rejected because brass already means
+&ldquo;predicted by the orders preview&rdquo; everywhere else in this pane; two-letter codes (1C)
+were rejected as roughly twice as wide, against the ask for the most compact form. Battle spoils
+keeps no letter because one letter cannot say which of its seven settings is in force; it stays
+visible in the hover text and in the unit panel. The full interview is recorded in bead ah-5wbc's
+design field.</p>
+<p class="note">One new column, <b>Flags</b>, showing every flag the report prints for a unit as a
+run of letters with nothing between them. The rows below are real units from
+<code>tests/fixtures/reports/neworigins-3.0.0-g3-f42-t42.rep</code>, so the letter runs are what you
+would actually see. Only the <b>Unit</b>, <b>Men</b> and <b>Flags</b> columns are drawn here; the
+pane's other eight are cut away so the comparison is about the letters.</p>
+</header>
+
+<main>
+
+<h3 class="sec">The alphabet — the same in every variant</h3>
+<div class="card">
+<p class="note">Twelve flags a New Origins report can print for a unit. Each gets one letter, chosen
+to be the initial of its order word wherever that is free, and something mnemonic where two orders
+collide (<code>AVOID</code>/<code>AUTOTAX</code>, <code>NOAID</code>/<code>NOCROSS</code>,
+<code>SHARE</code>/<code>SPOILS</code>, and the two forms of <code>CONSUME</code>).</p>
+<div class="legend">
+  <div><b>A</b> avoiding <span class="o">AVOID 1</span></div>
+  <div><b>B</b> behind <span class="o">BEHIND 1</span></div>
+  <div><b>G</b> on guard <span class="o">GUARD 1</span></div>
+  <div><b>H</b> holding <span class="o">HOLD 1</span></div>
+  <div><b>N</b> receiving no aid <span class="o">NOAID 1</span></div>
+  <div><b>X</b> won't cross water <span class="o">NOCROSS 1</span></div>
+  <div><b>R</b> revealing faction <span class="o">REVEAL FACTION</span></div>
+  <div><b>S</b> sharing <span class="o">SHARE 1</span></div>
+  <div><b>T</b> taxing <span class="o">AUTOTAX 1</span></div>
+  <div><b>C</b> consuming unit's food <span class="o">CONSUME UNIT</span></div>
+  <div><b>F</b> consuming faction's food <span class="o">CONSUME FACTION</span></div>
+  <div><b>P</b> battle spoils <span class="o">SPOILS &lt;mode&gt;</span></div>
+</div>
+<p class="note" style="margin-top:12px">The letters are always drawn in that fixed order —
+<code>A B G H N X R S T C F P</code> — never in the order the report happened to print them, so the
+same set of flags always reads as the same run and two rows can be compared at a glance.</p>
+</div>
+
+<h3 class="sec">1 — How the letters are drawn</h3>
+
+<div class="card">
+<h2><em>A</em> One plain letter per flag</h2>
+<div class="stage">
+<table class="units">
+<tr><th style="width:24px"></th><th class="name">Unit</th><th style="width:70px">Men</th><th style="width:150px">Flags</th></tr>
+<tr><td class="marker">*</td><td>Woodsmen (9431)</td><td>10</td><td class="flags">ABNRP</td></tr>
+<tr><td class="marker">*</td><td>Lone Rider (12903)</td><td>1</td><td class="flags">ABNRSP</td></tr>
+<tr><td class="marker">*</td><td>Taxers (8047)</td><td>15</td><td class="flags">BGNRTP</td></tr>
+<tr><td class="marker">*</td><td>WoodsmenY (13797)</td><td>2</td><td class="flags">ABNR</td></tr>
+<tr><td class="marker">*</td><td>Scout (1512)</td><td>3</td><td class="flags">ABNRP</td></tr>
+<tr><td class="marker">*</td><td>ArmorerA (5671)</td><td>12</td><td class="flags">ABHXS</td></tr>
+<tr><td class="marker">*</td><td>Maurice de Bracy (1160)</td><td>1</td><td class="flags">BRSFP</td></tr>
+<tr><td class="marker">&minus;</td><td>Trade Factor (6186)</td><td>4</td><td class="flags">AB</td></tr>
+<tr><td class="marker">&minus;</td><td>Devil (295)</td><td>1</td><td class="flags dim">&mdash;</td></tr>
+</table>
+</div>
+<ul class="notes">
+  <li>Narrowest of the three; a full run of twelve is 12 characters and still fits the default width.</li>
+  <li class="con">Nothing on the row says which letter is which — the hover text and the unit panel are the only explanation.</li>
+</ul>
+</div>
+
+<div class="card">
+<h2><em>B</em> One letter per flag, tinted by kind</h2>
+<p class="note">Exactly the same letters and the same width as A. Combat and movement flags in the
+normal ink, economy flags in brass, the visibility flag dimmed — so a run breaks into groups without
+costing a character.</p>
+<div class="stage">
+<table class="units">
+<tr><th style="width:24px"></th><th class="name">Unit</th><th style="width:70px">Men</th><th style="width:150px">Flags</th></tr>
+<tr><td class="marker">*</td><td>Woodsmen (9431)</td><td>10</td><td class="flags"><span class="fl-combat">ABN</span><span class="fl-see">R</span><span class="fl-econ">P</span></td></tr>
+<tr><td class="marker">*</td><td>Lone Rider (12903)</td><td>1</td><td class="flags"><span class="fl-combat">ABN</span><span class="fl-see">R</span><span class="fl-econ">SP</span></td></tr>
+<tr><td class="marker">*</td><td>Taxers (8047)</td><td>15</td><td class="flags"><span class="fl-combat">BGN</span><span class="fl-see">R</span><span class="fl-econ">TP</span></td></tr>
+<tr><td class="marker">*</td><td>WoodsmenY (13797)</td><td>2</td><td class="flags"><span class="fl-combat">ABN</span><span class="fl-see">R</span></td></tr>
+<tr><td class="marker">*</td><td>Scout (1512)</td><td>3</td><td class="flags"><span class="fl-combat">ABN</span><span class="fl-see">R</span><span class="fl-econ">P</span></td></tr>
+<tr><td class="marker">*</td><td>ArmorerA (5671)</td><td>12</td><td class="flags"><span class="fl-combat">ABHX</span><span class="fl-econ">S</span></td></tr>
+<tr><td class="marker">*</td><td>Maurice de Bracy (1160)</td><td>1</td><td class="flags"><span class="fl-combat">B</span><span class="fl-see">R</span><span class="fl-econ">SFP</span></td></tr>
+<tr><td class="marker">&minus;</td><td>Trade Factor (6186)</td><td>4</td><td class="flags"><span class="fl-combat">AB</span></td></tr>
+<tr><td class="marker">&minus;</td><td>Devil (295)</td><td>1</td><td class="flags dim">&mdash;</td></tr>
+</table>
+</div>
+<ul class="notes">
+  <li>Same width as A, but "does this unit share or tax?" is answerable by colour alone.</li>
+  <li class="con">A third meaning for brass in this pane: brass already means <em>predicted by the orders preview</em> on every other cell.</li>
+</ul>
+</div>
+
+<div class="card">
+<h2><em>C</em> Two-letter codes</h2>
+<div class="stage">
+<table class="units">
+<tr><th style="width:24px"></th><th class="name">Unit</th><th style="width:70px">Men</th><th style="width:190px">Flags</th></tr>
+<tr><td class="marker">*</td><td>Woodsmen (9431)</td><td>10</td><td class="flags">AvBhNaRvSp</td></tr>
+<tr><td class="marker">*</td><td>Lone Rider (12903)</td><td>1</td><td class="flags">AvBhNaRvShSp</td></tr>
+<tr><td class="marker">*</td><td>Taxers (8047)</td><td>15</td><td class="flags">BhGdNaRvTxSp</td></tr>
+<tr><td class="marker">*</td><td>WoodsmenY (13797)</td><td>2</td><td class="flags">AvBhNaRv</td></tr>
+<tr><td class="marker">*</td><td>Scout (1512)</td><td>3</td><td class="flags">AvBhNaRvSp</td></tr>
+<tr><td class="marker">*</td><td>ArmorerA (5671)</td><td>12</td><td class="flags">AvBhHdNcSh</td></tr>
+<tr><td class="marker">*</td><td>Maurice de Bracy (1160)</td><td>1</td><td class="flags">BhRvShCfSp</td></tr>
+<tr><td class="marker">&minus;</td><td>Trade Factor (6186)</td><td>4</td><td class="flags">AvBh</td></tr>
+<tr><td class="marker">&minus;</td><td>Devil (295)</td><td>1</td><td class="flags dim">&mdash;</td></tr>
+</table>
+</div>
+<ul class="notes">
+  <li>Readable without a legend — <code>Sh</code> and <code>Sp</code> tell themselves apart.</li>
+  <li class="con">Twice the width, and a busy unit overflows the default column and truncates. Against the ask for "as compact as possible".</li>
+</ul>
+</div>
+
+<h3 class="sec">2 — Battle spoils: one letter, or none at all</h3>
+<p class="note"><code>SPOILS</code> is not an on/off flag: it has seven settings, and the report
+prints the one in force (<code>weightless battle spoils</code>, <code>riding battle spoils</code>,
+and so on). One letter can say <em>a spoils setting is in force</em> but not <em>which</em>. In this
+fixture 179 of the faction's unit lines carry one.</p>
+<div class="card">
+<div class="pair">
+  <div>
+    <h4>2-in — P for any spoils setting</h4>
+    <div class="stage">
+    <table class="units">
+    <tr><th style="width:24px"></th><th class="name">Unit</th><th style="width:150px">Flags</th></tr>
+    <tr><td class="marker">*</td><td>Woodsmen (9431)</td><td class="flags">ABNRP</td></tr>
+    <tr><td class="marker">*</td><td>Lone Rider (12903)</td><td class="flags">ABNRSP</td></tr>
+    <tr><td class="marker">*</td><td>Lumberjacks (11991)</td><td class="flags">ABNRS</td></tr>
+    </table>
+    </div>
+    <ul class="notes">
+      <li>The column is complete: every flag the report printed is represented.</li>
+      <li class="con"><code>P</code> is on most rows and says the same thing on all of them; which mode is only in the hover text.</li>
+    </ul>
+  </div>
+  <div>
+    <h4>2-out — spoils left out of the column</h4>
+    <div class="stage">
+    <table class="units">
+    <tr><th style="width:24px"></th><th class="name">Unit</th><th style="width:150px">Flags</th></tr>
+    <tr><td class="marker">*</td><td>Woodsmen (9431)</td><td class="flags">ABNR</td></tr>
+    <tr><td class="marker">*</td><td>Lone Rider (12903)</td><td class="flags">ABNRS</td></tr>
+    <tr><td class="marker">*</td><td>Lumberjacks (11991)</td><td class="flags">ABNRS</td></tr>
+    </table>
+    </div>
+    <ul class="notes">
+      <li>Every letter left carries information that differs between rows.</li>
+      <li class="con">Two units that differ only in their spoils setting now look identical in the column; the setting is visible only in the unit panel and the hover text.</li>
+    </ul>
+  </div>
+</div>
+</div>
+
+<h3 class="sec">3 — A unit with no flags</h3>
+<div class="card">
+<div class="pair">
+  <div>
+    <h4>3-dash — a dim em dash</h4>
+    <div class="stage">
+    <table class="units">
+    <tr><th style="width:24px"></th><th class="name">Unit</th><th style="width:150px">Flags</th></tr>
+    <tr><td class="marker">*</td><td>Scout (1512)</td><td class="flags">ABNRP</td></tr>
+    <tr><td class="marker">&minus;</td><td>Devil (295)</td><td class="flags dim">&mdash;</td></tr>
+    <tr><td class="marker">&minus;</td><td>City Guards (13303)</td><td class="flags dim">&mdash;</td></tr>
+    </table>
+    </div>
+    <ul class="notes">
+      <li>Matches the <b>Move</b> column, which already draws a dim <code>&mdash;</code> for a unit whose movement is not disclosed.</li>
+      <li class="con">A dash can read as "not known" where the truth is "none set".</li>
+    </ul>
+  </div>
+  <div>
+    <h4>3-blank — nothing at all</h4>
+    <div class="stage">
+    <table class="units">
+    <tr><th style="width:24px"></th><th class="name">Unit</th><th style="width:150px">Flags</th></tr>
+    <tr><td class="marker">*</td><td>Scout (1512)</td><td class="flags">ABNRP</td></tr>
+    <tr><td class="marker">&minus;</td><td>Devil (295)</td><td class="flags"></td></tr>
+    <tr><td class="marker">&minus;</td><td>City Guards (13303)</td><td class="flags"></td></tr>
+    </table>
+    </div>
+    <ul class="notes">
+      <li>Matches the <b>Structure</b> column, which draws nothing at all for a unit standing in the open.</li>
+      <li>Letters stand out more when the empty rows are truly empty.</li>
+      <li class="con">A blank is a blank: nothing distinguishes "no flags" from a column that failed to fill.</li>
+    </ul>
+  </div>
+</div>
+</div>
+
+<h3 class="sec">4 — The hover text (not in question, shown for completeness)</h3>
+<div class="card">
+<p class="note">Hovering the cell gives the flags in the report's own words, in the same
+<code>&middot;</code>-joined form the unit detail panel already uses — so the letters never have to
+be memorised. This is a plain <code>title</code> attribute, the same mechanism every other cell in
+the pane uses.</p>
+<div class="stage" style="padding:18px">
+  <span class="tip">avoiding &middot; behind &middot; receiving no aid &middot; revealing faction &middot; riding battle spoils</span>
+</div>
+</div>
+
+</main>
+</body>
+</html>
