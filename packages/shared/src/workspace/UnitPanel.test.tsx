@@ -29,7 +29,9 @@ const HEX: HexNode = {
 const indexWith = (ids: string[]): GameDataIndex => ({
   entries: [],
   byId: new Map(ids.map((id) => [id, { id } as GameDataEntry])),
-  detailOf: () => null
+  detailOf: () => null,
+  revealedBy: new Map(),
+  terrainResources: new Map()
 });
 
 const UNIT = aReportUnit({

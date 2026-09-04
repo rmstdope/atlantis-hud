@@ -55,6 +55,9 @@ export type GameDataEntry = {
 /** A skill named from somewhere else, with the level that matters there. */
 export type GameDataLink = { id: string; name: string; level: number };
 
+/** The skill that settles whether a region holds one item at all, and the level it takes. */
+export type RevealingSkill = { skillTag: string; skillName: string; level: number };
+
 /** What a skill's page says at one of its levels. */
 export type GameDataLevel = { level: number; description: string };
 
@@ -114,11 +117,27 @@ export type GameDataIndex = {
   byId: ReadonlyMap<string, GameDataEntry>;
   /** Raw scraped record for an entry, for the detail pane to read. */
   detailOf: (id: string) => GameDataDetail | null;
+  /**
+   * Which skill, at which level, can tell whether a region holds an item at all, keyed by the
+   * item's tag - `data/skills`' `A unit with this skill is able to determine if a region contains
+   * floater hides.`, which nine skill levels state.
+   *
+   * Empty for a ruleset generated before `ah-rx0r.1` scraped it, which reads as "this catalogue
+   * cannot say", never as "nothing here is hidden".
+   */
+  revealedBy: ReadonlyMap<string, RevealingSkill>;
+  /**
+   * The item tags each terrain may hold, keyed by the lower-cased terrain word a region report
+   * prints, in `rules/region_resources`' own order.
+   *
+   * Empty, or missing a terrain, for the same reason: the catalogue cannot say.
+   */
+  terrainResources: ReadonlyMap<string, readonly string[]>;
 };
 
 /* --- the scraped shapes, mirroring packages/ruleset/src/data.ts --- */
 
-type RawProduction = { tag: string; level: number };
+type RawProduction = { tag: string; level: number; revealsRegion?: boolean };
 type RawSkill = {
   tag: string;
   name: string;
@@ -271,6 +290,44 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
     skillEntries.push({ id: skillEntryId(tag), category: "skill", name: skill.name ?? tag, tag });
   }
 
+  /**
+   * The nine skill levels that state they can determine whether a region holds a resource. A tag
+   * claimed twice keeps the lower level - the honest answer to "what does it take to find out".
+   */
+  const revealedBy = new Map<string, RevealingSkill>();
+  for (const [key, skill] of Object.entries(rawSkills)) {
+    const skillTag = (skill.tag ?? key).toUpperCase();
+    for (const production of skill.produces ?? []) {
+      if (production.revealsRegion !== true) {
+        continue;
+      }
+      const itemTag = production.tag.toUpperCase();
+      const known = revealedBy.get(itemTag);
+      if (known !== undefined && known.level <= production.level) {
+        continue;
+      }
+      revealedBy.set(itemTag, {
+        skillTag,
+        skillName: skill.name ?? skillTag,
+        level: production.level
+      });
+    }
+  }
+
+  /** Permissive like the rest of this parser: anything unreadable is skipped, never thrown on. */
+  const terrainResources = new Map<string, readonly string[]>();
+  if (isRecord(parsed.terrainResources)) {
+    for (const [terrain, tags] of Object.entries(parsed.terrainResources)) {
+      if (!Array.isArray(tags)) {
+        continue;
+      }
+      terrainResources.set(
+        String(terrain).toLowerCase().trim(),
+        tags.map((tag) => String(tag).toUpperCase())
+      );
+    }
+  }
+
   const itemsByCategory = new Map<GameDataCategory, GameDataEntry[]>();
   for (const [key, item] of Object.entries(rawItems)) {
     const category = (ITEM_KINDS.includes(item.kind) ? item.kind : "equipment") as GameDataCategory;
@@ -410,5 +467,5 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
     };
   };
 
-  return { entries, byId, detailOf };
+  return { entries, byId, detailOf, revealedBy, terrainResources };
 }

@@ -18,7 +18,7 @@ const RULESET = JSON.stringify({
       cost: 10,
       maxLevel: 5,
       cast: null,
-      produces: [{ tag: "MITH", level: 3 }],
+      produces: [{ tag: "MITH", level: 3, revealsRegion: true }],
       requires: [],
       magic: false,
       levels: [{ level: 1, description: "Digs things up." }]
@@ -41,6 +41,7 @@ const RULESET = JSON.stringify({
     HORS: { tag: "HORS", name: "horse", kind: "mount", weight: 50, capacity: { walk: 0, ride: 70, fly: 0, swim: 0 }, selfMobile: { walk: true, ride: true, fly: false, swim: false }, moves: 4 },
     DRAG: { tag: "DRAG", name: "dragon", kind: "monster", weight: 100, capacity: { walk: 0, ride: 0, fly: 1000, swim: 0 }, selfMobile: { walk: true, ride: false, fly: true, swim: false }, moves: 6, combat: { skill: 5, attacksPerRound: 2, hitsToKill: 100, damagePerAttack: 10 } }
   },
+  terrainResources: { mountain: ["IRON", "MITH"], Swamp: ["WOOD", "FLOA"] },
   buildings: {
     TOWER: { description: "A tower.", size: 10, cost: 10, materials: ["stone"], mages: 0 },
     "MAGICAL CASTLE": { description: "A magical castle.", size: 250, cost: 600, materials: ["mithril"], mages: 3 }
@@ -210,5 +211,79 @@ describe("the entry a structure kind names (ah-t5fk)", () => {
   it("still answers with a building id for a kind the catalogue never took", () => {
     // ah-5jkt.2: the dialog opens and says the entry is absent - that is the point of landing there.
     expect(structureEntryId(shipped(), "Wobbly Shed")).toBe("building:WOBBLY SHED");
+  });
+});
+
+describe("the hidden resources a ruleset names (ah-rx0r.2)", () => {
+  const parsed = (text: string): GameDataIndex => {
+    const index = parseGameData(text);
+    if (index === null) {
+      throw new Error("expected the fixture to parse");
+    }
+    return index;
+  };
+
+  it("carries which skill reveals a resource, and what each terrain may hold", () => {
+    const index = parsed(RULESET);
+
+    expect(index.revealedBy.get("MITH")).toEqual({
+      skillTag: "MINI",
+      skillName: "mining",
+      level: 3
+    });
+    expect(index.revealedBy.has("IRON")).toBe(false);
+    expect(index.terrainResources.get("mountain")).toEqual(["IRON", "MITH"]);
+    expect(index.terrainResources.get("swamp")).toEqual(["WOOD", "FLOA"]);
+  });
+
+  it("carries neither from a ruleset that predates them", () => {
+    const index = parsed(
+      JSON.stringify({
+        skills: { MINI: { tag: "MINI", name: "mining", produces: [{ tag: "MITH", level: 3 }] } },
+        items: {
+          MITH: {
+            tag: "MITH",
+            name: "mithril",
+            kind: "equipment",
+            weight: 10,
+            moves: 0,
+            capacity: { walk: 0, ride: 0, fly: 0, swim: 0 },
+            selfMobile: { walk: false, ride: false, fly: false, swim: false }
+          }
+        }
+      })
+    );
+
+    expect(index.revealedBy.size).toBe(0);
+    expect(index.terrainResources.size).toBe(0);
+  });
+
+  it("reads the nine reveals and every terrain out of the shipped ruleset", () => {
+    const index = parsed(
+      readFileSync(new URL("../../../config/public/ruleset.json", import.meta.url), "utf8")
+    );
+
+    const reveals = [...index.revealedBy.entries()]
+      .map(([tag, skill]) => `${skill.skillTag} ${skill.level} ${tag}`)
+      .sort();
+    expect(reveals).toEqual([
+      "FISH 3 TURT",
+      "HERB 3 MUSH",
+      "HORS 5 WING",
+      "HUNT 3 FLOA",
+      "LUMB 3 IRWD",
+      "LUMB 5 YEW",
+      "MINI 3 MITH",
+      "MINI 5 ADMT",
+      "QUAR 3 ROOT"
+    ]);
+    expect(index.terrainResources.get("mountain")).toEqual([
+      "IRON",
+      "STON",
+      "MITH",
+      "ROOT",
+      "ADMT"
+    ]);
+    expect(index.terrainResources.get("swamp")).toEqual(["WOOD", "FLOA", "HERB", "MUSH"]);
   });
 });
