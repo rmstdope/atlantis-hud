@@ -4354,8 +4354,8 @@ test("a bought item marks the ITEMS cell as a projection", async ({ page }) => {
   // the purchase this test is actually about.
   await fillOrders(page, "CLAIM 500\nBUY 1 PERF");
 
-  // No other order is on this unit's block, so the ITEMS cell is the only predicted cell in the
-  // row - the same locator the NAME case above uses.
+  // The ITEMS cell is the first predicted cell in the row - the same locator the NAME case above
+  // uses. The CLAIM predicts the SILVER cell too, which is last, so `.first()` still reaches ITEMS.
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toContainText("PERF");
   await expect(itemsCell).toHaveAttribute("title", /^was: /);
@@ -4396,6 +4396,7 @@ test("a transported item marks the ITEMS cell as a projection", async ({ page })
   // The CLAIM funds the purchase - see the ITEMS-projection test above (`ah-szye`).
   await fillOrders(page, "CLAIM 500\nBUY 2 PERF\nTRANSPORT 14451 1 PERF");
 
+  // `.first()` reaches ITEMS: the CLAIM also predicts the SILVER cell, which is last in the row.
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toHaveAttribute("title", /^was: /);
   await expect(itemsCell).toHaveAttribute(
@@ -4964,6 +4965,10 @@ test("the silver column forecasts our own units and sorts on the figure", async 
   // nobody, and a dissolved unit has no row to carry a figure (`ah-dhga`). A recruit rather than a
   // gift of men: 18642 has studied a Foundation, and `rules/magic` forbids a mage to GIVE men
   // (`ah-t8ei`). Inholm's market sells 482 hill dwarves, so the line is served.
+  // The CLAIM is what pays for the recruit, and it pays through the hex's shared purse: the formed
+  // unit holds nothing of its own, and 18642 carries `sharing`, so `rules/share` funds the BUY
+  // (`ah-szye`). Drop either the CLAIM or that flag and the formed unit recruits nobody, dissolves,
+  // and this test fails at `formedRow` looking exactly like an `ah-dhga` regression instead.
   await fillOrders(page, "@study obse\nCLAIM 200\nFORM 1\nBUY 1 HDWA\nEND\n");
   const formedRow = page.getByTestId("unit-row-new-1");
   await expect(formedRow).toBeVisible();

@@ -59,3 +59,31 @@ it general enough to belong there.
 
 **Seen before.** None found — `grep -rl "sed\|replace" docs/retrospectives/` returns nothing on this
 symptom.
+
+## The plan's test plan named no browser suite, and CI found the behaviour change instead
+
+**What happened.** `pnpm run check:fast` and all four Rust suites the plan named were green, and the
+PR opened on that. CI then failed `smoke (desktop-shell, 2, 2)` and `smoke (web, 2, 2)` with four
+failures in `tests/smoke/workspace.spec.ts`. The cause was real and was the bead's own rule: unit
+18642 is the only own unit in fixture hex `1:7,53`, holds no silver and carries `sharing`, so before
+this bead its `BUY` was uncapped (`MarketFunds::Unmeasured`) and succeeded, and after it the shared
+purse is nothing and it buys none. Four specs had been using a penniless unit as a convenient buyer.
+
+**Why.** Established. The plan's *The test plan* section lists five commands, all Rust plus
+`check:fast`, and its *Files to change* section ends "### Nothing else". Neither names the smoke
+suite, and the fast gate does not run it — so nothing before CI could see that removing the sharing
+carve-out changes what a committed browser fixture does.
+
+**Cost.** One CI cycle (about nine minutes) plus roughly twenty-five minutes of diagnosis: a local
+reproduction of one spec, a throwaway Rust probe against the real fixture to establish that the hex
+genuinely holds $0, and a search for a funded own unit in a market hex (there is none, which is why
+the fix is a `CLAIM` line rather than a different buyer).
+
+**Prevent by.** A plan that removes a permissive carve-out should name the browser suite in its
+*Validation* section, because the carve-out is exactly the kind of thing a committed end-to-end
+fixture leans on without saying so. Concretely: when a bead's diff touches `crates/core/src/orders/`
+and the change can reduce a quantity the UI displays, run `pnpm exec playwright test
+tests/smoke/workspace.spec.ts --project=web` before opening the PR rather than after CI says so.
+
+**Seen before.** None found for this suite and this cause; `grep -rl "smoke" docs/retrospectives/`
+returns files about flakes and sharding, not about a plan omitting the suite.
