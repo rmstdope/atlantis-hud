@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One unit id, two rows — where the duplicate can still come from (bead ah-bm0d)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1320px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; } header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:11px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:2px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cap { font:10px/1.3 'SF Mono',Menlo,monospace; color:var(--brass); letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; }
+  pre.doc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px 14px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.6; color:var(--ink-soft); overflow-x:auto; }
+  pre.doc b { color:var(--ink); font-weight:normal; }
+  pre.doc i { color:var(--danger); font-style:normal; }
+  pre.doc .ln { color:#556; display:inline-block; width:2.2em; }
+  /* problem list chrome */
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; line-height:1.45; border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+  .pane .bar { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 8px; border-bottom:1px solid var(--edge); color:var(--ink-soft); }
+  .body { padding:7px; display:grid; gap:8px; }
+  .hexcard { border:1px solid var(--edge); border-radius:5px; overflow:hidden; background:var(--panel); }
+  .hexcard .head { display:flex; align-items:baseline; gap:6px; background:rgba(217,164,65,.12); border-bottom:1px solid var(--edge); color:var(--brass); padding:3px 7px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
+  .hexcard .head .n { margin-left:auto; color:var(--ink-dim); text-transform:none; letter-spacing:0; }
+  .prob { display:flex; gap:6px; padding:4px 7px; align-items:baseline; }
+  .prob + .prob { border-top:1px solid var(--edge-soft); }
+  .prob .g { flex:none; width:1em; text-align:center; }
+  .prob .uid { flex:none; color:var(--ink-dim); font-variant-numeric:tabular-nums; font-size:11px; }
+  .prob .msg { color:var(--ink); }
+  .w { color:var(--warn); } .e { color:var(--danger); } .gone { opacity:.34; }
+  .silent { color:var(--ink-dim); font-style:italic; padding:7px; font-size:12px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:13px 15px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.warn { border-left-color:var(--danger); }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+  td.y { color:var(--ok); } td.n { color:var(--ink-dim); } td.w { color:var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <h1>One unit id, <span>two rows</span> &mdash; where can a duplicate still come from? <span>(bead ah-bm0d)</span></h1>
+  <div class="banner warn"><b>Correction, round 2.</b> Round 1 of this page told you the checks&rsquo; reader keeps a second <code>FORM 1</code> where the ITEMS column drops it, and you chose <b>&ldquo;swallow the second block&rdquo;</b> on that basis. That was wrong, and I am sorry: <code>read_formed</code> already swallows a <code>FORM</code> whose alias is taken in that region &mdash; the same <code>by_alias</code> guard, in the same words, as the ITEMS reader. <b>Your answer is already the shipped behaviour.</b> The two readers do agree, and <code>FORM</code> cannot mint two units with one id in one hex.</div>
+  <p>What survives the correction is the rest of the research, and it narrows the bead further rather than widening it. <b>No well&#8209;formed report can print two units with the same number in one hex</b> &mdash; 386 hex blocks across all 26 committed fixtures contain not one, and the game numbers units once, game&#8209;wide. A merge of an ally&rsquo;s report cannot introduce one either; that reader de&#8209;duplicates by unit id already.</p>
+  <p>So exactly <b>one</b> route is left. The region parser pushes every readable <code>*</code> or <code>-</code> line without ever asking whether it has seen that number before. Paste a report whose region block was duplicated, truncated and re&#8209;appended, or hand&#8209;edited, and two rows for one unit reach the ledger &mdash; where they share a single balance, and every one of the dozen unit&#8209;id&#8209;keyed maps beside it, so one purse is read once and charged twice.</p>
+  <p>The question is what to do about a case only malformed input can reach.</p>
+</header>
+<main>
+
+  <h2 class="sec">The input <small>one region block, unit 8047 listed twice</small></h2>
+  <pre class="doc"><span class="ln">1</span>forest (38,0) in Pla'ere, 1501 peasants (high elves), $990.
+<span class="ln">2</span>------------------------------------------------------------
+<span class="ln">3</span>  ...
+<span class="ln">4</span><b>* Taxers (8047)</b>, The Disinherited Knights (42), 15 wood elves
+<span class="ln">5</span>  [WELF], <b>690 silver [SILV]</b>. Weight: 150.
+<span class="ln">6</span>* Woodsmen (9431), The Disinherited Knights (42), 10 high elves
+<span class="ln">7</span>  [HELF], 20 wood [WOOD]. Weight: 200.
+<span class="ln">8</span><i>* Taxers (8047)</i>, The Disinherited Knights (42), 15 wood elves
+<span class="ln">9</span>  [WELF], <i>690 silver [SILV]</i>. Weight: 150.</pre>
+
+  <h2 class="sec">Today, and the two answers</h2>
+  <div class="cards">
+
+    <div class="card">
+      <h3><em>NOW</em> What ships today</h3>
+      <div class="concept">Both rows become units. They key one balance, so unit 8047 appears to hold 690 silver and to be able to spend it twice &mdash; and the units pane lists it twice, identically.</div>
+      <div class="cap">Problems, if both rows were ordered to buy</div>
+      <div class="pane"><div class="body"><div class="hexcard">
+        <div class="head">forest (38,0) Pla'ere <span class="n">0</span></div>
+        <div class="silent">No problems here. Both BUY orders were priced against the same 690 silver, and each was affordable.</div>
+      </div></div></div>
+      <ul class="notes">
+        <li class="con">Silently wrong figures &mdash; no warning anywhere, on the map, in the column or in the list.</li>
+        <li class="con">The same conflation runs through a dozen other ledger maps, not only the balance.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><em>A&prime;</em> Refuse the repeated row</h3>
+      <div class="concept">The region parser keeps the first row for a unit number and refuses any later one, exactly as it already refuses a unit line it cannot read. The refused line joins the rest in the turn report&rsquo;s <b>Not read</b> tab, verbatim, under the same heading and the same footer.</div>
+      <div class="cap">Turn report &mdash; Not read</div>
+      <div class="pane">
+        <div class="bar"><span>Problems 0 &nbsp; Engine 1 &nbsp; <b style="color:var(--warn)">Not read 1</b> &nbsp; Events 41</span></div>
+        <div class="body"><div class="hexcard">
+          <div class="head">Lines that could not be read <span class="n">1</span></div>
+          <div class="prob"><span class="g w">&#9888;</span><span class="uid">L8&ndash;9</span><span class="msg">Unit &mdash; <span class="mono">* Taxers (8047), The Disinherited Knights (42), 15 wood elves [WELF], 690 silver [SILV]. Weight: 150.</span></span></div>
+        </div></div>
+        <div class="foot" style="border-top:1px solid var(--edge); padding:6px 8px; color:var(--ink-dim); font-size:11px;">None of this reached the map.</div>
+      </div>
+      <ul class="notes">
+        <li>Kills the whole class at the one place that can create it &mdash; the balance and every other id&#8209;keyed map become sound together.</li>
+        <li>Nothing new to name: the tab, the heading, the footer and the <b>Unit</b> label all ship today.</li>
+        <li>One increment, and the player is told rather than quietly given a wrong number.</li>
+        <li class="con">A report the player believes is fine now shows a warning badge on its turn.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><em>B&prime;</em> Close the bead</h3>
+      <div class="concept">No report the game produces can reach this, no merge can, and the <code>FORM</code> route is already closed. Leave the keying as it is; the comments already in the code say plainly what the limit is.</div>
+      <div class="cap">Problems</div>
+      <div class="pane"><div class="body"><div class="hexcard">
+        <div class="head">forest (38,0) Pla'ere <span class="n">0</span></div>
+        <div class="silent">Unchanged &mdash; nothing is built.</div>
+      </div></div></div>
+      <ul class="notes">
+        <li>Costs nothing, and risks nothing in a module two beads have just settled.</li>
+        <li class="con">A corrupted paste still produces confidently wrong silver, with no sign that anything is amiss.</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <div class="banner warn"><b>Still not on the table:</b> rekeying the ledger by report position, which is what the bead was filed asking for. Measured, that is about <b>110 production call sites</b> across the two large order modules and about <b>145 test assertions</b> that name units by id &mdash; and a partial rekey re&#8209;opens exactly the ITEMS&#8209;versus&#8209;SILVER drift that <code>ah&#8209;728m.2.2</code>, <code>ah&#8209;ycuj</code> and <code>ah&#8209;abwx</code> were filed to close. A great deal of risk, bought for a case no report can reach.</div>
+</main>
+</body>
+</html>
