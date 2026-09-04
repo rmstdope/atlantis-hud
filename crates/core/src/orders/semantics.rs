@@ -50,7 +50,7 @@ use crate::orders::silver::{
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
-    give_outcome, give_reach, give_target_label, mage_give_refused, party_unit_id, GiveOutcome,
+    give_outcome, give_reach, mage_give_refused, party_label, party_unit_id, GiveOutcome,
     GiveReach, GiveRefusal,
 };
 use crate::report::composition;
@@ -2761,7 +2761,7 @@ fn apply_transfers(
                     // something any check may reason from, and the tag is remembered so the Silver
                     // column and every later order that reads it say so too (`ah-66yi`).
                     GiveOutcome::Uncertain => {
-                        let target = give_target_label(transfer.party);
+                        let target = party_label(transfer.party);
                         let source_state = working
                             .get_mut(&source)
                             .expect("seeded above this same transfer");
@@ -5034,7 +5034,7 @@ fn apply(
             };
             // Only ever read for a tag `give_outcome` calls uncertain, and only ever a unit number
             // there - but formatted once here rather than per tag of a class.
-            let target_label = give_target_label(to);
+            let target_label = party_label(to);
             // Unit 0 discards rather than gives, and is not "another unit" - the one shape where
             // the game hands over even the items it otherwise refuses to move (epic decision 9).
             let discarding = matches!(to, Party::Discard);
@@ -5263,9 +5263,16 @@ fn apply(
 ///
 /// A new unit has no number yet and a foreign one is not ours, so neither can be credited. Nothing
 /// is lost by that: the giver is charged either way, which is the half that can go wrong.
-fn party_id(party: &Party, hex: &Hex<'_>) -> Option<String> {
+fn party_in_hex<'hex, 'report>(
+    party: &Party,
+    hex: &'hex Hex<'report>,
+) -> Option<(String, &'hex Ordered<'report>)> {
     let id = party_unit_id(party)?;
-    hex.find(&id).map(|_| id)
+    hex.find(&id).map(|ordered| (id, ordered))
+}
+
+fn party_id(party: &Party, hex: &Hex<'_>) -> Option<String> {
+    party_in_hex(party, hex).map(|(id, _)| id)
 }
 
 /// The tags one class of `what` expands to for `holder`, when this ledger can resolve it - or
@@ -5977,8 +5984,8 @@ fn build(
     let (founding_kind, task_owner, helped_id): (Option<String>, &Ordered<'_>, Option<String>) =
         match (founding, helping) {
             (Some(kind), _) => (Some(kind.clone()), actor, None),
-            (None, Some(Party::Unit(id))) => {
-                let Some(helped) = hex.find(id) else {
+            (None, Some(party)) => {
+                let Some((id, helped)) = party_in_hex(party, hex) else {
                     mark_uncounted_and_return!();
                 };
                 let their_build = helped
@@ -5995,17 +6002,14 @@ fn build(
                     None => return,
                     Some((their_founding, their_helping)) => {
                         match (their_founding, their_helping) {
-                            (Some(kind), _) => (Some(kind.clone()), helped, Some(id.clone())),
-                            (None, None) => (None, helped, Some(id.clone())),
+                            (Some(kind), _) => (Some(kind.clone()), helped, Some(id)),
+                            (None, None) => (None, helped, Some(id)),
                             // One level of indirection only - a helper of a helper is not resolved,
                             // exactly as `check_build_skill` stays silent on the same chain.
                             (None, Some(_)) => mark_uncounted_and_return!(),
                         }
                     }
                 }
-            }
-            (None, Some(Party::New(_) | Party::Foreign { .. } | Party::Discard)) => {
-                mark_uncounted_and_return!()
             }
             // A bare `BUILD` or `BUILD COMPLETE`: this unit's own structure.
             (None, None) => (None, actor, None),
@@ -8017,15 +8021,14 @@ fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
         // anything other than an existing unit of ours in this hex - a unit formed this turn
         // with no number yet, another faction's unit, `HELP 0` - cannot be resolved to a
         // structure at all, and is doubt rather than the builder's own structure.
-        let (worker, helped_id) = match helping {
+        let (worker, helped_label) = match helping {
             None => (ordered, None),
-            Some(Party::Unit(id)) => match hex.find(id) {
-                Some(helped) => (helped, Some(id.as_str())),
-                // A unit not in this hex - not on the report at all, or one that formed this
-                // month and has no number yet - cannot be judged.
+            Some(party) => match party_in_hex(party, hex) {
+                Some((_, helped)) => (helped, Some(party_label(party))),
+                // A unit not in this hex - not on the report at all, another faction's, or an
+                // alias no `FORM` mints - cannot be judged.
                 None => continue,
             },
-            Some(Party::New(_) | Party::Foreign { .. } | Party::Discard) => continue,
         };
 
         let Some(structure_id) = structure_after_orders(worker) else {
@@ -8044,8 +8047,8 @@ fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
         }
 
         let name = structure_label(structure);
-        let message = match helped_id {
-            Some(id) => format!("{name}, which unit {id} is in, is already finished"),
+        let message = match helped_label {
+            Some(label) => format!("{name}, which {label} is in, is already finished"),
             None => format!("{name} is already finished"),
         };
         findings.push(ordered.finding(hex, codes::ALREADY_BUILT, message, Some(placed)));
@@ -8123,13 +8126,14 @@ fn check_build_help(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
         let Intent::Build { helping, .. } = &placed.intent else {
             continue;
         };
-        // A unit formed this month with no number yet, another faction's unit or `HELP 0` cannot
-        // be resolved to anything to judge.
-        let Some(Party::Unit(id)) = helping else {
+        // Another faction's unit, `HELP 0`, or an alias no `FORM` mints cannot be resolved to
+        // anything to judge.
+        let Some(party) = helping else {
             continue;
         };
-        // `hex.units` holds own units only, so this is also the "one of our own" test.
-        let Some(helped) = hex.find(id) else {
+        // `hex.units` holds own units and this month's formed ones only, so this is also the
+        // "one of our own" test.
+        let Some((_, helped)) = party_in_hex(party, hex) else {
             continue;
         };
         // Any BUILD counts, `BUILD [name]` included: founding is building, so there is work to
@@ -8145,7 +8149,7 @@ fn check_build_help(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
         findings.push(ordered.finding(
             hex,
             codes::BUILD_HELP_NOT_BUILDING,
-            format!("unit {id} is not building"),
+            format!("{} is not building", party_label(party)),
             Some(placed),
         ));
     }
@@ -8214,8 +8218,8 @@ fn check_build_skill(
             // `BUILD HELP <n>`: the helper is judged on what the helped unit is building. One
             // level of indirection only - a helper of a helper is not resolved and stays silent,
             // since nothing here says which of the two the chain really lands on.
-            (None, Some(Party::Unit(id))) => {
-                let Some(helped) = hex.find(id) else {
+            (None, Some(party)) => {
+                let Some((_, helped)) = party_in_hex(party, hex) else {
                     continue;
                 };
                 let Some(target) = helped
@@ -8239,8 +8243,6 @@ fn check_build_skill(
                     },
                 }
             }
-            // `HELP 0`, another faction's unit, or a unit formed this month with no number yet.
-            (None, Some(_)) => continue,
             // A bare `BUILD` or `BUILD COMPLETE` targeting a carried unfinished ship needs no
             // structure skill check; otherwise the unit works on the structure it stands in.
             (None, None) if carries_unfinished_ship(ordered) => continue,
@@ -23895,11 +23897,12 @@ mod tests {
         );
     }
 
-    /// A helper naming a unit that is not a concrete unit of ours in this hex - one formed this
-    /// turn and not yet on the report - cannot be resolved to a structure at all. Judging the
-    /// builder's own structure instead would be a guess, not what the order says.
+    /// A helper naming an alias no `FORM` mints names no unit of ours in this hex at all, so it
+    /// cannot be resolved to a structure. Judging the builder's own structure instead would be a
+    /// guess, not what the order says. A formed unit *is* resolved (`ah-zxvd`); an alias with no
+    /// `FORM` behind it is not.
     #[test]
-    fn a_helper_naming_a_unit_formed_this_turn_is_silent_even_when_the_builder_stands_in_a_finished_structure(
+    fn a_helper_naming_an_unformed_alias_is_silent_even_when_the_builder_stands_in_a_finished_structure(
     ) {
         assert_eq!(
             check(
@@ -24125,13 +24128,138 @@ mod tests {
     }
 
     #[test]
-    fn helping_a_new_unit_is_silent() {
+    fn helping_a_formed_unit_that_is_not_building_warns() {
+        let finding = only(check(
+            vec![region(vec![unit("4117")])],
+            "unit 4117\nFORM 1\nEND\nBUILD HELP NEW 1\n",
+        ));
+
+        assert_eq!(finding.code, codes::BUILD_HELP_NOT_BUILDING);
+        assert_eq!(finding.message, "NEW 1 is not building");
+    }
+
+    /// `ah-zxvd`. A helper of a formed unit is judged against what that unit is founding, exactly
+    /// as it would be against a numbered target. The formed unit earns its own finding here - it
+    /// has no skills either - so the assertion filters to the helper rather than using `only`.
+    #[test]
+    fn a_helper_without_the_skill_is_warned_for_what_a_formed_unit_is_building() {
+        let findings = check(
+            vec![region(vec![unit("4021"), with_men(unit("4117"), 10)])],
+            "unit 4021\nFORM 1\nBUILD Mine\nEND\nunit 4117\nBUILD HELP NEW 1\n",
+        );
+        let helper = only(
+            findings
+                .into_iter()
+                .filter(|finding| finding.unit_id.as_deref() == Some("4117"))
+                .collect(),
+        );
+
+        assert_eq!(helper.code, codes::BUILD_WITHOUT_SKILL);
         assert_eq!(
-            check(
-                vec![region(vec![unit("4117")])],
-                "unit 4117\nFORM 1\nEND\nBUILD HELP NEW 1\n",
-            ),
-            vec![]
+            helper.message,
+            "cannot help build a Mine: needs mining 3, has no mining"
+        );
+    }
+
+    /// `ah-zxvd`. A formed unit inherits its parent's structure, so a helper of one standing in a
+    /// finished structure is warned about that structure and the target is named `NEW 1`.
+    #[test]
+    fn a_helper_of_a_formed_unit_in_a_finished_structure_is_warned() {
+        let regions = vec![ReportRegion {
+            structures: vec![finished_mill("1")],
+            ..region(vec![in_structure(unit("4021"), "1"), unit("4117")])
+        }];
+        let findings = check_ignoring_build_skill(
+            regions,
+            "unit 4021\nFORM 1\nBUILD\nEND\nunit 4117\nBUILD HELP NEW 1\n",
+        );
+        let helper = only(
+            findings
+                .into_iter()
+                .filter(|finding| finding.unit_id.as_deref() == Some("4117"))
+                .collect(),
+        );
+
+        assert_eq!(helper.code, codes::ALREADY_BUILT);
+        assert_eq!(
+            helper.message,
+            "Soggy Saw Mill, which NEW 1 is in, is already finished"
+        );
+    }
+
+    /// `ah-zxvd`. The resource ledger follows a `BUILD HELP NEW` to the unit this month's `FORM`
+    /// mints, spending the helper's material against the formed unit's founding task.
+    #[test]
+    fn a_build_help_follows_a_formed_unit_founding_this_turn() {
+        let helper = with_item(
+            with_skill(with_men(unit("4117"), 10), "MINI", 3),
+            30,
+            "stone",
+            "STON",
+        );
+        let report = report(vec![region(vec![unit("4021"), helper])]);
+        let orders = "unit 4021\nFORM 1\nBUILD Mine\nEND\nunit 4117\nBUILD HELP NEW 1\n";
+
+        let effects = item_effects(&report, orders, Some(&ruleset()));
+        let helper = effects.get("4117").expect("the helper is priced");
+
+        assert_eq!(
+            helper.built,
+            vec![effects::BuildSpend {
+                amount: 10,
+                tag: "STON".to_string(),
+                name: "stone".to_string(),
+                place: "Mine".to_string(),
+                founding: true,
+                helping: Some("new-1".to_string()),
+                could_do: 30,
+                capped_by: Some(effects::BuildCap::Needs),
+            }],
+            "{helper:?}"
+        );
+        assert!(
+            helper
+                .moved
+                .iter()
+                .any(|movement| movement.tag == "STON" && movement.delta == -10),
+            "{helper:?}"
+        );
+        assert!(helper.uncounted.is_empty(), "{helper:?}");
+    }
+
+    /// `ah-zxvd`. An alias no `FORM` mints stays unresolved on both surfaces: no BUILD warning
+    /// names the helper, and its line is uncounted with nothing spent. The navigator chose to add
+    /// no diagnostic for a missing `FORM`.
+    #[test]
+    fn an_unformed_build_help_alias_remains_unresolved() {
+        let helper = with_item(
+            with_skill(with_men(unit("4117"), 10), "MINI", 3),
+            30,
+            "stone",
+            "STON",
+        );
+        let regions = vec![region(vec![unit("4021"), helper])];
+        let orders = "unit 4021\nFORM 1\nBUILD Mine\nEND\nunit 4117\nBUILD HELP NEW 2\n";
+
+        let findings = check(regions.clone(), orders);
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.unit_id.as_deref() == Some("4117")),
+            "{findings:?}"
+        );
+
+        let effects = item_effects(&report(regions), orders, Some(&ruleset()));
+        let helper = effects.get("4117").expect("the helper is read");
+        assert_eq!(
+            helper.uncounted,
+            vec!["BUILD HELP NEW 2".to_string()],
+            "{helper:?}"
+        );
+        assert!(helper.built.is_empty(), "{helper:?}");
+        assert!(
+            !helper.moved.iter().any(|movement| movement.tag == "STON"),
+            "{helper:?}"
         );
     }
 

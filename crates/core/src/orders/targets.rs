@@ -97,9 +97,9 @@ pub fn party_unit_id(party: &Party) -> Option<String> {
     }
 }
 
-/// How a `GIVE`'s target reads in the sentence that explains why its outcome cannot be stated.
+/// How a party reads in a sentence about it - a `GIVE`'s target, a `BUILD HELP`'s target.
 #[must_use]
-pub fn give_target_label(party: &Party) -> String {
+pub fn party_label(party: &Party) -> String {
     match party {
         Party::Unit(id) => format!("unit {id}"),
         Party::New(alias) => format!("NEW {alias}"),
