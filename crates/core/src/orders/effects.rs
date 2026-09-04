@@ -2349,6 +2349,23 @@ mod tests {
         .join("\n")
     }
 
+    #[test]
+    fn a_name_synonym_previews_exactly_as_its_canonical_spelling_does() {
+        for (synonym, canonical) in [
+            ("SHIP", "OBJECT"),
+            ("BUILDING", "OBJECT"),
+            ("STRUCTURE", "OBJECT"),
+            ("TOWN", "CITY"),
+            ("VILLAGE", "CITY"),
+        ] {
+            assert_eq!(
+                preview(&format!("unit 900\nNAME {synonym} \"Dawn Treader\"\n")),
+                preview(&format!("unit 900\nNAME {canonical} \"Dawn Treader\"\n")),
+                "NAME {synonym} must preview as NAME {canonical}"
+            );
+        }
+    }
+
     fn preview(orders: &str) -> OrdersPreviewResponse {
         preview_orders_for_remembered_report(
             &mut ReportCache::new(),
