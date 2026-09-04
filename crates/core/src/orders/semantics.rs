@@ -1375,7 +1375,7 @@ fn forecast_hex(
     // The hex and the ledger built from it, as `review_turn` already holds them - one argument
     // rather than two, which is also what keeps a hex from being priced against another's ledger.
     (hex, ledger): &(Hex<'_>, Ledger<'_>),
-    receipts: &BTreeMap<String, Receipts>,
+    receipts: &BTreeMap<UnitKey, Receipts>,
     _purse: FactionPurse,
     ruleset: Option<&Ruleset>,
     relief: &Relief<'_>,
@@ -1549,7 +1549,9 @@ fn forecast_hex(
                 .skills_before_the_market()
                 .unwrap_or(&ordered.unit.skills),
             intents: &ordered.intents,
-            receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
+            receipts: receipts
+                .get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
+                .unwrap_or(&nothing),
             formed: ordered.formed.as_ref(),
             after_gifts_unknown: ordered.holdings_unknown(),
             food_uncertain: food_uncertain_after_gifts(ordered, ruleset),
@@ -1739,18 +1741,22 @@ fn class_carries_silver(class: &str, ruleset: Option<&Ruleset>) -> Option<bool> 
 /// A receipt this pass cannot count - from another hex, from a foreign unit, or of an `ALL` amount
 /// whose source it cannot price - is silently absent rather than doubted, which understates income
 /// and never overstates it.
-fn gather_receipts(hexes: &[Hex<'_>]) -> BTreeMap<String, Receipts> {
-    let mut result: BTreeMap<String, Receipts> = BTreeMap::new();
+fn gather_receipts(hexes: &[Hex<'_>]) -> BTreeMap<UnitKey, Receipts> {
+    let mut result: BTreeMap<UnitKey, Receipts> = BTreeMap::new();
     for hex in hexes {
         for ordered in &hex.units {
             let receipts = &ordered.transfer_receipts;
             if receipts == &Receipts::default() {
                 continue;
             }
-            // Merged rather than inserted: a formed unit's id is the synthetic `new-{alias}`,
-            // which is per-hex, so two regions can each hold a unit of that name. Replacing the
-            // entry would silently drop one region's receipts.
-            let entry = result.entry(ordered.unit.unit_id.clone()).or_default();
+            // Keyed on the hex as well as the unit, because a formed unit's id is the synthetic
+            // `new-{alias}` and `rules/form` scopes an alias to its region - so two regions can
+            // each hold a unit of that name and they are different units (`ah-9o0c.1`). The merge
+            // below is a no-op under that key and is kept only so the arithmetic stays where the
+            // per-unit receipts are built.
+            let entry = result
+                .entry(unit_key(&hex.region.region_id, &ordered.unit.unit_id))
+                .or_default();
             entry.silver = entry.silver.saturating_add(receipts.silver);
             entry.taken = entry.taken.saturating_add(receipts.taken);
             entry.taken_unshown = entry.taken_unshown.saturating_add(receipts.taken_unshown);
@@ -4719,7 +4725,7 @@ fn check_resources(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
-    receipts: &BTreeMap<String, Receipts>,
+    receipts: &BTreeMap<UnitKey, Receipts>,
     findings: &mut Vec<Finding>,
 ) {
     report_shortfalls(ledger, hex, ruleset, plurals, options, receipts, findings);
@@ -7747,7 +7753,7 @@ fn report_shortfalls(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
-    receipts: &BTreeMap<String, Receipts>,
+    receipts: &BTreeMap<UnitKey, Receipts>,
     findings: &mut Vec<Finding>,
 ) {
     let sharing = Sharing::read(hex);
@@ -7792,7 +7798,9 @@ fn report_shortfalls(
             // Both figures count what the unit was given this month, exactly as `short` already
             // does through the ledger's own `apply` - a unit given 100 and told to spend 200 reads
             // "can have $100 and its orders spend $200", not "$0 ... $100" (M2, `ah-jw85`).
-            let received = receipts.get(unit_id).map_or(0, |receipts| receipts.silver);
+            let received = receipts
+                .get(&unit_key(&hex.region.region_id, unit_id))
+                .map_or(0, |receipts| receipts.silver);
             // `rules/buy` buys as many as the unit can afford, so the sentence goes on to say
             // what it gets instead of what it asked for. Appended rather than replacing anything,
             // so the figures a player already reads stay where they are (`ah-omn7`, Q1).
@@ -12899,6 +12907,8 @@ mod tests {
 
     /// The receipts one hex's settled transfers produce - `gather_receipts` reading exactly what
     /// `apply_transfers` moved, which is how `review_turn` reaches them too.
+    /// Keyed by unit number alone: [`gather_receipts`] keys on [`UnitKey`], but this helper walks
+    /// one hex, so the region half is the same for every entry and carries no information.
     fn receipts_in(region: &ReportRegion, orders: &str) -> BTreeMap<String, Receipts> {
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
@@ -12911,6 +12921,9 @@ mod tests {
             &BTreeSet::new(),
         );
         gather_receipts(std::slice::from_ref(&hex))
+            .into_iter()
+            .map(|((_, unit_id), receipts)| (unit_id, receipts))
+            .collect()
     }
 
     /// `ah-awcm`: a `TAKE` of a stated quantity from a unit the report shows in this hex is the
@@ -19283,6 +19296,16 @@ BUILD
 
     /// A region with the given id, so a test can order things in several at once.
     fn region_at(id: &str, x: i32, y: i32, units: Vec<ReportUnit>) -> ReportRegion {
+        // `unit` hard-codes the default region's id, so a unit placed here would otherwise claim
+        // to stand in the region `region` builds. That is load-bearing now that report-wide maps
+        // key on [`UnitKey`].
+        let units = units
+            .into_iter()
+            .map(|mut unit| {
+                unit.region_id = id.to_string();
+                unit
+            })
+            .collect();
         ReportRegion {
             region_id: id.to_string(),
             coordinate: Coordinate { x, y, z: 1 },
@@ -33685,6 +33708,18 @@ BUILD
             .expect("every own unit is forecast")
     }
 
+    /// The forecast for one unit **in one hex**. [`forecast`] matches on the number alone, which
+    /// two hexes' `new-1` rows both answer to (`rules/form`).
+    fn forecast_in<'a>(review: &'a TurnReview, region_id: &str, id: &str) -> &'a UnitSilver {
+        review
+            .silver
+            .iter()
+            .find(|unit| unit.unit_id == id && unit.region_id == region_id)
+            .unwrap_or_else(|| {
+                panic!("no forecast for {id} in {region_id}: {:?}", review.silver)
+            })
+    }
+
     /// The half of M2 (`ah-jw85`) that is not about `FORM`: a reported unit given silver has that
     /// silver counted into both figures the shortfall message prints, not only into `short`.
     #[test]
@@ -33848,6 +33883,32 @@ BUILD
                 formed.received, 0,
                 "the gift was written by a unit standing in a different hex from the one that \
                  formed new-1: it names a unit that does not exist there"
+            );
+        }
+
+        /// Two hexes may each write `FORM 1` (`rules/form` scopes an alias to its region), and
+        /// each formed unit is credited only what its own hex's gift gave it.
+        #[test]
+        fn two_hexes_forming_the_same_alias_are_credited_their_own_gifts() {
+            let here = region(vec![with_silver(unit("1922"), 1000)]);
+            let there = region_at("1:8,53", 8, 53, vec![with_silver(unit("2000"), 1000)]);
+            let review = review_turn(
+                &report(vec![here, there]),
+                "unit 1922\nGIVE NEW 1 100 SILV\nFORM 1\nEND\n\
+                 unit 2000\nGIVE NEW 1 900 SILV\nFORM 1\nEND\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert_eq!(
+                forecast_in(&review, "1:7,53", "new-1").received,
+                100,
+                "the first hex's formed unit is credited its own hex's gift only"
+            );
+            assert_eq!(
+                forecast_in(&review, "1:8,53", "new-1").received,
+                900,
+                "the second hex's formed unit is credited its own hex's gift only"
             );
         }
 
