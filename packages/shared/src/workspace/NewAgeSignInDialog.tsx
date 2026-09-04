@@ -25,6 +25,7 @@ export function NewAgeSignInDialog({
   host,
   turnNumber,
   suggestedFactionNumber,
+  purpose,
   phase,
   onSignIn,
   onDismiss
@@ -34,6 +35,21 @@ export function NewAgeSignInDialog({
   turnNumber: number | null;
   /** Prefills the faction number; the player can change it. `null` leaves the field empty. */
   suggestedFactionNumber: string | null;
+  /**
+   * Why this dialog is up, when it is not simply "sign in".
+   *
+   * Absent is the sign-in the header opens: the heading is `signInTitle(rulesetLabel)`, the confirm
+   * button reads `Sign in`, there is no notice, and the aria-label is `Sign in to a New Age world`.
+   * Present is a session that ran out inside another action - the heading names that action, the
+   * notice says why the dialog appeared, and signing in goes on to do the thing already asked for.
+   */
+  purpose?: {
+    heading: string;
+    /** Shown above the fields in `text-danger`, `data-testid="newage-signin-notice"`. */
+    notice: string;
+    confirmLabel: string;
+    ariaLabel: string;
+  };
   phase: NewAgeSignInPhase;
   /** Cancel and Escape both abort an in-flight request, so this promises nothing. */
   onSignIn: (factionNumber: string, password: string) => void;
@@ -96,14 +112,19 @@ export function NewAgeSignInDialog({
         data-testid="newage-signin-panel"
         role="dialog"
         aria-modal="true"
-        aria-label="Sign in to a New Age world"
+        aria-label={purpose?.ariaLabel ?? "Sign in to a New Age world"}
         onSubmit={submit}
         className="flex w-[26rem] flex-col gap-2 rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
       >
-        <h2 className="text-ink">{signInTitle(rulesetLabel)}</h2>
+        <h2 className="text-ink">{purpose?.heading ?? signInTitle(rulesetLabel)}</h2>
         <p data-testid="newage-signin-meta" className="text-ink-soft">
           {signInMetaLine(host, turnNumber)}
         </p>
+        {purpose === undefined ? null : (
+          <p data-testid="newage-signin-notice" className="text-danger">
+            {purpose.notice}
+          </p>
+        )}
 
         <NewAgeSignInFields
           factionNumber={factionNumber}
@@ -130,7 +151,7 @@ export function NewAgeSignInDialog({
             disabled={!canSignIn}
             className="rounded border border-brass px-2 py-0.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim"
           >
-            Sign in
+            {purpose?.confirmLabel ?? "Sign in"}
           </button>
         </div>
       </form>

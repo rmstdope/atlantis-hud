@@ -3,14 +3,20 @@ import { describe, expect, it } from "vitest";
 
 import { NewAgeSignInDialog } from "./NewAgeSignInDialog";
 import { NEW_AGE_HOST, SIGN_IN_NOTE, type NewAgeSignInPhase } from "./newAgeSignInView";
+import { FETCH_REAUTH_PURPOSE } from "./newAgeFetchView";
 
-const draw = (phase: NewAgeSignInPhase, suggestedFactionNumber: string | null = "27") =>
+const draw = (
+  phase: NewAgeSignInPhase,
+  suggestedFactionNumber: string | null = "27",
+  purpose?: typeof FETCH_REAUTH_PURPOSE
+) =>
   renderToStaticMarkup(
     <NewAgeSignInDialog
       rulesetLabel="New Age: Arcanum"
       host={NEW_AGE_HOST}
       turnNumber={83}
       suggestedFactionNumber={suggestedFactionNumber}
+      purpose={purpose}
       phase={phase}
       onSignIn={() => {}}
       onDismiss={() => {}}
@@ -30,6 +36,19 @@ describe("the New Age sign-in dialog", () => {
     expect(markup).toContain('placeholder="Required"');
     expect(markup).toContain(SIGN_IN_NOTE);
     expect(buttonTag(markup, "newage-signin-confirm")).toContain("disabled");
+    expect(markup).toContain('aria-label="Sign in to a New Age world"');
+    expect(markup).toContain("Sign in");
+    // Without a purpose the dialog carries no notice, so the default cannot quietly grow one.
+    expect(markup).not.toContain("newage-signin-notice");
+  });
+
+  it("says why it came back, and offers to sign in and fetch", () => {
+    const markup = draw({ kind: "ready" }, "27", FETCH_REAUTH_PURPOSE);
+    expect(markup).toContain("Fetch this turn&#x27;s report");
+    expect(markup).toContain('data-testid="newage-signin-notice"');
+    expect(markup).toContain("Your session has ended. Sign in again to continue.");
+    expect(markup).toContain("Sign in and fetch");
+    expect(markup).toContain('aria-label="Sign in again to fetch a report"');
   });
 
   it("prefills the faction number it was given, and leaves it empty when given none", () => {
