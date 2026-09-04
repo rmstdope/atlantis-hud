@@ -3619,11 +3619,6 @@ pub fn price_study(cost: Option<i64>, men: i64) -> Priced {
     }
 }
 
-/// [`LateFacts::before_manufacturing`] with each shared material's amount put in its place.
-///
-/// An override rather than a sum: `shared_materials` is already the whole amount the run may
-/// spend, own stock included, as `semantics::material_available_at` computes it. Summing would
-/// count this unit's own holding twice.
 /// The materials the ITEMS ledger priced the order on `line` against, if it priced one.
 ///
 /// By line, not by unit: see [`LateFacts::shared_materials`] for why one entry per unit would let
@@ -3635,6 +3630,13 @@ fn materials_for_line(shared: &[(usize, Vec<ItemAmount>)], line: usize) -> &[Ite
         .map_or(&[][..], |(_, materials)| materials.as_slice())
 }
 
+/// [`LateFacts::before_manufacturing`] with each shared material's amount put in its place.
+///
+/// An override rather than a sum: `shared_materials` is already the whole amount the run may
+/// spend, own stock included, as `semantics::material_available_at` computes it. Summing would
+/// count this unit's own holding twice, which
+/// `orders::silver::tests::shared_materials::a_shared_material_replaces_the_units_own_figure_rather_than_adding_to_it`
+/// is what pins.
 fn pooled_materials(
     own: &[ItemAmount],
     shared: &[ItemAmount],
