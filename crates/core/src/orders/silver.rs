@@ -1330,6 +1330,14 @@ pub fn forecast_unit(
     // (`ah-npab`).
     // Set from `market_demand` once the intent loop has gathered every line, and then again by
     // the market-phase pricing pass, which is where affordability can be answered (`ah-omn7`).
+    // What the turn charges *after* the market closes: "TEACH orders are processed. STUDY orders
+    // are processed. Manufacturing PRODUCE orders ... are processed" is the last block of
+    // `rules/sequenceofevents`. Held apart from `expense` so neither the Give phase's running
+    // total nor the market's is reduced by a fee neither has reached (`ah-a5ci`).
+    let mut month_long_expense = 0i64;
+    // What "Instant Magic ... Spells are CAST" charges: after *Give orders* and before *Market
+    // orders*, so it comes off the market's running total but not the gift's (`ah-a5ci`).
+    let mut cast_expense = 0i64;
     let mut market_expense;
     /// One bounded `BUY`, held until the market phase so it is priced against what the Give phase
     /// leaves (`ah-npab`).
@@ -1609,6 +1617,7 @@ pub fn forecast_unit(
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
+                        month_long_expense = month_long_expense.saturating_add(priced.spends);
                         // The same running deduction the ITEMS ledger makes, by the same rule and
                         // for silver and materials alike: a tag the list does not carry is pushed
                         // with the negative amount, so a deficit survives to the next `PRODUCE`
@@ -1667,6 +1676,7 @@ pub fn forecast_unit(
                     .and_then(|skill| skill.cost);
                 let priced = price_study(cost, facts.study().men);
                 expense = expense.saturating_add(priced.spends);
+                month_long_expense = month_long_expense.saturating_add(priced.spends);
                 if priced.spends > 0 {
                     spent_on = spent_on.or(Some(SilverSpender::Study));
                 }
@@ -1731,6 +1741,7 @@ pub fn forecast_unit(
                 let (priced, plan) = price_cast(resolved, &caster, region);
                 income = income.saturating_add(priced.earns);
                 expense = expense.saturating_add(priced.spends);
+                cast_expense = cast_expense.saturating_add(priced.spends);
                 if priced.spends > 0 {
                     spent_on = spent_on.or(Some(SilverSpender::Cast));
                 }
@@ -1925,11 +1936,14 @@ pub fn forecast_unit(
         // that `BUY ALL` spends what the unit can afford, and wages it earns this month cannot pay
         // for anything this month's orders buy (`ah-uwa3`).
         // The Give phase spends what the unit holds when GIVE runs: what it opened with, plus what
-        // the instant orders and the gifts of others put there (`ah-tc79`). `expense` is subtracted
-        // whole, and that is a known conservatism rather than an oversight (`ah-a5ci`).
-        let mut running = held
-            .saturating_add(give_phase_income)
-            .saturating_sub(expense);
+        // the instant orders and the gifts of others put there, less the exact gifts of this block
+        // alone. A study and a manufacture are charged in the turn's last block and neither makes
+        // the gift smaller (`ah-a5ci`).
+        let mut running = held.saturating_add(give_phase_income).saturating_sub(
+            expense
+                .saturating_sub(cast_expense)
+                .saturating_sub(month_long_expense),
+        );
         // Give phase: `rules/sequenceofevents` settles GIVE before the market opens, so this
         // pass runs whatever line the gift was written on (`ah-npab`).
         for spend in &deferred {
@@ -1947,13 +1961,16 @@ pub fn forecast_unit(
             running = running.saturating_sub(spent);
         }
         // Everything the Give phase could not spend is in the purse by the time the market opens:
-        // TAX and PILLAGE settle in the tax phase and a CAST in instant magic, both before "SELL
-        // orders are processed" (`rules/sequenceofevents`). `late` stays out - wages earned this
-        // month cannot pay for anything this month's orders buy (`ah-uwa3`).
+        // TAX and PILLAGE settle in the tax phase, both before "SELL orders are processed". A cast
+        // settles in *Instant Magic*, after the tax phase and still before the market, and has
+        // already been paid for, so its cost comes off here and not above. `late` stays out -
+        // wages earned this month cannot pay for anything this month's orders buy (`ah-uwa3`) -
+        // and so does `month_long_expense`, which the market never reaches (`ah-a5ci`).
         running = running
             .saturating_add(income)
             .saturating_sub(give_phase_income)
-            .saturating_sub(late);
+            .saturating_sub(late)
+            .saturating_sub(cast_expense);
 
         // Market phase: every exact `BUY` gathered above is priced here, and each `BUY ALL` then
         // spends what those leave.
@@ -7794,6 +7811,230 @@ mod tests {
     }
 
     // --- the turn's order, not the document's (`ah-gdd3.1`) --------------------------------------
+
+    /// "Instant Magic ... Spells are CAST" runs after *Give orders*, so a cast's cost does not make
+    /// the gift smaller. The gift alone is asserted: the cast is still priced against the purse the
+    /// gift will empty, which is `ah-m7su`'s to fix, so the totals beside it are not yet worth
+    /// pinning (`ah-a5ci`).
+    #[test]
+    fn giving_all_silver_away_is_not_charged_for_this_months_cast() {
+        let ruleset = ruleset();
+        let casters = [skill("CRPA", 1)];
+        let give = placed(Intent::Give {
+            to: Party::Discard,
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::All { except: 0 },
+        });
+        let cast = placed(Intent::Cast {
+            spell: "Create_Amulet_Of_Protection".to_string(),
+            arguments: Vec::new(),
+        });
+        for intents in [
+            vec![cast.clone(), give.clone()],
+            vec![give.clone(), cast.clone()],
+        ] {
+            let receipts = Receipts::default();
+            let unit = forecast_unit(
+                UnitFacts {
+                    held: 200,
+                    skills: &casters,
+                    ..facts(1, &intents, &receipts)
+                },
+                RegionWages::default(),
+                PoolShares::default(),
+                FactionPurse::default(),
+                0,
+                no_market(),
+                SharedMarket::Adds(0),
+                Some(&ruleset),
+            );
+            assert_eq!(unit.given_to_nobody, 200);
+            assert_eq!(unit.doubt, None);
+        }
+    }
+
+    /// The market opens after "Spells are CAST", so a cast's cost *does* come off what a `BUY ALL`
+    /// can afford - the half of the phase order that must not move (`ah-a5ci`).
+    #[test]
+    fn a_cast_still_shrinks_what_a_buy_all_can_afford() {
+        let ruleset = ruleset();
+        let casters = [skill("CRPA", 1)];
+        let intents = [
+            placed(Intent::Cast {
+                spell: "Create_Amulet_Of_Protection".to_string(),
+                arguments: Vec::new(),
+            }),
+            placed(Intent::Buy {
+                amount: Amount::All { except: 0 },
+                item: "grain".to_string(),
+            }),
+        ];
+        let receipts = Receipts::default();
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 400,
+                skills: &casters,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            Lookups {
+                purchase: &sells(20, 20),
+                ..no_market()
+            },
+            SharedMarket::Adds(0),
+            Some(&ruleset),
+        );
+        assert_eq!(unit.buy_all[0].bought, 10);
+        assert_eq!(unit.expense, Some(400));
+        assert_eq!(unit.at_month_end, Some(0));
+    }
+
+    /// `rules/sequenceofevents` runs *Give orders* second and "STUDY orders are processed" in the
+    /// last block of the turn, so a `GIVE ... ALL SILV` hands over the whole purse and the study is
+    /// then unpaid for - which is what the shortfall says (`ah-a5ci`).
+    #[test]
+    fn giving_all_silver_is_not_charged_for_this_months_study() {
+        let ruleset = ruleset();
+        let give = placed(Intent::Give {
+            to: Party::Unit("1235".to_string()),
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::All { except: 0 },
+        });
+        let study = placed(Intent::Study {
+            skill: "combat".to_string(),
+        });
+        for intents in [
+            vec![study.clone(), give.clone()],
+            vec![give.clone(), study.clone()],
+        ] {
+            let receipts = Receipts::default();
+            let unit = forecast_unit(
+                UnitFacts {
+                    held: 100,
+                    ..facts(10, &intents, &receipts)
+                },
+                RegionWages::default(),
+                PoolShares::default(),
+                FactionPurse::default(),
+                0,
+                no_market(),
+                SharedMarket::Adds(0),
+                Some(&ruleset),
+            );
+            assert_eq!(unit.income, Some(0));
+            assert_eq!(unit.expense, Some(200), "100 given away and 100 studied");
+            assert_eq!(unit.at_month_end, Some(-100));
+            assert_eq!(unit.short_for_orders, Some(100));
+            assert_eq!(unit.short_on, Some(SilverSpender::Study));
+            assert_eq!(unit.doubt, None);
+        }
+    }
+
+    /// The market opens before "STUDY orders are processed", so a study's fee does not shrink what
+    /// a `BUY ALL` can afford (`ah-a5ci`).
+    #[test]
+    fn a_study_does_not_shrink_what_a_buy_all_can_afford() {
+        let ruleset = ruleset();
+        let intents = [
+            placed(Intent::Study {
+                skill: "combat".to_string(),
+            }),
+            placed(Intent::Buy {
+                amount: Amount::All { except: 0 },
+                item: "grain".to_string(),
+            }),
+        ];
+        let unit = spending(
+            100,
+            &intents,
+            RegionWages::default(),
+            &sells(20, 20),
+            Some(&ruleset),
+        );
+        assert_eq!(unit.buy_all[0].bought, 5);
+        assert_eq!(unit.expense, Some(110));
+        assert_eq!(unit.at_month_end, Some(-10));
+    }
+
+    /// The same for a bounded `BUY`: its affordability cap is measured before the study is charged
+    /// (`ah-a5ci`).
+    #[test]
+    fn a_study_does_not_shrink_what_an_exact_buy_can_afford() {
+        let ruleset = ruleset();
+        let intents = [
+            placed(Intent::Study {
+                skill: "combat".to_string(),
+            }),
+            placed(Intent::Buy {
+                amount: Amount::Exact(5),
+                item: "grain".to_string(),
+            }),
+        ];
+        let unit = spending(
+            100,
+            &intents,
+            RegionWages::default(),
+            &sells(20, 20),
+            Some(&ruleset),
+        );
+        assert_eq!(unit.expense, Some(110));
+        assert_eq!(unit.wanted_for_orders, Some(110));
+        assert_eq!(unit.at_month_end, Some(-10));
+        assert_eq!(unit.short_for_orders, Some(10));
+    }
+
+    /// "Manufacturing PRODUCE orders ... are processed" is in the turn's last block, after *Give
+    /// orders*, so a deferred gift of the whole purse is not charged for the catapult. Only the
+    /// gift is asserted: the catapult is still priced against the pre-gift purse until `ah-m7su`
+    /// lands, so the totals beside it are not yet worth pinning (`ah-a5ci`).
+    #[test]
+    fn giving_all_silver_away_is_not_charged_for_this_months_manufacture() {
+        let items = catapult_materials_and_silver(3000);
+        let carpenters = [skill("CARP", 4)];
+        let give = placed(Intent::Give {
+            to: Party::Discard,
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::All { except: 0 },
+        });
+        let produce = placed(Intent::Produce {
+            requested: None,
+            item: "CATP".to_string(),
+        });
+        for intents in [
+            vec![produce.clone(), give.clone()],
+            vec![give.clone(), produce.clone()],
+        ] {
+            let receipts = Receipts::default();
+            let unit = forecast_unit(
+                UnitFacts {
+                    held: 3000,
+                    items: &items,
+                    skills: &carpenters,
+                    production_skills: &carpenters,
+                    phases: Some(PhaseFacts::uniform(LateFacts {
+                        men: 4,
+                        men_by_race: &[],
+                        items: &items,
+                        before_manufacturing: &items,
+                        shared_materials: &[],
+                    })),
+                    ..facts(4, &intents, &receipts)
+                },
+                paying("$5.0", None),
+                PoolShares::default(),
+                FactionPurse::default(),
+                0,
+                no_market(),
+                SharedMarket::Adds(0),
+                Some(&ruleset()),
+            );
+            assert_eq!(unit.given_to_nobody, 3000);
+            assert_eq!(unit.doubt, None);
+        }
+    }
 
     /// `rules/sequenceofevents` opens the market (`SELL`, then `BUY`) *after* `Spells are CAST`, so
     /// a sale written above a cast is still money the cast never sees.
