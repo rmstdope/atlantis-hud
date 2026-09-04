@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { OpenedGame } from "@atlantis/core-client";
-import { UNIT_COLUMNS, type UnitColumn } from "./unitTable";
+import { UNIT_COLUMNS, allColumnsShown, type UnitColumn } from "./unitTable";
 import { BADGES } from "./workspace/mapThemes/hexView";
 import {
   badgesFromStorage,
@@ -963,5 +963,51 @@ describe("picking the hex already selected", () => {
     store().selectRegion("1:7,53", null, { picked: true });
 
     expect(store().mapView.restoredRegionId).toBeNull();
+  });
+});
+
+describe("which units-table columns are shown (ah-20di)", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("shows every hideable column until one is unchecked", () => {
+    expect(store().unitColumnsShown).toEqual(allColumnsShown());
+  });
+
+  it("setUnitColumnShown changes one column and leaves the others", () => {
+    store().setUnitColumnShown("skills", false);
+    expect(store().unitColumnsShown.skills).toBe(false);
+    expect(store().unitColumnsShown.items).toBe(true);
+    store().setUnitColumnShown("skills", true);
+    expect(store().unitColumnsShown.skills).toBe(true);
+  });
+
+  it("showAllUnitColumns puts every hidden column back", () => {
+    store().setUnitColumnShown("skills", false);
+    store().setUnitColumnShown("silver", false);
+    store().showAllUnitColumns();
+    expect(store().unitColumnsShown).toEqual(allColumnsShown());
+  });
+
+  it("a stored unitColumnsShown record comes back reconciled", async () => {
+    store().setUnitColumnShown("skills", false);
+    const options = useWorkspaceStore.persist.getOptions();
+    const raw = await options.storage?.getItem(options.name ?? "atlantis-hud-workspace");
+    const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
+    expect((persisted.unitColumnsShown as Record<string, boolean>).skills).toBe(false);
+
+    const merged = options.merge?.(
+      { unitColumnsShown: { skills: false, longOrder: false, nonsense: false } },
+      store()
+    ) as ReturnType<typeof store> | undefined;
+    expect(merged?.unitColumnsShown.skills).toBe(false);
+    expect(merged?.unitColumnsShown.longOrder).toBe(false);
+    expect(merged?.unitColumnsShown.items).toBe(true);
+    expect(merged?.unitColumnsShown).not.toHaveProperty("nonsense");
+  });
+
+  it("is cleared by resetWorkspaceStore", () => {
+    store().setUnitColumnShown("skills", false);
+    resetWorkspaceStore();
+    expect(store().unitColumnsShown).toEqual(allColumnsShown());
   });
 });
