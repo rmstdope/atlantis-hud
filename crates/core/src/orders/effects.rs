@@ -2373,7 +2373,9 @@ mod tests {
             "Exits:",
             "  Southeast : plain (2,2) in Nowhere.",
             "",
-            "* Walker (900), Foo (1), behind, leader [LEAD], 3 swords [SWOR], 10 fur [FUR]. Weight: 20. Capacity: 0/0/15/0.",
+            // A unit's silver is an item, not a `$` figure: without this line the unit has none,
+            // and since `ah-omn7` a `BUY` it cannot pay for takes nothing.
+            "* Walker (900), Foo (1), behind, leader [LEAD], 3 swords [SWOR], 10 fur [FUR], 100 silver [SILV]. Weight: 20. Capacity: 0/0/15/0.",
             "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
             "",
         ]

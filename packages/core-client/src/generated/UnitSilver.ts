@@ -30,6 +30,12 @@ lateIncome: number | null,
  */
 expense: number | null, 
 /**
+ * What this month's orders asked to spend, before any bounded `BUY` was cut down to what the
+ * unit could pay for. Equal to `expense` except on a unit whose purchase was reduced
+ * (`ah-omn7`). `None` exactly when `expense` is.
+ */
+wantedForOrders: number | null, 
+/**
  * `held + income - expense`, or `None` when either side is `None`.
  *
  * **Never includes `upkeep`**, deliberately: whether maintenance counts toward the figure a
@@ -40,7 +46,10 @@ atMonthEnd: number | null,
 /**
  * What this unit's orders spend that no silver reaching it *in time* can cover.
  *
- * `max(0, expense - (held + income + shared_silver_for_orders - late_income))`. `Some(0)`
+ * `max(0, wanted_for_orders - (held + income + shared_silver_for_orders - late_income))`.
+ * Measured against what the orders *asked* for rather than what a capped `BUY` actually
+ * spends, so a purchase the unit cannot pay for is still reported as short (`ah-omn7`).
+ * `Some(0)`
  * means its orders are affordable; anything positive means the game will refuse something,
  * however healthy `at_month_end` looks.
  *

@@ -44,9 +44,9 @@ use crate::orders::silver::{
     readiness_reason, settle_unclaimed, split_pool, taxes, taxing_men, transfer_shape,
     transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
-    MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, Receipts,
-    RegionShare, RegionWages, SaleAnswer, SilverDoubt, TransferShape, Transmuting, UnitFacts,
-    UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+    MarketFunds, MarketSide, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
+    PurchaseAnswer, Receipts, RegionShare, RegionWages, SaleAnswer, SilverDoubt, TransferShape,
+    Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -1379,6 +1379,9 @@ fn forecast_hex(
         settlement,
     } = relief;
     let region = region_wages(hex, ruleset);
+    // A shared purse is settled after this pass, so a bounded `BUY` in a sharing hex is not capped
+    // at all (`ah-omn7`, and `ah-szye` owns the settlement).
+    let sharers_in_hex = !Sharing::read(hex).sharers.is_empty();
     let nothing = Receipts::default();
     // The ledger is already complete by the time the column prices a hex - `review_turn` builds
     // every hex's ledger before it forecasts any of them - so the late picture is read once here
@@ -1562,6 +1565,7 @@ fn forecast_hex(
                 give_reach: &give_reach_of,
                 uncertain_after_gifts: &uncertain_after_gifts,
             },
+            sharers_in_hex,
             ruleset,
         ));
     }
@@ -3583,6 +3587,37 @@ struct Ledger<'a> {
     /// total already lives so `check_emptied_buys` need not compute the same fact a second time
     /// (`ah-lauy`) - which is how this column and a warning drifted apart before (`ah-ycuj`).
     dead_buys: Vec<DeadBuy>,
+    /// How many of one tag a unit's own `BUY` lines have *claimed* out of its settled share -
+    /// what each line attempted, whatever it could pay for. `rules/buy` settles the market line
+    /// *"in proportion to the amount each buyer attempted to buy"*, so a line the unit cannot
+    /// afford still spends its share; `bought` above records what it actually received, which is
+    /// what `apply_recruits` and the item movements read (`ah-omn7`).
+    claimed: BTreeMap<(String, String), i64>,
+    /// Every bounded `BUY` this unit's silver cut down, in the order they were applied
+    /// (`ah-omn7`). Always accompanied by a `not-enough-silver` finding on the same unit -
+    /// `report_shortfalls` is the only reader - because the charge is the whole ask, so a reduced
+    /// line always drives the balance below zero. Change the charge and that stops holding.
+    reduced_buys: Vec<ReducedBuy>,
+    /// What each unit's `BUY` lines have been charged **beyond what they actually spent** this
+    /// month: `sum(wanted - spends)` over every bounded line. Summing over all of them rather than
+    /// only the reduced ones is the same figure, because `price_purchase` returns
+    /// `wanted == spends` on every path silver did not cut down.
+    ///
+    /// The charge is the whole ask, so the ledger balance is no longer the unit's purse once a
+    /// line has been cut down: a second `BUY`, and every `BUY ALL`, must add this back to see the
+    /// silver the market really left. `forecast_unit` carries the same figure as its `funds`
+    /// running total, and the two surfaces must settle one quantity (`ah-lu0f.2`, `ah-omn7`).
+    overcharged: BTreeMap<String, i64>,
+}
+
+/// A bounded `BUY` this unit's silver cut down (`ah-omn7`).
+struct ReducedBuy {
+    unit_id: String,
+    tag: String,
+    /// What the line asked for, as written.
+    ordered: i64,
+    /// What it gets.
+    bought: i64,
 }
 
 /// A `BUY` line with nothing left to buy, and the limit its own earlier lines had emptied.
@@ -3789,6 +3824,9 @@ fn ledger_for_with_production<'a>(
         dead_sales: Vec::new(),
         bought: BTreeMap::new(),
         dead_buys: Vec::new(),
+        claimed: BTreeMap::new(),
+        reduced_buys: Vec::new(),
+        overcharged: BTreeMap::new(),
     };
 
     let pillaged = own_unit_pillages(hex);
@@ -5495,8 +5533,11 @@ fn buy(
         return;
     };
 
+    // What this unit's own earlier lines *claimed*, not what they received: the market line is
+    // settled on what each buyer attempted, so a line it could not pay for still took its share
+    // (`rules/buy`, `ah-omn7`).
     let already = ledger
-        .bought
+        .claimed
         .get(&(who.clone(), tag.clone()))
         .copied()
         .unwrap_or(0);
@@ -5509,20 +5550,50 @@ fn buy(
         Some(share) => (share - already).max(0),
         None => *count,
     };
-    let priced = price_purchase(*count, offer.price, allowed);
-    let bought = quantity_bought(*count, allowed);
+    // The purse at the market phase, which is what `rules/sequenceofevents` leaves the market to
+    // spend: TAX, PILLAGE, GIVE/TAKE and CAST have run, WORK and ENTERTAIN have not. **Not**
+    // `balance_of`, which reads at maintenance and would let a later `STUDY` shrink the purchase.
+    // A gift that cannot be priced is `Unmeasured` - this module's accept-on-doubt policy, and the
+    // behaviour before `ah-omn7`. A sharing hex is `Unmeasured` too: the shared purse settles
+    // after the ledger (`ah-szye`).
+    let overcharged = ledger.overcharged.get(who).copied().unwrap_or(0);
+    let funds = if Sharing::read(hex).sharers.is_empty() {
+        ledger
+            .state
+            .known_balance_at(StatePhase::Market, who, SILVER)
+            .map_or(MarketFunds::Unmeasured, |silver| {
+                // What an earlier line was charged beyond what it spent is still in the unit's
+                // hands, and this line may spend it (`ah-omn7`).
+                MarketFunds::Silver(silver.saturating_add(overcharged).max(0))
+            })
+    } else {
+        MarketFunds::Unmeasured
+    };
+    let line = price_purchase(*count, offer.price, allowed, funds);
+    let claimed = quantity_bought(*count, allowed);
+    let bought = line.quantity;
 
-    charge(
-        ledger,
-        StatePhase::Market,
-        who,
-        SILVER,
-        priced.spends,
-        placed,
-    );
+    // The charge is the whole ask, exactly as it was before `ah-omn7`: it is what pushes the
+    // balance below zero, and `not-enough-silver` fires on nothing else.
+    charge(ledger, StatePhase::Market, who, SILVER, line.wanted, placed);
     credit(ledger, StatePhase::Market, who, &tag, bought);
     *ledger.bought.entry((who.clone(), tag.clone())).or_default() += bought;
-    if bought == 0 && already > 0 {
+    *ledger
+        .claimed
+        .entry((who.clone(), tag.clone()))
+        .or_default() += claimed;
+    *ledger.overcharged.entry(who.clone()).or_default() += line.wanted.saturating_sub(line.spends);
+    if line.reduced_by_silver {
+        ledger.reduced_buys.push(ReducedBuy {
+            unit_id: who.clone(),
+            tag: tag.clone(),
+            ordered: claimed,
+            bought,
+        });
+    }
+    // `allowed == 0` as well as `already > 0`: since `ah-omn7` a line can buy nothing because the
+    // unit cannot pay, and `dead_buys` says the *goods* are gone, not the money.
+    if bought == 0 && allowed == 0 && already > 0 {
         if let Some(share) = standing.market_share_of(&tag, MarketSide::Buying) {
             ledger.dead_buys.push(DeadBuy {
                 unit_id: who.clone(),
@@ -5572,13 +5643,16 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
             continue;
         }
         let already = ledger
-            .bought
+            .claimed
             .get(&(who.clone(), deferred.tag.clone()))
             .copied()
             .unwrap_or(0);
         let available = deferred.share.unwrap_or(deferred.market_has);
+        // Plus whatever a reduced bounded line was charged over what it spent: that silver is
+        // still the unit's, and a `BUY ALL` spends what the bounded lines leave (`ah-omn7`).
+        let overcharged = ledger.overcharged.get(who).copied().unwrap_or(0);
         let (priced, plan) = price_buy_all(
-            balance_of(ledger, who, SILVER),
+            balance_of(ledger, who, SILVER).saturating_add(overcharged),
             deferred.price,
             available,
             deferred.market_has,
@@ -5595,6 +5669,10 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
         credit(ledger, StatePhase::Market, who, &deferred.tag, plan.bought);
         *ledger
             .bought
+            .entry((who.clone(), deferred.tag.clone()))
+            .or_default() += plan.bought;
+        *ledger
+            .claimed
             .entry((who.clone(), deferred.tag.clone()))
             .or_default() += plan.bought;
         // `capped_by`, not merely `already > 0`: a second line can find nothing bought because
@@ -7123,11 +7201,35 @@ fn report_shortfalls(
             // does through the ledger's own `apply` - a unit given 100 and told to spend 200 reads
             // "can have $100 and its orders spend $200", not "$0 ... $100" (M2, `ah-jw85`).
             let received = receipts.get(unit_id).map_or(0, |receipts| receipts.silver);
+            // `rules/buy` buys as many as the unit can afford, so the sentence goes on to say
+            // what it gets instead of what it asked for. Appended rather than replacing anything,
+            // so the figures a player already reads stay where they are (`ah-omn7`, Q1).
+            let cut: Vec<String> = ledger
+                .reduced_buys
+                .iter()
+                .filter(|reduced| &reduced.unit_id == unit_id)
+                .map(|reduced| {
+                    format!(
+                        "{} of the {} ordered",
+                        if reduced.bought == 0 {
+                            "none".to_string()
+                        } else {
+                            reduced.bought.to_string()
+                        },
+                        counted_item(reduced.ordered, &reduced.tag, hex, ruleset, plurals),
+                    )
+                })
+                .collect();
+            let bought = if cut.is_empty() {
+                String::new()
+            } else {
+                format!(", so it buys {}", cut.join(" and "))
+            };
             ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
                 format!(
-                    "short ${short}: this unit can have ${} and its {} spend ${}",
+                    "short ${short}: this unit can have ${} and its {} spend ${}{bought}",
                     ordered.holding(SILVER) + received,
                     spenders(upkeep_still_drawn(ledger, unit_id)),
                     ordered.holding(SILVER) + received + short,
@@ -7338,6 +7440,20 @@ fn plurals_in(report: &ParsedReport) -> Plurals {
         .iter()
         .flat_map(|region| region.units.iter())
         .flat_map(|unit| unit.items.iter())
+        .filter(|item| item.amount > 1)
+    {
+        plurals
+            .entry(item.tag.to_ascii_uppercase())
+            .or_insert_with(|| item.name.clone());
+    }
+    // The market lines too, and after the units so no existing answer moves: `For Sale` and
+    // `Wanted` print `482 hill dwarves [HDWA]` in exactly the shape a unit's inventory does, and
+    // the goods a message is about are often ones the market has and nobody holds - a `BUY` cut
+    // down to what the unit can afford names them (`ah-omn7`).
+    for item in report
+        .regions
+        .iter()
+        .flat_map(|region| region.for_sale.iter().chain(region.wanted.iter()))
         .filter(|item| item.amount > 1)
     {
         plurals
@@ -13261,14 +13377,18 @@ mod tests {
             codes(&affordable.findings)
         );
 
-        // Eighty grain at 100 is 8,000, which 5,000 cannot pay for.
+        // Eighty grain at 100 is 8,000, which 5,000 cannot pay for: `rules/buy` buys fifty of
+        // them and spends every silver on it, so the column ends at nought while the shortfall
+        // the warning names is measured against the whole 8,000 (`ah-omn7`).
         let unaffordable = market("unit 2390\nPILLAGE\nBUY 80 grain\n");
+        assert_eq!(unaffordable.silver[0].at_month_end, Some(0));
+        assert_eq!(unaffordable.silver[0].wanted_for_orders, Some(8_000));
         assert!(
             unaffordable.silver[0]
-                .at_month_end
-                .is_some_and(|end| end < 0),
+                .short_for_orders
+                .is_some_and(|short| short > 0),
             "the column shows the shortfall: {:?}",
-            unaffordable.silver[0].at_month_end
+            unaffordable.silver[0].short_for_orders
         );
         assert!(
             unaffordable
@@ -13455,10 +13575,13 @@ mod tests {
             .iter()
             .find(|row| row.unit_id == "2")
             .expect("the taxer is priced");
+        // A pillaged hex leaves the taxer a certain nothing, so it buys no grain at all; the
+        // shortfall is what its orders wanted (`ah-omn7`).
+        assert_eq!(taxer.at_month_end, Some(0));
         assert!(
-            taxer.at_month_end.is_some_and(|end| end < 0),
+            taxer.short_for_orders.is_some_and(|short| short > 0),
             "the column shows the shortfall: {:?}",
-            taxer.at_month_end
+            taxer.short_for_orders
         );
         assert!(
             review
@@ -13978,7 +14101,10 @@ mod tests {
             vec![with_silver(unit("683"), 0)],
             "unit 683\nPILLAGE\nBUY 10 grain\n",
         );
-        assert_eq!(broke.silver[0].at_month_end, Some(-1000));
+        // Nothing is affordable, so nothing is bought; the ask survives as `wanted_for_orders`,
+        // which is what the warning is measured against (`ah-omn7`).
+        assert_eq!(broke.silver[0].at_month_end, Some(0));
+        assert_eq!(broke.silver[0].wanted_for_orders, Some(1000));
         assert!(
             broke
                 .findings
@@ -16219,7 +16345,12 @@ mod tests {
         fn a_buy_records_only_what_the_market_settles() {
             let hex = ReportRegion {
                 for_sale: vec![line(12, 10, "horse", "HORS")],
-                ..region(vec![unit("2390"), unit("2391")])
+                // Both buyers can pay for their share: this test is about the market split, and
+                // since `ah-omn7` a buyer with no silver takes nothing at all.
+                ..region(vec![
+                    with_silver(unit("2390"), 200),
+                    with_silver(unit("2391"), 100),
+                ])
             };
             with_ledger(
                 hex,
@@ -16256,6 +16387,120 @@ mod tests {
                     );
                 },
             );
+        }
+
+        /// `rules/buy`: *"If the unit can't afford as many as [quantity], it will attempt to buy
+        /// as many as it can."* The unit is credited what it pays for; the ledger still charges
+        /// the whole ask, which is what keeps `not-enough-silver` firing (`ah-omn7`).
+        #[test]
+        fn a_bounded_buy_credits_only_the_affordable_quantity() {
+            let hex = ReportRegion {
+                for_sale: vec![line(12, 10, "grain", "GRAI")],
+                ..region(vec![with_silver(unit("2390"), 25)])
+            };
+            with_ledger(hex, "unit 2390\nBUY 3 grain\n", |ledger| {
+                assert_eq!(
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "2390" && m.tag == "GRAI")
+                        .map(|m| m.delta),
+                    Some(2)
+                );
+                // three grain at 10 is a charge of 30, the whole ask, so the market phase
+                // leaves 25 - 30 however few the unit could actually pay for
+                assert_eq!(
+                    ledger.state.balance_at(StatePhase::Market, "2390", SILVER),
+                    -5
+                );
+            });
+        }
+
+        /// The charge is the whole ask, so the ledger balance is no longer the unit's purse: a
+        /// second `BUY` line must be capped against what the first actually *spent*, exactly as
+        /// `forecast_unit`'s market-phase pass does. Two surfaces reading one order must not
+        /// settle two quantities (`ah-lu0f.2`, `ah-omn7`).
+        #[test]
+        fn a_second_bounded_buy_is_capped_by_what_the_first_actually_spent() {
+            let hex = ReportRegion {
+                for_sale: vec![line(12, 10, "grain", "GRAI"), line(12, 5, "horses", "HORS")],
+                ..region(vec![with_silver(unit("2390"), 25)])
+            };
+            let orders = "unit 2390\nBUY 3 grain\nBUY 1 horse\n";
+            with_ledger(hex.clone(), orders, |ledger| {
+                let delta = |tag: &str| {
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "2390" && m.tag == tag)
+                        .map(|m| m.delta)
+                };
+                // two grain at 10 leave 5, which is exactly one horse
+                assert_eq!(delta("GRAI"), Some(2));
+                assert_eq!(delta("HORS"), Some(1));
+            });
+            // ... and the SILVER column settles the same two quantities: 20 on grain and 5 on the
+            // horse, against an ask of 30 + 5.
+            let review = review_turn(
+                &report(vec![hex]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let column = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "2390")
+                .expect("the buyer is forecast");
+            assert_eq!(column.expense, Some(25));
+            assert_eq!(column.wanted_for_orders, Some(35));
+            assert_eq!(column.at_month_end, Some(0));
+        }
+
+        /// And a `BUY ALL` after a reduced bounded line spends what that line really left, not
+        /// what it was charged (`ah-omn7`).
+        #[test]
+        fn a_buy_all_after_a_reduced_line_spends_what_that_line_left() {
+            let hex = ReportRegion {
+                for_sale: vec![line(12, 10, "grain", "GRAI"), line(12, 5, "horses", "HORS")],
+                ..region(vec![with_silver(unit("2390"), 25)])
+            };
+            with_ledger(hex, "unit 2390\nBUY 3 grain\nBUY ALL horses\n", |ledger| {
+                let delta = |tag: &str| {
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "2390" && m.tag == tag)
+                        .map(|m| m.delta)
+                };
+                assert_eq!(delta("GRAI"), Some(2));
+                assert_eq!(delta("HORS"), Some(1));
+            });
+        }
+
+        /// The purse is read at the market phase, so a tax credited earlier in the month pays for
+        /// the purchase (`ah-omn7`). Reading it at maintenance instead would see a later `STUDY`
+        /// and buy fewer.
+        #[test]
+        fn a_taxing_unit_buys_what_its_tax_will_pay_for() {
+            let hex = ReportRegion {
+                tax_base: Some(500),
+                for_sale: vec![line(100, 10, "sword", "SWOR")],
+                ..region(vec![with_men(
+                    with_skill(with_silver(unit("2390"), 0), "COMB", 1),
+                    10,
+                )])
+            };
+            with_ledger(hex, "unit 2390\nTAX\nBUY 4 sword\n", |ledger| {
+                assert_eq!(
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "2390" && m.tag == "SWOR")
+                        .map(|m| m.delta),
+                    Some(4)
+                );
+            });
         }
 
         /// `ah-lauy`, increment 4. A second `BUY ALL` of the same goods finds nothing left of this
@@ -19905,7 +20150,11 @@ mod tests {
             .find(|row| row.unit_id == "5")
             .expect("the taxer is priced");
         assert_eq!(taxer.income, Some(0));
-        assert_eq!(taxer.at_month_end, Some(-400));
+        // The ledger charges the whole ask, which is what keeps the warning firing; the column
+        // shows the purchase the unit can actually make, which with no income at all is none
+        // (`ah-omn7`).
+        assert_eq!(taxer.at_month_end, Some(0));
+        assert_eq!(taxer.wanted_for_orders, Some(400));
         assert!(
             review
                 .findings
@@ -20059,7 +20308,7 @@ mod tests {
         let mut hex = region(vec![with_men(with_silver(starving(unit("5")), 10), 4)]);
         hex.for_sale.push(MarketItem {
             amount: 10,
-            name: "horse".to_string(),
+            name: "horses".to_string(),
             tag: "HORS".to_string(),
             price: 70,
         });
@@ -20072,7 +20321,8 @@ mod tests {
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.message,
-            "short $340: this unit can have $10 and its orders spend $350"
+            "short $340: this unit can have $10 and its orders spend $350, \
+             so it buys none of the 5 horses ordered"
         );
     }
 
@@ -20290,7 +20540,7 @@ mod tests {
         let mut hex = region(vec![with_silver(unit("5"), 100)]);
         hex.for_sale.push(MarketItem {
             amount: 10,
-            name: "horse".to_string(),
+            name: "horses".to_string(),
             tag: "HORS".to_string(),
             price: 70,
         });
@@ -20303,7 +20553,8 @@ mod tests {
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.message,
-            "short $40: this unit can have $100 and its orders spend $140"
+            "short $40: this unit can have $100 and its orders spend $140, \
+             so it buys 1 of the 2 horses ordered"
         );
     }
 
@@ -21182,8 +21433,8 @@ mod tests {
         assert_eq!(unit.late_income, Some(120));
         assert_eq!(
             unit.at_month_end,
-            Some(60),
-            "the month still ends in credit"
+            Some(120),
+            "the wages arrive and nothing is bought with them"
         );
         assert_eq!(
             unit.short_for_orders,
@@ -31227,7 +31478,8 @@ mod tests {
             .expect("unit 1923 cannot afford its BUY even with the gift");
         assert_eq!(
             short.message,
-            "short $100: this unit can have $100 and its orders spend $200"
+            "short $100: this unit can have $100 and its orders spend $200, \
+             so it buys 2 of the 5 plainsmen ordered"
         );
     }
 
@@ -31328,7 +31580,8 @@ mod tests {
                 .expect("new-1 cannot afford its BUY even with the gift");
             assert_eq!(
                 short.message,
-                "short $100: this unit can have $100 and its orders spend $200"
+                "short $100: this unit can have $100 and its orders spend $200, \
+             so it buys 2 of the 5 plainsmen ordered"
             );
         }
 

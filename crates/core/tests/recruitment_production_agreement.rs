@@ -142,24 +142,27 @@ fn surfaces_for(silver: i64, market_amount: i64) -> Surfaces {
 type Case = (i64, i64, (i64, u32, bool, i64));
 
 /// Full, partial and failed recruitment, pinned against the bead's own table: `(men, points,
-/// warning?, swords)`. All three cases must agree across every surface, including the two SWOR
+/// warning?, swords)`. All four cases must agree across every surface, including the two SWOR
 /// assertions, which read the same expected count because the report starts with no swords.
+///
+/// Both limits on a bounded `BUY` are real and both are pinned here: the market line, and - since
+/// `ah-omn7` - the unit's silver. `rules/buy`: *"If the unit can't afford as many as [quantity],
+/// it will attempt to buy as many as it can."*
 #[test]
 fn full_partial_and_failed_recruitment_leave_every_production_surface_in_agreement() {
-    let cases: [Case; 3] = [
+    let cases: [Case; 4] = [
         // Full recruitment: 80 silver buys all 8 wanted orcs at $10 each, from a market with 8 for
         // sale. (8*30 + 8*0)/16 = 15 points, level 0 - no weaponsmith left to produce with.
         (80, 8, (16, 15, true, 0)),
         // Partial recruitment: the market has only 4 to sell, so 4 arrive despite the silver for
         // 8. (8*30 + 4*0)/12 = 20 points, still level 0.
         (80, 4, (12, 20, true, 0)),
-        // Failed recruitment: the market has none to sell, so none arrive and the original level
-        // 1 (30 points) survives to produce all 8 swords. `rules/buy` also fails a `BUY` a unit
-        // cannot afford, but this codebase does not yet cap a bounded `BUY <n>` by silver - see
-        // `a_reported_unit_given_silver_gets_the_same_message` - so an empty market line is what
-        // exercises "no recruits arrive" here rather than an unaffordable one; that gap is
-        // pre-existing and outside this bead's scope.
-        (80, 0, (8, 30, false, 8)),
+        // Silver is what binds, with stock to spare: 40 pays for 4 of the 8 orcs the market has.
+        // The same 12 men and 20 points as the row above, reached the other way round.
+        (40, 8, (12, 20, true, 0)),
+        // Nothing is affordable, so no recruit arrives and the original level 1 (30 points)
+        // survives to produce all 8 swords.
+        (0, 8, (8, 30, false, 8)),
     ];
 
     for (silver, market_amount, (men, points, warning, swords)) in cases {
