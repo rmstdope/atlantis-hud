@@ -10377,7 +10377,8 @@ fn check_mage_arrivals(
     }
 
     // One pass, resolving the unit by id: nested in the loop above it would be O(units x
-    // refusals) and would emit twice for two rows sharing an id (review finding 5).
+    // refusals). Resolving by id is sound because one unit number is one row in a region block:
+    // `parse_region_block` refuses a repeat (`ah-bm0d`).
     for recruit in &ledger.refused_recruits {
         let Some(ordered) = hex
             .units

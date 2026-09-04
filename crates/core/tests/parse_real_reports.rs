@@ -627,6 +627,9 @@ fn no_committed_report_repeats_a_unit_number_within_a_region() {
     for report in atlantis_hud_fixtures::ALL {
         let parsed = parse_regions(report.text);
 
+        // Belt and braces: after `ah-bm0d` the parser cannot produce a region whose units repeat
+        // a number, so this loop can no longer fail. It is kept as the statement of the invariant
+        // a reader comes here for; the assertion with force is the refusal count below.
         for region in &parsed.regions {
             let mut seen: BTreeSet<&str> = BTreeSet::new();
             for unit in &region.units {
@@ -647,7 +650,9 @@ fn no_committed_report_repeats_a_unit_number_within_a_region() {
             .count();
         assert_eq!(
             refused, 0,
-            "{}: {} unit lines could not be read",
+            "{}: {} unit lines could not be read. The likeliest cause is the repeated-unit-number \
+             rule (`ah-bm0d`) firing on a report the game produced, which would mean the rule is \
+             wrong; but any unit line the parser cannot read at all lands here too.",
             report.name, refused
         );
     }
