@@ -45,6 +45,7 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
       canExportMap={false}
       onExportMageSheet={() => {}}
       canExportMageSheet={false}
+      newAge={undefined}
       settingsOpen={false}
       onToggleSettings={() => {}}
       settings={null}
@@ -404,3 +405,42 @@ describe("AppHeader mage-sheet chip", () => {
     expect(open).toContain("p-mage-sheets");
   });
 });
+
+describe("the New Age world control", () => {
+  it("shows no New Age control when the shell offers none", () => {
+    expect(draw({ newAge: undefined })).not.toContain("newage-control");
+  });
+
+  it("offers signing in for a New Age game, and names the faction once signed in", () => {
+    const signedOut = draw({
+      newAge: {
+        label: "Sign in to Arcanum",
+        signedIn: false,
+        summary: "",
+        onSignIn: () => {},
+        onSignOut: () => {}
+      }
+    });
+    expect(signedOut).toContain("Sign in to Arcanum");
+    expect(controlTag(signedOut)).toContain("border-edge");
+    expect(controlTag(signedOut)).not.toContain("aria-haspopup");
+
+    const signedIn = draw({
+      newAge: {
+        label: "Merchant Guild",
+        signedIn: true,
+        summary: "Signed in to New Age: Arcanum as Merchant Guild (27).",
+        onSignIn: () => {},
+        onSignOut: () => {}
+      }
+    });
+    expect(signedIn).toContain("Merchant Guild");
+    expect(controlTag(signedIn)).toContain("border-brass");
+    expect(controlTag(signedIn)).toContain('aria-haspopup="dialog"');
+  });
+});
+
+/** The New Age control's own tag, so its classes and attributes can be read off it. */
+function controlTag(markup: string): string {
+  return markup.match(/<button[^>]*data-testid="newage-control"[^>]*>/)?.[0] ?? "";
+}

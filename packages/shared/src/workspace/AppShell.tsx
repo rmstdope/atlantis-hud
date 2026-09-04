@@ -169,6 +169,26 @@ import { MapCanvas, type MapCanvasHandle } from "./MapCanvas";
 import { ArmyExportDialog } from "./ArmyExportDialog";
 import { MapExportDialog } from "./MapExportDialog";
 import { SendOrdersDialog } from "./SendOrdersDialog";
+import { NewAgeSignInDialog } from "./NewAgeSignInDialog";
+import type { HttpTransport } from "./httpTransport";
+import { newAgeClient } from "./newAgeApi";
+import { newAgeWorldFor } from "./newAgeWorlds";
+import {
+  NO_NEW_AGE_SESSIONS,
+  newAgeFactionOf,
+  newAgeSessionFor,
+  withNewAgeSession,
+  withoutNewAgeSession,
+  type NewAgeSessions
+} from "./newAgeSession";
+import {
+  NEW_AGE_HOST,
+  signInFailure,
+  signedInLabel,
+  signedInSummary,
+  signedOutLabel,
+  type NewAgeSignInPhase
+} from "./newAgeSignInView";
 import type { SendOrdersPhase } from "./sendOrdersView";
 import { sendDisabledReason } from "./sendOrdersView";
 import { performOrdersSend } from "./sendOrders";
@@ -374,7 +394,8 @@ export function AppShell({
   saveTextFile,
   appUpdate = UNSUPPORTED_UPDATES,
   openExternal = OPEN_EXTERNAL_IN_NEW_TAB,
-  uploadOrders
+  uploadOrders,
+  newAgeTransport
 }: {
   client: CoreClient;
   platformLabel: string;
@@ -408,6 +429,12 @@ export function AppShell({
    * player whether the turn went in. Its absence is what hides the control on web.
    */
   uploadOrders?: OrdersUploader;
+  /**
+   * How this shell reaches an Atlantis New Age world, or absent when it cannot - which is the web
+   * build, since the world refuses that origin's preflight (probed 2026-09-04). Its absence is the
+   * whole of what hides the sign-in control there.
+   */
+  newAgeTransport?: HttpTransport;
 }) {
   const [parsed, setParsed] = useState<ParsedReport | null>(null);
   // The report currently on screen, readable at async resolve time. The restore effect below
@@ -3287,9 +3314,31 @@ export function AppShell({
   const [sendPhase, setSendPhase] = useState<SendOrdersPhase | null>(null);
   const sendAbort = useRef<AbortController | null>(null);
 
+  /**
+   * Signed-in New Age sessions, one per game. Memory only: nothing is persisted, so a reload signs
+   * the player out - the navigator's decision on ah-lbd9, made mechanical.
+   */
+  const [newAgeSessions, setNewAgeSessions] = useState<NewAgeSessions>(NO_NEW_AGE_SESSIONS);
+  /** Where the sign-in dialog has got to, or null when it is closed. */
+  const [signInPhase, setSignInPhase] = useState<NewAgeSignInPhase | null>(null);
+  const signInAbort = useRef<AbortController | null>(null);
+
   /** The faction the orders name, which is what the server is told to file them under. */
   const sendFactionId = ordersFileFaction(ordersDocument);
   const uploadUrl = rulesetById(game?.manifest.metadata.rulesetId ?? "")?.ordersUploadUrl ?? null;
+  const newAgeWorld = newAgeWorldFor(game?.manifest.metadata.rulesetId);
+  // The ruleset's full label where there is room - `New Age: Arcanum` - falling back to the world's
+  // one short word, which is what the header control uses in any case.
+  const newAgeRulesetLabel =
+    rulesetById(game?.manifest.metadata.rulesetId ?? "")?.label ?? newAgeWorld?.worldName ?? "";
+  const newAgeSession = newAgeSessionFor(newAgeSessions, openGameId, newAgeWorld?.worldId ?? null);
+  const newAgeApi = useMemo(
+    () =>
+      newAgeTransport === undefined || newAgeWorld === null
+        ? null
+        : newAgeClient(newAgeTransport, newAgeWorld.worldId),
+    [newAgeTransport, newAgeWorld?.worldId]
+  );
   // A plain number, because that is all the server's form accepts: `#atlantis foo` names no faction
   // it could file the turn under, so the control stays off rather than failing at the last step.
   const canSendOrders =
@@ -3328,6 +3377,61 @@ export function AppShell({
     },
     [uploadOrders, uploadUrl, sendFactionId, canSendOrders, flush, ordersDocument, ordersTemplateText]
   );
+
+  /**
+   * Exchanges a faction number and password for a token, and remembers it for this game.
+   *
+   * The password arrives from the dialog, is handed to `newAgeApi.login`, and is not kept: only the
+   * token comes back here, and it is only ever put in an `Authorization` header. Nothing is logged.
+   */
+  const signInToNewAge = useCallback(
+    async (factionNumber: string, password: string) => {
+      if (newAgeApi === null || openGameId === null || newAgeWorld === null) {
+        return;
+      }
+      const controller = new AbortController();
+      signInAbort.current = controller;
+      setSignInPhase({ kind: "signingIn" });
+      const result = await newAgeApi.login(factionNumber, password, controller.signal);
+      // A dismissal replaced or cleared the controller while this was in flight: the player has
+      // moved on, and a token minted for a dialog they closed is not stored.
+      if (signInAbort.current !== controller) {
+        return;
+      }
+      signInAbort.current = null;
+      if (result.kind === "ok") {
+        setNewAgeSessions((sessions) =>
+          withNewAgeSession(sessions, openGameId, {
+            worldId: newAgeWorld.worldId,
+            factionId: String(result.value.faction.id),
+            factionName: result.value.faction.name,
+            token: result.value.accessToken
+          })
+        );
+        setSignInPhase(null);
+        return;
+      }
+      const { message, retype } = signInFailure(result, NEW_AGE_HOST);
+      setSignInPhase({ kind: "failed", message, retype });
+    },
+    [newAgeApi, openGameId, newAgeWorld]
+  );
+
+  /** Cancel, Escape and the backdrop all mean the same thing: stop, and close. */
+  const dismissSignIn = useCallback(() => {
+    signInAbort.current?.abort();
+    signInAbort.current = null;
+    setSignInPhase(null);
+  }, []);
+
+  /** Forgets this game's token. Nothing to revoke: the world has no logout endpoint. */
+  const signOutOfNewAge = useCallback(() => {
+    if (openGameId === null) {
+      return;
+    }
+    setNewAgeSessions((sessions) => withoutNewAgeSession(sessions, openGameId));
+    setOpenPopover(null);
+  }, [openGameId]);
 
   /** Cancel, Escape and the backdrop all mean the same thing: stop, and close. */
   const dismissSend = useCallback(() => {
@@ -4053,6 +4157,23 @@ export function AppShell({
         onSendOrders={uploadOrders === undefined ? undefined : () => setSendPhase({ kind: "ready" })}
         canSend={canSendOrders}
         sendDisabledReason={sendOffReason}
+        newAge={
+          newAgeApi === null || newAgeWorld === null || openGameId === null
+            ? undefined
+            : {
+                label:
+                  newAgeSession === null
+                    ? signedOutLabel(newAgeWorld.worldName)
+                    : signedInLabel(newAgeFactionOf(newAgeSession)),
+                signedIn: newAgeSession !== null,
+                summary:
+                  newAgeSession === null
+                    ? ""
+                    : signedInSummary(newAgeRulesetLabel, newAgeFactionOf(newAgeSession)),
+                onSignIn: () => setSignInPhase({ kind: "ready" }),
+                onSignOut: signOutOfNewAge
+              }
+        }
         onExportOrdersLong={exportOrdersLong}
         canExportLong={ordersDocument.length > 0 && ordersTemplateText !== null}
         onExportMap={() => openExport()}
@@ -4468,6 +4589,23 @@ export function AppShell({
           phase={sendPhase}
           onSend={(password) => void sendOrders(password)}
           onDismiss={dismissSend}
+        />
+      )}
+      {signInPhase === null || newAgeWorld === null ? null : (
+        <NewAgeSignInDialog
+          rulesetLabel={newAgeRulesetLabel}
+          host={NEW_AGE_HOST}
+          turnNumber={parsed?.header.turnNumber ?? null}
+          // Only when the report's own faction id is digits: prefilling anything else would put a
+          // value in the field that the field then refuses.
+          suggestedFactionNumber={
+            parsed?.header.factionId && /^\d+$/.test(parsed.header.factionId)
+              ? parsed.header.factionId
+              : null
+          }
+          phase={signInPhase}
+          onSignIn={(factionNumber, password) => void signInToNewAge(factionNumber, password)}
+          onDismiss={dismissSignIn}
         />
       )}
       {exportOpen ? (
