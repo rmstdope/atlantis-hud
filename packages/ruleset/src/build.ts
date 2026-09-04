@@ -100,7 +100,9 @@ function resolveRegionResources(
     }
   }
 
-  const resolved: Record<string, string[]> = {};
+  // A null prototype for the same reason `parseRegionResources` uses one: a terrain named
+  // `__proto__` must survive resolution as an own key rather than vanish into the prototype.
+  const resolved: Record<string, string[]> = Object.create(null) as Record<string, string[]>;
   for (const [terrain, names] of Object.entries(resources)) {
     const tags: string[] = [];
     for (const name of names) {
