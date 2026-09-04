@@ -5440,9 +5440,7 @@ fn apply(
                     produced: false,
                     created: None,
                 });
-                ledger
-                    .state
-                    .apply(StatePhase::Withdraw, who, &tag, *count);
+                ledger.state.apply(StatePhase::Withdraw, who, &tag, *count);
             }
         }
         // Wages and takings from entertaining are paid in the last phase of the turn, after study
@@ -18413,9 +18411,7 @@ BUILD
             let hex_region = region(vec![unit("2390")]);
             with_ledger(hex_region, "unit 2390\nWITHDRAW 6 WSHD\n", |ledger| {
                 assert_eq!(
-                    ledger
-                        .state
-                        .balance_at(StatePhase::Market, "2390", "WSHD"),
+                    ledger.state.balance_at(StatePhase::Market, "2390", "WSHD"),
                     0,
                     "the phase before the withdrawal has not seen the shields"
                 );
