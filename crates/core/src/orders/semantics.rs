@@ -1706,11 +1706,10 @@ fn forecast_hex(
             // The fund could not reach everybody, so it reached nobody here. The figure stays
             // where it is - the pessimistic answer the navigator chose - and only the hover's
             // note changes.
-            forecast.unclaimed_contended =
-                settlement.short > 0
-                    && settlement
-                        .claimants
-                        .contains(&unit_key(&hex.region.region_id, &ordered.unit.unit_id));
+            forecast.unclaimed_contended = settlement.short > 0
+                && settlement
+                    .claimants
+                    .contains(&unit_key(&hex.region.region_id, &ordered.unit.unit_id));
             continue;
         }
         let covered = settlement
@@ -11142,7 +11141,10 @@ fn check_upkeep_fund(
         // `report.regions`, which holds parsed units only, and two parsed units never share a
         // number (`parse_region_block` refuses a repeat, `ah-bm0d`).
         .filter(|unit| {
-            unit.own && settlement.claimants.contains(&unit_key(&unit.region_id, &unit.unit_id))
+            unit.own
+                && settlement
+                    .claimants
+                    .contains(&unit_key(&unit.region_id, &unit.unit_id))
         })
     {
         findings.push(Finding {
