@@ -154,6 +154,22 @@ mod tests {
     use unwrap::unwrap_lines;
 
     #[test]
+    fn the_same_unit_number_in_two_regions_is_two_units() {
+        let parsed = parse_report_full(concat!(
+            "mountain (7,53) in Inhead.\n",
+            "- City Guard (4), The Guardsmen (1), 80 leaders [LEAD].\n",
+            "\n",
+            "plain (8,54) in Outhead.\n",
+            "- City Guard (4), The Guardsmen (1), 80 leaders [LEAD].\n",
+        ));
+
+        assert_eq!(parsed.regions.len(), 2);
+        assert_eq!(parsed.regions[0].units.len(), 1);
+        assert_eq!(parsed.regions[1].units.len(), 1);
+        assert!(parsed.unreadable_lines.is_empty());
+    }
+
+    #[test]
     fn an_unreadable_line_carries_its_range_kind_and_text() {
         let lines = unwrap_lines(concat!(
             "mountain (7,53) in Inhead, contains Tinsel [town]\n",

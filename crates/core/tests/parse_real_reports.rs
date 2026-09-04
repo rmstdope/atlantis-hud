@@ -617,3 +617,38 @@ fn every_committed_report_yields_its_roster_skills() {
     assert_eq!(per_name.get("tactics").copied(), Some(318));
     assert_eq!(per_name.get("crossbow").copied(), Some(116));
 }
+
+/// The region parser refuses a unit number a region block has already printed (`ah-bm0d`). No
+/// report the game produces repeats one, so the rule must never fire on the committed corpus.
+#[test]
+fn no_committed_report_repeats_a_unit_number_within_a_region() {
+    use std::collections::BTreeSet;
+
+    for report in atlantis_hud_fixtures::ALL {
+        let parsed = parse_regions(report.text);
+
+        for region in &parsed.regions {
+            let mut seen: BTreeSet<&str> = BTreeSet::new();
+            for unit in &region.units {
+                assert!(
+                    seen.insert(unit.unit_id.as_str()),
+                    "{}: region {} prints unit {} twice",
+                    report.name,
+                    region.region_id,
+                    unit.unit_id
+                );
+            }
+        }
+
+        let refused = parsed
+            .unreadable_lines
+            .iter()
+            .filter(|line| line.kind == atlantis_hud_core::report::model::UnreadableKind::Unit)
+            .count();
+        assert_eq!(
+            refused, 0,
+            "{}: {} unit lines could not be read",
+            report.name, refused
+        );
+    }
+}

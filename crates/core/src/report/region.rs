@@ -26,6 +26,7 @@ use super::scan::{
 };
 use super::unit::parse_unit;
 use super::unwrap::LogicalLine;
+use std::collections::BTreeSet;
 
 /// The six directions a region prints in its `Exits` block.
 const DIRECTIONS: &[&str] = &[
@@ -357,6 +358,9 @@ pub fn parse_region_block(
     let region_id = region.region_id.clone();
     let mut current_structure: Option<String> = None;
     let mut in_exits = false;
+    // Unit numbers this block has already read. The game numbers a unit once, so a repeat is a
+    // damaged paste rather than a second unit; see the guard arm below (`ah-bm0d`).
+    let mut seen_units: BTreeSet<String> = BTreeSet::new();
 
     for line in rest {
         let body = line.body();
@@ -393,6 +397,16 @@ pub fn parse_region_block(
                     &region_id,
                     current_structure.as_deref(),
                 ) {
+                    // A unit number the block has already printed is not a second unit: the
+                    // game numbers units once, so a repeat is a damaged paste. The first row
+                    // stands and the repeat is kept verbatim among the lines that could not be
+                    // read, exactly as an unparseable unit line is - reaching the map with it
+                    // would give one unit two balances in the orders ledger (`ah-bm0d`).
+                    // `BTreeSet::insert` returns `false` when the value was already present, so
+                    // this arm both tests and records in one step.
+                    Some(unit) if !seen_units.insert(unit.unit_id.clone()) => {
+                        unreadable.push(unread(line, UnreadableKind::Unit));
+                    }
                     Some(unit) => region.units.push(unit),
                     None => unreadable.push(unread(line, UnreadableKind::Unit)),
                 }
@@ -441,6 +455,69 @@ mod tests {
         assert_eq!(unreadable[0].line_start, 3);
         assert_eq!(unreadable[0].line_end, 3);
         assert_eq!(unreadable[0].lost, None);
+    }
+
+    #[test]
+    fn a_unit_number_repeated_in_a_region_is_read_once() {
+        let source = concat!(
+            "mountain (7,53) in Inhead.\n",
+            "* Seven of Eight (18642), Borg (73), leader [LEAD].\n",
+            "* Hugh (18643), Borg (73), leader [LEAD].\n",
+            "* Seven of Eight (18642), Borg (73), leader [LEAD].\n",
+        );
+
+        let lines = unwrap_lines(source);
+        let mut unreadable = Vec::new();
+        let region = parse_region_block(&lines[0], &lines[1..], &mut unreadable)
+            .expect("region should parse");
+
+        assert_eq!(region.units.len(), 2);
+        assert_eq!(region.units[0].unit_id, "18642");
+        assert_eq!(region.units[1].unit_id, "18643");
+        assert_eq!(unreadable.len(), 1);
+        assert_eq!(unreadable[0].kind, UnreadableKind::Unit);
+        assert_eq!(
+            unreadable[0].text,
+            "* Seven of Eight (18642), Borg (73), leader [LEAD]."
+        );
+        assert_eq!(unreadable[0].line_start, 4);
+        assert_eq!(unreadable[0].line_end, 4);
+        assert_eq!(unreadable[0].lost, None);
+    }
+
+    #[test]
+    fn a_repeated_unit_number_is_refused_whether_the_unit_is_ours_or_not() {
+        let foreign = concat!(
+            "mountain (7,53) in Inhead.\n",
+            "- City Guard (4), The Guardsmen (1), 80 leaders [LEAD].\n",
+            "- City Guard (4), The Guardsmen (1), 80 leaders [LEAD].\n",
+        );
+
+        let lines = unwrap_lines(foreign);
+        let mut unreadable = Vec::new();
+        let region = parse_region_block(&lines[0], &lines[1..], &mut unreadable)
+            .expect("region should parse");
+
+        assert_eq!(region.units.len(), 1);
+        assert_eq!(region.units[0].unit_id, "4");
+        assert_eq!(unreadable.len(), 1);
+        assert_eq!(unreadable[0].kind, UnreadableKind::Unit);
+
+        let mixed = concat!(
+            "mountain (7,53) in Inhead.\n",
+            "- City Guard (4), The Guardsmen (1), 80 leaders [LEAD].\n",
+            "* Seven of Eight (4), Borg (73), leader [LEAD].\n",
+        );
+
+        let lines = unwrap_lines(mixed);
+        let mut unreadable = Vec::new();
+        let region = parse_region_block(&lines[0], &lines[1..], &mut unreadable)
+            .expect("region should parse");
+
+        assert_eq!(region.units.len(), 1);
+        assert!(!region.units[0].own);
+        assert_eq!(unreadable.len(), 1);
+        assert_eq!(unreadable[0].kind, UnreadableKind::Unit);
     }
 
     #[test]
