@@ -108,8 +108,22 @@ describe("StudyPlannerList", () => {
 });
 
 describe("StudyPlannerDetail", () => {
-  const own = renderToStaticMarkup(<StudyPlannerDetail mage={mageBy("881")} label={label} />);
-  const stale = renderToStaticMarkup(<StudyPlannerDetail mage={mageBy("300")} label={label} />);
+  const own = renderToStaticMarkup(<StudyPlannerDetail
+        mage={mageBy("881")}
+        label={label}
+        tree={tree}
+        plan={null}
+        saveError={null}
+        onSaveNote={() => {}}
+      />);
+  const stale = renderToStaticMarkup(<StudyPlannerDetail
+        mage={mageBy("300")}
+        label={label}
+        tree={tree}
+        plan={null}
+        saveError={null}
+        onSaveNote={() => {}}
+      />);
 
   it("says how old a stale mage's news is and marks what it estimated", () => {
     expect(stale).toContain(
@@ -134,7 +148,14 @@ describe("StudyPlannerDetail", () => {
   });
 
   it("names what holds a skill back in the tree's own words", () => {
-    const heldBack = renderToStaticMarkup(<StudyPlannerDetail mage={mageBy("883")} label={label} />);
+    const heldBack = renderToStaticMarkup(<StudyPlannerDetail
+        mage={mageBy("883")}
+        label={label}
+        tree={tree}
+        plan={null}
+        saveError={null}
+        onSaveNote={() => {}}
+      />);
     expect(heldBack).toContain("fire — at 1, held by force");
     expect(heldBack).not.toContain("Nothing he holds is at a prerequisite");
   });

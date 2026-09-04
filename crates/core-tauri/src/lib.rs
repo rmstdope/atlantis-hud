@@ -2246,6 +2246,7 @@ mod merge_tests {
 mod tests {
     use super::test_support::{a_manifest, IMPORTED_AT, OPENED_AT};
     use super::*;
+    use atlantis_hud_core::backup::StudyGoal;
     use atlantis_hud_core::report::model::ReportUnit;
     use tempfile::tempdir;
 
@@ -2584,8 +2585,16 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let plan = StudyPlan {
             faction_id: "21".to_string(),
             unit_id: "9001".to_string(),
-            skill: Some("FORC".to_string()),
-            target_level: Some(4),
+            goals: vec![
+                StudyGoal {
+                    skill: "FORC".to_string(),
+                    target_level: Some(4),
+                },
+                StudyGoal {
+                    skill: "PATT".to_string(),
+                    target_level: None,
+                },
+            ],
             comment: "heading for Gate Lore".to_string(),
             updated_at: "2026-08-07T12:00:00Z".to_string(),
         };

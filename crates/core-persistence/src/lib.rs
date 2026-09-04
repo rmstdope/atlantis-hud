@@ -12,7 +12,9 @@ use atlantis_hud_core::backup::{
     ManifestEdit,
 };
 /// The stored row and its key. The core owns both because the backup carries them too.
-pub use atlantis_hud_core::backup::{AlliedMage, AlliedMageKey, StudyPlan, StudyPlanKey};
+pub use atlantis_hud_core::backup::{
+    AlliedMage, AlliedMageKey, StudyGoal, StudyPlan, StudyPlanKey,
+};
 use atlantis_hud_core::movement::graph::MapGeometry;
 // The row and the order it is listed in are the core's, so both platforms answer alike
 // (`ah-8z4y.3.2`). Re-exported here because this is where every caller already reaches for it.
@@ -24,7 +26,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 11;
+pub const CURRENT_SCHEMA_VERSION: u32 = 12;
 /// The manifest file inside a game's directory. The directory is named after the game's id, so the
 /// file itself does not have to be, and a game can be found without parsing any filename.
 pub const GAME_MANIFEST_FILE_NAME: &str = "game.json";
@@ -42,13 +44,15 @@ const MIGRATION_0008_HEX_NOTES: &str = include_str!("../migrations/0008_hex_note
 const MIGRATION_0009_ARMIES: &str = include_str!("../migrations/0009_armies.sql");
 const MIGRATION_0010_ALLIED_MAGES: &str = include_str!("../migrations/0010_allied_mages.sql");
 const MIGRATION_0011_STUDY_PLANS: &str = include_str!("../migrations/0011_study_plans.sql");
+const MIGRATION_0012_STUDY_PLAN_GOALS: &str =
+    include_str!("../migrations/0012_study_plan_goals.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 11] = [
+const MIGRATIONS: [Migration; 12] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -92,6 +96,10 @@ const MIGRATIONS: [Migration; 11] = [
     Migration {
         version: 11,
         sql: MIGRATION_0011_STUDY_PLANS,
+    },
+    Migration {
+        version: 12,
+        sql: MIGRATION_0012_STUDY_PLAN_GOALS,
     },
 ];
 
@@ -749,22 +757,32 @@ fn read_backup_collections(
         .collect::<Result<Vec<_>, serde_json::Error>>()?;
 
     let mut study_plan_rows = connection.prepare(
-        "SELECT faction_id, unit_id, skill, target_level, comment, updated_at
+        "SELECT faction_id, unit_id, goals_json, comment, updated_at
            FROM study_plans
           WHERE game_id = ?1",
     )?;
     let study_plans = study_plan_rows
         .query_map(params![game_id], |row| {
-            Ok(StudyPlan {
-                faction_id: row.get::<_, String>(0)?,
-                unit_id: row.get::<_, String>(1)?,
-                skill: row.get::<_, Option<String>>(2)?,
-                target_level: row.get::<_, Option<u32>>(3)?,
-                comment: row.get::<_, String>(4)?,
-                updated_at: row.get::<_, String>(5)?,
-            })
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
         })?
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(|(faction_id, unit_id, goals_json, comment, updated_at)| {
+            Ok(StudyPlan {
+                faction_id,
+                unit_id,
+                goals: serde_json::from_str(&goals_json)?,
+                comment,
+                updated_at,
+            })
+        })
+        .collect::<Result<Vec<_>, serde_json::Error>>()?;
 
     Ok(EncodedGameBackupCollections {
         imported_turns,
@@ -1027,17 +1045,15 @@ fn write_backup_collections(
                     game_id,
                     faction_id,
                     unit_id,
-                    skill,
-                    target_level,
+                    goals_json,
                     comment,
                     updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 game_id,
                 plan.faction_id.as_str(),
                 plan.unit_id.as_str(),
-                plan.skill.as_deref(),
-                plan.target_level,
+                serde_json::to_string(&plan.goals)?.as_str(),
                 plan.comment.as_str(),
                 plan.updated_at.as_str(),
             ],
@@ -2161,23 +2177,36 @@ pub fn list_study_plans(
     let mut connection = open_database(database_path)?;
     apply_migrations(&mut connection)?;
     let mut statement = connection.prepare(
-        "SELECT faction_id, unit_id, skill, target_level, comment, updated_at
+        "SELECT faction_id, unit_id, goals_json, comment, updated_at
            FROM study_plans
           WHERE game_id = ?1",
     )?;
     let rows = statement.query_map(params![game_id], |row| {
-        Ok(StudyPlan {
-            faction_id: row.get::<_, String>(0)?,
-            unit_id: row.get::<_, String>(1)?,
-            skill: row.get::<_, Option<String>>(2)?,
-            target_level: row.get::<_, Option<u32>>(3)?,
-            comment: row.get::<_, String>(4)?,
-            updated_at: row.get::<_, String>(5)?,
-        })
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, String>(4)?,
+        ))
     })?;
 
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(PersistenceError::from)
+    // The goal queue is one JSON column, as `armies.members_json` is and for the reason
+    // `save_army` gives. A row whose JSON will not parse is reported rather than rounded down to
+    // an empty queue, exactly as `list_armies` does with its members.
+    let mut plans = Vec::new();
+    for row in rows {
+        let (faction_id, unit_id, goals_json, comment, updated_at) = row?;
+        plans.push(StudyPlan {
+            faction_id,
+            unit_id,
+            goals: serde_json::from_str(&goals_json)?,
+            comment,
+            updated_at,
+        });
+    }
+
+    Ok(plans)
 }
 
 /// Writes one decision's worth of change in a single transaction: `removed` first, then `plans`.
@@ -2216,22 +2245,19 @@ pub fn save_study_plans(
                 game_id,
                 faction_id,
                 unit_id,
-                skill,
-                target_level,
+                goals_json,
                 comment,
                 updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(game_id, faction_id, unit_id) DO UPDATE SET
-                skill = excluded.skill,
-                target_level = excluded.target_level,
+                goals_json = excluded.goals_json,
                 comment = excluded.comment,
                 updated_at = excluded.updated_at",
             params![
                 game_id,
                 plan.faction_id.as_str(),
                 plan.unit_id.as_str(),
-                plan.skill.as_deref(),
-                plan.target_level,
+                serde_json::to_string(&plan.goals)?.as_str(),
                 plan.comment.as_str(),
                 plan.updated_at.as_str(),
             ],
@@ -3106,8 +3132,8 @@ mod tests {
 
         assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
-            created.schema_version, 11,
-            "storing a mage's study plan added migration 11"
+            created.schema_version, 12,
+            "growing a study plan into a queue of goals added migration 12"
         );
     }
 
@@ -3606,8 +3632,14 @@ mod tests {
         StudyPlan {
             faction_id: "21".to_string(),
             unit_id: unit_id.to_string(),
-            skill: skill.map(str::to_string),
-            target_level,
+            goals: skill
+                .map(|skill| {
+                    vec![StudyGoal {
+                        skill: skill.to_string(),
+                        target_level,
+                    }]
+                })
+                .unwrap_or_default(),
             comment: "heading for Gate Lore".to_string(),
             updated_at: "2026-08-01T09:00:00Z".to_string(),
         }
@@ -3779,6 +3811,118 @@ mod tests {
         );
     }
 
+    /// The migration path a real database takes: version 11 with a plan in it, opened by this build.
+    #[test]
+    fn upgrading_from_version_eleven_turns_a_study_into_one_goal() {
+        let dir = tempdir().expect("tempdir");
+        let manifest = fixture_manifest();
+        let home = dir.path().join(GAME_ID);
+        fs::create_dir_all(&home).expect("game home");
+        save_game_manifest(&home.join(GAME_MANIFEST_FILE_NAME), &manifest)
+            .expect("manifest save should succeed");
+
+        let database_path = home.join("game.sqlite");
+        let connection = Connection::open(&database_path).expect("db should open");
+        connection
+            .execute_batch(&format!(
+                "{MIGRATION_0001_INITIAL}
+                 {MIGRATION_0002_IMPORTED_TURNS}
+                 {MIGRATION_0003_ORDER_DRAFTS}
+                 {MIGRATION_0004_REGION_SIGHTINGS}
+                 {MIGRATION_0005_RENAME_PROJECT_TO_GAME}
+                 {MIGRATION_0006_ISO_IMPORT_TIMESTAMPS}
+                 {MIGRATION_0007_MERGED_REPORTS}
+                 {MIGRATION_0008_HEX_NOTES}
+                 {MIGRATION_0009_ARMIES}
+                 {MIGRATION_0010_ALLIED_MAGES}
+                 {MIGRATION_0011_STUDY_PLANS}
+                 INSERT INTO schema_migrations (version)
+                     VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10), (11);
+                 INSERT INTO study_plans
+                     (game_id, faction_id, unit_id, skill, target_level, comment, updated_at)
+                 VALUES ('faction-12', '21', '9001', 'FORC', 4, 'heading for Gate Lore',
+                         '2026-08-01T09:00:00Z'),
+                        ('faction-12', '21', '9002', NULL, NULL, 'just a note',
+                         '2026-08-01T09:00:00Z'),
+                        ('faction-12', '21', '9003', 'PATT', NULL, 'one month',
+                         '2026-08-01T09:00:00Z');"
+            ))
+            .expect("legacy version 11 setup should succeed");
+        drop(connection);
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("upgrade should succeed");
+
+        assert_eq!(reopened.schema_version, CURRENT_SCHEMA_VERSION);
+        let mut listed =
+            list_study_plans(&reopened.database_path, GAME_ID).expect("list should succeed");
+        listed.sort_by(|left, right| left.unit_id.cmp(&right.unit_id));
+        assert_eq!(
+            listed
+                .iter()
+                .map(|plan| plan.goals.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                vec![StudyGoal {
+                    skill: "FORC".to_string(),
+                    target_level: Some(4),
+                }],
+                vec![],
+                vec![StudyGoal {
+                    skill: "PATT".to_string(),
+                    target_level: None,
+                }],
+            ],
+            "a study becomes a one-goal queue, a note-only row an empty one"
+        );
+        assert_eq!(
+            listed[0].comment, "heading for Gate Lore",
+            "the note survives the rebuild"
+        );
+    }
+
+    #[test]
+    fn a_queue_of_goals_keeps_its_order_through_a_save_and_a_list() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let plan = StudyPlan {
+            faction_id: "21".to_string(),
+            unit_id: "9001".to_string(),
+            goals: vec![
+                StudyGoal {
+                    skill: "FORC".to_string(),
+                    target_level: Some(5),
+                },
+                StudyGoal {
+                    skill: "PATT".to_string(),
+                    target_level: None,
+                },
+                StudyGoal {
+                    skill: "SPIR".to_string(),
+                    target_level: Some(3),
+                },
+            ],
+            comment: String::new(),
+            updated_at: "2026-08-01T09:00:00Z".to_string(),
+        };
+        save_study_plans(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&plan),
+            &[],
+        )
+        .expect("save should succeed");
+
+        let listed =
+            list_study_plans(&created.database_path, GAME_ID).expect("list should succeed");
+
+        assert_eq!(
+            listed,
+            vec![plan],
+            "the queue comes back in the order stored"
+        );
+    }
+
     #[test]
     fn export_and_import_carry_study_plans() {
         let dir = tempdir().expect("tempdir");
@@ -3909,9 +4053,14 @@ mod tests {
         let connection = Connection::open(&created.database_path).expect("open");
         connection
             .execute_batch(
+                // `study_plans` goes with them: 0012 rebuilds that table from the shape 0011
+                // left, so replaying it over the rebuilt shape would look for a `skill` column
+                // that is no longer there. Dropping it lets 0011 recreate the old shape and 0012
+                // rebuild it again, which is what an earlier build's database really would do.
                 "UPDATE imported_turns
                     SET imported_at = '2026-08-01 10:00:00',
                         updated_at  = '2026-08-01 10:00:00';
+                 DROP TABLE study_plans;
                  DELETE FROM schema_migrations WHERE version >= 6;",
             )
             .expect("rewind");

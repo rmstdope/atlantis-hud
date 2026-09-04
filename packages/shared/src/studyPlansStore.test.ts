@@ -21,8 +21,7 @@ function plan(unitId = "1204", skill: string | null = "FORC"): StudyPlanRecord {
   return {
     factionId: "21",
     unitId,
-    skill,
-    targetLevel: 4,
+    goals: skill ? [{ skill, targetLevel: 4 }] : [],
     comment: "",
     updatedAt: "2026-01-01T00:00:00.000Z"
   };

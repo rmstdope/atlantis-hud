@@ -54,6 +54,13 @@ export type PlannerMage = {
   knows: KnownSkill[];
   /** What he may begin now, in the tree's own order. Never projected. */
   canStudy: MagicSkillNode[];
+  /**
+   * The skills the report or the sheet printed for him, verbatim - levels and points.
+   *
+   * What a projection starts from (`studySchedule.ts`); the two views must agree about where a
+   * mage stands as well as about who exists.
+   */
+  skills: readonly SkillInfo[];
   /** "force 4 · 12 can study": the list row's second line. */
   summary: string;
 };
@@ -159,6 +166,7 @@ function plannerMage(input: {
     monthsUnreported: input.monthsUnreported,
     knows,
     canStudy,
+    skills: input.skills ?? input.standing.skills,
     summary: `${reach} · ${canStudy.length} can study`
   };
 }

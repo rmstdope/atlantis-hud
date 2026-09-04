@@ -284,7 +284,21 @@ pub struct AlliedMageKey {
     pub unit_id: String,
 }
 
-/// One mage's plan for next turn: what he is to study, and what the player wants to remember.
+/// One step of a mage's study plan: what he studies, and how far.
+///
+/// `rules/study`: `STUDY [skill] [level]`, where a level means "continued from turn to turn until
+/// the unit reaches that skill level". `target_level` of `None` is the bare form - one month, and
+/// then the next goal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StudyGoal {
+    /// The skill tag, upper-cased (`"FORC"`).
+    pub skill: String,
+    /// `STUDY <skill> <level>`'s optional level; `None` is the bare one-month form.
+    pub target_level: Option<u32>,
+}
+
+/// One mage's study plan: an ordered queue of goals, and what the player wants to remember.
 ///
 /// There is no `game_id`: every call that reads or writes these rows is scoped to one game and
 /// takes it as a parameter, exactly as `AlliedMage` is.
@@ -295,10 +309,9 @@ pub struct StudyPlan {
     pub faction_id: String,
     /// The unit number, as the report writes it.
     pub unit_id: String,
-    /// The skill tag, upper-cased (`"FORC"`); `None` when the row is a note with no study chosen.
-    pub skill: Option<String>,
-    /// `STUDY <skill> <level>`'s optional level; `None` when the order is to name no level.
-    pub target_level: Option<u32>,
+    /// Next turn's study first. Empty when the row is a note with nothing planned.
+    #[serde(default)]
+    pub goals: Vec<StudyGoal>,
     /// The player's free text. Never `None`: an absent note is the empty string.
     pub comment: String,
     /// When the row was last written, ISO 8601, from the caller's clock.
@@ -349,6 +362,10 @@ pub struct GameBackupContent {
 /// (absent in a backup written before ah-o1t.1), on `armies` (absent in one written before
 /// ah-1mpx.1), on `allied_mages` (absent in one written before ah-lyg6.1.2.1) and on
 /// `study_plans` (absent in one written before ah-lyg6.2.1); such a backup still imports.
+/// A `StudyPlan`'s `goals` carries `#[serde(default)]` for the same reason. There is no decode
+/// path for the flat `skill`/`target_level` this row carried before ah-lyg6.2.3: ah-lyg6.2.1
+/// merged as `21af4dc`, which is not an ancestor of the newest tag, so no released build ever
+/// wrote a backup containing one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameBackup {
@@ -1244,16 +1261,23 @@ mod tests {
         let plan = StudyPlan {
             faction_id: "21".to_string(),
             unit_id: "9001".to_string(),
-            skill: Some("FORC".to_string()),
-            target_level: Some(4),
+            goals: vec![
+                StudyGoal {
+                    skill: "FORC".to_string(),
+                    target_level: Some(4),
+                },
+                StudyGoal {
+                    skill: "PATT".to_string(),
+                    target_level: None,
+                },
+            ],
             comment: "heading for Gate Lore".to_string(),
             updated_at: "2026-01-05T00:00:00Z".to_string(),
         };
         let note_only = StudyPlan {
             faction_id: "21".to_string(),
             unit_id: "9002".to_string(),
-            skill: None,
-            target_level: None,
+            goals: vec![],
             comment: String::new(),
             updated_at: "2026-01-05T00:00:00Z".to_string(),
         };
@@ -1267,6 +1291,42 @@ mod tests {
             decoded.collections.study_plans,
             vec![plan, note_only],
             "plans come back whole, sorted by (faction_id, unit_id)"
+        );
+    }
+
+    #[test]
+    fn a_study_plan_row_without_goals_decodes_to_an_empty_queue() {
+        let plan = StudyPlan {
+            faction_id: "21".to_string(),
+            unit_id: "9001".to_string(),
+            goals: vec![StudyGoal {
+                skill: "FORC".to_string(),
+                target_level: Some(4),
+            }],
+            comment: "heading for Gate Lore".to_string(),
+            updated_at: "2026-01-05T00:00:00Z".to_string(),
+        };
+        let mut content = content_with(vec![], vec![], vec![], vec![], vec![]);
+        content.collections.study_plans = vec![plan];
+        let encoded = encode_game_backup(content, "2026-01-06T00:00:00Z").expect("encodes");
+        let mut value: serde_json::Value = serde_json::from_str(&encoded).expect("json");
+        value
+            .get_mut("studyPlans")
+            .and_then(|plans| plans.get_mut(0))
+            .and_then(|row| row.as_object_mut())
+            .expect("the row")
+            .remove("goals");
+
+        let decoded = decode_game_backup(
+            &serde_json::to_string(&value).expect("serializes"),
+            "2026-02-01T00:00:00Z",
+        )
+        .expect("decodes");
+
+        assert_eq!(
+            decoded.collections.study_plans[0].goals,
+            Vec::<StudyGoal>::new(),
+            "an absent queue is an empty one"
         );
     }
 

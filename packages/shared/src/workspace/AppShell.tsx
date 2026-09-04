@@ -123,6 +123,8 @@ import { DEFAULT_LEVEL, useWorkspaceStore, workspaceGameOf } from "../workspaceS
 import { useHexNotesStore } from "../hexNotesStore";
 import { useArmiesStore } from "../armiesStore";
 import { useAlliedMagesStore } from "../alliedMagesStore";
+import { useStudyPlansStore } from "../studyPlansStore";
+import type { StudyGoal } from "@atlantis/core-client";
 import {
   forgetFailedText,
   forgottenStatusText,
@@ -638,6 +640,10 @@ export function AppShell({
   const alliedMages = useAlliedMagesStore((state) => state.mages);
   /** The same store's status, for the study planner's loading and failure lines. */
   const alliedStatus = useAlliedMagesStore((state) => state.status);
+  /** Every mage's stored study plan (ah-lyg6.2.1), for the planner's Schedule and its notes. */
+  const studyPlans = useStudyPlansStore((state) => state.plans);
+  /** `Could not save this plan.` / `... this note.`, shown in the dialog rather than the header. */
+  const [studyPlanError, setStudyPlanError] = useState<string | null>(null);
   /**
    * Every mage the player can see, yours and your allies', for the study planner (ah-lyg6.2.2).
    *
@@ -656,6 +662,42 @@ export function AppShell({
             viewedTurn: parsed?.header.turnNumber ?? null
           }),
     [parsed, mages, alliedMages, magicTree, gameData]
+  );
+
+  /**
+   * One mage's plan written whole: the row as it stands, with the half being edited replaced.
+   *
+   * The store writes before it caches and rethrows (`studyPlansStore`), so a failed write never
+   * leaves a plan on screen that storage does not hold; the catch is only about telling the
+   * player, in the dialog rather than in the header line the dialog covers.
+   */
+  const saveStudyPlan = useCallback(
+    async (
+      factionId: string,
+      unitId: string,
+      change: { goals?: StudyGoal[]; comment?: string },
+      failure: string
+    ) => {
+      if (!game) {
+        return;
+      }
+      const existing = useStudyPlansStore
+        .getState()
+        .plans.find((row) => row.factionId === factionId && row.unitId === unitId);
+      setStudyPlanError(null);
+      try {
+        await useStudyPlansStore.getState().save(client, game, {
+          factionId,
+          unitId,
+          goals: change.goals ?? existing?.goals ?? [],
+          comment: change.comment ?? existing?.comment ?? "",
+          updatedAt: new Date().toISOString()
+        });
+      } catch {
+        setStudyPlanError(failure);
+      }
+    },
+    [client, game]
   );
 
   /** The combat skills recovered from this game's battle rosters (`ah-1mpx.6.2`). */
@@ -2199,6 +2241,15 @@ export function AppShell({
       void useAlliedMagesStore.getState().load(client, game);
     } else {
       useAlliedMagesStore.getState().clear();
+    }
+  }, [client, openGameId, gameEpoch]);
+
+  /** And the study plans themselves, keyed the same way and for the same reason. */
+  useEffect(() => {
+    if (game) {
+      void useStudyPlansStore.getState().load(client, game);
+    } else {
+      useStudyPlansStore.getState().clear();
     }
   }, [client, openGameId, gameEpoch]);
 
@@ -4143,6 +4194,16 @@ export function AppShell({
           alliedStatus={alliedStatus}
           selectedUnitId={unit?.unitId ?? null}
           label={hexLabel}
+          tree={magicTree}
+          plans={studyPlans}
+          viewedTurn={parsed?.header.turnNumber ?? null}
+          saveError={studyPlanError}
+          onSavePlan={(factionId, unitId, goals) =>
+            void saveStudyPlan(factionId, unitId, { goals }, "Could not save this plan.")
+          }
+          onSaveNote={(factionId, unitId, comment) =>
+            void saveStudyPlan(factionId, unitId, { comment }, "Could not save this note.")
+          }
           onDismiss={() => setStudyPlannerOpen(false)}
         />
       ) : null}

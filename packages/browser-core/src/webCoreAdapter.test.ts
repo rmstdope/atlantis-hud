@@ -15,7 +15,11 @@ import {
   type ReportRegion,
   type TradeRoute
 } from "@atlantis/core-client";
-import { createMemoryWebStore, type StoredTurnSnapshot } from "./webStore";
+import {
+  createMemoryWebStore,
+  type StoredStudyPlan,
+  type StoredTurnSnapshot
+} from "./webStore";
 import { createCoreWasmModuleDouble } from "./testing/coreWasmModuleDouble";
 
 /** A minimal, complete `ReportParseResult` - every fake below merges its own fields over this. */
@@ -1091,6 +1095,43 @@ describe("web core adapter", () => {
     expect(await adapter.listStudyPlans(DB, "p")).toEqual([plan]);
   });
 
+  // A row a local build wrote before ah-lyg6.2.3 carried one flat skill and level. IndexedDB has
+  // no migration step, so the read path normalises them; the desktop's 0012 migration does the
+  // same in SQL.
+  it("reads a plan stored before goals as a one-goal queue", async () => {
+    const store = createMemoryWebStore();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+    await store.putStudyPlans(
+      DB,
+      [
+        {
+          databasePath: DB,
+          factionId: "21",
+          unitId: "9001",
+          skill: "FORC",
+          targetLevel: 4,
+          comment: "heading for Gate Lore",
+          updatedAt: "2026-08-07T12:00:00Z"
+        } as unknown as StoredStudyPlan,
+        {
+          databasePath: DB,
+          factionId: "21",
+          unitId: "9002",
+          skill: null,
+          targetLevel: null,
+          comment: "just a note",
+          updatedAt: "2026-08-07T12:00:00Z"
+        } as unknown as StoredStudyPlan
+      ],
+      []
+    );
+
+    const listed = (await adapter.listStudyPlans(DB, "p")) as StudyPlanRecord[];
+
+    expect(listed.map((plan) => plan.goals)).toEqual([[{ skill: "FORC", targetLevel: 4 }], []]);
+    expect(listed.every((plan) => !("skill" in plan) && !("targetLevel" in plan))).toBe(true);
+  });
+
   it("keeps study plans apart per database", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
@@ -1857,8 +1898,7 @@ function aStudyPlan(unitId: string, factionId = "21"): StudyPlanRecord {
   return {
     factionId,
     unitId,
-    skill: "FORC",
-    targetLevel: 4,
+    goals: [{ skill: "FORC", targetLevel: 4 }],
     comment: "heading for Gate Lore",
     updatedAt: "2026-08-07T12:00:00Z"
   };

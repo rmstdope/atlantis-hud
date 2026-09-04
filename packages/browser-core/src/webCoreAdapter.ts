@@ -265,6 +265,27 @@ function requireAdmissible(prepared: PreparedImport): number {
   return prepared.turnNumber;
 }
 
+/**
+ * A row stored before goals existed, read as a one-goal queue.
+ *
+ * The desktop's 0012 migration does this in SQL; IndexedDB has no migration step, so the browser
+ * does it here, on the one path every read takes. Rows like these only exist in a local build -
+ * study plans were never in a release before goals were - so this is a courtesy, not a contract,
+ * and it can be deleted once no such browser is left.
+ */
+function withGoals(
+  plan: StudyPlanRecord & { skill?: string | null; targetLevel?: number | null }
+): StudyPlanRecord {
+  const { skill, targetLevel, ...rest } = plan;
+  if (rest.goals) {
+    return rest;
+  }
+  return {
+    ...rest,
+    goals: skill ? [{ skill, targetLevel: targetLevel ?? null }] : []
+  };
+}
+
 export function createWebCoreAdapter(
   wasm: CoreWasmModule,
   store: WebStore = createWebStore()
@@ -1163,7 +1184,7 @@ export function createWebCoreAdapter(
 
     async listStudyPlans(databasePath: string, gameId: string) {
       const plans = await store.getStudyPlans(databasePath, gameId);
-      return plans.map(({ databasePath: _databasePath, ...plan }) => plan);
+      return plans.map(({ databasePath: _databasePath, ...plan }) => withGoals(plan));
     },
 
     async saveStudyPlans(
