@@ -6824,6 +6824,15 @@ fn known_balance_of<'a>(
         .known_balance_at(StatePhase::Maintenance, unit_id, tag)
 }
 
+/// What `StatePhase::Withdraw` itself added for this unit and tag: the withdrawal, and only the
+/// withdrawal, since no other order settles in that phase. `StatePhase::Market` is the slot
+/// immediately before it, so the difference is exactly what the WITHDRAW arm applied
+/// (`ah-728m.3`).
+fn withdrawn_this_month(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
+    ledger.state.balance_at(StatePhase::Withdraw, unit_id, tag)
+        - ledger.state.balance_at(StatePhase::Market, unit_id, tag)
+}
+
 fn balance_of(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
     ledger
         .state
@@ -7818,13 +7827,17 @@ fn report_shortfalls(
             )
         } else {
             let short_of = counted_item(short, tag, hex, ruleset, plurals);
+            // Both figures count what the unit withdrew this month, exactly as `short` already
+            // does through the phase model and as the silver arm above does with `receipts`
+            // (`ah-728m.3`).
+            let withdrawn = withdrawn_this_month(ledger, unit_id, tag);
             ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_ITEMS,
                 format!(
                     "short {short_of}: this unit can have {} and its orders spend {}",
-                    ordered.holding(tag),
-                    ordered.holding(tag) + short,
+                    ordered.holding(tag) + withdrawn,
+                    ordered.holding(tag) + withdrawn + short,
                 ),
                 at,
             )
@@ -23621,6 +23634,41 @@ BUILD
         assert_eq!(
             finding.message,
             "short $100: this unit can have $600 and its orders spend $700"
+        );
+    }
+
+    /// `ah-728m.3`. `rules/sequenceofevents` runs WITHDRAW before movement and before every
+    /// month-long order, and `rules/withdraw` acquires the goods - so material a withdrawal
+    /// brought in this month funds the orders that spend it, and the shortfall warning that fires
+    /// today goes silent. The navigator chose this knowing that cost.
+    #[test]
+    fn an_order_funded_by_a_withdrawal_is_not_called_short() {
+        let regions = vec![region(vec![unit("2391"), unit("2392")])];
+
+        assert_eq!(
+            codes(&check(
+                regions,
+                "unit 2391\nWITHDRAW 5 IRON\nGIVE 2392 5 IRON\n"
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// The withdrawal is in both of the message's figures, exactly as a silver gift already is in
+    /// the `not-enough-silver` arm's - otherwise the sentence names a "can have" that does not
+    /// describe the orders behind the shortfall (`ah-728m.3`).
+    #[test]
+    fn a_shortfall_counts_the_withdrawal_in_its_figures() {
+        let regions = vec![region(vec![unit("2391"), unit("2392")])];
+
+        let finding = only(check(
+            regions,
+            "unit 2391\nWITHDRAW 5 IRON\nGIVE 2392 8 IRON\n",
+        ));
+        assert_eq!(finding.code.as_str(), "not-enough-items");
+        assert_eq!(
+            finding.message,
+            "short 3 iron: this unit can have 5 and its orders spend 8"
         );
     }
 
