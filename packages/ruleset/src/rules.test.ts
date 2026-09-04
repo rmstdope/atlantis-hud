@@ -8,6 +8,20 @@ const RULES_HTML = readFileSync(
   "utf8"
 );
 
+const ARCANUM_RULES_HTML = readFileSync(
+  fileURLToPath(
+    new URL("../../../tests/fixtures/ruleset/newage-arcanum-rules.html", import.meta.url)
+  ),
+  "utf8"
+);
+
+const TRIDENT_RULES_HTML = readFileSync(
+  fileURLToPath(
+    new URL("../../../tests/fixtures/ruleset/newage-trident-rules.html", import.meta.url)
+  ),
+  "utf8"
+);
+
 /**
  * These assertions are the rules page's own sentences, not our opinion of Atlantis.
  *
@@ -198,5 +212,75 @@ describe("parseMovementRules", () => {
     expect(reworded).not.toBe(RULES_HTML);
 
     expect(() => parseMovementRules(reworded)).toThrowError(/sailing/);
+  });
+
+  /**
+   * Atlantis New Age states two tiers in one sentence: "…which cost a riding or walking unit more
+   * to enter: 2 movement points for forest, mountain, hill, swamp, jungle, tundra, cavern,
+   * underforest, tunnels, grotto, deepforest and chasm; 4 movement points for volcano." A shape
+   * carrying one premium cannot hold a volcano at four.
+   */
+  it("reads a tiered terrain sentence, pricing a volcano above a forest", () => {
+    const rules = parseMovementRules(ARCANUM_RULES_HTML);
+
+    expect(rules.terrainCosts.normal).toBe(1);
+    expect(rules.terrainCosts.premiums).toEqual({
+      forest: 2,
+      mountain: 2,
+      hill: 2,
+      swamp: 2,
+      jungle: 2,
+      tundra: 2,
+      cavern: 2,
+      underforest: 2,
+      tunnels: 2,
+      grotto: 2,
+      deepforest: 2,
+      chasm: 2,
+      volcano: 4
+    });
+    expect(rules.terrainCosts.premiumFor).toEqual(["ride", "walk"]);
+    expect(rules.provenance.terrainCosts).toContain("4 movement points for volcano");
+    // The sentence that follows is about weather, which this ruleset shape does not model. A
+    // provenance string that swallowed it would be quoting a rule nothing here reads.
+    expect(rules.provenance.terrainCosts).not.toContain("Weather is reported");
+  });
+
+  /**
+   * What made this bead small: five of the six movement sentences are word for word what the New
+   * Origins page says, so only the terrain one needed a second wording. A later reword of any of
+   * them should fail here.
+   */
+  it("reads the other five movement sentences off a New Age page unchanged", () => {
+    const rules = parseMovementRules(ARCANUM_RULES_HTML);
+
+    expect(rules.movementPoints).toEqual({ walk: 2, ride: 4, fly: 4 });
+    expect(rules.road).toEqual({ divisor: 2, minimumCost: 1 });
+    expect(rules.ocean.terrain).toBe("ocean");
+    expect(rules.sailing.flatCost).toBe(1);
+    expect(rules.sailing.landNeedsCoast).toBe(true);
+  });
+
+  /**
+   * A tier that does not parse must stop the run. Skipping it is a volcano silently costing one,
+   * which is the failure this whole shape exists to prevent.
+   */
+  it("fails loudly when a tier clause is not a cost and a list", () => {
+    // The page wraps its lines, so the clause is matched as the fixture actually spells it.
+    const reworded = ARCANUM_RULES_HTML.replace(
+      "chasm; 4\n      movement points for volcano.",
+      "chasm; volcano is expensive."
+    );
+    expect(reworded).not.toBe(ARCANUM_RULES_HTML);
+
+    expect(() => parseMovementRules(reworded)).toThrowError(RulesetScrapeError);
+    expect(() => parseMovementRules(reworded)).toThrowError(/volcano is expensive/);
+  });
+
+  /** A different world of the same variant: what proves the parser reads a wording, not a page. */
+  it("reads the Trident world's rules page the same way", () => {
+    expect(parseMovementRules(TRIDENT_RULES_HTML).terrainCosts).toEqual(
+      parseMovementRules(ARCANUM_RULES_HTML).terrainCosts
+    );
   });
 });

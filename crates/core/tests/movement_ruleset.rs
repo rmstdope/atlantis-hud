@@ -325,6 +325,36 @@ fn rejects_a_premium_below_the_ordinary_cost() {
     assert!(matches!(error, RulesetError::Unusable(_)));
 }
 
+/// New Age charges four for a volcano where forest costs two, which is the case `TerrainCosts` was
+/// widened for. The committed ruleset states one tier, so the second is spliced in here.
+#[test]
+fn costs_a_terrain_that_is_dearer_than_the_doubled_one() {
+    let two_tiers = RULESET.replace("\"forest\": 2", "\"forest\": 2,\n        \"volcano\": 4");
+    assert_ne!(two_tiers, RULESET, "the fixture should have been altered");
+    let ruleset = Ruleset::from_json(&two_tiers).expect("should load");
+
+    assert_eq!(ruleset.terrain_cost("volcano", MovementMode::Walk), 4);
+    assert_eq!(ruleset.terrain_cost("Volcano", MovementMode::Ride), 4);
+    // The premium still applies to no other mode, whatever its size.
+    assert_eq!(ruleset.terrain_cost("volcano", MovementMode::Fly), 1);
+    // And the first tier is untouched by the second.
+    assert_eq!(ruleset.terrain_cost("forest", MovementMode::Walk), 2);
+}
+
+/// A terrain costing nothing makes a route free, which is the one thing no cost check may allow.
+#[test]
+fn rejects_a_terrain_priced_at_zero() {
+    let broken = RULESET.replace("\"forest\": 2", "\"forest\": 0");
+    assert_ne!(broken, RULESET, "the fixture should have been altered");
+
+    let error = Ruleset::from_json(&broken).expect_err("should refuse");
+    assert!(matches!(error, RulesetError::Unusable(_)));
+    assert!(
+        error.to_string().contains("forest"),
+        "the message should name the terrain, got {error}"
+    );
+}
+
 /// The water terrain is captured by a `(\w+)` group in the scraper, so a reworded page could put
 /// any word here. Naming a terrain that also costs double is the tell-tale of a mis-capture: no
 /// ruleset charges a walking premium for a hex nothing can walk into.
