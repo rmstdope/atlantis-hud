@@ -1406,6 +1406,10 @@ impl Working {
             if let Some(set) = super::forms::read_flag(arguments) {
                 set_flag(&mut self.units[active].unit.flags, "behind", set);
             }
+        } else if command.is("share") {
+            if let Some(set) = super::forms::read_flag(arguments) {
+                set_flag(&mut self.units[active].unit.flags, "sharing", set);
+            }
         } else if command.is("enter") {
             if let Some(structure) = super::forms::read_only_number(arguments) {
                 self.board(active, BoardingOrder::Enter(structure.to_string()));
@@ -2687,6 +2691,29 @@ mod tests {
         assert!(!unit.unit.on_guard, "avoiding cancels the guard");
         assert!(unit.unit.flags.iter().any(|flag| flag == "avoiding"));
         assert!(!unit.unit.flags.iter().any(|flag| flag == "guarding"));
+    }
+
+    /// `rules/sequenceofevents` settles SHARE in the turn's first batch, so a unit ordering it
+    /// this turn previews as sharing - and the Flags cell agrees with the SILVER column.
+    #[test]
+    fn a_share_order_this_turn_shows_in_the_previewed_flags() {
+        let response = preview("unit 900\nSHARE 1\n");
+
+        let unit = only_unit(&response);
+        assert!(unit.unit.flags.iter().any(|flag| flag == "sharing"));
+        assert_eq!(change(unit, "flags").original, "behind");
+    }
+
+    #[test]
+    fn a_share_0_this_turn_clears_the_previewed_sharing_flag() {
+        let response = preview_over(&report_with_a_flagged_former(), "unit 900\nSHARE 0\n");
+
+        let unit = only_unit(&response);
+        assert!(
+            !unit.unit.flags.iter().any(|flag| flag == "sharing"),
+            "SHARE 0 takes the reported flag away: {:?}",
+            unit.unit.flags
+        );
     }
 
     #[test]
