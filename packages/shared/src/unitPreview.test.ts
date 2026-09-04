@@ -450,7 +450,7 @@ describe("formatItems and itemsTooltip", () => {
 
     expect(itemsTooltip(row, silver)).toBe(
       "was: 5 IRON, 350 SILV\n" +
-        "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "Includes 5 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
         "This unit has men for 5 swords: GIVE and TAKE resolve before production, so the men that leave it this month do not work for it.\n" +
         "This unit has materials for 5 swords, not the 8 its skill and tools could make."
     );
@@ -474,7 +474,7 @@ describe("formatItems and itemsTooltip", () => {
 
     expect(itemsTooltip(row, silver)).toBe(
       "was: 5 IRON, 350 SILV\n" +
-        "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "Includes 5 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
         "This unit has materials for 5 swords, not the 8 its skill and tools could make."
     );
   });
@@ -494,7 +494,7 @@ describe("formatItems and itemsTooltip", () => {
 
     expect(itemsTooltip(row, silver)).toBe(
       "was: 0 SWOR\n" +
-        "Includes 8 SWOR this unit will produce. Production resolves last, so they cannot be spent this month."
+        "Includes 8 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month."
     );
   });
 
@@ -520,7 +520,7 @@ describe("formatItems and itemsTooltip", () => {
 
     expect(itemsTooltip(row, silver)).toBe(
       "was: 20 IRON\n" +
-        "Includes 8 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "Includes 8 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
         "Requested: 10 swords. This month: 8.\n" +
         "Limited by skill and tools. The remaining 2 carry over."
     );
@@ -544,7 +544,7 @@ describe("formatItems and itemsTooltip", () => {
 
     expect(itemsTooltip(row, silver)).toBe(
       "was: 0 SWOR\n" +
-        "Includes 3 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "Includes 3 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
         "Requested: 3 swords. This month: 3."
     );
   });
@@ -594,7 +594,7 @@ describe("formatItems and itemsTooltip", () => {
 
     expect(itemsTooltip(row, silver)).toBe(
       "was: 0 GRAI\n" +
-        "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "Includes 5 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
         "This unit has silver for 19 grain, not the 30 this market offers.\n" +
         "This unit has materials for 5 swords, not the 8 its skill and tools could make."
     );
@@ -818,7 +818,7 @@ describe("formatItems and itemsTooltip", () => {
 
     expect(itemsTooltip(row, silver)).toBe(
       "was: 5 IRON, 30 WOOD\n" +
-        "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "Includes 5 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
         "This unit has materials for 5 swords, not the 8 its skill and tools could make.\n" +
         "Spends 15 WOOD on Building 4 this month.\n" +
         "This unit has wood for 15 units of work, not the 30 its men could do."
@@ -965,7 +965,7 @@ describe("formatItems and itemsTooltip", () => {
 
     expect(itemsTooltip(row, silver)).toBe(
       "was: 5 IRON, 30 WOOD\n" +
-        "Includes 5 SWOR this unit will produce. Production resolves last, so they cannot be spent this month.\n" +
+        "Includes 5 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
         "Includes 30 STON transported from unit 6857. Transport resolves last, so they cannot be spent this month.\n" +
         "This unit has materials for 5 swords, not the 8 its skill and tools could make.\n" +
         "Spends 15 WOOD on Building 4 this month.\n" +
