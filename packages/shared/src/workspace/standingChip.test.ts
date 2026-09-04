@@ -9,6 +9,12 @@ describe("STANDING_CHIP", () => {
     expect(STANDING_CHIP.known).toBe(
       "border-standing-known-edge bg-standing-known-fill text-standing-known-ink"
     );
+    expect(STANDING_CHIP.maxed).toBe(
+      "border-standing-maxed-edge bg-standing-maxed-fill text-standing-maxed-ink"
+    );
+    expect(STANDING_CHIP.open).toBe(
+      "border-standing-open-edge bg-standing-open-fill text-standing-open-ink"
+    );
   });
 
   it("gives a locked skill no chip at all", () => {

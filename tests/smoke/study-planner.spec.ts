@@ -19,7 +19,7 @@ test("F4 opens the planner, arrows walk it, and Escape closes it", async ({ page
   await page.keyboard.press("F4");
   const dialog = page.getByTestId("study-planner-dialog");
   await expect(dialog).toBeVisible();
-  await expect(page.getByTestId(`study-planner-mage-${MAGE}`)).toBeVisible();
+  await expect(page.getByTestId(`study-planner-mage-95/${MAGE}`)).toBeVisible();
   await expect(page.getByTestId("study-planner-group-95")).toContainText(
     "Borg TNG (95) — your faction, turn 71"
   );

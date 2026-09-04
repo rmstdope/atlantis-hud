@@ -95,7 +95,7 @@ export function StudyPlannerDialog({
       return;
     }
     const row = list.current?.querySelector(
-      `[data-testid="study-planner-mage-${CSS.escape(picked.unitId)}"]`
+      `[data-testid="study-planner-mage-${CSS.escape(picked.key)}"]`
     );
     row?.scrollIntoView({ block: "nearest" });
   }, [picked]);
@@ -157,6 +157,9 @@ export function StudyPlannerDialog({
           </button>
         </div>
 
+        {summaryLine === null && notice === null ? (
+          <div />
+        ) : (
         <div className="border-b border-edge px-2 py-1 text-ink-dim">
           {summaryLine === null ? null : (
             <span data-testid="study-planner-summary">{summaryLine}</span>
@@ -170,6 +173,7 @@ export function StudyPlannerDialog({
             </span>
           )}
         </div>
+        )}
 
         {picked === null ? (
           <div data-testid="study-planner-empty" className="min-h-0 overflow-y-auto p-3">
@@ -215,7 +219,7 @@ export function StudyPlannerList({
       role="listbox"
       aria-label="Mages"
       tabIndex={0}
-      aria-activedescendant={`study-planner-option-${picked.unitId}`}
+      aria-activedescendant={`study-planner-option-${picked.key}`}
       onKeyDown={(event) => {
         if (onMove(event.key)) {
           event.preventDefault();
@@ -235,14 +239,24 @@ export function StudyPlannerList({
             {group.mages.map((mage) => (
               <li
                 key={mage.key}
-                id={`study-planner-option-${mage.unitId}`}
+                // Keyed on `mage.key`, not on the unit number: a report and an allied sheet can
+                // carry the same one, and `aria-activedescendant` and the scroll below would then
+                // both address the wrong row.
+                id={`study-planner-option-${mage.key}`}
                 role="option"
-                data-testid={`study-planner-mage-${mage.unitId}`}
+                data-testid={`study-planner-mage-${mage.key}`}
                 aria-selected={mage.key === picked.key}
                 onClick={() => onPick(mage.key)}
-                className={`cursor-pointer px-2 py-0.5 ${
-                  mage.key === picked.key ? "bg-panel text-ink" : "text-ink-soft hover:text-ink"
-                } ${group.stale ? "bg-panel" : ""}`}
+                // The stale tint is applied to unselected rows only: appended unconditionally it
+                // would give every row of a stale group the selected row's background, and the
+                // selection would come down to the ink alone.
+                className={`cursor-pointer border-l-2 px-2 py-0.5 ${
+                  mage.key === picked.key
+                    ? "border-select bg-panel text-ink"
+                    : `border-transparent text-ink-soft hover:text-ink ${
+                        group.stale ? "bg-panel" : ""
+                      }`
+                }`}
               >
                 <span>
                   {mage.name} ({mage.unitId})

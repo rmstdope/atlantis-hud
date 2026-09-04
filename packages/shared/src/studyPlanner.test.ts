@@ -124,6 +124,33 @@ describe("plannerGroups", () => {
     expect(mage.knows.find((skill) => skill.tag === "FORC")?.projected).toBeNull();
   });
 
+  it("ages every mage of a faction by that faction's newest sheet", () => {
+    const groups = groupsOf({
+      alliedMages: [
+        alliedRecord("17", "Creeping Death", "300", 68, { SPIR: [3, 270] }),
+        alliedRecord("17", "Creeping Death", "301", 70, { SPIR: [3, 270] })
+      ]
+    });
+    // The heading says "turn 70 · 1 turn old"; a detail sentence saying "turn 68, 3 turns old"
+    // about a row underneath it would be a second answer to the same question.
+    expect(groups[1].heading).toBe("Creeping Death (17) — turn 70 · 1 turn old");
+    expect(groups[1].mages.map((mage) => mage.monthsUnreported)).toEqual([1, 1]);
+    expect(groups[1].mages.map((mage) => mage.sheetTurn)).toEqual([70, 70]);
+  });
+
+  it("orders two skills at one level by tag, which is what the row's summary names", () => {
+    const mage = plannerGroups({
+      report: report(),
+      ownMages: [ownStanding("890", "Tied", { SPIR: [3, 180], PATT: [3, 180] })],
+      alliedMages: [],
+      tree,
+      index,
+      viewedTurn: 71
+    })[0].mages[0];
+    expect(mage.knows.map((skill) => skill.tag)).toEqual(["PATT", "SPIR"]);
+    expect(mage.summary.startsWith("pattern 3 · ")).toBe(true);
+  });
+
   it("never estimates one of your own mages", () => {
     const mage = groupsOf({}).at(0)?.mages.find((row) => row.unitId === "881");
     expect(mage?.monthsUnreported).toBe(0);

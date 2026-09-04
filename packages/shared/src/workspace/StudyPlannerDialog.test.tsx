@@ -86,7 +86,19 @@ describe("StudyPlannerList", () => {
   it("selects exactly the picked mage", () => {
     expect(markup.match(/aria-selected="true"/g)).toHaveLength(1);
     expect(markup.match(/aria-selected="false"/g)).toHaveLength(3);
-    expect(markup).toContain('data-testid="study-planner-mage-881"');
+    // Keyed on faction and unit together, so a report and an allied sheet carrying the same
+    // unit number cannot address one another's row.
+    expect(markup).toContain('data-testid="study-planner-mage-95/881"');
+    expect(markup).toContain('data-testid="study-planner-mage-17/300"');
+  });
+
+  it("keeps the selection visible inside a stale group", () => {
+    const staleSelected = renderToStaticMarkup(
+      <StudyPlannerList groups={GROUPS} picked={mageBy("300")} onPick={() => {}} onMove={() => false} />
+    );
+    // The stale tint is on unselected rows only, so it cannot swallow the selected row's own.
+    expect(staleSelected).toContain("border-select bg-panel text-ink");
+    expect(staleSelected.match(/border-select/g)).toHaveLength(1);
   });
 
   it("gives each row its summary", () => {

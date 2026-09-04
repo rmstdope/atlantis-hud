@@ -179,16 +179,18 @@ export function plannerGroups(input: {
 
   if (input.ownMages.length > 0) {
     const label = factionLabelOf(input.report) ?? OWN_FACTION_LABEL;
-    const turn = input.viewedTurn === null ? "" : `, turn ${input.viewedTurn}`;
-    const role = label === OWN_FACTION_LABEL ? "" : " — your faction";
+    // "Borg TNG (95) — your faction, turn 71"; "Your faction — turn 71" when the report names no
+    // faction, because "Your faction — your faction" would be absurd; and either without the turn
+    // when the report carries no turn number.
+    const named = label !== OWN_FACTION_LABEL;
+    const role = named ? " — your faction" : "";
+    const turn =
+      input.viewedTurn === null ? "" : `${named ? ", " : " — "}turn ${input.viewedTurn}`;
     groups.push({
       factionId: input.report?.header.factionId ?? "",
       factionLabel: label,
       source: "own",
-      heading:
-        label === OWN_FACTION_LABEL
-          ? `${label}${turn === "" ? "" : ` — turn ${input.viewedTurn}`}`
-          : `${label}${role}${turn}`,
+      heading: `${label}${role}${turn}`,
       stale: false,
       mages: input.ownMages.map((standing) =>
         plannerMage({
@@ -219,11 +221,13 @@ export function plannerGroups(input: {
           factionLabel: row.factionLabel,
           tree: input.tree,
           skills: record.unit.skills,
-          sheetTurn: record.sheetTurn,
-          // The faction's own row, not this record's: `mageSheetRows` floors the age at zero, so a
-          // sheet ahead of the viewed turn is never projected backwards.
-          monthsUnreported:
-            input.viewedTurn === null ? 0 : Math.max(0, input.viewedTurn - record.sheetTurn)
+          // The faction's own row, not this record's, for both: the heading says how old the
+          // news about this faction is, and a detail sentence that disagreed with the heading
+          // above it would be a second answer to a question the navigator settled once.
+          // `mageSheetRows` floors the age at zero, so a sheet ahead of the viewed turn is never
+          // projected backwards.
+          sheetTurn: row.sheetTurn,
+          monthsUnreported: row.turnsOld
         })
       )
     });
@@ -244,14 +248,14 @@ export function plannerSummaryLine(groups: readonly PlannerGroup[]): string | nu
     return null;
   }
   const mages = `${total} mage${total === 1 ? "" : "s"}`;
-  const fromAllies = `${allied} from ${allies.length} all${allies.length === 1 ? "y" : "ies"}`;
+  const allyWord = `${allies.length} all${allies.length === 1 ? "y" : "ies"}`;
   if (allied === 0) {
     return `${mages}, all yours`;
   }
   if (own === 0) {
-    return `${mages} from ${allies.length} all${allies.length === 1 ? "y" : "ies"}`;
+    return `${mages} from ${allyWord}`;
   }
-  return `${mages} — ${own} yours, ${fromAllies}`;
+  return `${mages} — ${own} yours, ${allied} from ${allyWord}`;
 }
 
 /** The sentence above a stale mage's detail, or null when he is not from a stale sheet. */
