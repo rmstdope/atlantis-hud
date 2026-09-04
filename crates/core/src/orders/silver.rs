@@ -2979,6 +2979,10 @@ pub fn feed_after_silver(
 /// One unit's unpayable maintenance, for the faction-wide settlement of step 7.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpkeepClaim {
+    /// The hex the claiming unit stands in. Carried because the settlement spans hexes and a unit
+    /// *number* does not identify a unit across them: `rules/form` scopes a FORM alias to its
+    /// region, so two hexes may each hold a `new-1` (`ah-9o0c.3`).
+    pub region_id: String,
     pub unit_id: String,
     /// Silver of this unit's *maintenance* that its own silver cannot cover, after every earlier
     /// step of the payment order has already been applied. Never more than the fee itself: what a
@@ -2991,11 +2995,12 @@ pub struct UpkeepClaim {
 /// Faction-wide, like the fund itself: one settlement for the whole report, never one per hex.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UpkeepSettlement {
-    /// Per unit, the maintenance the fund paid. **Empty unless the fund reaches every claimant** -
-    /// when it is short, which unit it fed is undeterminable, so it feeds none of them here.
-    pub covered: BTreeMap<String, i64>,
+    /// Per unit, per hex, the maintenance the fund paid. **Empty unless the fund reaches every
+    /// claimant** - when it is short, which unit it fed is undeterminable, so it feeds none of
+    /// them here.
+    pub covered: BTreeMap<super::semantics::UnitKey, i64>,
     /// Every unit that owed maintenance it could not pay, whether or not the fund reached it.
-    pub claimants: BTreeSet<String>,
+    pub claimants: BTreeSet<super::semantics::UnitKey>,
     /// What the claimants owed between them.
     pub owed: i64,
     /// What the fund had for them, after this month's `CLAIM` orders took theirs. Never negative.
@@ -3042,7 +3047,12 @@ pub fn settle_unclaimed(claims: &[UpkeepClaim], available: Option<i64>) -> Upkee
     let covered = if owed <= available {
         claiming
             .clone()
-            .map(|claim| (claim.unit_id.clone(), claim.short))
+            .map(|claim| {
+                (
+                    super::semantics::unit_key(&claim.region_id, &claim.unit_id),
+                    claim.short,
+                )
+            })
             .collect()
     } else {
         BTreeMap::new()
@@ -3050,7 +3060,9 @@ pub fn settle_unclaimed(claims: &[UpkeepClaim], available: Option<i64>) -> Upkee
 
     UpkeepSettlement {
         covered,
-        claimants: claiming.map(|claim| claim.unit_id.clone()).collect(),
+        claimants: claiming
+            .map(|claim| super::semantics::unit_key(&claim.region_id, &claim.unit_id))
+            .collect(),
         owed,
         available,
         short: (owed - available).max(0),
@@ -10231,20 +10243,48 @@ mod faction_food_tests {
 mod unclaimed_fund_tests {
     use super::*;
 
+    use crate::orders::semantics::{unit_key, UnitKey};
+
+    const HEX: &str = "1:7,53";
+
     fn claim(id: &str, short: i64) -> UpkeepClaim {
+        claim_in(HEX, id, short)
+    }
+
+    fn claim_in(region_id: &str, id: &str, short: i64) -> UpkeepClaim {
         UpkeepClaim {
+            region_id: region_id.to_string(),
             unit_id: id.to_string(),
             short,
         }
+    }
+
+    fn key(id: &str) -> UnitKey {
+        unit_key(HEX, id)
+    }
+
+    /// Two hexes' identically numbered units are two claimants, and the fund pays each its own
+    /// shortfall (`rules/form`, `ah-9o0c.3`).
+    #[test]
+    fn identically_numbered_units_in_two_hexes_claim_separately() {
+        let claims = [
+            claim_in("1:7,53", "new-1", 20),
+            claim_in("1:8,54", "new-1", 10),
+        ];
+        let settled = settle_unclaimed(&claims, Some(8450));
+        assert_eq!(settled.covered.get(&unit_key("1:7,53", "new-1")), Some(&20));
+        assert_eq!(settled.covered.get(&unit_key("1:8,54", "new-1")), Some(&10));
+        assert_eq!(settled.claimants.len(), 2);
+        assert_eq!(settled.owed, 30);
     }
 
     #[test]
     fn the_fund_pays_every_unit_that_cannot_pay_its_own_upkeep() {
         let claims = [claim("a", 60), claim("b", 60), claim("c", 40)];
         let settled = settle_unclaimed(&claims, Some(8450));
-        assert_eq!(settled.covered.get("a"), Some(&60));
-        assert_eq!(settled.covered.get("b"), Some(&60));
-        assert_eq!(settled.covered.get("c"), Some(&40));
+        assert_eq!(settled.covered.get(&key("a")), Some(&60));
+        assert_eq!(settled.covered.get(&key("b")), Some(&60));
+        assert_eq!(settled.covered.get(&key("c")), Some(&40));
         assert_eq!(settled.owed, 160);
         assert_eq!(settled.available, 8450);
         assert_eq!(settled.short, 0);
@@ -10292,10 +10332,10 @@ mod unclaimed_fund_tests {
         let claims = [claim("a", 0), claim("b", -20), claim("c", 40)];
         let settled = settle_unclaimed(&claims, Some(8450));
         assert_eq!(settled.claimants.len(), 1);
-        assert!(settled.claimants.contains("c"));
+        assert!(settled.claimants.contains(&key("c")));
         assert_eq!(settled.owed, 40);
-        assert_eq!(settled.covered.get("a"), None);
-        assert_eq!(settled.covered.get("b"), None);
+        assert_eq!(settled.covered.get(&key("a")), None);
+        assert_eq!(settled.covered.get(&key("b")), None);
     }
 }
 
