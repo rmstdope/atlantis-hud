@@ -26,6 +26,13 @@ import {
   unitRowKey,
   unitRowSelector,
   EXTRA_COLUMN_SHARES,
+  HIDEABLE_COLUMNS,
+  allColumnsShown,
+  isHideable,
+  shownColumns,
+  shareScaleFor,
+  mergeShownOrder,
+  sortAfterHiding,
   type SortState,
   type UnitColumn
 } from "./unitTable";
@@ -921,5 +928,76 @@ describe("unitRowSelector", () => {
     expect(unitRowSelector('1:6,52', 'ne"w')).toBe(
       '[data-testid="unit-row-ne\\"w"][data-region-id="1:6,52"]'
     );
+  });
+});
+
+describe("column visibility (ah-20di)", () => {
+  it("shownColumns drops the hidden columns and always keeps own, Id and Unit", () => {
+    const shown = { ...allColumnsShown(), structure: false, skills: false };
+    expect(shownColumns([...UNIT_COLUMNS], shown)).toEqual(
+      UNIT_COLUMNS.filter((column) => column !== "structure" && column !== "skills")
+    );
+    const result = shownColumns([...UNIT_COLUMNS], shown);
+    expect(result).toContain("own");
+    expect(result).toContain("unitId");
+    expect(result).toContain("name");
+    expect(HIDEABLE_COLUMNS).not.toContain("own" as never);
+    expect(HIDEABLE_COLUMNS).not.toContain("unitId" as never);
+    expect(HIDEABLE_COLUMNS).not.toContain("name" as never);
+  });
+
+  it("allColumnsShown hands back a fresh record each call", () => {
+    const first = allColumnsShown();
+    first.skills = false;
+    expect(allColumnsShown().skills).toBe(true);
+  });
+
+  it("isHideable answers for every column", () => {
+    expect(isHideable("skills")).toBe(true);
+    expect(isHideable("name")).toBe(false);
+    expect(isHideable("own")).toBe(false);
+    expect(isHideable("unitId")).toBe(false);
+  });
+
+  it("shareScaleFor matches what sharesFor actually applied", () => {
+    expect(shareScaleFor([...UNIT_COLUMNS], null, 0)).toBe(1);
+    const visible = shownColumns([...UNIT_COLUMNS], {
+      ...allColumnsShown(),
+      structure: false
+    });
+    const applied = sharesFor(visible, null, 0);
+    const scale = shareScaleFor(visible, null, 0);
+    for (const column of visible) {
+      expect(applied[column]).toBeCloseTo(shareOf(column, null) * scale, 12);
+    }
+    expect(shareScaleFor([], null, 0)).toBe(1);
+    expect(shareScaleFor(visible, null, 1)).toBe(1);
+  });
+
+  it("mergeShownOrder keeps a hidden column at the index it had", () => {
+    const full = [...UNIT_COLUMNS] as UnitColumn[];
+    const shown = { ...allColumnsShown(), movement: false };
+    const shownOrder = shownColumns(full, shown);
+    const men = shownOrder.indexOf("men");
+    const flags = shownOrder.indexOf("flags");
+    const after = [...shownOrder];
+    after[men] = "flags";
+    after[flags] = "men";
+    const merged = mergeShownOrder(full, after);
+    expect(merged.indexOf("movement")).toBe(full.indexOf("movement"));
+    expect(merged.indexOf("flags")).toBeLessThan(merged.indexOf("men"));
+    expect([...merged].sort()).toEqual([...full].sort());
+  });
+
+  it("sortAfterHiding falls back to the name column and leaves the rest of the sort alone", () => {
+    const sort: SortState = { column: "structure", direction: "desc", groupOwnFirst: false };
+    expect(sortAfterHiding(sort, { ...allColumnsShown(), structure: false })).toEqual({
+      column: "name",
+      direction: "desc",
+      groupOwnFirst: false
+    });
+    expect(sortAfterHiding(sort, allColumnsShown())).toEqual(sort);
+    const byName: SortState = { column: "name", direction: "asc", groupOwnFirst: true };
+    expect(sortAfterHiding(byName, { ...allColumnsShown(), skills: false })).toEqual(byName);
   });
 });

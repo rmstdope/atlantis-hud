@@ -700,3 +700,91 @@ export function dropBoundaryX(
   }
   return boundary;
 }
+
+/**
+ * The columns a player may hide (ah-20di). `own` is a 24px marker with no header to read, and
+ * `unitId` and `name` are what identifies a row, so all three are always drawn - which is also
+ * why "every column hidden" is unreachable and needs no empty state.
+ */
+export const HIDEABLE_COLUMNS = [
+  "faction",
+  "men",
+  "movement",
+  "flags",
+  "skills",
+  "items",
+  "structure",
+  "longOrder",
+  "silver"
+] as const;
+
+export type HideableColumn = (typeof HIDEABLE_COLUMNS)[number];
+
+/** Which hideable columns are drawn. Every other column is drawn always. */
+export type ColumnVisibility = Record<HideableColumn, boolean>;
+
+const HIDEABLE_SET = new Set<string>(HIDEABLE_COLUMNS);
+
+/**
+ * The shipped answer: everything shown. A fresh record each call, never a shared object - the
+ * store hands it to `reconcile`, which spreads it, and a shared mutable default is one accidental
+ * write away from changing everybody's.
+ */
+export function allColumnsShown(): ColumnVisibility {
+  return Object.fromEntries(HIDEABLE_COLUMNS.map((column) => [column, true])) as ColumnVisibility;
+}
+
+export function isHideable(column: UnitColumn): column is HideableColumn {
+  return HIDEABLE_SET.has(column);
+}
+
+/** `order` with the hidden columns taken out, in the same relative order. */
+export function shownColumns(order: ColumnOrder, shown: ColumnVisibility): ColumnOrder {
+  return order.filter((column) => !isHideable(column) || shown[column]);
+}
+
+/**
+ * What one stored share is worth on screen - the exact factor `sharesFor` applies, so a resize or
+ * a reorder measures against the table the columns are actually drawn in. Arguments and meaning
+ * match `sharesFor`, branch for branch: a scale that disagreed with the render would make every
+ * drag overshoot, and smoothly enough to read as a feel problem rather than a bug.
+ */
+export function shareScaleFor(
+  visible: readonly UnitColumn[],
+  shares: ColumnShares | null,
+  extra: number
+): number {
+  if (extra <= 0 && visible.length === UNIT_COLUMNS.length) {
+    return 1;
+  }
+  const total = visible.reduce((sum, column) => sum + shareOf(column, shares), 0);
+  const room = 1 - extra;
+  if (total <= 0 || room <= 0) {
+    return 1;
+  }
+  return room / total;
+}
+
+/**
+ * A reorder performed on the shown columns, folded back into the full stored order: a hidden
+ * column keeps the array index it had, and the shown columns fill the remaining slots in their
+ * new relative order.
+ */
+export function mergeShownOrder(full: ColumnOrder, shownAfter: ColumnOrder): ColumnOrder {
+  const moving = new Set<string>(shownAfter);
+  const queue = [...shownAfter];
+  return full.map((column) => (moving.has(column) ? (queue.shift() as UnitColumn) : column));
+}
+
+/**
+ * The sort to actually apply: a sort on a hidden column falls back to `DEFAULT_SORT.column`
+ * (`name`, which is never hideable), keeping the direction and the own-first grouping. Derived
+ * per render rather than written back, so showing the column again restores its sort.
+ */
+export function sortAfterHiding(sort: SortState, shown: ColumnVisibility): SortState {
+  const column = sort.column as UnitColumn;
+  if (!isHideable(column) || shown[column]) {
+    return sort;
+  }
+  return { ...sort, column: DEFAULT_SORT.column };
+}
