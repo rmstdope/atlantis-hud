@@ -292,17 +292,6 @@ pub struct Finding {
 
 /// Where the report shows each unit, by unit number, across every region it covers.
 ///
-/// A unit's identity across the whole report: the hex it stands in, then its number.
-///
-/// A unit *number* is not unique report-wide. `effects::formed_unit` mints a formed unit as
-/// `new-{alias}`, and `rules/form` scopes an alias to its region - so two hexes may each write
-/// `FORM 1` and both units are called `new-1`. Every map that spans hexes keys on this pair.
-pub(crate) type UnitKey = (String, String);
-
-pub(crate) fn unit_key(region_id: &str, unit_id: &str) -> UnitKey {
-    (region_id.to_string(), unit_id.to_string())
-}
-
 /// Built once for the whole report rather than per hex, because the point of the lookup is to tell
 /// a mistyped unit number from a real unit standing somewhere else, and only the second of those
 /// is answerable from outside the hex. Every unit the report prints is in here, ours and any
@@ -315,6 +304,19 @@ fn where_the_report_shows_each_unit(report: &ParsedReport) -> BTreeMap<&str, &Re
         }
     }
     located
+}
+
+/// A unit's identity across the whole report: the hex it stands in, then its number.
+///
+/// A unit *number* is not unique report-wide. `effects::formed_unit` mints a formed unit as
+/// `new-{alias}`, and `rules/form` scopes an alias to its region - so two hexes may each write
+/// `FORM 1` and both units are called `new-1`. Every map that spans hexes keys on this pair
+/// (`ah-9o0c.1`).
+pub(crate) type UnitKey = (String, String);
+
+/// One unit's [`UnitKey`]: the hex it stands in, then its number.
+pub(crate) fn unit_key(region_id: &str, unit_id: &str) -> UnitKey {
+    (region_id.to_string(), unit_id.to_string())
 }
 
 /// Every unit the report prints, by unit number - the unit itself rather than its region.
@@ -11406,10 +11408,13 @@ mod tests {
         effects: &'a BTreeMap<UnitKey, UnitItemEffects>,
         unit_id: &str,
     ) -> Option<&'a UnitItemEffects> {
-        effects
-            .iter()
-            .find(|((_, id), _)| id == unit_id)
-            .map(|(_, effects)| effects)
+        let mut matching = effects.iter().filter(|((_, id), _)| id == unit_id);
+        let first = matching.next();
+        assert!(
+            matching.next().is_none(),
+            "two hexes hold a unit numbered {unit_id}; ask by hex instead"
+        );
+        first.map(|(_, effects)| effects)
     }
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
