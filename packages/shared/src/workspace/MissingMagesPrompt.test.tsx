@@ -60,9 +60,12 @@ describe("MissingMagesPrompt", () => {
     expect(html.match(/<li/gu)).toHaveLength(6);
   });
 
-  it("disables discard while the workspace is busy", () => {
-    // The attribute, not the `disabled:opacity-50` class both renders carry.
-    expect(markup(PENDING, true)).toContain('data-testid="missing-mages-discard" disabled=""');
+  it("disables both answers while the workspace is busy", () => {
+    // The attribute, not the `disabled:opacity-50` class both renders carry. Keep writes nothing,
+    // but a box where one of two answers greys out mid-write reads as broken.
+    const busy = markup(PENDING, true);
+    expect(busy).toContain('data-testid="missing-mages-discard" disabled=""');
+    expect(busy).toContain('data-testid="missing-mages-keep" disabled=""');
     expect(markup(PENDING, false)).not.toContain('disabled=""');
   });
 });

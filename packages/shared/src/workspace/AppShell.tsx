@@ -1,4 +1,5 @@
 import type {
+  AlliedMageRecord,
   CaretCompletions,
   ArmyRecord,
   CoreClient,
@@ -62,7 +63,7 @@ import {
   type MemoryOutcome
 } from "../gameMemory";
 import { isOlderTurn } from "../reportLoadDecision";
-import { classifyReportImport } from "../mapExportImport";
+import { classifyReportImport, type ReportImportSource } from "../mapExportImport";
 import {
   factionLabelOf,
   firstUnitIn,
@@ -124,12 +125,11 @@ import { useArmiesStore } from "../armiesStore";
 import { useAlliedMagesStore } from "../alliedMagesStore";
 import {
   heldTurnsByFaction,
-  type PendingMissingMages,
   keyOf,
   mageSheetRows,
   missingFromSheet
 } from "../mageSheetImport";
-import { mageSheetStatus } from "../mageSheetPrompt";
+import { mageSheetStatus, sharedSheetTurn } from "../mageSheetPrompt";
 import { useBattleSkillsStore } from "../battleSkillsStore";
 import { derivedSkillsFor } from "../battleSkills";
 import { unitsByIdIn } from "../armies";
@@ -357,17 +357,6 @@ type RulesetState =
  * bundle. Returns whatever undoes the registration.
  */
 export type RegisterBeforeQuit = (handler: () => Promise<void>) => () => void;
-
-/**
- * The turn the missing mages were last seen on, or null when they came from several sheets.
- *
- * Null is a real answer rather than a fallback: there is no single turn to name, and the status
- * line says `kept from earlier sheets` instead of picking one.
- */
-function sharedSheetTurn(pending: PendingMissingMages): number | null {
-  const turns = new Set(pending.missing.map((row) => row.sheetTurn));
-  return turns.size === 1 ? (pending.missing[0]?.sheetTurn ?? null) : null;
-}
 
 export function AppShell({
   client,
@@ -1430,6 +1419,30 @@ export function AppShell({
   );
 
   /**
+   * What is stored for this game right now, for a mage sheet about to be judged.
+   *
+   * Loads the cache first when it is not the game's yet, and refuses outright when it still cannot
+   * be read: judging a sheet against rows that failed to load would silently let an older sheet
+   * overwrite newer mages.
+   */
+  const heldMagesFor = useCallback(
+    async (source: ReportImportSource): Promise<AlliedMageRecord[]> => {
+      if (source.kind !== "mageSheet" || game === null) {
+        return alliedMages;
+      }
+      if (useAlliedMagesStore.getState().status !== "ready") {
+        await useAlliedMagesStore.getState().load(client, game);
+      }
+      const state = useAlliedMagesStore.getState();
+      if (state.status !== "ready") {
+        throw new Error("the mages you already hold could not be read");
+      }
+      return state.mages;
+    },
+    [client, game, alliedMages]
+  );
+
+  /**
    * Takes an ally's mage sheet in: its mages are stored, and nothing else on screen moves.
    *
    * Stored *before* any question is asked about the mages it leaves out, which is what the mockup
@@ -1439,7 +1452,13 @@ export function AppShell({
     async (pending: PendingMageSheet) => {
       // `game` is non-null: `MAGE_SHEET_NEEDS_A_GAME` refused the sheet otherwise.
       const openGame = game as OpenedGame;
-      const missing = missingFromSheet(alliedMages, pending.factionId, pending.mages);
+      // The store's own rows rather than the subscribed value: `heldMagesFor` has just made sure
+      // they are the game's, and this must see exactly what the route was judged against.
+      const missing = missingFromSheet(
+        useAlliedMagesStore.getState().mages,
+        pending.factionId,
+        pending.mages
+      );
       await useAlliedMagesStore
         .getState()
         .takeIn(client, openGame, mageSheetRows(pending, new Date().toISOString()));
@@ -1448,7 +1467,11 @@ export function AppShell({
         factionLabel: pending.factionLabel,
         turnNumber: pending.turnNumber,
         taken: pending.mages.length,
-        replacedTurn: pending.heldTurn
+        // Only a sheet this one is actually newer than: a corrected re-send for the turn already
+        // held would otherwise say it replaced turn 23 while being turn 23 itself.
+        replacedTurn: pending.heldTurn !== null && pending.heldTurn < pending.turnNumber
+          ? pending.heldTurn
+          : null
       };
       if (missing.length === 0) {
         setStatus(noticeStatus(mageSheetStatus({ ...outcome, leftovers: { kind: "none" } })));
@@ -1488,15 +1511,24 @@ export function AppShell({
 
           // The shell's own map answers "new to your map", so the prompt can say how much of the
           // file is worth adding before the player commits, with no second call into the core.
+          const source = classifyReportImport(report, text);
+
+          // A sheet is judged against what is *stored*, so the cache has to be the game's before
+          // the question "is this older than one I hold?" can be asked at all. `alliedMages` is
+          // empty while the store is idle, loading or in error, and a sheet judged against that
+          // empty answer would overwrite newer stored mages by key - the exact case the
+          // older-than-you-hold refusal exists to prevent. Only a mage sheet pays for this.
+          const held = await heldMagesFor(source);
+
           const route = routeReport(
             parsed,
-            classifyReportImport(report, text),
+            source,
             fileName,
             new Set(model.hexes.map((hex) => hex.regionId)),
             {
               viewerFactionId: parsed?.header.factionId ?? null,
               hasGame: game !== null,
-              heldTurnByFaction: heldTurnsByFaction(alliedMages)
+              heldTurnByFaction: heldTurnsByFaction(held)
             }
           );
 
@@ -1543,7 +1575,7 @@ export function AppShell({
     // is null, and every report is parsed unclassified however long the ruleset took to arrive.
     // `parsed` because the routing above is decided against whatever is on screen, and `model`
     // because the map-export prompt counts its hexes against the map the player already has.
-    [client, ruleset, parsed, model, alliedMages, applyReport, storeReportOnly, takeInMageSheet]
+    [client, ruleset, parsed, model, heldMagesFor, applyReport, storeReportOnly, takeInMageSheet]
   );
 
   /**
@@ -1599,7 +1631,7 @@ export function AppShell({
           leftovers: {
             kind: "kept",
             count: pending.missing.length,
-            fromTurn: sharedSheetTurn(pending)
+            fromTurn: sharedSheetTurn(pending.missing)
           }
         })
       )

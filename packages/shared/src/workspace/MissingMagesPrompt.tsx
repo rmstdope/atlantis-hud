@@ -87,8 +87,9 @@ export function MissingMagesPrompt({
         <button
           type="button"
           data-testid="missing-mages-keep"
+          disabled={busy}
           onClick={onKeep}
-          className="rounded border border-edge px-2.5 py-1 text-ink-soft hover:text-ink"
+          className="rounded border border-edge px-2.5 py-1 text-ink-soft hover:text-ink disabled:opacity-50"
         >
           {copy.keepLabel}
         </button>

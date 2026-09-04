@@ -10,6 +10,7 @@
 
 import type { ParsedReport, ReportRegion } from "@atlantis/core-client";
 import { isMageSheet } from "./mageSheetImport";
+import { firstLineOf } from "./firstLine";
 
 /**
  * The first line every map export carries.
@@ -20,25 +21,6 @@ import { isMageSheet } from "./mageSheetImport";
  * down the report path.
  */
 export const MAP_EXPORT_MARKER = "; Map export from Atlantis HUD";
-
-/**
- * The first line that is not blank, comments included.
- *
- * Deliberately *not* `firstNonBlankLine` from `./ordersImport`: that one skips every line starting
- * with `;` on its way to `#atlantis`, and our marker is a `;` line, so it would answer the first
- * region header and `isMapExport` would always be false. 24 of the 26 committed report fixtures
- * open with `;Treasury:`, so a real turn report's first line is usually a comment too - which is
- * why the test below is on the line's content and never on the semicolon.
- */
-export function firstLineOf(text: string): string {
-  for (const raw of text.split("\n")) {
-    const line = raw.trim();
-    if (line !== "") {
-      return line;
-    }
-  }
-  return "";
-}
 
 /** Whether this file is one of our own map exports, judged on its first non-blank line. */
 export function isMapExport(text: string): boolean {

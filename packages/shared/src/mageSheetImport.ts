@@ -11,7 +11,8 @@
 
 import type { AlliedMageKey, AlliedMageRecord, ReportUnit } from "@atlantis/core-client";
 import { factionLabelOf } from "./factionLabel";
-import { firstLineOf, type ReportImportSource } from "./mapExportImport";
+import { firstLineOf } from "./firstLine";
+import type { ReportImportSource } from "./mapExportImport";
 
 /**
  * The first line every mage sheet carries.

@@ -7,6 +7,7 @@
  * no test can read.
  */
 
+import type { AlliedMageRecord } from "@atlantis/core-client";
 import type { PendingMissingMages } from "./mageSheetImport";
 import type { BatchStep } from "./reportBatch";
 import { count } from "./plural";
@@ -57,6 +58,18 @@ export function mageSheetStatus(outcome: MageSheetOutcome): string {
     : `${count(taken, "mage")} from ${factionLabel}, turn ${turnNumber}, taken in — ${suffix}`;
 }
 
+/**
+ * The turn a set of stored mages all came from, or null when they came from several sheets.
+ *
+ * Null is a real answer rather than a fallback: there is no single turn to name, and the sentences
+ * above say `earlier sheets` and `marked stale` instead of picking one. Exported so the shell's
+ * settled status line and the question's own explanation cannot disagree about it.
+ */
+export function sharedSheetTurn(missing: readonly AlliedMageRecord[]): number | null {
+  const turns = new Set(missing.map((row) => row.sheetTurn));
+  return turns.size === 1 ? (missing[0]?.sheetTurn ?? null) : null;
+}
+
 /** Everything the missing-mages box says, in the order it says it. */
 export type MissingMagesCopy = {
   /** `Borg (21)'s turn 23 sheet leaves out 2 mages that its turn 21 sheet had:` */
@@ -80,10 +93,7 @@ export function missingMagesCopy(pending: PendingMissingMages): MissingMagesCopy
   const { factionLabel, sheetTurn, missing } = pending;
   const m = missing.length;
   const one = m === 1;
-  // The turn the missing mages were last seen on, when they all came from one sheet. When they did
-  // not there is no single turn to name, and the copy says so rather than picking one.
-  const turns = new Set(missing.map((row) => row.sheetTurn));
-  const from = turns.size === 1 ? (missing[0] as PendingMissingMages["missing"][number]).sheetTurn : null;
+  const from = sharedSheetTurn(missing);
 
   const question =
     from === null
@@ -98,7 +108,10 @@ export function missingMagesCopy(pending: PendingMissingMages): MissingMagesCopy
     return `${row.unit.name} (${row.unit.unitId}) — ${skills}, last seen turn ${row.sheetTurn}`;
   });
 
-  const aged = from === null ? "marked stale" : `marked ${count(sheetTurn - from, "turn")} old`;
+  // No age to name when they disagree about their turn - and none either when a corrected re-send
+  // for the turn already held leaves them out, where the age would be zero.
+  const age = from === null ? 0 : sheetTurn - from;
+  const aged = age <= 0 ? "marked stale" : `marked ${count(age, "turn")} old`;
   const explanation = one
     ? `Discard him if ${factionLabel} has lost him. Keep him as stale and the study planner still ` +
       `shows him, ${aged}, with his study since then guessed.`

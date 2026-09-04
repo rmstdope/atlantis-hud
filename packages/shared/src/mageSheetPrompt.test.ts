@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mageSheetStatus, missingMagesCopy } from "./mageSheetPrompt";
+import { mageSheetStatus, missingMagesCopy, sharedSheetTurn } from "./mageSheetPrompt";
 import type { PendingMissingMages } from "./mageSheetImport";
 import { aReportUnit, type AlliedMageRecord } from "@atlantis/core-client";
 
@@ -165,5 +165,29 @@ describe("missingMagesCopy", () => {
     const copy = missingMagesCopy(pending({ missing: [missingMage("1204", "Alrik", 21, [])] }));
 
     expect(copy.mages).toEqual(["Alrik (1204) — no skills recorded, last seen turn 21"]);
+  });
+});
+
+describe("a corrected re-send", () => {
+  // A sheet for a turn already held is taken in and replaces it, so the mages it leaves out can
+  // carry the *same* turn as the sheet leaving them out. There is no age to name then.
+  it("names no age when the missing mages are as new as the sheet", () => {
+    const copy = missingMagesCopy(
+      pending({ sheetTurn: 23, missing: [missingMage("1204", "Alrik", 23)] })
+    );
+
+    expect(copy.explanation).toContain("marked stale");
+    expect(copy.explanation).not.toContain("0 turns old");
+    expect(copy.question).toBe(
+      "Borg (21)'s turn 23 sheet leaves out 1 mage that its turn 23 sheet had:"
+    );
+  });
+});
+
+describe("sharedSheetTurn", () => {
+  it("is the turn they all came from, and null when they disagree", () => {
+    expect(sharedSheetTurn([missingMage("1204", "Alrik", 21), missingMage("1301", "Bela", 21)])).toBe(21);
+    expect(sharedSheetTurn([missingMage("1204", "Alrik", 21), missingMage("1301", "Bela", 19)])).toBeNull();
+    expect(sharedSheetTurn([])).toBeNull();
   });
 });
