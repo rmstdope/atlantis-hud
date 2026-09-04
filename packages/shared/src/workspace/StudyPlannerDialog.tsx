@@ -82,6 +82,14 @@ export function StudyPlannerDialog({
   // scrolls only when the row is actually off screen, so stepping between visible rows does not
   // jog the list - the same shape, and the same reason, as `GameDataDialog`'s.
   const list = useRef<HTMLUListElement | null>(null);
+
+  // Focus opens inside the pane, because `aria-modal="true"` is only honest if it is - and the
+  // arrow keys are the way the list is walked, so the list itself is what takes it. An effect
+  // rather than `autoFocus`, which React applies to form controls and not to a `ul`.
+  useEffect(() => {
+    list.current?.focus();
+  }, []);
+
   useEffect(() => {
     if (picked === null) {
       return;
@@ -207,7 +215,6 @@ export function StudyPlannerList({
       role="listbox"
       aria-label="Mages"
       tabIndex={0}
-      autoFocus
       aria-activedescendant={`study-planner-option-${picked.unitId}`}
       onKeyDown={(event) => {
         if (onMove(event.key)) {

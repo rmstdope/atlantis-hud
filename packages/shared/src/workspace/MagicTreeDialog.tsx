@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { MageStanding, SkillStanding, StandingKind } from "../magicStanding";
 import type { MagicBranch, MagicPrerequisite, MagicSkillNode, MagicTree } from "../magicTree";
 import { useEscapeToDismiss } from "./dismissLayer";
-import { joinNames, STANDING_CHIP, standingWords } from "./standingChip";
+import { STANDING_CHIP, standingWords } from "./standingChip";
 import { MagePicker } from "./MagePicker";
 import { buildMagicGraph, type MagicTreeView } from "./magicGraphLayout";
 import { MagicGraphView, type MagicGraphHandle } from "./MagicGraphView";

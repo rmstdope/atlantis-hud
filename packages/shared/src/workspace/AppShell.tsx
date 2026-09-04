@@ -197,11 +197,13 @@ import type { OrdersEditorHandle } from "./OrdersEditor";
 import { CommandPalette } from "./CommandPalette";
 import { GameDataDialog } from "./GameDataDialog";
 import { MagicTreeDialog } from "./MagicTreeDialog";
+import { StudyPlannerDialog } from "./StudyPlannerDialog";
 import type { MagicTreeView } from "./magicGraphLayout";
 import type { Viewport } from "./mapViewport";
 import { parseGameData } from "../gameData";
 import { buildMagicTree } from "../magicTree";
 import { magesOf, openingMage } from "../magicStanding";
+import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { buildPaletteEntries } from "../commandPalette";
 import { structurePaletteLabel } from "../structureLabel";
@@ -546,6 +548,13 @@ export function AppShell({
   /** Null while the tree is closed; `tag` is the skill to open on, or null for the top. */
   const [magicTreeOpen, setMagicTreeOpen] = useState<{ tag: string | null } | null>(null);
   /**
+   * Whether the study planner (ah-lyg6.2.2) is up.
+   *
+   * A boolean, not an object: unlike the dictionary and the tree there is nowhere to land - the
+   * pane picks its own opening mage.
+   */
+  const [studyPlannerOpen, setStudyPlannerOpen] = useState<boolean>(false);
+  /**
    * The tree's view choice and the graph's pan and zoom, remembered for the app session.
    *
    * Component state rather than a `workspaceStore` field: both are read by one component tree,
@@ -591,6 +600,28 @@ export function AppShell({
    * held *right now*, so `loadReport` closes over this value and depends on it.
    */
   const alliedMages = useAlliedMagesStore((state) => state.mages);
+  /** The same store's status, for the study planner's loading and failure lines. */
+  const alliedStatus = useAlliedMagesStore((state) => state.status);
+  /**
+   * Every mage the player can see, yours and your allies', for the study planner (ah-lyg6.2.2).
+   *
+   * Gated on the ruleset exactly as `mages` is: with no tree there are no standings to group.
+   */
+  const plannerGroupRows = useMemo(
+    () =>
+      magicTree === null || gameData === null
+        ? []
+        : plannerGroups({
+            report: parsed,
+            ownMages: mages,
+            alliedMages,
+            tree: magicTree,
+            index: gameData,
+            viewedTurn: parsed?.header.turnNumber ?? null
+          }),
+    [parsed, mages, alliedMages, magicTree, gameData]
+  );
+
   /** The combat skills recovered from this game's battle rosters (`ah-1mpx.6.2`). */
   const derivedSkills = useBattleSkillsStore((state) => state.skills);
   const derivedStatus = useBattleSkillsStore((state) => state.status);
@@ -1112,6 +1143,12 @@ export function AppShell({
             setMagicTreeOpen((open) => (open === null ? { tag: null } : null));
           }
           break;
+        // Gated on the tree for the same reason: with no ruleset there are no standings to draw.
+        case "studyPlanner":
+          if (magicTree !== null) {
+            setStudyPlannerOpen((open) => !open);
+          }
+          break;
         case "nextUnit":
         case "prevUnit": {
           const target = nextOwnUnit(
@@ -1157,7 +1194,13 @@ export function AppShell({
       // Behind an open dialog or palette the cycling chords stand down: walking the selection
       // under an overlay mutates what nobody can see. The palette and help stay reachable -
       // pressing their chord again is how they toggle closed.
-      if (id !== "palette" && id !== "help" && id !== "gameData" && hasOpenDismissLayers()) {
+      if (
+        id !== "palette" &&
+        id !== "help" &&
+        id !== "gameData" &&
+        id !== "studyPlanner" &&
+        hasOpenDismissLayers()
+      ) {
         return;
       }
       event.preventDefault();
@@ -1173,6 +1216,7 @@ export function AppShell({
     const helpSpec = SHORTCUTS.find((entry) => entry.id === "help");
     const gameDataSpec = SHORTCUTS.find((entry) => entry.id === "gameData");
     const magicTreeSpec = SHORTCUTS.find((entry) => entry.id === "magicTree");
+    const studyPlannerSpec = SHORTCUTS.find((entry) => entry.id === "studyPlanner");
     return buildPaletteEntries({
       ownUnits: orderedOwnUnitIds.map((unitId) => {
         const owner = parsed?.regions
@@ -1238,6 +1282,21 @@ export function AppShell({
                 label: "Magic study tree",
                 binding: magicTreeSpec ? (mac ? magicTreeSpec.mac : magicTreeSpec.other) : undefined,
                 run: () => setMagicTreeOpen({ tag: null })
+              }
+            ]
+          : []),
+        // The same gate again: the planner draws standings, which are the ruleset read a third way.
+        ...(magicTree
+          ? [
+              {
+                id: "study-planner",
+                label: "Study planner",
+                binding: studyPlannerSpec
+                  ? mac
+                    ? studyPlannerSpec.mac
+                    : studyPlannerSpec.other
+                  : undefined,
+                run: () => setStudyPlannerOpen(true)
               }
             ]
           : []),
@@ -3741,6 +3800,17 @@ export function AppShell({
           index={gameData}
           initialEntryId={gameDataOpen.entryId}
           onDismiss={() => setGameDataOpen(null)}
+        />
+      ) : null}
+      {studyPlannerOpen && magicTree !== null ? (
+        <StudyPlannerDialog
+          groups={plannerGroupRows}
+          summaryLine={plannerSummaryLine(plannerGroupRows)}
+          emptyCopy={plannerEmptyCopy({ reportLoaded: parsed !== null })}
+          alliedStatus={alliedStatus}
+          selectedUnitId={unit?.unitId ?? null}
+          label={hexLabel}
+          onDismiss={() => setStudyPlannerOpen(false)}
         />
       ) : null}
       {magicTreeOpen !== null && magicTree !== null ? (
