@@ -3,7 +3,7 @@ import { readRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
 import { cellMenu, cellWarning, goalsAfterClear, goalsAfterSet } from "./studyCell";
-import { projectMage, type ScheduleRow, type SkillPoints } from "./studySchedule";
+import { projectAll, type ScheduleRow, type SkillPoints } from "./studySchedule";
 import type { StudyGoal } from "@atlantis/core-client";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
@@ -96,7 +96,14 @@ describe("cellWarning", () => {
 
 /** A row projected from `start` and `goals`, as the Schedule draws it. */
 function rowOf(start: SkillPoints, goals: StudyGoal[]): ScheduleRow {
-  const { cells, standings } = projectMage({ start, goals, tree, turnCount: 6 });
+  const { cells, standings } = projectAll({
+    mages: [
+      { key: "21/2431", unitId: "2431", name: "Ereb", regionId: "1:7", structureId: "1", start, goals }
+    ],
+    tree,
+    turnCount: 6,
+    seats: new Map([["1:7/1", 1]])
+  }).get("21/2431") as { cells: ScheduleRow["cells"]; standings: SkillPoints[] };
   return {
     key: "21/2431",
     factionId: "21",

@@ -45,6 +45,8 @@ export type PlannerMage = {
   unitId: string;
   name: string;
   regionId: string;
+  /** `MageStanding.structureId` - the building he stands in, or null in the open. */
+  structureId: string | null;
   standing: MageStanding;
   /** The sheet this mage came from, or null for one of your own out of the loaded report. */
   sheetTurn: number | null;
@@ -161,6 +163,7 @@ function plannerMage(input: {
     unitId: input.standing.unitId,
     name: input.standing.name,
     regionId: input.standing.regionId,
+    structureId: input.standing.structureId,
     standing: input.standing,
     sheetTurn: input.sheetTurn,
     monthsUnreported: input.monthsUnreported,

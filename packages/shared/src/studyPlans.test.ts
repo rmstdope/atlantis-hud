@@ -1,4 +1,4 @@
-import type { CoreClient, OpenedGame, StudyPlanRecord } from "@atlantis/core-client";
+import type { CoreClient, OpenedGame, StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import { keyOf, loadStudyPlans, planFor, remainingGoals, saveStudyPlans } from "./studyPlans";
 
