@@ -30,6 +30,7 @@ import { describeMenBriefly, whyEstimated } from "../unitComposition";
 import { derivedSkillsFor, NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
 import { unitSkillsCell } from "../battleSkillPresentation";
 import { presentUnitMovement } from "../unitMovement";
+import { flagLetters, flagWords } from "../unitFlags";
 import {
   DEFAULT_SORT,
   EXTRA_COLUMN_SHARES,
@@ -1893,6 +1894,7 @@ function UnitRow({
   const skillsChange = changeFor(unit, "skills");
   const structureChange = changeFor(unit, "structureId");
   const movementChange = changeFor(unit, "movement");
+  const flagsChange = changeFor(unit, "flags");
   // The cell truncates, so the whole label belongs in the tooltip whether or not it also changed;
   // when it did change, what the report said goes on a line beneath it.
   const structureTitle =
@@ -2062,6 +2064,29 @@ function UnitRow({
         >
           <span className="sr-only">{presentation.label}</span>
           <span aria-hidden>{presentation.code}</span>
+        </Td>
+      );
+    })(),
+    // A code for the eye and words for a screen reader, exactly as the Move cell above does; the
+    // hover carries every flag in the report's own words, including the ones with no letter.
+    flags: (() => {
+      const letters = flagLetters(unit.flags);
+      const words = flagWords(unit.flags);
+      const title = [words, originalTooltip(flagsChange)].filter(Boolean).join("\n") || undefined;
+      return (
+        <Td
+          className={`truncate${flagsChange ? ` ${PREDICTED}` : ""}`}
+          predicted={Boolean(flagsChange)}
+          title={title}
+        >
+          <span className="sr-only">{words ?? "No flags set"}</span>
+          {letters === "" ? (
+            <span aria-hidden className="text-ink-dim">
+              —
+            </span>
+          ) : (
+            <span aria-hidden>{letters}</span>
+          )}
         </Td>
       );
     })(),
