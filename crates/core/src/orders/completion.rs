@@ -35,11 +35,14 @@ pub struct OrderCompletion {
 }
 
 impl OrderCompletion {
-    fn keyword(value: &str) -> Self {
+    fn keyword_entry(keyword: &grammar::Keyword) -> Self {
         Self {
-            value: value.to_string(),
+            value: keyword.word.to_string(),
             name: String::new(),
-            detail: String::new(),
+            detail: match keyword.same_as {
+                Some(canonical) => format!("same as {canonical}"),
+                None => String::new(),
+            },
         }
     }
 }
@@ -154,13 +157,13 @@ fn completions_for(
 
     for arg in args {
         match arg {
-            Arg::Kw(_) | Arg::OneOf(_) | Arg::ItemClass | Arg::MoveStep => {
-                for word in grammar::keywords(arg) {
-                    if word == "UNFINISHED" {
+            Arg::Kw(_) | Arg::OneOf(_) | Arg::OneOfAliased(_) | Arg::ItemClass | Arg::MoveStep => {
+                for entry in grammar::keyword_entries(arg) {
+                    if entry.word == "UNFINISHED" {
                         continue;
                     }
-                    if !keywords.iter().any(|entry| entry.value == word) {
-                        keywords.push(OrderCompletion::keyword(word));
+                    if !keywords.iter().any(|existing| existing.value == entry.word) {
+                        keywords.push(OrderCompletion::keyword_entry(&entry));
                     }
                 }
             }
@@ -477,7 +480,19 @@ mod tests {
     }
 
     fn kw(value: &str) -> OrderCompletion {
-        OrderCompletion::keyword(value)
+        OrderCompletion {
+            value: value.to_string(),
+            name: String::new(),
+            detail: String::new(),
+        }
+    }
+
+    fn alias(value: &str, canonical: &str) -> OrderCompletion {
+        OrderCompletion {
+            value: value.to_string(),
+            name: String::new(),
+            detail: format!("same as {canonical}"),
+        }
     }
 
     fn no_ruleset(prefix: &str) -> Vec<OrderCompletion> {
@@ -487,10 +502,20 @@ mod tests {
     // --- moved from grammar.rs: the grammar answers did not change when the type did -----------
 
     #[test]
-    fn name_offers_everything_it_may_rename() {
+    fn name_offers_every_spelling_and_says_what_the_synonyms_mean() {
         assert_eq!(
             no_ruleset("NAME U"),
-            vec![kw("UNIT"), kw("FACTION"), kw("OBJECT"), kw("CITY")]
+            vec![
+                kw("UNIT"),
+                kw("FACTION"),
+                kw("OBJECT"),
+                kw("CITY"),
+                alias("BUILDING", "OBJECT"),
+                alias("SHIP", "OBJECT"),
+                alias("STRUCTURE", "OBJECT"),
+                alias("TOWN", "CITY"),
+                alias("VILLAGE", "CITY"),
+            ]
         );
     }
 
@@ -567,9 +592,33 @@ mod tests {
 
     #[test]
     fn the_repeat_prefix_and_indentation_are_ignored() {
-        let expected = vec![kw("UNIT"), kw("FACTION"), kw("OBJECT"), kw("CITY")];
+        let expected = vec![
+            kw("UNIT"),
+            kw("FACTION"),
+            kw("OBJECT"),
+            kw("CITY"),
+            alias("BUILDING", "OBJECT"),
+            alias("SHIP", "OBJECT"),
+            alias("STRUCTURE", "OBJECT"),
+            alias("TOWN", "CITY"),
+            alias("VILLAGE", "CITY"),
+        ];
         assert_eq!(no_ruleset("@NAME U"), expected);
         assert_eq!(no_ruleset("   NAME U"), expected);
+    }
+
+    #[test]
+    fn describe_says_which_of_its_targets_are_the_same_order() {
+        assert_eq!(
+            no_ruleset("DESCRIBE U"),
+            vec![
+                kw("UNIT"),
+                kw("OBJECT"),
+                alias("BUILDING", "OBJECT"),
+                alias("SHIP", "OBJECT"),
+                alias("STRUCTURE", "OBJECT"),
+            ]
+        );
     }
 
     #[test]

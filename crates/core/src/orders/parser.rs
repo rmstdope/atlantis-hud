@@ -348,6 +348,46 @@ mod tests {
         diagnostics.remove(0)
     }
 
+    #[test]
+    fn name_accepts_the_engines_undocumented_target_synonyms() {
+        for target in [
+            "UNIT",
+            "FACTION",
+            "OBJECT",
+            "CITY",
+            "BUILDING",
+            "SHIP",
+            "STRUCTURE",
+            "TOWN",
+            "VILLAGE",
+        ] {
+            assert_eq!(
+                codes(&format!("NAME {target} \"Dawn Treader\"\n")),
+                Vec::<String>::new(),
+                "NAME {target} should parse"
+            );
+        }
+    }
+
+    #[test]
+    fn describe_still_accepts_all_five_of_its_spellings() {
+        for target in ["UNIT", "OBJECT", "BUILDING", "SHIP", "STRUCTURE"] {
+            assert_eq!(
+                codes(&format!("DESCRIBE {target} wearing dirty overalls\n")),
+                Vec::<String>::new(),
+                "DESCRIBE {target} should parse"
+            );
+        }
+    }
+
+    #[test]
+    fn a_wrong_name_target_is_told_only_the_documented_four() {
+        assert_eq!(
+            only("NAME BUILDINGS \"Keep\"").message,
+            "expected UNIT, FACTION, OBJECT, CITY, found \"BUILDINGS\""
+        );
+    }
+
     fn clean(source: &str) {
         assert_eq!(
             diagnose(source),

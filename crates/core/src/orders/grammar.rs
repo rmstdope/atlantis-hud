@@ -25,6 +25,10 @@ pub enum Arg {
     Kw(&'static str),
     /// Any one of these keywords.
     OneOf(&'static [&'static str]),
+    /// Any one of these keywords, some of which are synonyms of others. Every word is accepted;
+    /// only the canonical ones are named in a diagnostic, and a synonym is offered with the
+    /// canonical spelling beside it.
+    OneOfAliased(&'static [Keyword]),
     /// A unit: a number, `NEW [alias]`, or `FACTION [faction] NEW [alias]`.
     Unit,
     /// A faction number.
@@ -57,6 +61,34 @@ pub enum Arg {
     Repeat(&'static Arg),
 }
 
+/// One keyword an argument position accepts, and the canonical spelling it is a synonym for.
+///
+/// `same_as` is `None` for a word the rules page documents in its own right, and `Some(canonical)`
+/// for one the engine accepts as another spelling of it. It decides two things and nothing else:
+/// whether the completion menu labels the entry, and whether a diagnostic names the word. Matching
+/// never consults it - every word here is accepted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Keyword {
+    pub word: &'static str,
+    pub same_as: Option<&'static str>,
+}
+
+impl Keyword {
+    const fn plain(word: &'static str) -> Self {
+        Self {
+            word,
+            same_as: None,
+        }
+    }
+
+    const fn alias(word: &'static str, canonical: &'static str) -> Self {
+        Self {
+            word,
+            same_as: Some(canonical),
+        }
+    }
+}
+
 /// An order and every form the rules give for it.
 #[derive(Debug, Clone, Copy)]
 pub struct Order {
@@ -78,10 +110,34 @@ const ATTITUDES: &[&str] = &["ALLY", "FRIENDLY", "NEUTRAL", "UNFRIENDLY", "HOSTI
 const SPOILS: &[&str] = &["NONE", "WALK", "RIDE", "FLY", "SWIM", "SAIL", "ALL"];
 
 /// What `DESCRIBE` may describe.
-const DESCRIBABLE: &[&str] = &["UNIT", "SHIP", "BUILDING", "OBJECT", "STRUCTURE"];
+///
+/// `rules/describe`: "The last four are completely identical and serve to modify the description of
+/// the object you are currently in." OBJECT is taken as the canonical one of those four, so that
+/// DESCRIBE and NAME name the same word.
+const DESCRIBABLE: &[Keyword] = &[
+    Keyword::plain("UNIT"),
+    Keyword::plain("OBJECT"),
+    Keyword::alias("BUILDING", "OBJECT"),
+    Keyword::alias("SHIP", "OBJECT"),
+    Keyword::alias("STRUCTURE", "OBJECT"),
+];
 
 /// What `NAME` may rename.
-const NAMEABLE: &[&str] = &["UNIT", "FACTION", "OBJECT", "CITY"];
+///
+/// `rules/name` documents four. The engine also accepts BUILDING, SHIP and STRUCTURE for OBJECT and
+/// VILLAGE and TOWN for CITY; the rules page is silent about them, so they are here on a navigator
+/// report (2026-09-03) rather than on a lookup.
+const NAMEABLE: &[Keyword] = &[
+    Keyword::plain("UNIT"),
+    Keyword::plain("FACTION"),
+    Keyword::plain("OBJECT"),
+    Keyword::plain("CITY"),
+    Keyword::alias("BUILDING", "OBJECT"),
+    Keyword::alias("SHIP", "OBJECT"),
+    Keyword::alias("STRUCTURE", "OBJECT"),
+    Keyword::alias("TOWN", "CITY"),
+    Keyword::alias("VILLAGE", "CITY"),
+];
 
 /// The orders, in the order the rules page lists them.
 ///
@@ -171,7 +227,7 @@ pub const GRAMMAR: &[Order] = &[
     },
     Order {
         name: "DESCRIBE",
-        forms: &[&[Arg::OneOf(DESCRIBABLE), Arg::Tail]],
+        forms: &[&[Arg::OneOfAliased(DESCRIBABLE), Arg::Tail]],
     },
     Order {
         name: "DESTROY",
@@ -280,7 +336,7 @@ pub const GRAMMAR: &[Order] = &[
     },
     Order {
         name: "NAME",
-        forms: &[&[Arg::OneOf(NAMEABLE), Arg::Tail]],
+        forms: &[&[Arg::OneOfAliased(NAMEABLE), Arg::Tail]],
     },
     Order {
         name: "NOAID",
@@ -600,15 +656,25 @@ fn next_argument(form: &'static [Arg], arguments: &[Token]) -> Option<&'static A
 
 /// The words one argument allows, in the order they should be offered; empty for an open one.
 pub(super) fn keywords(argument: &Arg) -> Vec<&'static str> {
+    keyword_entries(argument)
+        .into_iter()
+        .map(|keyword| keyword.word)
+        .collect()
+}
+
+/// The keywords one argument allows, in the order they should be offered, each with the canonical
+/// spelling it is a synonym for; empty for an open argument.
+pub(super) fn keyword_entries(argument: &Arg) -> Vec<Keyword> {
     match argument {
-        Arg::Kw(keyword) => vec![*keyword],
-        Arg::OneOf(list) => list.to_vec(),
+        Arg::Kw(keyword) => vec![Keyword::plain(keyword)],
+        Arg::OneOf(list) => list.iter().copied().map(Keyword::plain).collect(),
+        Arg::OneOfAliased(list) => list.to_vec(),
         Arg::ItemClass => {
             // The one ordering exception (Q9): 22 unfamiliar words is past the point where a list
             // in the rules page's own order can be scanned.
             let mut classes = ITEM_CLASSES.to_vec();
             classes.sort_unstable();
-            classes
+            classes.into_iter().map(Keyword::plain).collect()
         }
         Arg::MoveStep => {
             let mut steps: Vec<&'static str> = Direction::ALL
@@ -617,7 +683,7 @@ pub(super) fn keywords(argument: &Arg) -> Vec<&'static str> {
                 .collect();
             steps.push("IN");
             steps.push("OUT");
-            steps
+            steps.into_iter().map(Keyword::plain).collect()
         }
         Arg::Unit
         | Arg::Faction
@@ -821,6 +887,9 @@ fn match_arg(
     let consumed = match argument {
         Arg::Kw(keyword) => usize::from(token.is(keyword)),
         Arg::OneOf(keywords) => usize::from(keywords.iter().any(|keyword| token.is(keyword))),
+        Arg::OneOfAliased(keywords) => {
+            usize::from(keywords.iter().any(|keyword| token.is(keyword.word)))
+        }
         Arg::ItemClass => usize::from(super::forms::is_item_class(&token.text)),
         Arg::Unit => match_unit(arguments, at),
         Arg::Faction | Arg::Object | Arg::Number => usize::from(token.kind == TokenKind::Number),
@@ -883,6 +952,12 @@ fn describe(argument: &Arg) -> String {
     match argument {
         Arg::Kw(keyword) => (*keyword).to_string(),
         Arg::OneOf(keywords) => keywords.join(", "),
+        Arg::OneOfAliased(keywords) => keywords
+            .iter()
+            .filter(|keyword| keyword.same_as.is_none())
+            .map(|keyword| keyword.word)
+            .collect::<Vec<_>>()
+            .join(", "),
         // Not the list: twenty-two class names across a diagnostic drowns the message they are
         // attached to, and this expectation only ever appears beside "an item" anyway.
         Arg::ItemClass => "an item class".to_string(),
@@ -903,6 +978,38 @@ fn describe(argument: &Arg) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_synonym_names_a_canonical_word_in_its_own_table() {
+        fn check(argument: &Arg) {
+            match argument {
+                Arg::OneOfAliased(list) => {
+                    for keyword in *list {
+                        let Some(canonical) = keyword.same_as else {
+                            continue;
+                        };
+                        assert!(
+                            list.iter()
+                                .any(|other| other.word == canonical && other.same_as.is_none()),
+                            "{} is a synonym for {canonical}, which is not a canonical word in \
+                             the same table",
+                            keyword.word
+                        );
+                    }
+                }
+                Arg::Rest(inner) | Arg::Repeat(inner) => check(inner),
+                _ => {}
+            }
+        }
+
+        for order in GRAMMAR {
+            for form in order.forms {
+                for argument in *form {
+                    check(argument);
+                }
+            }
+        }
+    }
 
     #[test]
     fn the_table_names_each_order_once() {
