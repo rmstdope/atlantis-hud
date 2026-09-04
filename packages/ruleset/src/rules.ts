@@ -414,7 +414,9 @@ const RESOURCE_SHARE = /^(.+?)\s*\((\d+)%\)$/;
  * but a cell that does not state one stops the run rather than being read as a shorter list.
  */
 export function parseRegionResources(html: string): RegionResources {
-  const resources: RegionResources = {};
+  // A null prototype, not `{}`, for the reason `parseMovementRules`' `premiums` gives above: a
+  // terrain named `__proto__` would set the prototype rather than an own property and vanish.
+  const resources: RegionResources = Object.create(null) as RegionResources;
 
   for (const row of anchoredTableRows(html, "region_resources")) {
     if (row.length !== 2) {

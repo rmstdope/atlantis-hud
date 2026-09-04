@@ -380,6 +380,15 @@ describe("parseRegionResources", () => {
     expect(() => parseRegionResources(html)).toThrowError(RulesetScrapeError);
   });
 
+  it("keeps a terrain named after a prototype member", () => {
+    const odd = RULES_HTML.replace("                  ocean\n", "                  __proto__\n");
+
+    const resources = parseRegionResources(odd);
+
+    expect(Object.keys(resources)).toContain("__proto__");
+    expect(resources["__proto__"]).toEqual(["fish", "giant turtle"]);
+  });
+
   it("refuses a table stating one terrain twice", () => {
     const twice = RULES_HTML.replace(
       "                  jungle\n",

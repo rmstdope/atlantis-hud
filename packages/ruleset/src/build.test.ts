@@ -193,9 +193,10 @@ stone [STON], weight 50, costs 75 silver to withdraw. This item is a trade resou
 
 describe("buildRuleset and the terrain table", () => {
   it("refuses a resource name the catalogue gives to two items", () => {
-    // A plain lists `horse (100%)`, and the catalogue is doctored so WING carries that name too:
-    // resolving to either tag would be a guess.
-    const dataHtml = DATA_HTML.replace("winged horse [WING], weight 50", "horse [WING], weight 50");
+    // A plain lists `horse (100%)`, and the catalogue is doctored so CAME carries that name too:
+    // resolving to either tag would be a guess. CAME rather than WING, so that nothing the terrain
+    // table names is *removed* by the doctoring - the ambiguity is the only thing that has changed.
+    const dataHtml = DATA_HTML.replace("camel [CAME], weight 50", "horse [CAME], weight 50");
 
     expect(() =>
       buildRuleset({
