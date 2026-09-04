@@ -226,7 +226,7 @@ const CONSUMING_FLAGS: [&str; 2] = ["consuming unit's food", CONSUMING_FACTION_F
 /// Two spellings, both already in the report parser's `KNOWN_FLAGS`
 /// (`crates/core/src/report/unit.rs`): reports print `taxing`, and `autotax` is the order's own
 /// name. Match both, because the parser accepts both.
-const TAXING_FLAGS: [&str; 2] = ["taxing", "autotax"];
+pub(crate) const TAXING_FLAGS: [&str; 2] = ["taxing", "autotax"];
 
 /// What one unit's month is expected to do to its silver.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

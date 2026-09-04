@@ -16,6 +16,10 @@ use super::scan::{
     split_top_level,
 };
 
+/// The spellings the game prints for a unit that guards. Both are in `KNOWN_FLAGS`: reports print
+/// `on guard`, and `guarding` is the order's own word.
+pub(crate) const GUARD_FLAGS: [&str; 2] = ["on guard", "guarding"];
+
 /// Flags the game prints for a unit. Anything else in that position is treated as an item.
 const KNOWN_FLAGS: &[&str] = &[
     "avoiding",
@@ -152,7 +156,7 @@ pub fn parse_unit(
     // itself contain a top-level comma - so the identifier has to be found before the split.
     while let Some((field, after)) = next_top_level_field(rest, ',') {
         if let Some(flag) = matching_flag(field) {
-            if flag == "on guard" || flag == "guarding" {
+            if GUARD_FLAGS.contains(&flag) {
                 unit.on_guard = true;
             }
             unit.flags.push(flag.to_string());
