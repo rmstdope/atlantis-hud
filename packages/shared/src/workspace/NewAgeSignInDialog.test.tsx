@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { NewAgeSignInDialog } from "./NewAgeSignInDialog";
+import { NewAgeSignInFields } from "./NewAgeSignInFields";
 import { NEW_AGE_HOST, SIGN_IN_NOTE, type NewAgeSignInPhase } from "./newAgeSignInView";
 import { FETCH_REAUTH_PURPOSE } from "./newAgeFetchView";
 
@@ -85,5 +86,46 @@ describe("the New Age sign-in dialog", () => {
     expect(
       draw({ kind: "failed", message: "The world refused the sign-in (500).", retype: false })
     ).toContain("The world refused the sign-in (500).");
+  });
+});
+
+describe("the fields on their own", () => {
+  const drawFields = (asksToSignIn?: boolean) =>
+    renderToStaticMarkup(
+      <NewAgeSignInFields
+        asksToSignIn={asksToSignIn}
+        factionNumber=""
+        password=""
+        phase={{ kind: "ready" }}
+        onFactionNumber={() => {}}
+        onPassword={() => {}}
+      />
+    );
+
+  it("asks for a password alone when it is not asking for a sign-in", () => {
+    const alone = drawFields(false);
+    expect(alone).toContain("newage-password");
+    expect(alone).not.toContain("newage-faction-number");
+    expect(alone).not.toContain(SIGN_IN_NOTE);
+
+    const both = drawFields();
+    expect(both).toContain("newage-password");
+    expect(both).toContain("newage-faction-number");
+    expect(both).toContain(SIGN_IN_NOTE);
+  });
+
+  it("says nothing about a faction number it never asked for", () => {
+    expect(
+      renderToStaticMarkup(
+        <NewAgeSignInFields
+          asksToSignIn={false}
+          factionNumber="not digits"
+          password=""
+          phase={{ kind: "ready" }}
+          onFactionNumber={() => {}}
+          onPassword={() => {}}
+        />
+      )
+    ).not.toContain("newage-signin-problem");
   });
 });
