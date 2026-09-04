@@ -76,6 +76,7 @@ pub(crate) fn phase_of(intent: &Intent) -> StatePhase {
         Intent::Form { .. }
         | Intent::Guard(_)
         | Intent::Avoid(_)
+        | Intent::Share(_)
         | Intent::Enter { .. }
         | Intent::Leave => StatePhase::Instant,
         // CLAIM is in that same first batch, and so ahead of GIVE.
@@ -151,6 +152,7 @@ mod tests {
             (Intent::Form { alias: "1".into() }, StatePhase::Instant),
             (Intent::Guard(true), StatePhase::Instant),
             (Intent::Avoid(true), StatePhase::Instant),
+            (Intent::Share(true), StatePhase::Instant),
             (
                 Intent::Enter {
                     structure: "1".into(),
@@ -225,7 +227,7 @@ mod tests {
             (Intent::Work, StatePhase::Wages),
             (Intent::Entertain, StatePhase::Wages),
         ];
-        assert_eq!(cases.len(), 23, "every Intent variant is covered");
+        assert_eq!(cases.len(), 24, "every Intent variant is covered");
         for (intent, want) in cases {
             assert_eq!(phase_of(&intent), want, "{intent:?}");
         }

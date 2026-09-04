@@ -3374,15 +3374,35 @@ impl Ordered<'_> {
         })
     }
 
+    /// The `SHARE` flag this turn's orders leave the unit with, or `None` when it gave none.
+    ///
+    /// The last one wins, as it would on the server - a unit that writes `SHARE 1` and then
+    /// `SHARE 0` ends the turn selfish. Exactly [`Ordered::final_guard_order`]'s rule.
+    fn final_share_order(&self) -> Option<bool> {
+        self.intents
+            .iter()
+            .filter_map(|placed| match &placed.intent {
+                Intent::Share(on) => Some(*on),
+                _ => None,
+            })
+            .next_back()
+    }
+
     /// Whether the unit puts its stock, silver included, at the disposal of the others in the hex.
     ///
     /// "SHARE [flag]: Instruct a unit to share its available resources with other units in the
     /// same region." The engine calls the result borrowing, and turn 71 is full of it.
+    ///
+    /// The report's flag is the base and this turn's own `SHARE` overrides it, because
+    /// `rules/sequenceofevents` settles SHARE in the first batch of the turn - ahead of every
+    /// phase this crate models - so a flag set this month is in force for this month's orders.
     fn shares(&self) -> bool {
-        self.unit
+        let reported = self
+            .unit
             .flags
             .iter()
-            .any(|flag| flag.eq_ignore_ascii_case("sharing"))
+            .any(|flag| flag.eq_ignore_ascii_case("sharing"));
+        self.final_share_order().unwrap_or(reported)
     }
 
     fn holding(&self, tag: &str) -> i64 {
@@ -5504,6 +5524,7 @@ fn apply(
         }
         Intent::Guard(_)
         | Intent::Avoid(_)
+        | Intent::Share(_)
         | Intent::Teach { .. }
         | Intent::Move { .. }
         | Intent::MonthLong(_)
@@ -17841,6 +17862,32 @@ BUILD
             });
         }
 
+        /// `rules/sequenceofevents` settles SHARE ahead of the market, so a unit that turns
+        /// sharing on this turn funds its neighbour's `BUY` - and `MarketPurse` follows the
+        /// predicate with no change of its own.
+        #[test]
+        fn a_share_order_this_turn_funds_a_neighbours_buy() {
+            let hex = ReportRegion {
+                for_sale: vec![line(10, 100, "sword", "SWOR")],
+                ..region(vec![with_silver(unit("1"), 0), with_silver(unit("2"), 300)])
+            };
+            with_ledger(hex, "unit 1\nBUY 5 sword\nunit 2\nSHARE 1\n", |ledger| {
+                assert_eq!(
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "1" && m.tag == "SWOR")
+                        .map(|m| m.delta),
+                    Some(3),
+                    "$300 of shared silver buys three $100 swords"
+                );
+                assert_eq!(
+                    ledger.state.balance_at(StatePhase::Market, "1", SILVER),
+                    -500
+                );
+            });
+        }
+
         /// A sharer's own silver is already its balance, so the purse adds every *other* sharer's
         /// and never its own (`ah-szye`).
         #[test]
@@ -20694,6 +20741,71 @@ BUILD
                 tag: "SWOR".to_string(),
                 short: 30,
                 claims_pool: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn a_share_order_this_turn_puts_the_unit_in_the_hexs_pool() {
+        let found = verdicts(
+            region(vec![
+                unit("5"),
+                with_item(unit("7"), 20, "swords", "SWOR"),
+                an_ally("9"),
+            ]),
+            "unit 5\nGIVE 0 30 swords\nunit 7\nSHARE 1\n",
+        );
+
+        assert_eq!(
+            found,
+            vec![Verdict::DeferredToPool {
+                unit_id: "5".to_string(),
+                tag: "SWOR".to_string(),
+                short: 30,
+                claims_pool: true,
+            }],
+            "rules/sequenceofevents settles SHARE before GIVE, so unit 7 is in the pool"
+        );
+    }
+
+    #[test]
+    fn a_share_0_this_turn_takes_a_flagged_unit_out_of_the_pool() {
+        let found = verdicts(
+            region(vec![
+                unit("5"),
+                sharing(with_item(unit("7"), 20, "swords", "SWOR")),
+                an_ally("9"),
+            ]),
+            "unit 5\nGIVE 0 30 swords\nunit 7\nSHARE 0\n",
+        );
+
+        assert_eq!(
+            found,
+            vec![Verdict::UnitShort {
+                unit_id: "5".to_string(),
+                tag: "SWOR".to_string(),
+                short: 30,
+            }]
+        );
+    }
+
+    #[test]
+    fn the_last_share_order_of_the_turn_wins() {
+        let found = verdicts(
+            region(vec![
+                unit("5"),
+                sharing(with_item(unit("7"), 20, "swords", "SWOR")),
+                an_ally("9"),
+            ]),
+            "unit 5\nGIVE 0 30 swords\nunit 7\nSHARE 1\nSHARE 0\n",
+        );
+
+        assert_eq!(
+            found,
+            vec![Verdict::UnitShort {
+                unit_id: "5".to_string(),
+                tag: "SWOR".to_string(),
+                short: 30,
             }]
         );
     }

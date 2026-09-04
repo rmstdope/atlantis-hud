@@ -49,6 +49,11 @@ pub enum Intent {
     Guard(bool),
     /// `AVOID 1` or `AVOID 0`.
     Avoid(bool),
+    /// `SHARE 1` or `SHARE 0`.
+    ///
+    /// `rules/sequenceofevents` settles SHARE in the same first batch as AVOID and GUARD 0, so a
+    /// flag set this turn is in force for every phase this crate models.
+    Share(bool),
     /// `CLAIM`, which draws on the faction's unclaimed silver.
     Claim(i64),
     Tax,
@@ -589,6 +594,10 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
             let arguments = super::grammar::consumed_arguments(command, arguments)?;
             Some(Intent::Avoid(forms::read_flag(arguments)?))
         }
+        "SHARE" => {
+            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            Some(Intent::Share(forms::read_flag(arguments)?))
+        }
         "CLAIM" => {
             let arguments = super::grammar::consumed_arguments(command, arguments)?;
             Some(Intent::Claim(forms::read_only_number(arguments)?))
@@ -758,6 +767,7 @@ pub fn spends_the_month(intent: &Intent) -> bool {
         | Intent::Sell { .. }
         | Intent::Guard(_)
         | Intent::Avoid(_)
+        | Intent::Share(_)
         | Intent::Claim(_)
         | Intent::Withdraw { .. }
         | Intent::Form { .. }
@@ -1161,6 +1171,12 @@ mod tests {
     fn avoid_carries_which_way_it_was_set() {
         assert_eq!(intents("unit 5\nAVOID 1\n"), vec![Intent::Avoid(true)]);
         assert_eq!(intents("unit 5\nAVOID 0\n"), vec![Intent::Avoid(false)]);
+    }
+
+    #[test]
+    fn a_share_order_reads_as_an_intent() {
+        assert_eq!(intents("unit 5\nSHARE 1\n"), vec![Intent::Share(true)]);
+        assert_eq!(intents("unit 5\nSHARE 0\n"), vec![Intent::Share(false)]);
     }
 
     #[test]
