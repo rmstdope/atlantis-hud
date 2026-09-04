@@ -424,6 +424,13 @@ export function parseRegionResources(html: string): RegionResources {
     if (terrain === "region type" || terrain.length === 0) {
       continue;
     }
+    // Two rows for one terrain means the table says two things about it, and keeping either is a
+    // guess. The same posture the cell parse below takes.
+    if (terrain in resources) {
+      throw new RulesetScrapeError(
+        `the region resources table states terrain ${terrain} twice`
+      );
+    }
 
     const named: string[] = [];
     for (const part of row[1].replace(/\.\s*$/, "").split(",")) {

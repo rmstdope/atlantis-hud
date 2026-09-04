@@ -8,6 +8,7 @@ import {
   parseWeatherGap,
   RulesetScrapeError
 } from "./rules";
+import { anchoredTableRows } from "./html";
 
 const RULES_HTML = readFileSync(
   fileURLToPath(new URL("../../../tests/fixtures/ruleset/neworigins-rules.html", import.meta.url)),
@@ -373,6 +374,21 @@ describe("parseWeatherGap", () => {
 });
 
 describe("parseRegionResources", () => {
+  it("refuses a page with no region resources table", () => {
+    const html = "<html><body><p>no table here</p></body></html>";
+
+    expect(() => parseRegionResources(html)).toThrowError(RulesetScrapeError);
+  });
+
+  it("refuses a table stating one terrain twice", () => {
+    const twice = RULES_HTML.replace(
+      "                  jungle\n",
+      "                  swamp\n"
+    );
+
+    expect(() => parseRegionResources(twice)).toThrowError(/swamp/);
+  });
+
   it("reads the region resources table", () => {
     const resources = parseRegionResources(RULES_HTML);
 
@@ -398,5 +414,24 @@ describe("parseRegionResources", () => {
     );
 
     expect(() => parseRegionResources(broken)).toThrowError(/swamp/);
+  });
+});
+
+describe("anchoredTableRows", () => {
+  it("reads a table's cells row by row", () => {
+    const rows = anchoredTableRows(RULES_HTML, "region_resources");
+
+    expect(rows[0]).toEqual(["Region type", "Resources"]);
+    expect(rows[1]).toEqual(["ocean", "fish (100%), giant turtle (30%)."]);
+  });
+
+  it("answers nothing for an anchor the page does not carry", () => {
+    expect(anchoredTableRows(RULES_HTML, "no_such_anchor")).toEqual([]);
+  });
+
+  it("answers nothing for an anchor with no table after it", () => {
+    const html = '<html><body><a name="lonely"></a><p>prose only</p></body></html>';
+
+    expect(anchoredTableRows(html, "lonely")).toEqual([]);
   });
 });

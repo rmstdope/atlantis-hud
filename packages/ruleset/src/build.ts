@@ -85,10 +85,17 @@ function resolveRegionResources(
   resources: RegionResources,
   items: ItemReference
 ): Record<string, string[]> {
+  // A name two tags share cannot be resolved, and picking the first would put a wrong tag in a
+  // terrain's list - the silent-wrong-answer this bead exists to avoid. No collision exists in the
+  // three committed catalogues, so the ambiguity is recorded and only refused if a terrain asks
+  // for that name.
   const byName = new Map<string, string>();
+  const ambiguous = new Set<string>();
   for (const [tag, item] of Object.entries(items)) {
     const name = item.name.toLowerCase();
-    if (!byName.has(name)) {
+    if (byName.has(name)) {
+      ambiguous.add(name);
+    } else {
       byName.set(name, tag);
     }
   }
@@ -97,6 +104,11 @@ function resolveRegionResources(
   for (const [terrain, names] of Object.entries(resources)) {
     const tags: string[] = [];
     for (const name of names) {
+      if (ambiguous.has(name)) {
+        throw new RulesetScrapeError(
+          `terrain ${terrain} lists resource "${name}", which the item catalogue names twice`
+        );
+      }
       const tag = byName.get(name);
       if (tag === undefined) {
         throw new RulesetScrapeError(

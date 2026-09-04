@@ -63,7 +63,10 @@ export function preformattedText(html: string): string {
  * fatal.
  */
 export function anchoredTableRows(html: string, anchor: string): string[][] {
-  const at = html.search(new RegExp(`<a\\b[^>]*name="${anchor}"`, "i"));
+  // The anchor is escaped rather than trusted: it reaches a regular expression, and a caller
+  // passing a name with a `.` or a `(` in it would otherwise match something else.
+  const escaped = anchor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const at = html.search(new RegExp(`<a\\b[^>]*name="${escaped}"`, "i"));
   if (at === -1) {
     return [];
   }

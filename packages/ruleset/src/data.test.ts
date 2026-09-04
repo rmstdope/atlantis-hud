@@ -1312,6 +1312,15 @@ describe("parseSkillReference", () => {
     expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
   });
 
+  it("refuses a reveal sentence beside two productions", () => {
+    const html =
+      "<html><body><pre>hunting [HUNT] 3: A unit with this skill may PRODUCE furs [FUR] at a " +
+      "rate of 1 per man-month, floater hides [FLOA] at a rate of 1 per man-month. A unit with " +
+      "this skill is able to determine if a region contains floater hides.</pre></body></html>";
+
+    expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
+  });
+
   it("records no production for a skill that makes nothing", () => {
     const skills = parseSkillReference(DATA_HTML);
 
