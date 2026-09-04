@@ -3639,6 +3639,57 @@ mod tests {
         );
     }
 
+    /// `rules/sequenceofevents` settles FORM in the instant-order phase, several phases before the
+    /// Give phase, so a gift written *above* the sibling block that forms its target still arrives:
+    /// the game never reads the document top to bottom (`ah-6f48`).
+    #[test]
+    fn a_gift_written_above_the_sibling_block_that_forms_its_target_still_arrives() {
+        let response = preview("unit 901\nGIVE NEW 1 1 LEAD\nunit 900\nFORM 1\nEND\n");
+
+        let formed: Vec<_> = response.regions[0]
+            .units
+            .iter()
+            .filter(|unit| unit.status == UnitPreviewStatus::Formed)
+            .collect();
+        assert_eq!(formed.len(), 1, "one alias, one formed unit: {:?}", formed);
+        assert_eq!(
+            formed[0]
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "LEAD")
+                .map(|item| item.amount),
+            Some(1),
+            "the leader reaches new-1 although the FORM block is written below the gift: {:?}",
+            formed[0].unit.items
+        );
+    }
+
+    /// The control for the test above: the same orders the other way up must give the same answer,
+    /// so a green result there is not a reader that has stopped resolving `NEW` at all (`ah-6f48`).
+    #[test]
+    fn the_same_gift_below_the_sibling_form_gives_the_same_result() {
+        let response = preview("unit 900\nFORM 1\nEND\nunit 901\nGIVE NEW 1 1 LEAD\n");
+
+        let formed: Vec<_> = response.regions[0]
+            .units
+            .iter()
+            .filter(|unit| unit.status == UnitPreviewStatus::Formed)
+            .collect();
+        assert_eq!(formed.len(), 1, "one alias, one formed unit: {:?}", formed);
+        assert_eq!(
+            formed[0]
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "LEAD")
+                .map(|item| item.amount),
+            Some(1),
+            "{:?}",
+            formed[0].unit.items
+        );
+    }
+
     #[test]
     fn a_new_alias_belongs_to_its_own_hex() {
         // Two own units in two hexes: the alias formed in one must be invisible to the other.

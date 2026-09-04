@@ -32594,6 +32594,66 @@ mod tests {
             );
         }
 
+        /// FORM is settled several phases before the Give phase (`rules/sequenceofevents`), so a
+        /// gift written above the sibling block that forms its target is still credited to the
+        /// formed unit. Same three assertions as `silver_given_to_a_formed_unit_is_credited_to_it`,
+        /// so a disagreement between the two block orders reads as a diff (`ah-6f48`).
+        #[test]
+        fn silver_given_from_above_the_sibling_form_is_credited_to_the_formed_unit() {
+            let hex_region = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 100,
+                    name: "plainsmen".to_string(),
+                    tag: "PLAI".to_string(),
+                    price: 40,
+                }],
+                ..region(vec![with_silver(unit("2000"), 500), unit("1922")])
+            };
+
+            let review = review_turn(
+                &report(vec![hex_region]),
+                "unit 2000\nGIVE NEW 1 500 SILV\n\nunit 1922\nFORM 1\nBUY 5 PLAI\nEND\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let formed = forecast(&review, "new-1");
+            assert_eq!(formed.received, 500);
+            assert_eq!(formed.expense, Some(200));
+            assert_eq!(formed.at_month_end, Some(300));
+        }
+
+        /// A false `give-target-not-here` here is worse than the missing goods: it tells the player
+        /// to change a correct order (`ah-6f48`).
+        #[test]
+        fn a_gift_above_the_sibling_form_is_not_called_a_no_op() {
+            let hex_region = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 100,
+                    name: "plainsmen".to_string(),
+                    tag: "PLAI".to_string(),
+                    price: 40,
+                }],
+                ..region(vec![with_silver(unit("2000"), 500), unit("1922")])
+            };
+
+            let review = review_turn(
+                &report(vec![hex_region]),
+                "unit 2000\nGIVE NEW 1 500 SILV\n\nunit 1922\nFORM 1\nBUY 5 PLAI\nEND\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert!(
+                !review
+                    .findings
+                    .iter()
+                    .any(|finding| finding.code == codes::GIVE_TARGET_NOT_HERE),
+                "{:?}",
+                review.findings
+            );
+        }
+
         #[test]
         fn a_gift_to_a_formed_unit_in_another_hex_is_not_counted() {
             let elsewhere = region_at("1:8,53", 8, 53, vec![unit("1922")]);
