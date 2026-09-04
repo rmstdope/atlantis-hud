@@ -1667,9 +1667,10 @@ fn forecast_hex(
 
     // Steps 5 and 6, decided per hex before this one was priced and only applied here.
     //
-    // The walk is positional over `hex.units` but the lookup is by id, as `Ledger.balance`'s own
-    // lookups are. Both are sound for the same reason: one unit number is one row in a region
-    // block, because `parse_region_block` refuses a repeat (`ah-bm0d`).
+    // The walk is positional over `hex.units` but the lookup is by `UnitKey`, as the pass above
+    // it is. The pair rather than the number: `rules/form` scopes an alias to its region, so two
+    // hexes may each hold a `new-1` and a report-wide map keyed on the number alone hands one
+    // hex's figure to the other (`ah-9o0c.1`).
     for (ordered, forecast) in hex.units.iter().zip(into[start..].iter_mut()) {
         let Some(owed) = forecast.upkeep else {
             // A doubted fee stays doubted: food cannot settle a number nothing knows.
@@ -1691,10 +1692,10 @@ fn forecast_hex(
     // Step 7, in a second pass for the same reason the first one exists: the settlement is
     // faction-wide, so it is decided before any hex is priced and only applied here.
     //
-    // The walk is positional over `hex.units` but the lookup is by id, as `Ledger.balance`'s own
-    // lookups are. Both are sound for the same reason: one unit number is one row in a region
-    // block, because `parse_region_block` refuses a repeat (`ah-bm0d`). The difference from the
-    // index-aligned pass above is invisible until it is not, so it is written down.
+    // The walk is positional over `hex.units` but the lookup is by `UnitKey`, as the two passes
+    // above are. The pair rather than the number: `rules/form` scopes an alias to its region, so
+    // two hexes may each hold a `new-1` and a report-wide map keyed on the number alone hands one
+    // hex's figure to the other (`ah-9o0c.3`).
     for (ordered, forecast) in hex.units.iter().zip(into[start..].iter_mut()) {
         let Some(owed) = forecast.upkeep else {
             // A fee that is already doubted stays doubted: the fund cannot settle a number
@@ -1705,13 +1706,15 @@ fn forecast_hex(
             // The fund could not reach everybody, so it reached nobody here. The figure stays
             // where it is - the pessimistic answer the navigator chose - and only the hover's
             // note changes.
-            forecast.unclaimed_contended =
-                settlement.short > 0 && settlement.claimants.contains(&ordered.unit.unit_id);
+            forecast.unclaimed_contended = settlement.short > 0
+                && settlement
+                    .claimants
+                    .contains(&unit_key(&hex.region.region_id, &ordered.unit.unit_id));
             continue;
         }
         let covered = settlement
             .covered
-            .get(&ordered.unit.unit_id)
+            .get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
             .copied()
             .unwrap_or_default();
         forecast.unclaimed_covered = covered;
@@ -6905,7 +6908,11 @@ fn upkeep_claims(hexes: &[(Hex<'_>, Ledger<'_>)]) -> Vec<UpkeepClaim> {
         claims.extend(
             unpayable_upkeep(hex, ledger)
                 .into_iter()
-                .map(|(unit_id, short)| UpkeepClaim { unit_id, short }),
+                .map(|(unit_id, short)| UpkeepClaim {
+                    region_id: hex.region.region_id.clone(),
+                    unit_id,
+                    short,
+                }),
         );
     }
     claims
@@ -7111,7 +7118,10 @@ fn apply_relief(hexes: &mut [(Hex<'_>, Ledger<'_>)], settlement: &UpkeepSettleme
     }
     for (hex, ledger) in hexes {
         for ordered in &hex.units {
-            if let Some(covered) = settlement.covered.get(&ordered.unit.unit_id) {
+            if let Some(covered) = settlement
+                .covered
+                .get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
+            {
                 // Added, never inserted. Step 4 and steps 5-6 have both already written here, and
                 // a pool that covered part of a claim hands the remainder straight to the fund -
                 // so replacing would discard what an earlier step paid and invent a shortfall in a
@@ -11127,7 +11137,15 @@ fn check_upkeep_fund(
         .regions
         .iter()
         .flat_map(|region| region.units.iter())
-        .filter(|unit| unit.own && settlement.claimants.contains(&unit.unit_id))
+        // The key is the pair now (`ah-9o0c.3`), but nothing here moves: this walks
+        // `report.regions`, which holds parsed units only, and two parsed units never share a
+        // number (`parse_region_block` refuses a repeat, `ah-bm0d`).
+        .filter(|unit| {
+            unit.own
+                && settlement
+                    .claimants
+                    .contains(&unit_key(&unit.region_id, &unit.unit_id))
+        })
     {
         findings.push(Finding {
             code: codes::UPKEEP_EXCEEDS_UNCLAIMED,
@@ -22708,6 +22726,81 @@ BUILD
                 .collect::<Vec<_>>(),
             [60, 40],
             "both regions, not just the first"
+        );
+    }
+
+    /// `rules/form` scopes a FORM alias to its region, so two hexes may each write `FORM 1` and the
+    /// game creates two distinct units, both minted `new-1`. The unclaimed fund pays each of them
+    /// its own shortfall, not one figure to both (`ah-9o0c.3`).
+    #[test]
+    fn the_fund_pays_each_hexs_formed_unit_its_own_shortfall() {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![with_men(with_silver(starving(unit("5")), 0), 3)],
+            ),
+            region_at(
+                "1:8,54",
+                8,
+                54,
+                vec![with_men(with_silver(starving(unit("9")), 0), 3)],
+            ),
+        ];
+
+        let review = review_turn(
+            &report_with_purse(Some(8450), regions),
+            "unit 5\nFORM 1\nEND\nGIVE NEW 1 2 HUMN\n\
+             unit 9\nFORM 1\nEND\nGIVE NEW 1 1 HUMN\n",
+            Some(&ruleset()),
+            disabling(codes::UNIT_DOES_NOTHING),
+        );
+
+        let first = forecast_in(&review, "1:7,53", "new-1");
+        assert_eq!(first.unclaimed_covered, 20, "two men, at $10 each");
+        assert_eq!(first.upkeep, Some(0));
+
+        let second = forecast_in(&review, "1:8,54", "new-1");
+        assert_eq!(second.unclaimed_covered, 10, "one man");
+        assert_eq!(second.upkeep, Some(0));
+    }
+
+    /// The short-fund branch: `covered` is empty and `claimants` is what marks a unit's hover. A
+    /// hex whose formed unit pays for itself must not be marked because another hex's `new-1`
+    /// claims (`ah-9o0c.3`).
+    #[test]
+    fn a_contended_fund_marks_only_the_hex_whose_formed_unit_claims() {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![with_men(with_silver(starving(unit("5")), 0), 3)],
+            ),
+            region_at(
+                "1:8,54",
+                8,
+                54,
+                vec![with_men(with_silver(starving(unit("9")), 100), 3)],
+            ),
+        ];
+
+        let review = review_turn(
+            &report_with_purse(Some(20), regions),
+            "unit 5\nFORM 1\nEND\nGIVE NEW 1 2 HUMN\n\
+             unit 9\nFORM 1\nEND\nGIVE NEW 1 1 HUMN\nGIVE NEW 1 100 SILV\n",
+            Some(&ruleset()),
+            disabling(codes::UNIT_DOES_NOTHING),
+        );
+
+        assert!(
+            forecast_in(&review, "1:7,53", "new-1").unclaimed_contended,
+            "the control: this hex's formed unit really does claim from a fund that is short"
+        );
+        assert!(
+            !forecast_in(&review, "1:8,54", "new-1").unclaimed_contended,
+            "this one pays its own fee out of the $100 it was given"
         );
     }
 
