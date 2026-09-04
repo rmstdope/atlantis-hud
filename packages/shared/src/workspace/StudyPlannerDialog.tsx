@@ -157,6 +157,11 @@ export function StudyPlannerDialog({
           </button>
         </div>
 
+        {/*
+          An empty div rather than null: the box is `grid-rows-[auto_auto_1fr]`, so dropping this
+          child would leave the body in the second, `auto` track instead of the `1fr` one, and the
+          two columns would stop filling the box and stop scrolling inside it.
+        */}
         {summaryLine === null && notice === null ? (
           <div />
         ) : (
