@@ -192,6 +192,22 @@ stone [STON], weight 50, costs 75 silver to withdraw. This item is a trade resou
 });
 
 describe("buildRuleset and the terrain table", () => {
+  it("refuses a resource name the catalogue gives to two items", () => {
+    // A plain lists `horse (100%)`, and the catalogue is doctored so WING carries that name too:
+    // resolving to either tag would be a guess.
+    const dataHtml = DATA_HTML.replace("winged horse [WING], weight 50", "horse [WING], weight 50");
+
+    expect(() =>
+      buildRuleset({
+        rulesHtml: RULES_HTML,
+        dataHtml,
+        rulesUrl: "https://example.test/rules",
+        dataUrl: "https://example.test/data",
+        fetchedAt: "2026-01-01T00:00:00Z"
+      })
+    ).toThrowError(/names twice/);
+  });
+
   it("refuses a terrain resource the catalogue does not name", () => {
     const rulesHtml = RULES_HTML.replace(
       "horse (100%), winged horse (20%).",

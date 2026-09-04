@@ -429,6 +429,13 @@ describe("anchoredTableRows", () => {
     expect(anchoredTableRows(RULES_HTML, "no_such_anchor")).toEqual([]);
   });
 
+  it("takes the anchor literally rather than as a pattern", () => {
+    const html =
+      '<html><body><a name="abc"></a><table><tr><td>x</td></tr></table></body></html>';
+
+    expect(anchoredTableRows(html, "a.c")).toEqual([]);
+  });
+
   it("answers nothing for an anchor with no table after it", () => {
     const html = '<html><body><a name="lonely"></a><p>prose only</p></body></html>';
 
