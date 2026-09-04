@@ -7,7 +7,9 @@
  * matter of editing the served file, rather than migrating every game that was created before the
  * correction.
  *
- * There is one entry today. Adding a second is a scrape and a line here.
+ * Adding a variant is a scrape, a line here, and an entry in `packages/ruleset/src/worlds.ts`
+ * whose id this one must match - the two tables are deliberately separate (`@atlantis/shared` does
+ * not depend on the scraper), and `rulesets.test.ts`'s served-file guard is what catches a typo.
  */
 import type { MapShape } from "@atlantis/core-client";
 
@@ -23,8 +25,13 @@ export type Ruleset = {
    * which ruleset it is played under - so this is where that id becomes an address, exactly as
    * `url` is. The known weakness, accepted when this was chosen over a per-game field: two games on
    * different servers sharing one ruleset would collide.
+   *
+   * Optional, because a variant may take orders no way this build speaks - an Atlantis New Age
+   * world takes them over a bearer-token REST API rather than the New Origins form. Absence is a
+   * real state: naming any address for such a variant would give the player a Send button that
+   * fails at the last step, so Send is off, with a reason, when a ruleset declares none.
    */
-  ordersUploadUrl: string;
+  ordersUploadUrl?: string;
   /**
    * The map this ruleset's server usually serves, as a starting point a game may override.
    *
@@ -50,6 +57,17 @@ export const RULESETS: readonly Ruleset[] = [
     url: "/ruleset.json",
     ordersUploadUrl: "https://atlantis-pbem.com/game/upload-orders",
     defaultMap: { width: 72, height: 96, wrapX: true, wrapY: false }
+  },
+  // Appended after New Origins: the create form seeds its selection from `RULESETS[0]`.
+  {
+    id: "newage-arcanum",
+    label: "New Age: Arcanum",
+    url: "/ruleset-newage-arcanum.json"
+  },
+  {
+    id: "newage-trident",
+    label: "New Age: Trident",
+    url: "/ruleset-newage-trident.json"
   }
 ] as const;
 

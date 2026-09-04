@@ -440,7 +440,9 @@ test("the About tab names the variants and offers somewhere to report a bug", as
 
   // Read from the shipped rulesets rather than written into the prose, so this row grows on its own
   // the day a second variant lands.
-  await expect(page.getByTestId("app-variants")).toHaveText("New Origins");
+  await expect(page.getByTestId("app-variants")).toHaveText(
+    "New Origins, New Age: Arcanum, New Age: Trident"
+  );
 
   // A button rather than an anchor: inside the Tauri webview a link has to be handed to the
   // operating system, and only the button-plus-port path does that. Asserting that a new tab opens
