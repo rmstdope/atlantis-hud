@@ -339,6 +339,46 @@ export const SWEEP: SweepEntry[] = [
       army_id: "binding-sweep-army"
     })
   },
+  {
+    command: "list_allied_mages",
+    args: () => ({ database_path: context.databasePath, game_id: GAME_ID })
+  },
+  {
+    command: "save_allied_mages",
+    args: () => ({
+      database_path: context.databasePath,
+      game_id: GAME_ID,
+      mages: [
+        {
+          factionId: "21",
+          factionName: "Borg",
+          unit: {
+            unitId: "9001",
+            name: "Sweep Mage",
+            regionId: "1:7,53",
+            factionId: "21",
+            factionName: "Borg",
+            own: false,
+            onGuard: false,
+            flags: [],
+            items: [],
+            skills: [],
+            combatSpell: null,
+            men: 1,
+            menEstimated: true,
+            menByRace: [],
+            weight: null,
+            capacity: null,
+            movement: null,
+            structureId: null
+          },
+          sheetTurn: 23,
+          receivedAt: ISO
+        }
+      ],
+      removed: [{ factionId: "21", unitId: "9002" }]
+    })
+  },
   // Immediately before delete_game and after every scoped command: a reset empties the game, so
   // anything ordered after it would run against a game with none of the sweep's seeded data.
   { command: "reset_game", args: () => ({ game_id: GAME_ID, now: ISO }) },

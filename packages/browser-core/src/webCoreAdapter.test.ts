@@ -4,6 +4,7 @@ import {
   aReportHeaderInfo,
   type GameManifest,
   type ManifestEdit,
+  type AlliedMageRecord,
   type ArmyRecord,
   type HexNoteRecord,
   type ImportedTurnSummary,
@@ -1003,6 +1004,46 @@ describe("web core adapter", () => {
     expect(await adapter.listArmies(DB, "p")).toEqual([]);
   });
 
+  it("stores a faction's mages and lists them back whole", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const mage = aMage("9001");
+
+    await adapter.saveAlliedMages(DB, "p", [mage], []);
+
+    expect(await adapter.listAlliedMages(DB, "p")).toEqual([mage]);
+  });
+
+  it("removes the mages named in the same call that stores the rest", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await adapter.saveAlliedMages(DB, "p", [aMage("9001"), aMage("9002")], []);
+
+    await adapter.saveAlliedMages(
+      DB,
+      "p",
+      [aMage("9003")],
+      [{ factionId: "21", unitId: "9002" }]
+    );
+
+    const listed = (await adapter.listAlliedMages(DB, "p")) as AlliedMageRecord[];
+    expect(listed.map((mage) => mage.unit.unitId).sort()).toEqual(["9001", "9003"]);
+  });
+
+  it("keeps allied mages apart per database", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await adapter.saveAlliedMages("idb://campaign-a", "p", [aMage("9001")], []);
+    await adapter.saveAlliedMages("idb://campaign-b", "p", [aMage("9002")], []);
+
+    expect(
+      ((await adapter.listAlliedMages("idb://campaign-a", "p")) as AlliedMageRecord[])[0].unit
+        .unitId
+    ).toBe("9001");
+    expect(
+      ((await adapter.listAlliedMages("idb://campaign-b", "p")) as AlliedMageRecord[])[0].unit
+        .unitId
+    ).toBe("9002");
+  });
+
   it("keeps Armies apart per database", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
@@ -1269,6 +1310,7 @@ describe("exporting and importing games", () => {
     });
 
     await adapter.saveArmy(opened.databasePath, anArmy("army-1", "alpha"));
+    await adapter.saveAlliedMages(opened.databasePath, "alpha", [aMage("9001")], []);
 
     const backupJson = (await adapter.exportGame("alpha", NOW)) as string;
     expect(JSON.parse(backupJson)).toMatchObject({
@@ -1289,7 +1331,8 @@ describe("exporting and importing games", () => {
       regionSightings: [{ factionId: "17", regionId: "1:7,53", lastSeenTurn: 12 }],
       mergedReports: [{ factionId: "17", turnNumber: 12, mergedFactionId: "73" }],
       hexNotes: [{ id: "note-1", regionId: "1:7,53", text: "Mustn't forget the mountain pass" }],
-      armies: [{ id: "army-1", name: "Escort", members: [{ unitId: "1", seenTurn: 71 }] }]
+      armies: [{ id: "army-1", name: "Escort", members: [{ unitId: "1", seenTurn: 71 }] }],
+      alliedMages: [{ factionId: "21", sheetTurn: 23, unit: { unitId: "9001" } }]
     });
 
     const imported = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
@@ -1340,6 +1383,7 @@ describe("exporting and importing games", () => {
     expect(await imported.listArmies(restored.databasePath, "alpha")).toEqual([
       anArmy("army-1", "alpha")
     ]);
+    expect(await imported.listAlliedMages(restored.databasePath, "alpha")).toEqual([aMage("9001")]);
   });
 
   it("refuses to import over an existing game", async () => {
@@ -1746,3 +1790,33 @@ describe("merging an allied report", () => {
     await expect(adapter.loadMergedReports("/db", "p", "95", 71)).resolves.toEqual([]);
   });
 });
+
+/** An allied mage, as a sheet described him. */
+function aMage(unitId: string, factionId = "21"): AlliedMageRecord {
+  return {
+    factionId,
+    factionName: "Borg",
+    unit: {
+      unitId,
+      name: "Sweep Mage",
+      regionId: "1:7,53",
+      factionId,
+      factionName: "Borg",
+      own: false,
+      onGuard: false,
+      flags: [],
+      items: [{ amount: 1, name: "leader", tag: "LEAD" }],
+      skills: [{ name: "force", tag: "FORC", level: 3, points: 180 }],
+      combatSpell: { name: "fire", tag: "FIRE" },
+      men: 1,
+      menEstimated: true,
+      menByRace: [],
+      weight: null,
+      capacity: null,
+      movement: null,
+      structureId: null
+    },
+    sheetTurn: 23,
+    receivedAt: "2026-08-01T09:00:00Z"
+  };
+}

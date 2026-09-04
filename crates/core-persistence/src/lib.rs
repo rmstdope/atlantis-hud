@@ -5,14 +5,14 @@ use std::path::{Path, PathBuf};
 
 /// The snapshot a membership carries. The core owns it because the backup carries it too.
 pub use atlantis_hud_core::backup::ArmyMember;
-/// The stored row and its key. The core owns both because the backup carries them too.
-pub use atlantis_hud_core::backup::{AlliedMage, AlliedMageKey};
 use atlantis_hud_core::backup::{
     apply_manifest_edit, encode_game_backup, DecodedGameBackupCollections,
     EncodedGameBackupCollections, GameBackupArmy, GameBackupContent, GameBackupHexNote,
     GameBackupImportedTurn, GameBackupMergedReport, GameBackupOrderDraft, GameBackupRegionSighting,
     ManifestEdit,
 };
+/// The stored row and its key. The core owns both because the backup carries them too.
+pub use atlantis_hud_core::backup::{AlliedMage, AlliedMageKey};
 use atlantis_hud_core::movement::graph::MapGeometry;
 // The row and the order it is listed in are the core's, so both platforms answer alike
 // (`ah-8z4y.3.2`). Re-exported here because this is where every caller already reaches for it.
@@ -3272,8 +3272,13 @@ mod tests {
         );
 
         let newer = a_mage("9001", "Adept", 24);
-        save_allied_mages(&created.database_path, GAME_ID, &[newer.clone()], &[])
-            .expect("second save should persist");
+        save_allied_mages(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&newer),
+            &[],
+        )
+        .expect("second save should persist");
         let mut listed_after =
             list_allied_mages(&created.database_path, GAME_ID).expect("list should succeed");
         listed_after.sort_by(|a, b| a.unit.unit_id.cmp(&b.unit.unit_id));
@@ -3307,8 +3312,13 @@ mod tests {
             create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
         let mine = a_mage("9001", "Mine", 23);
         let theirs = a_mage("9002", "Theirs", 23);
-        save_allied_mages(&created.database_path, GAME_ID, &[mine.clone()], &[])
-            .expect("mage should persist");
+        save_allied_mages(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&mine),
+            &[],
+        )
+        .expect("mage should persist");
         save_allied_mages(&created.database_path, "other-game", &[theirs], &[])
             .expect("other game's mage should persist");
 
@@ -3399,8 +3409,13 @@ mod tests {
         let created =
             create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
         let mage = a_mage("9001", "Adept", 23);
-        save_allied_mages(&created.database_path, GAME_ID, &[mage.clone()], &[])
-            .expect("mage should persist");
+        save_allied_mages(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&mage),
+            &[],
+        )
+        .expect("mage should persist");
 
         let exported = export_game(dir.path(), GAME_ID, "2026-08-05T09:00:00Z")
             .expect("export should succeed");
