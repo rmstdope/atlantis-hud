@@ -4,7 +4,7 @@ import { aReportUnit } from "@atlantis/core-client";
 import type { SkillInfo } from "@atlantis/core-client";
 import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
-import { magesOf, openingMage, standingOf } from "./magicStanding";
+import { magesOf, openingMage, standingOf, standingsFrom } from "./magicStanding";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
 const tree = buildMagicTree(index);
@@ -40,6 +40,29 @@ const SIX_OF_SEVEN = standing({
   EARM: 2,
   WEAT: 3,
   STOR: 3
+});
+
+describe("standingsFrom", () => {
+  it("answers about a level map, with no report unit in sight", () => {
+    const { byTag, counts } = standingsFrom(
+      new Map([
+        ["FORC", 2],
+        ["PATT", 3],
+        ["ILLU", 3]
+      ]),
+      tree
+    );
+
+    const illusion = byTag.get("ILLU");
+    expect(illusion).toMatchObject({ kind: "ceiling", level: 3, ceiling: 2 });
+    expect(illusion?.kind === "ceiling" ? illusion.heldBy.map((need) => need.name) : []).toEqual([
+      "force"
+    ]);
+    expect(byTag.get("FORC")).toEqual({ kind: "known", level: 2, ceiling: 5 });
+    expect(counts.known + counts.ceiling + counts.maxed + counts.open + counts.locked).toBe(
+      tree.byTag.size
+    );
+  });
 });
 
 describe("standingOf", () => {

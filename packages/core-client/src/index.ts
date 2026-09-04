@@ -651,7 +651,21 @@ export type AlliedMageKey = {
 };
 
 /**
- * One mage's plan for next turn: what he is to study, and what the player wants to remember.
+ * One step of a mage's study plan: what he studies, and how far.
+ *
+ * `rules/study` allows `STUDY <skill>` and `STUDY <skill> <level>`, the second meaning "continue
+ * from turn to turn until he reaches that level". `targetLevel` of null is the first form: one
+ * month, and then the next goal.
+ */
+export type StudyGoal = {
+  /** The skill tag, upper-cased (`"FORC"`). */
+  skill: string;
+  /** `STUDY <skill> <level>`'s optional level; null is the bare one-month form. */
+  targetLevel: number | null;
+};
+
+/**
+ * One mage's study plan: an ordered queue of goals, and what the player wants to remember.
  *
  * There is no `gameId`: every call that reads or writes these rows is scoped to one game and
  * takes it as a parameter, as `AlliedMageRecord` is.
@@ -661,10 +675,8 @@ export type StudyPlanRecord = {
   factionId: string;
   /** The unit number, as the report writes it. */
   unitId: string;
-  /** The skill tag, upper-cased (`"FORC"`); null when the row is a note with no study chosen. */
-  skill: string | null;
-  /** `STUDY <skill> <level>`'s optional level; null when the order names no level. */
-  targetLevel: number | null;
+  /** Next turn's study first. Empty when the row is a note with nothing planned. */
+  goals: StudyGoal[];
   /** The player's free text. Never null: an absent note is the empty string. */
   comment: string;
   /** When the row was last written, ISO 8601, from the caller's clock. */

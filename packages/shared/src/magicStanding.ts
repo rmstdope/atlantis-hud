@@ -56,6 +56,14 @@ export type MageStanding = {
   byTag: ReadonlyMap<string, SkillStanding>;
   counts: StandingCounts;
   /**
+   * The skills the report printed for him, verbatim - levels *and* points.
+   *
+   * `byTag` answers where he stands; this is what he stands on. A projection needs the points
+   * (`studySchedule.ts`), and they exist nowhere else once a `ReportUnit` has been turned into a
+   * standing.
+   */
+  skills: readonly SkillInfo[];
+  /**
    * Skills he holds that the ruleset has no entry for at all - not merely absent from the tree. A
    * non-magic skill the ruleset knows (`OBSE`, `TACT`) is absent from the tree and is not here.
    */
@@ -110,13 +118,18 @@ function standingIn(node: MagicSkillNode, levels: ReadonlyMap<string, number>): 
   return begun ? { kind: "open", ceiling } : { kind: "locked" };
 }
 
-/** Where `unit` stands in every magic skill. Never throws; an empty tree yields all-zero counts. */
-export function standingOf(
-  unit: ReportUnit,
-  tree: MagicTree,
-  index: GameDataIndex
-): MageStanding {
-  const levels = levelsOf(unit.skills);
+/**
+ * Where a mage holding `levels` stands in every magic skill. Never throws; an empty tree yields
+ * all-zero counts.
+ *
+ * Levels rather than a `ReportUnit`, so a projection can ask the same question about a mage as he
+ * will be some turns from now (`studySchedule.ts`). `standingOf` is this plus the fields a report
+ * supplies. Keys must be upper-cased, for the reason `levelsOf` gives.
+ */
+export function standingsFrom(
+  levels: ReadonlyMap<string, number>,
+  tree: MagicTree
+): { byTag: Map<string, SkillStanding>; counts: StandingCounts } {
   const byTag = new Map<string, SkillStanding>();
   const counts: StandingCounts = { known: 0, ceiling: 0, maxed: 0, open: 0, locked: 0 };
   for (const [tag, node] of tree.byTag) {
@@ -124,6 +137,17 @@ export function standingOf(
     byTag.set(tag, standing);
     counts[standing.kind] += 1;
   }
+  return { byTag, counts };
+}
+
+/** Where `unit` stands in every magic skill. Never throws; an empty tree yields all-zero counts. */
+export function standingOf(
+  unit: ReportUnit,
+  tree: MagicTree,
+  index: GameDataIndex
+): MageStanding {
+  const levels = levelsOf(unit.skills);
+  const { byTag, counts } = standingsFrom(levels, tree);
 
   return {
     unitId: unit.unitId,
@@ -132,6 +156,7 @@ export function standingOf(
     adept: [...levels.keys()].some((tag) => tag !== "MANI" && tree.byTag.has(tag)),
     byTag,
     counts,
+    skills: unit.skills,
     missing: unit.skills.filter((skill) => !index.byId.has(skillEntryId(skill.tag)))
   };
 }
