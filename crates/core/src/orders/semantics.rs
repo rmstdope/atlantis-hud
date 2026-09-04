@@ -6936,8 +6936,9 @@ struct MarketPurse {
     /// module's accept-on-doubt policy and the behaviour before this bead.
     ///
     /// The `doubted` half of that is narrower than it looks, and deliberately so: the snapshot is
-    /// taken as the market opens, so it sees only the doubts raised in the phases before it -
-    /// `TAX`, `GIVE`, `CAST`. A sharer doubted later, by its own `SELL` of goods this market does
+    /// taken as the market opens, so it sees only the doubts raised in the phases before it - the
+    /// first five of [`phases::ORDER`]: `Instant`, `Claim`, `Give`, `Tax`, `Cast`. A sharer
+    /// doubted later, by its own `SELL` of goods this market does
     /// not price or by a `PRODUCE` in a phase after the market, is still counted here. That is
     /// right rather than merely convenient: those doubts are about what the unit will hold at the
     /// *end* of the month, and what this purse lends is what it holds when the market opens, which
