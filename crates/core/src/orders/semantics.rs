@@ -3608,6 +3608,10 @@ struct Ledger<'a> {
     /// silver the market really left. `forecast_unit` carries the same figure as its `funds`
     /// running total, and the two surfaces must settle one quantity (`ah-lu0f.2`, `ah-omn7`).
     overcharged: BTreeMap<String, i64>,
+    /// The purse this hex's `SHARE` flags open for its market, snapshotted as `StatePhase::Market`
+    /// opened. Read by `buy` and `settle_buy_all` here, and by `forecast_hex` for the SILVER
+    /// column, so the two surfaces cannot size one purchase two ways (`ah-lu0f.2`, `ah-szye`).
+    market_purse: MarketPurse,
 }
 
 /// A bounded `BUY` this unit's silver cut down (`ah-omn7`).
@@ -3827,6 +3831,8 @@ fn ledger_for_with_production<'a>(
         claimed: BTreeMap::new(),
         reduced_buys: Vec::new(),
         overcharged: BTreeMap::new(),
+        // `trusted: true` - see `MarketPurse`'s hand-written `Default`.
+        market_purse: MarketPurse::default(),
     };
 
     let pillaged = own_unit_pillages(hex);
@@ -3858,6 +3864,12 @@ fn ledger_for_with_production<'a>(
         })
         .collect();
     for phase in phases::ORDER {
+        if phase == StatePhase::Market {
+            // Snapshotted once, before any `BUY` is applied: the engine's sizing pass decrements
+            // nothing, so one buyer spending the purse does not shrink it for the next
+            // (`ah-szye`).
+            ledger.market_purse = MarketPurse::read(&ledger.state, &ledger.doubted, hex);
+        }
         for (index, ordered) in hex.units.iter().enumerate() {
             if phase == StatePhase::Tax {
                 let facts = unit_facts(hex, ordered, &nothing, None, ruleset);
@@ -6873,6 +6885,94 @@ impl<'a> Sharing<'a> {
             .iter()
             .map(|o| relieved_balance(ledger, &o.unit.unit_id, tag))
             .sum()
+    }
+}
+
+/// Every sharing unit's silver as the market opens, which is the purse `rules/share` lends a
+/// `BUY`.
+///
+/// The engine's `GetBuyAmount` sizes every unit's `BUY` against `GetSharedMoney()` in a pass that
+/// decrements nothing, so this is a **snapshot**: one buyer spending it does not shrink it for the
+/// next. That is why it is taken once, as `StatePhase::Market` opens, rather than read per order.
+///
+/// Not [`sharing_purse`], which settles what the hex lends for the month *after* every order has
+/// been priced and is read by the SILVER column's shortfall arithmetic. Two questions, two
+/// answers, deliberately: this one decides how many goods arrive, that one decides who is warned
+/// (`ah-szye`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MarketPurse {
+    /// What each sharing unit holds when the market opens, index-aligned with `hex.units` and `0`
+    /// for a non-sharer. Empty when nothing in the hex shares, which is the common case.
+    lendable: Vec<i64>,
+    /// `false` when any sharer's market-open balance could not be priced - a gift on the way in,
+    /// or a doubted unit. No bounded `BUY` in the hex is then capped at all, which is this
+    /// module's accept-on-doubt policy and the behaviour before this bead.
+    trusted: bool,
+}
+
+impl Default for MarketPurse {
+    /// `trusted: true`, unlike `#[derive(Default)]`: a purse that lends nothing still caps a `BUY`
+    /// at the buyer's own silver, and defaulting to `false` would silently disable the cap in
+    /// every hex.
+    fn default() -> Self {
+        Self {
+            lendable: Vec::new(),
+            trusted: true,
+        }
+    }
+}
+
+impl MarketPurse {
+    /// Read as `StatePhase::Market` opens, before any `BUY` in the hex has been applied.
+    ///
+    /// `StatePhase::Market`, not [`balance_of`]: that reads at maintenance, so a sharer's later
+    /// `STUDY` or `BUILD` would shrink the purse the market is allowed to spend.
+    fn read(state: &PhaseState, doubted: &BTreeSet<String>, hex: &Hex<'_>) -> Self {
+        let sharing = Sharing::read(hex);
+        if sharing.sharers.is_empty() {
+            return Self::default();
+        }
+
+        let mut trusted = true;
+        let mut lendable = Vec::with_capacity(hex.units.len());
+        for ordered in &hex.units {
+            if !ordered.shares() {
+                lendable.push(0);
+                continue;
+            }
+            let id = &ordered.unit.unit_id;
+            if doubted.contains(id) {
+                trusted = false;
+            }
+            match state.known_balance_at(StatePhase::Market, id, SILVER) {
+                Ok(silver) => lendable.push(silver.max(0)),
+                Err(_) => {
+                    trusted = false;
+                    lendable.push(0);
+                }
+            }
+        }
+
+        Self { lendable, trusted }
+    }
+
+    /// What the purse adds to the unit at `index`: every **other** sharer's market-open silver.
+    ///
+    /// This unit's own silver is already in its own balance, so counting it here would let a
+    /// sharer buy twice what it holds. `None` where the purse is not trusted, which the bounded
+    /// callers read as "apply no cap".
+    fn adds_for(&self, index: usize) -> Option<i64> {
+        if !self.trusted {
+            return None;
+        }
+        Some(
+            self.lendable
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != index)
+                .map(|(_, silver)| *silver)
+                .sum(),
+        )
     }
 }
 
@@ -19201,6 +19301,70 @@ mod tests {
             sharing_purse(&hex, &ledger).lends_to,
             vec![0, 0],
             "one doubted sharer silences the purse"
+        );
+    }
+
+    // --- the purse the market opens with (`ah-szye`) --------------------------------------------
+
+    fn market_purse_of(hex_region: &ReportRegion, orders: &str) -> MarketPurse {
+        let ordered = OrderedUnits::read(orders);
+        let hex = Hex::read(hex_region, &ordered, &[]);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+        MarketPurse::read(&ledger.state, &ledger.doubted, &hex)
+    }
+
+    #[test]
+    fn a_market_purse_is_every_other_sharers_silver() {
+        let hex_region = region(vec![
+            with_silver(unit("1"), 50),
+            sharing(with_silver(unit("2"), 300)),
+            sharing(with_silver(unit("3"), 200)),
+        ]);
+
+        let purse = market_purse_of(&hex_region, "");
+
+        assert_eq!(purse.adds_for(0), Some(500), "both sharers lend the buyer");
+        assert_eq!(purse.adds_for(1), Some(200), "a sharer never counts its own");
+        assert_eq!(purse.adds_for(2), Some(300));
+    }
+
+    #[test]
+    fn a_hex_with_no_sharer_lends_the_market_nothing() {
+        let hex_region = region(vec![
+            with_silver(unit("1"), 50),
+            with_silver(unit("2"), 300),
+        ]);
+
+        let purse = market_purse_of(&hex_region, "");
+
+        assert_eq!(purse.adds_for(0), Some(0));
+        assert_eq!(purse.adds_for(1), Some(0));
+    }
+
+    #[test]
+    fn a_doubted_sharer_makes_the_market_purse_untrustworthy() {
+        let hex_region = region(vec![
+            with_silver(unit("1"), 0),
+            sharing(with_silver(unit("2"), 500)),
+        ]);
+        let ordered = OrderedUnits::read("");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = ruleset();
+        let mut ledger = ledger_for(&hex, Some(&rules));
+
+        assert_eq!(
+            MarketPurse::read(&ledger.state, &ledger.doubted, &hex).adds_for(0),
+            Some(500),
+            "it lends before anything is doubted"
+        );
+
+        ledger.doubted.insert("2".to_string());
+
+        assert_eq!(
+            MarketPurse::read(&ledger.state, &ledger.doubted, &hex).adds_for(0),
+            None,
+            "one doubted sharer makes the whole purse unmeasurable"
         );
     }
 
