@@ -27,15 +27,14 @@ describe("parseMovementRules", () => {
 
     // "...the following terrain types take two movement points for riding or walking units to
     // enter: Forest, Mountain, Swamp, Jungle, and Tundra."
-    expect(rules.terrainCosts.doubled).toEqual([
-      "forest",
-      "mountain",
-      "swamp",
-      "jungle",
-      "tundra"
-    ]);
+    expect(rules.terrainCosts.premiums).toEqual({
+      forest: 2,
+      mountain: 2,
+      swamp: 2,
+      jungle: 2,
+      tundra: 2
+    });
     expect(rules.terrainCosts.normal).toBe(1);
-    expect(rules.terrainCosts.doubledCost).toBe(2);
   });
 
   /**
@@ -46,7 +45,7 @@ describe("parseMovementRules", () => {
   it("reads which modes of travel the terrain premium applies to", () => {
     const rules = parseMovementRules(RULES_HTML);
 
-    expect(rules.terrainCosts.doubledFor).toEqual(["ride", "walk"]);
+    expect(rules.terrainCosts.premiumFor).toEqual(["ride", "walk"]);
   });
 
   it("takes the affected modes from the page rather than assuming them", () => {
@@ -56,7 +55,7 @@ describe("parseMovementRules", () => {
     );
     expect(reworded).not.toBe(RULES_HTML);
 
-    expect(parseMovementRules(reworded).terrainCosts.doubledFor).toEqual(["walk"]);
+    expect(parseMovementRules(reworded).terrainCosts.premiumFor).toEqual(["walk"]);
   });
 
   it("reads the road bonus and its floor", () => {

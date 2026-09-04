@@ -84,6 +84,69 @@ function sentence(match: RegExpMatchArray): string {
   return match[0].trim().replace(/\s+/g, " ");
 }
 
+/** One tier of the terrain premium: what it costs, and the sentence's own list of terrain. */
+type TerrainTier = { cost: number; list: string };
+
+const TERRAIN_INTRO = `Moving from one region to another normally takes ${NUMBER_PATTERN} movement point`;
+
+/** New Origins: one premium, its number spelled as a word. */
+const SINGLE_PREMIUM = new RegExp(
+  `${TERRAIN_INTRO}[^.]*?terrain types take ${NUMBER_PATTERN} movement points for ([a-z ]+?) ` +
+    `units to enter: ([^.]+)\\.`,
+  "i"
+);
+
+/** New Age: one clause per tier, the clauses separated by semicolons. */
+const TIERED_PREMIUMS = new RegExp(
+  `${TERRAIN_INTRO}, except for the following terrain types, which cost a ([a-z ]+?) unit more ` +
+    `to enter: ([^.]+)\\.`,
+  "i"
+);
+
+/** `2 movement points for forest, mountain` - one clause of the tiered wording. */
+const TIER_CLAUSE = new RegExp(`^\\s*${NUMBER_PATTERN} movement points? for (.+)$`, "i");
+
+/**
+ * Reads whichever terrain sentence the page states, or stops the run naming the value.
+ *
+ * The tiered wording is tried first and the single one is the fallback, so a page matching neither
+ * fails on the wording this repository has always understood, with the message it has always given.
+ */
+function readTerrainSentence(text: string): {
+  match: RegExpMatchArray;
+  modes: string;
+  normal: number | null;
+  tiers: TerrainTier[];
+} {
+  const tiered = text.match(TIERED_PREMIUMS);
+  if (tiered) {
+    const tiers = tiered[3].split(";").map((clause) => {
+      const parsed = clause.match(TIER_CLAUSE);
+      if (!parsed) {
+        throw new RulesetScrapeError(
+          `could not read terrainCosts: ${clause.trim()} is not a cost and a list of terrain`
+        );
+      }
+      const cost = toNumber(parsed[1]);
+      if (cost === null) {
+        throw new RulesetScrapeError(
+          `could not read terrainCosts: ${clause.trim()} is not a cost and a list of terrain`
+        );
+      }
+      return { cost, list: parsed[2] };
+    });
+    return { match: tiered, modes: tiered[2], normal: toNumber(tiered[1]), tiers };
+  }
+
+  const single = requireMatch(text, "terrainCosts", SINGLE_PREMIUM);
+  return {
+    match: single,
+    modes: single[3],
+    normal: toNumber(single[1]),
+    tiers: [{ cost: toNumber(single[2]) ?? Number.NaN, list: single[4] }]
+  };
+}
+
 export function parseMovementRules(html: string): MovementRules {
   const text = htmlToText(html);
 
@@ -99,17 +162,9 @@ export function parseMovementRules(html: string): MovementRules {
   );
 
   // "...the following terrain types take two movement points for riding or walking units to
-  //  enter: Forest, Mountain, Swamp, Jungle, and Tundra."
-  const terrain = requireMatch(
-    text,
-    "terrainCosts",
-    new RegExp(
-      `Moving from one region to another normally takes ${NUMBER_PATTERN} movement point[^.]*?` +
-        `terrain types take ${NUMBER_PATTERN} movement points for ([a-z ]+?) units to ` +
-        `enter: ([^.]+)\\.`,
-      "i"
-    )
-  );
+  //  enter: Forest, Mountain, Swamp, Jungle, and Tundra." - or New Age's tiered wording, which
+  //  prices a volcano above a forest in the same sentence.
+  const terrain = readTerrainSentence(text);
 
   // "If a road in the given direction is connected, units move along that road at half cost to a
   //  minimum of 1 movement point."
@@ -152,8 +207,7 @@ export function parseMovementRules(html: string): MovementRules {
   const walk = toNumber(points[1]);
   const ride = toNumber(points[2]);
   const fly = toNumber(points[3]);
-  const normal = toNumber(terrain[1]);
-  const doubledCost = toNumber(terrain[2]);
+  const normal = terrain.normal;
   const minimumCost = toNumber(road[2]);
   const flatCost = toNumber(sailingCost[1]);
 
@@ -162,7 +216,7 @@ export function parseMovementRules(html: string): MovementRules {
     ride === null ||
     fly === null ||
     normal === null ||
-    doubledCost === null ||
+    terrain.tiers.some((tier) => !Number.isInteger(tier.cost)) ||
     minimumCost === null ||
     flatCost === null
   ) {
@@ -185,29 +239,40 @@ export function parseMovementRules(html: string): MovementRules {
     walking: "walk",
     flying: "fly"
   };
-  const doubledFor = terrain[3]
+  const premiumFor = terrain.modes
     .split(/,| and | or /i)
     .map((mode) => MODE_NAMES[mode.trim().toLowerCase()])
     .filter((mode): mode is MovementMode => mode !== undefined);
 
-  if (doubledFor.length === 0) {
+  if (premiumFor.length === 0) {
     throw new RulesetScrapeError(
       "could not read terrainCosts: the page named no modes of travel the premium applies to"
     );
   }
 
-  const doubled = terrain[4]
-    .split(/,| and /i)
-    .map((entry) => entry.trim().toLowerCase())
-    .filter((entry) => entry.length > 0);
+  const premiums: Record<string, number> = {};
+  for (const tier of terrain.tiers) {
+    for (const name of tier.list
+      .split(/,| and /i)
+      .map((entry) => entry.trim().toLowerCase())
+      .filter((entry) => entry.length > 0)) {
+      const already = premiums[name];
+      if (already !== undefined && already !== tier.cost) {
+        throw new RulesetScrapeError(
+          `could not read terrainCosts: ${name} is priced at both ${already} and ${tier.cost}`
+        );
+      }
+      premiums[name] = tier.cost;
+    }
+  }
 
-  if (doubled.length === 0) {
+  if (Object.keys(premiums).length === 0) {
     throw new RulesetScrapeError("could not read terrainCosts: the page listed no terrain names");
   }
 
   return {
     movementPoints: { walk, ride, fly },
-    terrainCosts: { normal, doubledCost, doubled, doubledFor },
+    terrainCosts: { normal, premiums, premiumFor },
     road: { divisor, minimumCost },
     ocean: {
       requiresShipUnlessFlying: true,
@@ -221,7 +286,7 @@ export function parseMovementRules(html: string): MovementRules {
     },
     provenance: {
       movementPoints: sentence(points),
-      terrainCosts: sentence(terrain),
+      terrainCosts: sentence(terrain.match),
       road: sentence(road),
       ocean: sentence(ocean),
       sailing: `${sentence(sailingCost)}. ${sentence(coastal)}`

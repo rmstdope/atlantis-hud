@@ -55,7 +55,7 @@ fn costs_terrain_as_the_rules_page_states_it() {
 /// "the following terrain types take two movement points **for riding or walking units** to enter".
 ///
 /// Flight is deliberately absent from that list, so difficult ground is no obstacle to a flier -
-/// which the scraped `doubledFor` records rather than the core assuming.
+/// which the scraped `premiumFor` records rather than the core assuming.
 #[test]
 fn difficult_going_costs_a_flier_nothing_extra() {
     let ruleset = ruleset();
@@ -317,7 +317,7 @@ fn rejects_a_road_floor_that_would_make_a_step_free() {
 
 /// If the "harder" terrain is cheaper than ordinary going, the ruleset has been read backwards.
 #[test]
-fn rejects_a_doubled_cost_below_the_normal_one() {
+fn rejects_a_premium_below_the_ordinary_cost() {
     let broken = RULESET.replace("\"normal\": 1", "\"normal\": 5");
     assert_ne!(broken, RULESET, "the fixture should have been altered");
 

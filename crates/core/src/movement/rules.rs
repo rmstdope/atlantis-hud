@@ -58,16 +58,19 @@ pub struct MovementPoints {
 )]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TerrainCosts {
+    /// What ordinary going costs, and what any terrain the page never names costs.
     pub normal: u32,
-    pub doubled_cost: u32,
-    /// Lower-cased terrain names that cost `doubled_cost` rather than `normal`.
-    pub doubled: Vec<String>,
-    /// The modes of travel the premium applies to.
+    /// Lower-cased terrain names that cost more than `normal`, and what each of them costs.
     ///
-    /// Scraped rather than assumed: the sentence reads "take two movement points **for riding or
-    /// walking units** to enter", and flight is absent from it, so difficult ground costs a flier
-    /// nothing extra. Charging one anyway is a wrong number presented as fact.
-    pub doubled_for: Vec<MovementMode>,
+    /// A map rather than a list and one premium, because a ruleset may state more than one tier:
+    /// Atlantis New Age charges 2 for forest and 4 for volcano in a single sentence.
+    pub premiums: BTreeMap<String, u32>,
+    /// The modes of travel the premiums apply to.
+    ///
+    /// Scraped rather than assumed: both wordings name riding and walking and neither names
+    /// flight, so difficult ground costs a flier nothing extra. Charging one anyway is a wrong
+    /// number presented as fact.
+    pub premium_for: Vec<MovementMode>,
 }
 
 /// What a connected road does to a cost.
@@ -888,18 +891,25 @@ impl Ruleset {
         }
 
         let terrain = &self.movement.terrain_costs;
-        if terrain.normal == 0 || terrain.doubled_cost == 0 {
+        if terrain.normal == 0 {
             return Err(RulesetError::Unusable(
-                "a terrain cost is zero, which would make a route free".to_string(),
+                "ordinary terrain costs zero, which would make a route free".to_string(),
             ));
         }
 
-        if terrain.doubled_cost < terrain.normal {
-            return Err(RulesetError::Unusable(format!(
-                "difficult terrain costs {} but ordinary terrain costs {}, which reads the rule \
-                 backwards",
-                terrain.doubled_cost, terrain.normal
-            )));
+        for (name, cost) in &terrain.premiums {
+            if *cost == 0 {
+                return Err(RulesetError::Unusable(format!(
+                    "{name} costs zero, which would make a route free"
+                )));
+            }
+            if *cost < terrain.normal {
+                return Err(RulesetError::Unusable(format!(
+                    "{name} is named as harder going but costs {cost} where ordinary terrain \
+                     costs {}, which reads the rule backwards",
+                    terrain.normal
+                )));
+            }
         }
 
         let road = &self.movement.road;
@@ -937,8 +947,8 @@ impl Ruleset {
         // any word here. A terrain that also charges a walking premium is the tell-tale of a
         // mis-capture: nothing walks into water, so no ruleset prices it as difficult going.
         if terrain
-            .doubled
-            .iter()
+            .premiums
+            .keys()
             .any(|listed| listed.eq_ignore_ascii_case(water))
         {
             return Err(RulesetError::Unusable(format!(
@@ -986,16 +996,15 @@ impl Ruleset {
     #[must_use]
     pub fn terrain_cost(&self, terrain: &str, mode: MovementMode) -> u32 {
         let costs = &self.movement.terrain_costs;
-        let difficult = costs
-            .doubled
-            .iter()
-            .any(|listed| listed.eq_ignore_ascii_case(terrain));
-
-        if difficult && costs.doubled_for.contains(&mode) {
-            costs.doubled_cost
-        } else {
-            costs.normal
+        if !costs.premium_for.contains(&mode) {
+            return costs.normal;
         }
+
+        costs
+            .premiums
+            .iter()
+            .find(|(listed, _)| listed.eq_ignore_ascii_case(terrain))
+            .map_or(costs.normal, |(_, cost)| *cost)
     }
 
     /// Whether crossing water needs a ship, for a unit that cannot fly.

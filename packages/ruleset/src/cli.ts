@@ -97,7 +97,10 @@ async function main(): Promise<void> {
   const { walk, ride, fly } = ruleset.movement.movementPoints;
   console.log(`wrote ${target.pathname}`);
   console.log(`  movement points: walk ${walk}, ride ${ride}, fly ${fly}`);
-  console.log(`  doubled terrain: ${ruleset.movement.terrainCosts.doubled.join(", ")}`);
+  const premiums = Object.entries(ruleset.movement.terrainCosts.premiums)
+    .map(([name, cost]) => `${name} ${cost}`)
+    .join(", ");
+  console.log(`  terrain premiums: ${premiums}`);
   console.log(`  items: ${items}`);
 }
 

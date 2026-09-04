@@ -4,16 +4,23 @@ import type { MovementMode } from "./MovementMode";
 /**
  * What entering a region costs.
  */
-export type TerrainCosts = { normal: number, doubledCost: number, 
+export type TerrainCosts = { 
 /**
- * Lower-cased terrain names that cost `doubled_cost` rather than `normal`.
+ * What ordinary going costs, and what any terrain the page never names costs.
  */
-doubled: Array<string>, 
+normal: number, 
 /**
- * The modes of travel the premium applies to.
+ * Lower-cased terrain names that cost more than `normal`, and what each of them costs.
  *
- * Scraped rather than assumed: the sentence reads "take two movement points **for riding or
- * walking units** to enter", and flight is absent from it, so difficult ground costs a flier
- * nothing extra. Charging one anyway is a wrong number presented as fact.
+ * A map rather than a list and one premium, because a ruleset may state more than one tier:
+ * Atlantis New Age charges 2 for forest and 4 for volcano in a single sentence.
  */
-doubledFor: Array<MovementMode>, };
+premiums: { [key in string]: number }, 
+/**
+ * The modes of travel the premiums apply to.
+ *
+ * Scraped rather than assumed: both wordings name riding and walking and neither names
+ * flight, so difficult ground costs a flier nothing extra. Charging one anyway is a wrong
+ * number presented as fact.
+ */
+premiumFor: Array<MovementMode>, };
