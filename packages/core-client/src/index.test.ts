@@ -127,6 +127,7 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     planRoute: vi.fn().mockResolvedValue({ plan: null, problem: null, risk: null, fullyModelled: true }),
     traceMoveOrders: vi.fn().mockResolvedValue({ path: null }),
     exportMap: vi.fn().mockResolvedValue("; Map export from Atlantis HUD\n"),
+    exportMageSheet: vi.fn().mockResolvedValue("; Mage sheet from Atlantis HUD\n"),
     knownMap: vi.fn().mockResolvedValue({ hexes: [], levels: [], currentTurn: null }),
     previewOrders: vi.fn().mockResolvedValue({ regions: [] }),
     tradeRoutes: vi.fn().mockResolvedValue([]),

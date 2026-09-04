@@ -154,6 +154,15 @@ export const SWEEP: SweepEntry[] = [
     })
   },
   {
+    command: "export_mage_sheet",
+    // The unit ids cross as text of their own, so only real IPC proves the second argument
+    // arrives under the name the command declares.
+    args: () => ({
+      raw_report: REPORT,
+      unit_ids_json: JSON.stringify(["18642"])
+    })
+  },
+  {
     command: "known_map",
     args: () => ({
       raw_report: REPORT,

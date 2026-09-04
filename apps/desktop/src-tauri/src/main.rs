@@ -212,6 +212,7 @@ fn main() {
             atlantis_hud_core_tauri::command_delete_army,
             atlantis_hud_core_tauri::command_plan_route,
             atlantis_hud_core_tauri::command_export_map,
+            atlantis_hud_core_tauri::command_export_mage_sheet,
             atlantis_hud_core_tauri::command_known_map,
             atlantis_hud_core_tauri::command_trace_move_orders,
             atlantis_hud_core_tauri::command_preview_orders,

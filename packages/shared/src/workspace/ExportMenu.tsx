@@ -1,7 +1,7 @@
 import { PopoverFrame } from "./popover";
 
 /**
- * The two exports, behind one header button.
+ * The exports, behind one header button.
  *
  * They were two buttons of their own, side by side, spending a permanent slice of the toolbar on a
  * pair of things a player reaches for once a turn. The header is read every minute; the exports are
@@ -25,18 +25,23 @@ export function ExportMenu({
   canExportOrders,
   canExportOrdersLong,
   canExportMap,
+  canExportMageSheet,
   onExportOrders,
   onExportOrdersLong,
   onExportMap,
+  onExportMageSheet,
   onDismiss
 }: {
   canExportOrders: boolean;
   /** Off when the report carries no long-format template - there is then nothing to restore. */
   canExportOrdersLong: boolean;
   canExportMap: boolean;
+  /** Off without a report or without the ruleset: neither can say which units are mages. */
+  canExportMageSheet: boolean;
   onExportOrders: () => void;
   onExportOrdersLong: () => void;
   onExportMap: () => void;
+  onExportMageSheet: () => void;
   onDismiss: () => void;
 }) {
   const itemClass =
@@ -79,6 +84,18 @@ export function ExportMenu({
         className={itemClass}
       >
         Export map
+      </button>
+      <button
+        type="button"
+        data-testid="export-mage-sheet"
+        disabled={!canExportMageSheet}
+        onClick={() => {
+          onDismiss();
+          onExportMageSheet();
+        }}
+        className={itemClass}
+      >
+        Export mage sheet
       </button>
     </PopoverFrame>
   );

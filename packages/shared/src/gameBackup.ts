@@ -86,7 +86,7 @@ export function backupAsCopy(backupJson: string, newGameId: string): string {
 
 // Every run of characters a file system may refuse: backslash, slash, colon, asterisk, question
 // mark, double quote, angle brackets, pipe, and control characters U+0000-U+001F.
-const UNSAFE_FILE_NAME_CHARACTERS = /[\\/:*?"<>|\x00-\x1f]+/gu;
+export const UNSAFE_FILE_NAME_CHARACTERS = /[\\/:*?"<>|\x00-\x1f]+/gu;
 
 /**
  * The file a backup is saved as: `<game name>.atlantis-hud-game.json`, with every run of

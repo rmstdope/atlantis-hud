@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   deliverArmyExport,
   deliverGameBackupExport,
+  deliverMageSheetExport,
   deliverMapExport,
   deliverOrdersExport
 } from "./exportActions";
@@ -156,5 +157,31 @@ describe("deliverArmyExport", () => {
     const saveTextFile = vi.fn().mockResolvedValue(null);
 
     await expect(deliverArmyExport(saveTextFile, army("Northern Host"), null, NO_DERIVED_SKILLS)).resolves.toBeNull();
+  });
+});
+
+/** Delivering a shared mage sheet (ah-lyg6.1.1). */
+describe("delivering a mage sheet", () => {
+  it("delivers a mage sheet under its own name", async () => {
+    const client = { exportMageSheet: vi.fn().mockResolvedValue("; Mage sheet from Atlantis HUD\n") };
+    const saveTextFile = vi.fn().mockResolvedValue("/tmp/mages-Borg-turn-23.txt");
+
+    const written = await deliverMageSheetExport(
+      client,
+      saveTextFile,
+      "raw report",
+      ["301", "302"],
+      "Borg",
+      "21",
+      23
+    );
+
+    expect(client.exportMageSheet).toHaveBeenCalledWith("raw report", JSON.stringify(["301", "302"]));
+    expect(saveTextFile).toHaveBeenCalledWith(
+      "mages-Borg-turn-23.txt",
+      "; Mage sheet from Atlantis HUD\n",
+      "text/plain"
+    );
+    expect(written).toBe("/tmp/mages-Borg-turn-23.txt");
   });
 });

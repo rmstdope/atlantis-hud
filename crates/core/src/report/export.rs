@@ -198,7 +198,11 @@ pub fn export_mage_sheet(report: &ParsedReport, unit_ids: &BTreeSet<String>) -> 
     text.push_str(&write_header(&report.header));
 
     for region in &report.regions {
-        if region.units.iter().any(|unit| unit_ids.contains(&unit.unit_id)) {
+        if region
+            .units
+            .iter()
+            .any(|unit| unit_ids.contains(&unit.unit_id))
+        {
             text.push_str(&write_mage_region(region, unit_ids));
         }
     }
@@ -692,7 +696,10 @@ mod tests {
             .find(|unit| unit.unit_id == "301")
             .expect("the outdoor mage");
         assert_eq!(outdoor.name, "Outdoor Mage");
-        assert!(!outdoor.own, "a sheet must not arrive as the ally's own units");
+        assert!(
+            !outdoor.own,
+            "a sheet must not arrive as the ally's own units"
+        );
         assert_eq!(outdoor.faction_id.as_deref(), Some("21"));
         assert_eq!(outdoor.faction_name.as_deref(), Some("Borg"));
         assert_eq!(outdoor.structure_id, None);
@@ -707,7 +714,10 @@ mod tests {
             .iter()
             .find(|unit| unit.unit_id == "302")
             .expect("the housed mage");
-        assert!(!housed.own, "a sheet must not arrive as the ally's own units");
+        assert!(
+            !housed.own,
+            "a sheet must not arrive as the ally's own units"
+        );
         assert_eq!(housed.structure_id.as_deref(), Some("500"));
 
         assert!(
