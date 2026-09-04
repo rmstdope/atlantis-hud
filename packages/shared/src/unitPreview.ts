@@ -254,8 +254,13 @@ export function itemsTooltip(
     );
   }
   for (const item of produced) {
+    // "this unit cannot", not "cannot be spent": since `ah-728m.2.2` a manufacturing output *can*
+    // be spent this month - by a later manufacturer in the same hex, or by a BUILD, both of which
+    // `rules/sequenceofevents` runs after "Manufacturing PRODUCE orders ... are processed". What
+    // stays true is what this unit can do with it: GIVE and the market settle long before either
+    // PRODUCE phase, and its own month is already spent on producing.
     lines.push(
-      `Includes ${item.amount} ${item.tag} this unit will produce. Production resolves last, so they cannot be spent this month.`
+      `Includes ${item.amount} ${item.tag} this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.`
     );
   }
   for (const sentence of buyAll) {

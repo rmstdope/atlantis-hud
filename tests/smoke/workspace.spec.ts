@@ -4479,6 +4479,9 @@ test("a manufacturer draws on the hex's shared stock, and its supplier nets to n
     .locator('[data-predicted="true"][title*="will produce"]');
   await expect(smith).toContainText("60 SWOR");
   await expect(smith).toHaveAttribute("title", /36 SWOR this unit will produce/);
+  // The cap sentence reads the same settlement as the cell since `ah-728m.2.2`: before it, this
+  // said "materials for 16 swords" beside a cell projecting 36.
+  await expect(smith).toHaveAttribute("title", /materials for 36 swords/);
 
   await selectUnit(page, "5105");
   await fillOrders(page, "PRODUCE iron");

@@ -944,6 +944,21 @@ pub struct LateFacts<'a> {
     /// charged. Read by the `PRODUCE` arm alone; every other term wants `items`
     /// (`rules/sequenceofevents`, `ah-l80z`). Already clamped at zero by whoever built it.
     pub before_manufacturing: &'a [ItemAmount],
+    /// What a `PRODUCE` may actually spend of each of its recipe's materials, once the hex's
+    /// `SHARE` flags and every consumer ahead of this one in report order have been settled.
+    ///
+    /// **Not `before_manufacturing` with the pool folded in**, and the split is load-bearing:
+    /// `rules/share` lends *resources*, so a hex's stock of a recipe's materials is one purse
+    /// while its tools and its men are not. This slice is what prices the run; the unit's own list
+    /// above is what `workforce_for` reads, so no unit is ever given a faction-mate's hammers
+    /// (`ah-728m.2.2`).
+    ///
+    /// Empty for a caller with no ledger to read it from, and for a unit whose `PRODUCE` the
+    /// ruleset cannot price - in which case the `PRODUCE` arm falls back to
+    /// `before_manufacturing`, which is what it always read. It carries an entry per *recipe
+    /// input*, not per held tag, and is computed by `semantics::produce` itself, so the two
+    /// surfaces cannot answer one order differently by construction rather than by agreement.
+    pub shared_materials: &'a [ItemAmount],
 }
 
 impl<'a> UnitFacts<'a> {
@@ -956,6 +971,7 @@ impl<'a> UnitFacts<'a> {
             men_by_race: self.men_by_race,
             items: self.items,
             before_manufacturing: self.items,
+            shared_materials: &[],
         })
     }
 }
@@ -1498,10 +1514,22 @@ pub fn forecast_unit(
                 // will settle at, because the settlement waits on the Give phase and so is not a
                 // number yet here (`ah-npab`); a unit too poor to pay for its shopping is too poor
                 // to fund a recipe either way, so this is the reading before `ah-omn7` unchanged.
+                // The materials this run may spend, which in a hex that shares is more than this
+                // unit's own list: `facts.late().shared_materials` is what `semantics::produce`
+                // priced the very same order against, so the two columns cannot drift (the
+                // invariant this comment block has always claimed, and which pooling would
+                // otherwise have broken - `ah-728m.2.2`). Empty for a hex that shares nothing and
+                // for a recipe the ruleset cannot price, and then this is byte for byte the list
+                // it always was.
+                let priced_against = pooled_materials(
+                    &manufacturing_items,
+                    facts.late().shared_materials,
+                    &lookups.item_name,
+                );
                 let (priced, plan) = price_production(
                     recipe,
                     work,
-                    &manufacturing_items,
+                    &priced_against,
                     available_silver(held, income, expense.saturating_add(market_demand)),
                     *requested,
                     region,
@@ -3795,6 +3823,36 @@ impl Workforce {
 /// `men` is the caller's because the two surfaces read different headcounts; everything else is
 /// computed here exactly once, so the level and the tools cannot drift between them.
 #[must_use]
+/// [`LateFacts::before_manufacturing`] with each shared material's amount put in its place.
+///
+/// An override rather than a sum: `shared_materials` is already the whole amount the run may
+/// spend, own stock included, as `semantics::material_available_at` computes it. Summing would
+/// count this unit's own holding twice.
+fn pooled_materials(
+    own: &[ItemAmount],
+    shared: &[ItemAmount],
+    name_of: &dyn Fn(&str) -> String,
+) -> Vec<ItemAmount> {
+    if shared.is_empty() {
+        return own.to_vec();
+    }
+    let mut items = own.to_vec();
+    for material in shared {
+        match items
+            .iter_mut()
+            .find(|item| item.tag.eq_ignore_ascii_case(&material.tag))
+        {
+            Some(item) => item.amount = material.amount,
+            None => items.push(ItemAmount {
+                amount: material.amount,
+                name: name_of(&material.tag),
+                tag: material.tag.to_ascii_uppercase(),
+            }),
+        }
+    }
+    items
+}
+
 pub fn workforce_for(
     ruleset: Option<&Ruleset>,
     skill: &SkillEntry,
@@ -6035,6 +6093,7 @@ mod tests {
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
+                    shared_materials: &[],
                 }),
                 ..facts(3, &intents, &receipts)
             },
@@ -6119,6 +6178,7 @@ mod tests {
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
+                    shared_materials: &[],
                 }),
                 ..facts(4, &intents, &receipts)
             },
@@ -6165,6 +6225,7 @@ mod tests {
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
+                    shared_materials: &[],
                 }),
                 ..facts(4, &intents, &receipts)
             },
@@ -6197,6 +6258,7 @@ mod tests {
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
+                    shared_materials: &[],
                 }),
                 ..facts(4, &alone, &receipts)
             },
@@ -6239,6 +6301,7 @@ mod tests {
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
+                    shared_materials: &[],
                 }),
                 ..facts(4, &intents, &receipts)
             },
@@ -6279,6 +6342,7 @@ mod tests {
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
+                    shared_materials: &[],
                 }),
                 ..facts(8, &intents, &receipts)
             },
@@ -6314,6 +6378,7 @@ mod tests {
                     men_by_race: &[],
                     items: &items,
                     before_manufacturing: &items,
+                    shared_materials: &[],
                 }),
                 ..facts(3, &[], &receipts)
             },

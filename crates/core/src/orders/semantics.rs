@@ -1396,6 +1396,14 @@ fn forecast_hex(
         ledger
             .state
             .late_holdings_at(PhaseState::BEFORE_MANUFACTURING, hex, ruleset);
+    // What the ITEMS ledger actually priced each `PRODUCE` against, so the column's cap sentence
+    // speaks of the same materials rather than of this unit's own stock alone (`ah-728m.2.2`).
+    let shared_materials_of = |unit_id: &str| {
+        ledger
+            .production_materials
+            .get(unit_id)
+            .map_or(&[][..], Vec::as_slice)
+    };
     let clamped: Vec<Vec<ItemAmount>> = (0..hex.units.len())
         .map(|index| clamped_holdings(before_manufacturing.items_of(index)))
         .collect();
@@ -1541,7 +1549,11 @@ fn forecast_hex(
             // gifts, since `apply_recruits` runs before this hex is priced (`ah-40c9`).
             production_skills: ordered.skills().unwrap_or(&ordered.unit.skills),
             production_skills_unknown: ordered.skills().is_none(),
-            late: Some(late.of_with(index, &clamped[index])),
+            late: Some(late.of_with(
+                index,
+                &clamped[index],
+                shared_materials_of(&ordered.unit.unit_id),
+            )),
         };
         claims.push(food_claim(&facts, ruleset));
 
@@ -3520,6 +3532,15 @@ struct Ledger<'a> {
     /// did. **Per phase, not per tag**: a spend at `Manufacturing` cannot have consumed an output
     /// credited at `PrimaryProduction`, which is two phases later (`ah-728m.2.2`).
     produced: BTreeMap<(String, String), [i64; StatePhase::COUNT]>,
+    /// What each unit's `PRODUCE` was priced against, material by material - the pooled
+    /// availability `material_available_at` answered at that unit's turn in the report-order pass.
+    ///
+    /// Handed to the SILVER column through [`LateFacts::shared_materials`], so its cap sentence
+    /// speaks of the same materials the ITEMS ledger spent. Two surfaces reading one settlement
+    /// rather than each deriving it: the drift `ah-ycuj` and `ah-abwx` were both filed for, and
+    /// which pooling would otherwise have reopened - the ITEMS cell saying a unit makes 36 swords
+    /// while the hover said it had materials for 16 (`ah-728m.2.2`).
+    production_materials: BTreeMap<String, Vec<ItemAmount>>,
     spent_after_production: BTreeMap<(String, String), [i64; StatePhase::COUNT]>,
     /// Units whose sums cannot be trusted, and which are therefore not judged at all.
     ///
@@ -3840,6 +3861,7 @@ fn ledger_for_with_production<'a>(
         state: PhaseState::from_hex(hex),
         manufacturing_spent: BTreeMap::new(),
         produced: BTreeMap::new(),
+        production_materials: BTreeMap::new(),
         spent_after_production: BTreeMap::new(),
         doubted: BTreeSet::new(),
         charged_at: BTreeMap::new(),
@@ -4347,7 +4369,7 @@ impl LateHoldings {
     /// that does reach it must hold a `BEFORE_MANUFACTURING` snapshot and use
     /// [`LateHoldings::of_with`], as `forecast_hex` does.
     fn of(&self, index: usize) -> LateFacts<'_> {
-        self.of_with(index, self.items_of(index))
+        self.of_with(index, self.items_of(index), &[])
     }
 
     /// [`LateHoldings::of`], with the pre-manufacturing item list supplied from a second snapshot
@@ -4356,6 +4378,7 @@ impl LateHoldings {
         &'a self,
         index: usize,
         before_manufacturing: &'a [ItemAmount],
+        shared_materials: &'a [ItemAmount],
     ) -> LateFacts<'a> {
         let holdings = &self.0[index];
         LateFacts {
@@ -4363,6 +4386,7 @@ impl LateHoldings {
             men_by_race: &holdings.men_by_race,
             items: &holdings.items,
             before_manufacturing,
+            shared_materials,
         }
     }
 
@@ -5974,6 +5998,9 @@ fn produce(
                 tag,
             });
         }
+        ledger
+            .production_materials
+            .insert(who.clone(), pooled.clone());
     }
     let (priced, plan) = price_production(recipe, work, &pooled, purse, requested, region);
     let Some(plan) = plan else {
