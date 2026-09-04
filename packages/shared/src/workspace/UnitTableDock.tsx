@@ -1863,12 +1863,13 @@ function UnitRow({
   selected: boolean;
   /** In the pick - the wider, bulk-action selection that sits beside the cursor (`ah-1mpx.4`). */
   picked: boolean;
-  /** Highlights a unit. Called with the formed unit's own id, or, for a formed row, its parent's
-   * (`ah-jw85`) - `UnitRow` decides which, since only it knows a formed row from an ordinary one. */
   /**
-   * Selects a unit. Takes the row's own hex too, because a unit number is not unique across a
-   * report (`ah-bubf`) - and it is the row's hex even when `rowTarget` is the unit that wrote the
-   * FORM: `rules/form` puts a formed unit "in the same region as the unit which formed it".
+   * Highlights a unit. Called with the formed unit's own id, or, for a formed row, its parent's
+   * (`ah-jw85`) - `UnitRow` decides which, since only it knows a formed row from an ordinary one.
+   *
+   * Takes the row's own hex too, because a unit number is not unique across a report (`ah-bubf`) -
+   * and it is the row's hex even for a formed row: `rules/form` puts a formed unit "in the same
+   * region as the unit which formed it".
    */
   onSelect: (unitId: string, regionId: string) => void;
   /**
