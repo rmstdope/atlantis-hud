@@ -2800,6 +2800,28 @@ test("column widths are dragged, survive a reload, and can never push a column o
 });
 
 /**
+ * The Flags column: each flag the report printed drawn as one letter, unbroken (ah-5wbc).
+ */
+test("the flags column shows each flag as a letter", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  await expect(
+    // exact-selector-exempt: a columnheader's accessible name is built from everything inside it,
+    // and each header holds a reorder grip labelled "Move the Flags column" - so this cell's name
+    // can never be exactly "Flags".
+    page.getByTestId("panel-units").getByRole("columnheader", { name: "Flags" })
+  ).toBeVisible();
+
+  // Positional, like the assertions above: `flags` is the seventh column and this only holds while
+  // nothing has been reordered.
+  await expect(
+    page.locator("[data-testid='unit-row-18642'] td:nth-child(7)")
+  ).toHaveText("ABHRS");
+  await expect(page.locator("[data-testid='unit-row-16767'] td:nth-child(7)")).toHaveText("B");
+});
+
+/**
  * The units table's reorderable columns, and the feedback that is the whole point of them
  * (ah-1owr.3).
  *
