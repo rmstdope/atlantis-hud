@@ -23693,11 +23693,12 @@ mod tests {
         );
     }
 
-    /// A helper naming a unit that is not a concrete unit of ours in this hex - one formed this
-    /// turn and not yet on the report - cannot be resolved to a structure at all. Judging the
-    /// builder's own structure instead would be a guess, not what the order says.
+    /// A helper naming an alias no `FORM` mints names no unit of ours in this hex at all, so it
+    /// cannot be resolved to a structure. Judging the builder's own structure instead would be a
+    /// guess, not what the order says. A formed unit *is* resolved (`ah-zxvd`); an alias with no
+    /// `FORM` behind it is not.
     #[test]
-    fn a_helper_naming_a_unit_formed_this_turn_is_silent_even_when_the_builder_stands_in_a_finished_structure(
+    fn a_helper_naming_an_unformed_alias_is_silent_even_when_the_builder_stands_in_a_finished_structure(
     ) {
         assert_eq!(
             check(
@@ -24040,8 +24041,7 @@ mod tests {
         assert!(
             !findings
                 .iter()
-                .any(|finding| finding.unit_id.as_deref() == Some("4117")
-                    && finding.code.as_str().starts_with("build-")),
+                .any(|finding| finding.unit_id.as_deref() == Some("4117")),
             "{findings:?}"
         );
 

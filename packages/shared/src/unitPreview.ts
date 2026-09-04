@@ -285,11 +285,14 @@ export function itemsTooltip(
     const place = spend.founding ? `a new ${spend.place}` : spend.place;
     // `new-{alias}` is the canonical id Rust files a unit formed this month under; the player
     // wrote it as `NEW {alias}` and reads it back in their own spelling (`ah-zxvd`).
-    const helpingTarget = spend.helping?.startsWith("new-")
-      ? `NEW ${spend.helping.slice("new-".length)}`
-      : `unit ${spend.helping}`;
     const target =
-      spend.helping === null ? `on ${place}` : `helping ${helpingTarget} build ${place}`;
+      spend.helping === null
+        ? `on ${place}`
+        : `helping ${
+            spend.helping.startsWith("new-")
+              ? `NEW ${spend.helping.slice("new-".length)}`
+              : `unit ${spend.helping}`
+          } build ${place}`;
     lines.push(`Spends ${spend.amount} ${spend.tag} ${target} this month.`);
     if (spend.cappedBy === "materials") {
       lines.push(
