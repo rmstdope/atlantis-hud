@@ -20,7 +20,7 @@ use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::orders::phases;
 use crate::orders::semantics::{counted_with_singular, FormedSubject, Plurals};
-use crate::orders::targets::{give_outcome, give_target_label, GiveOutcome, GiveReach};
+use crate::orders::targets::{give_outcome, party_label, GiveOutcome, GiveReach};
 use crate::report::model::{ItemAmount, Skill};
 
 /// "Each taxing character collects $50."
@@ -1722,7 +1722,7 @@ pub fn forecast_unit(
                             Some(true) if silver_uncertain => {
                                 expense_doubt =
                                     expense_doubt.or(Some(SilverDoubt::GiveTargetUncertain));
-                                doubt_subject = doubt_subject.or(Some(give_target_label(to)));
+                                doubt_subject = doubt_subject.or(Some(party_label(to)));
                                 continue;
                             }
                             Some(true) => {
@@ -1759,7 +1759,7 @@ pub fn forecast_unit(
                 }
                 if silver_uncertain {
                     expense_doubt = expense_doubt.or(Some(SilverDoubt::GiveTargetUncertain));
-                    doubt_subject = doubt_subject.or(Some(give_target_label(to)));
+                    doubt_subject = doubt_subject.or(Some(party_label(to)));
                     continue;
                 }
                 let to_nobody = matches!(to, Party::Discard);
