@@ -9,6 +9,8 @@
 //! when its first word could not have fitted on the line before, so filling greedily to the same
 //! column is exactly what makes the output readable again.
 
+use std::collections::BTreeSet;
+
 use super::model::{Exit, ItemAmount, MarketItem, ReportRegion, ReportUnit, Settlement, Structure};
 use super::unwrap::WRAP_COLUMN;
 
@@ -104,6 +106,74 @@ pub fn write_region(region: &ReportRegion, content: &ExportContent) -> String {
 
     block.blank();
     block.text
+}
+
+/// One region block carrying only the named units, for a mage sheet.
+///
+/// Deliberately NOT [`write_region`] with a filter: a mage sheet is about mages, and a full region
+/// block would hand the recipient the hex's market, its products, its wages and its exits as well.
+///
+/// Every unit is written with `own` cleared. [`super::unit::parse_unit`] takes ownership from the
+/// line's `*` or `-` marker and from nothing else, so a sheet written with `*` would arrive in the
+/// ally's client as *their* units.
+#[must_use]
+pub fn write_mage_region(region: &ReportRegion, unit_ids: &BTreeSet<String>) -> String {
+    let mut block = Block::default();
+
+    block.line(&region_header(region), 0);
+    block.line(&"-".repeat(60), 0);
+
+    let named = |unit: &&ReportUnit| unit_ids.contains(&unit.unit_id);
+    // The same housing test `write_region` makes: a unit whose structure this region does not list
+    // is written outdoors rather than lost.
+    let housed = |unit: &&ReportUnit| {
+        unit.structure_id.as_deref().is_some_and(|inside| {
+            region
+                .structures
+                .iter()
+                .any(|structure| structure.structure_id == inside)
+        })
+    };
+
+    let mut outdoors = region
+        .units
+        .iter()
+        .filter(named)
+        .filter(|unit| !housed(unit))
+        .peekable();
+    if outdoors.peek().is_some() {
+        block.blank();
+        for unit in outdoors {
+            block.line(&shared_unit_line(unit), 0);
+        }
+    }
+
+    for structure in &region.structures {
+        let mut inside = region
+            .units
+            .iter()
+            .filter(named)
+            .filter(|unit| unit.structure_id.as_deref() == Some(&structure.structure_id))
+            .peekable();
+        if inside.peek().is_none() {
+            continue;
+        }
+        block.blank();
+        block.line(&structure_line(structure), 0);
+        for unit in inside {
+            block.line(&shared_unit_line(unit), 2);
+        }
+    }
+
+    block.blank();
+    block.text
+}
+
+/// A unit line for a file somebody else will read back, so never marked as the reader's own.
+fn shared_unit_line(unit: &ReportUnit) -> String {
+    let mut shared = unit.clone();
+    shared.own = false;
+    unit_line(&shared)
 }
 
 /// The region's opening line, as in `mountain (7,53) in Inhead, 12051 peasants (hill dwarves).`
