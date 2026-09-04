@@ -63,10 +63,18 @@ The shape is declared twice, once on each side of the file, and two tests hold t
   `packages/ruleset/src/committed.test.ts`, and proven readable by
   `crates/core/tests/movement_ruleset.rs`. Both run in `pnpm test`.
 
-Two things the field lists do not say for themselves: `ocean.terrain` is the water terrain's name
-read out of the rule's own sentence rather than assumed to be `ocean`; and `skills.*.cost` is
+Three things the field lists do not say for themselves: `ocean.terrain` is the water terrain's name
+read out of the rule's own sentence rather than assumed to be `ocean`; `skills.*.cost` is
 **null** for a skill the page prices nowhere (annihilation), never zero — zero would say studying it
-is free. `skills` is its own block rather than merged into `items` because ten tags mean one thing
+is free; and `terrainCosts.premiums` is a map from a lower-cased terrain name to what entering it
+costs, rather than one premium and a list of terrain, **because a ruleset may state more than one
+tier**. Atlantis New Age does, in a single sentence: "Moving from one region to another normally
+takes one movement point, except for the following terrain types, which cost a riding or walking
+unit more to enter: 2 movement points for forest, mountain, hill, swamp, jungle, tundra, cavern,
+underforest, tunnels, grotto, deepforest and chasm; 4 movement points for volcano." A volcano at
+four has nowhere to go in a shape that models one premium.
+
+`skills` is its own block rather than merged into `items` because ten tags mean one thing
 as a skill and another as an item (`FISH`, `HERB`).
 
 `items.*.skillLimits` is optional for backward compatibility and tolerance. It is absent from old
@@ -111,7 +119,8 @@ the served file and reloading — no rebuild, which is the whole reason it is a 
 `Ruleset::from_json` in `crates/core/src/movement/rules.rs` distinguishes two failures.
 **Malformed** means the text is not a ruleset, and carries serde's own message, which names the
 field it wanted. **Unusable** means it parsed but says something no route could be costed against:
-a zero movement allowance, a zero terrain cost, a road divisor of zero, a water rule naming no
+a zero movement allowance, a terrain that costs zero, a named premium cheaper than ordinary going,
+a road divisor of zero, a water rule naming no
 terrain, risk thresholds the wrong way round, or a catalogue with no races in it. Each of those is
 well-formed JSON, which is exactly why serde alone is not enough.
 
