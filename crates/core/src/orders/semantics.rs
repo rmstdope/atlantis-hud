@@ -16782,15 +16782,25 @@ BUILD
         /// `report_shortfalls` judges.
         #[test]
         fn a_spend_never_nets_off_an_output_credited_after_it() {
-            let hex_region = region(vec![
-                sharing(with_item(
-                    with_skill(with_men(unit("900"), 10), "LUMB", 1),
-                    20,
-                    "wood",
-                    "WOOD",
-                )),
-                with_skill(with_men(unit("901"), 15), "CARP", 1),
-            ]);
+            // The region has to *yield* wood, or the lumberjack cuts none and there is no output
+            // for the netting to get wrong - which is exactly how the first draft of this test
+            // passed against the very code it was written to catch.
+            let hex_region = ReportRegion {
+                products: vec![ItemAmount {
+                    amount: 100,
+                    name: "wood".to_string(),
+                    tag: "WOOD".to_string(),
+                }],
+                ..region(vec![
+                    sharing(with_item(
+                        with_skill(with_men(unit("900"), 10), "LUMB", 1),
+                        20,
+                        "wood",
+                        "WOOD",
+                    )),
+                    with_skill(with_men(unit("901"), 15), "CARP", 1),
+                ])
+            };
             with_ledger(
                 hex_region,
                 "unit 900\nPRODUCE wood\nunit 901\nPRODUCE wagon\n",
