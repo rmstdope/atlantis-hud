@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.3 — how a teacher is written down</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+    --known-fill:#1b2c26; --known-ink:#7fcaa5; --known-edge:#2c4a3e;
+    --ceil-fill:#2e2718; --ceil-ink:#d9a441; --ceil-edge:#4a3d21;
+    --maxed-fill:#232a38; --maxed-ink:#8fb4e0; --maxed-edge:#33455f;
+    --open-fill:#141a23; --open-ink:#a3b0c0; --open-edge:#2b3644;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:98ch; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:18px; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:1000px) { .cols { grid-template-columns:1fr; } }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px;
+         text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+
+  /* --- the pane, as ah-lyg6.2.2 draws it --- */
+  .pane { width:900px; max-width:100%; background:var(--raised); border:1px solid var(--edge);
+          border-radius:6px; box-shadow:0 14px 40px #000a; overflow:hidden;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane.narrow { width:auto; }
+  .pane .top { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  .pane .top h4 { font:600 13.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .pane .top .key { color:var(--ink-dim); font-size:11.5px; }
+  .pane .top .sp { margin-left:auto; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.foc { outline:2px solid var(--select); outline-offset:1px; }
+  .pane .sub { padding:6px 12px; border-bottom:1px solid var(--edge-soft); color:var(--ink-dim); font-size:11.5px; }
+  .md { display:grid; grid-template-columns:272px 1fr; }
+  .md .list { border-right:1px solid var(--edge); max-height:470px; overflow:auto; }
+  .md .list .row { padding:6px 12px; border-bottom:1px solid var(--edge-soft); }
+  .md .list .row.on { background:#1b2735; box-shadow:inset 2px 0 0 var(--select); }
+  .md .list .row.kbd { outline:1px dashed var(--select); outline-offset:-2px; }
+  .md .list .row .nm { font-size:12.5px; }
+  .md .list .row .sub2 { color:var(--ink-dim); font-size:11px; }
+  .md .list .row .plan { color:var(--ok); font-size:11px; }
+  .md .list .row .note { color:var(--ink-dim); font-size:11px; font-style:italic; }
+  .md .list .hd { padding:6px 12px; color:var(--brass); font-size:11px; letter-spacing:0.6px;
+                  text-transform:uppercase; background:#141a23; position:sticky; top:0; }
+  .md .list .hd .age { color:var(--brass-bright); text-transform:none; letter-spacing:0; }
+  .md .list .row.stale { background:#191612; }
+  .md .list .row.stale.on { background:#241d15; box-shadow:inset 2px 0 0 var(--select); }
+  .md .det { padding:14px 16px; max-height:470px; overflow:auto; }
+  .md .det h5 { font:600 14px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .md .det .meta { color:var(--ink-dim); font-size:11.5px; margin:2px 0 12px; }
+  .md .det .grp2 { color:var(--ink-dim); font-size:11px; letter-spacing:0.6px; text-transform:uppercase; margin:14px 0 6px; }
+  .warnline { border-left:2px solid var(--ceil-edge); padding:4px 0 4px 8px; color:var(--brass-bright);
+              font-size:11.5px; margin-bottom:4px; }
+  .chip { display:inline-block; border-radius:3px; padding:0 5px; font-size:11.5px; margin:0 4px 4px 0;
+          border:1px solid var(--known-edge); background:var(--known-fill); color:var(--known-ink); }
+  .chip.ceil { border-color:var(--ceil-edge); background:var(--ceil-fill); color:var(--ceil-ink); }
+  .chip.maxed { border-color:var(--maxed-edge); background:var(--maxed-fill); color:var(--maxed-ink); }
+  .chip.open { border-color:var(--open-edge); background:var(--open-fill); color:var(--open-ink); }
+  .chip.pick { cursor:pointer; }
+  .chip.chosen { outline:2px solid var(--select); outline-offset:1px; }
+  .chip.locked { border-color:#232a33; background:#12161c; color:#5b6674; }
+  .up { color:var(--brass-bright); }
+  .more { color:var(--ink-dim); font-size:11.5px; }
+
+  /* --- the editing block --- */
+  .plan-box { border:1px solid var(--edge); border-radius:5px; background:#141a23; padding:10px 12px; }
+  .plan-box .hdr { display:flex; align-items:baseline; gap:8px; margin-bottom:8px; }
+  .plan-box .hdr .t { font:600 11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px;
+                      text-transform:uppercase; color:var(--brass); }
+  .plan-box .hdr .st { margin-left:auto; font-size:11px; color:var(--ink-dim); }
+  .plan-box .hdr .st.saved { color:var(--ok); }
+  .plan-box .hdr .st.err { color:var(--danger); }
+  .fields { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  select, input[type=text], input[type=number], textarea {
+    background:var(--ground); border:1px solid var(--edge); color:var(--ink); border-radius:4px;
+    padding:4px 7px; font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  select { min-width:15rem; }
+  textarea { width:100%; resize:vertical; }
+  .focus { outline:2px solid var(--select); outline-offset:1px; }
+  .fieldlbl { color:var(--ink-dim); font-size:11.5px; }
+  .count { color:var(--ink-dim); font-size:11px; text-align:right; }
+  .count.warn { color:var(--brass-bright); }
+  .orderline { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ok); }
+  .kbdkey { display:inline-block; border:1px solid var(--edge); border-radius:3px; padding:0 5px;
+            font-size:11px; color:var(--ink-soft); background:var(--ground); }
+</style>
+<style>
+  .switch { display:inline-flex; border:1px solid var(--edge); border-radius:4px; overflow:hidden; }
+  .switch button { background:var(--ground); border:none; color:var(--ink-dim); padding:3px 12px;
+                   font:12px/1.5 'Helvetica Neue',Arial,sans-serif; border-right:1px solid var(--edge); }
+  .switch button:last-child { border-right:none; }
+  .switch button.on { background:#1b2735; color:var(--ink); box-shadow:inset 0 -2px 0 var(--select); }
+  .gridwrap { overflow:auto; max-height:470px; }
+  table.sched { border-collapse:separate; border-spacing:0; font:12px/1.45 'Helvetica Neue',Arial,sans-serif; width:100%; }
+  table.sched th { position:sticky; top:0; background:var(--raised); color:var(--ink-dim); font-weight:400;
+        font-size:10.5px; letter-spacing:0.8px; text-transform:uppercase; text-align:left;
+        padding:6px 8px; border-bottom:1px solid var(--edge); white-space:nowrap; }
+  table.sched th.next { color:var(--brass); }
+  table.sched th.who, table.sched td.who { position:sticky; left:0; background:var(--raised); z-index:2;
+        min-width:14rem; border-right:1px solid var(--edge); }
+  table.sched td { padding:5px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; white-space:nowrap; }
+  table.sched tr.grp td { background:#141a23; color:var(--brass); font-size:11px; letter-spacing:0.5px;
+        text-transform:uppercase; position:sticky; left:0; }
+  table.sched tr.grp td .age { color:var(--brass-bright); text-transform:none; letter-spacing:0; }
+  td.who .nm { color:var(--ink); }
+  td.who .un { color:var(--ink-dim); font-size:11px; margin-left:5px; }
+  td.who .now { color:var(--ink-dim); font-size:11px; }
+  .cell { display:inline-block; border-radius:3px; padding:1px 6px; border:1px solid transparent; }
+  .cell.study { color:var(--ink-soft); }
+  .cell.up { border-color:var(--known-edge); background:var(--known-fill); color:var(--known-ink); }
+  .cell.teach { border-color:var(--maxed-edge); background:var(--maxed-fill); color:var(--maxed-ink); }
+  .cell.none { color:#4d5867; }
+  .cell.hov { outline:2px solid var(--select); outline-offset:1px; }
+  .cell.pick { cursor:pointer; }
+  .cell.ghost { color:#5b6674; border:1px dashed #2b3644; }
+  tr.stale td.who { background:#191612; }
+  tr.stale td { background:#15120f; }
+  .hovercard { position:relative; border:1px solid var(--edge); background:var(--panel); border-radius:5px;
+        box-shadow:0 10px 26px #000b; padding:9px 11px; width:19rem; font:12px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .hovercard .h { font-weight:600; font-size:12.5px; }
+  .hovercard .s { color:var(--ink-dim); font-size:11px; margin-bottom:7px; }
+  .hovercard .line { display:flex; justify-content:space-between; padding:1.5px 0; color:var(--ink-soft); }
+  .hovercard .line.on { color:var(--known-ink); font-weight:600; }
+  .hovercard .line.on .r { color:var(--brass-bright); font-weight:400; }
+  .hovercard .line .r { color:var(--ink-dim); }
+  .hovercard .foot { color:var(--ink-dim); font-size:11px; border-top:1px solid var(--edge-soft); margin-top:7px; padding-top:6px; }
+  .goalcol { min-width:13rem; }
+  .goal { display:inline-block; border:1px solid var(--known-edge); background:var(--known-fill);
+          color:var(--known-ink); border-radius:3px; padding:0 6px; font-size:11.5px; margin:0 4px 3px 0; }
+  .goal .x { color:var(--ink-dim); margin-left:5px; }
+  .goal.add { border-style:dashed; border-color:#2b3644; background:transparent; color:var(--ink-dim); }
+</style>
+<style>
+  .teachchip { display:inline-block; border:1px solid var(--maxed-edge); background:var(--maxed-fill);
+        color:var(--maxed-ink); border-radius:3px; padding:0 6px; font-size:11.5px; }
+  .warnchip { display:inline-block; border:1px solid var(--ceil-edge); background:var(--ceil-fill);
+        color:var(--ceil-ink); border-radius:3px; padding:0 5px; font-size:11px; margin-left:5px; }
+  .pop { width:24rem; border:1px solid var(--edge); background:var(--panel); border-radius:6px;
+        box-shadow:0 12px 30px #000b; padding:10px 12px; font:12px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pop h6 { font:600 12.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .pop .s { color:var(--ink-dim); font-size:11px; margin-bottom:8px; }
+  .pop .grp { color:var(--brass); font-size:10.5px; letter-spacing:1.1px; text-transform:uppercase; margin:9px 0 4px; }
+  .pop .opt { display:flex; gap:7px; align-items:baseline; padding:2px 4px; border-radius:3px; }
+  .pop .opt.on { background:#1b2735; }
+  .pop .opt.off { color:#5b6674; }
+  .pop .opt .d { color:var(--ink-dim); font-size:11px; margin-left:auto; }
+  .pop .acts { display:flex; gap:8px; margin-top:11px; border-top:1px solid var(--edge-soft); padding-top:9px; }
+  .pop .acts .sp { margin-left:auto; }
+  .box { border:1px solid var(--ceil-edge); background:#1a1710; border-radius:5px; padding:8px 10px;
+        font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--brass-bright); }
+  .box.ok { border-color:var(--known-edge); background:#111c18; color:var(--known-ink); }
+  .box.dim { border-color:var(--edge); background:var(--ground); color:var(--ink-dim); }
+  .box b { color:var(--ink); font-weight:600; }
+  ul.wl { list-style:none; font-size:11.5px; display:grid; gap:3px; }
+  ul.wl li { display:flex; gap:7px; align-items:baseline; padding:3px 8px; border-left:2px solid var(--ceil-edge);
+        color:var(--brass-bright); background:#16130e; }
+  ul.wl li .where { color:var(--ink-dim); margin-left:auto; font-size:11px; }
+  ul.wl li.info { border-left-color:var(--maxed-edge); color:var(--maxed-ink); background:#12161d; }
+  .strip { padding:6px 12px; border-bottom:1px solid var(--edge-soft); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.3 — <span>teaching</span> in the study planner</h1>
+  <p>The <span class="kbdkey">F4</span> planner already plans STUDY: every mage a row, the next six
+  turns the columns, and a queue of goals behind each row. This bead adds the other half of the month
+  — <strong>TEACH</strong> — and the warnings that go with it. The question below is only
+  <em>how a teacher is written down</em>; where the warnings appear is the second mockup.</p>
+  <p>Same fiction as <code>ah-lyg6.2.3</code>. You are <em>Wardens of the North (12)</em>, turn 23 is
+  read, so the first planned column is 24. <em>Ereb (2431)</em> and <em>Sable (2517)</em> stand
+  together in a Fort in Ryehold; <em>Kestrel (2688)</em> is two hexes away in Dunmoor. Your ally
+  <em>Borg (21)</em> has <em>Uln (3012)</em> and <em>Vess (3104)</em>, both in Borg's own hex.</p>
+  <p><strong>The rules this leans on, looked up rather than recalled.</strong>
+  <code>rules/skills_teaching</code>: <em>"A unit with a teacher can learn up to twice as fast as
+  normal … The unit doing the teaching must have a skill level greater than the unit doing the
+  studying … Each person can only teach up to 10 students in a month; additional students dilute the
+  training … Only leaders may use the TEACH order."</em> <code>rules/teach</code>:
+  <em>"TEACH [unit] … All units to be taught must have declared you Friendly."</em> So a taught month
+  is worth two, a teacher spends his whole month teaching and studies nothing, and both must stand in
+  the same hex.</p>
+  <p style="color:var(--brass-bright)"><strong>Three ways to say who teaches whom.</strong> They differ
+  in what is stored, and therefore in what happens when a mage moves or you change a student's plan.</p>
+</header>
+<main>
+
+<h3 class="sec">T1 — teach is a goal, and it names its students</h3>
+<p>Clicking a teacher's cell opens the same popover that sets a study, with a <strong>Teach</strong>
+group above the skills. You tick the mages he teaches. The choice is stored as a goal in his queue:
+<code>{ teach: ["2517"], turns: 2 }</code>. Export writes <code>TEACH 2517</code> verbatim.</p>
+<div class="card">
+  <h2><em>T1</em> Turn 24 of Ereb's row, clicked</h2>
+  <p class="concept">The list offers every mage the planner can see standing in Ereb's hex whose
+  planned study Ereb outranks. A mage elsewhere, or one Ereb cannot outrank, is shown greyed with the
+  reason — so you learn why he is not offered rather than wondering where he went.</p>
+  <div class="stage" style="display:flex;gap:26px;flex-wrap:wrap">
+    <div class="pop">
+      <h6>From turn 24, Ereb</h6>
+      <div class="s">He is force 3, pattern 1 now.</div>
+      <div class="grp">Teaches</div>
+      <div class="opt on"><span>&#9745;</span><span>Sable (2517)</span><span class="d">force 1 &rarr; force 2</span></div>
+      <div class="opt off"><span>&#9744;</span><span>Kestrel (2688)</span><span class="d">in Dunmoor, not here</span></div>
+      <div class="opt off"><span>&#9744;</span><span>Vess (3104)</span><span class="d">in Borg's hex, not here</span></div>
+      <div class="grp">Or studies</div>
+      <div class="opt"><span>&middot;</span><span>force</span><span class="d">from 3</span></div>
+      <div class="opt"><span>&middot;</span><span>pattern</span><span class="d">from 1</span></div>
+      <div class="opt"><span>&middot;</span><span>earth lore</span><span class="d">from 0</span></div>
+      <div class="s" style="margin:9px 0 0">Teaches for <input type="number" value="2" style="width:4rem"> turns</div>
+      <div class="acts"><button class="btn">Clear from here</button><span class="sp"></span>
+        <button class="btn">Cancel</button><button class="btn foc">Set</button></div>
+    </div>
+    <div style="flex:1;min-width:26rem">
+      <p class="lbl">The rows afterwards</p>
+      <div class="gridwrap">
+      <table class="sched">
+        <thead><tr><th class="who">Mage</th><th class="next">24 &middot; next</th><th>25</th><th>26</th><th>27</th></tr></thead>
+        <tbody>
+          <tr><td class="who"><span class="nm">Ereb</span><span class="un">(2431)</span>
+              <div class="now">force 3 &middot; teaches Sable &times;2, then force &rarr; 5</div></td>
+            <td><span class="cell teach">TEACH Sable</span></td>
+            <td><span class="cell teach">TEACH Sable</span></td>
+            <td><span class="cell study">force 3</span></td>
+            <td><span class="cell up">force 4</span></td></tr>
+          <tr><td class="who"><span class="nm">Sable</span><span class="un">(2517)</span>
+              <div class="now">force 1 &middot; towards force 3</div></td>
+            <td><span class="cell up">force 2 <span class="up">&times;2</span></span></td>
+            <td><span class="cell study">force 2 <span class="up">&times;2</span></span></td>
+            <td><span class="cell up">force 3</span></td>
+            <td><span class="cell none">&mdash;</span></td></tr>
+        </tbody>
+      </table></div>
+      <ul class="notes">
+        <li>The one place a teacher is written down, and the one place a month is spent.</li>
+        <li>Export is exact: <code>TEACH 2517</code> for Ereb, <code>STUDY force</code> for Sable.</li>
+        <li>A student's <span class="up">&times;2</span> is a consequence of the teacher's row, so the two can never disagree.</li>
+        <li class="con">If Sable's plan changes to a skill Ereb cannot outrank, Ereb's stored goal is now wrong and must be warned about rather than silently dropped.</li>
+        <li class="con">Two things to keep in step by hand: the teacher's list and the student's study.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">T2 — teach is a goal, and it names a skill, not students</h3>
+<p>The goal is <em>"teach force here"</em>: <code>{ teachSkill: "FORC", turns: 2 }</code>. Who that
+turns out to be is worked out afresh every time the grid is drawn — every mage in his hex whose
+planned study that turn is force and whose level he beats. Export computes the unit list at export
+time.</p>
+<div class="card">
+  <h2><em>T2</em> The same click, one field shorter</h2>
+  <p class="concept">Nothing goes stale: change Sable's plan and Ereb simply teaches somebody else, or
+  nobody. The cost is that you cannot say "teach Sable and not Kestrel" when both are here studying
+  force.</p>
+  <div class="stage" style="display:flex;gap:26px;flex-wrap:wrap">
+    <div class="pop">
+      <h6>From turn 24, Ereb</h6>
+      <div class="s">He is force 3, pattern 1 now.</div>
+      <div class="grp">Teaches, in this hex</div>
+      <div class="opt on"><span>&middot;</span><span>force</span><span class="d">Sable is studying it</span></div>
+      <div class="opt"><span>&middot;</span><span>pattern</span><span class="d">nobody here</span></div>
+      <div class="grp">Or studies</div>
+      <div class="opt"><span>&middot;</span><span>force</span><span class="d">from 3</span></div>
+      <div class="opt"><span>&middot;</span><span>pattern</span><span class="d">from 1</span></div>
+      <div class="s" style="margin:9px 0 0">Teaches for <input type="number" value="2" style="width:4rem"> turns</div>
+      <div class="acts"><button class="btn">Clear from here</button><span class="sp"></span>
+        <button class="btn">Cancel</button><button class="btn foc">Set</button></div>
+    </div>
+    <div style="flex:1;min-width:26rem">
+      <p class="lbl">The rows afterwards</p>
+      <div class="gridwrap">
+      <table class="sched">
+        <thead><tr><th class="who">Mage</th><th class="next">24 &middot; next</th><th>25</th><th>26</th><th>27</th></tr></thead>
+        <tbody>
+          <tr><td class="who"><span class="nm">Ereb</span><span class="un">(2431)</span>
+              <div class="now">force 3 &middot; teaches force &times;2, then force &rarr; 5</div></td>
+            <td><span class="cell teach">TEACH force &middot; 1</span></td>
+            <td><span class="cell teach">TEACH force &middot; 1</span></td>
+            <td><span class="cell study">force 3</span></td>
+            <td><span class="cell up">force 4</span></td></tr>
+          <tr><td class="who"><span class="nm">Sable</span><span class="un">(2517)</span>
+              <div class="now">force 1 &middot; towards force 3</div></td>
+            <td><span class="cell up">force 2 <span class="up">&times;2</span></span></td>
+            <td><span class="cell study">force 2 <span class="up">&times;2</span></span></td>
+            <td><span class="cell up">force 3</span></td>
+            <td><span class="cell none">&mdash;</span></td></tr>
+        </tbody>
+      </table></div>
+      <ul class="notes">
+        <li>Never stale. A student who moves or changes skill drops out of the count on his own.</li>
+        <li>One field to store, and no cross-row bookkeeping.</li>
+        <li class="con">You cannot exclude a mage. Every eligible student in the hex is taught.</li>
+        <li class="con">The <code>TEACH</code> line you export is derived, so what you see in the cell is a count rather than the names you will send.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">T3 — the student names his teacher</h3>
+<p>Nothing changes on the teacher's row; you set it from the mage being taught. His goal grows a
+field: <code>{ skill: "FORC", targetLevel: 3, taughtBy: "2431" }</code>. The teacher's TEACH cells are
+derived from every student who named him.</p>
+<div class="card">
+  <h2><em>T3</em> Sable's turn-24 cell, clicked</h2>
+  <p class="concept">Reads the way a player thinks about a student — "get Sable to force 3 fast" — and
+  the teacher's month is filled in for him. It also means a teacher's row can be overwritten by
+  somebody else's decision, which is the thing to weigh.</p>
+  <div class="stage" style="display:flex;gap:26px;flex-wrap:wrap">
+    <div class="pop">
+      <h6>From turn 24, Sable studies</h6>
+      <div class="s">He is force 1 now.</div>
+      <div class="grp">Raise</div>
+      <div class="opt on"><span>&middot;</span><span>force</span><span class="d">from 1, to <select style="min-width:4rem"><option>3</option></select></span></div>
+      <div class="grp">Taught by</div>
+      <div class="opt on"><span>&#9679;</span><span>Ereb (2431)</span><span class="d">force 3, here</span></div>
+      <div class="opt"><span>&#9675;</span><span>nobody</span><span class="d">one month a month</span></div>
+      <div class="opt off"><span>&#9675;</span><span>Uln (3012)</span><span class="d">pattern 4, and in Borg's hex</span></div>
+      <div class="acts"><button class="btn">Clear from here</button><span class="sp"></span>
+        <button class="btn">Cancel</button><button class="btn foc">Set</button></div>
+    </div>
+    <div style="flex:1;min-width:26rem">
+      <p class="lbl">The rows afterwards</p>
+      <div class="gridwrap">
+      <table class="sched">
+        <thead><tr><th class="who">Mage</th><th class="next">24 &middot; next</th><th>25</th><th>26</th><th>27</th></tr></thead>
+        <tbody>
+          <tr><td class="who"><span class="nm">Ereb</span><span class="un">(2431)</span>
+              <div class="now">force 3 &middot; teaching Sable, then force &rarr; 5</div></td>
+            <td><span class="cell teach">TEACH Sable</span></td>
+            <td><span class="cell teach">TEACH Sable</span></td>
+            <td><span class="cell study">force 3</span></td>
+            <td><span class="cell up">force 4</span></td></tr>
+          <tr><td class="who"><span class="nm">Sable</span><span class="un">(2517)</span>
+              <div class="now">force 1 &middot; towards force 3, taught by Ereb</div></td>
+            <td><span class="cell up">force 2 <span class="up">&times;2</span></span></td>
+            <td><span class="cell study">force 2 <span class="up">&times;2</span></span></td>
+            <td><span class="cell up">force 3</span></td>
+            <td><span class="cell none">&mdash;</span></td></tr>
+        </tbody>
+      </table></div>
+      <ul class="notes">
+        <li>One decision, at the row you were already looking at. Teaching stops as soon as the goal is reached.</li>
+        <li>A teacher can never be assigned to a student who is not studying — the field lives on the study goal.</li>
+        <li class="con">Ereb's own plan is rewritten by an edit on somebody else's row, and the cells he loses were a decision you made.</li>
+        <li class="con">A teacher taking two students is two edits in two places, and neither row shows the other.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">The states, in every variant</h3>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">Nobody to teach</p>
+      <div class="stage"><div class="pop">
+        <h6>From turn 24, Kestrel</h6>
+        <div class="s">He is an apprentice, alone in Dunmoor.</div>
+        <div class="grp">Teaches</div>
+        <div class="box dim">No mage you can see stands in Dunmoor with him.</div>
+        <div class="grp">Or studies</div>
+        <div class="opt"><span>&middot;</span><span>pattern</span><span class="d">from 0</span></div>
+      </div></div>
+    </div>
+    <div>
+      <p class="lbl">A stale ally, whose hex you cannot check</p>
+      <div class="stage"><div class="pop">
+        <h6>From turn 24, Mordoc</h6>
+        <div class="s">From a mage sheet of turn 20, 3 turns old.</div>
+        <div class="grp">Teaches</div>
+        <div class="box">Selado's sheet is 3 turns old, so where Mordoc stands now is a guess. Anyone offered here may have moved.</div>
+        <div class="opt"><span>&#9744;</span><span>Ilyth (4522)</span><span class="d">as of turn 20, same hex</span></div>
+      </div></div>
+    </div>
+  </div>
+  <ul class="notes" style="margin-top:16px">
+    <li class="n">Escape closes the popover and writes nothing, exactly as the study popover does today.</li>
+    <li class="n">Focus opens on the first offered row and returns to the cell on close.</li>
+    <li class="n">A teacher with more than ten students is not refused — it is set, and warned about. See the second mockup.</li>
+  </ul>
+</div>
+
+</main>
+</body>
+</html>

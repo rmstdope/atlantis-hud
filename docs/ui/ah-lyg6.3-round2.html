@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.3 — round 2: the queue, the key and a stale teacher</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+    --known-fill:#1b2c26; --known-ink:#7fcaa5; --known-edge:#2c4a3e;
+    --ceil-fill:#2e2718; --ceil-ink:#d9a441; --ceil-edge:#4a3d21;
+    --maxed-fill:#232a38; --maxed-ink:#8fb4e0; --maxed-edge:#33455f;
+    --open-fill:#141a23; --open-ink:#a3b0c0; --open-edge:#2b3644;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:98ch; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:18px; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:1000px) { .cols { grid-template-columns:1fr; } }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px;
+         text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+
+  /* --- the pane, as ah-lyg6.2.2 draws it --- */
+  .pane { width:900px; max-width:100%; background:var(--raised); border:1px solid var(--edge);
+          border-radius:6px; box-shadow:0 14px 40px #000a; overflow:hidden;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane.narrow { width:auto; }
+  .pane .top { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  .pane .top h4 { font:600 13.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .pane .top .key { color:var(--ink-dim); font-size:11.5px; }
+  .pane .top .sp { margin-left:auto; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.foc { outline:2px solid var(--select); outline-offset:1px; }
+  .pane .sub { padding:6px 12px; border-bottom:1px solid var(--edge-soft); color:var(--ink-dim); font-size:11.5px; }
+  .md { display:grid; grid-template-columns:272px 1fr; }
+  .md .list { border-right:1px solid var(--edge); max-height:470px; overflow:auto; }
+  .md .list .row { padding:6px 12px; border-bottom:1px solid var(--edge-soft); }
+  .md .list .row.on { background:#1b2735; box-shadow:inset 2px 0 0 var(--select); }
+  .md .list .row.kbd { outline:1px dashed var(--select); outline-offset:-2px; }
+  .md .list .row .nm { font-size:12.5px; }
+  .md .list .row .sub2 { color:var(--ink-dim); font-size:11px; }
+  .md .list .row .plan { color:var(--ok); font-size:11px; }
+  .md .list .row .note { color:var(--ink-dim); font-size:11px; font-style:italic; }
+  .md .list .hd { padding:6px 12px; color:var(--brass); font-size:11px; letter-spacing:0.6px;
+                  text-transform:uppercase; background:#141a23; position:sticky; top:0; }
+  .md .list .hd .age { color:var(--brass-bright); text-transform:none; letter-spacing:0; }
+  .md .list .row.stale { background:#191612; }
+  .md .list .row.stale.on { background:#241d15; box-shadow:inset 2px 0 0 var(--select); }
+  .md .det { padding:14px 16px; max-height:470px; overflow:auto; }
+  .md .det h5 { font:600 14px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .md .det .meta { color:var(--ink-dim); font-size:11.5px; margin:2px 0 12px; }
+  .md .det .grp2 { color:var(--ink-dim); font-size:11px; letter-spacing:0.6px; text-transform:uppercase; margin:14px 0 6px; }
+  .warnline { border-left:2px solid var(--ceil-edge); padding:4px 0 4px 8px; color:var(--brass-bright);
+              font-size:11.5px; margin-bottom:4px; }
+  .chip { display:inline-block; border-radius:3px; padding:0 5px; font-size:11.5px; margin:0 4px 4px 0;
+          border:1px solid var(--known-edge); background:var(--known-fill); color:var(--known-ink); }
+  .chip.ceil { border-color:var(--ceil-edge); background:var(--ceil-fill); color:var(--ceil-ink); }
+  .chip.maxed { border-color:var(--maxed-edge); background:var(--maxed-fill); color:var(--maxed-ink); }
+  .chip.open { border-color:var(--open-edge); background:var(--open-fill); color:var(--open-ink); }
+  .chip.pick { cursor:pointer; }
+  .chip.chosen { outline:2px solid var(--select); outline-offset:1px; }
+  .chip.locked { border-color:#232a33; background:#12161c; color:#5b6674; }
+  .up { color:var(--brass-bright); }
+  .more { color:var(--ink-dim); font-size:11.5px; }
+
+  /* --- the editing block --- */
+  .plan-box { border:1px solid var(--edge); border-radius:5px; background:#141a23; padding:10px 12px; }
+  .plan-box .hdr { display:flex; align-items:baseline; gap:8px; margin-bottom:8px; }
+  .plan-box .hdr .t { font:600 11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px;
+                      text-transform:uppercase; color:var(--brass); }
+  .plan-box .hdr .st { margin-left:auto; font-size:11px; color:var(--ink-dim); }
+  .plan-box .hdr .st.saved { color:var(--ok); }
+  .plan-box .hdr .st.err { color:var(--danger); }
+  .fields { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  select, input[type=text], input[type=number], textarea {
+    background:var(--ground); border:1px solid var(--edge); color:var(--ink); border-radius:4px;
+    padding:4px 7px; font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  select { min-width:15rem; }
+  textarea { width:100%; resize:vertical; }
+  .focus { outline:2px solid var(--select); outline-offset:1px; }
+  .fieldlbl { color:var(--ink-dim); font-size:11.5px; }
+  .count { color:var(--ink-dim); font-size:11px; text-align:right; }
+  .count.warn { color:var(--brass-bright); }
+  .orderline { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ok); }
+  .kbdkey { display:inline-block; border:1px solid var(--edge); border-radius:3px; padding:0 5px;
+            font-size:11px; color:var(--ink-soft); background:var(--ground); }
+</style>
+<style>
+  .switch { display:inline-flex; border:1px solid var(--edge); border-radius:4px; overflow:hidden; }
+  .switch button { background:var(--ground); border:none; color:var(--ink-dim); padding:3px 12px;
+                   font:12px/1.5 'Helvetica Neue',Arial,sans-serif; border-right:1px solid var(--edge); }
+  .switch button:last-child { border-right:none; }
+  .switch button.on { background:#1b2735; color:var(--ink); box-shadow:inset 0 -2px 0 var(--select); }
+  .gridwrap { overflow:auto; max-height:470px; }
+  table.sched { border-collapse:separate; border-spacing:0; font:12px/1.45 'Helvetica Neue',Arial,sans-serif; width:100%; }
+  table.sched th { position:sticky; top:0; background:var(--raised); color:var(--ink-dim); font-weight:400;
+        font-size:10.5px; letter-spacing:0.8px; text-transform:uppercase; text-align:left;
+        padding:6px 8px; border-bottom:1px solid var(--edge); white-space:nowrap; }
+  table.sched th.next { color:var(--brass); }
+  table.sched th.who, table.sched td.who { position:sticky; left:0; background:var(--raised); z-index:2;
+        min-width:14rem; border-right:1px solid var(--edge); }
+  table.sched td { padding:5px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; white-space:nowrap; }
+  table.sched tr.grp td { background:#141a23; color:var(--brass); font-size:11px; letter-spacing:0.5px;
+        text-transform:uppercase; position:sticky; left:0; }
+  table.sched tr.grp td .age { color:var(--brass-bright); text-transform:none; letter-spacing:0; }
+  td.who .nm { color:var(--ink); }
+  td.who .un { color:var(--ink-dim); font-size:11px; margin-left:5px; }
+  td.who .now { color:var(--ink-dim); font-size:11px; }
+  .cell { display:inline-block; border-radius:3px; padding:1px 6px; border:1px solid transparent; }
+  .cell.study { color:var(--ink-soft); }
+  .cell.up { border-color:var(--known-edge); background:var(--known-fill); color:var(--known-ink); }
+  .cell.teach { border-color:var(--maxed-edge); background:var(--maxed-fill); color:var(--maxed-ink); }
+  .cell.none { color:#4d5867; }
+  .cell.hov { outline:2px solid var(--select); outline-offset:1px; }
+  .cell.pick { cursor:pointer; }
+  .cell.ghost { color:#5b6674; border:1px dashed #2b3644; }
+  tr.stale td.who { background:#191612; }
+  tr.stale td { background:#15120f; }
+  .hovercard { position:relative; border:1px solid var(--edge); background:var(--panel); border-radius:5px;
+        box-shadow:0 10px 26px #000b; padding:9px 11px; width:19rem; font:12px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .hovercard .h { font-weight:600; font-size:12.5px; }
+  .hovercard .s { color:var(--ink-dim); font-size:11px; margin-bottom:7px; }
+  .hovercard .line { display:flex; justify-content:space-between; padding:1.5px 0; color:var(--ink-soft); }
+  .hovercard .line.on { color:var(--known-ink); font-weight:600; }
+  .hovercard .line.on .r { color:var(--brass-bright); font-weight:400; }
+  .hovercard .line .r { color:var(--ink-dim); }
+  .hovercard .foot { color:var(--ink-dim); font-size:11px; border-top:1px solid var(--edge-soft); margin-top:7px; padding-top:6px; }
+  .goalcol { min-width:13rem; }
+  .goal { display:inline-block; border:1px solid var(--known-edge); background:var(--known-fill);
+          color:var(--known-ink); border-radius:3px; padding:0 6px; font-size:11.5px; margin:0 4px 3px 0; }
+  .goal .x { color:var(--ink-dim); margin-left:5px; }
+  .goal.add { border-style:dashed; border-color:#2b3644; background:transparent; color:var(--ink-dim); }
+</style>
+<style>
+  .teachchip { display:inline-block; border:1px solid var(--maxed-edge); background:var(--maxed-fill);
+        color:var(--maxed-ink); border-radius:3px; padding:0 6px; font-size:11.5px; }
+  .warnchip { display:inline-block; border:1px solid var(--ceil-edge); background:var(--ceil-fill);
+        color:var(--ceil-ink); border-radius:3px; padding:0 5px; font-size:11px; margin-left:5px; }
+  .pop { width:24rem; border:1px solid var(--edge); background:var(--panel); border-radius:6px;
+        box-shadow:0 12px 30px #000b; padding:10px 12px; font:12px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pop h6 { font:600 12.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .pop .s { color:var(--ink-dim); font-size:11px; margin-bottom:8px; }
+  .pop .grp { color:var(--brass); font-size:10.5px; letter-spacing:1.1px; text-transform:uppercase; margin:9px 0 4px; }
+  .pop .opt { display:flex; gap:7px; align-items:baseline; padding:2px 4px; border-radius:3px; }
+  .pop .opt.on { background:#1b2735; }
+  .pop .opt.off { color:#5b6674; }
+  .pop .opt .d { color:var(--ink-dim); font-size:11px; margin-left:auto; }
+  .pop .acts { display:flex; gap:8px; margin-top:11px; border-top:1px solid var(--edge-soft); padding-top:9px; }
+  .pop .acts .sp { margin-left:auto; }
+  .box { border:1px solid var(--ceil-edge); background:#1a1710; border-radius:5px; padding:8px 10px;
+        font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--brass-bright); }
+  .box.ok { border-color:var(--known-edge); background:#111c18; color:var(--known-ink); }
+  .box.dim { border-color:var(--edge); background:var(--ground); color:var(--ink-dim); }
+  .box b { color:var(--ink); font-weight:600; }
+  ul.wl { list-style:none; font-size:11.5px; display:grid; gap:3px; }
+  ul.wl li { display:flex; gap:7px; align-items:baseline; padding:3px 8px; border-left:2px solid var(--ceil-edge);
+        color:var(--brass-bright); background:#16130e; }
+  ul.wl li .where { color:var(--ink-dim); margin-left:auto; font-size:11px; }
+  ul.wl li.info { border-left-color:var(--maxed-edge); color:var(--maxed-ink); background:#12161d; }
+  .strip { padding:6px 12px; border-bottom:1px solid var(--edge-soft); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.3 &mdash; <span>round 2</span>: what a one-month TEACH does to the queue</h1>
+  <p>Settled last round: <strong>T1</strong> &mdash; a teach goal lives on the teacher's row and names
+  its students; <strong>one month per goal</strong>, so six turns of teaching is six clicks;
+  <strong>W3</strong> &mdash; the cell is tinted and a folded strip counts the warnings;
+  <strong>H2</strong> &mdash; an unsheltered month above level 2 is drawn at half worth and the dates
+  move. Three things follow from that and are yours to settle.</p>
+  <p>Ereb (2431) is force 3 and heading for force 5: his queue is <code>[force &rarr; 5]</code>, which
+  fills turns 24&ndash;29. You click turn 25 and say <em>teach Sable</em>. Because a teach goal is one
+  month, what happens to force &rarr; 5 is a real choice.</p>
+</header>
+<main>
+
+<h3 class="sec">Q5 &mdash; setting a one-month teach: insert, or truncate?</h3>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">I1 &mdash; insert: the studies shift one turn right</p>
+      <div class="stage">
+        <div class="gridwrap"><table class="sched">
+          <thead><tr><th class="who">Ereb</th><th>24</th><th>25</th><th>26</th><th>27</th><th>28</th><th>29</th></tr></thead>
+          <tbody>
+            <tr><td class="who"><span class="now">before</span></td>
+              <td><span class="cell study">force 3</span></td><td><span class="cell study">force 3</span></td>
+              <td><span class="cell up">force 4</span></td><td><span class="cell study">force 4</span></td>
+              <td><span class="cell study">force 4</span></td><td><span class="cell study">force 4</span></td></tr>
+            <tr><td class="who"><span class="now">after clicking 25</span></td>
+              <td><span class="cell study">force 3</span></td>
+              <td><span class="cell teach">TEACH Sable</span></td>
+              <td><span class="cell study">force 3</span></td><td><span class="cell up">force 4</span></td>
+              <td><span class="cell study">force 4</span></td><td><span class="cell study">force 4</span></td></tr>
+          </tbody></table></div>
+        <div style="margin-top:10px"><div class="box ok">Queue: <b>[force &rarr; 5]</b> becomes <b>[force &rarr; 5 for 1 turn, teach 2517, force &rarr; 5]</b> &mdash; a month is spent, and the goal behind it survives.</div></div>
+      </div>
+      <ul class="notes">
+        <li>Teaching a month costs you a month and nothing else. The goal you set stays set.</li>
+        <li>Six clicks for six turns really is six clicks, with the study still waiting behind them.</li>
+        <li class="con">A study goal and a teach goal now behave differently on the same click: one truncates, one inserts.</li>
+        <li class="con">The stored queue needs a way to say "study force, but only for one month, then come back to it".</li>
+      </ul>
+    </div>
+    <div>
+      <p class="lbl">I2 &mdash; truncate: the tail is dropped, as a study does today</p>
+      <div class="stage">
+        <div class="gridwrap"><table class="sched">
+          <thead><tr><th class="who">Ereb</th><th>24</th><th>25</th><th>26</th><th>27</th><th>28</th><th>29</th></tr></thead>
+          <tbody>
+            <tr><td class="who"><span class="now">before</span></td>
+              <td><span class="cell study">force 3</span></td><td><span class="cell study">force 3</span></td>
+              <td><span class="cell up">force 4</span></td><td><span class="cell study">force 4</span></td>
+              <td><span class="cell study">force 4</span></td><td><span class="cell study">force 4</span></td></tr>
+            <tr><td class="who"><span class="now">after clicking 25</span></td>
+              <td><span class="cell study">force 3</span></td>
+              <td><span class="cell teach">TEACH Sable</span></td>
+              <td><span class="cell none">&mdash;</span></td><td><span class="cell none">&mdash;</span></td>
+              <td><span class="cell none">&mdash;</span></td><td><span class="cell none">&mdash;</span></td></tr>
+          </tbody></table></div>
+        <div style="margin-top:10px"><div class="box">Queue: <b>[force &rarr; 5]</b> becomes <b>[force &rarr; 5 for 1 turn, teach 2517]</b>. Turn 26 onwards is empty until you say what comes next.</div></div>
+      </div>
+      <ul class="notes">
+        <li>One rule for every cell: what you set is the last thing in the plan until you add more.</li>
+        <li>The ghosted tail already drawn under an open popover keeps meaning exactly what it means today.</li>
+        <li class="con">Teaching for one month wipes a plan you spent four clicks building, and the undo is retyping it.</li>
+        <li class="con">Six turns of teaching is six clicks that each destroy the study behind them.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">Q6 &mdash; the warnings strip: a key, and which views carry it</h3>
+<div class="card">
+  <p class="concept">W3's folded line opens on click. A key of its own would make it reachable while
+  the grid has focus &mdash; but every key inside this pane is one you cannot use for anything else,
+  and the pane already owns arrows, Page keys, Escape and Enter.</p>
+  <div class="cols">
+    <div>
+      <p class="lbl">K1 &mdash; click only, Schedule view only</p>
+      <div class="stage"><div class="pane narrow" style="width:31rem">
+        <div class="top"><h4>Study planner</h4><span class="key">F4</span><span style="margin-left:14px"></span>
+          <span class="switch"><button>All mages</button><button class="on">Schedule</button></span>
+          <span class="sp"></span><button class="btn">Close</button></div>
+        <div class="sub">7 mages &mdash; 3 yours, 4 from 2 allies &middot; 5 planned</div>
+        <div class="strip"><button class="btn">&#9656; 3 warnings, 1 suggestion</button></div>
+      </div></div>
+      <ul class="notes"><li>No new key to learn or to collide with.</li>
+      <li class="con">Not reachable from the keyboard without tabbing out of the grid.</li></ul>
+    </div>
+    <div>
+      <p class="lbl">K2 &mdash; <span class="kbdkey">W</span>, and in both views</p>
+      <div class="stage"><div class="pane narrow" style="width:31rem">
+        <div class="top"><h4>Study planner</h4><span class="key">F4</span><span style="margin-left:14px"></span>
+          <span class="switch"><button class="on">All mages</button><button>Schedule</button></span>
+          <span class="sp"></span><button class="btn">Close</button></div>
+        <div class="sub">7 mages &mdash; 3 yours, 4 from 2 allies &middot; 5 planned</div>
+        <div class="strip"><button class="btn foc">&#9662; 3 warnings, 1 suggestion <span class="kbdkey">W</span></button></div>
+        <div class="strip"><ul class="wl">
+          <li><span>Kestrel is in Dunmoor, not in Ereb's hex.</span><span class="where">Ereb &middot; 24</span></li>
+          <li><span>Sable's study is halved from turn 28: Ereb holds the Fort's one mage seat.</span><span class="where">Sable &middot; 28</span></li>
+        </ul></div>
+      </div></div>
+      <ul class="notes"><li>Reachable from the grid, and the whole plan's problems are visible while you read one mage in <em>All mages</em>.</li>
+      <li class="con">One more key inside a pane that already binds several, and the strip costs a line in a view that never had one.</li></ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">Q7 &mdash; a teach goal whose student stopped being eligible</h3>
+<p>You set <em>Ereb teaches Sable</em> on turn 25. Then you change Sable's turn-25 study to
+<em>spirit</em>, which Ereb does not hold at all. Ereb's stored goal still names 2517.</p>
+<div class="card">
+  <div class="cols">
+    <div>
+      <p class="lbl">E1 &mdash; keep it, and warn</p>
+      <div class="stage">
+        <div class="gridwrap"><table class="sched">
+          <thead><tr><th class="who">Mage</th><th>24</th><th>25</th><th>26</th></tr></thead>
+          <tbody>
+            <tr><td class="who"><span class="nm">Ereb</span><span class="un">(2431)</span></td>
+              <td><span class="cell study">force 3</span></td>
+              <td><span class="cell teach" style="border-color:var(--ceil-edge);background:var(--ceil-fill);color:var(--ceil-ink)">TEACH Sable</span></td>
+              <td><span class="cell study">force 3</span></td></tr>
+            <tr><td class="who"><span class="nm">Sable</span><span class="un">(2517)</span></td>
+              <td><span class="cell study">force 1</span></td>
+              <td><span class="cell study">spirit 0</span></td>
+              <td><span class="cell up">spirit 1</span></td></tr>
+          </tbody></table></div>
+        <div style="margin-top:10px"><div class="box">Ereb is not skilled in spirit, so he cannot teach Sable on turn 25. Sable gains one month, not two.</div></div>
+      </div>
+      <ul class="notes">
+        <li>Matches what a blocked study already does: the plan says what you asked for, and the warning says what it will cost.</li>
+        <li>Nothing you typed is thrown away by an edit somewhere else.</li>
+        <li class="con">A month of the teacher's plan is spent on nothing, and it stays spent until you notice the warning.</li>
+      </ul>
+    </div>
+    <div>
+      <p class="lbl">E2 &mdash; drop the student, and say so</p>
+      <div class="stage">
+        <div class="gridwrap"><table class="sched">
+          <thead><tr><th class="who">Mage</th><th>24</th><th>25</th><th>26</th></tr></thead>
+          <tbody>
+            <tr><td class="who"><span class="nm">Ereb</span><span class="un">(2431)</span></td>
+              <td><span class="cell study">force 3</span></td>
+              <td><span class="cell none">&mdash;</span></td>
+              <td><span class="cell study">force 3</span></td></tr>
+            <tr><td class="who"><span class="nm">Sable</span><span class="un">(2517)</span></td>
+              <td><span class="cell study">force 1</span></td>
+              <td><span class="cell study">spirit 0</span></td>
+              <td><span class="cell up">spirit 1</span></td></tr>
+          </tbody></table></div>
+        <div style="margin-top:10px"><div class="box dim">Ereb's turn-25 teaching was dropped: Sable now studies spirit, which Ereb does not hold.</div></div>
+      </div>
+      <ul class="notes">
+        <li>The grid never shows a month that buys nothing.</li>
+        <li class="con">An edit on one row silently rewrites another, which is the exact cost that ruled out T3 last round.</li>
+        <li class="con">A stored plan changes because you looked at it, and there is nothing to undo.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</main>
+</body>
+</html>
