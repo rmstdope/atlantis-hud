@@ -1963,9 +1963,9 @@ pub fn forecast_unit(
         // Everything the Give phase could not spend is in the purse by the time the market opens:
         // TAX and PILLAGE settle in the tax phase, both before "SELL orders are processed". A cast
         // settles in *Instant Magic*, after the tax phase and still before the market, and has
-        // already been paid for, so its cost comes off here and not above. `late` stays out - wages earned this month cannot pay for anything this month's
-        // orders buy (`ah-uwa3`) - and so does `month_long_expense`, which the market never
-        // reaches (`ah-a5ci`).
+        // already been paid for, so its cost comes off here and not above. `late` stays out -
+        // wages earned this month cannot pay for anything this month's orders buy (`ah-uwa3`) -
+        // and so does `month_long_expense`, which the market never reaches (`ah-a5ci`).
         running = running
             .saturating_add(income)
             .saturating_sub(give_phase_income)
