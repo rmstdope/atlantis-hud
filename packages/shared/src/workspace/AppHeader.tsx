@@ -52,6 +52,10 @@ export type NewAgeHeaderControl = {
   summary: string;
   onSignIn: () => void;
   onSignOut: () => void;
+  /** Fetches this turn's report. Called only from the popover, so only while signed in. */
+  onFetchReport: () => void;
+  /** True while that fetch is in flight. */
+  fetching: boolean;
 };
 
 /**
@@ -674,7 +678,12 @@ export function AppHeader({
         <ChipPopover
           open={openPopover === "newage"}
           onDismiss={close}
-          panel={<NewAgeWorldPanel summary={newAge.summary} onSignOut={newAge.onSignOut} />}
+          panel={<NewAgeWorldPanel
+                  summary={newAge.summary}
+                  fetching={newAge.fetching}
+                  onFetchReport={newAge.onFetchReport}
+                  onSignOut={newAge.onSignOut}
+                />}
         >
           <button
             type="button"

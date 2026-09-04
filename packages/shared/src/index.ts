@@ -65,6 +65,7 @@ export * from "./workspace/newAgeApi";
 export * from "./workspace/newAgeWorlds";
 export * from "./workspace/newAgeSession";
 export * from "./workspace/newAgeSignInView";
+export * from "./workspace/newAgeFetchView";
 export * from "./workspace/ordersUpload";
 export * from "./workspace/RegionPanel";
 export * from "./workspace/SettingsDialog";

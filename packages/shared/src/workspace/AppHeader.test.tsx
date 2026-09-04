@@ -418,7 +418,9 @@ describe("the New Age world control", () => {
         signedIn: false,
         summary: "",
         onSignIn: () => {},
-        onSignOut: () => {}
+        onSignOut: () => {},
+        onFetchReport: () => {},
+        fetching: false
       }
     });
     expect(signedOut).toContain("Sign in to Arcanum");
@@ -431,7 +433,9 @@ describe("the New Age world control", () => {
         signedIn: true,
         summary: "Signed in to New Age: Arcanum as Merchant Guild (27).",
         onSignIn: () => {},
-        onSignOut: () => {}
+        onSignOut: () => {},
+        onFetchReport: () => {},
+        fetching: false
       }
     });
     expect(signedIn).toContain("Merchant Guild");

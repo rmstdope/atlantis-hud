@@ -174,6 +174,14 @@ import type { HttpTransport } from "./httpTransport";
 import { newAgeClient } from "./newAgeApi";
 import { newAgeWorldFor } from "./newAgeWorlds";
 import {
+  FETCH_FAILURE_PREFIX,
+  FETCH_REAUTH_PURPOSE,
+  fetchFailureReason,
+  fetchedReportName,
+  fetchingStatus,
+  type NewAgeFetchPhase
+} from "./newAgeFetchView";
+import {
   NO_NEW_AGE_SESSIONS,
   newAgeFactionOf,
   newAgeSessionFor,
@@ -3325,6 +3333,9 @@ export function AppShell({
   /** Where the sign-in dialog has got to, or null when it is closed. */
   const [signInPhase, setSignInPhase] = useState<NewAgeSignInPhase | null>(null);
   const signInAbort = useRef<AbortController | null>(null);
+  /** Where a report fetch has got to, or null when none is running. */
+  const [fetchPhase, setFetchPhase] = useState<NewAgeFetchPhase | null>(null);
+  const fetchAbort = useRef<AbortController | null>(null);
 
   /** The faction the orders name, which is what the server is told to file them under. */
   const sendFactionId = ordersFileFaction(ordersDocument);
@@ -3427,6 +3438,15 @@ export function AppShell({
     setSignInPhase(null);
   }, []);
 
+  /** Cancel, Escape and the backdrop, from either the fetch or the dialog it put up. */
+  const dismissFetch = useCallback(() => {
+    fetchAbort.current?.abort();
+    fetchAbort.current = null;
+    signInAbort.current?.abort();
+    signInAbort.current = null;
+    setFetchPhase(null);
+  }, []);
+
   // A dialog belongs to the game and the world it was opened over. Switching either closes it and
   // aborts anything in flight: without this the phase survives, and coming back would pop the
   // dialog open uninvited - the failure `openPopover` already guards against. The ruleset can
@@ -3434,7 +3454,8 @@ export function AppShell({
   // dialog headed `Sign in to New Age: Arcanum` must not sit over a game that is now Trident.
   useEffect(() => {
     dismissSignIn();
-  }, [openGameId, newAgeWorld?.worldId, dismissSignIn]);
+    dismissFetch();
+  }, [openGameId, newAgeWorld?.worldId, dismissSignIn, dismissFetch]);
 
   /** Forgets this game's token. Nothing to revoke: the world has no logout endpoint. */
   const signOutOfNewAge = useCallback(() => {
@@ -3444,6 +3465,90 @@ export function AppShell({
     setNewAgeSessions((sessions) => withoutNewAgeSession(sessions, openGameId));
     setOpenPopover(null);
   }, [openGameId]);
+
+  /**
+   * Fetches this turn's report and hands it to `loadReport`, which is the same door a dropped file
+   * goes through: nothing about arriving over the network changes what it does to what is on
+   * screen (the navigator, 2026-09-04).
+   *
+   * The token is a parameter rather than read from state so the reauth path can fetch with a token
+   * `setNewAgeSessions` has not applied yet.
+   */
+  const fetchNewAgeReportWith = useCallback(
+    async (token: string) => {
+      if (newAgeApi === null || newAgeWorld === null || openGameId === null) {
+        return;
+      }
+      const controller = new AbortController();
+      fetchAbort.current = controller;
+      setFetchPhase({ kind: "fetching" });
+      setStatus(routineStatus(fetchingStatus(newAgeWorld.worldName)));
+      const result = await newAgeApi.report(token, controller.signal);
+      // A dismissal replaced or cleared the controller while this was in flight: the player has
+      // moved on, and a report fetched for an action they abandoned is not loaded.
+      if (fetchAbort.current !== controller) {
+        return;
+      }
+      fetchAbort.current = null;
+      if (result.kind === "ok") {
+        setFetchPhase(null);
+        await loadReport(result.value, fetchedReportName(newAgeWorld.worldName));
+        return;
+      }
+      if (result.kind === "unauthorized") {
+        // The token is dead, so it is dropped before anything else: the header chip goes back to
+        // `Sign in to Arcanum` and no later action can present it again.
+        setNewAgeSessions((sessions) => withoutNewAgeSession(sessions, openGameId));
+        setFetchPhase({ kind: "reauth", signIn: { kind: "ready" } });
+        return;
+      }
+      setFetchPhase(null);
+      setStatus(
+        failedStatus(`${FETCH_FAILURE_PREFIX}: ${fetchFailureReason(result, NEW_AGE_HOST)}`)
+      );
+    },
+    [newAgeApi, newAgeWorld, openGameId, loadReport]
+  );
+
+  /** What the popover item calls. Closes the popover, then fetches with this game's token. */
+  const fetchNewAgeReport = useCallback(() => {
+    setOpenPopover(null);
+    if (newAgeSession === null) {
+      return;
+    }
+    void fetchNewAgeReportWith(newAgeSession.token);
+  }, [newAgeSession, fetchNewAgeReportWith]);
+
+  /** Signs in again from inside a fetch, and then fetches - the navigator's E1, made concrete. */
+  const signInAndFetch = useCallback(
+    async (factionNumber: string, password: string) => {
+      if (newAgeApi === null || openGameId === null || newAgeWorld === null) {
+        return;
+      }
+      const controller = new AbortController();
+      signInAbort.current = controller;
+      setFetchPhase({ kind: "reauth", signIn: { kind: "signingIn" } });
+      const result = await newAgeApi.login(factionNumber, password, controller.signal);
+      if (signInAbort.current !== controller) {
+        return;
+      }
+      signInAbort.current = null;
+      if (result.kind === "ok") {
+        const session = {
+          worldId: newAgeWorld.worldId,
+          factionId: String(result.value.faction.id),
+          factionName: result.value.faction.name,
+          token: result.value.accessToken
+        };
+        setNewAgeSessions((sessions) => withNewAgeSession(sessions, openGameId, session));
+        await fetchNewAgeReportWith(session.token);
+        return;
+      }
+      const { message, retype } = signInFailure(result, NEW_AGE_HOST);
+      setFetchPhase({ kind: "reauth", signIn: { kind: "failed", message, retype } });
+    },
+    [newAgeApi, openGameId, newAgeWorld, fetchNewAgeReportWith]
+  );
 
   /** Cancel, Escape and the backdrop all mean the same thing: stop, and close. */
   const dismissSend = useCallback(() => {
@@ -4183,7 +4288,9 @@ export function AppShell({
                     ? ""
                     : signedInSummary(newAgeRulesetLabel, newAgeFactionOf(newAgeSession)),
                 onSignIn: () => setSignInPhase({ kind: "ready" }),
-                onSignOut: signOutOfNewAge
+                onSignOut: signOutOfNewAge,
+                onFetchReport: fetchNewAgeReport,
+                fetching: fetchPhase?.kind === "fetching"
               }
         }
         onExportOrdersLong={exportOrdersLong}
@@ -4618,6 +4725,22 @@ export function AppShell({
           phase={signInPhase}
           onSignIn={(factionNumber, password) => void signInToNewAge(factionNumber, password)}
           onDismiss={dismissSignIn}
+        />
+      )}
+      {fetchPhase === null || fetchPhase.kind !== "reauth" || newAgeWorld === null ? null : (
+        <NewAgeSignInDialog
+          rulesetLabel={newAgeRulesetLabel}
+          host={NEW_AGE_HOST}
+          turnNumber={parsed?.header.turnNumber ?? null}
+          suggestedFactionNumber={
+            parsed?.header.factionId && /^\d+$/.test(parsed.header.factionId)
+              ? parsed.header.factionId
+              : null
+          }
+          purpose={FETCH_REAUTH_PURPOSE}
+          phase={fetchPhase.signIn}
+          onSignIn={(factionNumber, password) => void signInAndFetch(factionNumber, password)}
+          onDismiss={dismissFetch}
         />
       )}
       {exportOpen ? (
