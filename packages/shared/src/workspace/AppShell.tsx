@@ -124,6 +124,7 @@ import { useArmiesStore } from "../armiesStore";
 import { useAlliedMagesStore } from "../alliedMagesStore";
 import {
   heldTurnsByFaction,
+  type PendingMissingMages,
   keyOf,
   mageSheetRows,
   missingFromSheet
@@ -145,6 +146,7 @@ import type { OpenExternal } from "./openExternal";
 import { OPEN_EXTERNAL_IN_NEW_TAB } from "./openExternal";
 import { ForeignReportPrompt } from "./ForeignReportPrompt";
 import { MapExportPrompt } from "./MapExportPrompt";
+import { MissingMagesPrompt } from "./MissingMagesPrompt";
 import { ImportSummaryDialog } from "./ImportSummaryDialog";
 import { OrdersImportPrompt } from "./OrdersImportPrompt";
 import { OrdersImportSummaryDialog, type OrdersImportSummary } from "./OrdersImportSummaryDialog";
@@ -355,6 +357,17 @@ type RulesetState =
  * bundle. Returns whatever undoes the registration.
  */
 export type RegisterBeforeQuit = (handler: () => Promise<void>) => () => void;
+
+/**
+ * The turn the missing mages were last seen on, or null when they came from several sheets.
+ *
+ * Null is a real answer rather than a fallback: there is no single turn to name, and the status
+ * line says `kept from earlier sheets` instead of picking one.
+ */
+function sharedSheetTurn(pending: PendingMissingMages): number | null {
+  const turns = new Set(pending.missing.map((row) => row.sheetTurn));
+  return turns.size === 1 ? (pending.missing[0]?.sheetTurn ?? null) : null;
+}
 
 export function AppShell({
   client,
@@ -657,6 +670,7 @@ export function AppShell({
   const pendingLoad = fileQuestion?.kind === "foreign-report" ? fileQuestion.pending : null;
   const pendingMapExport = fileQuestion?.kind === "map-export" ? fileQuestion.pending : null;
   const pendingOrdersImport = fileQuestion?.kind === "orders-import" ? fileQuestion.pending : null;
+  const pendingMissingMages = fileQuestion?.kind === "missing-mages" ? fileQuestion.pending : null;
   const [ordersImportSummary, setOrdersImportSummary] = useState<OrdersImportSummary | null>(null);
   const [mergedReports, setMergedReports] = useState<MergedReportRecord[]>([]);
   // A second, read-only turn held beside the working one (ah-jg6.3), and the picker that chooses
@@ -1440,17 +1454,21 @@ export function AppShell({
         setStatus(noticeStatus(mageSheetStatus({ ...outcome, leftovers: { kind: "none" } })));
         return;
       }
-      // Discard is the default the family agreed, and asking about it is `ah-lyg6.1.2.2`'s third
-      // increment; until then the default simply applies.
-      await useAlliedMagesStore.getState().discard(client, openGame, missing.map(keyOf));
-      setStatus(
-        noticeStatus(
-          mageSheetStatus({
-            ...outcome,
-            leftovers: { kind: "discarded", count: missing.length }
-          })
-        )
-      );
+      // The one question a sheet ever asks, and it is asked once for the whole group. A player who
+      // closes the window instead of answering has kept them, and the next sheet asks again - which
+      // is what keeps staleness from accumulating unnoticed.
+      dispatchFileQuestion({
+        type: "opened",
+        question: {
+          kind: "missing-mages",
+          pending: {
+            factionLabel: pending.factionLabel,
+            sheetTurn: pending.turnNumber,
+            taken: pending.mages.length,
+            missing
+          }
+        }
+      });
     },
     [client, game, alliedMages]
   );
@@ -1527,6 +1545,66 @@ export function AppShell({
     // because the map-export prompt counts its hexes against the map the player already has.
     [client, ruleset, parsed, model, alliedMages, applyReport, storeReportOnly, takeInMageSheet]
   );
+
+  /**
+   * Discards the mages the sheet left out - the default, and what Escape does.
+   *
+   * The sheet itself is already stored, so nothing here is undone by a failure: only the discard
+   * can fail, and it is reported with no `could not read` prefix because nothing is being read.
+   */
+  const discardMissingMages = useCallback(() => {
+    const pending = pendingMissingMages;
+    if (!pending) {
+      return;
+    }
+    dispatchFileQuestion({ type: "closed" });
+    void runReported(
+      async () => {
+        await useAlliedMagesStore
+          .getState()
+          .discard(client, game as OpenedGame, pending.missing.map(keyOf));
+        setStatus(
+          noticeStatus(
+            mageSheetStatus({
+              factionLabel: pending.factionLabel,
+              turnNumber: pending.sheetTurn,
+              taken: pending.taken,
+              // Not read: `mageSheetStatus` names the sheet it replaced only when the arriving
+              // sheet left nothing out, and this line is about what it did leave out.
+              replacedTurn: null,
+              leftovers: { kind: "discarded", count: pending.missing.length }
+            })
+          )
+        );
+      },
+      (message) => setStatus(failedStatus(message)),
+      { busy: setBusy }
+    );
+  }, [client, game, pendingMissingMages]);
+
+  /** Keeps them, marked stale. Writes nothing at all: they are already stored. */
+  const keepMissingMages = useCallback(() => {
+    const pending = pendingMissingMages;
+    if (!pending) {
+      return;
+    }
+    dispatchFileQuestion({ type: "closed" });
+    setStatus(
+      noticeStatus(
+        mageSheetStatus({
+          factionLabel: pending.factionLabel,
+          turnNumber: pending.sheetTurn,
+          taken: pending.taken,
+          replacedTurn: null,
+          leftovers: {
+            kind: "kept",
+            count: pending.missing.length,
+            fromTurn: sharedSheetTurn(pending)
+          }
+        })
+      )
+    );
+  }, [pendingMissingMages]);
 
   /** Opens the pending report as its own faction: today's behaviour, chosen rather than assumed. */
   const switchFaction = useCallback(() => {
@@ -3828,6 +3906,19 @@ export function AppShell({
           busy={busy}
           onAdd={addMapExport}
           onCancel={() => dispatchFileQuestion({ type: "closed" })}
+        />
+      ) : null}
+
+      {/*
+        The mages a new sheet left out, asked about once for the whole group. The sheet itself is
+        already in: only these are still undecided.
+      */}
+      {pendingMissingMages ? (
+        <MissingMagesPrompt
+          pending={pendingMissingMages}
+          busy={busy}
+          onDiscard={discardMissingMages}
+          onKeep={keepMissingMages}
         />
       ) : null}
 
