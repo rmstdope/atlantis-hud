@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseFoodMaintenance, parseMovementRules, RulesetScrapeError } from "./rules";
+import {
+  parseFoodMaintenance,
+  parseMovementRules,
+  parseWeatherGap,
+  RulesetScrapeError
+} from "./rules";
 
 const RULES_HTML = readFileSync(
   fileURLToPath(new URL("../../../tests/fixtures/ruleset/neworigins-rules.html", import.meta.url)),
@@ -335,5 +340,33 @@ describe("parseFoodMaintenance", () => {
     expect(() =>
       parseFoodMaintenance("<html><body>a page about something else</body></html>")
     ).toThrowError(/foodMaintenance/);
+  });
+});
+
+describe("parseWeatherGap", () => {
+  it("reads New Origins' implied winter rule as an open gap", () => {
+    const gap = parseWeatherGap(RULES_HTML);
+
+    expect(gap.modelled).toBe(false);
+    expect(gap.note).toMatch(/winter/i);
+    expect(gap.consequence).toMatch(/under-cost/i);
+    expect(gap.evidence).toContain("in winter");
+  });
+
+  it("reads New Age's statement that weather never changes movement", () => {
+    for (const html of [ARCANUM_RULES_HTML, TRIDENT_RULES_HTML]) {
+      const gap = parseWeatherGap(html);
+      expect(gap.modelled).toBe(true);
+      expect(gap.evidence).toContain("it is description only");
+    }
+  });
+
+  it("refuses a rules page that says nothing about weather", () => {
+    expect(() => parseWeatherGap("<html><body>no weather here</body></html>")).toThrowError(
+      RulesetScrapeError
+    );
+    expect(() => parseWeatherGap("<html><body>no weather here</body></html>")).toThrowError(
+      /weatherRule/
+    );
   });
 });

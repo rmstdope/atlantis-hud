@@ -35,12 +35,27 @@ describe("buildRuleset", () => {
     expect(Object.keys(ruleset.items).length).toBe(171);
   });
 
-  it("overrides the four New Origins food values from the maintenance rule", () => {
+  it("prices the four foods from the rules page rather than the data page", () => {
     const ruleset = built();
     for (const tag of ["FISH", "GRAI", "LIVE", "MEAL"]) {
       expect(ruleset.items[tag].maintenanceValue).toBe(50);
       expect(ruleset.items[tag].description).toContain("provide 30 silver");
     }
+    expect(ruleset.source.note).toContain("50 silver");
+  });
+
+  it("refuses a catalogue whose foods the rules page does not name", () => {
+    const rules = RULES_HTML.replace("grain, livestock, fish or", "bread, livestock, fish or");
+    expect(rules).not.toBe(RULES_HTML);
+    expect(() =>
+      buildRuleset({
+        rulesHtml: rules,
+        dataHtml: DATA_HTML,
+        rulesUrl: "x",
+        dataUrl: "y",
+        fetchedAt: "now"
+      })
+    ).toThrowError(/reworded/);
   });
 
   it("leaves an unrelated scraped maintenance value unchanged", () => {

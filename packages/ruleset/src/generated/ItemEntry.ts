@@ -26,9 +26,10 @@ weapon?: Weapon,
  * Silver of maintenance paid by one item. `None` when the data page does not call it food,
  * and for a ruleset generated before this field existed.
  *
- * The rules page (`rules/economy_maintenance`) and the data page disagree here: the rules
- * section says one food substitutes for each 50 silver, while the data page currently states
- * 30 for four foods. Generation applies the documented New Origins override from the rules.
+ * Scraped from the rules page (`rules/economy_maintenance`), which states what one unit of
+ * food is worth, and applied to the foods that sentence names. Where the data page states a
+ * different figure - as New Origins' does, saying 30 where its rules page says 50 - the rules
+ * page wins.
  */
 maintenanceValue?: number, 
 /**
