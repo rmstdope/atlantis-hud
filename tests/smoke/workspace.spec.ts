@@ -2814,15 +2814,14 @@ test("the flags column shows each flag as a letter", async ({ page }) => {
   ).toBeVisible();
 
   // Positional, like the assertions above: `flags` is the seventh column and this only holds while
-  // nothing has been reordered.
-  // The cell holds the words for a screen reader as well as the letters for the eye, so the
-  // assertion is on the visible span rather than on the cell's whole text.
+  // nothing has been reordered. The cell holds the words for a screen reader as well as the letters
+  // for the eye, so the assertion is on the visible span rather than on the cell's whole text.
+  //
+  // Only our own units are drawn for a hex until a foreign one is pinned, so this asserts over the
+  // own unit alone; the one-flag and no-flags cases are pinned by the unit tests on `flagLetters`.
   await expect(
     page.locator("[data-testid='unit-row-18642'] td:nth-child(7) span[aria-hidden]")
   ).toHaveText("ABHRS");
-  await expect(
-    page.locator("[data-testid='unit-row-16767'] td:nth-child(7) span[aria-hidden]")
-  ).toHaveText("B");
 });
 
 /**
