@@ -1,5 +1,6 @@
 import type { ChangeEvent, DragEvent, ReactNode } from "react";
 import { useRef } from "react";
+import type { MageSheetChip } from "../alliedMageChip";
 import type { MapLevel } from "../hexMapModel";
 import { SURFACE_LEVEL } from "../hexMapModel";
 import { useWorkspaceStore } from "../workspaceStore";
@@ -30,6 +31,7 @@ export type HeaderPopoverId =
   | "turns"
   | "merged"
   | "faction"
+  | "mageSheets"
   | "report"
   | "trade"
   | "export";
@@ -77,6 +79,13 @@ type AppHeaderProps = {
   mergedCount: number;
   /** The panel itself, rendered under the chip when it is open. */
   mergedPanel: ReactNode;
+  /**
+   * How many allied mage sheets are held, and whether any is behind the turn on screen. Null when
+   * none is held, which is what hides the chip entirely - there is no empty popover to open.
+   */
+  mageSheetChip: MageSheetChip | null;
+  /** The panel itself, rendered under the chip when it is open. */
+  mageSheetsPanel: ReactNode;
   /** The panel itself, rendered under the faction name when it is open. */
   factionPanel: ReactNode;
   status: StatusLine | null;
@@ -188,6 +197,8 @@ export function AppHeader({
   onStopComparing,
   mergedCount,
   mergedPanel,
+  mageSheetChip,
+  mageSheetsPanel,
   factionPanel,
   status,
   counts,
@@ -402,6 +413,37 @@ export function AppHeader({
                 className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-soft hover:border-brass"
               >
                 +{mergedCount} merged
+                <span aria-hidden className="ml-1 text-ink-dim">
+                  ▾
+                </span>
+              </button>
+            </ChipPopover>
+          ) : null}
+          {/*
+            Whose mage sheets are held (ah-lyg6.1.3). A sibling of the merged chip inside the
+            faction group, for both reasons the two comments above give: never nested in another
+            chip's wrapper, and never a header item of its own.
+          */}
+          {mageSheetChip ? (
+            <ChipPopover
+              open={openPopover === "mageSheets"}
+              onDismiss={close}
+              panel={mageSheetsPanel}
+              className="ml-1.5"
+            >
+              <button
+                type="button"
+                data-testid="mage-sheets-chip"
+                aria-haspopup="dialog"
+                aria-expanded={openPopover === "mageSheets"}
+                onClick={() => toggle("mageSheets")}
+                className={
+                  mageSheetChip.stale
+                    ? "rounded border border-danger bg-panel-raised px-2 py-0.5 text-danger hover:border-brass"
+                    : "rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-soft hover:border-brass"
+                }
+              >
+                {mageSheetChip.text}
                 <span aria-hidden className="ml-1 text-ink-dim">
                   ▾
                 </span>
