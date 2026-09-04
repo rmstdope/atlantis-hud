@@ -127,7 +127,9 @@ export const TAURI_COMMANDS = {
   saveArmy: ["save_army", "database_path", "army"],
   deleteArmy: ["delete_army", "database_path", "game_id", "army_id"],
   listAlliedMages: ["list_allied_mages", "database_path", "game_id"],
-  saveAlliedMages: ["save_allied_mages", "database_path", "game_id", "mages", "removed"]
+  saveAlliedMages: ["save_allied_mages", "database_path", "game_id", "mages", "removed"],
+  listStudyPlans: ["list_study_plans", "database_path", "game_id"],
+  saveStudyPlans: ["save_study_plans", "database_path", "game_id", "plans", "removed"]
 } as const satisfies CommandTable;
 
 /**
