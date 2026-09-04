@@ -4425,20 +4425,28 @@ test("a BUY ALL settles and marks the ITEMS cell as a projection", async ({ page
  *
  * That is why this cannot use the default turn-71 fixture - its five own units carry only
  * observation, stealth and manipulation - and follows the `CAST` walk below onto `F42_T42`.
- * `MinersA (5105)` is 8 orcs with `mining [MINI] 5` in `mountain (36,4)` and holds no picks, so
- * its men could make 40 iron. What it actually makes is less: `ah-256d` shares the hex's own
- * `Products: ... 36 iron` between the units producing there. The walk asserts the cell names IRON
- * and carries the projection title, both of which hold whatever the settled figure is.
+ * `Farmers (3493)` is 17 orcs with `farming [FARM] 5` in `mountain (36,4)`, and what it makes is
+ * capped by `ah-256d` sharing the hex's own `Products: 34 livestock [LIVE] ...` between the units
+ * producing there. The walk asserts the cell names LIVE and carries the projection title, both of
+ * which hold whatever the settled figure is.
+ *
+ * **Not the miners, since `ah-728m.2.2`.** This walk used to follow `MinersA (5105)` and its iron.
+ * That hex has `sharing` units, and `Smiths (2964)` in it produces swords from iron - so now that
+ * a manufacturer draws on the hex's shared stock before primary PRODUCE runs, the miner lends the
+ * smith exactly the iron it goes on to mine back, its net item change for the month is zero, and
+ * a unit with no changes is not in the preview response at all. That is the settlement working,
+ * not a projection going missing; livestock is the row that shows a projection without also being
+ * somebody else's raw material.
  */
 test("a produced item marks the ITEMS cell as a projection", async ({ page }) => {
   await loadReport(page, "Produce smoke", F42_T42, "regions");
   await selectHex(page, "1:36,4");
-  await selectUnit(page, "5105");
-  await fillOrders(page, "PRODUCE iron");
+  await selectUnit(page, "3493");
+  await fillOrders(page, "PRODUCE livestock");
 
-  const row = page.getByTestId("unit-row-5105");
+  const row = page.getByTestId("unit-row-3493");
   const itemsCell = row.locator('[data-predicted="true"]').first();
-  await expect(itemsCell).toContainText("IRON");
+  await expect(itemsCell).toContainText("LIVE");
   await expect(itemsCell).toHaveAttribute("title", /this unit will produce/);
 });
 
