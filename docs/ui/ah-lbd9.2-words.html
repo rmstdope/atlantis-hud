@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lbd9.2 — round 2: what the header control says</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --danger:#d97070; --warn:#d9a441; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .hdr { display:flex; align-items:center; gap:9px; justify-content:flex-end; background:var(--panel);
+         border:1px solid var(--edge); border-radius:6px; padding:8px 10px; font-family:system-ui,sans-serif; font-size:12.5px; flex-wrap:wrap; }
+  .hdr .chip { border:1px solid var(--edge); background:var(--raised); border-radius:4px; padding:3px 9px; color:var(--ink); }
+  .hdr .chip.brassy { border-color:var(--brass); color:var(--brass); }
+  .hdr .chip.dim { color:var(--ink-soft); }
+  .pop { margin-top:6px; margin-left:auto; width:290px; background:#0b0f14; border:1px solid var(--edge);
+         border-radius:7px; padding:9px 10px; font-family:system-ui,sans-serif; font-size:12px; color:var(--ink-soft); }
+  .pop b { color:var(--ink); font-weight:600; }
+  .btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink); border-radius:4px; padding:3px 9px;
+         display:inline-block; font-family:system-ui,sans-serif; font-size:12px; margin-top:8px; }
+  .caption { color:var(--ink-dim); font-size:11.5px; margin-top:8px; font-family:system-ui,sans-serif; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  table { border-collapse:collapse; width:100%; font:13px/1.6 system-ui,sans-serif; margin-top:8px; }
+  td, th { border-top:1px solid var(--edge-soft); padding:6px 8px; vertical-align:top; text-align:left; color:var(--ink-soft); }
+  th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; border-top:0; }
+  td b { color:var(--ink); font-weight:600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lbd9.2 — <span>round 2: what the header control actually says</span></h1>
+  <p>Settled in round 1: a header control (<b>A</b>), re-prompt in place when a session runs out (<b>E1</b>),
+  one session per game (<b>S2</b>), faction number prefilled, our own sentence on a refusal. What is left is
+  the text on the control itself. It sits in the right-hand group beside <code>Send</code>, and the header is
+  already crowded, so its width is not free.</p>
+<p style="color:#4fb783;margin-top:12px;font-size:14px"><b>Chosen (2026-09-04):</b> <b>W2</b> signed out &mdash; <i>Sign in to Arcanum</i>; <b>N1</b> signed in &mdash; the faction&rsquo;s name, <i>Merchant Guild &#9662;</i>; and every string in the last table as written, including no new keyboard shortcut.</p>
+</header>
+
+<main>
+
+<h3 class="sec">The control, signed out</h3>
+<p>“Sign in” alone is two words and no subject — in a header that also has Import, Export and Send, it may
+read as signing in to Atlantis HUD rather than to a game world.</p>
+<div class="cards3">
+  <div class="card">
+    <h2><em>W1</em>Sign in</h2>
+    <div class="hdr"><span class="chip">Import</span><span class="chip">Export ▾</span>
+      <span class="chip brassy">Sign in</span><span class="chip dim">Send</span><span class="chip">⚙</span></div>
+    <ul class="notes"><li>Shortest, and the header has no room to spare.</li>
+      <li class="con">Says nothing about <i>what</i> you sign in to.</li></ul>
+  </div>
+  <div class="card">
+    <h2><em>W2</em>Sign in to Arcanum</h2>
+    <div class="hdr"><span class="chip">Import</span><span class="chip">Export ▾</span>
+      <span class="chip brassy">Sign in to Arcanum</span><span class="chip dim">Send</span><span class="chip">⚙</span></div>
+    <ul class="notes"><li>Unambiguous, and names the world you are actually playing.</li>
+      <li class="con">The widest of the three, and it grows with the world’s name.</li></ul>
+  </div>
+  <div class="card">
+    <h2><em>W3</em>Arcanum ▾ <span style="color:var(--ink-dim);font-size:12px">(always a chip)</span></h2>
+    <div class="hdr"><span class="chip">Import</span><span class="chip">Export ▾</span>
+      <span class="chip">Arcanum ▾</span><span class="chip dim">Send</span><span class="chip">⚙</span></div>
+    <div class="pop">Not signed in to <b>New Age: Arcanum</b>.
+      <div style="margin-top:4px">Signing in lets Atlantis HUD fetch this turn and send your orders.</div>
+      <span class="btn">Sign in…</span></div>
+    <ul class="notes"><li>One control that never changes width or meaning; signed in or out is the popover’s job.</li>
+      <li class="con">Two clicks to reach the dialog, every time.</li></ul>
+  </div>
+</div>
+
+<h3 class="sec">The control, signed in</h3>
+<p>The same control, once there is a faction behind it. In all three the popover is where signing out
+happens.</p>
+<div class="cards3">
+  <div class="card">
+    <h2><em>N1</em>The faction’s name</h2>
+    <div class="hdr"><span class="chip">Import</span><span class="chip">Export ▾</span>
+      <span class="chip brassy">Merchant Guild ▾</span><span class="chip dim">Send</span><span class="chip">⚙</span></div>
+    <p class="caption">Reads as an answer to “who am I signed in as?”. But the header already has a faction
+    chip on the left showing the report’s faction, and the two are usually the same name twice.</p>
+  </div>
+  <div class="card">
+    <h2><em>N2</em>The world’s name</h2>
+    <div class="hdr"><span class="chip">Import</span><span class="chip">Export ▾</span>
+      <span class="chip brassy">Arcanum ▾</span><span class="chip dim">Send</span><span class="chip">⚙</span></div>
+    <p class="caption">Brass means signed in, plain edge means not. No duplication with the faction chip,
+    and the width never moves. The faction’s name is one click away in the popover.</p>
+  </div>
+  <div class="card">
+    <h2><em>N3</em>Signed in</h2>
+    <div class="hdr"><span class="chip">Import</span><span class="chip">Export ▾</span>
+      <span class="chip brassy">Signed in ▾</span><span class="chip dim">Send</span><span class="chip">⚙</span></div>
+    <p class="caption">Says the state and nothing else. Fixed width, but it is the least informative of the
+    three and reads oddly next to Import and Export, which are verbs.</p>
+  </div>
+</div>
+
+<h3 class="sec">The popover, once signed in — as I would write it</h3>
+<div class="card" style="max-width:420px">
+  <div class="pop" style="margin-left:0">
+    Signed in to <b>New Age: Arcanum</b> as <b>Merchant Guild (27)</b>.
+    <div style="margin-top:4px">Nothing is stored: closing Atlantis HUD signs you out.</div>
+    <span class="btn">Sign out</span>
+  </div>
+</div>
+
+<h3 class="sec">Everything else, as I will write it</h3>
+<table>
+  <tr><th>Where</th><th>What it says</th></tr>
+  <tr><td><b>Dialog title</b></td><td>Sign in to New Age: Arcanum</td></tr>
+  <tr><td><b>Dialog second line</b></td><td>atlantis-newage.com · turn 83 &nbsp;<span style="color:var(--ink-dim)">(the turn omitted when no report is loaded)</span></td></tr>
+  <tr><td><b>Fields</b></td><td>Faction number &nbsp;·&nbsp; Password &nbsp;<span style="color:var(--ink-dim)">(placeholder “Required”)</span></td></tr>
+  <tr><td><b>Note under the fields</b></td><td>Kept only while the app is open. Nothing is written to this machine.</td></tr>
+  <tr><td><b>Buttons</b></td><td>Cancel &nbsp;·&nbsp; Sign in</td></tr>
+  <tr><td><b>Bad faction number</b></td><td>A faction number is digits only.</td></tr>
+  <tr><td><b>Refused (401)</b></td><td>The world did not accept that faction number and password.</td></tr>
+  <tr><td><b>Unreachable</b></td><td>Could not reach atlantis-newage.com. Nothing was sent.</td></tr>
+  <tr><td><b>Any other refusal</b></td><td>The world refused the sign-in: &lt;the world’s own sentence&gt; — or “The world refused the sign-in (503).” when it gave none.</td></tr>
+  <tr><td><b>Unreadable answer</b></td><td>The world answered something Atlantis HUD could not read.</td></tr>
+  <tr><td><b>Keyboard</b></td><td>No new shortcut. Escape, Cancel and the backdrop all close and abort; focus starts in Password and returns to the control that opened the dialog.</td></tr>
+</table>
+
+<p class="caption" style="margin-top:30px">Mockup only — no build step, no external assets.</p>
+</main>
+</body>
+</html>
