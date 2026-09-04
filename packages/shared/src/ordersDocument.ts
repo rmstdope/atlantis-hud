@@ -165,6 +165,11 @@ export function writeUnitOrders(document: string, unitId: string, orders: string
  *
  * Unchanged when there is no faction id to write: nothing honest can be put in a header for a
  * faction the report did not name.
+ *
+ * That branch is unreachable from either import door since ah-brd: `judgeReportUsable`
+ * (`reportLoadDecision.ts`) refuses a report naming no faction, and both `routeReport` and
+ * `prepareBatch` run it first. Kept as defence for any future caller, and pinned by "the import
+ * doors refuse a report that names no faction" in this module's test file.
  */
 export function seedOrdersDocument(templateText: string, factionId: string | null): string {
   if (templateText.trim() !== "" || factionId === null) {
