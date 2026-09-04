@@ -87,6 +87,12 @@ export function StudyPlannerDialog({
   const [view, setView] = useState<"all" | "schedule">("all");
   const [cellMode, setCellMode] = useState<CellMode>({ kind: "idle" });
   const turns = useMemo(() => scheduleTurns(viewedTurn), [viewedTurn]);
+  // Memoized beside `turns` and `flat`: without it every keystroke in the popover - each skill
+  // click, each level change - re-projects every mage over six turns.
+  const rows = useMemo(
+    () => scheduleRows({ groups, plans, tree, turns }),
+    [groups, plans, tree, turns]
+  );
 
   const flat = useMemo(() => groups.flatMap((group) => group.mages), [groups]);
   // Not remembered between openings, unlike the tree's picked mage: a planner is a list, and
@@ -240,7 +246,7 @@ export function StudyPlannerDialog({
 
         {view === "schedule" ? (
           <StudySchedule
-            rows={scheduleRows({ groups, plans, tree, turns })}
+            rows={rows}
             groups={groups}
             turns={turns}
             tree={tree}

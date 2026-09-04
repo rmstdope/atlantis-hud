@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { STANDING_CHIP } from "./standingChip";
 import { useEscapeToDismiss } from "./dismissLayer";
 import type { MagicTree } from "../magicTree";
@@ -58,6 +58,15 @@ export function StudySchedule({
     );
   }
 
+  // The card follows the *focused* cell as well as the hovered one, or it would be unreachable
+  // without a mouse - and the grid is walked with the arrow keys, which is what moves focus.
+  const [at, setAt] = useState<{ rowKey: string; turnIndex: number } | null>(null);
+  const hovered = at === null ? null : rows.find((row) => row.key === at.rowKey) ?? null;
+  const card =
+    hovered === null || at === null
+      ? null
+      : hoverCard(hovered, at.turnIndex, turns, tree, factionLabelOf(groups, hovered.factionId));
+
   const open = mode.kind === "editing" ? rows.find((row) => row.key === mode.rowKey) ?? null : null;
   const menu =
     open === null || mode.kind !== "editing"
@@ -76,13 +85,22 @@ export function StudySchedule({
           {saveError}
         </p>
       )}
-      <ScheduleGrid rows={rows} groups={groups} turns={turns} mode={mode} onEvent={onEvent} />
+      <ScheduleGrid
+        rows={rows}
+        groups={groups}
+        turns={turns}
+        mode={mode}
+        onEvent={onEvent}
+        onAt={setAt}
+      />
+      {card === null ? null : <ScheduleHoverCard card={card} />}
       {menu === null || open === null || mode.kind !== "editing" ? null : (
         <CellPopoverLayer
           menu={menu}
           mode={mode}
           mageName={open.name}
-          turn={turns[mode.turnIndex]}
+          turn={turns[startTurnIndex(open, mode.turnIndex)]}
+          replacing={wasText(open, mode.turnIndex)}
           onEvent={onEvent}
           onSet={(goal) => {
             onCommit(open.key, goalsAfterSet(open.goals, open, mode.turnIndex, goal));
@@ -118,23 +136,86 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   );
 }
 
+/** The group heading's faction label, so the card words a faction the way the list does. */
+function factionLabelOf(groups: readonly PlannerGroup[], factionId: string): string {
+  return groups.find((group) => group.factionId === factionId)?.factionLabel ?? "";
+}
+
+/**
+ * The turn a goal set at `turnIndex` will actually begin.
+ *
+ * On an idle cell the new goal is simply appended (`goalsAfterSet`), so it starts at the first
+ * idle turn rather than at the one clicked. The popover says which turn it is talking about, so
+ * it must say the turn the study will really start, not the column the pointer was over.
+ */
+function startTurnIndex(row: ScheduleRow, turnIndex: number): number {
+  if (row.cells[turnIndex]?.kind !== "idle") {
+    return turnIndex;
+  }
+  const first = row.cells.findIndex((cell) => cell.kind === "idle");
+  return first === -1 ? turnIndex : Math.min(first, turnIndex);
+}
+
+/** `was: force 4, force 4, force 5` - the tail this choice will overwrite, or null. */
+function wasText(row: ScheduleRow, turnIndex: number): string | null {
+  const tail = row.cells
+    .slice(startTurnIndex(row, turnIndex))
+    .filter((cell) => cell.kind === "study")
+    .map((cell) => (cell.kind === "study" ? `${cell.name} ${cell.level}` : ""));
+  return tail.length === 0 ? null : `was: ${tail.join(", ")}`;
+}
+
 /** The table itself. Hook-free, so the markup can be tested without a DOM. */
 export function ScheduleGrid({
   rows,
   groups,
   turns,
   mode,
-  onEvent
+  onEvent,
+  onAt
 }: {
   rows: readonly ScheduleRow[];
   groups: readonly PlannerGroup[];
   turns: readonly number[];
   mode: CellMode;
   onEvent: (event: CellEvent) => void;
+  /** Which cell the pointer or the focus is on, for the hover card. Null when neither is. */
+  onAt?: (at: { rowKey: string; turnIndex: number } | null) => void;
 }) {
   const byKey = new Map(rows.map((row) => [row.key, row]));
+  // Arrow keys walk the grid cell by cell; `Enter` is the button's own. Delegated from the table
+  // rather than bound per cell, which is one listener instead of mages x turns of them.
+  const walk = (event: { key: string; target: EventTarget | null; preventDefault: () => void }) => {
+    const step = GRID_STEPS[event.key];
+    if (step === undefined) {
+      return;
+    }
+    const from = (event.target as HTMLElement | null)?.dataset?.cell;
+    if (from === undefined) {
+      return;
+    }
+    const [rowIndex, turnIndex] = from.split(":").map(Number);
+    const row = rows[rowIndex + step.row];
+    if (row === undefined) {
+      return;
+    }
+    const turn = turns[turnIndex + step.turn];
+    if (turn === undefined) {
+      return;
+    }
+    event.preventDefault();
+    document
+      .querySelector<HTMLButtonElement>(
+        `[data-cell="${rowIndex + step.row}:${turnIndex + step.turn}"]`
+      )
+      ?.focus();
+  };
   return (
-    <table className="w-full border-collapse text-pane">
+    <table
+      className="w-full border-collapse text-pane"
+      onKeyDown={walk}
+      onMouseLeave={() => onAt?.(null)}
+    >
       <thead>
         <tr>
           <th className="sticky left-0 top-0 z-20 bg-panel-raised px-2 py-1 text-left text-ink-soft">
@@ -160,6 +241,8 @@ export function ScheduleGrid({
             turns={turns}
             mode={mode}
             onEvent={onEvent}
+            onAt={onAt}
+            rows={rows}
           />
         ))}
       </tbody>
@@ -167,18 +250,30 @@ export function ScheduleGrid({
   );
 }
 
+/** Which way each arrow key moves, in rows and in turns. */
+const GRID_STEPS: Record<string, { row: number; turn: number }> = {
+  ArrowUp: { row: -1, turn: 0 },
+  ArrowDown: { row: 1, turn: 0 },
+  ArrowLeft: { row: 0, turn: -1 },
+  ArrowRight: { row: 0, turn: 1 }
+};
+
 function FactionRows({
   group,
   byKey,
+  rows,
   turns,
   mode,
-  onEvent
+  onEvent,
+  onAt
 }: {
   group: PlannerGroup;
   byKey: ReadonlyMap<string, ScheduleRow>;
+  rows: readonly ScheduleRow[];
   turns: readonly number[];
   mode: CellMode;
   onEvent: (event: CellEvent) => void;
+  onAt?: (at: { rowKey: string; turnIndex: number } | null) => void;
 }) {
   return (
     <>
@@ -221,7 +316,10 @@ function FactionRows({
                   <button
                     type="button"
                     data-testid={`study-schedule-cell-${row.unitId}-${turn}`}
+                    data-cell={`${rows.indexOf(row)}:${index}`}
                     aria-expanded={open}
+                    onMouseEnter={() => onAt?.({ rowKey: row.key, turnIndex: index })}
+                    onFocus={() => onAt?.({ rowKey: row.key, turnIndex: index })}
                     title={cell?.kind === "study" ? (cell.blocked ?? undefined) : undefined}
                     onClick={() =>
                       onEvent({
@@ -276,6 +374,7 @@ export function CellPopover({
   mode,
   mageName,
   turn,
+  replacing,
   onEvent,
   onSet,
   onClear
@@ -284,6 +383,8 @@ export function CellPopover({
   mode: Extract<CellMode, { kind: "editing" }>;
   mageName: string;
   turn: number;
+  /** `was: force 4, force 4, force 5` - the tail this choice overwrites, or null. */
+  replacing: string | null;
   onEvent: (event: CellEvent) => void;
   onSet: (goal: StudyGoal) => void;
   onClear: () => void;
@@ -316,6 +417,11 @@ export function CellPopover({
     >
       <p className="m-0 text-ink">{menu.heading}</p>
       {menu.sub === null ? null : <p className="m-0 text-ink-dim">{menu.sub}</p>}
+      {replacing === null ? null : (
+        <p data-testid="study-schedule-was" className="m-0 text-ink-dim line-through">
+          {replacing}
+        </p>
+      )}
 
       {(
         [

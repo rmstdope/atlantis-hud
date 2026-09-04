@@ -58,6 +58,19 @@ describe("cellMenu", () => {
     expect(summoning?.detail).toBe("needs necromancy 1, he will have 0");
   });
 
+  it("joins two prerequisites the way the magic tree joins them", () => {
+    const twoNeeds = menu().notYet.find(
+      (choice) =>
+        [
+          ...(tree.byTag.get(choice.skill)?.within ?? []),
+          ...(tree.byTag.get(choice.skill)?.crossing ?? [])
+        ].length === 2
+    );
+
+    expect(twoNeeds?.detail).toMatch(/^needs .+ and .+$/);
+    expect(twoNeeds?.detail).not.toContain(";");
+  });
+
   it("offers the levels above the one he holds", () => {
     expect(menu().raise.find((choice) => choice.skill === "PATT")?.levels).toEqual([3, 4, 5]);
     expect(menu().begin[0]?.levels).toEqual([1, 2, 3, 4, 5]);

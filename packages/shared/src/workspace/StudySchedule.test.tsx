@@ -109,6 +109,13 @@ describe("ScheduleGrid", () => {
     expect(markup).not.toContain('data-testid="study-schedule-note-2432"');
   });
 
+  it("makes every cell reachable and addressable by the arrow keys", () => {
+    const markup = grid();
+
+    expect(markup).toContain('data-cell="0:0"');
+    expect(markup).toContain(`data-cell="1:${turns.length - 1}"`);
+  });
+
   it("says which cell is open", () => {
     const markup = grid({
       kind: "editing",
@@ -158,6 +165,7 @@ describe("CellPopover", () => {
         mode={mode}
         mageName="Ereb"
         turn={27}
+        replacing="was: force 4, force 5"
         onEvent={() => {}}
         onSet={() => {}}
         onClear={() => {}}
@@ -185,6 +193,11 @@ describe("CellPopover", () => {
     expect(markup).toContain(">one month<");
   });
 
+  it("ghosts the tail the choice will overwrite", () => {
+    expect(popover()).toContain("was: force 4, force 5");
+    expect(popover()).toContain('data-testid="study-schedule-was"');
+  });
+
   it("carries the three buttons the navigator chose", () => {
     const markup = popover();
 
@@ -201,6 +214,7 @@ describe("CellPopover", () => {
         mode={{ ...mode, skill: blocked.skill }}
         mageName="Ereb"
         turn={27}
+        replacing="was: force 4, force 5"
         onEvent={() => {}}
         onSet={() => {}}
         onClear={() => {}}

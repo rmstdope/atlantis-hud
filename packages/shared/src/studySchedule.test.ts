@@ -316,6 +316,42 @@ describe("hoverCard", () => {
     expect(card.lines.find((line) => line.name === "force")?.right).toBe("4 → 4  (330 of 450)");
   });
 
+  it("gives a skill he begins that turn a line of its own", () => {
+    const beginning = scheduleRows({
+      groups: groupOf({ skills: [{ tag: "FORC", level: 3, points: 270 }] }),
+      plans: [
+        {
+          factionId: "21",
+          unitId: "2431",
+          goals: [{ skill: "PATT", targetLevel: 1 }],
+          comment: "",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      tree,
+      turns
+    })[0];
+    const card = hoverCard(beginning, 0, turns, tree, "x");
+
+    expect(card.sub).toBe("x · studying pattern");
+    const pattern = card.lines.find((line) => line.name === "pattern");
+    expect(pattern?.studying).toBe(true);
+    expect(pattern?.right).toBe("0 → 1  (30 of 30)");
+  });
+
+  it("never names a threshold above the skill's own maximum", () => {
+    const maxed = scheduleRows({
+      groups: groupOf({ skills: [{ tag: "FORC", level: 5, points: 450 }] }),
+      plans: [],
+      tree,
+      turns
+    })[0];
+    const card = hoverCard(maxed, 0, turns, tree, "x");
+
+    // 630 is what the level formula gives for a sixth level the game does not have.
+    expect(card.lines.find((line) => line.name === "force")?.right).toBe("5 → 5  (450 of 450)");
+  });
+
   it("says what it was projected from", () => {
     expect(hoverCard(row(), 0, turns, tree, "x").foot).toBe(
       "Projected from turn 23's report at 30 points a studied month."

@@ -104,6 +104,23 @@ test("a note written in All mages shows as a pencil in the Schedule", async ({ p
   await expect(page.getByTestId("study-schedule-note-881")).toBeVisible();
 });
 
+test("the hover card follows the pointer and the focus", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+  const card = page.getByTestId("study-schedule-hover");
+  await expect(card).toHaveCount(0);
+
+  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).hover();
+  await expect(card).toContainText("Six of Seven (881) — turn 72");
+
+  // Reachable without a mouse: the arrow keys walk the grid and the card follows the focus.
+  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(card).toContainText("turn 73");
+});
+
 test("Escape closes the cell popover and leaves the pane open", async ({ page }) => {
   await loadReport(page);
 

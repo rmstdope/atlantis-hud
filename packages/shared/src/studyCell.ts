@@ -13,6 +13,7 @@
 import type { StudyGoal } from "@atlantis/core-client";
 import type { MagicTree } from "./magicTree";
 import { standingsFrom } from "./magicStanding";
+import { joinNames } from "./workspace/standingChip";
 import { blockedBecause, type ScheduleRow, type SkillPoints } from "./studySchedule";
 
 /** One row of the cell menu. */
@@ -41,19 +42,21 @@ export type CellMenu = {
   notYet: CellChoice[];
 };
 
-/** `needs spirit 3, he will have 1` - what a skill wants, and what he will actually hold. */
-function needsDetail(
-  tag: string,
-  tree: MagicTree,
-  standing: SkillPoints
-): string {
+/**
+ * `needs spirit 3, he will have 1` - what a skill wants, and what he will actually hold.
+ *
+ * Joined with `joinNames`, as `blockedBecause` joins the same fact one file over: two spellings of
+ * one sentence a key apart is the drift `standingChip.ts` exists to prevent.
+ */
+function needsDetail(tag: string, tree: MagicTree, standing: SkillPoints): string {
   const node = tree.byTag.get(tag);
   const needs = [...(node?.within ?? []), ...(node?.crossing ?? [])];
-  const parts = needs.map((need) => {
-    const held = standing.get(need.tag)?.level ?? 0;
-    return `needs ${need.name} ${need.level}, he will have ${held}`;
-  });
-  return parts.join("; ");
+  return `needs ${joinNames(
+    needs.map((need) => {
+      const held = standing.get(need.tag)?.level ?? 0;
+      return `${need.name} ${need.level}, he will have ${held}`;
+    })
+  )}`;
 }
 
 export function cellMenu(input: {

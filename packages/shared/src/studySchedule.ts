@@ -343,20 +343,28 @@ export function hoverCard(
   const studying = cell?.kind === "study" ? cell.skill : null;
 
   const lines: { name: string; right: string; studying: boolean }[] = [];
-  for (const [tag, held] of before) {
+  // Both ends, not merely `before`: the turn a mage *begins* a skill from nothing, that skill is
+  // absent from `before` entirely, and a card whose sub-line says "studying pattern" with no
+  // pattern line in it is the card telling the player two different things.
+  for (const tag of new Set([...before.keys(), ...after.keys()])) {
     const node = tree.byTag.get(tag);
-    if (node === undefined || held.level <= 0) {
+    if (node === undefined) {
       continue;
     }
+    const held = before.get(tag) ?? { level: 0, points: 0 };
     const ends = after.get(tag) ?? held;
+    if (held.level <= 0 && ends.level <= 0 && tag !== studying) {
+      continue;
+    }
     // The agreed wording: `4 → 4  (390 of 450)` while he is climbing, and `2 → 3  (220 of 180)`
-    // on the turn a level is gained - the threshold he has just crossed, not the next one.
+    // on the turn a level is gained - the threshold he has just crossed, not the next one. Capped
+    // at the skill's own maximum, because `pointsForLevel` extrapolates its formula happily past
+    // it and there is no such threshold in the game.
     const gained = ends.level > held.level;
+    const against = Math.min(node.maxLevel, gained ? ends.level : ends.level + 1);
     lines.push({
       name: node.name,
-      right: `${held.level} → ${ends.level}  (${ends.points} of ${pointsForLevel(
-        gained ? ends.level : ends.level + 1
-      )})`,
+      right: `${held.level} → ${ends.level}  (${ends.points} of ${pointsForLevel(against)})`,
       studying: tag === studying
     });
   }
