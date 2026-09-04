@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readRuleset } from "@atlantis/fixtures";
 import type { StudyGoal } from "@atlantis/core-client";
-import { parseGameData } from "./gameData";
+import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
 import {
   SCHEDULE_TURNS,
@@ -15,7 +15,7 @@ import {
   type SkillPoints
 } from "./studySchedule";
 
-const index = parseGameData(readRuleset());
+const index = parseGameData(readRuleset()) as GameDataIndex;
 const tree = buildMagicTree(index);
 
 /** A mage's starting points, by upper-cased tag. */

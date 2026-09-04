@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { readRuleset } from "@atlantis/fixtures";
-import { parseGameData } from "./gameData";
+import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
 import { cellMenu, cellWarning, goalsAfterClear, goalsAfterSet } from "./studyCell";
 import { projectMage, type ScheduleRow, type SkillPoints } from "./studySchedule";
 
-const index = parseGameData(readRuleset());
+const index = parseGameData(readRuleset()) as GameDataIndex;
 const tree = buildMagicTree(index);
 
 function at(held: Record<string, [number, number]>): SkillPoints {
@@ -90,6 +90,7 @@ function rowOf(start: SkillPoints, goals: { skill: string; targetLevel: number |
     name: "Ereb",
     summary: "",
     hasNote: false,
+    goals,
     cells,
     standings,
     monthsUnreported: 0,

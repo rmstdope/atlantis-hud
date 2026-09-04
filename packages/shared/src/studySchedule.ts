@@ -66,6 +66,13 @@ export type ScheduleRow = {
   summary: string;
   /** True when the mage has a non-empty comment: the pencil. */
   hasNote: boolean;
+  /**
+   * The queue as stored, untouched - not what the projection made of it.
+   *
+   * `goalsAfterSet` and `goalsAfterClear` write from this: a queue rebuilt from the drawn cells
+   * would have lost every goal the projection skipped and every target it has not reached.
+   */
+  goals: readonly StudyGoal[];
   /** One per turn, `SCHEDULE_TURNS` long, in turn order. */
   cells: ScheduleCell[];
   /**
@@ -305,6 +312,7 @@ export function scheduleRows(input: {
         name: mage.name,
         summary: scheduleSummary({ start, goals, tree: input.tree }),
         hasNote: (plan?.comment ?? "") !== "",
+        goals,
         cells,
         standings,
         monthsUnreported: mage.monthsUnreported,
