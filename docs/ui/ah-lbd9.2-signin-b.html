@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lbd9.2 — B: signing in from Settings</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; --warn:#d9a441; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1280px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  b.opt { color:var(--brass); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .ui { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+        font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; padding:11px; }
+  .ui label { display:block; color:var(--ink-soft); margin-bottom:3px; }
+  .ui .field { margin-bottom:9px; }
+  .ui input[type=text], .ui input[type=password] { width:100%; background:var(--panel); border:1px solid var(--edge);
+     color:var(--ink); border-radius:4px; padding:4px 6px; font:inherit; }
+  .ui input:disabled { opacity:.5; }
+  .ui .hint { color:var(--ink-dim); margin:6px 0 8px; }
+  .ui .btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink); border-radius:4px; padding:4px 10px; display:inline-block; }
+  .ui .btn.primary { border-color:var(--brass); color:var(--brass); }
+  .ui .btn.off { opacity:.45; }
+  .ui .foot { display:flex; gap:8px; justify-content:flex-end; margin-top:10px; }
+  .ui .err { color:var(--danger); margin-top:2px; }
+  .ui .soft { color:var(--ink-soft); margin-top:2px; }
+  .tabs { display:flex; gap:14px; border-bottom:1px solid var(--edge-soft); margin-bottom:11px; padding-bottom:5px; color:var(--ink-dim); }
+  .tabs b { color:var(--brass); font-weight:600; border-bottom:2px solid var(--brass); padding-bottom:5px; margin-bottom:-6px; }
+  .sect { border-top:1px solid var(--edge-soft); margin-top:11px; padding-top:9px; }
+  .sect h4 { color:var(--ink); font-size:12.5px; font-weight:600; margin-bottom:5px; font-family:system-ui,sans-serif; }
+  .hdr { display:flex; align-items:center; gap:9px; justify-content:flex-end; background:var(--panel);
+         border:1px solid var(--edge); border-radius:6px; padding:8px 10px; font-family:system-ui,sans-serif; font-size:12.5px; }
+  .hdr .chip { border:1px solid var(--edge); background:var(--raised); border-radius:4px; padding:3px 9px; color:var(--ink); }
+  .hdr .chip.brassy { border-color:var(--brass); color:var(--brass); }
+  .hdr .chip.dim { color:var(--ink-soft); }
+  .caption { color:var(--ink-dim); font-size:11.5px; margin-top:8px; font-family:system-ui,sans-serif; }
+  .fixed { border-left:2px solid var(--brass); padding-left:12px; margin-top:14px; color:var(--ink-soft); font-size:13px; max-width:96ch; }
+  .modal { background:rgba(0,0,0,.45); border-radius:6px; padding:14px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lbd9.2 — <span>Option B: sign in from Settings</span></h1>
+  <p>The same job as <b class="opt">A</b>, put somewhere else. Here the header gains nothing at all: the
+  faction number and password live in a <b>New Age world</b> section on the per-game Settings tab, beside
+  the ruleset and the map — the tab that already holds everything that is true of <i>this game</i>. The
+  wording, the states and the two smaller choices at the bottom are identical in both options; only the
+  <b>place</b> differs, so read section 1 against Option A’s and pick a place.</p>
+  <div class="fixed">
+    <b>Already decided on the parent bead and not being reopened:</b> the faction number and password are
+    <b>never stored</b> — no keychain, no settings file, no “remember me”; they are typed once per run of the
+    app. And New Age is <b>desktop only</b> (the world refuses the live web origin), so nothing on this page
+    exists in the browser build.
+  </div>
+<p style="color:#d97070;margin-top:12px;font-size:14px"><b>Rejected (2026-09-04)</b> in favour of A, the header control: signing in is how a session begins rather than something you change, nothing on screen would say whether you are signed in, and a session that runs out mid-action would send you through Settings to fix it. Kept as the record of what was weighed.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · Where it lives</h3>
+<p>Settings › Per game, under the existing Ruleset and Map fieldsets. The section appears only for a game
+played under a New Age world, and only on the desktop build.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>signed out</em>The section, before you sign in</h2>
+    <div class="ui">
+      <div class="tabs"><span>Global</span><b>Per game</b><span>Warnings</span><span>About</span></div>
+      <div class="sect" style="border-top:0;margin-top:0;padding-top:0">
+        <h4>Ruleset</h4>
+        <div class="hint">New Age: Arcanum</div>
+      </div>
+      <div class="sect"><h4>Map</h4><div class="hint">Not declared by this ruleset.</div></div>
+      <div class="sect">
+        <h4>New Age world</h4>
+        <div class="hint">Signing in lets Atlantis HUD fetch this turn and send your orders. Kept only
+        while the app is open — nothing is written to this machine.</div>
+        <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+        <div class="field"><label>Password</label><input type="password" value="" placeholder="Required"></div>
+        <span class="btn primary">Sign in</span>
+      </div>
+    </div>
+    <p class="caption">No dialog of its own: the Settings panel is already a dialog, and this is one more
+    section in it.</p>
+  </div>
+  <div class="card">
+    <h2><em>signed in</em>And afterwards</h2>
+    <div class="ui">
+      <div class="tabs"><span>Global</span><b>Per game</b><span>Warnings</span><span>About</span></div>
+      <div class="sect" style="border-top:0;margin-top:0;padding-top:0">
+        <h4>Ruleset</h4><div class="hint">New Age: Arcanum</div>
+      </div>
+      <div class="sect"><h4>Map</h4><div class="hint">Not declared by this ruleset.</div></div>
+      <div class="sect">
+        <h4>New Age world</h4>
+        <div class="soft">Signed in as <b style="color:var(--ink)">Merchant Guild (27)</b>.</div>
+        <div class="hint">Nothing is stored: closing Atlantis HUD signs you out.</div>
+        <span class="btn">Sign out</span>
+      </div>
+    </div>
+    <div class="hdr" style="margin-top:10px">
+      <span class="chip">Import</span><span class="chip">Export ▾</span><span class="chip dim">Send</span><span class="chip">⚙</span>
+    </div>
+    <p class="caption">The header is untouched in this option — which is also the objection to it: nothing
+    on screen says whether you are signed in without opening Settings.</p>
+  </div>
+</div>
+<ul class="notes" style="max-width:96ch">
+  <li>No new header control, and the header is already crowded on a narrow window.</li>
+  <li>It sits beside the other facts about this game — the world, the ruleset, the map.</li>
+  <li class="con">Signing in is a thing you do at the start of a session, not a setting; Settings is
+  where you go to change something, not to begin.</li>
+  <li class="con">Nothing on screen shows whether you are signed in. Two clicks to find out.</li>
+  <li class="con">When a session runs out mid-action, there is no control nearby to sign in again with.</li>
+</ul>
+
+<h3 class="sec">2 · The words and the states — identical in both options</h3>
+<p>Only the frame differs: in <b class="opt">A</b> these are a centred dialog built like the Send-orders
+one; in <b class="opt">B</b> they are the same lines inside the Settings section.</p>
+<div class="cards3">
+  <div class="card">
+    <h2><em>signing in</em>In flight</h2>
+    <div class="modal"><div class="ui">
+      <div class="field"><label>Faction number</label><input type="text" value="27" disabled></div>
+      <div class="field"><label>Password</label><input type="password" value="secret" disabled></div>
+      <div class="soft">Signing in…</div>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary off">Sign in</span></div>
+    </div></div>
+    <p class="caption">Fields go quiet rather than vanishing, so nothing resizes under the pointer.</p>
+  </div>
+  <div class="card">
+    <h2><em>wrong</em>The world said no</h2>
+    <div class="modal"><div class="ui">
+      <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+      <div class="field"><label>Password</label><input type="password" value=""></div>
+      <div class="err">The world did not accept that faction number and password.</div>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary off">Sign in</span></div>
+    </div></div>
+    <p class="caption">Password cleared and refocused; the faction number left as typed — what the Send
+    dialog already does with a refusal.</p>
+  </div>
+  <div class="card">
+    <h2><em>offline</em>The world was not there</h2>
+    <div class="modal"><div class="ui">
+      <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+      <div class="field"><label>Password</label><input type="password" value="secret"></div>
+      <div class="err">Could not reach atlantis-newage.com. Nothing was sent.</div>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Sign in</span></div>
+    </div></div>
+    <p class="caption">Nothing cleared — the password said nothing wrong. One click retries.</p>
+  </div>
+</div>
+<div class="cards2" style="margin-top:18px">
+  <div class="card">
+    <h2><em>busy</em>The world refused, for its own reason</h2>
+    <div class="modal"><div class="ui">
+      <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+      <div class="field"><label>Password</label><input type="password" value="secret"></div>
+      <div class="err">The world refused the sign-in: The world is being processed.</div>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Sign in</span></div>
+    </div></div>
+    <p class="caption">The world’s own sentence, quoted, so it stays right when the operator rewords it.
+    Ours only when it gave none.</p>
+  </div>
+  <div class="card">
+    <h2><em>bad</em>Before anything is sent</h2>
+    <div class="modal"><div class="ui">
+      <div class="field"><label>Faction number</label><input type="text" value="27a"></div>
+      <div class="field"><label>Password</label><input type="password" value="secret"></div>
+      <div class="err">A faction number is digits only.</div>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary off">Sign in</span></div>
+    </div></div>
+    <p class="caption">Caught here rather than at the world, the way the Send dialog already refuses a
+    password with a quote in it.</p>
+  </div>
+</div>
+
+<h3 class="sec">3 · Choice 2 — what happens when the session runs out</h3>
+<p>A New Age token expires and the world offers no way to renew one, so the answer is always “sign in
+again”. The question is <b>where</b> that is asked — and it decides what ah-lbd9.3 (fetch the report) and
+ah-lbd9.4 (send orders) do when a call comes back unauthorised. The two candidates are drawn on
+Option A’s page, section 4; they are the same whichever place you pick here:</p>
+<ul class="notes" style="max-width:96ch">
+  <li><b style="color:var(--ink)">E1 — ask again where you are.</b> The dialog you are already in becomes
+  the sign-in prompt and then does what you asked. Nothing typed is lost.</li>
+  <li class="con">E1 costs: the prompt has to be embeddable in two other dialogs, so ah-lbd9.3 and .4 each
+  carry a little more.</li>
+  <li><b style="color:var(--ink)">E2 — say so, and put you back where signing in happens.</b> The action
+  stops with a sentence; you sign in again and ask again. One idea, less to build.</li>
+  <li class="con">E2 costs: two dialogs and a re-open to get back to where you were — and in Option B that
+  means going through Settings.</li>
+</ul>
+
+<h3 class="sec">4 · Choice 3 — more than one game open</h3>
+<p>The HUD holds several games at once, and two of them can be different factions on different worlds.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>S1</em>One session at a time</h2>
+    <p class="concept">Signing in belongs to the game you were in. Switch game and you are signed out
+    there and then.</p>
+    <p class="caption">Simplest; one token in memory. The cost: two factions on Arcanum means retyping a
+    password every time you switch between them.</p>
+  </div>
+  <div class="card">
+    <h2><em>S2</em>One session per game</h2>
+    <p class="concept">Each game keeps its own signed-in faction for as long as the app is open. Switch
+    back and forth and both stay signed in.</p>
+    <p class="caption">A little more to hold, still nothing on disk. Several tokens in memory at once, all
+    dropped when the app closes.</p>
+  </div>
+</div>
+
+<p class="caption" style="margin-top:30px">Mockup only — no build step, no external assets. Colours and
+spacing are the app’s own.</p>
+
+</main>
+</body>
+</html>
