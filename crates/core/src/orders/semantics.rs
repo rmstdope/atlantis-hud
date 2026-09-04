@@ -1673,8 +1673,7 @@ fn forecast_hex(
             // A doubted fee stays doubted: food cannot settle a number nothing knows.
             continue;
         };
-        let Some(relief) =
-            food_relief.get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
+        let Some(relief) = food_relief.get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
         else {
             continue;
         };
@@ -20256,7 +20255,7 @@ BUILD
             "900",
         )
         .cloned()
-            .unwrap_or_default();
+        .unwrap_or_default();
         assert!(
             replaced.built.is_empty(),
             "a replaced BUILD spends nothing: {:?}",
@@ -20275,7 +20274,7 @@ BUILD
             "900",
         )
         .cloned()
-            .unwrap_or_default();
+        .unwrap_or_default();
         assert_eq!(winning.built.len(), 1, "{:?}", winning.built);
         assert_eq!(winning.built[0].tag, "WOOD");
         assert!(
@@ -33723,9 +33722,7 @@ BUILD
             .silver
             .iter()
             .find(|unit| unit.unit_id == id && unit.region_id == region_id)
-            .unwrap_or_else(|| {
-                panic!("no forecast for {id} in {region_id}: {:?}", review.silver)
-            })
+            .unwrap_or_else(|| panic!("no forecast for {id} in {region_id}: {:?}", review.silver))
     }
 
     /// The half of M2 (`ah-jw85`) that is not about `FORM`: a reported unit given silver has that
