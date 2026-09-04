@@ -91,9 +91,12 @@ export const useStudyPlansStore = create<StudyPlansState>()((set, get) => ({
   clear: () => set({ gameId: null, status: "idle", plans: [] })
 }));
 
-const DEFAULT_TEST_STATE = { gameId: null, status: "idle" as const, plans: [] };
-
-/** Test helper, like `resetArmiesStore` (armiesStore.ts). */
+/**
+ * Test helper, like `resetArmiesStore` (armiesStore.ts).
+ *
+ * Builds the state fresh each time rather than handing every reset one module-level object: two
+ * tests sharing a `plans` array instance is one in-place mutation away from leaking between them.
+ */
 export function resetStudyPlansStore(): void {
-  useStudyPlansStore.setState(DEFAULT_TEST_STATE);
+  useStudyPlansStore.setState({ gameId: null, status: "idle", plans: [] });
 }

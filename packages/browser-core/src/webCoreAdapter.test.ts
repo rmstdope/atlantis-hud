@@ -1852,7 +1852,7 @@ describe("merging an allied report", () => {
   });
 });
 
-/** An allied mage, as a sheet described him. */
+/** One mage's plan for next turn, as the planner will write it. */
 function aStudyPlan(unitId: string, factionId = "21"): StudyPlanRecord {
   return {
     factionId,
@@ -1864,6 +1864,7 @@ function aStudyPlan(unitId: string, factionId = "21"): StudyPlanRecord {
   };
 }
 
+/** An allied mage, as a sheet described him. */
 function aMage(unitId: string, factionId = "21"): AlliedMageRecord {
   return {
     factionId,
