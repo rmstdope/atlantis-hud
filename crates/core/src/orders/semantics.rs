@@ -3507,6 +3507,19 @@ struct Ledger<'a> {
     state: PhaseState,
     /// Materials consumed by manufacturing after movement, keyed like `balance`.
     manufacturing_spent: BTreeMap<(String, String), i64>,
+    /// What each PRODUCE created, and what the month's three production phases then spent, keyed
+    /// like `balance`.
+    ///
+    /// The pair exists to settle one conflict. `report_shortfalls` judges the *final* balance, so a
+    /// production's output credited all the way to `Maintenance` would fund an order the rules
+    /// settle *before* production - a GIVE is nine phases earlier
+    /// (`produced_goods_do_not_arrive_in_time_to_be_given_away`). But unwinding the whole credit
+    /// would then bill the producer for output another unit legitimately consumed at
+    /// `Manufacturing` or `Build`, and warn about goods that existed. So the credit reaches the
+    /// phases that may consume it, and `unwind_unconsumed_production` takes back only what nothing
+    /// did (`ah-728m.2.2`).
+    produced: BTreeMap<(String, String), i64>,
+    spent_after_production: BTreeMap<(String, String), i64>,
     /// Units whose sums cannot be trusted, and which are therefore not judged at all.
     ///
     /// A unit lands here the moment its orders touch something the report cannot price: a
@@ -3825,6 +3838,8 @@ fn ledger_for_with_production<'a>(
         ruleset,
         state: PhaseState::from_hex(hex),
         manufacturing_spent: BTreeMap::new(),
+        produced: BTreeMap::new(),
+        spent_after_production: BTreeMap::new(),
         doubted: BTreeSet::new(),
         charged_at: BTreeMap::new(),
         upkeep: BTreeMap::new(),
@@ -3999,9 +4014,41 @@ fn ledger_for_with_production<'a>(
         }
     }
 
+    unwind_unconsumed_production(&mut ledger);
+
     charge_upkeep(&mut ledger, hex);
 
     ledger
+}
+
+/// Take back, at `StatePhase::Wages`, every unit of production output that nothing consumed.
+///
+/// `report_shortfalls` judges the balance at `StatePhase::Maintenance`, which is one number for
+/// the whole month and so cannot say *when* a unit held what. Leaving a production's output in it
+/// would fund an order `rules/sequenceofevents` settles before production - a GIVE runs nine
+/// phases earlier, and `produced_goods_do_not_arrive_in_time_to_be_given_away` pins that it must
+/// not. Unwinding the whole credit instead would bill the producer for output another unit
+/// legitimately spent at `Manufacturing` or `Build`, warning about goods that plainly existed.
+///
+/// So only the unconsumed remainder goes back. A hex with no sharing and no recipe chain - every
+/// hex the shipped ruleset can make - consumes none of it and lands exactly where it did before
+/// this bead (`ah-728m.2.2`).
+///
+/// Phase-correct shortfall reading is `ah-728m.2.3`'s; this is the narrowest thing that keeps both
+/// answers right until it arrives.
+fn unwind_unconsumed_production(ledger: &mut Ledger<'_>) {
+    let unwinds: Vec<((String, String), i64)> = ledger
+        .produced
+        .iter()
+        .map(|(key, made)| {
+            let spent = ledger.spent_after_production.get(key).copied().unwrap_or(0);
+            (key.clone(), (made - spent).max(0))
+        })
+        .filter(|(_, unwind)| *unwind != 0)
+        .collect();
+    for ((unit_id, tag), unwind) in unwinds {
+        credit(ledger, StatePhase::Wages, &unit_id, &tag, -unwind);
+    }
 }
 
 /// Which of the month's two PRODUCE phases one order settles in.
@@ -5948,16 +5995,13 @@ fn produce(
         // `docs/ui/ah-728m.2.2-same-phase.html`). A primary run credits at
         // `StatePhase::PrimaryProduction`, which is after BUILD and so invisible to it.
         credit(ledger, phase, who, &tag, plan.made);
-        // ...and taken straight back out at `Wages`, so the ledger's *final* balance carries no
-        // production output - exactly as it did before this bead. That is what keeps a warning
-        // about an order the rules settle *earlier* than production from being silenced by goods
-        // that had not been made yet: a GIVE is nine phases before either PRODUCE phase, and
-        // `report_shortfalls` judges the final balance
-        // (`produced_goods_do_not_arrive_in_time_to_be_given_away`,
-        // `a_produce_still_credits_the_unit_nothing`). What the unit ends the month holding is the
-        // preview's answer, built from `movements`, and it is unaffected. The credit's whole reach
-        // is therefore the phases that may *consume* it: a later manufacturer, and BUILD.
-        credit(ledger, StatePhase::Wages, who, &tag, -plan.made);
+        // ...and remembered, so `unwind_unconsumed_production` can take back at `Wages` whatever
+        // no later order spent. What the unit ends the month holding is the preview's answer,
+        // built from `movements`, and neither the credit nor the unwind touches it.
+        *ledger
+            .produced
+            .entry((who.clone(), tag.to_ascii_uppercase()))
+            .or_insert(0) += plan.made;
         ledger.movements.push(ItemMovement {
             unit_id: who.clone(),
             name: item_name(&tag, hex, ruleset),
@@ -6903,6 +6947,12 @@ struct Pool<'a> {
     sharing: &'a Sharing<'a>,
     /// Where the consuming unit sits in `hex.units` - report order, and the tie-break
     /// `rules/sequenceofevents` states for units within one phase.
+    ///
+    /// The index is what decides *order* and what a [`SharedDebit`] names, so two report rows
+    /// sharing an id are never confused for one another here. Their *balances* still are:
+    /// [`PhaseState`] is keyed by unit id, so a duplicate id is one balance read and charged once
+    /// per row. That is the ledger's own limit and predates this bead; carrying the index is what
+    /// leaves it fixable in one place when `PhaseState` is rekeyed.
     actor_index: usize,
 }
 
@@ -6952,11 +7002,11 @@ fn material_available_at(
     if tag.eq_ignore_ascii_case(SILVER) {
         return Some(total);
     }
-    if pool.sharing.reading(tag, ledger.ruleset) == Reading::Pooled
-        && !pool.sharing.pool_trusted(ledger)
-    {
-        return None;
-    }
+    // A doubted sharer silences the *stock it shares*, not the whole order: `material_suppliers`
+    // already answers empty for an untrusted pool, so the actor is left with its own certain
+    // holding rather than the line going uncounted. A unit that shares nothing and holds all its
+    // own material is judged exactly as it was before this bead, whatever an unrelated sharing
+    // unit elsewhere in the hex is doing (`a_doubted_sharer_silences_the_stock_it_shares`).
     for (_, supplier) in material_suppliers(ledger, pool, tag) {
         let held = ledger
             .state
@@ -7005,7 +7055,7 @@ fn charge_shared_material(
     }
     // Priced against `material_available_at`, so this is unreachable on today's paths; the actor
     // carries any remainder rather than the charge being silently dropped, so a deficit still
-    // shows up as one somewhere rather than being silently dropped.
+    // shows up as one somewhere.
     if remaining > 0 {
         match debits.iter_mut().find(|d| d.supplier_index == actor_index) {
             Some(existing) => existing.amount += remaining,
@@ -7020,6 +7070,10 @@ fn charge_shared_material(
     for debit in &debits {
         let unit_id = pool.hex.units[debit.supplier_index].unit.unit_id.clone();
         charge(ledger, phase, &unit_id, tag, debit.amount, placed);
+        *ledger
+            .spent_after_production
+            .entry((unit_id.clone(), tag.to_ascii_uppercase()))
+            .or_insert(0) += debit.amount;
         if phase == StatePhase::Manufacturing {
             *ledger
                 .manufacturing_spent
@@ -16704,6 +16758,118 @@ BUILD
                     "swapping the report rows swaps who is served first"
                 );
             });
+        }
+
+        /// Two manufacturers, one shared stock: "units that appear higher on the report get
+        /// precedence" (`rules/sequenceofevents`), and the lower one gets the exact remainder
+        /// rather than an all-or-nothing pooled refusal.
+        #[test]
+        fn manufacturers_competing_for_shared_material_run_in_report_order() {
+            let carpenter = |id: &str| with_skill(with_men(unit(id), 15), "CARP", 1);
+            let hex_region = region(vec![
+                carpenter("900"),
+                sharing(with_item(unit("901"), 20, "wood", "WOOD")),
+                carpenter("902"),
+            ]);
+            with_ledger(
+                hex_region,
+                "unit 900\nPRODUCE wagon\nunit 902\nPRODUCE wagon\n",
+                |ledger| {
+                    let made: Vec<(&str, i64)> = ledger
+                        .movements
+                        .iter()
+                        .filter(|movement| movement.produced)
+                        .map(|movement| (movement.unit_id.as_str(), movement.delta))
+                        .collect();
+                    assert_eq!(
+                        made,
+                        vec![("900", 15), ("902", 5)],
+                        "the higher row takes fifteen of the twenty; the lower makes five"
+                    );
+                    assert_eq!(
+                        ledger
+                            .movements
+                            .iter()
+                            .filter(|movement| movement.tag == "WOOD")
+                            .map(|movement| (movement.unit_id.as_str(), movement.delta))
+                            .collect::<Vec<_>>(),
+                        vec![("901", -15), ("901", -5)],
+                        "both debits sit on the row that held the wood"
+                    );
+                    assert_eq!(balance_of(ledger, "901", "WOOD"), 0);
+                    assert!(
+                        ledger.uncounted.is_empty(),
+                        "an exact settlement leaves nothing unjudged: {:?}",
+                        ledger.uncounted
+                    );
+                },
+            );
+        }
+
+        /// `rules/sequenceofevents` settles manufacturing PRODUCE as one phase, and the navigator
+        /// chose to run it sequentially in report order rather than as a batch whose outputs all
+        /// arrive at the end (`docs/ui/ah-728m.2.2-same-phase.html`). So a sharing producer high on
+        /// the report supplies a manufacturer below it *this month*, and swapping the two rows
+        /// takes the downstream run away.
+        ///
+        /// The shipped ruleset has no recipe whose input is itself manufactured, so the chain is
+        /// made here: a spinning wheel from a wagon rather than from wood.
+        fn chained_ruleset() -> Ruleset {
+            let carpenters_spinning_wheel = "\
+                \n          \"tag\": \"SPIN\",\
+                \n          \"level\": 1,\
+                \n          \"inputs\": [\
+                \n            {\
+                \n              \"tag\": \"WOOD\",";
+            let json = RULESET.replace(
+                carpenters_spinning_wheel,
+                &carpenters_spinning_wheel.replace("WOOD", "WAGO"),
+            );
+            assert_ne!(json, RULESET, "the SPIN recipe should have been rewritten");
+            Ruleset::from_json(&json).expect("the rewritten ruleset should still be usable")
+        }
+
+        #[test]
+        fn a_sharing_producer_supplies_a_later_manufacturer_in_the_same_phase() {
+            let carpenter = |id: &str, men: i64| with_skill(with_men(unit(id), men), "CARP", 1);
+            let run = |units: Vec<ReportUnit>| {
+                let hex_region = region(units);
+                let ordered =
+                    OrderedUnits::read("unit 900\nPRODUCE wagon\nunit 901\nPRODUCE SPIN\n");
+                let hex = Hex::read(&hex_region, &ordered, &[]);
+                let rules = chained_ruleset();
+                let ledger = ledger_for(&hex, Some(&rules));
+                (
+                    ledger
+                        .movements
+                        .iter()
+                        .filter(|movement| movement.produced)
+                        .map(|movement| (movement.unit_id.clone(), movement.delta))
+                        .collect::<Vec<_>>(),
+                    balance_of(&ledger, "900", "WAGO"),
+                )
+            };
+
+            let maker = sharing(with_item(carpenter("900", 5), 5, "wood", "WOOD"));
+            let user = carpenter("901", 5);
+            let (made, left) = run(vec![maker.clone(), user.clone()]);
+            assert_eq!(
+                made,
+                vec![("900".to_string(), 5), ("901".to_string(), 5)],
+                "the five wagons the higher row makes are the five the lower row works from"
+            );
+            assert_eq!(
+                left, 0,
+                "the producer is not billed for output the next unit legitimately consumed - the \
+                 unwind takes back only what nothing spent"
+            );
+
+            let (made, _) = run(vec![user, maker]);
+            assert_eq!(
+                made,
+                vec![("900".to_string(), 5)],
+                "with the maker below it on the report there is nothing to work from yet"
+            );
         }
 
         /// The whole point of giving primary production a phase of its own: an output credited at
