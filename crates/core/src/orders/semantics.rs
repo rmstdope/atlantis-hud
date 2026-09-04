@@ -3915,8 +3915,8 @@ fn ledger_for_with_production<'a>(
     // at `Market` would spend silver the unit's own STUDY or manufacturing PRODUCE has not yet
     // charged for. `forecast_unit` settles its deferred `BUY ALL` after its whole walk for the same reason
     // (`crates/core/src/orders/silver.rs`, `Deferred::BuyAll`), and the two must agree.
-    for ordered in &hex.units {
-        settle_buy_all(&mut ledger, hex, ordered);
+    for (index, ordered) in hex.units.iter().enumerate() {
+        settle_buy_all(&mut ledger, hex, index, ordered);
     }
 
     discard_unfinished_ships_after_movement(&mut ledger, hex, ruleset);
@@ -5653,7 +5653,7 @@ fn buy(
 /// `charge_upkeep` nets off the fee rather than crediting (`ah-uwa3`). Settling it earlier - inside
 /// the market phase, say - would spend silver a later phase has not yet charged for: STUDY and
 /// manufacturing PRODUCE both charge `SILV` after it (`ah-gdd3.1`).
-fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
+fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, index: usize, actor: &Ordered<'_>) {
     let who = &actor.unit.unit_id;
     let Some(lines) = ledger.buy_all.remove(who) else {
         return;
@@ -5679,8 +5679,14 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, actor: &Ordered<'_>) {
         // Plus whatever a reduced bounded line was charged over what it spent: that silver is
         // still the unit's, and a `BUY ALL` spends what the bounded lines leave (`ah-omn7`).
         let overcharged = ledger.overcharged.get(who).copied().unwrap_or(0);
+        // `rules/share` funds a `BUY ALL` as it funds a bounded one. An untrusted purse adds
+        // nothing rather than lifting the cap: a `BUY ALL` has always been silver-capped, and
+        // turning that off on doubt would let one buy goods it can afford none of (`ah-szye`).
+        let shared = ledger.market_purse.adds_for(index).unwrap_or(0);
         let (priced, plan) = price_buy_all(
-            balance_of(ledger, who, SILVER).saturating_add(overcharged),
+            balance_of(ledger, who, SILVER)
+                .saturating_add(overcharged)
+                .saturating_add(shared),
             deferred.price,
             available,
             deferred.market_has,
@@ -16720,6 +16726,84 @@ mod tests {
             assert_eq!(column.at_month_end, Some(-300));
             // The ITEMS ledger cuts the same purchase to the same three swords -
             // `a_shared_purse_pays_for_what_one_buy_can_reach`, on this hex.
+        }
+
+        /// `rules/share` funds a `BUY ALL` as it funds a bounded one (`ah-szye`).
+        #[test]
+        fn a_buy_all_spends_the_hexs_shared_silver() {
+            let hex = ReportRegion {
+                for_sale: vec![line(100, 12, "grain", "GRAI")],
+                ..region(vec![
+                    with_silver(unit("1"), 0),
+                    sharing(with_silver(unit("2"), 300)),
+                ])
+            };
+            // ... and the SILVER column's own deferred pass settles the same 25, so the hover
+            // reads "This unit has silver for 25 grain, not the 100 this market offers."
+            let review = review_turn(
+                &report(vec![hex.clone()]),
+                "unit 1\nBUY ALL grain\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let shown = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast")
+                .buy_all
+                .first()
+                .cloned()
+                .expect("the BUY ALL line is shown");
+            assert_eq!(shown.bought, 25);
+            assert_eq!(shown.capped_by, BuyAllCap::Silver);
+            assert_eq!(shown.silver_available, 300);
+
+            with_ledger(hex, "unit 1\nBUY ALL grain\n", |ledger| {
+                assert_eq!(
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "1" && m.tag == "GRAI")
+                        .map(|m| m.delta),
+                    Some(25),
+                    "$300 of shared silver buys 25 grain at 12"
+                );
+            });
+        }
+
+        /// Accept-on-doubt means "your own silver" for a `BUY ALL`, not "unlimited": it has always
+        /// been silver-capped, so lifting the cap would let one buy goods it can afford none of
+        /// (`ah-szye`).
+        #[test]
+        fn an_untrusted_purse_leaves_a_buy_all_on_its_own_silver() {
+            let hex_region = ReportRegion {
+                for_sale: vec![line(100, 12, "grain", "GRAI")],
+                ..region(vec![
+                    with_silver(unit("1"), 60),
+                    sharing(with_silver(unit("2"), 300)),
+                    an_ally("9"),
+                ])
+            };
+            // Unit 2's balance cannot be priced: an ally's gift of an unknown size reaches it.
+            let orders = "unit 1\nBUY ALL grain\n";
+            let ordered = OrderedUnits::read(orders);
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = ruleset();
+            let mut ledger = ledger_for(&hex, Some(&rules));
+            assert_eq!(
+                ledger
+                    .movements
+                    .iter()
+                    .find(|m| m.unit_id == "1" && m.tag == "GRAI")
+                    .map(|m| m.delta),
+                Some(30),
+                "trusted, the purse lends its neighbour's $300 on top of its own $60"
+            );
+
+            ledger.doubted.insert("2".to_string());
+            let purse = MarketPurse::read(&ledger.state, &ledger.doubted, &hex);
+            assert_eq!(purse.adds_for(0), None);
         }
 
         /// The purse is read at the market phase, so a tax credited earlier in the month pays for
