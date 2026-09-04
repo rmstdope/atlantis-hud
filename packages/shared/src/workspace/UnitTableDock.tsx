@@ -733,16 +733,16 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       setPick((current) => afterGesture(current, { kind: "all" }, rowKeys));
       return;
     }
-    const here = visible[index]?.unitId ?? null;
     // The pick is keyed on the row, the cursor on the unit: two hexes may hold the same number.
-    const hereRow = visible[index];
+    const hereRow = visible[index] ?? null;
+    const here = hereRow?.unitId ?? null;
     const hereKey = hereRow ? unitRowKey(hereRow.regionId, hereRow.unitId) : null;
     const chose = (travel: boolean) => {
-      if (here === null) {
+      if (hereRow === null || here === null || hereKey === null) {
         return;
       }
       // Choosing a row from the keyboard collapses a pick exactly as a plain click does.
-      settleOn(afterGesture(pick, { kind: "plain", rowKey: hereKey ?? here }, rowKeys), here);
+      settleOn(afterGesture(pick, { kind: "plain", rowKey: hereKey }, rowKeys), here);
       if (travel) {
         travelTo(here);
       }
@@ -1209,7 +1209,12 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
               }
               onRemove={() => {
                 if (army) {
-                  void actions.removeUnits(army.id, [...pick.ids]);
+                  // An Army stores **unit ids**, while the pick is keyed on `(regionId, unitId)`
+                  // (`ah-9o0c.2`): pass the rows' own unit ids, never the pick's keys.
+                  void actions.removeUnits(
+                    army.id,
+                    acting.map((one) => one.unitId)
+                  );
                 }
               }}
               onClear={() => setPick(NO_PICK)}
