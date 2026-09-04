@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import type { Coordinate, CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
 import { structureEntryId, type GameDataIndex } from "../gameData";
+import { resourceChecksOf } from "../resourceChecks";
 import { abbreviateDirection, levelClause, regionIdOf, type HexNode } from "../hexMapModel";
 import { structureLabelParts } from "../structureLabel";
 import { useWorkspaceStore } from "../workspaceStore";
@@ -108,6 +109,9 @@ export function RegionPanel({
   }
 
   const region = hex.region;
+  // No `useMemo`: this component returns early above (`if (!hex)`), so a hook here would break the
+  // rules of hooks. The computation is a handful of array walks over one hex.
+  const checks = region === null ? [] : resourceChecksOf(region, gameData);
 
   return (
     <CollapsiblePanel
@@ -161,7 +165,7 @@ export function RegionPanel({
             )}
           </dl>
 
-          {region.products.length > 0 ? (
+          {region.products.length > 0 || checks.length > 0 ? (
             <Section title="Products">
               {/*
                 Prose rather than rows, so the line is built as fragments: joining it into one
@@ -173,6 +177,32 @@ export function RegionPanel({
                     {position === 0 ? null : " · "}
                     {item.amount}{" "}
                     <GameDataItemName index={gameData} item={item} onOpen={linkable} />
+                  </Fragment>
+                ))}
+                {/*
+                  A resource the terrain may hold that the report did not name: `0 floater hide`
+                  where a skilled unit of yours stood and found none, `mushroom?` where nobody
+                  here could tell. Italic, as this pane already writes anything that is not a
+                  figure the report printed.
+                */}
+                {checks.map((check, position) => (
+                  <Fragment key={`check:${check.tag}`}>
+                    {region.products.length + position === 0 ? null : " · "}
+                    {check.state === "absent" ? (
+                      <span
+                        className="italic"
+                        title={`A unit with ${check.skill.skillName} ${check.skill.level} stands here, and the report names no ${check.name}.`}
+                      >
+                        0 <GameDataItemName index={gameData} item={check} onOpen={linkable} />
+                      </span>
+                    ) : (
+                      <span
+                        className="italic text-ink-dim"
+                        title={`No unit of yours here has ${check.skill.skillName} ${check.skill.level}, so whether this hex holds ${check.name} is unknown.`}
+                      >
+                        <GameDataItemName index={gameData} item={check} onOpen={linkable} />?
+                      </span>
+                    )}
                   </Fragment>
                 ))}
               </p>

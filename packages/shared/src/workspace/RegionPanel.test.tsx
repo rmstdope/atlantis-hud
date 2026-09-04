@@ -1,7 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
-import { aReportRegion, aStructure } from "@atlantis/core-client";
+import type {
+  CoreClient,
+  MapLevel,
+  OpenedGame,
+  OrderDiagnostic,
+  ReportRegion
+} from "@atlantis/core-client";
+import { aReportRegion, aReportUnit, aStructure } from "@atlantis/core-client";
 import type { GameDataEntry, GameDataIndex } from "../gameData";
 import { SURFACE, type HexNode } from "../hexMapModel";
 import { resetHexNotesStore } from "../hexNotesStore";
@@ -297,7 +303,9 @@ describe("the region panel's unit numbers are a way to go there (ah-87he)", () =
 const indexWith = (ids: string[]): GameDataIndex => ({
   entries: [],
   byId: new Map(ids.map((id) => [id, { id } as GameDataEntry])),
-  detailOf: () => null
+  detailOf: () => null,
+  revealedBy: new Map(),
+  terrainResources: new Map()
 });
 
 const MARKET_HEX: HexNode = {
@@ -380,7 +388,9 @@ describe("a fleet's vessels are each their own link (ah-t5fk)", () => {
       { id: "ship:BALL", category: "ship", name: "Balloon", tag: "BALL" }
     ] as GameDataEntry[],
     byId: new Map(),
-    detailOf: () => null
+    detailOf: () => null,
+    revealedBy: new Map(),
+    terrainResources: new Map()
   };
 
   const withStructure = (kind: string, needs: number | null = null): HexNode => ({
@@ -451,5 +461,101 @@ describe("a fleet's vessels are each their own link (ah-t5fk)", () => {
     const html = draw(MANIFEST);
     expect(html).toContain("Frozen Tomb [194]");
     expect(html).not.toContain(">Frozen Tomb</button>");
+  });
+});
+
+describe("hidden resources in the products line (ah-rx0r.2)", () => {
+  beforeEach(() => {
+    resetWorkspaceStore();
+    resetHexNotesStore();
+  });
+
+  const NAMES = indexWith(["equipment:FLOA", "equipment:MUSH", "equipment:LIVE", "equipment:WOOD", "equipment:HERB"]);
+
+  const revealing = (over: Partial<GameDataIndex> = {}): GameDataIndex => ({
+    ...NAMES,
+    byId: new Map([
+      ["equipment:FLOA", { id: "equipment:FLOA", category: "equipment", name: "floater hide", tag: "FLOA" }],
+      ["equipment:MUSH", { id: "equipment:MUSH", category: "equipment", name: "mushroom", tag: "MUSH" }],
+      ["equipment:LIVE", { id: "equipment:LIVE", category: "equipment", name: "livestock", tag: "LIVE" }],
+      ["equipment:WOOD", { id: "equipment:WOOD", category: "equipment", name: "wood", tag: "WOOD" }],
+      ["equipment:HERB", { id: "equipment:HERB", category: "equipment", name: "herbs", tag: "HERB" }]
+    ] as [string, GameDataEntry][]),
+    revealedBy: new Map([
+      ["FLOA", { skillTag: "HUNT", skillName: "hunting", level: 3 }],
+      ["MUSH", { skillTag: "HERB", skillName: "herb lore", level: 3 }]
+    ]),
+    terrainResources: new Map([["swamp", ["WOOD", "FLOA", "HERB", "MUSH"]]]),
+    ...over
+  });
+
+  /** swamp (36,46) in Pangmore, turn 23 of neworigins-3.0.0-g5-f21-t23.rep. */
+  const swampHex = (over: Partial<ReportRegion> = {}): HexNode => ({
+    ...MARKET_HEX,
+    terrain: "swamp",
+    region: aReportRegion({
+      ...MARKET_HEX.region!,
+      terrain: "swamp",
+      products: [
+        { amount: 12, name: "livestock", tag: "LIVE" },
+        { amount: 16, name: "wood", tag: "WOOD" },
+        { amount: 18, name: "herbs", tag: "HERB" }
+      ],
+      units: [
+        aReportUnit({
+          unitId: "11851",
+          skills: [{ name: "hunting", tag: "HUNT", level: 3, points: 180 }]
+        }),
+        aReportUnit({
+          unitId: "9595",
+          skills: [{ name: "herb lore", tag: "HERB", level: 1, points: 50 }]
+        })
+      ],
+      ...over
+    })
+  });
+
+  const draw = (hex: HexNode, gameData: GameDataIndex | null) =>
+    renderToStaticMarkup(
+      <RegionPanel
+        hex={hex}
+        client={CLIENT}
+        game={GAME}
+        turn={71}
+        gameData={gameData}
+        onOpenGameData={() => {}}
+      />
+    );
+
+  it("says a resource is absent where a skilled unit of yours stands", () => {
+    const html = draw(swampHex(), revealing());
+
+    expect(html).toContain(
+      "A unit with hunting 3 stands here, and the report names no floater hide."
+    );
+    expect(html).toMatch(/0 <button[^>]*data-game-data-entry="equipment:FLOA"[^>]*>floater hide<\/button>/);
+  });
+
+  it("names a resource nobody here could check", () => {
+    const html = draw(swampHex(), revealing());
+
+    expect(html).toContain(">mushroom</button>?");
+    expect(html).toContain(
+      "No unit of yours here has herb lore 3, so whether this hex holds mushroom is unknown."
+    );
+  });
+
+  it("leaves the products line alone when the catalogue cannot say", () => {
+    const html = draw(swampHex(), NAMES);
+
+    expect(html).not.toContain("floater hide");
+    expect(html).not.toContain("mushroom");
+  });
+
+  it("shows the products section on a hex whose only news is an absence", () => {
+    const html = draw(swampHex({ products: [] }), revealing());
+
+    expect(html).toContain("Products");
+    expect(html).toMatch(/0 <button[^>]*>floater hide<\/button>/);
   });
 });
