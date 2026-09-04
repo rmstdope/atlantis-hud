@@ -6934,6 +6934,15 @@ struct MarketPurse {
     /// `false` when any sharer's market-open balance could not be priced - a gift on the way in,
     /// or a doubted unit. No bounded `BUY` in the hex is then capped at all, which is this
     /// module's accept-on-doubt policy and the behaviour before this bead.
+    ///
+    /// The `doubted` half of that is narrower than it looks, and deliberately so: the snapshot is
+    /// taken as the market opens, so it sees only the doubts raised in the phases before it -
+    /// `TAX`, `GIVE`, `CAST`. A sharer doubted later, by its own `SELL` of goods this market does
+    /// not price or by a `PRODUCE` in a phase after the market, is still counted here. That is
+    /// right rather than merely convenient: those doubts are about what the unit will hold at the
+    /// *end* of the month, and what this purse lends is what it holds when the market opens, which
+    /// is a figure the ledger still knows. The `known_balance_at` half is what catches a
+    /// market-open balance that genuinely cannot be priced, whenever the doubt was raised.
     trusted: bool,
 }
 
@@ -7397,6 +7406,13 @@ fn report_shortfalls(
                 .unwrap_or_else(|| item_name(&tag, hex, ruleset));
             // Only the SILVER pool's markers carry the clause: a pooled *item* shortfall is a
             // different scarcity and no `BUY` quantity turns on it.
+            //
+            // And the fact is never also stated by the unit-level `not-enough-silver` finding
+            // above, which appends the same clause: a SILVER `PoolShortfall` exists only where
+            // something in the hex shares, and `Sharing::reading(SILVER)` is then `Pooled` for
+            // every unit of it - so every overdrawn unit here is `DeferredToPool` and none is
+            // `UnitShort`. That is what keeps this to shape *ii* rather than the *iii* the
+            // navigator rejected (`ah-szye`, round 1 Q2).
             let cut: &[ReducedBuy] = if tag == SILVER {
                 &ledger.reduced_buys
             } else {
@@ -16825,8 +16841,71 @@ mod tests {
         /// Accept-on-doubt means "your own silver" for a `BUY ALL`, not "unlimited": it has always
         /// been silver-capped, so lifting the cap would let one buy goods it can afford none of
         /// (`ah-szye`).
+        ///
+        /// The doubt is a real one, raised in the `GIVE` phase before the market opens: the
+        /// sharer names goods the ruleset cannot resolve, which doubts it. Asserted through
+        /// `settle_buy_all` rather than on `MarketPurse` directly, so lifting the cap on doubt
+        /// would fail here.
         #[test]
         fn an_untrusted_purse_leaves_a_buy_all_on_its_own_silver() {
+            let hex = ReportRegion {
+                for_sale: vec![line(100, 12, "grain", "GRAI")],
+                ..region(vec![
+                    with_silver(unit("1"), 60),
+                    sharing(with_silver(unit("2"), 300)),
+                ])
+            };
+            // Unit 2 names goods the ruleset cannot resolve, which doubts it in the `GIVE` phase
+            // - before the market opens - so the whole purse is untrusted.
+            with_ledger(
+                hex,
+                "unit 1\nBUY ALL grain\nunit 2\nGIVE 1 5 sprockets\n",
+                |ledger| {
+                    assert!(ledger.doubted.contains("2"), "the sharer is doubted");
+                    assert_eq!(
+                        ledger
+                            .movements
+                            .iter()
+                            .find(|m| m.unit_id == "1" && m.tag == "GRAI")
+                            .map(|m| m.delta),
+                        Some(5),
+                        "its own $60 buys five grain at 12, and the untrusted purse adds nothing"
+                    );
+                },
+            );
+        }
+
+        /// And an untrusted purse lifts the *bounded* cap instead, which is the behaviour before
+        /// this bead: a bounded `BUY` has never been capped, so accept-on-doubt means "no cap"
+        /// (`ah-szye`).
+        #[test]
+        fn an_untrusted_purse_leaves_a_bounded_buy_uncapped() {
+            let hex = ReportRegion {
+                for_sale: vec![line(100, 12, "grain", "GRAI")],
+                ..region(vec![
+                    with_silver(unit("1"), 60),
+                    sharing(with_silver(unit("2"), 300)),
+                ])
+            };
+            with_ledger(
+                hex,
+                "unit 1\nBUY 40 grain\nunit 2\nGIVE 1 5 sprockets\n",
+                |ledger| {
+                    assert_eq!(
+                        ledger
+                            .movements
+                            .iter()
+                            .find(|m| m.unit_id == "1" && m.tag == "GRAI")
+                            .map(|m| m.delta),
+                        Some(40),
+                        "no cap at all, which is what accept-on-doubt means for a bounded line"
+                    );
+                },
+            );
+        }
+
+        #[test]
+        fn an_untrusted_purse_is_read_as_unmeasured() {
             let hex_region = ReportRegion {
                 for_sale: vec![line(100, 12, "grain", "GRAI")],
                 ..region(vec![
@@ -19427,6 +19506,52 @@ mod tests {
         assert_eq!(
             pointer.message,
             "This hex is short of silver between its units. See Problems for the hex."
+        );
+    }
+
+    /// Shape *ii*, not *iii*: a cut line is marked once, on the line, and never also inside the
+    /// unit's own `not-enough-silver` sentence - which in a sharing hex is never built at all,
+    /// every overdrawn unit being `DeferredToPool` (`ah-szye`, round 1 Q2).
+    #[test]
+    fn a_cut_line_in_a_short_hex_states_the_reduction_once() {
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region(vec![
+                with_silver(unit("1"), 0),
+                with_silver(unit("3"), 0),
+                sharing(with_silver(unit("2"), 300)),
+            ])
+        };
+        let found = check(vec![hex], "unit 1\nBUY 5 sword\nunit 3\nBUY 5 sword\n");
+
+        let markers: Vec<&str> = found
+            .iter()
+            .filter(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL)
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(
+            markers,
+            [
+                "This hex is short of silver between its units, so this order buys 3 of the \
+                 5 swords. See Problems for the hex.",
+                "This hex is short of silver between its units, so this order buys 3 of the \
+                 5 swords. See Problems for the hex.",
+            ],
+            "one marker per cut line, and no generic marker beside it"
+        );
+
+        assert!(
+            found
+                .iter()
+                .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+                .all(|finding| finding.unit_id.is_none()),
+            "the shortfall is the hex's, so no unit-level sentence repeats the reduction: \
+             {found:?}"
         );
     }
 
@@ -25002,7 +25127,7 @@ mod tests {
         let region = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 10,
-                name: "sword".to_string(),
+                name: "swords".to_string(),
                 tag: "SWOR".to_string(),
                 price: 10,
             }],
@@ -30854,7 +30979,7 @@ mod tests {
         let region = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 20,
-                name: "sword".to_string(),
+                name: "swords".to_string(),
                 tag: "SWOR".to_string(),
                 price: 10,
             }],
