@@ -425,7 +425,7 @@ describe("buyAllSentences (ah-jown)", () => {
           price: 18
         })
       )
-    ).toEqual(["This unit buys no grain: it holds 10 silver and one costs 18."]);
+    ).toEqual(["This unit buys no grain: it can have 10 silver and one costs 18."]);
     expect(
       buyAllSentences(
         buyAll({

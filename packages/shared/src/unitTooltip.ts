@@ -356,7 +356,7 @@ export function buyAllSentences(silver: UnitSilver | null | undefined): string[]
       return `This unit buys ${b.boughtNamed}: its earlier orders have taken the other ${b.alreadyBought} of the ${b.available} ${limit}.`;
     }
     if (b.bought === 0 && b.cappedBy === "silver") {
-      return `This unit buys ${b.boughtNamed}: it holds ${b.silverAvailable} silver and one costs ${b.price}.`;
+      return `This unit buys ${b.boughtNamed}: it can have ${b.silverAvailable} silver and one costs ${b.price}.`;
     }
     if (b.bought === 0 && b.cappedBy === "shared") {
       return `This unit buys ${b.boughtNamed}: your other units in this region have claimed all ${b.marketHas} this market has.`;

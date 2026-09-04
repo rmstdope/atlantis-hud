@@ -26,7 +26,8 @@ marketNamed: string, bought: number, affordable: number, available: number, mark
  */
 alreadyBought: number, 
 /**
- * What the unit holds when this line is reached, for the "cannot afford one" sentence.
+ * What the unit can have when this line is reached - its own silver, plus what the hex's
+ * `SHARE` flags lend the market (`ah-szye`) - for the "cannot afford one" sentence.
  */
 silverAvailable: number, 
 /**
