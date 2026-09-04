@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { MageStanding, SkillStanding, StandingKind } from "../magicStanding";
 import type { MagicBranch, MagicPrerequisite, MagicSkillNode, MagicTree } from "../magicTree";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { joinNames, STANDING_CHIP, standingWords } from "./standingChip";
 import { MagePicker } from "./MagePicker";
 import { buildMagicGraph, type MagicTreeView } from "./magicGraphLayout";
 import { MagicGraphView, type MagicGraphHandle } from "./MagicGraphView";
@@ -517,60 +518,33 @@ const ROW_STYLE: Record<StandingKind, { edge: string; row: string; meta: string;
     edge: "border-l-4 border-solid border-ok",
     row: "text-ink",
     meta: "text-ink-dim",
-    chip: "border-standing-known-edge bg-standing-known-fill text-standing-known-ink"
+    chip: STANDING_CHIP.known
   },
   ceiling: {
     edge: "border-l-4 border-double border-warn",
     row: "text-ink",
     meta: "text-ink-dim",
-    chip: "border-standing-ceiling-edge bg-standing-ceiling-fill text-standing-ceiling-ink"
+    chip: STANDING_CHIP.ceiling
   },
   maxed: {
     edge: "border-l-4 border-dotted border-ink-soft",
     row: "text-ink",
     meta: "text-ink-dim",
-    chip: "border-standing-maxed-edge bg-standing-maxed-fill text-standing-maxed-ink"
+    chip: STANDING_CHIP.maxed
   },
   open: {
     edge: "border-l-4 border-dashed border-select",
     row: "text-ink-soft",
     meta: "text-ink-dim",
-    chip: "border-standing-open-edge bg-standing-open-fill text-standing-open-ink"
+    chip: STANDING_CHIP.open
   },
   locked: {
     edge: "border-l-4 border-transparent",
     row: "text-ink-dim opacity-55",
     meta: "text-ink",
-    chip: ""
+    chip: STANDING_CHIP.locked
   }
 };
-
-/**
- * `bird lore and wolf lore`; `bird lore, wolf lore and dragon lore`. Three is the widest real case
- * in the shipped ruleset.
- */
-function joinNames(names: readonly string[]): string {
-  if (names.length <= 1) {
-    return names.join("");
-  }
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
-
-/** The chip's words. Spends words making the ceiling explicit rather than leaning on the colour. */
-function standingWords(standing: SkillStanding): string {
-  switch (standing.kind) {
-    case "known":
-      return `at ${standing.level}, ceiling ${standing.ceiling}`;
-    case "ceiling":
-      return `at ${standing.level}, held by ${joinNames(standing.heldBy.map((need) => need.name))}`;
-    case "maxed":
-      return `at ${standing.level}, the highest there is`;
-    case "open":
-      return "can study";
-    case "locked":
-      return "";
-  }
-}
 
 /** The header tally, in a fixed order and with a zero count left out entirely. */
 function tally(picked: MageStanding): string {
