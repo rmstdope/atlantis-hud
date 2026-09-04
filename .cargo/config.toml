@@ -31,15 +31,23 @@
 [build]
 target-dir = "target"
 
-# ts-rs (crates/core, ah-164.2) writes the TypeScript bindings during `cargo test`. `relative = true`
-# makes cargo resolve the path against the directory holding this file — the repository root, or a
-# worktree's own root, since the file is tracked and cargo takes the nearest one. Large integers cross
-# as JSON numbers, so they are `number` in TypeScript, not `bigint`.
+# ts-rs (crates/core, ah-164.2) writes the TypeScript bindings during `cargo test`. Large integers
+# cross as JSON numbers, so they are `number` in TypeScript, not `bigint`.
+#
+# Anchored to the crate, not to the working directory. `relative = true` made cargo resolve this
+# value against the directory holding the *nearest* config found walking up from the WORKING
+# DIRECTORY, so a run whose cwd was the main checkout and whose --manifest-path pointed into a
+# worktree wrote that worktree's bindings into the main checkout's
+# packages/core-client/src/generated. That happened on 2026-09-04 (ah-16pb). With
+# `relative = false` cargo passes the value through untouched and ts-rs resolves it at run time
+# against the test process's working directory - which cargo sets to the package root of the
+# manifest being tested, `crates/core`, in this worktree or any other. Measured 2026-09-04 with
+# cwd /tmp and the manifest in the repository: the bindings landed under the repository.
 #
 # `TS_RS_EXPORT_DIR` deliberately carries no `force = true`. Cargo's `[env]` only overrides a value
 # already in the caller's environment when `force` is set, and scripts/checkGenerated.ts relies on
 # that: it regenerates the bindings into a temporary tree by passing its own TS_RS_EXPORT_DIR. Add
 # `force` here and that gate silently compares the working tree against itself.
 [env]
-TS_RS_EXPORT_DIR = { value = "packages/core-client/src/generated", relative = true }
+TS_RS_EXPORT_DIR = { value = "../../packages/core-client/src/generated", relative = false }
 TS_RS_LARGE_INT = "number"

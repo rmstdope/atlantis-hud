@@ -9,6 +9,9 @@ pub mod reopen;
 pub mod report;
 pub mod trade;
 
+#[cfg(test)]
+mod export_dir_guard;
+
 use serde::{Deserialize, Serialize};
 
 /// Canonical cross-platform metadata about the Atlantis engine itself.

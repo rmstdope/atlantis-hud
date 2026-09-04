@@ -28,6 +28,16 @@ export const GENERATED_DIRS = [
 /** Where `.cargo/config.toml` points `TS_RS_EXPORT_DIR`. Every `export_to` resolves against it. */
 export const EXPORT_DIR = "packages/core-client/src/generated";
 
+/**
+ * The same directory as `EXPORT_DIR`, spelled from `crates/core`, which is where cargo puts the test
+ * process. This is the value `.cargo/config.toml` carries; derived rather than typed out twice
+ * because `EXPORT_DIR`'s depth is load-bearing (the ruleset types' `export_to` climbs out of it).
+ */
+export const CRATE_RELATIVE_EXPORT_DIR = `../../${EXPORT_DIR}`;
+
+/** What a tool sets to tell the Rust guard that an export outside the tree is deliberate. */
+export const ALLOW_EXTERNAL_EXPORT_DIR = "ATLANTIS_HUD_ALLOW_EXTERNAL_EXPORT_DIR";
+
 /** What the failure message tells the reader to run, and what `exportCommand` actually runs. */
 export const REGENERATE = "cargo test -p atlantis-hud-core --lib export_bindings_";
 
@@ -115,7 +125,10 @@ export function exportCommand(into: string): {
   return {
     command: "cargo",
     args: ["test", "-p", "atlantis-hud-core", "--lib", "export_bindings_"],
-    env: { TS_RS_EXPORT_DIR: join(into, EXPORT_DIR) }
+    env: {
+      TS_RS_EXPORT_DIR: join(into, EXPORT_DIR),
+      [ALLOW_EXTERNAL_EXPORT_DIR]: "1"
+    }
   };
 }
 
