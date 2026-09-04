@@ -1307,10 +1307,22 @@ pub fn forecast_unit(
 
     // A gift is in the giver's block, so it arrives already gathered. It is income whatever the
     // unit itself is ordered to do, including nothing.
-    let mut income = receipts
+    // Silver another unit's block has already handed over. Both accumulators below open from this
+    // one binding rather than from two copies of the expression: a receipt field added later then
+    // reaches both, instead of being added to `income` and silently missed by the Give phase.
+    let received = receipts
         .silver
         .saturating_add(receipts.taken)
         .saturating_add(receipts.taken_unshown);
+    let mut income = received;
+    // What the unit holds when the *Give* phase runs. `rules/sequenceofevents` settles the instant
+    // orders and then GIVE/TAKE; every other income term this pass credits arrives later - TAX and
+    // PILLAGE in the tax phase, a CAST's earnings in instant magic, a SELL's when the market opens,
+    // wages later still. So a `GIVE ... ALL SILV` spends this, not `income` (`ah-tc79`).
+    //
+    // Counted up rather than deducted from `income`: a new income *arm* added later is credited to
+    // `income` alone and so is correctly unavailable to a gift, which is the safe direction.
+    let mut give_phase_income = received;
     let mut expense = 0i64;
     // Market-phase spending, held apart from `expense` until the deferred pass below has settled
     // the Give phase. `rules/sequenceofevents` puts *Give orders* before *Market orders*, so a
@@ -1441,6 +1453,10 @@ pub fn forecast_unit(
             Intent::Claim(amount) => {
                 let priced = price_claim(*amount, claim_remaining);
                 income = income.saturating_add(priced.earns);
+                // "CLAIM ... orders are processed" in the instant block, before *Give orders*, so
+                // claimed silver is in the purse a gift empties (`rules/sequenceofevents`,
+                // `ah-tc79`).
+                give_phase_income = give_phase_income.saturating_add(priced.earns);
                 if let Some(remaining) = &mut claim_remaining {
                     *remaining = remaining.saturating_sub(priced.earns).max(0);
                 }
@@ -1908,9 +1924,11 @@ pub fn forecast_unit(
         // What a deferred order can spend is what reaches the unit *in time* - `ah-1wcw.3` settled
         // that `BUY ALL` spends what the unit can afford, and wages it earns this month cannot pay
         // for anything this month's orders buy (`ah-uwa3`).
+        // The Give phase spends what the unit holds when GIVE runs: what it opened with, plus what
+        // the instant orders and the gifts of others put there (`ah-tc79`). `expense` is subtracted
+        // whole, and that is a known conservatism rather than an oversight (`ah-a5ci`).
         let mut running = held
-            .saturating_add(income)
-            .saturating_sub(late)
+            .saturating_add(give_phase_income)
             .saturating_sub(expense);
         // Give phase: `rules/sequenceofevents` settles GIVE before the market opens, so this
         // pass runs whatever line the gift was written on (`ah-npab`).
@@ -1928,6 +1946,14 @@ pub fn forecast_unit(
             expense = expense.saturating_add(spent);
             running = running.saturating_sub(spent);
         }
+        // Everything the Give phase could not spend is in the purse by the time the market opens:
+        // TAX and PILLAGE settle in the tax phase and a CAST in instant magic, both before "SELL
+        // orders are processed" (`rules/sequenceofevents`). `late` stays out - wages earned this
+        // month cannot pay for anything this month's orders buy (`ah-uwa3`).
+        running = running
+            .saturating_add(income)
+            .saturating_sub(give_phase_income)
+            .saturating_sub(late);
 
         // Market phase: every exact `BUY` gathered above is priced here, and each `BUY ALL` then
         // spends what those leave.
@@ -7847,6 +7873,140 @@ mod tests {
 
         assert_eq!(made(&[placed(Intent::Claim(200)), cast()]), 1);
         assert_eq!(made(&[cast(), placed(Intent::Claim(200))]), 1);
+    }
+
+    /// `rules/sequenceofevents` runs *Give orders* before *Tax orders*, so a `GIVE ... ALL SILV`
+    /// hands over what the unit opened with and the tax it collects afterwards stays (`ah-tc79`).
+    #[test]
+    fn giving_all_silver_cannot_spend_this_months_tax() {
+        let give = placed(Intent::Give {
+            to: Party::Unit("1235".to_string()),
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::All { except: 0 },
+        });
+        for intents in [
+            vec![placed(Intent::Tax), give.clone()],
+            vec![give.clone(), placed(Intent::Tax)],
+        ] {
+            let receipts = Receipts::default();
+            let unit = forecast_unit(
+                UnitFacts {
+                    held: 100,
+                    ..facts(10, &intents, &receipts)
+                },
+                taxable(Some(500)),
+                PoolShares::default(),
+                FactionPurse::default(),
+                0,
+                no_market(),
+                SharedMarket::Adds(0),
+                None,
+            );
+            assert_eq!(unit.income, Some(500));
+            assert_eq!(unit.expense, Some(100));
+            assert_eq!(unit.at_month_end, Some(500));
+            assert_eq!(unit.doubt, None);
+        }
+    }
+
+    /// `rules/sequenceofevents` opens the market after *Give orders*, so a sale's proceeds are not
+    /// in the purse the gift empties (`ah-tc79`).
+    #[test]
+    fn a_sale_does_not_fund_the_same_months_gift() {
+        let receipts = Receipts::default();
+        let intents = [
+            selling("grain", Amount::Exact(30)),
+            placed(Intent::Give {
+                to: Party::Unit("1235".to_string()),
+                what: Selector::Item("SILV".to_string()),
+                amount: Amount::All { except: 0 },
+            }),
+        ];
+        let sale = wanted(10, 100, 100);
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 100,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            Lookups {
+                sale: &sale,
+                ..no_market()
+            },
+            SharedMarket::Adds(0),
+            None,
+        );
+        assert_eq!(unit.income, Some(300));
+        assert_eq!(unit.expense, Some(100));
+        assert_eq!(unit.at_month_end, Some(300));
+        assert_eq!(unit.doubt, None);
+    }
+
+    /// PILLAGE settles in the tax phase, after *Give orders*, so its take is not in the purse the
+    /// gift empties (`ah-tc79`).
+    #[test]
+    fn a_pillage_does_not_fund_the_same_months_gift() {
+        let intents = vec![
+            placed(Intent::Pillage),
+            placed(Intent::Give {
+                to: Party::Unit("1235".to_string()),
+                what: Selector::Item("SILV".to_string()),
+                amount: Amount::All { except: 0 },
+            }),
+        ];
+        let receipts = Receipts::default();
+        let skills = [combat_one()];
+        let ruleset = ruleset();
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 100,
+                skills: &skills,
+                ..facts(pillage_threshold(2500), &intents, &receipts)
+            },
+            pillageable(2500),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&ruleset),
+        );
+        assert_eq!(unit.doubt, None);
+        assert_eq!(unit.income, Some(5000));
+        assert_eq!(unit.expense, Some(100));
+        assert_eq!(unit.at_month_end, Some(5000));
+    }
+
+    /// `CLAIM` is an instant order and so precedes *Give orders*: claimed silver is in the purse a
+    /// gift empties (`ah-tc79`).
+    #[test]
+    fn a_claim_does_fund_the_same_months_gift() {
+        let intents = vec![
+            placed(Intent::Claim(200)),
+            placed(Intent::Give {
+                to: Party::Unit("1235".to_string()),
+                what: Selector::Item("SILV".to_string()),
+                amount: Amount::All { except: 0 },
+            }),
+        ];
+        let receipts = Receipts::default();
+        let unit = forecast_unit(
+            facts(1, &intents, &receipts),
+            RegionWages::default(),
+            PoolShares::default(),
+            purse(Some(200)),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            None,
+        );
+        assert_eq!(unit.income, Some(200));
+        assert_eq!(unit.expense, Some(200));
+        assert_eq!(unit.at_month_end, Some(0));
+        assert_eq!(unit.doubt, None);
     }
 
     /// The hover names the first spender the *turn* reaches, not the first one written.
