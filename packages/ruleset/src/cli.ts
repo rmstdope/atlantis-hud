@@ -1,11 +1,21 @@
 /**
- * Fetches a game's rules and data pages and writes `config/public/ruleset.json`.
+ * Fetches one game's rules page and catalogue and writes that game's ruleset.
  *
  *   pnpm --filter @atlantis/ruleset scrape -- \
  *     --rules https://atlantis-pbem.com/rules \
  *     --data  https://atlantis-pbem.com/data
  *
- * Either argument may be a local file instead of a URL, which is how the committed fixtures are
+ *   pnpm --filter @atlantis/ruleset scrape -- \
+ *     --rules    https://atlantis-newage.com/api/worlds/arcanum/game/rules \
+ *     --database https://atlantis-newage.com/api/worlds/arcanum/game/database \
+ *     --out      config/public/ruleset-newage-arcanum.json
+ *
+ * A world serving its catalogue as an HTML data page is read with `--data`; one serving it as a
+ * JSON database with `--database`, which is converted to a data page before anything else happens.
+ * Without `--out` the standard `config/public/ruleset.json` is written, which is why `--database`
+ * requires one.
+ *
+ * Any argument may be a local file instead of a URL, which is how the committed fixtures are
  * re-read without touching the network.
  *
  * Nothing is written unless every required value was read. A half-written ruleset would be worse
@@ -17,6 +27,7 @@ import { isAbsolute, resolve } from "node:path";
 import { argv, exit, pid } from "node:process";
 import { pathToFileURL } from "node:url";
 import { buildRuleset } from "./build";
+import { newAgeDataPage, parseNewAgeDatabase } from "./newage";
 import { RulesetScrapeError } from "./rules";
 
 const DEFAULT_OUTPUT = new URL("../../../config/public/ruleset.json", import.meta.url);
@@ -63,28 +74,51 @@ async function load(location: string): Promise<string> {
 async function main(): Promise<void> {
   const rulesUrl = readArgument("rules");
   const dataUrl = readArgument("data");
+  const databaseUrl = readArgument("database");
   const output = readArgument("out");
 
-  if (!rulesUrl || !dataUrl) {
+  if (!rulesUrl || (!dataUrl && !databaseUrl)) {
     throw new Error(
-      "usage: fetch --rules <url|path> --data <url|path> [--out <path>]\n" +
-        "Point these at the rules and data pages of the game you are playing."
+      "usage: scrape --rules <url|path> (--data <url|path> | --database <url|path>) [--out <path>]\n" +
+        "Point --rules at the rules page of the game you are playing, and either --data at its " +
+        "data page\nor --database at its JSON database. --database needs --out."
     );
   }
 
-  const [rulesHtml, dataHtml] = await Promise.all([load(rulesUrl), load(dataUrl)]);
+  if (dataUrl && databaseUrl) {
+    throw new Error("--data and --database name the same thing two ways; give one of them");
+  }
+
+  if (databaseUrl && !output) {
+    throw new Error(
+      "--database needs --out: a world's ruleset has its own file, and writing it to the default " +
+        "output would overwrite config/public/ruleset.json"
+    );
+  }
+
+  // One of the two, guarded above.
+  const catalogueUrl = (dataUrl ?? databaseUrl) as string;
+  const [rulesHtml, catalogueText] = await Promise.all([load(rulesUrl), load(catalogueUrl)]);
+  const dataHtml = databaseUrl ? newAgeDataPage(parseNewAgeDatabase(catalogueText)) : catalogueText;
 
   const ruleset = buildRuleset({
     rulesHtml,
     dataHtml,
     rulesUrl,
-    dataUrl,
+    dataUrl: catalogueUrl,
     fetchedAt: new Date().toISOString()
   });
 
   // pathToFileURL rather than hand-building `file://${cwd()}`: a working directory containing a
   // `#` or `?` silently truncates a hand-built URL, writing to a different directory entirely.
-  const target = output ? pathToFileURL(resolve(output)) : DEFAULT_OUTPUT;
+  // A relative --out is resolved against the repository root, exactly as `load` resolves a
+  // relative input: `pnpm run` executes this from the package directory, so
+  // `--out config/public/ruleset-newage-arcanum.json` would otherwise land under packages/ruleset.
+  const target = output
+    ? isAbsolute(output)
+      ? pathToFileURL(resolve(output))
+      : new URL(output, REPOSITORY_ROOT)
+    : DEFAULT_OUTPUT;
 
   // Written beside the target and renamed into place. A rename is atomic, so an interrupt or a
   // full disk leaves the previous ruleset intact rather than a half-written one - which is what
@@ -101,6 +135,7 @@ async function main(): Promise<void> {
     .map(([name, cost]) => `${name} ${cost}`)
     .join(", ");
   console.log(`  terrain premiums: ${premiums}`);
+  console.log(`  food maintenance: ${ruleset.items.MEAL?.maintenanceValue ?? "unknown"} silver`);
   console.log(`  items: ${items}`);
 }
 

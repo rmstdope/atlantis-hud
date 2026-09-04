@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildRuleset, type Ruleset } from "./build";
+import { newAgeDataPage, parseNewAgeDatabase } from "./newage";
+import { WORLDS } from "./worlds";
 
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../../${relative}`, import.meta.url)), "utf8");
@@ -10,30 +12,62 @@ const RULES_HTML = read("tests/fixtures/ruleset/neworigins-rules.html");
 const DATA_HTML = read("tests/fixtures/ruleset/neworigins-data.html");
 const COMMITTED = JSON.parse(read("config/public/ruleset.json")) as Ruleset;
 
-const REGENERATE =
-  "pnpm --filter @atlantis/ruleset scrape -- " +
-  "--rules tests/fixtures/ruleset/neworigins-rules.html --data tests/fixtures/ruleset/neworigins-data.html";
-
 /**
- * The shell serves `config/public/ruleset.json` and the core reads it, so the file is the contract
- * between the scraper and everything else. This holds it equal to what the scraper writes from the
- * committed fixture pages, with the committed file's own `source` fed back in so nothing but the
+ * The shell serves each committed ruleset and the core reads it, so the file is the contract
+ * between the scraper and everything else. Each world is held equal to what the scraper writes from
+ * its own committed fixtures, with the committed file's own `source` fed back in so nothing but the
  * scraped content is compared. A hand edit, or a scraper change nobody regenerated after, fails here.
  */
-describe("the committed ruleset", () => {
-  it("is exactly what the scraper produces from the committed fixture pages", () => {
-    const built = buildRuleset({
-      rulesHtml: RULES_HTML,
-      dataHtml: DATA_HTML,
-      rulesUrl: COMMITTED.source.rulesUrl,
-      dataUrl: COMMITTED.source.dataUrl,
-      fetchedAt: COMMITTED.source.fetchedAt
-    });
+describe("the committed rulesets", () => {
+  it.each([...WORLDS])(
+    "$id is exactly what the scraper produces from its committed fixtures",
+    (world) => {
+      const catalogueText = read(world.catalogueFixture);
+      const dataHtml =
+        world.catalogueSource === "database"
+          ? newAgeDataPage(parseNewAgeDatabase(catalogueText))
+          : catalogueText;
+      const committed = JSON.parse(read(world.rulesetPath)) as Ruleset;
 
-    // toEqual, not toStrictEqual: an optional the scraper leaves `undefined` is a key the file does
-    // not have, and key order is not part of the contract.
-    expect(built, `config/public/ruleset.json is not the scraper's output; regenerate it with:\n  ${REGENERATE}`)
-      .toEqual(COMMITTED);
+      const built = buildRuleset({
+        rulesHtml: read(world.rulesFixture),
+        dataHtml,
+        rulesUrl: committed.source.rulesUrl,
+        dataUrl: committed.source.dataUrl,
+        fetchedAt: committed.source.fetchedAt
+      });
+
+      const regenerate =
+        "pnpm --filter @atlantis/ruleset scrape -- " +
+        `--rules ${world.rulesFixture} ` +
+        `${world.catalogueSource === "database" ? "--database" : "--data"} ${world.catalogueFixture} ` +
+        `--out ${world.rulesetPath}`;
+
+      // toEqual, not toStrictEqual: an optional the scraper leaves `undefined` is a key the file
+      // does not have, and key order is not part of the contract.
+      expect(built, `${world.rulesetPath} is not the scraper's output; regenerate it with:\n  ${regenerate}`).toEqual(
+        committed
+      );
+    }
+  );
+
+  it("costs a New Age volcano four movement points and a forest two", () => {
+    for (const world of WORLDS.filter((candidate) => candidate.id.startsWith("newage-"))) {
+      const ruleset = JSON.parse(read(world.rulesetPath)) as Ruleset;
+      expect(ruleset.movement.terrainCosts.normal).toBe(1);
+      expect(ruleset.movement.terrainCosts.premiums.volcano).toBe(4);
+      expect(ruleset.movement.terrainCosts.premiums.forest).toBe(2);
+    }
+  });
+
+  it("prices New Age food at thirty and closes the weather gap", () => {
+    for (const world of WORLDS.filter((candidate) => candidate.id.startsWith("newage-"))) {
+      const ruleset = JSON.parse(read(world.rulesetPath)) as Ruleset;
+      for (const tag of ["FISH", "GRAI", "LIVE", "MEAL"]) {
+        expect(ruleset.items[tag].maintenanceValue).toBe(30);
+      }
+      expect(ruleset.gaps.weather.modelled).toBe(true);
+    }
   });
 
   /**
