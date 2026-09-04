@@ -569,12 +569,12 @@ export function columnOrderFromStorage(stored: unknown): ColumnOrder | null {
       return;
     }
     const predecessor = index === 0 ? undefined : UNIT_COLUMNS[index - 1];
+    // -1 for the first column, whose predecessor is `undefined`; every later column's predecessor
+    // has already been spliced in by the time it is considered, because this walk is in
+    // `UNIT_COLUMNS` order. So `at + 1` is the front in that one case and the right place in all
+    // the others.
     const at = predecessor === undefined ? -1 : order.indexOf(predecessor);
-    if (index === UNIT_COLUMNS.length - 1 && at === -1) {
-      order.push(column);
-    } else {
-      order.splice(at + 1, 0, column);
-    }
+    order.splice(at + 1, 0, column);
   });
   return order as ColumnOrder;
 }

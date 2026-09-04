@@ -611,8 +611,12 @@ describe("columnOrderFromStorage", () => {
     expect(columnOrderFromStorage(stored)).toEqual([...UNIT_COLUMNS]);
   });
 
-  it("still rejects an unknown column, a duplicate, and an over-long order", () => {
-    expect(columnOrderFromStorage([...UNIT_COLUMNS, "extra"])).toBeNull();
+  it("puts a missing first column at the front, having no predecessor to follow", () => {
+    const stored = UNIT_COLUMNS.filter((column) => column !== "own") as UnitColumn[];
+    expect(columnOrderFromStorage(stored)).toEqual([...UNIT_COLUMNS]);
+  });
+
+  it("still rejects a duplicate and an unknown column in a repairable-looking order", () => {
     expect(columnOrderFromStorage(["own", "name", "name"])).toBeNull();
     expect(columnOrderFromStorage(["own", "retired"])).toBeNull();
   });
