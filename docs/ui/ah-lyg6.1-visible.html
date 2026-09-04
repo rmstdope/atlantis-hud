@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sheets you hold — where they show before the planner exists</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:20px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; overflow:auto; padding:16px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+  .hdr { display:flex; align-items:center; gap:9px; padding:9px 13px; background:var(--raised);
+         border:1px solid var(--edge); border-radius:7px; font:13px/1.4 'Helvetica Neue',Arial,sans-serif; flex-wrap:wrap; }
+  .hdr .fac { color:var(--ink); font-weight:600; }
+  .hdr .turn { color:var(--ink-dim); font-size:12px; }
+  .hdr .sp { margin-left:auto; }
+  .chip { display:inline-flex; align-items:center; gap:5px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif;
+          padding:2px 9px; border-radius:11px; border:1px solid var(--edge); color:var(--ink-soft); background:var(--ground); }
+  .chip.new { border-color:var(--brass); color:var(--brass-bright); }
+  .chip.stale { border-color:#5c3232; color:var(--danger); }
+  .pop { width:308px; background:var(--panel); border:1px solid var(--edge); border-radius:7px;
+         box-shadow:0 10px 32px #000a; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; margin-top:8px; }
+  .pop .top { display:flex; align-items:center; gap:8px; padding:6px 9px; border-bottom:1px solid var(--edge-soft); color:var(--ink-soft); }
+  .pop .top .sp { margin-left:auto; }
+  .pop ul { list-style:none; padding:5px 0; }
+  .pop li { display:flex; gap:8px; padding:4px 10px; color:var(--ink-soft); align-items:baseline; }
+  .pop li .f { color:var(--ink); }
+  .pop li .as { margin-left:auto; font-size:11px; color:var(--ink-dim); }
+  .pop li.stale .as { color:var(--danger); }
+  .pop .foot { padding:6px 10px; border-top:1px solid var(--edge-soft); color:var(--ink-dim); font-size:11.5px; }
+  .dlg { width:470px; background:var(--panel); border:1px solid var(--edge); border-radius:8px; box-shadow:0 12px 40px #000a; }
+  .dlg .top { padding:9px 14px; border-bottom:1px solid var(--edge); background:var(--raised);
+              font:600 14px/1.3 'Helvetica Neue',Arial,sans-serif; }
+  .dlg .body { padding:14px; font:13px/1.6 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); }
+  .dlg .body b { color:var(--ink); font-weight:600; }
+  .dlg .foot { display:flex; gap:8px; justify-content:flex-end; padding:10px 14px; border-top:1px solid var(--edge-soft); }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px; padding:3px 10px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.prim { background:#243244; color:var(--ink); border-color:#3a5372; }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px; }
+  .col { display:grid; gap:22px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:900px) { .two { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sheets you hold — <span>where they show before the planner exists</span></h1>
+  <p>You chose the Export-menu road, so this bead ships with no pane of its own. That leaves a real
+  question: <b>after the import dialog closes, is there anything on screen saying you hold Borg's mages?</b>
+  Until ah-lyg6.2 lands there is nothing that shows a mage sheet, so this also decides whether the bead
+  can be verified by hand the day it merges.</p>
+  <p>There is an exact precedent. Merging an ally's <i>report</i> already leaves a chip beside the faction
+  in the header, opening <code>MergedFactionsPanel</code> — a short list answering “where did this come
+  from”, for exactly the reason a mage sheet raises.</p>
+</header>
+<main>
+
+<h3 class="sec">Option 1 — a chip beside the faction, like merged reports</h3>
+<div class="card">
+  <h2><em>OPTION 1</em>“2 mage sheets”</h2>
+  <div class="concept">Same shape, same place, same popover frame as the merged-reports chip already sitting there.</div>
+  <div class="stage"><div class="col">
+    <div>
+      <div class="lbl">The header</div>
+      <div class="hdr">
+        <span class="fac">The Disinherited Knights (42)</span>
+        <span class="turn">turn 23</span>
+        <span class="chip">1 merged report</span>
+        <span class="chip new">2 mage sheets</span>
+      </div>
+      <div class="pop">
+        <div class="top"><span>Mage sheets you hold</span><span class="sp"></span><span class="btn">✕</span></div>
+        <ul>
+          <li><span class="f">Borg (21)</span><span>6 mages</span><span class="as">turn 23</span></li>
+          <li class="stale"><span class="f">Creeping Death (17)</span><span>3 mages</span><span class="as">turn 21 · 2 turns old</span></li>
+        </ul>
+        <div class="foot">A sheet is used by the study planner.</div>
+      </div>
+    </div>
+    <div>
+      <div class="lbl">Nothing held — the chip is simply absent</div>
+      <div class="hdr">
+        <span class="fac">The Disinherited Knights (42)</span>
+        <span class="turn">turn 23</span>
+        <span class="chip">1 merged report</span>
+      </div>
+    </div>
+  </div></div>
+  <ul class="notes">
+    <li>Answers “what do I hold, and how old is it” at a glance, on every screen, for ever — not only in the seconds after an import.</li>
+    <li>Reuses <span class="mono">PopoverFrame</span> and the chip beside it; no new frame, no new key, no new dialog.</li>
+    <li>Makes the bead verifiable by hand the day it merges: import a sheet, close the dialog, the chip is still there.</li>
+    <li>Staleness gets a home now, so ah-lyg6.2 inherits it instead of inventing it.</li>
+    <li class="con">One more chip in a header that already wraps.</li>
+  </ul>
+</div>
+
+<h3 class="sec">Option 2 — the import summary, and nothing after it</h3>
+<div class="card">
+  <h2><em>OPTION 2</em>Told once</h2>
+  <div class="concept">The existing summary dialog reports the import. Once it closes, the sheets are held but invisible until ah-lyg6.2 ships.</div>
+  <div class="stage"><div class="two">
+    <div>
+      <div class="lbl">Just after the import</div>
+      <div class="dlg">
+        <div class="top">Mage sheet taken in</div>
+        <div class="body"><b>Borg (21)</b>, turn 23 — <b>6 mages</b>.<br>
+        <span style="color:var(--ink-dim)">2 adepts, 4 apprentices.</span><br><br>
+        You now hold sheets from <b>2 allied factions</b>.</div>
+        <div class="foot"><span class="btn prim">Close</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="lbl">A moment later</div>
+      <div class="hdr">
+        <span class="fac">The Disinherited Knights (42)</span>
+        <span class="turn">turn 23</span>
+        <span class="chip">1 merged report</span>
+      </div>
+      <p style="color:var(--ink-dim);font:12.5px/1.6 'Helvetica Neue',Arial,sans-serif;margin-top:10px">
+        Nothing on screen says two mage sheets are held. Reload and even the summary is gone.</p>
+    </div>
+  </div></div>
+  <ul class="notes">
+    <li>The smallest thing that can be built, and nothing has to be unbuilt when the planner arrives.</li>
+    <li class="con">A person verifying this bead has only the dialog to look at — after that they must take the application's word for it.</li>
+    <li class="con">“Have I already taken in Borg's turn-23 sheet?” is unanswerable, so the sheet gets sent for again.</li>
+  </ul>
+</div>
+
+</main>
+</body>
+</html>

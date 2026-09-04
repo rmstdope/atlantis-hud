@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The mage sheet file — three shapes</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1280px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:20px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; overflow:auto; max-height:560px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+  pre { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.55; color:var(--ink-soft); padding:14px; white-space:pre; }
+  pre .mk { color:var(--brass-bright); }
+  pre .cm { color:#5d6b7d; }
+  pre .k  { color:#7fa8d0; }
+  pre .s  { color:#c08f6a; }
+  pre .n  { color:#8fbf9f; }
+</style>
+</head>
+<body>
+<header>
+  <h1>The mage sheet file — <span>three shapes</span></h1>
+  <p>The same two mages in each: <b>Four of Nine (1295)</b> and <b>Whisper (3702)</b>, taken from a real
+  fixture report. The player sees this file — they mail it, and an ally may well read it before opening
+  it — so the shape is worth choosing rather than defaulting to.</p>
+  <p>Every shape carries the same facts, because the planner needs all of them: the unit's number and name,
+  where it stands and whether it is inside a structure, every skill with its <b>accumulated study points</b>
+  (<code>FORC 3 (180)</code> — the level alone is not enough, since 105 and 175 are both level 2 and a
+  month apart), what the report says it <b>may study</b>, and what it is studying now.</p>
+</header>
+<main>
+
+<h3 class="sec">Option 1 — the game's own report syntax</h3>
+<p>What the map export already does: a marker comment on the first line, and a body the existing report
+parser reads without a new parser being written at all.</p>
+<div class="card">
+  <h2><em>OPTION 1</em>A report fragment</h2>
+  <div class="concept">Rides the whole existing road — the parser, the classifier, the import prompt.</div>
+  <div class="stage"><pre><span class="mk">; Mage sheet from Atlantis HUD</span>
+<span class="cm">; Borg (21), turn 23</span>
+
+<span class="cm">1:7,53 (plain) in Anduin, contains Fort [2].</span>
+  - Four of Nine (1295), Borg (21), behind, leader [LEAD]. Skills:
+    force [FORC] 3 (180), pattern [PATT] 2 (130), illusion [ILLU] 1
+    (40), weather lore [WEAT] 1 (65), fire [FIRE] 2 (90), spirit
+    [SPIR] 2 (120). Can Study: fire [FIRE], force shield [FSHI],
+    farsight [FARS], necromancy [NECR].
+  - Whisper (3702), Borg (21), behind, leader [LEAD]. Skills:
+    pattern [PATT] 2 (95), spirit [SPIR] 1 (30). Can Study:
+    manipulation [MANI], spirit shield [SSHI].</pre></div>
+  <ul class="notes">
+    <li>No new parser and no new file type: <span class="mono">parseReport</span> already reads this, and every mage arrives as an ordinary <span class="mono">ReportUnit</span> that <span class="mono">magesOf()</span> understands unchanged.</li>
+    <li>An ally on a different build, or on no client at all, can read it and even hand-write it.</li>
+    <li>It looks like Atlantis, which is what the player is already reading all day.</li>
+    <li class="con">Verbose: a faction with 12 mages writes a long file.</li>
+    <li class="n">Structure membership rides in as the region's contents, exactly as a report says it.</li>
+  </ul>
+</div>
+
+<h3 class="sec">Option 2 — JSON</h3>
+<p>What the army export does. A shape written for a machine.</p>
+<div class="card">
+  <h2><em>OPTION 2</em>A JSON document</h2>
+  <div class="concept">Explicit, compact, and versioned — but a new parser, a new validator, and a new set of refusal messages.</div>
+  <div class="stage"><pre>{
+  <span class="k">"atlantisHudMageSheet"</span>: <span class="n">1</span>,
+  <span class="k">"faction"</span>: { <span class="k">"id"</span>: <span class="s">"21"</span>, <span class="k">"name"</span>: <span class="s">"Borg"</span> },
+  <span class="k">"turn"</span>: <span class="n">23</span>,
+  <span class="k">"mages"</span>: [
+    {
+      <span class="k">"unitId"</span>: <span class="s">"1295"</span>, <span class="k">"name"</span>: <span class="s">"Four of Nine"</span>,
+      <span class="k">"regionId"</span>: <span class="s">"1:7,53"</span>, <span class="k">"structure"</span>: <span class="s">"Fort [2]"</span>,
+      <span class="k">"skills"</span>: [
+        { <span class="k">"tag"</span>: <span class="s">"FORC"</span>, <span class="k">"level"</span>: <span class="n">3</span>, <span class="k">"points"</span>: <span class="n">180</span> },
+        { <span class="k">"tag"</span>: <span class="s">"PATT"</span>, <span class="k">"level"</span>: <span class="n">2</span>, <span class="k">"points"</span>: <span class="n">130</span> }
+      ],
+      <span class="k">"mayStudy"</span>: [<span class="s">"FIRE"</span>, <span class="s">"FSHI"</span>, <span class="s">"FARS"</span>, <span class="s">"NECR"</span>],
+      <span class="k">"studying"</span>: <span class="s">"FIRE"</span>
+    },
+    {
+      <span class="k">"unitId"</span>: <span class="s">"3702"</span>, <span class="k">"name"</span>: <span class="s">"Whisper"</span>,
+      <span class="k">"regionId"</span>: <span class="s">"1:7,53"</span>, <span class="k">"structure"</span>: <span class="s">"Fort [2]"</span>,
+      <span class="k">"skills"</span>: [
+        { <span class="k">"tag"</span>: <span class="s">"PATT"</span>, <span class="k">"level"</span>: <span class="n">2</span>, <span class="k">"points"</span>: <span class="n">95</span> },
+        { <span class="k">"tag"</span>: <span class="s">"SPIR"</span>, <span class="k">"level"</span>: <span class="n">1</span>, <span class="k">"points"</span>: <span class="n">30</span> }
+      ],
+      <span class="k">"mayStudy"</span>: [<span class="s">"MANI"</span>, <span class="s">"SSHI"</span>],
+      <span class="k">"studying"</span>: <span class="s">"PATT"</span>
+    }
+  ]
+}</pre></div>
+  <ul class="notes">
+    <li>Says exactly what it means. Nothing has to be inferred from prose, and a field can be added later without ambiguity.</li>
+    <li>A version number, so a newer client can refuse an older sheet by name.</li>
+    <li class="con">A whole new read path: parse, validate, and a refusal message for every way it can be malformed.</li>
+    <li class="con">An ally reading it in an email sees braces. It cannot be hand-written by somebody without the client.</li>
+  </ul>
+</div>
+
+<h3 class="sec">Option 3 — a plain listing of our own</h3>
+<p>Neither the game's syntax nor JSON: a short line-based format written to be read by a person first.</p>
+<div class="card">
+  <h2><em>OPTION 3</em>One block per mage</h2>
+  <div class="concept">Compact and legible. A small parser of our own — perhaps thirty lines — and refusal messages we choose.</div>
+  <div class="stage"><pre><span class="mk">; Mage sheet from Atlantis HUD</span>
+<span class="cm">; Borg (21), turn 23</span>
+
+1295 Four of Nine
+  in 1:7,53 inside Fort [2]
+  FORC 3 (180), PATT 2 (130), ILLU 1 (40), WEAT 1 (65)
+  FIRE 2 (90), SPIR 2 (120)
+  may study FIRE FSHI FARS NECR
+  studying FIRE
+
+3702 Whisper
+  in 1:7,53 inside Fort [2]
+  PATT 2 (95), SPIR 1 (30)
+  may study MANI SSHI
+  studying PATT</pre></div>
+  <ul class="notes">
+    <li>The most readable of the three in an email, and the shortest.</li>
+    <li>Hand-writable, and obvious what to correct if a line is wrong.</li>
+    <li class="con">A parser and a validator of our own after all — the same cost as JSON without JSON's free syntax errors.</li>
+    <li class="con">A third file syntax in a repository that already has the game's and JSON.</li>
+  </ul>
+</div>
+
+</main>
+</body>
+</html>

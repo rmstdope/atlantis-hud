@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sharing mages — A: the file road we already have</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1200px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:20px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:94ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:0; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+  .chrome { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge);
+            font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; background:var(--raised); }
+  .chrome h4 { font:600 14px/1.3 'Helvetica Neue',Arial,sans-serif; }
+  .chrome .sp { margin-left:auto; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px; padding:3px 10px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.on { color:var(--brass-bright); border-color:var(--brass); }
+  .btn.prim { background:#243244; color:var(--ink); border-color:#3a5372; }
+  .ui { font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; padding:14px; }
+  .menu { width:280px; background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:5px 0;
+          font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; box-shadow:0 8px 24px #0009; }
+  .menu div { padding:5px 14px; color:var(--ink-soft); }
+  .menu div.hi { background:#243244; color:var(--ink); }
+  .menu div.new { color:var(--brass-bright); }
+  .menu hr { border:0; border-top:1px solid var(--edge-soft); margin:5px 0; }
+  .dlg { width:560px; background:var(--panel); border:1px solid var(--edge); border-radius:8px; box-shadow:0 12px 40px #000a; }
+  .dlg .body { padding:14px 16px; font:13px/1.6 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); }
+  .dlg .body b { color:var(--ink); font-weight:600; }
+  .dlg .foot { display:flex; gap:8px; justify-content:flex-end; padding:10px 16px; border-top:1px solid var(--edge-soft); }
+  .row { display:flex; gap:16px; flex-wrap:wrap; padding:14px; }
+  pre { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.5; color:var(--ink-soft); padding:12px 14px; white-space:pre; overflow-x:auto; }
+  pre .mk { color:var(--brass-bright); }
+  pre .cm { color:#5d6b7d; }
+  .warn { color:var(--danger); }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink-dim); padding:10px 14px 0; }
+  .tag { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:10.5px; color:var(--ink-dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sharing mages with an ally — <span>A: the file road we already have</span></h1>
+  <p>The map export already does exactly this shape of thing: it writes a text file with a marker
+  comment on its first line, and the ordinary <b>Open</b> / drag-and-drop path recognises the marker and
+  routes it somewhere other than “load this as my turn report”. A <b>mage sheet</b> would be a second
+  passenger on that same road — <code>ExportMenu</code> gains one entry, and the import prompt gains one
+  more shape.</p>
+  <p>Nothing new is opened, nothing new is navigated to. You mail the file to your ally; they open it the
+  same way they open anything else.</p>
+</header>
+<main>
+
+<h3 class="sec">1 · Sending</h3>
+<p>One new entry in the Export menu, below the ones that are there today.</p>
+<div class="card">
+  <h2><em>OPTION A</em>Export ▸ Mage sheet…</h2>
+  <div class="concept">Writes <span class="mono">mages-borg-turn-23.txt</span> through the same file saver every other export uses — a native Save dialog on the desktop, a download in the browser.</div>
+  <div class="stage"><div class="row">
+    <div class="menu">
+      <div>Orders…</div>
+      <div>Map…</div>
+      <div>Army for the simulator…</div>
+      <div>Game backup…</div>
+      <hr>
+      <div class="hi new">Mage sheet…</div>
+    </div>
+    <div style="flex:1;min-width:380px">
+      <div class="lbl">The file it writes</div>
+      <pre><span class="mk">; Mage sheet from Atlantis HUD</span>
+<span class="cm">; Borg (21), turn 23</span>
+
+1295 Four of Nine
+  in 1:7,53 inside Fort [2]
+  FORC 3 (180), PATT 2 (130), ILLU 1 (40), PHEN 1 (30)
+  WEAT 1 (65), FIRE 2 (90), EART 2 (120), CLEA 1 (30)
+  WOLF 2 (120), SPIR 2 (120), SSTO 1 (30), BIRD 1 (60)
+  may study FIRE EQUA FSHI ESHI SSHI MHEA GATE FARS
+  studying FIRE
+
+3702 Whisper
+  in 1:7,53 inside Fort [2]
+  PATT 2 (95), SPIR 1 (30)
+  may study MANI FSHI SSHI
+  studying PATT</pre>
+    </div>
+  </div></div>
+  <ul class="notes">
+    <li>Nothing to learn: it is where every other export already is.</li>
+    <li>The file is readable, so it can be pasted into the body of an email rather than attached.</li>
+    <li class="n">Every own mage goes in — no chooser. An ally you would not tell about a mage is not an ally you are sharing a study plan with.</li>
+    <li class="con">There is no one place that answers “whose sheets do I have, and how old are they?”. That answer lives inside the planner (ah-lyg6.2) and nowhere else until it exists.</li>
+  </ul>
+</div>
+
+<h3 class="sec">2 · Receiving</h3>
+<p>The ordinary Open path. The marker on the first line is the whole test, exactly as it is for a map export.</p>
+<div class="card">
+  <h2><em>OPTION A</em>The import prompt, and what it says in each case</h2>
+  <div class="concept">Four states. Only the first is the happy one.</div>
+  <div class="stage"><div class="row">
+
+    <div style="display:grid;gap:16px">
+      <div>
+        <div class="lbl">A sheet you do not have yet</div>
+        <div class="dlg" style="width:520px">
+          <div class="chrome"><h4>Take in a mage sheet?</h4></div>
+          <div class="body"><b>Borg (21)</b> sent 6 mages, as they stood on <b>turn 23</b>.
+          You are on turn 23, so this is current.<br><br>
+          They will appear in the study planner beside your own.</div>
+          <div class="foot"><span class="btn">Cancel</span><span class="btn prim">Take it in</span></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="lbl">A sheet from a faction you already have one from</div>
+        <div class="dlg" style="width:520px">
+          <div class="chrome"><h4>Replace Borg's mage sheet?</h4></div>
+          <div class="body">You already hold <b>Borg (21)</b>'s mages from <b>turn 22</b>.
+          This sheet is from <b>turn 23</b>, and replaces it.<br><br>
+          A faction's sheet is not merged — the newest one you were sent is what you hold.</div>
+          <div class="foot"><span class="btn">Cancel</span><span class="btn prim">Replace</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;gap:16px">
+      <div>
+        <div class="lbl">A sheet older than the one you hold</div>
+        <div class="dlg" style="width:520px">
+          <div class="chrome"><h4>Take in an older mage sheet?</h4></div>
+          <div class="body">This sheet is <b>Borg (21)</b> on <b>turn 21</b>. You already hold theirs
+          from <b>turn 23</b>, which is newer.<br><br>
+          <span class="warn">Taking it in would lose two turns of their study.</span></div>
+          <div class="foot"><span class="btn prim">Keep turn 23</span><span class="btn">Go back to turn 21</span></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="lbl">Nothing to file it under</div>
+        <div class="dlg" style="width:520px">
+          <div class="chrome"><h4>Cannot take in that mage sheet</h4></div>
+          <div class="body"><span class="warn">A mage sheet joins a game you are already playing — load a turn report first.</span></div>
+          <div class="foot"><span class="btn prim">Close</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div></div>
+  <ul class="notes">
+    <li>The same four shapes the map export already has, so the two read alike.</li>
+    <li>A sheet from your own faction is refused by name rather than silently loaded over your turn.</li>
+    <li class="n">Escape and Cancel both leave everything as it was; nothing is written until the button is pressed.</li>
+  </ul>
+</div>
+
+<h3 class="sec">3 · What you can see before the planner exists</h3>
+<p>This bead ships before ah-lyg6.2, so there has to be somewhere the sheets are visible — or the bead cannot be verified by a person.</p>
+<div class="card">
+  <h2><em>OPTION A</em>The import summary, and nothing else</h2>
+  <div class="concept">The existing <span class="mono">ImportSummaryDialog</span> reports what came in. After that the sheets are held, and the planner is what shows them.</div>
+  <div class="stage"><div class="ui" style="max-width:520px">
+    <div class="dlg">
+      <div class="chrome"><h4>Mage sheet taken in</h4></div>
+      <div class="body"><b>Borg (21)</b>, turn 23 — <b>6 mages</b>.<br>
+      <span style="color:var(--ink-dim)">2 adepts, 4 apprentices. 1 mage holds a skill this ruleset does not know.</span><br><br>
+      You now hold sheets from <b>2 allied factions</b>.</div>
+      <div class="foot"><span class="btn prim">Close</span></div>
+    </div>
+  </div></div>
+  <ul class="notes">
+    <li>Small: one dialog, no new pane, and it is thrown away when the planner arrives.</li>
+    <li class="con">Between this bead and the next, a taken-in sheet is invisible once the dialog closes.</li>
+  </ul>
+</div>
+
+</main>
+</body>
+</html>
