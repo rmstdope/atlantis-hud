@@ -659,9 +659,9 @@ pub fn review_turn(
 /// step 7.
 struct Relief<'a> {
     /// Step 4: silver from other own units in the same hex (`ah-e66j`).
-    shared_silver: &'a BTreeMap<String, i64>,
+    shared_silver: &'a BTreeMap<UnitKey, i64>,
     /// Steps 5 and 6: the unit's own food, then its hex's faction food (`ah-eacd`).
-    food: &'a BTreeMap<String, LateFoodRelief>,
+    food: &'a BTreeMap<UnitKey, LateFoodRelief>,
     /// Step 7: the faction's unclaimed fund, which is faction-wide (`ah-fjty`).
     settlement: &'a UpkeepSettlement,
 }
@@ -1656,7 +1656,7 @@ fn forecast_hex(
             continue;
         };
         let covered = shared_silver
-            .get(&ordered.unit.unit_id)
+            .get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
             .copied()
             .unwrap_or_default();
         forecast.shared_silver_covered = covered;
@@ -1673,7 +1673,9 @@ fn forecast_hex(
             // A doubted fee stays doubted: food cannot settle a number nothing knows.
             continue;
         };
-        let Some(relief) = food_relief.get(&ordered.unit.unit_id) else {
+        let Some(relief) =
+            food_relief.get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
+        else {
             continue;
         };
         forecast.food_contended = relief.contended;
@@ -6966,8 +6968,8 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
 /// cover every claimant lends all of it anyway and returns nothing for it: the total is exact even
 /// though which unit the engine feeds is not, and understating what step 4 paid would send a claim
 /// to the unclaimed fund that step 4 had already met.
-fn share_silver_for_upkeep(hexes: &mut [(Hex<'_>, Ledger<'_>)]) -> BTreeMap<String, i64> {
-    let mut covered: BTreeMap<String, i64> = BTreeMap::new();
+fn share_silver_for_upkeep(hexes: &mut [(Hex<'_>, Ledger<'_>)]) -> BTreeMap<UnitKey, i64> {
+    let mut covered: BTreeMap<UnitKey, i64> = BTreeMap::new();
 
     for (hex, ledger) in hexes {
         let claims = unpayable_upkeep(hex, ledger);
@@ -7010,7 +7012,9 @@ fn share_silver_for_upkeep(hexes: &mut [(Hex<'_>, Ledger<'_>)]) -> BTreeMap<Stri
             left -= relieved;
             *ledger.upkeep_relieved.entry(unit_id.clone()).or_default() += relieved;
             if !short {
-                *covered.entry(unit_id.clone()).or_default() += relieved;
+                *covered
+                    .entry(unit_key(&hex.region.region_id, unit_id))
+                    .or_default() += relieved;
             }
         }
         if short {
@@ -7040,8 +7044,8 @@ fn share_silver_for_upkeep(hexes: &mut [(Hex<'_>, Ledger<'_>)]) -> BTreeMap<Stri
 /// it.
 fn feed_from_food_after_silver(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
-) -> BTreeMap<String, LateFoodRelief> {
-    let mut all: BTreeMap<String, LateFoodRelief> = BTreeMap::new();
+) -> BTreeMap<UnitKey, LateFoodRelief> {
+    let mut all: BTreeMap<UnitKey, LateFoodRelief> = BTreeMap::new();
     let nothing = Receipts::default();
 
     for (hex, ledger) in hexes {
@@ -7087,7 +7091,11 @@ fn feed_from_food_after_silver(
                     .or_insert(0) += relieved;
             }
         }
-        all.extend(relief);
+        all.extend(
+            relief
+                .into_iter()
+                .map(|(unit_id, fed)| (unit_key(&hex.region.region_id, &unit_id), fed)),
+        );
     }
     all
 }
@@ -33909,6 +33917,39 @@ BUILD
                 forecast_in(&review, "1:8,53", "new-1").received,
                 900,
                 "the second hex's formed unit is credited its own hex's gift only"
+            );
+        }
+
+        /// A hex that has nothing spare lends nothing, and its formed unit must not read the
+        /// relief a different hex's identically numbered one was lent (`rules/form`, `ah-e66j`).
+        #[test]
+        fn a_formed_unit_reads_only_its_own_hexs_shared_silver() {
+            // No silver at all in the first hex; plenty in the second. Two men each, so each
+            // parent has one to hand over.
+            let poor = region(vec![with_men(unit("1922"), 2)]);
+            let rich = region_at(
+                "1:8,53",
+                8,
+                53,
+                vec![with_silver(with_men(unit("2000"), 2), 1000)],
+            );
+            let review = review_turn(
+                &report(vec![poor, rich]),
+                "unit 1922\nFORM 1\nEND\nGIVE NEW 1 1 HUMN\n\
+                 unit 2000\nFORM 1\nEND\nGIVE NEW 1 1 HUMN\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert!(
+                forecast_in(&review, "1:8,53", "new-1").shared_silver_covered > 0,
+                "the control: the rich hex does lend its formed unit something - {:?}",
+                forecast_in(&review, "1:8,53", "new-1")
+            );
+            assert_eq!(
+                forecast_in(&review, "1:7,53", "new-1").shared_silver_covered,
+                0,
+                "the poor hex has nothing to lend, so its formed unit is covered by nothing"
             );
         }
 
