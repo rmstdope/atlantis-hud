@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lbd9.4 — A: one dialog that can also sign you in</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; --warn:#d9a441; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1280px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  b.opt { color:var(--brass); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .ui { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+        font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; padding:11px; }
+  .ui h4 { font-size:13px; font-weight:600; color:var(--ink); margin-bottom:3px; font-family:inherit; }
+  .ui .meta { color:var(--ink-soft); margin-bottom:9px; }
+  .ui label { display:block; color:var(--ink-soft); margin-bottom:3px; }
+  .ui .field { margin-bottom:9px; }
+  .ui input[type=text], .ui input[type=password] { width:100%; background:var(--panel); border:1px solid var(--edge);
+     color:var(--ink); border-radius:4px; padding:4px 6px; font:inherit; }
+  .ui input:disabled { opacity:.5; }
+  .ui .hint { color:var(--ink-dim); margin:6px 0 8px; }
+  .ui .btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink); border-radius:4px; padding:4px 10px; display:inline-block; }
+  .ui .btn.primary { border-color:var(--brass); color:var(--brass); }
+  .ui .btn.off { opacity:.45; }
+  .ui .foot { display:flex; gap:8px; justify-content:flex-end; margin-top:10px; }
+  .ui .err { color:var(--danger); margin-top:2px; }
+  .ui .warn { color:var(--warn); margin-top:2px; }
+  .ui .ok { color:var(--ok); margin-top:2px; }
+  .ui .soft { color:var(--ink-soft); margin-top:2px; }
+  .ui .list { max-height:7rem; overflow:auto; border:1px solid var(--edge); background:var(--panel); border-radius:4px; padding:6px 8px; margin-top:4px; }
+  .ui .list li { margin-left:14px; margin-bottom:3px; }
+  .ui pre { max-height:7rem; overflow:auto; border:1px solid var(--edge); background:var(--panel); border-radius:4px;
+     padding:6px 8px; margin-top:4px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink); white-space:pre-wrap; }
+  .ui .cap { color:var(--ink-soft); margin-top:8px; display:block; }
+  .hdr { display:flex; align-items:center; gap:9px; justify-content:flex-end; background:var(--panel);
+         border:1px solid var(--edge); border-radius:6px; padding:8px 10px; font-family:system-ui,sans-serif; font-size:12.5px; }
+  .hdr .chip { border:1px solid var(--edge); background:var(--raised); border-radius:4px; padding:3px 9px; color:var(--ink); }
+  .hdr .chip.brassy { border-color:var(--brass); color:var(--brass); }
+  .hdr .chip.dim { color:var(--ink-dim); opacity:.45; }
+  .tip { margin-top:6px; margin-left:auto; width:330px; background:#0b0f14; border:1px solid var(--edge);
+         border-radius:4px; padding:6px 9px; font-family:system-ui,sans-serif; font-size:11.5px; color:var(--ink-soft); }
+  .caption { color:var(--ink-dim); font-size:11.5px; margin-top:8px; font-family:system-ui,sans-serif; }
+  .fixed { border-left:2px solid var(--brass); padding-left:12px; margin-top:14px; color:var(--ink-soft); font-size:13px; max-width:96ch; }
+  table { border-collapse:collapse; width:100%; font-family:system-ui,sans-serif; font-size:12.5px; margin-top:8px; }
+  td,th { border:1px solid var(--edge); padding:6px 9px; text-align:left; vertical-align:top; }
+  th { color:var(--brass); font-weight:600; }
+  td.w { color:var(--ink); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lbd9.4 — <span>Option A: one Send dialog, which can also sign you in</span></h1>
+  <p>Send is switched off for a New Age game today, because the ruleset declares no upload address. This bead
+  turns it back on by a different road: the REST API, with the bearer token ah-lbd9.2 produces. This page is one
+  of two shapes. In <b class="opt">A</b>, <b>Send is always live</b> — pressing it opens one dialog that asks for
+  whatever it still needs. Signed in, that is the faction password alone; signed out, it is the faction number
+  and the password, and signing in happens as part of sending. The verdict comes back as a
+  <b>sentence and a list</b>.
+  <b>Compare with Option B</b>, where Send is off until you have signed in from the header, and the verdict
+  comes back in the same monospace block the New Origins send already uses.</p>
+  <div class="fixed">
+    <b>Already decided and not being reopened:</b> credentials are <b>never stored</b>; New Age is
+    <b>desktop only</b>; <b>one step, not two</b> — Send posts the orders and then shows what came back, and the
+    check-without-saving endpoint is deliberately not used; and when a session runs out, <b>the surface you are
+    already in asks for it</b> (E1) rather than sending you back to the header.
+  </div>
+<p style="color:#4fb783;margin-top:12px;font-size:14px"><b>Chosen (2026-09-04):</b> <b>A</b> &mdash; Send is always live and the dialog signs you in as part of sending;
+  errors and warnings as <b>two lists</b>; saved-with-errors reads <b>amber</b>; and the footer after any settled
+  answer is <b>Close only</b>. Round 2 below (&sect;6) is the two states that answer opened up.</p>
+  <p><b>The awkward fact this whole page is about:</b> the world can <b>save orders it also thinks are wrong</b>.
+  It keeps them as long as the <code>#atlantis … #end</code> envelope, the faction id and the password are right,
+  and tells you separately how many syntax errors it found. So the answer is never a simple yes or no, and there
+  are <b>three</b> outcomes to tell apart, not two.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · The header</h3>
+<p>Nothing new. Send is the button it always was — it simply stops being greyed out for a New Age game.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>A — signed out</em>Send is live anyway</h2>
+    <p class="concept">You never meet a disabled button you cannot explain to yourself. The dialog asks for what
+    it needs.</p>
+    <div class="hdr">
+      <span class="chip">Import</span><span class="chip">Export ▾</span>
+      <span class="chip">Sign in to Arcanum</span><span class="chip">Send</span><span class="chip">⚙</span>
+    </div>
+    <p class="caption">Pressing Send here opens the dialog in its two-field state, below.</p>
+  </div>
+  <div class="card">
+    <h2><em>A — signed in</em>Exactly the same button</h2>
+    <p class="concept">Being signed in changes what the dialog asks for, and nothing else.</p>
+    <div class="hdr">
+      <span class="chip">Import</span><span class="chip">Export ▾</span>
+      <span class="chip brassy">Merchant Guild ▾</span><span class="chip">Send</span><span class="chip">⚙</span>
+    </div>
+    <p class="caption">Send stays off only for the reasons it is off today: no orders written, or an
+    <code>#atlantis</code> line naming no faction number.</p>
+  </div>
+</div>
+
+<h3 class="sec">2 · The dialog, before you press Send</h3>
+<p>The faction password is asked for <b>every time</b>, signed in or not: it is not the token, it is the word that
+gets written into the <code>#atlantis</code> line of the file the world saves. Nothing keeps it between sends.</p>
+<div class="cards3">
+  <div class="card">
+    <h2><em>signed in</em>One field</h2>
+    <p class="concept">The dialog you already know, addressed to the world instead of a web form.</p>
+    <div class="ui">
+      <h4>Send orders to Arcanum</h4>
+      <div class="meta">Merchant Guild (27) · turn 84 · atlantis-newage.com</div>
+      <div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Send</span></div>
+    </div>
+    <p class="caption">Focus starts in the password field. Escape, Cancel and the backdrop all close it and abort
+    anything in flight.</p>
+  </div>
+  <div class="card">
+    <h2><em>signed out</em>Two fields</h2>
+    <p class="concept">The faction number joins it, and one press does both jobs.</p>
+    <div class="ui">
+      <h4>Send orders to Arcanum</h4>
+      <div class="meta">Merchant Guild (27) · turn 84 · atlantis-newage.com</div>
+      <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+      <div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div>
+      <div class="hint">Kept only while the app is open. Nothing is written to this machine.</div>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Sign in and send</span></div>
+    </div>
+    <p class="caption">The faction number is prefilled from the loaded report and stays editable. A successful
+    send leaves you signed in, so the chip in the header lights up too.</p>
+  </div>
+  <div class="card">
+    <h2><em>in flight</em>Sending</h2>
+    <p class="concept">Both fields go quiet rather than disappearing, so the panel does not resize under the
+    pointer.</p>
+    <div class="ui">
+      <h4>Send orders to Arcanum</h4>
+      <div class="meta">Merchant Guild (27) · turn 84 · atlantis-newage.com</div>
+      <div class="field"><label>Faction password</label><input type="password" value="········" disabled></div>
+      <div class="soft">Sending orders…</div>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary off">Send</span></div>
+    </div>
+    <p class="caption">Cancel and Escape abort the request — but an aborted upload may still have reached the
+    world, and nothing is claimed about it either way.</p>
+  </div>
+</div>
+
+<h3 class="sec">3 · The three answers the world can give</h3>
+<p>This is the whole point of the bead. <b class="opt">O1</b> is drawn here: <b>saved with errors is amber</b> — the
+turn is in, and it is on you to fix it. <b>O2</b> would paint that same panel red. The third card is the one where
+nothing was saved at all.</p>
+<div class="cards3">
+  <div class="card">
+    <h2><em>saved · valid</em>Nothing wrong</h2>
+    <p class="concept">The one case that ends the interaction. The footer collapses to a single Close.</p>
+    <div class="ui">
+      <h4>Send orders to Arcanum</h4>
+      <div class="meta">Merchant Guild (27) · turn 84 · atlantis-newage.com</div>
+      <div class="ok">Orders for turn 84 were saved. The world found nothing wrong with them.</div>
+      <div class="foot"><span class="btn primary">Close</span></div>
+    </div>
+    <p class="caption">No list, because there is nothing in it.</p>
+  </div>
+  <div class="card">
+    <h2><em>saved · not valid</em>In, but wrong</h2>
+    <p class="concept">The sentence says both halves in the order that matters: it is saved, <i>and</i> it has
+    errors.</p>
+    <div class="ui">
+      <h4>Send orders to Arcanum</h4>
+      <div class="meta">Merchant Guild (27) · turn 84 · atlantis-newage.com</div>
+      <div class="warn">Orders for turn 84 were saved, but the world found 3 errors in them.</div>
+      <span class="cap">Errors</span>
+      <ul class="list">
+        <li>MOVE: Unit 4271 has no such direction.</li>
+        <li>STUDY: COMB is not a skill this unit can learn.</li>
+        <li>GIVE: Unit 8812 is not in this region.</li>
+      </ul>
+      <span class="cap">Warnings</span>
+      <ul class="list"><li>Faction has 2 unused tax points.</li></ul>
+      <div class="foot"><span class="btn primary">Close</span></div>
+    </div>
+    <p class="caption"><b class="opt">A</b>: errors as a list, under their own heading, each one on its own line;
+    warnings in a second list below. Both scroll at about six lines so the footer never leaves the panel.
+    The footer is <b>Close</b> alone: the turn is on the server, and fixing it means editing orders, not retyping
+    a password.</p>
+  </div>
+  <div class="card">
+    <h2><em>not saved</em>Refused outright</h2>
+    <p class="concept">A wrong password, or an envelope the world could not read. Nothing is on the server.</p>
+    <div class="ui">
+      <h4>Send orders to Arcanum</h4>
+      <div class="meta">Merchant Guild (27) · turn 84 · atlantis-newage.com</div>
+      <div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div>
+      <div class="err">The world did not save these orders. Check the faction password and try again.</div>
+      <span class="cap">The world reported</span>
+      <ul class="list"><li>Wrong password for faction 27.</li></ul>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Send</span></div>
+    </div>
+    <p class="caption">The password is cleared and refocused, exactly as a refusal already does today. This one
+    stays open, because retyping is the fix.</p>
+  </div>
+</div>
+
+<h3 class="sec">4 · The two ways it goes wrong before the world answers</h3>
+<div class="cards2">
+  <div class="card">
+    <h2><em>no network</em>Never left the machine</h2>
+    <div class="ui">
+      <h4>Send orders to Arcanum</h4>
+      <div class="meta">Merchant Guild (27) · turn 84 · atlantis-newage.com</div>
+      <div class="err">Could not reach atlantis-newage.com. Your orders were not sent — export them to a file if
+      the turn is due.</div>
+      <div class="foot"><span class="btn primary">Close</span></div>
+    </div>
+    <p class="caption">The same sentence the New Origins send already gives, with the host named.</p>
+  </div>
+  <div class="card">
+    <h2><em>token expired</em>The session ran out mid-send</h2>
+    <p class="concept">E1, made concrete: the dialog you are already in asks, and then goes on and sends. Nothing
+    typed is lost, and you are not sent back to the header.</p>
+    <div class="ui">
+      <h4>Send orders to Arcanum</h4>
+      <div class="meta">Merchant Guild (27) · turn 84 · atlantis-newage.com</div>
+      <div class="err">Your session has ended. Sign in again to continue.</div>
+      <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+      <div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div>
+      <div class="hint">Kept only while the app is open. Nothing is written to this machine.</div>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Sign in and send</span></div>
+    </div>
+    <p class="caption">In <b class="opt">A</b> this is the same dialog it always was, simply back in its two-field
+    state — there is no second dialog anywhere in this option.</p>
+  </div>
+</div>
+
+<h3 class="sec">5 · Every word on this page</h3>
+<table>
+  <tr><th style="width:34%">Where</th><th>Text</th></tr>
+  <tr><td>Dialog heading</td><td class="w">Send orders to Arcanum</td></tr>
+  <tr><td>Second line</td><td class="w">Merchant Guild (27) · turn 84 · atlantis-newage.com</td></tr>
+  <tr><td>Fields</td><td class="w">Faction number · Faction password</td></tr>
+  <tr><td>Note under the fields</td><td class="w">Kept only while the app is open. Nothing is written to this machine.</td></tr>
+  <tr><td>Confirm, signed in</td><td class="w">Send</td></tr>
+  <tr><td>Confirm, signed out or re-signing in</td><td class="w">Sign in and send</td></tr>
+  <tr><td>In flight</td><td class="w">Sending orders…</td></tr>
+  <tr><td>saved · valid</td><td class="w">Orders for turn 84 were saved. The world found nothing wrong with them.</td></tr>
+  <tr><td>saved · not valid</td><td class="w">Orders for turn 84 were saved, but the world found 3 errors in them.</td></tr>
+  <tr><td>saved · not valid, one error</td><td class="w">Orders for turn 84 were saved, but the world found 1 error in them.</td></tr>
+  <tr><td>not saved</td><td class="w">The world did not save these orders. Check the faction password and try again.</td></tr>
+  <tr><td>List headings</td><td class="w">Errors · Warnings · The world reported</td></tr>
+  <tr><td>Unreachable</td><td class="w">Could not reach atlantis-newage.com. Your orders were not sent — export them to a file if the turn is due.</td></tr>
+  <tr><td>Session ended</td><td class="w">Your session has ended. Sign in again to continue.</td></tr>
+  <tr><td>Button after a settled answer</td><td class="w">Close</td></tr>
+</table>
+
+<h3 class="sec">6 · Round 2 — two states your answer opened up</h3>
+<p>Neither was drawn above, and both are visible. <b>W</b> is what the sentence says when the world found no
+errors but did raise warnings — &sect;3&rsquo;s clean sentence, &ldquo;found nothing wrong with them&rdquo;, sits
+badly over a list of warnings. <b>M</b> is whether the world&rsquo;s own <code>message</code> is ever put in front
+of you: it is the only thing the API returns when a send is refused outright, and the API&rsquo;s prose is
+<b>partly in Russian</b>, so it may or may not arrive in English.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>W1</em>Name the warnings in the sentence</h2>
+    <p class="concept">saved &middot; no errors &middot; 2 warnings. Green, because nothing is wrong; the sentence
+    still says what is below it.</p>
+    <div class="ui">
+      <h4>Send orders to Arcanum</h4>
+      <div class="meta">Merchant Guild (27) &middot; turn 84 &middot; atlantis-newage.com</div>
+      <div class="ok">Orders for turn 84 were saved. The world found no errors, but raised 2 warnings.</div>
+      <span class="cap">Warnings</span>
+      <ul class="list"><li>Faction has 2 unused tax points.</li><li>Unit 4271 is idle this turn.</li></ul>
+      <div class="foot"><span class="btn primary">Close</span></div>
+    </div>
+    <p class="caption"><b>W2</b> would keep &sect;3&rsquo;s sentence unchanged &mdash; &ldquo;The world found
+    nothing wrong with them.&rdquo; &mdash; and simply show the Warnings list under it.</p>
+  </div>
+  <div class="card">
+    <h2><em>M1</em>Quote the world when it is all there is</h2>
+    <p class="concept">Refused outright: no errors, no warnings, just the world&rsquo;s own line. Shown only when
+    both lists are empty, so it never repeats what is already listed above it.</p>
+    <div class="ui">
+      <h4>Send orders to Arcanum</h4>
+      <div class="meta">Merchant Guild (27) &middot; turn 84 &middot; atlantis-newage.com</div>
+      <div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div>
+      <div class="err">The world did not save these orders. Check the faction password and try again.</div>
+      <span class="cap">The world reported</span>
+      <ul class="list"><li>&#1053;&#1077;&#1074;&#1077;&#1088;&#1085;&#1099;&#1081; &#1087;&#1072;&#1088;&#1086;&#1083;&#1100; &#1076;&#1083;&#1103; &#1092;&#1088;&#1072;&#1082;&#1094;&#1080;&#1080; 27</li></ul>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Send</span></div>
+    </div>
+    <p class="caption">Drawn with a Russian line on purpose: that is a real possible reply, and it is the honest
+    worst case for quoting the server. <b>M2</b> would never show it &mdash; our own sentence and nothing else,
+    which is safe but leaves a refusal nobody anticipated with no explanation at all.</p>
+  </div>
+</div>
+
+</main>
+</body>
+</html>
