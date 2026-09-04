@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { PlannerNotice } from "../studyTeaching";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataIndex } from "../gameData";
@@ -60,7 +61,8 @@ const rows = scheduleRows({
     }
   ],
   tree,
-  turns
+  turns,
+  seats: new Map([["1:7,53/1", 1]])
 });
 
 function grid(mode: CellMode = { kind: "idle" }) {
@@ -121,8 +123,7 @@ describe("ScheduleGrid", () => {
       kind: "editing",
       rowKey: "12/2431",
       turnIndex: 0,
-      skill: "FORC",
-      targetLevel: 5
+      pick: { kind: "study", skill: "FORC", targetLevel: 5 }
     });
     const cell = markup.slice(markup.indexOf('study-schedule-cell-2431-24'));
 
@@ -181,14 +182,17 @@ describe("CellPopover", () => {
     kind: "editing" as const,
     rowKey: "12/2431",
     turnIndex: 3,
-    skill: "FORC",
-    targetLevel: 5
+    pick: { kind: "study" as const, skill: "FORC", targetLevel: 5 }
   };
   const menu = cellMenu({
     mageName: "Ereb",
     turn: 27,
     standing: (rows[0] as ScheduleRow).standings[3],
-    tree
+    tree,
+    rows,
+    turnIndex: 3,
+    rowKey: "12/2431",
+    label: (regionId: string) => regionId
   });
 
   function popover() {
@@ -244,7 +248,7 @@ describe("CellPopover", () => {
     const markup = renderToStaticMarkup(
       <CellPopover
         menu={menu}
-        mode={{ ...mode, skill: blocked.skill }}
+        mode={{ ...mode, pick: { kind: "study", skill: blocked.skill, targetLevel: null } }}
         mageName="Ereb"
         turn={27}
         replacing="was: force 4, force 5"
@@ -257,5 +261,141 @@ describe("CellPopover", () => {
     expect(markup).toContain(
       `Ereb cannot study ${blocked.name} by turn 27. The plan will say so anyway.`
     );
+  });
+});
+
+describe("a teaching month in the grid", () => {
+  /** The same two mages, with Ereb teaching Ilna on the first turn. */
+  const teachingRows = scheduleRows({
+    groups,
+    plans: [
+      {
+        factionId: "12",
+        unitId: "2431",
+        goals: [
+          { kind: "teach", students: ["2432"] },
+          { kind: "study", skill: "FORC", targetLevel: 5 }
+        ],
+        comment: "",
+        updatedAt: "2026-01-01T00:00:00.000Z"
+      },
+      {
+        factionId: "12",
+        unitId: "2432",
+        // Force, not pattern: `rules/skills_teaching` needs the teacher to outrank the student in
+        // the skill being studied, and Ereb holds no pattern at all.
+        goals: [{ kind: "study", skill: "FORC", targetLevel: 5 }],
+        comment: "",
+        updatedAt: "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    tree,
+    turns,
+    seats: new Map()
+  });
+
+  function teachingGrid(notices: PlannerNotice[] = []) {
+    return renderToStaticMarkup(
+      <ScheduleGrid
+        rows={teachingRows}
+        groups={groups}
+        turns={turns}
+        mode={{ kind: "idle" }}
+        onEvent={() => {}}
+        notices={notices}
+      />
+    );
+  }
+
+  it("names the student in the teacher's cell", () => {
+    expect(teachingGrid()).toContain("TEACH Ilna");
+  });
+
+  it("marks the doubled month on the student's cell", () => {
+    expect(teachingGrid()).toContain("×2");
+  });
+
+  it("marks a halved month, and marks nothing on an ordinary one", () => {
+    // Ilna is pattern 1, so she needs no seat and her later months are worth exactly one.
+    const plain = renderToStaticMarkup(
+      <ScheduleGrid
+        rows={rows}
+        groups={groups}
+        turns={turns}
+        mode={{ kind: "idle" }}
+        onEvent={() => {}}
+      />
+    );
+
+    expect(plain).not.toContain("×");
+  });
+
+  it("tints a warned teach cell and titles it with what was raised", () => {
+    const markup = teachingGrid([
+      {
+        code: "taught-not-here",
+        level: "warning",
+        rowKey: "12/2431",
+        turnIndex: 0,
+        text: "Ilna is elsewhere.",
+        where: "Ereb · turn 24"
+      }
+    ]);
+
+    expect(markup).toContain("Ilna is elsewhere.");
+  });
+});
+
+describe("the warnings strip", () => {
+  const notices: PlannerNotice[] = [
+    {
+      code: "taught-not-here",
+      level: "warning",
+      rowKey: "12/2431",
+      turnIndex: 0,
+      text: "Ilna is in Dunmoor, not in Ereb's hex.",
+      where: "Ereb · turn 24"
+    },
+    {
+      code: "shelter-unknown",
+      level: "suggestion",
+      rowKey: "12/2432",
+      turnIndex: 1,
+      text: "Nothing can be said about Ilna's shelter.",
+      where: "Ilna · turn 25"
+    }
+  ];
+
+  function schedule(given: PlannerNotice[]) {
+    return renderToStaticMarkup(
+      <StudySchedule
+        rows={rows}
+        groups={groups}
+        turns={turns}
+        tree={tree}
+        mode={{ kind: "idle" }}
+        onEvent={() => {}}
+        onCommit={() => {}}
+        saveError={null}
+        notices={given}
+      />
+    );
+  }
+
+  it("is folded when the pane opens, and counts what it holds", () => {
+    const markup = schedule(notices);
+
+    expect(markup).toContain('data-testid="study-planner-warnings-toggle"');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain("1 warning, 1 suggestion");
+    expect(markup).not.toContain('data-testid="study-planner-warnings"');
+  });
+
+  it("says so and shows no button when there is nothing wrong", () => {
+    const markup = schedule([]);
+
+    expect(markup).toContain('data-testid="study-planner-warnings-none"');
+    expect(markup).toContain("Nothing to warn about in this plan.");
+    expect(markup).not.toContain('data-testid="study-planner-warnings-toggle"');
   });
 });

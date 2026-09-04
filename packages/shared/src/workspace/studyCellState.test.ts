@@ -6,8 +6,7 @@ const editing: CellMode = {
   kind: "editing",
   rowKey: "21/2431",
   turnIndex: 2,
-  skill: "FORC",
-  targetLevel: 4
+  pick: { kind: "study", skill: "FORC", targetLevel: 4 }
 };
 
 describe("reduce", () => {
@@ -17,8 +16,7 @@ describe("reduce", () => {
         kind: "cell-clicked",
         rowKey: "21/2431",
         turnIndex: 2,
-        skill: "FORC",
-        targetLevel: 4
+        pick: { kind: "study", skill: "FORC", targetLevel: 4 }
       })
     ).toEqual(editing);
   });
@@ -29,32 +27,29 @@ describe("reduce", () => {
         kind: "cell-clicked",
         rowKey: "21/2432",
         turnIndex: 0,
-        skill: null,
-        targetLevel: null
+        pick: null
       })
     ).toEqual({
       kind: "editing",
       rowKey: "21/2432",
       turnIndex: 0,
-      skill: null,
-      targetLevel: null
+      pick: null
     });
   });
 
   it("drops the level when a different skill is chosen", () => {
     expect(reduce(editing, { kind: "skill-chosen", skill: "PATT" })).toEqual({
       ...editing,
-      skill: "PATT",
-      targetLevel: null
+      pick: { kind: "study", skill: "PATT", targetLevel: null }
     });
   });
 
   it("takes a level, and takes the one-month form as null", () => {
     expect(reduce(editing, { kind: "level-chosen", targetLevel: 5 })).toMatchObject({
-      targetLevel: 5
+      pick: { targetLevel: 5 }
     });
     expect(reduce(editing, { kind: "level-chosen", targetLevel: null })).toMatchObject({
-      targetLevel: null
+      pick: { targetLevel: null }
     });
   });
 
@@ -82,5 +77,52 @@ describe("keyToAction", () => {
   it("means nothing for a plain Enter or any other key", () => {
     expect(keyToAction({ key: "Enter", metaKey: false, ctrlKey: false })).toBeNull();
     expect(keyToAction({ key: "a", metaKey: false, ctrlKey: false })).toBeNull();
+  });
+});
+
+describe("one popover, one answer", () => {
+  const open = reduce({ kind: "idle" }, {
+    kind: "cell-clicked",
+    rowKey: "21/2431",
+    turnIndex: 0,
+    pick: null
+  });
+
+  it("discards a chosen skill when a student is ticked", () => {
+    const chosen = reduce(open, { kind: "skill-chosen", skill: "FORC" });
+
+    const ticked = reduce(chosen, { kind: "teach-toggled", unitId: "2517" });
+
+    expect(ticked.kind === "editing" && ticked.pick).toEqual({
+      kind: "teach",
+      students: ["2517"]
+    });
+  });
+
+  it("discards ticked students when a skill is chosen", () => {
+    const ticked = reduce(open, { kind: "teach-toggled", unitId: "2517" });
+
+    const chosen = reduce(ticked, { kind: "skill-chosen", skill: "FORC" });
+
+    expect(chosen.kind === "editing" && chosen.pick).toEqual({
+      kind: "study",
+      skill: "FORC",
+      targetLevel: null
+    });
+  });
+
+  it("unticks a student ticked twice, and keeps tick order otherwise", () => {
+    const two = reduce(
+      reduce(open, { kind: "teach-toggled", unitId: "2517" }),
+      { kind: "teach-toggled", unitId: "2688" }
+    );
+
+    const back = reduce(two, { kind: "teach-toggled", unitId: "2517" });
+
+    expect(two.kind === "editing" && two.pick).toEqual({
+      kind: "teach",
+      students: ["2517", "2688"]
+    });
+    expect(back.kind === "editing" && back.pick).toEqual({ kind: "teach", students: ["2688"] });
   });
 });

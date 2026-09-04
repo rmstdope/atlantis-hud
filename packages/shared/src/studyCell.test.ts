@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
-import { cellMenu, cellWarning, goalsAfterClear, goalsAfterSet } from "./studyCell";
+import { cellMenu, cellWarning, goalsAfterClear, goalsAfterSet, goalsAfterTeach, teachWarning } from "./studyCell";
 import { projectAll, type ScheduleRow, type SkillPoints } from "./studySchedule";
 import type { StudyGoal } from "@atlantis/core-client";
 
@@ -109,6 +109,7 @@ function rowOf(start: SkillPoints, goals: StudyGoal[]): ScheduleRow {
     factionId: "21",
     unitId: "2431",
     name: "Ereb",
+    regionId: "1:7",
     summary: "",
     hasNote: false,
     goals,
@@ -188,5 +189,94 @@ describe("goalsAfterClear", () => {
     expect(goalsAfterClear([{ kind: "study" as const, skill: "FORC", targetLevel: 4 }], short, 4)).toEqual([
       { kind: "study" as const, skill: "FORC", targetLevel: 4 }
     ]);
+  });
+});
+
+describe("goalsAfterTeach", () => {
+  const forc: StudyGoal = { kind: "study", skill: "FORC", targetLevel: 5 };
+
+  it("inserts a teach month mid-goal and keeps the target behind it", () => {
+    const row = rowOf(at({ FORC: [3, 270] }), [forc]);
+
+    // Turn 1: one month of FORC has already been drawn to the left of the click.
+    expect(goalsAfterTeach([forc], row, 1, ["2517"])).toEqual([
+      { kind: "study", skill: "FORC", targetLevel: null },
+      { kind: "teach", students: ["2517"] },
+      forc
+    ]);
+  });
+
+  it("appends on an idle cell", () => {
+    const row = rowOf(at({ FORC: [3, 270] }), []);
+
+    expect(goalsAfterTeach([], row, 0, ["2517"])).toEqual([
+      { kind: "teach", students: ["2517"] }
+    ]);
+  });
+
+  it("replaces an existing teach goal rather than lengthening the plan", () => {
+    const goals: StudyGoal[] = [{ kind: "teach", students: ["2517"] }, forc];
+    const row = rowOf(at({ FORC: [3, 270] }), goals);
+
+    expect(goalsAfterTeach(goals, row, 0, ["2517", "2688"])).toEqual([
+      { kind: "teach", students: ["2517", "2688"] },
+      forc
+    ]);
+  });
+});
+
+describe("the teach group of the cell menu", () => {
+  /** Two mages in one hex, and one a hex away. */
+  function rowsOf(): ScheduleRow[] {
+    const base = rowOf(at({ FORC: [3, 270] }), [{ kind: "study", skill: "FORC", targetLevel: 5 }]);
+    const student = {
+      ...rowOf(at({ FORC: [1, 30] }), [{ kind: "study", skill: "FORC", targetLevel: 5 }]),
+      key: "21/2517",
+      unitId: "2517",
+      name: "Sable"
+    };
+    const away = { ...student, key: "21/2688", unitId: "2688", name: "Kestrel", regionId: "2:8" };
+    return [base, student, away];
+  }
+
+  it("offers every mage and says why one cannot be taught", () => {
+    const rows = rowsOf();
+    const menu = cellMenu({
+      mageName: "Ereb",
+      turn: 24,
+      standing: rows[0].standings[0],
+      tree,
+      rows,
+      turnIndex: 0,
+      rowKey: "21/2431",
+      label: (regionId) => (regionId === "2:8" ? "Dunmoor" : "Ereb's Hollow")
+    });
+
+    expect(menu.teach.map((one) => one.unitId)).toEqual(["2517", "2688"]);
+    expect(menu.teach[0]).toMatchObject({ label: "Sable (2517)", blocked: null });
+    expect(menu.teach[1]).toMatchObject({
+      label: "Kestrel (2688)",
+      detail: "in Dunmoor, not here",
+      blocked: "in Dunmoor, not here"
+    });
+  });
+
+  it("warns when every ticked student is refused", () => {
+    const rows = rowsOf();
+    const menu = cellMenu({
+      mageName: "Ereb",
+      turn: 24,
+      standing: rows[0].standings[0],
+      tree,
+      rows,
+      turnIndex: 0,
+      rowKey: "21/2431",
+      label: () => "Dunmoor"
+    });
+
+    expect(teachWarning([menu.teach[1]], 24, "Ereb")).toBe(
+      "Ereb can teach nobody on turn 24. The plan will say so anyway."
+    );
+    expect(teachWarning(menu.teach, 24, "Ereb")).toBeNull();
   });
 });

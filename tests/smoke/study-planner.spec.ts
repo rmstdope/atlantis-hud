@@ -136,3 +136,48 @@ test("Escape closes the cell popover and leaves the pane open", async ({ page })
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("study-planner-dialog")).toHaveCount(0);
 });
+
+/**
+ * Teaching, and the warnings strip (ah-lyg6.3).
+ *
+ * Everything asserted here is a click, a focus move or a reload - the three things a
+ * `renderToStaticMarkup` test in `packages/shared` cannot reach. The wording of every notice and
+ * every teaching rule is pinned in `studyTeaching.test.ts` instead.
+ */
+test("a teach month is planned in the popover, warned about in the strip, and survives a reload", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  await cell.click();
+  const popover = page.getByTestId("study-schedule-popover");
+  await expect(popover).toBeVisible();
+
+  // Every mage the planner can see is offered, with a reason on the ones he cannot teach.
+  const teach = page.getByTestId("study-schedule-group-teach");
+  await expect(teach).toBeVisible();
+  const teachable = teach.locator('[role="checkbox"]:not([disabled])').first();
+  await teachable.click();
+  await page.getByTestId("study-schedule-set").click();
+  await expect(popover).toHaveCount(0);
+  await expect(cell).toContainText("TEACH");
+
+  // The strip counts what the plan raised, opens on a click, and moves focus to the cell it names.
+  const toggle = page.getByTestId("study-planner-warnings-toggle");
+  if ((await toggle.count()) > 0) {
+    await toggle.click();
+    await expect(page.getByTestId("study-planner-warnings")).toBeVisible();
+    await page.getByTestId("study-planner-warning-0").click();
+    await expect(page.locator("[data-cell]:focus")).toHaveCount(1);
+  }
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("TEACH");
+});

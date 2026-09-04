@@ -8,9 +8,11 @@ import {
   goalsAfterSet,
   cellMenu,
   cellWarning,
+  teachWarning,
   type CellMenu
 } from "../studyCell";
-import { hoverCard, type ScheduleRow } from "../studySchedule";
+import { hoverCard, worthMark, type ScheduleRow } from "../studySchedule";
+import { noticeSummary, type PlannerNotice } from "../studyTeaching";
 import type { PlannerGroup } from "../studyPlanner";
 import type { CellEvent, CellMode } from "./studyCellState";
 import { keyToAction } from "./studyCellState";
@@ -36,7 +38,8 @@ export function StudySchedule({
   mode,
   onEvent,
   onCommit,
-  saveError
+  saveError,
+  notices = []
 }: {
   rows: readonly ScheduleRow[];
   /** For the faction headings, worded exactly as the All mages view words them. */
@@ -49,10 +52,16 @@ export function StudySchedule({
   onCommit: (rowKey: string, goals: StudyGoal[]) => void;
   /** `Could not save this plan.`, or null. */
   saveError: string | null;
+  /** Everything the planner has to say about this plan, for the strip and the cell tints. */
+  notices?: readonly PlannerNotice[];
 }) {
   // The card follows the *focused* cell as well as the hovered one, or it would be unreachable
   // without a mouse - and the grid is walked with the arrow keys, which is what moves focus.
   const [at, setAt] = useState<{ rowKey: string; turnIndex: number } | null>(null);
+  // Folded when the pane opens, every time, and not remembered - the same reasoning ah-lyg6.2.2
+  // gave for the picked mage and ah-lyg6.2.3 for the view switch. **Above every return**, like
+  // every other hook in this body; see the comment below.
+  const [stripOpen, setStripOpen] = useState(false);
 
   // `scheduleTurns(null)` is empty, so this component is rendered both before and after a report
   // is loaded, on the same mounted instance. **Every hook in this body stays above every return**:
@@ -77,7 +86,10 @@ export function StudySchedule({
           mageName: open.name,
           turn: turns[mode.turnIndex],
           standing: open.standings[mode.turnIndex] ?? new Map(),
-          tree
+          tree,
+          rows,
+          turnIndex: mode.turnIndex,
+          rowKey: mode.rowKey
         });
 
   if (empty) {
@@ -88,13 +100,66 @@ export function StudySchedule({
     );
   }
 
+  /** Move focus to the cell a notice names, by the address the arrow keys already use. */
+  const focusCell = (notice: PlannerNotice) => {
+    const rowIndex = rows.findIndex((row) => row.key === notice.rowKey);
+    const cell = document.querySelector<HTMLElement>(
+      `[data-cell="${rowIndex}:${notice.turnIndex}"]`
+    );
+    cell?.focus();
+  };
+
   return (
-    <div data-testid="study-schedule" className="min-h-0 overflow-auto">
+    <div data-testid="study-schedule" className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden">
       {saveError === null ? null : (
         <p data-testid="study-schedule-error" className="m-0 px-2 py-1 text-warn">
           {saveError}
         </p>
       )}
+      <div className="px-2 py-1">
+        {notices.length === 0 ? (
+          <p data-testid="study-planner-warnings-none" className="m-0 text-ink-dim">
+            {noticeSummary([])}
+          </p>
+        ) : (
+          <>
+            <button
+              type="button"
+              data-testid="study-planner-warnings-toggle"
+              aria-expanded={stripOpen}
+              onClick={() => setStripOpen((was) => !was)}
+              className="text-ink"
+            >
+              {`${stripOpen ? "▾" : "▸"} ${noticeSummary(notices)}`}
+            </button>
+            {!stripOpen ? null : (
+              <ul
+                data-testid="study-planner-warnings"
+                className="m-0 max-h-36 list-none overflow-y-auto p-0"
+              >
+                {notices.map((notice, index) => (
+                  <li key={`${notice.rowKey}:${notice.turnIndex}:${index}`}>
+                    <button
+                      type="button"
+                      data-testid={`study-planner-warning-${index}`}
+                      onClick={() => focusCell(notice)}
+                      className={`flex w-full gap-2 px-1 text-left ${
+                        notice.level === "warning"
+                          ? "border-l-2 border-warn text-warn"
+                          : "border-l-2 border-edge text-ink-dim"
+                      }`}
+                    >
+                      <span className="flex-1">{notice.text}</span>
+                      <span className="text-ink-dim">{notice.where}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </div>
+      <div className="min-h-0 overflow-auto">
       <ScheduleGrid
         rows={rows}
         groups={groups}
@@ -102,7 +167,9 @@ export function StudySchedule({
         mode={mode}
         onEvent={onEvent}
         onAt={setAt}
+        notices={notices}
       />
+      </div>
       {card === null ? null : <ScheduleHoverCard card={card} />}
       {menu === null || open === null || mode.kind !== "editing" ? null : (
         <CellPopoverLayer
@@ -182,7 +249,8 @@ export function ScheduleGrid({
   turns,
   mode,
   onEvent,
-  onAt
+  onAt,
+  notices
 }: {
   rows: readonly ScheduleRow[];
   groups: readonly PlannerGroup[];
@@ -191,6 +259,8 @@ export function ScheduleGrid({
   onEvent: (event: CellEvent) => void;
   /** Which cell the pointer or the focus is on, for the hover card. Null when neither is. */
   onAt?: (at: { rowKey: string; turnIndex: number } | null) => void;
+  /** Everything the planner has to say, so a cell can be tinted and titled by what it raised. */
+  notices?: readonly PlannerNotice[];
 }) {
   const byKey = new Map(rows.map((row) => [row.key, row]));
   // Arrow keys walk the grid cell by cell; `Enter` is the button's own. Delegated from the table
@@ -255,6 +325,7 @@ export function ScheduleGrid({
             mode={mode}
             onEvent={onEvent}
             onAt={onAt}
+            notices={notices}
             indexOfRow={indexOfRow}
           />
         ))}
@@ -278,7 +349,8 @@ function FactionRows({
   turns,
   mode,
   onEvent,
-  onAt
+  onAt,
+  notices
 }: {
   group: PlannerGroup;
   byKey: ReadonlyMap<string, ScheduleRow>;
@@ -288,6 +360,7 @@ function FactionRows({
   mode: CellMode;
   onEvent: (event: CellEvent) => void;
   onAt?: (at: { rowKey: string; turnIndex: number } | null) => void;
+  notices?: readonly PlannerNotice[];
 }) {
   return (
     <>
@@ -319,12 +392,20 @@ function FactionRows({
               const cell = row.cells[index];
               const open =
                 mode.kind === "editing" && mode.rowKey === row.key && mode.turnIndex === index;
+              const cellNotices = (notices ?? []).filter(
+                (notice) => notice.rowKey === row.key && notice.turnIndex === index
+              );
+              const warned = cellNotices.some((notice) => notice.level === "warning");
               const tint =
-                cell?.kind === "study" && cell.blocked !== null
-                  ? STANDING_CHIP.ceiling
-                  : cell?.kind === "study" && cell.gained
-                    ? STANDING_CHIP.known
-                    : "";
+                cell?.kind === "teach"
+                  ? warned
+                    ? STANDING_CHIP.ceiling
+                    : STANDING_CHIP.maxed
+                  : cell?.kind === "study" && cell.blocked !== null
+                    ? STANDING_CHIP.ceiling
+                    : cell?.kind === "study" && cell.gained
+                      ? STANDING_CHIP.known
+                      : "";
               return (
                 <td key={turn} className="px-1 py-1 align-top">
                   <button
@@ -334,21 +415,35 @@ function FactionRows({
                     aria-expanded={open}
                     onMouseEnter={() => onAt?.({ rowKey: row.key, turnIndex: index })}
                     onFocus={() => onAt?.({ rowKey: row.key, turnIndex: index })}
-                    title={cell?.kind === "study" ? (cell.blocked ?? undefined) : undefined}
+                    title={
+                      cellNotices.length > 0
+                        ? cellNotices.map((notice) => notice.text).join(" ")
+                        : cell?.kind === "study"
+                          ? (cell.blocked ?? undefined)
+                          : undefined
+                    }
                     onClick={() =>
                       onEvent({
                         kind: "cell-clicked",
                         rowKey: row.key,
                         turnIndex: index,
-                        skill: cell?.kind === "study" ? cell.skill : null,
-                        targetLevel: null
+                        pick:
+                          cell?.kind === "study"
+                            ? { kind: "study", skill: cell.skill, targetLevel: null }
+                            : cell?.kind === "teach"
+                              ? { kind: "teach", students: [...cell.students] }
+                              : null
                       })
                     }
                     className={`w-full rounded border px-1 text-left ${tint}`}
                   >
                     {cell === undefined || cell.kind === "idle"
                       ? "+"
-                      : `${cell.name} ${cell.level}`}
+                      : cell.kind === "teach"
+                        ? cell.label
+                        : `${cell.name} ${cell.level}${
+                            worthMark(cell.worth) === "" ? "" : ` ${worthMark(cell.worth)}`
+                          }`}
                   </button>
                 </td>
               );
@@ -403,10 +498,31 @@ export function CellPopover({
   onSet: (goal: StudyGoal) => void;
   onClear: () => void;
 }) {
-  const chosen = [...menu.raise, ...menu.begin, ...menu.notYet].find(
-    (choice) => choice.skill === mode.skill
-  );
-  const warning = chosen === undefined ? null : cellWarning(chosen, turn, mageName);
+  const picked = mode.pick;
+  const chosen =
+    picked?.kind === "study"
+      ? [...menu.raise, ...menu.begin, ...menu.notYet].find(
+          (choice) => choice.skill === picked.skill
+        )
+      : undefined;
+  const ticked = picked?.kind === "teach" ? picked.students : [];
+  const warning =
+    picked?.kind === "teach"
+      ? teachWarning(
+          menu.teach.filter((choice) => ticked.includes(choice.unitId)),
+          turn,
+          mageName
+        )
+      : chosen === undefined
+        ? null
+        : cellWarning(chosen, turn, mageName);
+  /** What Set would write, or null when nothing is picked. */
+  const goal: StudyGoal | null =
+    picked?.kind === "teach"
+      ? { kind: "teach", students: [...picked.students] }
+      : chosen === undefined
+        ? null
+        : { kind: "study", skill: chosen.skill, targetLevel: picked?.kind === "study" ? picked.targetLevel : null };
 
   return (
     <div
@@ -423,9 +539,9 @@ export function CellPopover({
         if (action === "cancel") {
           event.stopPropagation();
           onEvent({ kind: "cancelled" });
-        } else if (action === "set" && chosen !== undefined) {
+        } else if (action === "set" && goal !== null) {
           event.preventDefault();
-          onSet({ kind: "study" as const, skill: chosen.skill, targetLevel: mode.targetLevel });
+          onSet(goal);
         }
       }}
     >
@@ -435,6 +551,32 @@ export function CellPopover({
         <p data-testid="study-schedule-was" className="m-0 text-ink-dim line-through">
           {replacing}
         </p>
+      )}
+
+      {menu.teach.length === 0 ? null : (
+        <div data-testid="study-schedule-group-teach">
+          <p className="m-0 mt-2 text-ink-soft">Teaches</p>
+          <ul className="m-0 list-none p-0">
+            {menu.teach.map((choice) => (
+              <li key={choice.unitId}>
+                <button
+                  type="button"
+                  role="checkbox"
+                  data-testid={`study-schedule-teach-${choice.unitId}`}
+                  aria-checked={ticked.includes(choice.unitId)}
+                  disabled={choice.blocked !== null}
+                  onClick={() => onEvent({ kind: "teach-toggled", unitId: choice.unitId })}
+                  className={`w-full rounded px-1 text-left ${
+                    choice.blocked === null ? "" : "text-ink-dim"
+                  }`}
+                >
+                  <span className="text-ink">{choice.label}</span>{" "}
+                  <span className="text-ink-dim">{choice.detail}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {(
@@ -452,7 +594,7 @@ export function CellPopover({
                 <button
                   type="button"
                   data-testid={`study-schedule-choice-${choice.skill}`}
-                  aria-pressed={mode.skill === choice.skill}
+                  aria-pressed={picked?.kind === "study" && picked.skill === choice.skill}
                   onClick={() => onEvent({ kind: "skill-chosen", skill: choice.skill })}
                   className="w-full rounded px-1 text-left"
                 >
@@ -469,7 +611,11 @@ export function CellPopover({
         to{" "}
         <select
           data-testid="study-schedule-level"
-          value={mode.targetLevel === null ? "" : String(mode.targetLevel)}
+          value={
+            picked?.kind === "study" && picked.targetLevel !== null
+              ? String(picked.targetLevel)
+              : ""
+          }
           onChange={(event) =>
             onEvent({
               kind: "level-chosen",
@@ -507,12 +653,8 @@ export function CellPopover({
         <button
           type="button"
           data-testid="study-schedule-set"
-          disabled={chosen === undefined}
-          onClick={() =>
-            chosen === undefined
-              ? undefined
-              : onSet({ kind: "study" as const, skill: chosen.skill, targetLevel: mode.targetLevel })
-          }
+          disabled={goal === null}
+          onClick={() => (goal === null ? undefined : onSet(goal))}
         >
           Set
         </button>

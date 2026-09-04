@@ -91,6 +91,8 @@ export type ScheduleRow = {
   factionId: string;
   unitId: string;
   name: string;
+  /** `PlannerMage.regionId` - the core's own id. Never formatted here. */
+  regionId: string;
   /** `force 3 · force → 5, then pattern → 3` - the line under the name. */
   summary: string;
   /** True when the mage has a non-empty comment: the pencil. */
@@ -626,6 +628,7 @@ export function scheduleRows(input: {
         factionId: mage.factionId,
         unitId: mage.unitId,
         name: mage.name,
+        regionId: mage.regionId,
         summary: scheduleSummary({ start, goals, tree: input.tree, names }),
         hasNote: (plan?.comment ?? "") !== "",
         goals,

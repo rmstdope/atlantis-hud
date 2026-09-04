@@ -46,8 +46,7 @@ const MIGRATION_0010_ALLIED_MAGES: &str = include_str!("../migrations/0010_allie
 const MIGRATION_0011_STUDY_PLANS: &str = include_str!("../migrations/0011_study_plans.sql");
 const MIGRATION_0012_STUDY_PLAN_GOALS: &str =
     include_str!("../migrations/0012_study_plan_goals.sql");
-const MIGRATION_0013_STUDY_GOAL_KIND: &str =
-    include_str!("../migrations/0013_study_goal_kind.sql");
+const MIGRATION_0013_STUDY_GOAL_KIND: &str = include_str!("../migrations/0013_study_goal_kind.sql");
 
 struct Migration {
     version: u32,

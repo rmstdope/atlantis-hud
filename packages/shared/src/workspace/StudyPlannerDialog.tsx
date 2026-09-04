@@ -13,6 +13,8 @@ import { STANDING_CHIP, standingWords } from "./standingChip";
 import type { StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
 import type { MagicTree } from "../magicTree";
 import { goalQueueText, scheduleRows, scheduleTurns } from "../studySchedule";
+import { plannerNotices } from "../studyTeaching";
+import type { ShelterSeats } from "../studyShelter";
 import { planFor } from "../studyPlans";
 import { STUDY_NOTE_MAX_CHARS, noteCountText, normalizeStudyNote } from "../studyNote";
 import { isMacPlatform } from "../shortcuts";
@@ -48,6 +50,7 @@ export function StudyPlannerDialog({
   alliedStatus,
   selectedUnitId,
   label,
+  seats,
   tree,
   plans,
   viewedTurn,
@@ -66,6 +69,8 @@ export function StudyPlannerDialog({
   selectedUnitId: string | null;
   /** How a region id reads to a player. `AppShell`'s `hexLabel`. */
   label: (regionId: string) => string;
+  /** `shelterSeats(...)` - every structure the report shows and the mages it seats. */
+  seats: ShelterSeats;
   /** The magic tree, for the Schedule's projection and its menus. */
   tree: MagicTree;
   /** Every stored plan of this game, from `useStudyPlansStore`. */
@@ -89,12 +94,26 @@ export function StudyPlannerDialog({
   const turns = useMemo(() => scheduleTurns(viewedTurn), [viewedTurn]);
   // Memoized beside `turns` and `flat`: without it every keystroke in the popover - each skill
   // click, each level change - re-projects every mage over six turns.
+  const factionLabels = useMemo(
+    () => new Map(groups.map((group) => [group.factionId, group.factionLabel] as const)),
+    [groups]
+  );
   const rows = useMemo(
-    () => scheduleRows({ groups, plans, tree, turns }),
-    [groups, plans, tree, turns]
+    () => scheduleRows({ groups, plans, tree, turns, seats }),
+    [groups, plans, tree, turns, seats]
+  );
+  const notices = useMemo(
+    () => plannerNotices({ rows, turns, label, factionLabels }),
+    [rows, turns, label, factionLabels]
   );
 
   const flat = useMemo(() => groups.flatMap((group) => group.mages), [groups]);
+  // Derived from `groups` rather than passed in: `groups` is already a prop, and a second source
+  // for the same names could disagree with it.
+  const names = useMemo(
+    () => new Map(flat.map((mage) => [mage.unitId, mage.name] as const)),
+    [flat]
+  );
   // Not remembered between openings, unlike the tree's picked mage: a planner is a list, and
   // reopening it on your strongest mage is the more predictable of the two.
   const [pickedKey, setPickedKey] = useState<string | null>(
@@ -257,6 +276,7 @@ export function StudyPlannerDialog({
               onSavePlan(factionId, unitId, goals);
             }}
             saveError={saveError}
+            notices={notices}
           />
         ) : picked === null ? (
           <div data-testid="study-planner-empty" className="min-h-0 overflow-y-auto p-3">
@@ -275,6 +295,7 @@ export function StudyPlannerDialog({
             <StudyPlannerDetail
               mage={picked}
               label={label}
+              names={names}
               tree={tree}
               plan={planFor(plans, picked.factionId, picked.unitId)}
               saveError={saveError}
@@ -365,6 +386,7 @@ export function StudyPlannerList({
 export function StudyPlannerDetail({
   mage,
   label,
+  names = new Map(),
   tree,
   plan,
   saveError,
@@ -372,6 +394,8 @@ export function StudyPlannerDetail({
 }: {
   mage: PlannerMage;
   label: (regionId: string) => string;
+  /** Unit id to mage name, so a teach goal in the plan line reads as a name. */
+  names?: ReadonlyMap<string, string>;
   tree: MagicTree;
   /** This mage's stored plan, or null when he has none. */
   plan: StudyPlanRecord | null;
@@ -402,7 +426,7 @@ export function StudyPlannerDetail({
       {/* Read-only: the plan is written in the Schedule view, and two editors for one thing was
           the alternative the navigator rejected. */}
       <p data-testid="study-planner-plan-line" className="mt-2 text-ink-dim">
-        {goalQueueText(plan?.goals ?? [], tree) ?? "nothing planned"}
+        {goalQueueText(plan?.goals ?? [], tree, names) ?? "nothing planned"}
       </p>
 
       <StudyPlannerNote

@@ -47,6 +47,7 @@ describe("what the planner has to say about a plan", () => {
     return {
       factionId: "21",
       unitId: over.key.split("/")[1] ?? "1",
+      regionId: "1:7",
       summary: "",
       hasNote: false,
       goals: [],
