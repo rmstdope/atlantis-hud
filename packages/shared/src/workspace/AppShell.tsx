@@ -3427,12 +3427,14 @@ export function AppShell({
     setSignInPhase(null);
   }, []);
 
-  // A dialog belongs to the game it was opened over. Switching game closes it and aborts anything
-  // in flight: without this the phase survives, and coming back to the game would pop the dialog
-  // open uninvited - the failure `openPopover` already guards against.
+  // A dialog belongs to the game and the world it was opened over. Switching either closes it and
+  // aborts anything in flight: without this the phase survives, and coming back would pop the
+  // dialog open uninvited - the failure `openPopover` already guards against. The ruleset can
+  // change under the same game in Settings, which is why the world is a dependency of its own: a
+  // dialog headed `Sign in to New Age: Arcanum` must not sit over a game that is now Trident.
   useEffect(() => {
     dismissSignIn();
-  }, [openGameId, dismissSignIn]);
+  }, [openGameId, newAgeWorld?.worldId, dismissSignIn]);
 
   /** Forgets this game's token. Nothing to revoke: the world has no logout endpoint. */
   const signOutOfNewAge = useCallback(() => {
