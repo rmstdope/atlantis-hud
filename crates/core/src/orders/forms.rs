@@ -57,6 +57,21 @@ pub enum Party {
     Discard,
 }
 
+/// The alias a `FORM` or a `NEW` names, when the token is one the game would accept.
+///
+/// `rules/form`: "pick an alias number (the only restriction on this is that it must be at least
+/// 1 ...)". A zero alias is not a low alias, it is not an alias, so every reader here refuses it
+/// rather than minting a unit the server will never create.
+///
+/// All-zeros rather than a parse, exactly as `read_party`'s `GIVE 0` test below: the lexer's
+/// `is_number` admits ASCII digits and nothing else, so `0`, `00` and `000` are the only ways to
+/// write zero and there is no sign to consider - and an alias of twenty digits stays an alias,
+/// where `i64::from_str` would fail and be read as no alias at all.
+pub(super) fn read_alias(token: &Token) -> Option<&str> {
+    (token.kind == TokenKind::Number && !token.text.trim_start_matches('0').is_empty())
+        .then_some(token.text.as_str())
+}
+
 /// A unit as an order names it: `17`, `NEW 2`, or `FACTION 15 NEW 2`. Returns what is left.
 pub(super) fn read_party(tokens: &[Token]) -> Option<(Party, &[Token])> {
     let (first, rest) = tokens.split_first()?;
@@ -66,23 +81,21 @@ pub(super) fn read_party(tokens: &[Token]) -> Option<(Party, &[Token])> {
             .split_first()
             .filter(|(f, _)| f.kind == TokenKind::Number)?;
         let rest = rest.split_first().filter(|(kw, _)| kw.is("NEW"))?.1;
-        let (alias, rest) = rest
-            .split_first()
-            .filter(|(a, _)| a.kind == TokenKind::Number)?;
+        let (alias, rest) = rest.split_first()?;
+        let alias = read_alias(alias)?;
         return Some((
             Party::Foreign {
                 faction: faction.text.clone(),
-                alias: alias.text.clone(),
+                alias: alias.to_string(),
             },
             rest,
         ));
     }
 
     if first.is("NEW") {
-        let (alias, rest) = rest
-            .split_first()
-            .filter(|(a, _)| a.kind == TokenKind::Number)?;
-        return Some((Party::New(alias.text.clone()), rest));
+        let (alias, rest) = rest.split_first()?;
+        let alias = read_alias(alias)?;
+        return Some((Party::New(alias.to_string()), rest));
     }
 
     if first.kind != TokenKind::Number {
@@ -240,6 +253,26 @@ mod tests {
         );
         // Unit zero is still one token; what it *means* is the reader's business, not the count's.
         assert_eq!(unit_token_count(&arguments("GIVE 0 ALL SWOR")), 1);
+    }
+
+    /// `rules/form`: an alias "must be at least 1", so `NEW 0` is not a unit reference at all -
+    /// and zero tokens is what puts the validator's mismatch on the `NEW` itself.
+    #[test]
+    fn a_zero_alias_is_not_a_unit_reference() {
+        assert_eq!(unit_token_count(&arguments("GIVE NEW 0 1 SWOR")), 0);
+        assert_eq!(unit_token_count(&arguments("GIVE NEW 00 1 SWOR")), 0);
+        assert_eq!(
+            unit_token_count(&arguments("GIVE FACTION 15 NEW 0 1 SWOR")),
+            0
+        );
+        // Unit zero is a different thing: the discard target, and still one token.
+        assert_eq!(unit_token_count(&arguments("GIVE 0 ALL SWOR")), 1);
+        // A positive alias is unchanged, in both spellings.
+        assert_eq!(unit_token_count(&arguments("GIVE NEW 2 1 SWOR")), 2);
+        assert_eq!(
+            unit_token_count(&arguments("GIVE FACTION 15 NEW 2 1 SWOR")),
+            4
+        );
     }
 
     /// Zero, not a partial count, for every shape that is not a unit reference.

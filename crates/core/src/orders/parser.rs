@@ -513,6 +513,26 @@ mod tests {
         ));
     }
 
+    /// `rules/form`: "the only restriction on this is that it must be at least 1".
+    #[test]
+    fn a_form_alias_of_zero_is_a_bad_argument() {
+        let diagnostic = only("FORM 0\nEND\n");
+        assert_eq!(diagnostic.code, "bad-argument");
+        assert_eq!(
+            diagnostic.message,
+            "expected an alias of 1 or more, found \"0\""
+        );
+    }
+
+    #[test]
+    fn a_zero_alias_is_refused_wherever_a_unit_may_be_named() {
+        assert_eq!(codes("GIVE NEW 0 1 SWOR\n"), ["bad-argument"]);
+        assert_eq!(codes("GIVE FACTION 15 NEW 0 1 SWOR\n"), ["bad-argument"]);
+        assert_eq!(codes("TAKE FROM NEW 0 1 SWOR\n"), ["bad-argument"]);
+        // Unit zero is the discard target and stays legal, as does any positive alias.
+        clean("GIVE 0 ALL SWOR\nFORM 1\nEND\nGIVE NEW 1 1 SWOR\n");
+    }
+
     #[test]
     fn missing_and_malformed_consumed_arguments_remain_errors() {
         assert_eq!(codes("CLAIM"), ["missing-arguments"]);

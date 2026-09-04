@@ -25499,6 +25499,26 @@ mod tests {
         );
     }
 
+    /// A zero alias is a syntax error (`grammar::Arg::Alias`), so it forms nothing and there is
+    /// no second FORM to warn about - one complaint on the line, not two about different things.
+    #[test]
+    fn a_zero_alias_forms_no_unit_and_earns_no_finding() {
+        assert_eq!(
+            check(
+                vec![region(vec![unit("5")])],
+                "unit 5\nFORM 0\nEND\nFORM 0\nEND\n",
+            ),
+            vec![],
+        );
+        assert_eq!(
+            check(
+                vec![region(vec![unit("5")])],
+                "unit 5\nFORM 0\nEND\nGIVE NEW 0 1 SILV\n",
+            ),
+            vec![],
+        );
+    }
+
     #[test]
     fn three_copies_give_two_warnings_each_naming_the_first() {
         let findings = check(

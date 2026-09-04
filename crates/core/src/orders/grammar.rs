@@ -37,6 +37,10 @@ pub enum Arg {
     Object,
     /// A plain number: a quantity, an amount, a level, an alias.
     Number,
+    /// A `FORM` alias: a number of at least 1, which `rules/form` makes the only restriction on
+    /// one. Distinct from [`Arg::Number`] because a zero here is an order the server refuses, and
+    /// distinct from [`Arg::Unit`] because a `FORM` names no existing unit.
+    Alias,
     /// `0` or `1`, which is what the rules mean by `[flag]`.
     Flag,
     /// An item, by tag or by name. Checked against the catalogue when there is one, as a warning.
@@ -279,7 +283,7 @@ pub const GRAMMAR: &[Order] = &[
     },
     Order {
         name: "FORM",
-        forms: &[&[Arg::Number]],
+        forms: &[&[Arg::Alias]],
     },
     Order {
         name: "GIVE",
@@ -689,6 +693,7 @@ pub(super) fn keyword_entries(argument: &Arg) -> Vec<Keyword> {
         | Arg::Faction
         | Arg::Object
         | Arg::Number
+        | Arg::Alias
         | Arg::Flag
         | Arg::Item
         | Arg::Skill
@@ -894,6 +899,7 @@ fn match_arg(
         Arg::Unit => match_unit(arguments, at),
         Arg::Faction | Arg::Object | Arg::Number => usize::from(token.kind == TokenKind::Number),
         Arg::Flag => usize::from(super::forms::flag_value(token).is_some()),
+        Arg::Alias => usize::from(super::forms::read_alias(token).is_some()),
         Arg::MoveStep => usize::from(
             Direction::parse(&token.text).is_some()
                 || token.is("in")
@@ -966,6 +972,7 @@ fn describe(argument: &Arg) -> String {
         Arg::Object => "an object number".to_string(),
         Arg::Number => "a number".to_string(),
         Arg::Flag => "0 or 1".to_string(),
+        Arg::Alias => "an alias of 1 or more".to_string(),
         Arg::Item => "an item".to_string(),
         Arg::Skill => "a skill".to_string(),
         Arg::MoveStep => "a direction, IN, OUT or a structure number".to_string(),

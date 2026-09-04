@@ -1264,11 +1264,12 @@ impl Working {
     }
 
     fn open_form(&mut self, arguments: &[super::lexer::Token]) {
-        // The alias has to be a number: `GIVE NEW n` is the only way to reach the formed unit, and
-        // the grammar's `Arg::Unit` accepts `NEW 1` and never `NEW a`.
+        // The alias has to be a number of at least 1 (`rules/form`): `GIVE NEW n` is the only way
+        // to reach the formed unit, and the grammar's `Arg::Unit` accepts `NEW 1` and never
+        // `NEW a` or `NEW 0`.
         let alias = arguments
             .first()
-            .filter(|alias| alias.kind == super::lexer::TokenKind::Number);
+            .and_then(|token| super::forms::read_alias(token));
         let (Some(alias), Some(parent)) = (alias, self.active()) else {
             // A FORM that cannot be read still opens a block, or its orders would fall through
             // to the unit outside it.
@@ -1277,7 +1278,7 @@ impl Working {
         };
 
         let parent = &self.units[parent].unit;
-        let key = (parent.region_id.clone(), alias.text.clone());
+        let key = (parent.region_id.clone(), alias.to_string());
         if self.by_alias.contains_key(&key) {
             // The alias is taken, so the server would refuse this FORM; its block is swallowed
             // rather than applied to the unit the alias already names.
@@ -1285,7 +1286,7 @@ impl Working {
             return;
         }
 
-        let unit = formed_unit(parent, &alias.text);
+        let unit = formed_unit(parent, alias);
 
         let reported = unit.structure_id.clone();
         let index = self.units.len();
@@ -2674,6 +2675,21 @@ mod tests {
         // into a phantom "items changed" row: the whole leader stock removed from the front of
         // the list and re-appended at its back.
         let response = preview("unit 900\nGIVE 900 1 LEAD\n");
+        assert!(response.regions.is_empty(), "{:?}", response.regions);
+    }
+
+    /// `rules/form` restricts an alias to "at least 1", so a FORM the server would refuse must
+    /// form nothing here either - and the empty response is the stronger claim, because it also
+    /// says the swallowed block's orders did not fall through to unit 900.
+    #[test]
+    fn a_zero_form_alias_forms_nothing() {
+        let response = preview("unit 900\nFORM 0\nNAME UNIT \"Ghost\"\nEND\n");
+        assert!(response.regions.is_empty(), "{:?}", response.regions);
+    }
+
+    #[test]
+    fn a_gift_to_a_zero_alias_moves_nothing() {
+        let response = preview("unit 900\nFORM 0\nEND\nGIVE NEW 0 1 LEAD\n");
         assert!(response.regions.is_empty(), "{:?}", response.regions);
     }
 

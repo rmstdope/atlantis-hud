@@ -253,11 +253,11 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
                 units.last_mut(),
                 line.arguments
                     .first()
-                    .filter(|alias| alias.kind == TokenKind::Number),
+                    .and_then(|token| forms::read_alias(token)),
             ) {
                 unit.intents.push(PlacedIntent {
                     intent: Intent::Form {
-                        alias: alias.text.clone(),
+                        alias: alias.to_string(),
                     },
                     line: line.number,
                     column_start: line.command.column_start,
@@ -276,8 +276,8 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FormedBlock {
     /// The `NEW n` alias, as the orders write it - `1` in `FORM 1`. Never a name: the grammar's
-    /// `Arg::Unit` accepts `NEW 1` and never `NEW a`, so an alias that is not a number forms
-    /// nothing.
+    /// `Arg::Unit` accepts `NEW 1` and never `NEW a` or `NEW 0`, so an alias that is not a number
+    /// of at least one forms nothing.
     pub alias: String,
     /// The unit whose block holds the `FORM`. Where the formed unit's orders are typed, and what
     /// a click on it selects.
@@ -296,9 +296,9 @@ pub struct FormedBlock {
 ///
 /// Mirrors [`super::effects::Working`]'s own walk exactly, so the table's rows and the Silver
 /// column's figures never disagree about which units a document forms: a `FORM` inside a `TURN`
-/// block forms nothing, an alias that is not a number forms nothing, an alias already taken in the
-/// same hex is swallowed, and a nested `FORM`'s orders belong to the innermost forming unit rather
-/// than the outer one. `regions` is where the report shows each existing unit - only a unit's
+/// block forms nothing, an alias that is not a number of at least one forms nothing, an alias
+/// already taken in the same hex is swallowed, and a nested `FORM`'s orders belong to the
+/// innermost forming unit rather than the outer one. `regions` is where the report shows each existing unit - only a unit's
 /// `region_id` is read from it, to key an alias to its hex without this module reaching into the
 /// report itself.
 #[must_use]
@@ -394,11 +394,10 @@ impl FormReader<'_> {
     }
 
     fn open_form(&mut self, arguments: &[Token], line_number: usize) {
-        // The alias has to be a number: `GIVE NEW n` is the only way to reach the formed unit, and
-        // the grammar's `Arg::Unit` accepts `NEW 1` and never `NEW a`.
-        let alias = arguments
-            .first()
-            .filter(|alias| alias.kind == TokenKind::Number);
+        // The alias has to be a number of at least 1 (`rules/form`): `GIVE NEW n` is the only way
+        // to reach the formed unit, and the grammar's `Arg::Unit` accepts `NEW 1` and never
+        // `NEW a` or `NEW 0`.
+        let alias = arguments.first().and_then(|token| forms::read_alias(token));
         let (Some(alias), Some(formed_by), Some(region_id)) =
             (alias, self.parent_id(), self.current_region.clone())
         else {
@@ -408,7 +407,7 @@ impl FormReader<'_> {
             return;
         };
 
-        let key = (region_id, alias.text.clone());
+        let key = (region_id, alias.to_string());
         if self.by_alias.contains_key(&key) {
             // The alias is taken, so the server would refuse this FORM; its block is swallowed
             // rather than applied to the unit the alias already names.
@@ -419,7 +418,7 @@ impl FormReader<'_> {
         let index = self.results.len();
         self.by_alias.insert(key, index);
         self.results.push(FormedBlock {
-            alias: alias.text.clone(),
+            alias: alias.to_string(),
             formed_by,
             block_line: line_number,
             intents: Vec::new(),
@@ -1625,6 +1624,31 @@ mod tests {
             vec![],
             "a FORM the server would refuse forms nothing, and its orders are swallowed rather \
              than falling through to unit 1922"
+        );
+    }
+
+    #[test]
+    fn a_zero_form_alias_forms_nothing() {
+        let region = a_region("hex-1");
+        let regions = regions_with("1922", &region);
+        let formed = read_formed("unit 1922\nFORM 0\nBUY 5 PLAI\nEND\n", &regions);
+        assert_eq!(
+            formed,
+            vec![],
+            "rules/form restricts an alias to at least 1, so this forms nothing and its orders \
+             are swallowed rather than falling through to unit 1922"
+        );
+    }
+
+    #[test]
+    fn a_zero_form_alias_records_no_intent() {
+        let unit = only_unit("unit 5\nFORM 0\nBUY 5 Plainsmen\nEND\n");
+        assert!(
+            !unit
+                .intents
+                .iter()
+                .any(|placed| matches!(placed.intent, Intent::Form { .. })),
+            "{unit:?}"
         );
     }
 
