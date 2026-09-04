@@ -3628,6 +3628,11 @@ struct ReducedBuy {
     ordered: i64,
     /// What it gets.
     bought: i64,
+    /// The `BUY` line itself, so a hex's per-line marker can be anchored where the player is
+    /// typing rather than at whatever order happened to draw the balance down first. `charged_at`
+    /// cannot serve: it holds one entry per `(unit, tag)` - the first order to draw on it - which
+    /// is often a `GIVE` and never more than one line (`ah-szye`).
+    placed: PlacedIntent,
 }
 
 /// A `BUY` line with nothing left to buy, and the limit its own earlier lines had emptied.
@@ -5617,6 +5622,7 @@ fn buy(
             tag: tag.clone(),
             ordered: claimed,
             bought,
+            placed: placed.clone(),
         });
     }
     // `allowed == 0` as well as `already > 0`: since `ah-omn7` a line can buy nothing because the
@@ -7380,11 +7386,43 @@ fn report_shortfalls(
         // player typing the order that overdrew the hex is told nothing where they are looking.
         // Gated on its own code, so silencing one of the two never silences the other; a sharer
         // claims nothing against the pool, so its line is not marked.
+        //
+        // A `BUY` the pool's silver actually cut down is the exception, and it is marked on the
+        // line itself whoever wrote it - a sharer's cut line is still a fact about that line. It
+        // replaces that unit's generic marker rather than joining it, so a player meets one
+        // sentence per line (`ah-szye`, round 1 Q2 ii).
         if options.emits(codes::PART_OF_HEX_SHORTFALL) {
             let name = plurals
                 .get(&tag.to_ascii_uppercase())
                 .cloned()
                 .unwrap_or_else(|| item_name(&tag, hex, ruleset));
+            // Only the SILVER pool's markers carry the clause: a pooled *item* shortfall is a
+            // different scarcity and no `BUY` quantity turns on it.
+            let cut: &[ReducedBuy] = if tag == SILVER {
+                &ledger.reduced_buys
+            } else {
+                &[]
+            };
+            for reduced in cut {
+                let Some(ordered) = hex.find(&reduced.unit_id) else {
+                    continue;
+                };
+                findings.push(ordered.finding(
+                    hex,
+                    codes::PART_OF_HEX_SHORTFALL,
+                    format!(
+                        "This hex is short of {name} between its units, so this order buys {} of \
+                         the {}. See Problems for the hex.",
+                        if reduced.bought == 0 {
+                            "none".to_string()
+                        } else {
+                            reduced.bought.to_string()
+                        },
+                        counted_item(reduced.ordered, &reduced.tag, hex, ruleset, plurals),
+                    ),
+                    Some(&reduced.placed),
+                ));
+            }
             for verdict in &verdicts {
                 let Verdict::DeferredToPool {
                     unit_id,
@@ -7401,6 +7439,11 @@ fn report_shortfalls(
                 let Some(ordered) = hex.find(unit_id) else {
                     continue;
                 };
+                // Its cut lines were marked above, each on its own line; a generic marker as well
+                // would say the same thing twice.
+                if cut.iter().any(|reduced| &reduced.unit_id == unit_id) {
+                    continue;
+                }
                 let at = ledger.charged_at.get(&(unit_id.clone(), tag.clone()));
                 findings.push(ordered.finding(
                     hex,
@@ -19305,6 +19348,81 @@ mod tests {
         );
     }
 
+    /// A `BUY` the shared purse cut down says so on the line the player is typing, not only in
+    /// the hex's own Problems entry (`ah-szye`, round 1 Q2 ii).
+    #[test]
+    fn a_cut_buy_line_says_what_it_buys() {
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region(vec![
+                with_silver(unit("1"), 0),
+                sharing(with_silver(unit("2"), 300)),
+            ])
+        };
+        let found = check(vec![hex], "unit 1\nBUY 5 sword\n");
+        let pointer = found
+            .iter()
+            .find(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL)
+            .unwrap_or_else(|| panic!("a pointer: {found:?}"));
+        assert_eq!(
+            pointer.message,
+            "This hex is short of silver between its units, so this order buys 3 of the 5 swords. \
+             See Problems for the hex."
+        );
+    }
+
+    #[test]
+    fn a_cut_buy_line_that_buys_nothing_says_none() {
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region(vec![
+                with_silver(unit("1"), 0),
+                sharing(with_silver(unit("2"), 50)),
+            ])
+        };
+        let found = check(vec![hex], "unit 1\nBUY 5 sword\n");
+        let pointer = found
+            .iter()
+            .find(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL)
+            .unwrap_or_else(|| panic!("a pointer: {found:?}"));
+        assert_eq!(
+            pointer.message,
+            "This hex is short of silver between its units, so this order buys none of the \
+             5 swords. See Problems for the hex."
+        );
+    }
+
+    /// A line the purse covered keeps today's wording, unchanged (`ah-szye`, W1).
+    #[test]
+    fn an_uncut_line_in_a_short_hex_keeps_its_wording() {
+        let found = check_ignoring_transfer_targets(
+            vec![region(vec![
+                sharing(with_silver(unit("9"), 20)),
+                with_silver(unit("5"), 0),
+                an_ally("4"),
+            ])],
+            "unit 5\nGIVE 4 300 SILV\n",
+        );
+        let pointer = found
+            .iter()
+            .find(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL)
+            .unwrap_or_else(|| panic!("a pointer: {found:?}"));
+        assert_eq!(
+            pointer.message,
+            "This hex is short of silver between its units. See Problems for the hex."
+        );
+    }
+
     #[test]
     fn says_which_goods_the_hex_is_short_of() {
         let items = check_ignoring_transfer_targets(
@@ -24873,7 +24991,7 @@ mod tests {
         let region = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 10,
-                name: "swords".to_string(),
+                name: "sword".to_string(),
                 tag: "SWOR".to_string(),
                 price: 10,
             }],
@@ -30725,7 +30843,7 @@ mod tests {
         let region = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 20,
-                name: "swords".to_string(),
+                name: "sword".to_string(),
                 tag: "SWOR".to_string(),
                 price: 10,
             }],
