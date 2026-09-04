@@ -52,19 +52,16 @@ export function StudySchedule({
 }) {
   // The card follows the *focused* cell as well as the hovered one, or it would be unreachable
   // without a mouse - and the grid is walked with the arrow keys, which is what moves focus.
-  //
-  // Above the `turns.length === 0` guard, and it must stay there: `scheduleTurns(null)` is empty,
-  // so a report loaded or cleared while the planner is open would otherwise change this
-  // component's hook count and React would throw rather than re-render.
   const [at, setAt] = useState<{ rowKey: string; turnIndex: number } | null>(null);
 
-  if (turns.length === 0) {
-    return (
-      <div data-testid="study-schedule" className="min-h-0 overflow-auto p-3">
-        <p className="text-ink-dim">Load a report and the coming six turns appear here.</p>
-      </div>
-    );
-  }
+  // `scheduleTurns(null)` is empty, so this component is rendered both before and after a report
+  // is loaded, on the same mounted instance. **Every hook in this body stays above every return**:
+  // an `if (turns.length === 0) return ...` up here would make them conditional, React would
+  // throw "Rendered more hooks than during the previous render" the moment a report arrived with
+  // the planner open, and nothing would catch it - this package has no jsdom (ah-nass), so no
+  // test in it can re-render a live instance, and `eslint-plugin-react-hooks` is not registered
+  // in `eslint.config.mjs`.
+  const empty = turns.length === 0;
 
   const hovered = at === null ? null : rows.find((row) => row.key === at.rowKey) ?? null;
   const card =
@@ -82,6 +79,14 @@ export function StudySchedule({
           standing: open.standings[mode.turnIndex] ?? new Map(),
           tree
         });
+
+  if (empty) {
+    return (
+      <div data-testid="study-schedule" className="min-h-0 overflow-auto p-3">
+        <p className="text-ink-dim">Load a report and the coming six turns appear here.</p>
+      </div>
+    );
+  }
 
   return (
     <div data-testid="study-schedule" className="min-h-0 overflow-auto">
@@ -325,7 +330,7 @@ function FactionRows({
                   <button
                     type="button"
                     data-testid={`study-schedule-cell-${row.unitId}-${turn}`}
-                    data-cell={`${indexOfRow.get(row.key) ?? 0}:${index}`}
+                    data-cell={`${indexOfRow.get(row.key) ?? -1}:${index}`}
                     aria-expanded={open}
                     onMouseEnter={() => onAt?.({ rowKey: row.key, turnIndex: index })}
                     onFocus={() => onAt?.({ rowKey: row.key, turnIndex: index })}

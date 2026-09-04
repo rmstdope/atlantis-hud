@@ -153,8 +153,11 @@ describe("StudySchedule", () => {
     expect(markup).not.toContain("study-schedule-cell-");
   });
 
-  // The hook that holds the pointed-at cell sits above that guard. Below it, loading a report
-  // while the planner is open would change this component's hook count and React would throw.
+  // Both paths, from one component. This does **not** reproduce a hook-order change and cannot:
+  // `renderToStaticMarkup` is a one-shot server render, and React's hook-count invariant only
+  // fires when a live instance re-renders - which this package cannot do, having no jsdom
+  // (ah-nass). What keeps that defect out is structural instead: every hook in `StudySchedule`
+  // sits above every return, and its own comment says why.
   it("draws the grid once a report is loaded, from the same component", () => {
     expect(schedule(turns)).toContain("study-schedule-cell-2431-24");
   });
