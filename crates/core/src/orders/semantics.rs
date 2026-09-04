@@ -3672,8 +3672,6 @@ struct Ledger<'a> {
     ruleset: Option<&'a Ruleset>,
     /// What each unit would hold once its orders had run, keyed by unit and item tag.
     state: PhaseState,
-    /// Materials consumed by manufacturing after movement, keyed like `balance`.
-    manufacturing_spent: BTreeMap<(String, String), i64>,
     /// What each PRODUCE created, and what later orders then spent, keyed like `balance` and held
     /// per phase.
     ///
@@ -3751,15 +3749,6 @@ struct Ledger<'a> {
     /// handling this ledger cannot express, so recording either here would double-apply it
     /// (`ah-agbm`, `ah-3mwm`).
     pub(crate) movements: Vec<ItemMovement>,
-    /// Goods a resolvable, non-Nexus `WITHDRAW` order credited this month, keyed by unit and
-    /// normalized item tag exactly as `credit` normalizes them. Movement-phase state only
-    /// (`ah-0wpn`): `rules/withdraw` acquires the goods before movement, but `Ledger.balance` has
-    /// many readers outside movement - `PhaseState::stocks`, `judge_shortfalls`, recruitment,
-    /// production, study, maintenance and the Silver forecast all intentionally read that map as
-    /// their own phase model, and crediting it here would change every one of those. Read only by
-    /// `holdings_at_movement`, which is the sole inventory source for `weight_after_orders` and
-    /// `capacity_after_orders`.
-    pub(crate) withdrawn_for_movement: BTreeMap<(String, String), i64>,
     /// Lines whose effect on a unit's items could not be counted at all, by unit, in document
     /// order (`ah-agbm`).
     pub(crate) uncounted: BTreeMap<String, Vec<usize>>,
@@ -4030,7 +4019,6 @@ fn ledger_for_with_production<'a>(
     let mut ledger = Ledger {
         ruleset,
         state: PhaseState::from_hex(hex),
-        manufacturing_spent: BTreeMap::new(),
         produced: BTreeMap::new(),
         production_materials: BTreeMap::new(),
         spent_after_production: BTreeMap::new(),
@@ -4043,7 +4031,6 @@ fn ledger_for_with_production<'a>(
         maintenance_pooled: false,
         faction_food: FactionFoodPass::default(),
         movements: Vec::new(),
-        withdrawn_for_movement: BTreeMap::new(),
         uncounted: BTreeMap::new(),
         refused_recruits: Vec::new(),
         built: BTreeMap::new(),
@@ -5455,7 +5442,7 @@ fn apply(
                 });
                 ledger
                     .state
-                    .apply(StatePhase::Withdraw, &who, &tag, *count);
+                    .apply(StatePhase::Withdraw, who, &tag, *count);
             }
         }
         // Wages and takings from entertaining are paid in the last phase of the turn, after study
@@ -7273,12 +7260,6 @@ fn charge_shared_material(
             .spent_after_production
             .entry((unit_id.clone(), tag.to_ascii_uppercase()))
             .or_insert([0; StatePhase::COUNT])[phase as usize] += debit.amount;
-        if phase == StatePhase::Manufacturing {
-            *ledger
-                .manufacturing_spent
-                .entry((unit_id.clone(), tag.to_ascii_uppercase()))
-                .or_insert(0) += debit.amount;
-        }
         ledger.movements.push(ItemMovement {
             unit_id,
             tag: tag.to_ascii_uppercase(),
@@ -30506,6 +30487,27 @@ BUILD
         );
         assert_eq!(
             finding.message,
+            "this unit is overloaded: it carries 16 and the most it can move with is 15, so it \
+             will not move"
+        );
+    }
+
+    /// The whole point of the phase model (`ah-728m.3`): the order a player writes their block in
+    /// does not change the order `rules/sequenceofevents` runs it in, so a WITHDRAW written after
+    /// the MOVE still counts toward the load the MOVE is judged against.
+    #[test]
+    fn a_withdrawal_written_before_or_after_a_move_gives_the_same_load() {
+        let before = only(check(
+            vec![region(vec![one_human("12054")])],
+            "unit 12054\nWITHDRAW 6 WSHD\nMOVE N\n",
+        ));
+        let after = only(check(
+            vec![region(vec![one_human("12054")])],
+            "unit 12054\nMOVE N\nWITHDRAW 6 WSHD\n",
+        ));
+        assert_eq!(before.message, after.message);
+        assert_eq!(
+            after.message,
             "this unit is overloaded: it carries 16 and the most it can move with is 15, so it \
              will not move"
         );
