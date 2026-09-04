@@ -145,6 +145,9 @@ type AppHeaderProps = {
   /** Opens the map export dialog. Off until a report is on screen to export a map of. */
   onExportMap: () => void;
   canExportMap: boolean;
+  onExportMageSheet: () => void;
+  /** Off without a report or without the ruleset: neither can say which units are mages. */
+  canExportMageSheet: boolean;
   /**
    * Puts this turn's orders on the game server, when this shell can.
    *
@@ -205,6 +208,8 @@ export function AppHeader({
   canExportLong,
   onExportMap,
   canExportMap,
+  onExportMageSheet,
+  canExportMageSheet,
   onSendOrders,
   canSend = false,
   sendDisabledReason,
@@ -569,9 +574,11 @@ export function AppHeader({
             canExportOrders={canExport}
             canExportOrdersLong={canExportLong}
             canExportMap={canExportMap}
+            canExportMageSheet={canExportMageSheet}
             onExportOrders={onExportOrders}
             onExportOrdersLong={onExportOrdersLong}
             onExportMap={onExportMap}
+            onExportMageSheet={onExportMageSheet}
             onDismiss={close}
           />
         }

@@ -41,6 +41,8 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
       canExportLong={false}
       onExportMap={() => {}}
       canExportMap={false}
+      onExportMageSheet={() => {}}
+      canExportMageSheet={false}
       settingsOpen={false}
       onToggleSettings={() => {}}
       settings={null}

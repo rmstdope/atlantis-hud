@@ -4,7 +4,7 @@
 //! each winning, and hands them to [`super::write`]. The result is meant to be traded: a human can
 //! read it, and our own import can merge it, because it is written in the game's own syntax.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +12,7 @@ use super::header::ReportHeader;
 use super::model::ReportRegion;
 use super::region::parse_region_header;
 use super::unwrap::unwrap_lines;
-use super::write::{write_region, ExportContent};
+use super::write::{write_mage_region, write_region, ExportContent};
 use super::{opens_a_region, ParsedReport};
 use crate::cache::ReportCache;
 use crate::movement::graph::RememberedRegion;
@@ -174,6 +174,78 @@ fn gather(
     // North to south, west to east, which is the order a report itself prints hexes in.
     regions.sort_by_key(|shared| (shared.region.coordinate.y, shared.region.coordinate.x));
     regions
+}
+
+/// The first line every mage sheet carries, and the whole test for whether a file is one.
+///
+/// The shell will gain its own copy in `packages/shared` when the import side is built; nothing
+/// compiles a check between the two, so a round trip is what catches a divergence.
+pub const MAGE_SHEET_MARKER: &str = "; Mage sheet from Atlantis HUD";
+
+/// Writes the named units as a report fragment an ally's client can read back.
+///
+/// `unit_ids` decides who is a mage; this function never asks the ruleset. The shell already
+/// derives that list with `magesOf`, and a second definition in Rust is a second thing to drift.
+#[must_use]
+pub fn export_mage_sheet(report: &ParsedReport, unit_ids: &BTreeSet<String>) -> String {
+    let mut text = String::from(MAGE_SHEET_MARKER);
+    text.push('\n');
+    if let Some(line) = mage_sheet_note(&report.header) {
+        text.push_str(&line);
+        text.push('\n');
+    }
+    text.push('\n');
+    text.push_str(&write_header(&report.header));
+
+    for region in &report.regions {
+        if region
+            .units
+            .iter()
+            .any(|unit| unit_ids.contains(&unit.unit_id))
+        {
+            text.push_str(&write_mage_region(region, unit_ids));
+        }
+    }
+
+    text
+}
+
+/// One comment naming the faction and the turn, for a person opening the file in a mail client.
+///
+/// The real report header underneath is what an importer reads; this is for the human. With
+/// neither a faction nor a turn there is nothing to say, and the line is omitted.
+fn mage_sheet_note(header: &ReportHeader) -> Option<String> {
+    let faction = match (&header.faction_name, &header.faction_id) {
+        // The id is the half that identifies a faction, so a nameless one still gets a line.
+        (Some(name), Some(id)) => Some(format!("{name} ({id})")),
+        (None, Some(id)) => Some(format!("({id})")),
+        (Some(name), None) => Some(name.clone()),
+        (None, None) => None,
+    };
+
+    match (faction, header.turn_number) {
+        (Some(faction), Some(turn)) => Some(format!("; {faction}, turn {turn}")),
+        (Some(faction), None) => Some(format!("; {faction}")),
+        (None, Some(turn)) => Some(format!("; turn {turn}")),
+        (None, None) => None,
+    }
+}
+
+/// The same, over the wire shape the adapters carry.
+///
+/// # Errors
+///
+/// Returns an error when `unit_ids_json` cannot be read as a list of strings.
+pub fn export_mage_sheet_text(
+    cache: &mut ReportCache,
+    raw_report: &str,
+    unit_ids_json: &str,
+) -> Result<String, String> {
+    let unit_ids: BTreeSet<String> = serde_json::from_str(unit_ids_json)
+        .map_err(|error| format!("unit ids could not be read: {error}"))?;
+
+    let report = cache.report(raw_report);
+    Ok(export_mage_sheet(&report, &unit_ids))
 }
 
 /// The comment lines saying what this file is, before it starts pretending to be a report.
@@ -579,5 +651,194 @@ mod tests {
         let ages = map_export_ages(&text);
 
         assert_eq!(ages.len(), 1, "one aged hex, not its exits too: {ages:?}");
+    }
+
+    const MAGE_REPORT: &str = concat!(
+        "Atlantis Report For:\n",
+        "Borg (21) (Magic 5)\n",
+        "December, Year 6\n",
+        "\n",
+        "plain (3,7) in Isaen, contains Sarn [village], 1200 peasants (humans), $600.\n",
+        "------------------------------------------------------------\n",
+        "  Wages: $12.5 (Max: $400).\n",
+        "  Wanted: 10 grain [GRAI] at $30.\n",
+        "  For Sale: 5 leather armor [LARM] at $90.\n",
+        "  Products: 57 grain [GRAI].\n",
+        "\n",
+        "Exits:\n",
+        "  North : plain (3,5) in Isaen.\n",
+        "\n",
+        "* Woodsman (300), Borg (21), behind, 2 leaders [LEAD]. Skills: lumberjack [LUMB] 2 (90).\n",
+        "* Outdoor Mage (301), Borg (21), behind, 1 leader [LEAD]. Skills: force [FORC] 3 (180), pattern [PATT] 1 (30).\n",
+        "\n",
+        "+ Tower [500] : Tower.\n",
+        "  * Housed Mage (302), Borg (21), behind, 1 leader [LEAD]. Skills: force [FORC] 2 (105).\n",
+        "\n",
+        "+ Shed [501] : Shaft.\n",
+        "  * Miner (303), Borg (21), behind, 1 leader [LEAD]. Skills: mining [MINI] 1 (30).\n",
+    );
+
+    fn mage_ids() -> BTreeSet<String> {
+        ["301".to_string(), "302".to_string()].into_iter().collect()
+    }
+
+    #[test]
+    fn a_mage_sheet_reads_back_as_the_named_mages_owned_by_nobody() {
+        let text = export_mage_sheet(&parse_report_full(MAGE_REPORT), &mage_ids());
+        assert!(
+            text.starts_with(MAGE_SHEET_MARKER),
+            "the marker opens the file:\n{text}"
+        );
+
+        let back = parse_report_full(&text);
+        let units: Vec<_> = back.regions.iter().flat_map(|r| r.units.iter()).collect();
+        assert_eq!(units.len(), 2, "only the named mages:\n{text}");
+
+        let outdoor = units
+            .iter()
+            .find(|unit| unit.unit_id == "301")
+            .expect("the outdoor mage");
+        assert_eq!(outdoor.name, "Outdoor Mage");
+        assert!(
+            !outdoor.own,
+            "a sheet must not arrive as the ally's own units"
+        );
+        assert_eq!(outdoor.faction_id.as_deref(), Some("21"));
+        assert_eq!(outdoor.faction_name.as_deref(), Some("Borg"));
+        assert_eq!(outdoor.structure_id, None);
+        let skills: Vec<_> = outdoor
+            .skills
+            .iter()
+            .map(|skill| (skill.tag.as_str(), skill.level, skill.points))
+            .collect();
+        assert_eq!(skills, vec![("FORC", 3, 180), ("PATT", 1, 30)]);
+
+        let housed = units
+            .iter()
+            .find(|unit| unit.unit_id == "302")
+            .expect("the housed mage");
+        assert!(
+            !housed.own,
+            "a sheet must not arrive as the ally's own units"
+        );
+        assert_eq!(housed.structure_id.as_deref(), Some("500"));
+
+        assert!(
+            !units.iter().any(|unit| unit.unit_id == "300"),
+            "the woodcutter is not a mage:\n{text}"
+        );
+    }
+
+    #[test]
+    fn a_mage_sheet_shares_no_market_wages_or_exits() {
+        let text = export_mage_sheet(&parse_report_full(MAGE_REPORT), &mage_ids());
+
+        for forbidden in ["Wanted:", "For Sale:", "Products:", "Wages:", "Exits"] {
+            assert!(
+                !text.contains(forbidden),
+                "{forbidden} is the hex's trade, not the mages':\n{text}"
+            );
+        }
+
+        let region = back_region(&text);
+        assert!(region.wanted.is_empty());
+        assert!(region.for_sale.is_empty());
+        assert!(region.products.is_empty());
+        assert!(region.exits.is_empty());
+    }
+
+    fn back_region(text: &str) -> ReportRegion {
+        parse_report_full(text)
+            .regions
+            .into_iter()
+            .next()
+            .expect("one region")
+    }
+
+    #[test]
+    fn a_faction_with_no_mages_writes_a_sheet_with_no_units() {
+        let text = export_mage_sheet(&parse_report_full(MAGE_REPORT), &BTreeSet::new());
+
+        assert!(text.starts_with(MAGE_SHEET_MARKER), "{text}");
+        assert!(text.contains("Atlantis Report For:"), "{text}");
+        assert!(text.contains("Borg (21)"), "{text}");
+
+        let back = parse_report_full(&text);
+        assert_eq!(
+            back.regions.iter().flat_map(|r| r.units.iter()).count(),
+            0,
+            "an empty sheet is a true statement:\n{text}"
+        );
+    }
+
+    #[test]
+    fn export_mage_sheet_text_reads_its_ids_and_refuses_nonsense() {
+        let mut cache = ReportCache::default();
+        let text = export_mage_sheet_text(&mut cache, MAGE_REPORT, "[\"301\",\"302\"]")
+            .expect("a good id list");
+        assert_eq!(
+            text,
+            export_mage_sheet(&parse_report_full(MAGE_REPORT), &mage_ids())
+        );
+
+        assert!(export_mage_sheet_text(&mut cache, MAGE_REPORT, "{").is_err());
+    }
+
+    /// The buildings are the player's secret as much as the market is: a structure nobody named
+    /// stands in has no business appearing in a file about mages.
+    #[test]
+    fn a_mage_sheet_leaves_out_a_structure_holding_no_named_unit() {
+        let text = export_mage_sheet(&parse_report_full(MAGE_REPORT), &mage_ids());
+
+        assert!(
+            text.contains("Tower [500]"),
+            "the mage's own tower:\n{text}"
+        );
+        assert!(
+            !text.contains("Shed [501]"),
+            "a building with no named mage in it is not shared:\n{text}"
+        );
+        assert!(!text.contains("Miner"), "{text}");
+    }
+
+    /// The comment line a person reads when the file arrives in their mail.
+    ///
+    /// Every one of the four faction shapes is pinned against both a known and an unknown turn,
+    /// because the navigator settled the cases one at a time; the name-with-no-id shape is mine,
+    /// and follows the id-only case in naming whichever half identifies the faction.
+    #[test]
+    fn the_human_comment_names_whichever_of_the_faction_and_the_turn_is_known() {
+        let note = |name: Option<&str>, id: Option<&str>, turn: Option<u32>| {
+            let header = ReportHeader {
+                faction_name: name.map(str::to_string),
+                faction_id: id.map(str::to_string),
+                turn_number: turn,
+                ..ReportHeader::default()
+            };
+            mage_sheet_note(&header)
+        };
+
+        assert_eq!(
+            note(Some("Borg"), Some("21"), Some(23)).as_deref(),
+            Some("; Borg (21), turn 23")
+        );
+        assert_eq!(
+            note(Some("Borg"), Some("21"), None).as_deref(),
+            Some("; Borg (21)")
+        );
+        assert_eq!(note(None, None, Some(23)).as_deref(), Some("; turn 23"));
+        assert_eq!(note(None, None, None), None, "nothing to say, so no line");
+        assert_eq!(
+            note(None, Some("21"), Some(23)).as_deref(),
+            Some("; (21), turn 23"),
+            "the id is the half that identifies a faction"
+        );
+        assert_eq!(
+            note(Some("Borg"), None, Some(23)).as_deref(),
+            Some("; Borg, turn 23"),
+            "a name with no id still names the sender"
+        );
+        assert_eq!(note(None, Some("21"), None).as_deref(), Some("; (21)"));
+        assert_eq!(note(Some("Borg"), None, None).as_deref(), Some("; Borg"));
     }
 }

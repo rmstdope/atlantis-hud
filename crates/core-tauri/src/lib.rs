@@ -1034,6 +1034,29 @@ pub mod commands {
         })
     }
 
+    /// Writes every named unit out as a report fragment an ally can read back.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the unit ids cannot be read. An empty list is a successful answer
+    /// carrying a header and no units.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "export_mage_sheet")
+    )]
+    pub fn command_export_mage_sheet(
+        raw_report: &str,
+        unit_ids_json: &str,
+    ) -> Result<String, String> {
+        atlantis_hud_core::cache::with_global(|cache| {
+            atlantis_hud_core::report::export::export_mage_sheet_text(
+                cache,
+                raw_report,
+                unit_ids_json,
+            )
+        })
+    }
+
     /// Resolves everything the faction knows about the map, once, for a caller on either shell.
     ///
     /// The desktop twin of the wasm binding, delegating to the same core entry so the two shells
@@ -1155,15 +1178,16 @@ pub mod commands {
 
 pub use commands::{
     command_commit_report_import, command_completions_at_caret, command_delete_army,
-    command_delete_hex_note, command_export_map, command_get_engine_info, command_known_map,
-    command_list_armies, command_list_hex_notes, command_list_imported_turns,
-    command_load_imported_turn, command_load_latest_imported_turn, command_load_merged_reports,
-    command_load_order_draft, command_load_region_sightings, command_merge_report,
-    command_order_argument_completions, command_order_commands, command_order_vocabulary,
-    command_parse_report, command_parse_report_classified, command_parse_report_full,
-    command_plan_route, command_preview_orders, command_preview_report_import,
-    command_roster_skills, command_save_army, command_save_hex_note, command_save_order_draft,
-    command_trace_move_orders, command_trade_routes, command_validate_orders,
+    command_delete_hex_note, command_export_mage_sheet, command_export_map,
+    command_get_engine_info, command_known_map, command_list_armies, command_list_hex_notes,
+    command_list_imported_turns, command_load_imported_turn, command_load_latest_imported_turn,
+    command_load_merged_reports, command_load_order_draft, command_load_region_sightings,
+    command_merge_report, command_order_argument_completions, command_order_commands,
+    command_order_vocabulary, command_parse_report, command_parse_report_classified,
+    command_parse_report_full, command_plan_route, command_preview_orders,
+    command_preview_report_import, command_roster_skills, command_save_army, command_save_hex_note,
+    command_save_order_draft, command_trace_move_orders, command_trade_routes,
+    command_validate_orders,
 };
 
 /// Creates a game under the application's games directory and applies migrations.

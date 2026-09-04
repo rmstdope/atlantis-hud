@@ -513,6 +513,26 @@ pub fn export_map_state(
     to_js(&text)
 }
 
+/// Writes every named unit out as a report fragment an ally can read back.
+///
+/// The browser twin of the desktop command, calling the same core entry so a sheet exported in the
+/// browser and the same sheet exported on the desktop come out byte for byte identical.
+#[wasm_bindgen]
+pub fn export_mage_sheet_state(
+    raw_report: String,
+    unit_ids_json: String,
+) -> Result<JsValue, JsValue> {
+    let text = atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::report::export::export_mage_sheet_text(
+            cache,
+            &raw_report,
+            &unit_ids_json,
+        )
+    })
+    .map_err(|error| JsValue::from_str(&error))?;
+    to_js(&text)
+}
+
 /// Resolves everything the faction knows about the map, once, for a caller on either shell.
 ///
 /// The browser twin of the desktop command, calling the same core entry so the two shells cannot

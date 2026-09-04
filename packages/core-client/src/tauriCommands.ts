@@ -84,6 +84,7 @@ export const TAURI_COMMANDS = {
     "map_json"
   ],
   exportMap: ["export_map", "raw_report", "remembered_json", "request_json"],
+  exportMageSheet: ["export_mage_sheet", "raw_report", "unit_ids_json"],
   knownMap: ["known_map", "raw_report", "ruleset_json", "remembered_json"],
   previewOrders: [
     "preview_orders",

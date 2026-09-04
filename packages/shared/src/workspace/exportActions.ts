@@ -12,6 +12,7 @@ import { battleFileName, battleFileOf, battleFileText } from "../armyExport";
 import type { DerivedSkills } from "../battleSkills";
 import type { TextFileSaver } from "../downloadFile";
 import { backupFileName } from "../gameBackup";
+import { mageSheetFileName } from "../mageSheet";
 import { exportFileName, exportRequestOf } from "../mapExport";
 import { ordersExportText } from "./ordersExport";
 import type { MapRect } from "./mapMarquee";
@@ -80,6 +81,26 @@ export async function deliverMapExport(
   const text = await client.exportMap(rawReport, rememberedJson, exportRequestOf(rect, level, content));
   const fileName = exportFileName(turnNumber, level);
   return saveTextFile(fileName, text, "text/plain");
+}
+
+/**
+ * Renders and delivers a mage sheet - every named unit as a report fragment an ally can read back
+ * (`ah-lyg6.1.1`). `unitIds` is the shell's own list of mages; the core never asks the ruleset.
+ *
+ * Resolves with the path written, `""` for a browser download, or `null` when the player cancelled
+ * the save. Rejects when the core cannot render the sheet; the caller reports it.
+ */
+export async function deliverMageSheetExport(
+  client: Pick<CoreClient, "exportMageSheet">,
+  saveTextFile: TextFileSaver,
+  rawReport: string,
+  unitIds: readonly string[],
+  factionName: string | null,
+  factionId: string | null,
+  turnNumber: number | null
+): Promise<string | null> {
+  const text = await client.exportMageSheet(rawReport, JSON.stringify(unitIds));
+  return saveTextFile(mageSheetFileName(factionName, factionId, turnNumber), text, "text/plain");
 }
 
 /**

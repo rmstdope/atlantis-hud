@@ -48,6 +48,7 @@ import { ordersExportText } from "./ordersExport";
 import {
   deliverArmyExport,
   deliverGameBackupExport,
+  deliverMageSheetExport,
   deliverMapExport,
   deliverOrdersExport
 } from "./exportActions";
@@ -3134,6 +3135,36 @@ export function AppShell({
   );
 
   /**
+   * Writes every mage the faction has out as a report fragment an ally can read back
+   * (`ah-lyg6.1.1`).
+   *
+   * The ruleset is what tells a mage from a woodcutter, so the entry that fires this is off
+   * without one; `mages` would otherwise be empty and the sheet a silent lie.
+   */
+  const exportMageSheet = useCallback(async () => {
+    if (!rawReport) {
+      return;
+    }
+    setExportError(null);
+    await runReported(
+      async () => {
+        // A cancelled save is silent, exactly as the exporters beside it behave.
+        await deliverMageSheetExport(
+          client,
+          saveTextFile,
+          rawReport,
+          mages.map((mage) => mage.unitId),
+          parsed?.header.factionName ?? null,
+          parsed?.header.factionId ?? null,
+          parsed?.header.turnNumber ?? null
+        );
+      },
+      setExportError,
+      { busy: setExportBusy }
+    );
+  }, [client, mages, parsed, rawReport, saveTextFile]);
+
+  /**
    * Writes one or two Armies out as a battle file the simulator loads (`ah-1mpx.3`).
    *
    * Same contract as the map export above: a cancelled save dialog leaves this one standing,
@@ -3680,6 +3711,8 @@ export function AppShell({
         canExportLong={ordersDocument.length > 0 && ordersTemplateText !== null}
         onExportMap={() => openExport()}
         canExportMap={parsed !== null}
+        onExportMageSheet={() => void exportMageSheet()}
+        canExportMageSheet={parsed !== null && gameData !== null}
         settingsOpen={settingsOpen}
         onToggleSettings={() => setSettingsOpen((open) => !open)}
         settings={settingsPanel}

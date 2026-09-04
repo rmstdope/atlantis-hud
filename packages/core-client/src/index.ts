@@ -755,6 +755,11 @@ export interface CoreAdapter {
     mapJson: string
   ): Promise<MoveOrderTraceResponse>;
   exportMap(rawReport: string, rememberedJson: string, requestJson: string): Promise<string>;
+  /**
+   * Every named unit written out as a report fragment an ally can read back. `unitIdsJson` is a
+   * JSON array of unit ids; the caller decides who is a mage, so the core never asks the ruleset.
+   */
+  exportMageSheet(rawReport: string, unitIdsJson: string): Promise<string>;
   knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string): Promise<KnownMap>;
   previewOrders(
     rulesetJson: string,

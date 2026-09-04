@@ -82,6 +82,7 @@ export type CoreWasmModule = {
     mapJson: string
   ): MoveOrderTraceResponse;
   export_map_state(rawReport: string, rememberedJson: string, requestJson: string): string;
+  export_mage_sheet_state(rawReport: string, unitIdsJson: string): string;
   known_map_state(
     rawReport: string,
     rulesetJson: string | null,
@@ -489,6 +490,11 @@ export function createWebCoreAdapter(
       // Straight through as well: the export is pure computation over the arguments, and the file
       // it produces is handed back as text for the shell to save.
       return wasm.export_map_state(rawReport, rememberedJson, requestJson);
+    },
+    async exportMageSheet(rawReport: string, unitIdsJson: string) {
+      // Straight through as well: the sheet is pure computation over the arguments, and the file
+      // it produces is handed back as text for the shell to save.
+      return wasm.export_mage_sheet_state(rawReport, unitIdsJson);
     },
     async knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string) {
       // Straight through as well: the resolution is pure computation over the arguments.
