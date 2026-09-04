@@ -51,7 +51,10 @@ fn orders_for(script: &str) -> String {
 }
 
 /// The two document orders the answer must not depend on.
-const SCRIPTS: [&str; 2] = ["STUDY COMB\nGIVE 901 ALL SILV", "GIVE 901 ALL SILV\nSTUDY COMB"];
+const SCRIPTS: [&str; 2] = [
+    "STUDY COMB\nGIVE 901 ALL SILV",
+    "GIVE 901 ALL SILV\nSTUDY COMB",
+];
 
 #[test]
 fn the_silver_column_gives_the_whole_purse_and_says_the_study_is_short() {

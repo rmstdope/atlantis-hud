@@ -1942,13 +1942,11 @@ pub fn forecast_unit(
         // the instant orders and the gifts of others put there, less the exact gifts of this block
         // alone. A study and a manufacture are charged in the turn's last block and neither makes
         // the gift smaller (`ah-a5ci`).
-        let mut running = held
-            .saturating_add(give_phase_income)
-            .saturating_sub(
-                expense
-                    .saturating_sub(cast_expense)
-                    .saturating_sub(month_long_expense),
-            );
+        let mut running = held.saturating_add(give_phase_income).saturating_sub(
+            expense
+                .saturating_sub(cast_expense)
+                .saturating_sub(month_long_expense),
+        );
         // Give phase: `rules/sequenceofevents` settles GIVE before the market opens, so this
         // pass runs whatever line the gift was written on (`ah-npab`).
         for spend in &deferred {
