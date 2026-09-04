@@ -7,7 +7,7 @@
  * `--database`, and it is only a guard, so it needs a test rather than a comment.
  */
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +17,9 @@ const ARCANUM = {
   rules: "tests/fixtures/ruleset/newage-arcanum-rules.html",
   database: "tests/fixtures/ruleset/newage-arcanum-database.json"
 };
+
+/** Repository-relative, so the case proves where a relative `--out` actually lands. */
+const RELATIVE_OUT = ".cerebro/scratch/ruleset-cli-test.json";
 
 /** Runs the CLI with these arguments, returning what it threw, if anything. */
 async function run(args: string[]): Promise<Error | null> {
@@ -36,17 +39,27 @@ async function run(args: string[]): Promise<Error | null> {
 
 const REAL_ARGV = [...process.argv];
 
+/** Temporary directories this file made, removed after each case rather than left in /tmp. */
+const scratchDirectories: string[] = [];
+
+function scratchDirectory(): string {
+  const directory = mkdtempSync(join(tmpdir(), "ruleset-cli-"));
+  scratchDirectories.push(directory);
+  return directory;
+}
+
 afterEach(() => {
   process.argv.length = 0;
   process.argv.push(...REAL_ARGV);
-  rmSync(new URL("../../../.cerebro/scratch/ruleset-cli-test.json", import.meta.url), {
-    force: true
-  });
+  rmSync(new URL(`../../../${RELATIVE_OUT}`, import.meta.url), { force: true });
+  for (const directory of scratchDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 describe("the scraper CLI", () => {
   it("reads a JSON database as a catalogue and writes it where --out says", async () => {
-    const out = join(mkdtempSync(join(tmpdir(), "ruleset-cli-")), "arcanum.json");
+    const out = join(scratchDirectory(), "arcanum.json");
 
     expect(
       await run(["--rules", ARCANUM.rules, "--database", ARCANUM.database, "--out", out])
@@ -83,14 +96,17 @@ describe("the scraper CLI", () => {
   });
 
   it("resolves a relative --out against the repository root", async () => {
-    const relative = ".cerebro/scratch/ruleset-cli-test.json";
+    // The directory is gitignored agent scratch space, so it need not exist on a fresh clone or in
+    // CI - and `writeFile` does not create parents.
+    mkdirSync(new URL("../../../.cerebro/scratch/", import.meta.url), { recursive: true });
+
     expect(
-      await run(["--rules", ARCANUM.rules, "--database", ARCANUM.database, "--out", relative])
+      await run(["--rules", ARCANUM.rules, "--database", ARCANUM.database, "--out", RELATIVE_OUT])
     ).toBeNull();
 
     // Read back through the repository root, which is what the assertion is about: resolved
     // against the package directory the file would be under packages/ruleset/ instead.
-    const target = new URL(`../../../${relative}`, import.meta.url);
+    const target = new URL(`../../../${RELATIVE_OUT}`, import.meta.url);
     expect(JSON.parse(readFileSync(target, "utf8")).source.rulesUrl).toBe(ARCANUM.rules);
   });
 });
