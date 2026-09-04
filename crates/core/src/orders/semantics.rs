@@ -5440,7 +5440,15 @@ fn apply(
                     produced: false,
                     created: None,
                 });
-                ledger.state.apply(StatePhase::Withdraw, who, &tag, *count);
+                // Only what the catalogue prices a withdrawal of actually arrives.
+                // `rules/withdraw` acquires *basic items* with unclaimed funds, and a
+                // `withdraw_cost` is how the catalogue says an item is one; crediting anything
+                // else would silence a shortfall warning that is telling the player the truth,
+                // and `check_claims` skips the same order, so nothing else would speak up. With
+                // no ruleset there is no catalogue to ask, and the same answer follows.
+                if withdrawal_cost(item, ruleset).is_some() {
+                    ledger.state.apply(StatePhase::Withdraw, who, &tag, *count);
+                }
             }
         }
         // Wages and takings from entertaining are paid in the last phase of the turn, after study
@@ -23628,6 +23636,44 @@ BUILD
                 "unit 2391\nWITHDRAW 5 IRON\nGIVE 2392 5 IRON\n"
             )),
             Vec::<&str>::new()
+        );
+    }
+
+    /// `rules/withdraw` acquires *basic items* with unclaimed funds, and the catalogue says which
+    /// those are by carrying a `withdraw_cost` at all. An item it prices nowhere cannot be
+    /// withdrawn, so nothing may arrive - crediting it would silence a warning that is telling the
+    /// player the truth, and `check_claims` skips the same order, so nothing else would speak up
+    /// (`ah-728m.3`).
+    #[test]
+    fn an_unwithdrawable_item_credits_the_unit_nothing() {
+        let regions = vec![region(vec![unit("2391"), unit("2392")])];
+
+        let finding = only(check(
+            regions,
+            "unit 2391\nWITHDRAW 5 MITH\nGIVE 2392 5 MITH\n",
+        ));
+        assert_eq!(finding.code.as_str(), "not-enough-items");
+        assert_eq!(
+            finding.message,
+            "short 5 mithril: this unit can have 0 and its orders spend 5"
+        );
+    }
+
+    /// Silver carries no `withdraw_cost` either - `rules/withdraw` acquires items with unclaimed
+    /// funds, not more funds - so a silver withdrawal credits nothing and the `not-enough-silver`
+    /// figures stay the ones the silver arm already computes from `receipts` (`ah-728m.3`).
+    #[test]
+    fn a_silver_withdrawal_credits_the_unit_nothing() {
+        let regions = vec![region(vec![unit("2391"), unit("2392")])];
+
+        let finding = only(check(
+            regions,
+            "unit 2391\nWITHDRAW 500 SILV\nGIVE 2392 500 SILV\n",
+        ));
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert_eq!(
+            finding.message,
+            "short $500: this unit can have $0 and its orders spend $500"
         );
     }
 
