@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-20di — The Columns tab</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --brass:#d9a441; --soft:#a3b0c0; --raised:#1d2532; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; margin: 26px 0 6px; }
+  p.note { color: var(--dim); max-width: 84ch; }
+  p.note b { color: var(--ink); }
+  .cost { color: var(--dim); font-size: 13px; margin: 8px 0 0; max-width: 74ch; }
+  .cost b { color: var(--ink); }
+  .row { display: flex; gap: 36px; flex-wrap: wrap; align-items: flex-start; margin: 12px 0; }
+
+  .dialog { width: 26rem; background: var(--panel); border: 1px solid var(--edge);
+            border-radius: 10px; padding: 14px 16px; }
+  .dialog h3 { margin: 0 0 10px; font-size: 15px; }
+  .tabs { display: flex; gap: 3px; border-bottom: 1px solid var(--edge); margin-bottom: 12px;
+          flex-wrap: wrap; }
+  .tab { padding: 4px 8px; font-size: 12.5px; color: var(--dim); border: 1px solid transparent;
+         border-bottom: none; border-radius: 6px 6px 0 0; }
+  .tab.active { color: var(--ink); background: var(--raised); border-color: var(--edge); }
+  .toggle { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+            color: var(--soft); padding: 3px 0; }
+  .toggle .t { display: block; font-size: 13px; }
+  .toggle .d { display: block; font-size: 10px; color: var(--dim); }
+  .box { width: 13px; height: 13px; accent-color: var(--brass); flex: none; }
+  .btn { border: 1px solid var(--edge); border-radius: 5px; padding: 1px 7px; font-size: 12px;
+         color: var(--soft); background: none; }
+  .lead { color: var(--dim); font-size: 11px; margin: 0 0 10px; }
+  .ellipsis { color: var(--dim); font-size: 12px; font-style: italic; padding: 4px 0; }
+
+  .pane { width: 760px; background: var(--panel); border: 1px solid var(--edge);
+          border-radius: 8px; overflow: hidden; }
+  .pane header { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+                 border-bottom: 1px solid var(--edge); font-size: 12px; }
+  .pane header .title { font-weight: 600; }
+  .pane header .hint { color: var(--dim); }
+  table { width: 100%; border-collapse: collapse; font-size: 11.5px; table-layout: fixed; }
+  th { text-align: left; color: var(--dim); font-weight: 600; padding: 4px 6px;
+       border-bottom: 1px solid var(--edge); white-space: nowrap; overflow: hidden;
+       text-overflow: ellipsis; }
+  td { padding: 3px 6px; border-bottom: 1px solid #1e2632; white-space: nowrap;
+       overflow: hidden; text-overflow: ellipsis; }
+  td.own { color: var(--brass); }
+</style>
+</head>
+<body>
+<h1>ah-20di — Columns in the units table can be hidden, from a Columns tab</h1>
+
+<p class="note">
+  <b>Chosen.</b> A sixth settings tab, <b>Columns</b>, between <b>Per game</b> and <b>Warnings</b> —
+  the move the Warnings tab already made when nine toggles were too many for the Global tab. It
+  holds one checkbox per hideable column and all three buttons, and the Global tab's
+  <b>Units table columns</b> row (with its two reset buttons) <b>moves here</b>, so the Global tab
+  is exactly as long as it is today and everything about the table's columns is in one place.
+</p>
+<p class="note">
+  <b>Nine columns are hideable</b>: Faction, Men, Move, Flags, Skills, Items, Structure, Long order,
+  Silver. The <b>own</b> marker (a 24px dot with no header), <b>Id</b> and <b>Unit</b> are always
+  drawn — they are what identifies a row — so "every column hidden" cannot be reached and there is
+  no empty state to design. The choice is remembered <b>globally</b>, beside the dragged widths and
+  the dragged order it sits next to. The rejected variant grew the same checkboxes inside the Global
+  tab instead.
+</p>
+
+<h2>The new tab, at its real 26rem width — the wording ships exactly as written</h2>
+<div class="row">
+  <div class="dialog">
+    <h3>Settings</h3>
+    <div class="tabs"><span class="tab">Global</span><span class="tab">Per game</span>
+      <span class="tab active">Columns</span><span class="tab">Warnings</span>
+      <span class="tab">Snippets</span><span class="tab">About</span></div>
+
+    <p class="lead">Which columns the units table draws. Unchecking one takes it off the table and
+      gives its width to the columns still shown.</p>
+
+    <div class="toggle"><span><span class="t">Faction</span>
+      <span class="d">Who the unit belongs to.</span></span>
+      <input class="box" type="checkbox" checked></div>
+    <div class="toggle"><span><span class="t">Men</span>
+      <span class="d">How many men the unit holds.</span></span>
+      <input class="box" type="checkbox" checked></div>
+    <div class="toggle"><span><span class="t">Move</span>
+      <span class="d">How the unit can travel, and how heavily it is loaded.</span></span>
+      <input class="box" type="checkbox"></div>
+    <div class="toggle"><span><span class="t">Flags</span>
+      <span class="d">The unit's behaviour flags, one letter each.</span></span>
+      <input class="box" type="checkbox" checked></div>
+    <div class="toggle"><span><span class="t">Skills</span>
+      <span class="d">The skills the unit knows, and at what level.</span></span>
+      <input class="box" type="checkbox"></div>
+    <div class="toggle"><span><span class="t">Items</span>
+      <span class="d">What the unit carries, after this month's orders.</span></span>
+      <input class="box" type="checkbox" checked></div>
+    <div class="toggle"><span><span class="t">Structure</span>
+      <span class="d">The building or ship the unit is in.</span></span>
+      <input class="box" type="checkbox"></div>
+    <div class="toggle"><span><span class="t">Long order</span>
+      <span class="d">The unit's month-long order.</span></span>
+      <input class="box" type="checkbox" checked></div>
+    <div class="toggle"><span><span class="t">Silver</span>
+      <span class="d">The silver the unit is left holding at the end of the month.</span></span>
+      <input class="box" type="checkbox" checked></div>
+
+    <div class="toggle" style="align-items:flex-start; margin-top:10px">
+      <span><span class="t">Units table columns</span>
+        <span class="d">Puts the dragged column widths, or the order they were dragged into, back
+          to how they ship.</span></span>
+      <span style="display:flex; gap:6px; flex:none">
+        <button class="btn">Show all</button>
+        <button class="btn">Reset widths</button>
+        <button class="btn">Reset order</button>
+      </span>
+    </div>
+  </div>
+
+  <p class="cost" style="width:34ch">
+    <b>Three buttons, three preferences.</b> <i>Show all</i> puts the hidden columns back and touches
+    neither the widths nor the order; each reset button stays confined to its own preference, for the
+    reason the pair was split in the first place. The checkboxes stand in the shipped left-to-right
+    column order, never in the player's dragged order — a settings list that rearranges itself is one
+    nobody can learn.
+  </p>
+</div>
+
+<h2>What the Global tab loses</h2>
+<div class="row">
+  <div class="dialog">
+    <h3>Settings</h3>
+    <div class="tabs"><span class="tab active">Global</span><span class="tab">Per game</span>
+      <span class="tab">Columns</span><span class="tab">Warnings</span>
+      <span class="tab">Snippets</span><span class="tab">About</span></div>
+    <div class="ellipsis">… App theme, Map theme, Biome textures, Staleness, Movement, guide,
+      Pane transparency, Interface size …</div>
+    <div class="toggle" style="text-decoration:line-through; opacity:.5">
+      <span class="t">Units table columns · Reset widths · Reset order</span></div>
+    <div class="ellipsis">… Movement planner, Order OCD, Count upkeep …</div>
+  </div>
+  <p class="cost" style="width:34ch">
+    The struck-through row is the one that moves. A player who knows where the reset buttons are has
+    one new place to learn — the price of the tab.
+  </p>
+</div>
+
+<h2>The units table with Move, Skills and Structure hidden</h2>
+<div class="pane">
+  <header><span class="title">Units in hex</span>
+    <span class="hint">— plain (10,44), 4 units</span></header>
+  <table>
+    <colgroup><col style="width:3%"><col style="width:8%"><col style="width:24%"><col style="width:21%">
+      <col style="width:7%"><col style="width:9%"><col style="width:16%"><col style="width:12%"></colgroup>
+    <thead><tr><th></th><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Flags</th>
+      <th>Items</th><th>Long order</th><th>Silver</th></tr></thead>
+    <tbody>
+      <tr><td class="own">●</td><td>1042</td><td>Border Watch</td><td>Grey Wardens (12)</td>
+        <td>6</td><td>GB</td><td>6 SWOR, 40 GRAI</td><td>MOVE N N</td><td>318</td></tr>
+      <tr><td class="own">●</td><td>1188</td><td>Woodcutters</td><td>Grey Wardens (12)</td>
+        <td>4</td><td>B</td><td>4 AXE, 120 WOOD</td><td>PRODUCE WOOD</td><td>92</td></tr>
+      <tr><td></td><td>2210</td><td>Caravan</td><td>Salt Traders (31)</td>
+        <td>9</td><td>G</td><td>9 HORS</td><td>—</td><td>—</td></tr>
+      <tr><td></td><td>2311</td><td>Scouts</td><td>Salt Traders (31)</td>
+        <td>2</td><td></td><td>2 LEAT</td><td>—</td><td>—</td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="cost">Widths are stored as shares that sum to 1, so a hidden column's share is
+  redistributed across the ones still drawn and the table always exactly fills its pane — the same
+  renormalisation the Army source already relies on when it adds columns of its own.</p>
+
+<h2>The tab strip at 200% interface size — where the sixth tab costs a line</h2>
+<div class="dialog" style="width:26rem">
+  <h3 style="font-size:22px">Settings</h3>
+  <div class="tabs">
+    <span class="tab" style="font-size:18px">Global</span>
+    <span class="tab" style="font-size:18px">Per game</span>
+    <span class="tab active" style="font-size:18px">Columns</span>
+    <span class="tab" style="font-size:18px">Warnings</span>
+    <span class="tab" style="font-size:18px">Snippets</span>
+    <span class="tab" style="font-size:18px">About</span>
+  </div>
+  <p class="lead" style="font-size:15px">Which columns the units table draws.</p>
+</div>
+<p class="cost">The strip already wraps at 200% with five tabs; the sixth makes the second line
+  fuller rather than creating it. Accepted knowingly.</p>
+
+</body>
+</html>
