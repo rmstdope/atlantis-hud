@@ -11,6 +11,7 @@
  */
 
 import type { BatchSkip, BatchStep } from "./reportBatch";
+import { count } from "./plural";
 
 export type ImportSummary = {
   steps: BatchStep[];
@@ -68,17 +69,6 @@ function lineFor(step: BatchStep): string {
   return step.hexesAdded === null || step.hexesAdded === 0
     ? `${step.fileName} — map export, nothing new to your map`
     : `${step.fileName} — map export, ${count(step.hexesAdded, "hex", "hexes")} added`;
-}
-
-/**
- * `1 turn`, `2 turns` - and `2 hexes` for a noun whose plural is not simply an `s`.
- *
- * The one pluraliser these sentences have. `hex` is why it takes a plural at all: appending `s`
- * gives `hexs`, and a second helper beside this one is how two sentences about the same thing
- * drift apart.
- */
-function count(n: number, noun: string, plural = `${noun}s`): string {
-  return `${n} ${n === 1 ? noun : plural}`;
 }
 
 /**

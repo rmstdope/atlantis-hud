@@ -46,23 +46,11 @@ import {
 import { sortUnitsForDisplay } from "./hexMapModel";
 import { countsStatus, noticeStatus, warningStatus } from "./workspace/shellStatus";
 import { seedOrdersDocument } from "./ordersDocument";
+import { factionLabelOf } from "./factionLabel";
 
-/**
- * How a report names its own faction, as `Borg TNG (95)`, or `null` when it names none.
- *
- * The header has always shown this; the foreign-report prompt needs it too, and for two reports at
- * once. A report with an id and no name still has something to say, so it says that rather than
- * nothing - but a header with no report loaded shows no faction at all, which is why this stays
- * nullable rather than inventing a placeholder here.
- */
-export function factionLabelOf(report: ParsedReport | null): string | null {
-  const name = report?.header.factionName;
-  const id = report?.header.factionId;
-  if (name && id) {
-    return `${name} (${id})`;
-  }
-  return name ?? id ?? null;
-}
+// Moved to `factionLabel.ts` so `mageSheetImport.ts` can use it without a cycle through this
+// module; re-exported here so every existing importer is untouched.
+export { factionLabelOf } from "./factionLabel";
 
 /** Everything a turn brings to the screen, read before any of it is shown. */
 export type LoadedTurn = {
