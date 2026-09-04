@@ -31,6 +31,14 @@ export function desktopOrdersUploader(
     if (!plugins) {
       throw new Error("This build cannot send orders: there is no desktop runtime to send them through.");
     }
-    return plugins.httpPost(upload.url, upload.contentType, upload.body, signal);
+    return plugins.httpRequest(
+      {
+        method: "POST",
+        url: upload.url,
+        headers: { "Content-Type": upload.contentType },
+        body: upload.body
+      },
+      signal
+    );
   };
 }
