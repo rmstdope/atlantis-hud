@@ -789,7 +789,9 @@ fn pool_shares_for(
 /// Keyed by canonical item tag **and side**: a unit selling horses and a unit buying horses draw
 /// on two different pools - the `Wanted` and `For Sale` lists - which the report prints as two
 /// lines. Each vector is index-aligned with `hex.units`, as the tax shares are and for the same
-/// reason: two units may carry the same id, and a map keyed by id would merge them.
+/// reason: the settlement is positional, and a claim is named by where its unit sits in the report.
+/// Unit ids would serve too - one unit number is one row in a region block, because
+/// `parse_region_block` refuses a repeat (`ah-bm0d`) - but the index is what orders the pass.
 ///
 /// [`PoolShare::Unknowable`] has no counterpart here. A market claim is counted in goods and does
 /// not multiply out by headcount, so a guessed headcount tells us nothing about it.
@@ -957,9 +959,8 @@ struct ProductionRegionAnswer {
 /// the units already producing there have to be settled against it - which no per-hex pass can do.
 ///
 /// Keyed by the unit's **report-origin coordinate**, and each vector is index-aligned with that
-/// origin's `hex.units`, as the market shares are and for the same reason: two units may carry the
-/// same id, and a map keyed by id would merge them. The inner map is keyed by canonical uppercase
-/// item tag.
+/// origin's `hex.units`, as the market shares are and for the same reason: the settlement is
+/// positional. The inner map is keyed by canonical uppercase item tag.
 ///
 /// An absent answer is [`RegionShare::Unlimited`]: either no regional pool applies at all, or the
 /// sail cannot be followed through the report and the destination is unknowable.
@@ -6015,9 +6016,9 @@ impl HexStanding<'_> {
     /// this market does not trade, or a hex that could not be settled at all. The caller then falls
     /// back to what the market line itself says.
     ///
-    /// Index-aligned rather than keyed by unit id, because two units may carry the same id and a
-    /// map would merge them - the same reason [`market_shares_for`] builds it that way, and the
-    /// same lookup the Silver column's `market_share` closure makes.
+    /// Index-aligned rather than keyed by unit id, because the settlement is positional - the same
+    /// reason [`market_shares_for`] builds it that way, and the same lookup the Silver column's
+    /// `market_share` closure makes.
     fn market_share_of(&self, tag: &str, side: MarketSide) -> Option<i64> {
         self.market
             .get(&(tag.to_ascii_uppercase(), side))
@@ -7118,8 +7119,9 @@ fn charge(
 
 /// One unit's share of a material a production or a BUILD consumed, by its index in `hex.units`.
 ///
-/// The index rather than the id: two report units can carry the same id, and this list is what
-/// says *whose* goods left (`ah-728m.2.2`).
+/// The index rather than the id: report order is what says *whose* goods left, and in what order
+/// they left (`ah-728m.2.2`). It does not depend on unit ids being distinct, and they are: one unit
+/// number is one row in a region block, because `parse_region_block` refuses a repeat (`ah-bm0d`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SharedDebit {
     supplier_index: usize,
@@ -7298,9 +7300,10 @@ enum Reading {
 struct Sharing<'a> {
     /// The units carrying `sharing`, in hex order, each with its index into `hex.units`.
     ///
-    /// The index rather than the id, and kept beside the unit rather than looked up again: two
-    /// report units can carry the same id, so an id-keyed claimant vector confuses them for one
-    /// another - the same reason [`SharingPurse`] is index-aligned (`ah-728m.2.2`).
+    /// The index rather than the id, and kept beside the unit rather than looked up again, so a
+    /// claimant is named by where it sits in the report - the same reason [`SharingPurse`] is
+    /// index-aligned (`ah-728m.2.2`). Unit ids are distinct anyway: one unit number is one row in a
+    /// region block, because `parse_region_block` refuses a repeat (`ah-bm0d`).
     sharers: Vec<(usize, &'a Ordered<'a>)>,
 }
 
@@ -7460,8 +7463,10 @@ impl MarketPurse {
 /// none is credited and every figure stays pessimistic. A player then sees a shortfall that is
 /// real for *somebody* rather than a guess about who.
 ///
-/// Both vectors are index-aligned with `hex.units`, which is what keeps two report units sharing an
-/// id from being confused for one another - a lookup by id could not.
+/// Both vectors are index-aligned with `hex.units`, so a claimant is named by where it sits in the
+/// report rather than by a lookup. That does not depend on unit ids being distinct, and they are:
+/// one unit number is one row in a region block, because `parse_region_block` refuses a repeat
+/// (`ah-bm0d`).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct SharingPurse {
     /// What the purse lends each unit for its orders. `0` for a sharer - a sharer's own overdraft
