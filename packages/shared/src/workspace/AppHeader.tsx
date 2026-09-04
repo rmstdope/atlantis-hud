@@ -11,6 +11,7 @@ import {
 } from "../turnReport";
 import { ExportMenu } from "./ExportMenu";
 import { ChipPopover } from "./popover";
+import { NewAgeWorldPanel } from "./NewAgeWorldPanel";
 import type { StatusLine, StatusTone } from "./shellStatus";
 
 /** The status line's dot colour by tone; `routine` has no dot (see the render site). */
@@ -34,7 +35,24 @@ export type HeaderPopoverId =
   | "mageSheets"
   | "report"
   | "trade"
-  | "export";
+  | "export"
+  | "newage";
+
+/**
+ * The New Age world control, as the shell hands it over.
+ *
+ * One object rather than five props, because they are only ever all present or all absent: the
+ * control exists for a game played under a New Age world in a shell that can reach one.
+ */
+export type NewAgeHeaderControl = {
+  /** `Sign in to Arcanum` when signed out; the faction's name once signed in. */
+  label: string;
+  signedIn: boolean;
+  /** The popover's first line, shown only while signed in. */
+  summary: string;
+  onSignIn: () => void;
+  onSignOut: () => void;
+};
 
 /**
  * What the import button says while it is working.
@@ -168,6 +186,12 @@ type AppHeaderProps = {
   canSend?: boolean;
   /** Why Send is off, shown on hover - so a dialog that could do nothing is never opened. */
   sendDisabledReason?: string;
+  /**
+   * The New Age world control, or absent when there is none: the web build, and any game not
+   * played under a New Age world. Absence is the whole of what hides it, the trick `onSendOrders`
+   * already plays.
+   */
+  newAge?: NewAgeHeaderControl;
   /** Whether the settings panel is showing. Same split as the picker: header owns the button. */
   settingsOpen: boolean;
   onToggleSettings: () => void;
@@ -224,6 +248,7 @@ export function AppHeader({
   onSendOrders,
   canSend = false,
   sendDisabledReason,
+  newAge,
   settingsOpen,
   onToggleSettings,
   settings
@@ -639,6 +664,42 @@ export function AppHeader({
           </span>
         </button>
       </ChipPopover>
+
+      {/*
+        The New Age world, between Export and Send: it is about the world the orders are going to,
+        so it belongs beside Send rather than beside the settings cog. One `data-testid` across
+        both states, so a walk reads the label off one locator rather than choosing between two.
+      */}
+      {newAge === undefined ? null : newAge.signedIn ? (
+        <ChipPopover
+          open={openPopover === "newage"}
+          onDismiss={close}
+          panel={<NewAgeWorldPanel summary={newAge.summary} onSignOut={newAge.onSignOut} />}
+        >
+          <button
+            type="button"
+            data-testid="newage-control"
+            aria-haspopup="dialog"
+            aria-expanded={openPopover === "newage"}
+            onClick={() => toggle("newage")}
+            className="rounded border border-brass bg-panel-raised px-2.5 py-1 text-brass"
+          >
+            {newAge.label}
+            <span aria-hidden className="ml-1 text-ink-dim">
+              ▾
+            </span>
+          </button>
+        </ChipPopover>
+      ) : (
+        <button
+          type="button"
+          data-testid="newage-control"
+          onClick={newAge.onSignIn}
+          className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink"
+        >
+          {newAge.label}
+        </button>
+      )}
 
       {/*
         Send has a button of its own rather than a fourth item in the Export menu: it is the action
